@@ -2,11 +2,6 @@ using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -27,74 +22,23 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for merchant-room dialog payloads owned by
+    /// Adapter inbox for merchant-room dialog payloads owned by
     /// CPersonalShopDlg::OnPacket and CEntrustedShopDlg::OnPacket.
     /// </summary>
     public sealed class SocialRoomMerchantPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18489;
-
         private readonly ConcurrentQueue<SocialRoomMerchantPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public SocialRoomKind? PreferredKind { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Merchant-room packet inbox inactive.";
-
-        public void Start(SocialRoomKind preferredKind, int port = DefaultPort)
-        {
-            if (!IsMerchantKind(preferredKind))
-            {
-                LastStatus = "Merchant-room packet inbox only accepts personal-shop or entrusted-shop owners.";
-                return;
-            }
-
-            lock (_listenerLock)
-            {
-                if (IsRunning && Port == (port <= 0 ? DefaultPort : port) && PreferredKind == preferredKind)
-                {
-                    LastStatus = $"Merchant-room packet inbox already listening on 127.0.0.1:{Port} for {DescribeKind(preferredKind)}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    PreferredKind = preferredKind;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Merchant-room packet inbox listening on 127.0.0.1:{Port} for {DescribeKind(preferredKind)}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Merchant-room packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Merchant-room packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Merchant-room packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out SocialRoomMerchantPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueLocal(SocialRoomMerchantPacketInboxMessage message)
+        {
+            EnqueueMessage(message);
         }
 
         public void RecordDispatchResult(SocialRoomMerchantPacketInboxMessage message, bool success, string detail)
@@ -107,10 +51,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(
@@ -244,73 +184,6 @@ namespace HaCreator.MapSimulator.Managers
             return TryParseHexPayload(string.Join(string.Empty, tokens, index, tokens.Length - index), out payload, out error);
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Merchant-room packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        SocialRoomKind preferredKind = PreferredKind ?? SocialRoomKind.PersonalShop;
-                        if (!TryParsePacketLine(line, preferredKind, out SocialRoomKind kind, out byte[] payload, out string error))
-                        {
-                            LastStatus = $"Ignored merchant-room inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new SocialRoomMerchantPacketInboxMessage(kind, payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribeKind(kind)} payload from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Merchant-room packet inbox client error: {ex.Message}";
-            }
-        }
-
         private static bool IsMerchantKind(SocialRoomKind kind)
         {
             return kind == SocialRoomKind.PersonalShop || kind == SocialRoomKind.EntrustedShop;
@@ -418,36 +291,16 @@ namespace HaCreator.MapSimulator.Managers
             return packet;
         }
 
-        private void StopInternal(bool clearPending)
+        private void EnqueueMessage(SocialRoomMerchantPacketInboxMessage message)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
-            _listenerTask = null;
-            PreferredKind = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-            }
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued {DescribeKind(message.Kind)} payload from {message.Source}.";
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -71,8 +72,8 @@ namespace HaCreator.MapSimulator.Interaction
             result = null;
             error = null;
 
-            using MemoryStream stream = new(payload.ToArray(), writable: false);
-            using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
+            using PacketReader reader = new(payload.ToArray());
+            Stream stream = reader.BaseStream;
             if (stream.Length - stream.Position < sizeof(byte))
             {
                 error = "Parcel receive payload is missing the receive-entry count.";
@@ -121,8 +122,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool TryDecodeSingleEntryPayload(ReadOnlySpan<byte> payload, out PacketOwnedParcelDecodedEntry entry, out string error)
         {
-            using MemoryStream stream = new(payload.ToArray(), writable: false);
-            using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
+            using PacketReader reader = new(payload.ToArray());
+            Stream stream = reader.BaseStream;
             bool decoded = TryDecodeParcelEntry(reader, out entry, out error);
             if (!decoded)
             {
@@ -179,7 +180,7 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static bool TryDecodeParcelEntry(BinaryReader reader, out PacketOwnedParcelDecodedEntry entry, out string error)
+        private static bool TryDecodeParcelEntry(PacketReader reader, out PacketOwnedParcelDecodedEntry entry, out string error)
         {
             entry = null;
             error = null;
@@ -347,7 +348,7 @@ namespace HaCreator.MapSimulator.Interaction
             return (stateFlags & flag) != 0;
         }
 
-        private static bool TryReadItemAttachment(BinaryReader reader, out int itemId, out int quantity, out string error)
+        private static bool TryReadItemAttachment(PacketReader reader, out int itemId, out int quantity, out string error)
         {
             itemId = 0;
             quantity = 0;
@@ -398,7 +399,7 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string error)
+        private static bool TryReadEquipBody(PacketReader reader, bool hasCashSerialNumber, out string error)
         {
             error = null;
             Stream stream = reader.BaseStream;
@@ -439,7 +440,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string error)
+        private static bool TryReadBundleBody(PacketReader reader, int itemId, out int quantity, out string error)
         {
             quantity = 1;
             error = null;
@@ -478,7 +479,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static bool TryReadPetBody(BinaryReader reader, out string error)
+        private static bool TryReadPetBody(PacketReader reader, out string error)
         {
             error = null;
             Stream stream = reader.BaseStream;
@@ -494,7 +495,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static bool TryReadMapleString(BinaryReader reader, out string value)
+        private static bool TryReadMapleString(PacketReader reader, out string value)
         {
             value = string.Empty;
             Stream stream = reader.BaseStream;

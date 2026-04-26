@@ -8,7 +8,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class PacketScriptMessageRuntime

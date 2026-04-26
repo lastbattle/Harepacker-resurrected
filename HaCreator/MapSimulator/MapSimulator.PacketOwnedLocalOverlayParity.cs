@@ -18,7 +18,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
@@ -149,8 +150,6 @@ namespace HaCreator.MapSimulator
         private FieldHazardPetAutoConsumeRequest? _recentClosedFieldHazardPetAutoConsumeRequest;
         private int _recentClosedFieldHazardPetAutoConsumeRequestExpiresAt = int.MinValue;
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
-        private bool _localOverlayPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
         private int _fieldHazardSharedPetConsumeItemId;
         private InventoryType _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
         private FieldHazardSharedPetConsumeSource _fieldHazardSharedPetConsumeSource = FieldHazardSharedPetConsumeSource.None;
@@ -411,35 +410,6 @@ namespace HaCreator.MapSimulator
 
         private void EnsureLocalOverlayPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_localOverlayPacketInboxEnabled)
-            {
-                if (_localOverlayPacketInbox.IsRunning)
-                {
-                    _localOverlayPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_localOverlayPacketInbox.IsRunning && _localOverlayPacketInbox.Port == _localOverlayPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_localOverlayPacketInbox.IsRunning)
-            {
-                _localOverlayPacketInbox.Stop();
-            }
-
-            try
-            {
-                _localOverlayPacketInbox.Start(_localOverlayPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _localOverlayPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Local overlay packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainLocalOverlayPacketInbox()
@@ -3888,11 +3858,7 @@ namespace HaCreator.MapSimulator
 
         private string DescribeLocalOverlayPacketInboxStatus()
         {
-            string enabledText = _localOverlayPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _localOverlayPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_localOverlayPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_localOverlayPacketInboxConfiguredPort}";
-            return $"Local overlay packet inbox {enabledText}, {listeningText}, received {_localOverlayPacketInbox.ReceivedCount} packet(s).";
+            return $"Local overlay packet inbox adapter-only, listener-fallback retired, received {_localOverlayPacketInbox.ReceivedCount} packet(s) [proxy={_localOverlayPacketInbox.ProxyIngressReceivedCount}, local={_localOverlayPacketInbox.LocalIngressReceivedCount}], last ingress={_localOverlayPacketInbox.LastIngressMode}.";
         }
 
         private bool TryApplyPacketOwnedLocalOverlayPacket(int packetType, byte[] payload, out string message)
@@ -4024,23 +3990,12 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
             {
-                int port = LocalOverlayPacketInboxManager.DefaultPort;
-                if (args.Length >= 2 && (!int.TryParse(args[1], out port) || port <= 0 || port > ushort.MaxValue))
-                {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|hpdec|damagemeter|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
-                }
-
-                _localOverlayPacketInboxConfiguredPort = port;
-                _localOverlayPacketInboxEnabled = true;
-                EnsureLocalOverlayPacketInboxState(shouldRun: true);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Local overlay inbox listener controls are retired; use packet commands or the role-session bridge.");
             }
 
             if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
             {
-                _localOverlayPacketInboxEnabled = false;
-                EnsureLocalOverlayPacketInboxState(shouldRun: false);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Local overlay inbox listener controls are retired; use packet commands or the role-session bridge.");
             }
 
             if (string.Equals(args[0], "packetclientraw", StringComparison.OrdinalIgnoreCase))

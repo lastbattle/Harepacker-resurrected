@@ -10,7 +10,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Effects;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
 using System.Buffers.Binary;
@@ -37,6 +36,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly List<DeferredInboundPacket> _deferredPackets = new();
         private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
         private int _inferenceClearMapId = -1;
         private string _inferenceClearPortalName = string.Empty;
         private int _inferenceExitMapId = -1;
@@ -46,11 +46,6 @@ namespace HaCreator.MapSimulator.Managers
         private bool _inferenceTimerExpired;
         private bool _inferenceClearActive;
         private bool _inferenceTimeOverActive;
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -99,57 +94,22 @@ namespace HaCreator.MapSimulator.Managers
             public int TentativePacketType { get; }
             public string Evidence { get; }
         }
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Dojo official-session bridge inactive.";
+
+        public DojoOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
 
         public string DescribeStatus()
         {
@@ -157,7 +117,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -865,17 +825,20 @@ namespace HaCreator.MapSimulator.Managers
             {
                 RemoteHost = resolvedRemoteHost;
                 RemotePort = remotePort;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                _listener.Start();
-                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
+                ListenPort = requestedListenPort;
                 if (clearPassiveEstablishedSession)
                 {
                     _passiveEstablishedSession = null;
                 }
+                if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                {
+                    StopInternal(clearPending: true);
+                    LastStatus = proxyStatus;
+                    status = LastStatus;
+                    return false;
+                }
 
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Dojo official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                LastStatus = $"Dojo official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                 status = LastStatus;
                 return true;
             }
@@ -887,186 +850,33 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Dojo official-session bridge error: {ex.Message}";
-            }
-        }
-
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Dojo official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Dojo official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Dojo official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Dojo official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Dojo official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    LastStatus = $"Dojo official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryMapInboundPacket(raw, $"official-session:{pair.RemoteEndpoint}", out DojoPacketInboxMessage message))
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(message);
-                ReceivedCount++;
-                LastStatus = $"Queued Dojo opcode {BitConverter.ToUInt16(raw, 0)} as {DescribePacketType(message.PacketType)} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Dojo official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            if (isInit)
+            if (e == null)
             {
                 return;
             }
 
-            try
+            if (e.IsInit)
             {
-                pair.ServerSession.SendPacket(packet.ToArray());
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Dojo official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            if (pair == null)
-            {
+                LastStatus = _roleSessionProxy.LastStatus;
                 return;
             }
 
-            lock (_sync)
+            if (!TryMapInboundPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", out DojoPacketInboxMessage message))
             {
-                if (!ReferenceEquals(_activePair, pair))
-                {
-                    return;
-                }
-
-                _activePair = null;
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
 
-            pair.Close();
-            LastStatus = status;
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued Dojo opcode {BitConverter.ToUInt16(e.RawPacket, 0)} as {DescribePacketType(message.PacketType)} from live session {e.SourceEndpoint}.";
         }
 
-        private void StopInternal(bool clearPending)
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _passiveEstablishedSession = null;
-
-            BridgePair pair = _activePair;
-            _activePair = null;
-            pair?.Close();
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-                lock (_sync)
-                {
-                    _recentPackets.Clear();
-                    _deferredPackets.Clear();
-                }
-            }
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         private bool TryInferInboundPacketType(int opcode, byte[] payload, out int packetType, out string mappingReason)
@@ -1521,229 +1331,6 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
         }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
-        }
-
-        private static string DescribePacketType(int packetType)
-        {
-            return packetType switch
-            {
-                DojoField.PacketTypeClock => "clock",
-                DojoField.PacketTypeStage => "stage",
-                DojoField.PacketTypeClear => "clear",
-                DojoField.PacketTypeTimeOver => "timeover",
-                _ => $"packet {packetType}"
-            };
-        }
-
-        internal static bool MatchesDiscoveredTargetConfiguration(
-            int currentListenPort,
-            string currentRemoteHost,
-            int currentRemotePort,
-            int expectedListenPort,
-            IPEndPoint discoveredRemoteEndpoint,
-            bool ignoreListenPort = false)
-        {
-            return discoveredRemoteEndpoint != null
-                && MatchesTargetConfiguration(
-                    currentListenPort,
-                    currentRemoteHost,
-                    currentRemotePort,
-                    expectedListenPort,
-                    discoveredRemoteEndpoint.Address.ToString(),
-                    discoveredRemoteEndpoint.Port,
-                    ignoreListenPort);
-        }
-
-        internal static bool MatchesTargetConfiguration(
-            int currentListenPort,
-            string currentRemoteHost,
-            int currentRemotePort,
-            int expectedListenPort,
-            string expectedRemoteHost,
-            int expectedRemotePort,
-            bool ignoreListenPort = false)
-        {
-            return (ignoreListenPort || currentListenPort == expectedListenPort)
-                && currentRemotePort == expectedRemotePort
-                && string.Equals(
-                    NormalizeRemoteHost(currentRemoteHost),
-                    NormalizeRemoteHost(expectedRemoteHost),
-                    StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string NormalizeRemoteHost(string remoteHost)
-        {
-            return string.IsNullOrWhiteSpace(remoteHost)
-                ? IPAddress.Loopback.ToString()
-                : remoteHost.Trim();
-        }
-
-        private static bool TryResolveProcessSelector(
-            string processSelector,
-            out int? owningProcessId,
-            out string owningProcessName,
-            out string error)
-        {
-            owningProcessId = null;
-            owningProcessName = null;
-            error = null;
-
-            if (string.IsNullOrWhiteSpace(processSelector))
-            {
-                owningProcessName = DefaultProcessName;
-                return true;
-            }
-
-            string trimmedSelector = processSelector.Trim();
-            if (int.TryParse(trimmedSelector, out int parsedPid))
-            {
-                if (parsedPid <= 0)
-                {
-                    error = "Dojo official-session discovery requires a positive pid.";
-                    return false;
-                }
-
-                owningProcessId = parsedPid;
-                return true;
-            }
-
-            owningProcessName = NormalizeProcessSelector(trimmedSelector);
-            if (string.IsNullOrWhiteSpace(owningProcessName))
-            {
-                error = "Dojo official-session discovery requires a process name or pid when a selector is provided.";
-                return false;
-            }
-
-            return true;
-        }
-
-        private static string DescribeDiscoveryCandidates(
-            IReadOnlyList<SessionDiscoveryCandidate> candidates,
-            int remotePort,
-            int? owningProcessId,
-            string owningProcessName,
-            int? localPort)
-        {
-            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
-            if (filteredCandidates.Count == 0)
-            {
-                return $"Dojo official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
-            }
-
-            string matches = string.Join(
-                Environment.NewLine,
-                filteredCandidates.Select(candidate => $"- {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
-            return $"Dojo official-session discovery matches for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}:{Environment.NewLine}{matches}{Environment.NewLine}{BuildDiscoveryAttachmentRequirementMessage()}";
-        }
-
-        private static bool TryResolveDiscoveryCandidate(
-            IReadOnlyList<SessionDiscoveryCandidate> candidates,
-            int remotePort,
-            int? owningProcessId,
-            string owningProcessName,
-            int? localPort,
-            out SessionDiscoveryCandidate candidate,
-            out string status)
-        {
-            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
-            if (filteredCandidates.Count == 0)
-            {
-                candidate = default;
-                status = $"Dojo official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
-                return false;
-            }
-
-            if (filteredCandidates.Count > 1)
-            {
-                candidate = default;
-                string matches = string.Join(
-                    ", ",
-                    filteredCandidates.Select(entry => $"{entry.ProcessName}({entry.ProcessId}) local {entry.LocalEndpoint.Port} remote {entry.RemoteEndpoint.Address}:{entry.RemoteEndpoint.Port}"));
-                status = $"Dojo official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use /dojo session discover to inspect them, or add a localPort filter.";
-                return false;
-            }
-
-            candidate = filteredCandidates[0];
-            status = null;
-            return true;
-        }
-
-        private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(
-            IReadOnlyList<SessionDiscoveryCandidate> candidates,
-            int? localPort)
-        {
-            if (!localPort.HasValue || localPort.Value <= 0)
-            {
-                return candidates ?? Array.Empty<SessionDiscoveryCandidate>();
-            }
-
-            return (candidates ?? Array.Empty<SessionDiscoveryCandidate>())
-                .Where(candidate => candidate.LocalEndpoint.Port == localPort.Value)
-                .ToArray();
-        }
-
-        private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)
-        {
-            string processScope = owningProcessId.HasValue
-                ? $"pid {owningProcessId.Value}"
-                : string.IsNullOrWhiteSpace(owningProcessName)
-                    ? DefaultProcessName
-                    : owningProcessName;
-            return localPort.HasValue && localPort.Value > 0
-                ? $"{processScope} remotePort {remotePort} localPort {localPort.Value}"
-                : $"{processScope} remotePort {remotePort}";
-        }
-
-        private static string BuildDiscoveryAttachmentRequirementMessage(int? listenPort = null)
-        {
-            string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
-                ? $"127.0.0.1:{listenPort.Value}"
-                : "the configured localhost listen port";
-            return $"Discovery identifies established Maple sockets. Use `/dojo session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/dojo session attachproxy ...` to arm a reconnect proxy so Maple can reconnect through {reconnectTarget} and recover Dojo traffic through the localhost proxy.";
-        }
-
-        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
-        {
-            return $"observing established socket pair {DescribeEstablishedSession(candidate)}; proxy reconnect required for decrypt";
-        }
-
-        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
-        {
-            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
-        }
-
-        private static string NormalizeProcessSelector(string selector)
-        {
-            if (string.IsNullOrWhiteSpace(selector))
-            {
-                return null;
-            }
-
-            string normalized = selector.Trim();
-            return normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                ? normalized[..^4]
-                : normalized;
-        }
-
-        private static bool TryResolveProcess(int processId, out string processName)
-        {
-            processName = null;
-
-            try
-            {
-                processName = Process.GetProcessById(processId).ProcessName;
-                return !string.IsNullOrWhiteSpace(processName);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
         {
             int bufferSize = 0;
@@ -1789,7 +1376,228 @@ namespace HaCreator.MapSimulator.Managers
 
         private static IPAddress DecodeAddress(uint encodedAddress)
         {
-            return new IPAddress(encodedAddress);
+            return new IPAddress(BitConverter.GetBytes(encodedAddress));
+        }
+
+        private void StopInternal(bool clearPending)
+        {
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+            _passiveEstablishedSession = null;
+            if (!clearPending)
+            {
+                return;
+            }
+
+            while (_pendingMessages.TryDequeue(out _))
+            {
+            }
+
+            _deferredPackets.Clear();
+            _recentPackets.Clear();
+            ReceivedCount = 0;
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                DojoField.PacketTypeClock => "clock",
+                DojoField.PacketTypeStage => "stage",
+                DojoField.PacketTypeClear => "clear",
+                DojoField.PacketTypeTimeOver => "timeover",
+                _ => packetType.ToString()
+            };
+        }
+
+        private static string NormalizeRemoteHost(string remoteHost)
+        {
+            return string.IsNullOrWhiteSpace(remoteHost)
+                ? IPAddress.Loopback.ToString()
+                : remoteHost.Trim();
+        }
+
+        private static bool MatchesTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            string requestedRemoteHost,
+            int requestedRemotePort,
+            bool ignoreListenPort)
+        {
+            return (ignoreListenPort || currentListenPort == requestedListenPort)
+                && currentRemotePort == requestedRemotePort
+                && string.Equals(
+                    NormalizeRemoteHost(currentRemoteHost),
+                    NormalizeRemoteHost(requestedRemoteHost),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool MatchesDiscoveredTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            IPEndPoint remoteEndpoint,
+            bool ignoreListenPort)
+        {
+            return remoteEndpoint != null
+                && MatchesTargetConfiguration(
+                    currentListenPort,
+                    currentRemoteHost,
+                    currentRemotePort,
+                    requestedListenPort,
+                    remoteEndpoint.Address.ToString(),
+                    remoteEndpoint.Port,
+                    ignoreListenPort);
+        }
+
+        private static string BuildDiscoveryAttachmentRequirementMessage(int listenPort)
+        {
+            return $"Reconnect Maple through 127.0.0.1:{listenPort} so the role-session bridge can recover Maple crypto ownership.";
+        }
+
+        private static bool TryResolveProcess(int pid, out string processName)
+        {
+            processName = null;
+            try
+            {
+                processName = Process.GetProcessById(pid).ProcessName;
+                return !string.IsNullOrWhiteSpace(processName);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)
+        {
+            owningProcessId = null;
+            owningProcessName = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(selector))
+            {
+                owningProcessName = DefaultProcessName;
+                return true;
+            }
+
+            if (int.TryParse(selector, out int pid) && pid > 0)
+            {
+                owningProcessId = pid;
+                return true;
+            }
+
+            string normalized = NormalizeProcessSelector(selector);
+            if (normalized.Length == 0)
+            {
+                error = "Dojo official-session discovery requires a process name or pid when a selector is provided.";
+                return false;
+            }
+
+            owningProcessName = normalized;
+            return true;
+        }
+
+        private static string NormalizeProcessSelector(string selector)
+        {
+            string trimmed = selector?.Trim() ?? string.Empty;
+            return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? trimmed[..^4]
+                : trimmed;
+        }
+
+        private static string DescribeSelector(int? owningProcessId, string owningProcessName)
+        {
+            return owningProcessId.HasValue
+                ? $"pid {owningProcessId.Value}"
+                : string.IsNullOrWhiteSpace(owningProcessName)
+                    ? "the selected process"
+                    : $"process '{owningProcessName}'";
+        }
+
+        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
+        }
+
+        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"observing established socket pair {DescribeEstablishedSession(candidate)}; proxy reconnect required for decrypt/inject";
+        }
+
+        internal static bool TryResolveDiscoveryCandidate(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort,
+            out SessionDiscoveryCandidate candidate,
+            out string status)
+        {
+            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                status = $"Dojo official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+                candidate = default;
+                return false;
+            }
+
+            if (filteredCandidates.Count > 1)
+            {
+                string matches = string.Join(", ", filteredCandidates.Select(candidate =>
+                    $"{candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} via {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}"));
+                status = $"Dojo official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Add a localPort filter before attaching.";
+                candidate = default;
+                return false;
+            }
+
+            candidate = filteredCandidates[0];
+            status = null;
+            return true;
+        }
+
+        internal static string DescribeDiscoveryCandidates(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort)
+        {
+            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                return $"No established TCP sessions matched {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+            }
+
+            return "Dojo official-session bridge discovery candidates:"
+                + Environment.NewLine
+                + string.Join(
+                    Environment.NewLine,
+                    filteredCandidates.Select(candidate =>
+                        $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+        }
+
+        private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int? localPort)
+        {
+            if (!localPort.HasValue)
+            {
+                return candidates ?? Array.Empty<SessionDiscoveryCandidate>();
+            }
+
+            return (candidates ?? Array.Empty<SessionDiscoveryCandidate>())
+                .Where(candidate => candidate.LocalEndpoint.Port == localPort.Value)
+                .ToArray();
+        }
+
+        private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)
+        {
+            string selectorLabel = DescribeSelector(owningProcessId, owningProcessName);
+            return localPort.HasValue
+                ? $"{selectorLabel} on remote port {remotePort} and local port {localPort.Value}"
+                : $"{selectorLabel} on remote port {remotePort}";
         }
 
         [DllImport("iphlpapi.dll", SetLastError = true)]

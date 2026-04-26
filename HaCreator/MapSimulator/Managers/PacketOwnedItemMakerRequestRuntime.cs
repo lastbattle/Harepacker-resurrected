@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Managers
 {
     internal static class PacketOwnedItemMakerRequestRuntime

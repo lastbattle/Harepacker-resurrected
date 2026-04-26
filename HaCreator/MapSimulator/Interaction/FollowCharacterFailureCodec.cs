@@ -1,7 +1,8 @@
 using System;
 using System.Globalization;
 using System.IO;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal readonly record struct FollowCharacterFailureInfo(

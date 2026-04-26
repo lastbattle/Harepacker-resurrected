@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -23,67 +18,27 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for packet-owned trading-room payloads owned by
+    /// Adapter inbox for packet-owned trading-room payloads owned by
     /// CTradingRoomDlg::OnPacket.
     /// </summary>
     public sealed class TradingRoomPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18490;
-
         private readonly ConcurrentQueue<TradingRoomPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Trading-room packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                int resolvedPort = port <= 0 ? DefaultPort : port;
-                if (IsRunning && Port == resolvedPort)
-                {
-                    LastStatus = $"Trading-room packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = resolvedPort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Trading-room packet inbox listening on 127.0.0.1:{Port} for CTradingRoomDlg::OnPacket payloads.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Trading-room packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Trading-room packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Trading-room packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out TradingRoomPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueLocal(byte[] payload, string source)
+        {
+            EnqueueMessage(new TradingRoomPacketInboxMessage(payload, source, "local"));
+        }
+
+        public void EnqueueProxy(TradingRoomPacketInboxMessage message)
+        {
+            EnqueueMessage(message);
         }
 
         public void RecordDispatchResult(TradingRoomPacketInboxMessage message, bool success, string detail)
@@ -96,10 +51,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out byte[] payload, out string error)
@@ -213,113 +164,6 @@ namespace HaCreator.MapSimulator.Managers
             return TryParseHexPayload(string.Join(string.Empty, tokens, index, tokens.Length - index), out payload, out error);
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Trading-room packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParsePacketLine(line, out byte[] payload, out string error))
-                        {
-                            LastStatus = $"Ignored trading-room inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new TradingRoomPacketInboxMessage(payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued trading-room payload from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Trading-room packet inbox client error: {ex.Message}";
-            }
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(50);
-            }
-            catch
-            {
-            }
-
-            _listener = null;
-            _listenerTask = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-            }
-        }
-
         private static bool IsTradingRoomToken(string text)
         {
             string normalized = text?.Trim().ToLowerInvariant();
@@ -384,6 +228,17 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return result;
+        }
+
+        private void EnqueueMessage(TradingRoomPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued trading-room payload from {message.Source}.";
         }
     }
 }

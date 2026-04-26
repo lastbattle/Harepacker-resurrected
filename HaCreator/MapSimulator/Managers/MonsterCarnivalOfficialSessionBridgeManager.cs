@@ -11,7 +11,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
@@ -37,11 +36,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
         private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         private sealed record PendingRequest(MonsterCarnivalTab Tab, int EntryIndex, byte[] RawPacket);
@@ -51,60 +46,25 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int PendingPacketCount => _pendingOutboundRequests.Count;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
         public string LastStatus { get; private set; } = "Monster Carnival official-session bridge inactive.";
+
+        public MonsterCarnivalOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
 
         public string DescribeStatus()
         {
@@ -112,7 +72,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -216,13 +176,17 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                    _listener.Start();
-                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
+                    ListenPort = requestedListenPort;
                     _passiveEstablishedSession = null;
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        status = LastStatus;
+                        return false;
+                    }
+
+                    LastStatus = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                     status = LastStatus;
                     return true;
                 }
@@ -519,7 +483,6 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            BridgePair pair = _activePair;
             if (HasPassiveEstablishedSocketPair)
             {
                 status = $"Monster Carnival official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode {OutboundRequestOpcode} into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
@@ -527,7 +490,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = "Monster Carnival official-session bridge has no active Maple session.";
                 LastStatus = status;
@@ -537,10 +500,16 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 byte[] rawPacket = BuildRequestPacket(tab, entryIndex);
-                pair.ServerSession.SendPacket((byte[])rawPacket.Clone());
+                if (!_roleSessionProxy.TrySendToServer(rawPacket, out string proxyStatus))
+                {
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
                 SentCount++;
                 RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"inject-request tab={(int)tab} index={entryIndex}");
-                status = $"Injected Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) into live session {pair.RemoteEndpoint}.";
+                status = $"Injected Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) into live session.";
                 LastStatus = status;
                 return true;
             }
@@ -548,7 +517,6 @@ namespace HaCreator.MapSimulator.Managers
             {
                 status = $"Monster Carnival official-session injection failed: {ex.Message}";
                 LastStatus = status;
-                ClearActivePair(pair, status);
                 return false;
             }
         }
@@ -628,6 +596,29 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private void StopInternal(bool clearPending)
+        {
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+            _passiveEstablishedSession = null;
+            if (!clearPending)
+            {
+                return;
+            }
+
+            while (_pendingMessages.TryDequeue(out _))
+            {
+            }
+
+            while (_pendingOutboundRequests.TryDequeue(out _))
+            {
+            }
+
+            _recentPackets.Clear();
+            ReceivedCount = 0;
+            SentCount = 0;
+            QueuedCount = 0;
+        }
+
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
         {
             bool autoSelectListenPort = listenPort <= 0;
@@ -637,12 +628,16 @@ namespace HaCreator.MapSimulator.Managers
             {
                 RemoteHost = NormalizeRemoteHost(remoteHost);
                 RemotePort = remotePort;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                _listener.Start();
-                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                status = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                ListenPort = requestedListenPort;
+                if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                {
+                    StopInternal(clearPending: false);
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
+                status = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                 LastStatus = status;
                 return true;
             }
@@ -654,342 +649,198 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
+            if (e == null)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
+                return;
             }
-            catch (OperationCanceledException)
+
+            if (e.IsInit)
             {
+                int flushed = FlushQueuedRequestsViaProxy();
+                LastStatus = flushed > 0
+                    ? $"Monster Carnival official-session bridge initialized Maple crypto and flushed {flushed} queued request(s)."
+                    : _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (ObjectDisposedException)
+
+            if (!TryMapInboundPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", out MonsterCarnivalPacketInboxMessage message)
+                || message == null)
             {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (Exception ex)
-            {
-                LastStatus = $"Monster Carnival official-session bridge error: {ex.Message}";
-            }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued Monster Carnival opcode {message.PacketType} ({DescribePacketType(message.PacketType)}) from live session {e.SourceEndpoint}.";
         }
 
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            BridgePair pair = null;
-            try
+            if (e == null || e.IsInit)
             {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Monster Carnival official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Monster Carnival official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Monster Carnival official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                    _passiveEstablishedSession = null;
-                }
-
-                LastStatus = $"Monster Carnival official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (Exception ex)
+
+            if (TryDecodeOutboundRequestPacket(e.RawPacket, out int tab, out int entryIndex))
             {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Monster Carnival official-session bridge connect failed: {ex.Message}";
+                RecordRecentPacket(OutboundRequestOpcode, e.RawPacket, OutboundRequestOpcode, $"outbound-request tab={tab} index={entryIndex}");
+                LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint}.";
+                return;
             }
+
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    int flushed = FlushQueuedRequests(pair);
-                    LastStatus = flushed > 0
-                        ? $"Monster Carnival official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued request(s)."
-                        : $"Monster Carnival official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryMapInboundPacket(raw, $"official-session:{pair.RemoteEndpoint}", out MonsterCarnivalPacketInboxMessage message)
-                    || message == null)
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(message);
-                ReceivedCount++;
-                LastStatus = $"Queued Monster Carnival opcode {message.PacketType} ({DescribePacketType(message.PacketType)}) from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Monster Carnival official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        public bool TryMapInboundPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
+        public static bool TryDecodeInboundCarnivalPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
         {
             message = null;
-            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
             {
                 return false;
             }
 
-            int opcode = BitConverter.ToUInt16(rawPacket, 0);
-            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
-            if (opcode == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            int opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
+            byte[] payload = rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
+
+            if (opcode == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
+                && SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out byte[] relayedPayload, out _)
+                && relayedPacketType >= FirstCarnivalOpcode
+                && relayedPacketType <= LastCarnivalOpcode)
             {
-                if (SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out _, out _)
-                    && IsSupportedCarnivalPacketType(relayedPacketType))
-                {
-                    message = new MonsterCarnivalPacketInboxMessage(
-                        opcode,
-                        payload,
-                        source,
-                        $"packetraw {Convert.ToHexString(rawPacket)}",
-                        relayedPacketType);
-                    RecordRecentPacket(opcode, rawPacket, relayedPacketType, "current-wrapper");
-                    return true;
-                }
+                message = new MonsterCarnivalPacketInboxMessage(
+                    opcode,
+                    payload,
+                    source,
+                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
+                    relayedPacketType);
+                return true;
+            }
 
-                if (TryDecodeNestedCurrentWrapperRelayPayload(
-                        payload,
-                        out int nestedPacketType,
-                        out byte[] nestedPacketPayload,
-                        out string nestedEvidence))
-                {
-                    byte[] normalizedRelayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
-                        nestedPacketType,
-                        nestedPacketPayload);
-                    message = new MonsterCarnivalPacketInboxMessage(
-                        opcode,
-                        normalizedRelayPayload,
-                        source,
-                        $"packetraw {Convert.ToHexString(rawPacket)}",
-                        nestedPacketType);
-                    RecordRecentPacket(opcode, rawPacket, nestedPacketType, nestedEvidence);
-                    return true;
-                }
-
-                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out _, out _, out string relayError))
-                {
-                    RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unsupported-relay");
-                    LastStatus = string.IsNullOrWhiteSpace(relayError)
-                        ? $"Ignored CField::OnPacket relay {opcode}; relayed packet is not in the recovered Monster Carnival 346-353 handler family."
-                        : $"Ignored CField::OnPacket relay {opcode}; {relayError}";
-                    return false;
-                }
-
-                RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unsupported-relay");
-                LastStatus = $"Ignored CField::OnPacket relay {opcode}; relayed packet is not in the recovered Monster Carnival 346-353 handler family, including nested current-wrapper prefixes.";
+            if (opcode < FirstCarnivalOpcode || opcode > LastCarnivalOpcode)
+            {
                 return false;
             }
 
-            if (opcode >= FirstCarnivalOpcode && opcode <= LastCarnivalOpcode)
-            {
-                int relayedPacketType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
-                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
-                message = new MonsterCarnivalPacketInboxMessage(
-                    relayedPacketType,
-                    payload,
-                    source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}",
-                    opcode);
-                RecordRecentPacket(opcode, rawPacket, opcode, "native-relay");
-                return true;
-            }
-
-            if (TryDecodeNestedCurrentWrapperRelayPayload(
-                    payload,
-                    out int nestedMappedPacketType,
-                    out byte[] nestedMappedPayload,
-                    out string nestedMappingEvidence))
-            {
-                int nestedRelayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
-                byte[] nestedRelayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
-                    nestedMappedPacketType,
-                    nestedMappedPayload);
-                message = new MonsterCarnivalPacketInboxMessage(
-                    nestedRelayOpcode,
-                    nestedRelayPayload,
-                    source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}",
-                    nestedMappedPacketType);
-                RecordRecentPacket(opcode, rawPacket, nestedMappedPacketType, nestedMappingEvidence);
-                LastStatus =
-                    $"Decoded Monster Carnival opcode {opcode} as {DescribePacketType(nestedMappedPacketType)} from nested current-wrapper relay prefixes ({nestedMappingEvidence}).";
-                return true;
-            }
-
-            if (!_opcodeMappings.TryGetValue(opcode, out int mappedPacketType))
-            {
-                if (!TryInferInboundCarnivalPacketType(payload, out mappedPacketType, out string inferenceReason))
-                {
-                    RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unmapped");
-                    LastStatus = $"Ignored unmapped Monster Carnival opcode {opcode}; payload did not match the recovered 346-353 CField_MonsterCarnival handler shapes. Add /mcarnival session map <opcode> <rawPacketType> to route it manually.";
-                    return false;
-                }
-
-                _opcodeMappings[opcode] = mappedPacketType;
-                LastStatus = $"Auto-mapped Monster Carnival opcode {opcode} to {DescribePacketType(mappedPacketType)} from payload inference ({inferenceReason}).";
-            }
-
-            int relayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
-            payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(mappedPacketType, payload);
             message = new MonsterCarnivalPacketInboxMessage(
-                relayOpcode,
-                payload,
+                opcode,
+                SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload),
                 source,
-                $"packetraw {Convert.ToHexString(rawPacket)}",
-                mappedPacketType);
-            RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured-or-inferred-relay");
+                $"packetclientraw {Convert.ToHexString(rawPacket)}",
+                opcode);
             return true;
         }
 
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
+        private bool TryMapInboundPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
         {
-            if (isInit)
+            message = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
             {
-                return;
+                return false;
             }
 
-            try
+            int opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
+            if (_opcodeMappings.TryGetValue(opcode, out int mappedPacketType))
             {
-                byte[] raw = packet.ToArray();
-                pair.ServerSession.SendPacket((byte[])raw.Clone());
+                byte[] payload = rawPacket.Length > sizeof(ushort)
+                    ? rawPacket[sizeof(ushort)..]
+                    : Array.Empty<byte>();
+                message = new MonsterCarnivalPacketInboxMessage(
+                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                    SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(mappedPacketType, payload),
+                    source,
+                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
+                    mappedPacketType);
+                RecordRecentPacket(opcode, rawPacket, mappedPacketType, "mapped");
+                return true;
+            }
 
-                if (TryDecodeOutboundRequestPacket(raw, out int tab, out int entryIndex))
-                {
-                    RecordRecentPacket(OutboundRequestOpcode, raw, OutboundRequestOpcode, $"outbound-request tab={tab} index={entryIndex}");
-                    LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
-                }
-            }
-            catch (Exception ex)
+            bool decoded = TryDecodeInboundCarnivalPacket(rawPacket, source, out message);
+            if (decoded)
             {
-                ClearActivePair(pair, $"Monster Carnival official-session client handling failed: {ex.Message}");
+                RecordRecentPacket(opcode, rawPacket, message.OwnerPacketType, "direct");
             }
+
+            return decoded;
         }
 
-        private void ClearActivePair(BridgePair pair, string status)
+        private int FlushQueuedRequestsViaProxy()
         {
-            if (pair == null)
-            {
-                return;
-            }
-
-            lock (_sync)
-            {
-                if (!ReferenceEquals(_activePair, pair))
-                {
-                    return;
-                }
-
-                _activePair = null;
-            }
-
-            pair.Close();
-            LastStatus = status;
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            BridgePair pair = _activePair;
-            _activePair = null;
-            _passiveEstablishedSession = null;
-            pair?.Close();
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                while (_pendingOutboundRequests.TryDequeue(out _))
-                {
-                }
-
-                SentCount = 0;
-                QueuedCount = 0;
-
-                ReceivedCount = 0;
-                lock (_sync)
-                {
-                    _recentPackets.Clear();
-                }
-            }
-        }
-
-        private int FlushQueuedRequests(BridgePair pair)
-        {
-            if (pair == null || !pair.InitCompleted)
-            {
-                return 0;
-            }
-
             int flushed = 0;
-            while (_pendingOutboundRequests.TryDequeue(out PendingRequest pending))
+            while (_pendingOutboundRequests.TryDequeue(out PendingRequest request))
             {
-                pair.ServerSession.SendPacket((byte[])pending.RawPacket.Clone());
+                if (!_roleSessionProxy.TrySendToServer(request.RawPacket, out string status))
+                {
+                    _pendingOutboundRequests.Enqueue(request);
+                    LastStatus = status;
+                    break;
+                }
+
                 SentCount++;
+                LastSentRecord(request.RawPacket, request.Tab, request.EntryIndex);
                 flushed++;
-                RecordRecentPacket(OutboundRequestOpcode, pending.RawPacket, OutboundRequestOpcode, $"flush-request tab={(int)pending.Tab} index={pending.EntryIndex}");
             }
 
             return flushed;
+        }
+
+        private void LastSentRecord(byte[] rawPacket, MonsterCarnivalTab tab, int entryIndex)
+        {
+            RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"flush-request tab={(int)tab} index={entryIndex}");
+        }
+
+        private static bool TryDecodeOutboundRequestPacket(byte[] rawPacket, out int tab, out int entryIndex)
+        {
+            tab = 0;
+            entryIndex = 0;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort) + sizeof(byte) + sizeof(int))
+            {
+                return false;
+            }
+
+            int opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
+            if (opcode != OutboundRequestOpcode)
+            {
+                return false;
+            }
+
+            tab = rawPacket[sizeof(ushort)];
+            entryIndex = BitConverter.ToInt32(rawPacket, sizeof(ushort) + sizeof(byte));
+            return true;
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"CField::OnPacket relay ({SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode})",
+                346 => "enter (346)",
+                347 => "personalcp (347)",
+                348 => "teamcp (348)",
+                349 => "requestresult (349)",
+                350 => "requestfailure (350)",
+                351 => "death (351)",
+                352 => "memberout (352)",
+                353 => "gameresult (353)",
+                _ => packetType.ToString()
+            };
+        }
+
+        private void RecordRecentPacket(int opcode, byte[] rawPacket, int packetType, string source)
+        {
+            lock (_sync)
+            {
+                _recentPackets.Enqueue($"opcode={opcode} type={DescribePacketType(packetType)} source={source} raw={Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}");
+                while (_recentPackets.Count > RecentPacketCapacity)
+                {
+                    _recentPackets.Dequeue();
+                }
+            }
         }
 
         private static byte[] BuildRequestPacket(MonsterCarnivalTab tab, int entryIndex)
@@ -1000,363 +851,6 @@ namespace HaCreator.MapSimulator.Managers
             BitConverter.GetBytes(entryIndex).CopyTo(rawPacket, sizeof(short) + sizeof(byte));
             return rawPacket;
         }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
-        }
-
-        internal static bool TryDecodeInboundCarnivalPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
-        {
-            message = null;
-            if (rawPacket == null || rawPacket.Length < sizeof(short))
-            {
-                return false;
-            }
-
-            int opcode = BitConverter.ToUInt16(rawPacket, 0);
-            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
-            if (opcode == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
-            {
-                if (SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out _, out _)
-                    && IsSupportedCarnivalPacketType(relayedPacketType))
-                {
-                    message = new MonsterCarnivalPacketInboxMessage(
-                        opcode,
-                        payload,
-                        source,
-                        $"packetraw {Convert.ToHexString(rawPacket)}",
-                        relayedPacketType);
-                    return true;
-                }
-
-                if (TryDecodeNestedCurrentWrapperRelayPayload(
-                        payload,
-                        out int nestedPacketType,
-                        out byte[] nestedPacketPayload,
-                        out _))
-                {
-                    byte[] normalizedRelayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
-                        nestedPacketType,
-                        nestedPacketPayload);
-                    message = new MonsterCarnivalPacketInboxMessage(
-                        opcode,
-                        normalizedRelayPayload,
-                        source,
-                        $"packetraw {Convert.ToHexString(rawPacket)}",
-                        nestedPacketType);
-                    return true;
-                }
-
-                return false;
-            }
-
-            if (TryDecodeNestedCurrentWrapperRelayPayload(
-                    payload,
-                    out int nestedMappedPacketType,
-                    out byte[] nestedMappedPayload,
-                    out _))
-            {
-                byte[] nestedRelayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
-                    nestedMappedPacketType,
-                    nestedMappedPayload);
-                message = new MonsterCarnivalPacketInboxMessage(
-                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
-                    nestedRelayPayload,
-                    source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}",
-                    nestedMappedPacketType);
-                return true;
-            }
-
-            if (!IsSupportedCarnivalPacketType(opcode))
-            {
-                if (!TryInferInboundCarnivalPacketType(payload, out opcode, out _))
-                {
-                    return false;
-                }
-            }
-
-            byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
-            message = new MonsterCarnivalPacketInboxMessage(
-                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
-                relayPayload,
-                source,
-                $"packetraw {Convert.ToHexString(rawPacket)}",
-                opcode);
-            return true;
-        }
-
-        internal static bool TryInferInboundCarnivalPacketType(byte[] payload, out int packetType, out string reason)
-        {
-            packetType = 0;
-            reason = null;
-            payload ??= Array.Empty<byte>();
-
-            if (payload.Length == 1)
-            {
-                byte code = payload[0];
-                if (code is >= 1 and <= 5)
-                {
-                    packetType = (int)MonsterCarnivalRawPacketType.RequestFailure;
-                    reason = $"single-byte request-failure reason {code}";
-                    return true;
-                }
-
-                if (code is >= 8 and <= 11)
-                {
-                    packetType = (int)MonsterCarnivalRawPacketType.GameResult;
-                    reason = $"single-byte game-result code {code}";
-                    return true;
-                }
-
-                return false;
-            }
-
-            if (payload.Length == 4
-                && TryReadNonNegativeInt16Pair(payload, 0, out int personalCp, out int personalTotalCp)
-                && personalTotalCp >= personalCp)
-            {
-                packetType = (int)MonsterCarnivalRawPacketType.PersonalCp;
-                reason = $"two CP shorts {personalCp}/{personalTotalCp}";
-                return true;
-            }
-
-            if (payload.Length == 5
-                && IsTeamByte(payload[0])
-                && TryReadNonNegativeInt16Pair(payload, 1, out int teamCp, out int teamTotalCp)
-                && teamTotalCp >= teamCp)
-            {
-                packetType = (int)MonsterCarnivalRawPacketType.TeamCp;
-                reason = $"team byte plus CP shorts team={payload[0]} {teamCp}/{teamTotalCp}";
-                return true;
-            }
-
-            if (payload.Length >= 13
-                && IsTeamByte(payload[0])
-                && HasNonNegativeShorts(payload, 1, 6)
-                && PayloadRemainderLooksLikeSummonedMobCounts(payload, 13))
-            {
-                packetType = (int)MonsterCarnivalRawPacketType.Enter;
-                reason = $"enter payload with team byte, six CP shorts, and {payload.Length - 13} summoned-mob count byte(s)";
-                return true;
-            }
-
-            if (payload.Length >= 4
-                && IsTabByte(payload[0])
-                && TryReadMapleString(payload, 2, out string requestOwner, out int requestResultEnd)
-                && requestResultEnd == payload.Length)
-            {
-                packetType = (int)MonsterCarnivalRawPacketType.RequestResult;
-                reason = $"request-result tab={payload[0]} index={payload[1]} ownerLen={requestOwner.Length}";
-                return true;
-            }
-
-            if (payload.Length >= 4
-                && IsTeamByte(payload[0])
-                && TryReadMapleString(payload, 1, out string deathName, out int deathNameEnd)
-                && deathNameEnd + 1 == payload.Length)
-            {
-                packetType = (int)MonsterCarnivalRawPacketType.ProcessForDeath;
-                reason = $"death payload team={payload[0]} nameLen={deathName.Length} lostCp={payload[^1]}";
-                return true;
-            }
-
-            if (payload.Length >= 5
-                && payload[0] is 5 or 6
-                && IsTeamByte(payload[1])
-                && TryReadMapleString(payload, 2, out string memberName, out int memberNameEnd)
-                && memberNameEnd == payload.Length)
-            {
-                packetType = (int)MonsterCarnivalRawPacketType.ShowMemberOutMessage;
-                reason = $"member-out payload type={payload[0]} team={payload[1]} nameLen={memberName.Length}";
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool TryDecodeNestedCurrentWrapperRelayPayload(
-            byte[] payload,
-            out int packetType,
-            out byte[] packetPayload,
-            out string evidence)
-        {
-            packetType = 0;
-            packetPayload = Array.Empty<byte>();
-            evidence = string.Empty;
-            payload ??= Array.Empty<byte>();
-
-            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                    payload,
-                    out int firstRelayPacketType,
-                    out byte[] firstRelayPayload,
-                    out _))
-            {
-                return false;
-            }
-
-            if (IsSupportedCarnivalPacketType(firstRelayPacketType))
-            {
-                packetType = firstRelayPacketType;
-                packetPayload = firstRelayPayload;
-                evidence = "nested-relay:current-wrapper-prefix";
-                return true;
-            }
-
-            if (firstRelayPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
-                || !SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                    firstRelayPayload,
-                    out int secondRelayPacketType,
-                    out byte[] secondRelayPayload,
-                    out _)
-                || !IsSupportedCarnivalPacketType(secondRelayPacketType))
-            {
-                return false;
-            }
-
-            packetType = secondRelayPacketType;
-            packetPayload = secondRelayPayload;
-            evidence = "nested-relay:current-wrapper+current-wrapper-prefix";
-            return true;
-        }
-
-        private static bool IsTeamByte(byte value)
-        {
-            return value <= 1;
-        }
-
-        private static bool IsTabByte(byte value)
-        {
-            return value <= (byte)MonsterCarnivalTab.Guardian;
-        }
-
-        private static bool TryReadNonNegativeInt16Pair(byte[] payload, int offset, out int first, out int second)
-        {
-            first = 0;
-            second = 0;
-            if (payload == null || offset < 0 || payload.Length < offset + (sizeof(short) * 2))
-            {
-                return false;
-            }
-
-            first = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
-            second = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset + sizeof(short), sizeof(short)));
-            return first >= 0 && second >= 0;
-        }
-
-        private static bool HasNonNegativeShorts(byte[] payload, int offset, int count)
-        {
-            if (payload == null || offset < 0 || count < 0 || payload.Length < offset + (sizeof(short) * count))
-            {
-                return false;
-            }
-
-            for (int i = 0; i < count; i++)
-            {
-                int value = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset + (i * sizeof(short)), sizeof(short)));
-                if (value < 0)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private static bool PayloadRemainderLooksLikeSummonedMobCounts(byte[] payload, int offset)
-        {
-            return payload != null && payload.Length >= offset;
-        }
-
-        private static bool TryReadMapleString(byte[] payload, int offset, out string value, out int endOffset)
-        {
-            value = string.Empty;
-            endOffset = offset;
-            if (payload == null || offset < 0 || payload.Length < offset + sizeof(short))
-            {
-                return false;
-            }
-
-            int byteLength = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
-            if (byteLength < 0)
-            {
-                return false;
-            }
-
-            int stringOffset = offset + sizeof(short);
-            endOffset = stringOffset + byteLength;
-            if (endOffset > payload.Length)
-            {
-                return false;
-            }
-
-            value = System.Text.Encoding.Default.GetString(payload, stringOffset, byteLength);
-            return true;
-        }
-
-        internal static bool TryDecodeOutboundRequestPacket(byte[] rawPacket, out int tab, out int entryIndex)
-        {
-            tab = 0;
-            entryIndex = 0;
-            if (rawPacket == null || rawPacket.Length != sizeof(short) + sizeof(byte) + sizeof(int))
-            {
-                return false;
-            }
-
-            int opcode = BitConverter.ToUInt16(rawPacket, 0);
-            if (opcode != OutboundRequestOpcode)
-            {
-                return false;
-            }
-
-            tab = rawPacket[sizeof(short)];
-            entryIndex = BitConverter.ToInt32(rawPacket, sizeof(short) + sizeof(byte));
-            return tab >= 0
-                && tab <= (int)MonsterCarnivalTab.Guardian
-                && entryIndex >= 0;
-        }
-
-        private static bool IsSupportedCarnivalPacketType(int packetType)
-        {
-            return packetType >= FirstCarnivalOpcode
-                && packetType <= LastCarnivalOpcode;
-        }
-
-        private static string DescribePacketType(int packetType)
-        {
-            return packetType switch
-            {
-                OutboundRequestOpcode => "requestsend",
-                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"CField::OnPacket relay {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode}",
-                346 => "enter",
-                347 => "personalcp",
-                348 => "teamcp",
-                349 => "requestresult",
-                350 => "requestfailure",
-                351 => "processfordeath",
-                352 => "memberout",
-                353 => "gameresult",
-                _ => $"packet {packetType}"
-            };
-        }
-
-        private void RecordRecentPacket(int opcode, byte[] rawPacket, int? mappedPacketType, string detail = null)
-        {
-            string summary = mappedPacketType.HasValue
-                ? $"{opcode}->{DescribePacketType(mappedPacketType.Value)}[{detail ?? "configured"}]:{Convert.ToHexString(rawPacket)}"
-                : $"{opcode}:{detail ?? "unmapped"}:{Convert.ToHexString(rawPacket)}";
-
-            lock (_sync)
-            {
-                _recentPackets.Enqueue(summary);
-                while (_recentPackets.Count > RecentPacketCapacity)
-                {
-                    _recentPackets.Dequeue();
-                }
-            }
-        }
-
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
         {
             int bufferSize = 0;

@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
 using Microsoft.Xna.Framework;
 
@@ -64,13 +59,12 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for live Ariant Arena field packets.
+    /// Adapter inbox for live Ariant Arena field packets.
     /// Each line is encoded as either "<type> <hex-payload>" for Ariant field packets
     /// or "actor <add|avatar|move|remove|clear> ..." for remote overlay updates.
     /// </summary>
     public sealed class AriantArenaPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18485;
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeUserMove = 210;
@@ -98,58 +92,20 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeUserScore = 354;
 
         private readonly ConcurrentQueue<AriantArenaPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Ariant Arena packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Ariant Arena packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Ariant Arena packet inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Ariant Arena packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Ariant Arena packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Ariant Arena packet inbox ready for role-session/local ingress.";
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
-            _pendingMessages.Enqueue(new AriantArenaPacketInboxMessage(packetType, payload, source, $"{packetType}"));
+            EnqueueMessage(
+                new AriantArenaPacketInboxMessage(packetType, payload, source, $"{packetType}"),
+                source);
+        }
+
+        public void EnqueueProxy(int packetType, byte[] payload, string source)
+        {
+            EnqueueMessage(
+                new AriantArenaPacketInboxMessage(packetType, payload, source, $"{packetType}"),
+                source);
         }
 
         public bool TryDequeue(out AriantArenaPacketInboxMessage message)
@@ -177,10 +133,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
@@ -430,87 +382,6 @@ namespace HaCreator.MapSimulator.Managers
 
             message = new AriantArenaPacketInboxMessage(packetType, payload, "ariant-inbox", text);
             return true;
-        }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Ariant Arena packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out AriantArenaPacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored Ariant inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        if (!string.Equals(message.Source, remoteEndpoint, StringComparison.Ordinal))
-                        {
-                            message = message.Kind == AriantArenaInboxMessageKind.Packet
-                                ? new AriantArenaPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line)
-                                : new AriantArenaPacketInboxMessage(
-                                    message.Kind,
-                                    message.ActorName,
-                                    message.Position,
-                                    message.FacingRight,
-                                    message.ActionName,
-                                    message.Payload,
-                                    remoteEndpoint,
-                                    line);
-                        }
-
-                        _pendingMessages.Enqueue(message);
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribeMessage(message)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Ariant Arena packet inbox client error: {ex.Message}";
-            }
         }
 
         private static bool TryParsePacketType(string token, out int packetType)
@@ -846,35 +717,17 @@ namespace HaCreator.MapSimulator.Managers
             return count == 0 ? string.Empty : new string(buffer, 0, count);
         }
 
-        private void StopInternal(bool clearPending)
+        private void EnqueueMessage(AriantArenaPacketInboxMessage message, string sourceLabel)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
-            _listenerTask = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-            }
+            _pendingMessages.Enqueue(message);
+            string remoteEndpoint = string.IsNullOrWhiteSpace(sourceLabel) ? "ariant-inbox" : sourceLabel;
+            LastStatus = $"Queued {DescribeMessage(message)} from {remoteEndpoint}.";
         }
     }
 }
+

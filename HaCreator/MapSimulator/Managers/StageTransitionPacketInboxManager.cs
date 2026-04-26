@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -26,52 +21,28 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class StageTransitionPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18496;
-
         private readonly ConcurrentQueue<StageTransitionPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Stage-transition packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Stage-transition packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Stage-transition packet inbox listening on 127.0.0.1:{Port}.";
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Stage-transition packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Stage-transition packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out StageTransitionPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueProxy(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "stagepacket-proxy" : source;
+            EnqueueMessage(
+                new StageTransitionPacketInboxMessage(packetType, payload, packetSource, packetType.ToString()),
+                packetSource);
+        }
+
+        public void EnqueueLocal(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "stagepacket-local" : source;
+            EnqueueMessage(
+                new StageTransitionPacketInboxMessage(packetType, payload, packetSource, packetType.ToString()),
+                packetSource);
         }
 
         public void RecordDispatchResult(StageTransitionPacketInboxMessage message, bool success, string detail)
@@ -84,62 +55,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
-        }
-
-        public static bool TryParseLine(string text, out StageTransitionPacketInboxMessage message, out string error)
-        {
-            message = null;
-            error = null;
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                error = "Stage-transition inbox line is empty.";
-                return false;
-            }
-
-            string trimmed = text.Trim();
-            if (trimmed.StartsWith("/stagepacket", StringComparison.OrdinalIgnoreCase))
-            {
-                trimmed = trimmed["/stagepacket".Length..].TrimStart();
-            }
-
-            if (trimmed.Length == 0)
-            {
-                error = "Stage-transition inbox line is empty.";
-                return false;
-            }
-
-            int splitIndex = FindTokenSeparatorIndex(trimmed);
-            string packetToken = splitIndex >= 0 ? trimmed[..splitIndex].Trim() : trimmed;
-            string payloadToken = splitIndex >= 0 ? trimmed[(splitIndex + 1)..].Trim() : string.Empty;
-
-            if (!TryParsePacketType(packetToken, out int packetType))
-            {
-                error = $"Unsupported stage-transition packet '{packetToken}'.";
-                return false;
-            }
-
-            byte[] payload = Array.Empty<byte>();
-            if (packetType is not 142 and not 143 and not 146)
-            {
-                if (string.IsNullOrWhiteSpace(payloadToken))
-                {
-                    error = $"{DescribePacketType(packetType)} requires payload bytes.";
-                    return false;
-                }
-
-                if (!TryParsePayload(payloadToken, out payload, out error))
-                {
-                    return false;
-                }
-            }
-
-            message = new StageTransitionPacketInboxMessage(packetType, payload, "stagepacket-inbox", text);
-            return true;
         }
 
         public static bool TryParsePacketType(string token, out int packetType)
@@ -166,72 +81,6 @@ namespace HaCreator.MapSimulator.Managers
                 _ => 0
             };
             return packetType != 0;
-        }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Stage-transition packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out StageTransitionPacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored stage-transition inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new StageTransitionPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Stage-transition packet inbox client error: {ex.Message}";
-            }
         }
 
         private static bool TryParsePayload(string text, out byte[] payload, out string error)
@@ -295,19 +144,6 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static int FindTokenSeparatorIndex(string text)
-        {
-            for (int i = 0; i < text.Length; i++)
-            {
-                if (char.IsWhiteSpace(text[i]) || text[i] == ':' || text[i] == '=')
-                {
-                    return i;
-                }
-            }
-
-            return -1;
-        }
-
         private static string DescribePacketType(int packetType)
         {
             return packetType switch
@@ -322,36 +158,17 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private void StopInternal()
+        private void EnqueueMessage(StageTransitionPacketInboxMessage message, string sourceLabel)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
+            _pendingMessages.Enqueue(message);
+            string packetSource = string.IsNullOrWhiteSpace(sourceLabel) ? "stagepacket-inbox" : sourceLabel;
+            LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {packetSource}.";
         }
     }
 }
+

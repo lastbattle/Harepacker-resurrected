@@ -13,7 +13,9 @@ using System.Linq;
 using System.Text;
 using SD = System.Drawing;
 using SDG = System.Drawing.Graphics;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator

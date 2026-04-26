@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
 using System.Globalization;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -24,7 +19,7 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for live MiniRoom Match Cards payloads.
+    /// Adapter inbox for live MiniRoom Match Cards payloads.
     /// Each line accepts a raw payload, a full opcode-wrapped packet, a
     /// client opcode-wrapped request packet, or the
     /// command-shaped "/memorygame packetraw <hex payload>" and
@@ -33,61 +28,19 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public sealed class MemoryGamePacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18486;
-
         private readonly ConcurrentQueue<MemoryGamePacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Memory Game packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Memory Game packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Memory Game packet inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Memory Game packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Memory Game packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Memory Game packet inbox ready for role-session/local ingress.";
 
         public void EnqueueLocal(byte[] payload, string source)
         {
-            _pendingMessages.Enqueue(new MemoryGamePacketInboxMessage(payload, source, "packetraw"));
+            EnqueueMessage(
+                new MemoryGamePacketInboxMessage(payload, source, "packetraw"),
+                source);
+        }
+
+        public void EnqueueProxy(MemoryGamePacketInboxMessage message)
+        {
+            EnqueueMessage(message, message?.Source);
         }
 
         public bool TryDequeue(out MemoryGamePacketInboxMessage message)
@@ -105,10 +58,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out byte[] payload, out string error)
@@ -219,72 +168,6 @@ namespace HaCreator.MapSimulator.Managers
             return TryParseHexPayload(trimmed, out payload, out error);
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Memory Game packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParsePacketLine(line, out byte[] payload, out string error))
-                        {
-                            LastStatus = $"Ignored Memory Game inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new MemoryGamePacketInboxMessage(payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued MiniRoom payload from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Memory Game packet inbox client error: {ex.Message}";
-            }
-        }
-
         private static string RemoveWhitespace(string text)
         {
             if (string.IsNullOrEmpty(text))
@@ -369,35 +252,16 @@ namespace HaCreator.MapSimulator.Managers
             return packet;
         }
 
-        private void StopInternal(bool clearPending)
+        private void EnqueueMessage(MemoryGamePacketInboxMessage message, string sourceLabel)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
-            _listenerTask = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-            }
+            _pendingMessages.Enqueue(message);
+            string source = string.IsNullOrWhiteSpace(sourceLabel) ? message.Source : sourceLabel;
+            LastStatus = $"Queued MiniRoom payload from {source}.";
         }
     }
 }

@@ -14,7 +14,12 @@ namespace HaCreator.MapSimulator
         private const int FamilyOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
 
         private readonly MessengerOfficialSessionBridgeManager _familyOfficialSessionBridge =
-            new("Family", FamilyOfficialSessionBridgeDefaultListenPort, FamilyOfficialSessionBridgeDefaultChartOpcode, 0, 99, 100, 104, 107);
+            new(
+                "Family",
+                FamilyOfficialSessionBridgeDefaultListenPort,
+                FamilyOfficialSessionBridgeDefaultChartOpcode,
+                0,
+                additionalInboundOpcodes: new ushort[] { 99, 100, 104, 107 });
 
         private bool _familyOfficialSessionBridgeEnabled;
         private bool _familyOfficialSessionBridgeUseDiscovery;

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class NewYearCardRuntime

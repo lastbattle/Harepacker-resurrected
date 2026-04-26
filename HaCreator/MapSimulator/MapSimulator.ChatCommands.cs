@@ -56,7 +56,8 @@ using HaCreator.MapSimulator.Combat;
 using MapleLib.Helpers;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 
-
+
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator
 
 {
@@ -324,8 +325,8 @@ namespace HaCreator.MapSimulator
             int actionIndex)
         {
             string inboxUsage = kind == SocialRoomKind.EntrustedShop
-                ? "Usage: /socialroom entrustedshop [packet] inbox [status|start [port]|stop]"
-                : "Usage: /socialroom personalshop [packet] inbox [status|start [port]|stop]";
+                ? "Usage: /socialroom entrustedshop [packet] inbox [status]"
+                : "Usage: /socialroom personalshop [packet] inbox [status]";
             string inboxAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
             switch (inboxAction.ToLowerInvariant())
             {
@@ -333,23 +334,8 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Info(DescribeSocialRoomMerchantPacketInboxStatus(kind));
 
                 case "start":
-                {
-                    int configuredPort = SocialRoomMerchantPacketInboxManager.DefaultPort;
-                    if (args.Length > actionIndex + 2
-                        && (!int.TryParse(args[actionIndex + 2], out configuredPort)
-                            || configuredPort <= 0
-                            || configuredPort > ushort.MaxValue))
-                    {
-                        return ChatCommandHandler.CommandResult.Error(inboxUsage);
-                    }
-
-                    _socialRoomMerchantPacketInbox.Start(kind, configuredPort);
-                    return ChatCommandHandler.CommandResult.Ok(DescribeSocialRoomMerchantPacketInboxStatus(kind));
-                }
-
                 case "stop":
-                    _socialRoomMerchantPacketInbox.Stop();
-                    return ChatCommandHandler.CommandResult.Ok(DescribeSocialRoomMerchantPacketInboxStatus(kind));
+                    return ChatCommandHandler.CommandResult.Info("Merchant-room inbox listener controls are retired; use packet commands or the role-session bridge.");
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(inboxUsage);
@@ -518,7 +504,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTradingRoomInboxCommand(string[] args, int actionIndex)
         {
-            const string inboxUsage = "Usage: /socialroom tradingroom [packet] inbox [status|start [port]|stop]";
+            const string inboxUsage = "Usage: /socialroom tradingroom [packet] inbox [status]";
             string inboxAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
             switch (inboxAction.ToLowerInvariant())
             {
@@ -526,26 +512,8 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Info(DescribeTradingRoomPacketInboxStatus());
 
                 case "start":
-                {
-                    int configuredPort = TradingRoomPacketInboxManager.DefaultPort;
-                    if (args.Length > actionIndex + 2
-                        && (!int.TryParse(args[actionIndex + 2], out configuredPort)
-                            || configuredPort <= 0
-                            || configuredPort > ushort.MaxValue))
-                    {
-                        return ChatCommandHandler.CommandResult.Error(inboxUsage);
-                    }
-
-                    _tradingRoomPacketInboxEnabled = true;
-                    _tradingRoomPacketInboxConfiguredPort = configuredPort;
-                    EnsureTradingRoomPacketInboxState(shouldRun: true);
-                    return ChatCommandHandler.CommandResult.Ok(DescribeTradingRoomPacketInboxStatus());
-                }
-
                 case "stop":
-                    _tradingRoomPacketInboxEnabled = false;
-                    EnsureTradingRoomPacketInboxState(shouldRun: false);
-                    return ChatCommandHandler.CommandResult.Ok(DescribeTradingRoomPacketInboxStatus());
+                    return ChatCommandHandler.CommandResult.Info("Trading-room inbox listener controls are retired; use packet commands or the role-session bridge.");
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(inboxUsage);
@@ -2999,23 +2967,16 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
-                            int port = WeddingPacketInboxManager.DefaultPort;
-                            if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                            {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /wedding inbox start [port]");
-                            }
-
-                            _weddingPacketInbox.Start(port);
-                            return ChatCommandHandler.CommandResult.Ok(_weddingPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info(
+                                "Wedding inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
                         }
 
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
-                            _weddingPacketInbox.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_weddingPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Wedding inbox loopback listener is already retired.");
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /wedding inbox [status|start [port]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /wedding inbox [status|start|stop]");
                     }
 
                     if (string.Equals(args[0], "end", StringComparison.OrdinalIgnoreCase))
@@ -3025,7 +2986,7 @@ namespace HaCreator.MapSimulator
                     }
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /wedding [status|progress <step> <groomId> <brideId>|respond <yes|no>|actor <groom|bride> <x> <y> [action] [left|right]|actor avatar <groom|bride> <x> <y> <avatarLookHex> [action] [left|right]|guest <add|avatar|move|remove|clear|status> ...|inbox [status|start [port]|stop]|end]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /wedding [status|progress <step> <groomId> <brideId>|respond <yes|no>|actor <groom|bride> <x> <y> [action] [left|right]|actor avatar <groom|bride> <x> <y> <avatarLookHex> [action] [left|right]|guest <add|avatar|move|remove|clear|status> ...|inbox [status|start|stop]|end]");
                 });
             _chat.CommandHandler.RegisterCommand(
                 "engage",
@@ -3277,7 +3238,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "guildboss",
                 "Inspect or update guild boss healer and pulley state",
-                "/guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
+                "/guildboss [status|transport [status]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
                 args =>
                 {
                     GuildBossField guildBoss = _specialFieldRuntime.SpecialEffects.GuildBoss;
@@ -3290,7 +3251,7 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
+                            $"{guildBoss.DescribeStatus()}{Environment.NewLine}{DescribeGuildBossTransportRoutingStatus()}{Environment.NewLine}{_guildBossTransport.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
                     }
 
 
@@ -3299,35 +3260,18 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
+                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{DescribeGuildBossTransportRoutingStatus()}{Environment.NewLine}{_guildBossTransport.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
                         }
 
 
-                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
-                            int port = GuildBossPacketTransportManager.DefaultPort;
-                            if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                            {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss transport start [port]");
-                            }
-
-
-                            _guildBossTransport.Start(port);
-
-                            return ChatCommandHandler.CommandResult.Ok(_guildBossTransport.LastStatus);
-
+                            return ChatCommandHandler.CommandResult.Info("Guild boss transport listener controls are retired; use /guildboss session for role-socket ingress or /guildboss packet for local injection.");
                         }
 
 
-
-                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _guildBossTransport.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_guildBossTransport.LastStatus);
-                        }
-
-
-                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss transport [status|start [port]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss transport [status]");
 
                     }
 
@@ -3393,6 +3337,7 @@ namespace HaCreator.MapSimulator
                             _guildBossOfficialSessionBridgeConfiguredProcessSelector = null;
                             _guildBossOfficialSessionBridgeConfiguredLocalPort = null;
                             EnsureGuildBossOfficialSessionBridgeState(shouldRun: true);
+                            SyncGuildBossTransportState();
                             return ChatCommandHandler.CommandResult.Ok(DescribeGuildBossOfficialSessionBridgeStatus());
 
                         }
@@ -3491,6 +3436,7 @@ namespace HaCreator.MapSimulator
                             _guildBossOfficialSessionBridgeConfiguredProcessSelector = attachProxyProcessSelector;
                             _guildBossOfficialSessionBridgeConfiguredLocalPort = attachProxyLocalPortFilter;
                             _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                            SyncGuildBossTransportState();
                             return ChatCommandHandler.CommandResult.Ok($"{attachProxyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}");
                         }
 
@@ -3530,6 +3476,7 @@ namespace HaCreator.MapSimulator
                             _guildBossOfficialSessionBridgeConfiguredProcessSelector = processSelector;
                             _guildBossOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
                             _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                            SyncGuildBossTransportState();
 
                             return _guildBossOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
                                 ? ChatCommandHandler.CommandResult.Ok($"{startStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}")
@@ -3546,6 +3493,7 @@ namespace HaCreator.MapSimulator
                             _guildBossOfficialSessionBridgeConfiguredProcessSelector = null;
                             _guildBossOfficialSessionBridgeConfiguredLocalPort = null;
                             _guildBossOfficialSessionBridge.Stop();
+                            SyncGuildBossTransportState();
                             return ChatCommandHandler.CommandResult.Ok(DescribeGuildBossOfficialSessionBridgeStatus());
                         }
 
@@ -4169,7 +4117,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        if (!TryApplyTransportInboxMessage(new TransportationPacketInboxMessage(packetType, payload, "transport-command", packetLine), out string packetResult))
+                        if (!TryApplyTransportLocalInboxMessage(new TransportationPacketInboxMessage(packetType, payload, "transport-command", packetLine), out string packetResult))
                         {
                             return ChatCommandHandler.CommandResult.Error(packetResult);
                         }
@@ -4196,7 +4144,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        if (!TryApplyTransportInboxMessage(new TransportationPacketInboxMessage(rawPacketType, rawPayload, "transport-command", string.Join(' ', args)), out string packetResult))
+                        if (!TryApplyTransportLocalInboxMessage(new TransportationPacketInboxMessage(rawPacketType, rawPayload, "transport-command", string.Join(' ', args)), out string packetResult))
                         {
                             return ChatCommandHandler.CommandResult.Error(packetResult);
                         }
@@ -4224,7 +4172,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        if (!TryApplyTransportInboxMessage(new TransportationPacketInboxMessage(rawPacketType, rawPayload, "transport-command", string.Join(' ', args)), out string packetResult))
+                        if (!TryApplyTransportLocalInboxMessage(new TransportationPacketInboxMessage(rawPacketType, rawPayload, "transport-command", string.Join(' ', args)), out string packetResult))
                         {
                             return ChatCommandHandler.CommandResult.Error(packetResult);
                         }
@@ -4253,16 +4201,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
 
                         {
-
-                            int port = TransportationPacketInboxManager.DefaultPort;
-                            if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                            {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /transport inbox start [port]");
-                            }
-
-
-                            _transportPacketInbox.Start(port);
-                            return ChatCommandHandler.CommandResult.Ok(_transportPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Transport inbox loopback listener is retired; use /transport session for role-socket ingress or /transport packet for local injection.");
 
                         }
 
@@ -4271,15 +4210,13 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
 
                         {
-
-                            _transportPacketInbox.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_transportPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Transport inbox loopback listener is already retired; role-socket ingress remains owned by the channel session.");
 
                         }
 
 
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /transport inbox [status|start [port]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /transport inbox [status|start|stop]");
 
                     }
 
@@ -4533,31 +4470,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
-                        {
-                            int port = PartyRaidPacketInboxManager.DefaultPort;
-                            if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                            {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /partyraid inbox start [port]");
-                            }
-
-
-                            _partyRaidPacketInbox.Start(port);
-
-                            return ChatCommandHandler.CommandResult.Ok(_partyRaidPacketInbox.LastStatus);
-
-                        }
-
-
-
-                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _partyRaidPacketInbox.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_partyRaidPacketInbox.LastStatus);
-                        }
-
-
-                        return ChatCommandHandler.CommandResult.Error("Usage: /partyraid inbox [status|start [port]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /partyraid inbox [status]");
 
                     }
 
@@ -4888,26 +4801,17 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
-                            int port = TournamentPacketInboxManager.DefaultPort;
-                            if (args.Length >= 3 && !int.TryParse(args[2], out port))
-                            {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /tournament inbox start [port]");
-                            }
-
-
-                            _tournamentPacketInbox.Start(port);
-                            return ChatCommandHandler.CommandResult.Ok(_tournamentPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Tournament inbox listener controls are retired; use /tournament packet, /tournament packetraw, or the role-session bridge.");
                         }
 
 
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
-                            _tournamentPacketInbox.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_tournamentPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Tournament inbox listener controls are retired; use /tournament packet, /tournament packetraw, or the role-session bridge.");
                         }
 
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /tournament inbox [status|start [port]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /tournament inbox [status]");
                     }
 
                     if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
@@ -5145,7 +5049,7 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{field.DescribeStatus()}{Environment.NewLine}{_coconutPacketInbox.LastStatus}{Environment.NewLine}{_coconutOfficialSessionBridge.LastStatus}");
+                            $"{field.DescribeStatus()}{Environment.NewLine}{DescribeCoconutPacketInboxStatus()} {_coconutPacketInbox.LastStatus}{Environment.NewLine}{_coconutOfficialSessionBridge.LastStatus}");
                     }
 
 
@@ -5255,7 +5159,7 @@ namespace HaCreator.MapSimulator
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                             {
                                 return ChatCommandHandler.CommandResult.Info(
-                                    $"{field.DescribeStatus()}{Environment.NewLine}{_coconutPacketInbox.LastStatus}{Environment.NewLine}{_coconutOfficialSessionBridge.LastStatus}");
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{DescribeCoconutPacketInboxStatus()} {_coconutPacketInbox.LastStatus}{Environment.NewLine}{_coconutOfficialSessionBridge.LastStatus}");
                             }
 
 
@@ -5270,7 +5174,7 @@ namespace HaCreator.MapSimulator
 
                                 _coconutPacketInbox.Start(port);
 
-                                return ChatCommandHandler.CommandResult.Ok(_coconutPacketInbox.LastStatus);
+                                return ChatCommandHandler.CommandResult.Ok($"{DescribeCoconutPacketInboxStatus()} {_coconutPacketInbox.LastStatus}");
 
                             }
 
@@ -5279,7 +5183,7 @@ namespace HaCreator.MapSimulator
                             if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                             {
                                 _coconutPacketInbox.Stop();
-                                return ChatCommandHandler.CommandResult.Ok(_coconutPacketInbox.LastStatus);
+                                return ChatCommandHandler.CommandResult.Ok($"{DescribeCoconutPacketInboxStatus()} {_coconutPacketInbox.LastStatus}");
                             }
 
 
@@ -6039,16 +5943,7 @@ namespace HaCreator.MapSimulator
 
                             if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                             {
-                                int port = AriantArenaPacketInboxManager.DefaultPort;
-                                if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                                {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena inbox start [port]");
-                                }
-
-
-                                _ariantArenaPacketInbox.Start(port);
-
-                                return ChatCommandHandler.CommandResult.Ok(_ariantArenaPacketInbox.LastStatus);
+                                return ChatCommandHandler.CommandResult.Info("Ariant Arena inbox loopback listener is retired; use the channel role socket/session path or Ariant packet commands for local injection.");
 
                             }
 
@@ -6056,12 +5951,11 @@ namespace HaCreator.MapSimulator
 
                             if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                             {
-                                _ariantArenaPacketInbox.Stop();
-                                return ChatCommandHandler.CommandResult.Ok(_ariantArenaPacketInbox.LastStatus);
+                                return ChatCommandHandler.CommandResult.Info("Ariant Arena inbox loopback listener is already retired; role-socket ingress remains owned by the channel session.");
                             }
 
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena inbox [status|start [port]|stop]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena inbox [status|start|stop]");
 
 
 
@@ -6402,31 +6296,7 @@ namespace HaCreator.MapSimulator
                             }
 
 
-                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
-                            {
-                                int port = MonsterCarnivalPacketInboxManager.DefaultPort;
-                                if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                                {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival inbox start [port]");
-                                }
-
-
-                                _monsterCarnivalPacketInbox.Start(port);
-
-                                return ChatCommandHandler.CommandResult.Ok(_monsterCarnivalPacketInbox.LastStatus);
-
-                            }
-
-
-
-                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
-                            {
-                                _monsterCarnivalPacketInbox.Stop();
-                                return ChatCommandHandler.CommandResult.Ok(_monsterCarnivalPacketInbox.LastStatus);
-                            }
-
-
-                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival inbox [status|start [port]|stop]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival inbox [status]");
 
                         case "session":
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
@@ -6671,16 +6541,7 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
-                            int port = DojoPacketInboxManager.DefaultPort;
-                            if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                            {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo inbox start [port]");
-                            }
-
-
-                            _dojoPacketInbox.Start(port);
-
-                            return ChatCommandHandler.CommandResult.Ok(_dojoPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Dojo inbox loopback listener is retired; use /dojo session for role-socket ingress or packet commands for local injection.");
 
                         }
 
@@ -6688,12 +6549,11 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
-                            _dojoPacketInbox.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_dojoPacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Dojo inbox loopback listener is already retired; role-socket ingress remains owned by the channel session.");
                         }
 
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /dojo inbox [status|start [port]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /dojo inbox [status|start|stop]");
 
                     }
 
@@ -7086,16 +6946,7 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
-                            int port = MassacrePacketInboxManager.DefaultPort;
-                            if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                            {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre inbox start [port]");
-                            }
-
-
-                            _massacrePacketInbox.Start(port);
-
-                            return ChatCommandHandler.CommandResult.Ok(_massacrePacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Massacre inbox loopback listener is retired; use /massacre session for role-socket ingress or packet commands for local injection.");
 
                         }
 
@@ -7103,12 +6954,11 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
-                            _massacrePacketInbox.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_massacrePacketInbox.LastStatus);
+                            return ChatCommandHandler.CommandResult.Info("Massacre inbox loopback listener is already retired; role-socket ingress remains owned by the channel session.");
                         }
 
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /massacre inbox [status|start [port]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /massacre inbox [status|start|stop]");
 
                     }
 
@@ -7679,7 +7529,7 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{_specialFieldRuntime.CookieHouse.DescribeStatus()}{Environment.NewLine}{_cookieHousePointInbox.LastStatus}{Environment.NewLine}{_cookieHouseOfficialSessionBridge.DescribeStatus()}");
+                                $"{_specialFieldRuntime.CookieHouse.DescribeStatus()}{Environment.NewLine}{DescribeCookieHousePointInboxStatus()}{Environment.NewLine}{_cookieHouseOfficialSessionBridge.DescribeStatus()}");
                         }
 
 
@@ -7691,10 +7541,10 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint inbox start [port]");
                             }
 
-
-                            _cookieHousePointInbox.Start(port);
-
-                            return ChatCommandHandler.CommandResult.Ok(_cookieHousePointInbox.LastStatus);
+                            _cookieHousePointInboxEnabled = true;
+                            _cookieHousePointInboxConfiguredPort = port;
+                            SyncCookieHousePointInboxState();
+                            return ChatCommandHandler.CommandResult.Ok(DescribeCookieHousePointInboxStatus());
 
                         }
 
@@ -7702,8 +7552,9 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
-                            _cookieHousePointInbox.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_cookieHousePointInbox.LastStatus);
+                            _cookieHousePointInboxEnabled = false;
+                            SyncCookieHousePointInboxState();
+                            return ChatCommandHandler.CommandResult.Ok(DescribeCookieHousePointInboxStatus());
                         }
 
 
@@ -7756,7 +7607,7 @@ namespace HaCreator.MapSimulator
                             }
 
                             return _cookieHouseOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
-                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                ? OnCookiePointSessionStarted(startStatus)
                                 : ChatCommandHandler.CommandResult.Error(startStatus);
                         }
 
@@ -7784,7 +7635,7 @@ namespace HaCreator.MapSimulator
                             }
 
                             return _cookieHouseOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
-                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                ? OnCookiePointSessionStarted(startStatus)
                                 : ChatCommandHandler.CommandResult.Error(startStatus);
                         }
 
@@ -7844,7 +7695,8 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
                             _cookieHouseOfficialSessionBridge.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_cookieHouseOfficialSessionBridge.LastStatus);
+                            SyncCookieHousePointInboxState();
+                            return ChatCommandHandler.CommandResult.Ok($"{_cookieHouseOfficialSessionBridge.LastStatus} {DescribeCookieHousePointInboxStatus()}");
                         }
 
                         return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|infer|clearinfer|recent|stop]");
@@ -8448,16 +8300,7 @@ namespace HaCreator.MapSimulator
 
                             if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                             {
-                                int port = MemoryGamePacketInboxManager.DefaultPort;
-                                if (args.Length >= 3 && !int.TryParse(args[2], out port))
-                                {
-                                    return ChatCommandHandler.CommandResult.Error($"Invalid Memory Game inbox port: {args[2]}");
-                                }
-
-
-                                _memoryGamePacketInbox.Start(port);
-
-                                return ChatCommandHandler.CommandResult.Ok(_memoryGamePacketInbox.LastStatus);
+                                return ChatCommandHandler.CommandResult.Info("Memory Game inbox loopback listener is retired; use /memorygame session for role-socket ingress or packet commands for local injection.");
 
                             }
 
@@ -8465,12 +8308,11 @@ namespace HaCreator.MapSimulator
 
                             if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                             {
-                                _memoryGamePacketInbox.Stop();
-                                return ChatCommandHandler.CommandResult.Ok(_memoryGamePacketInbox.LastStatus);
+                                return ChatCommandHandler.CommandResult.Info("Memory Game inbox loopback listener is already retired; role-socket ingress remains owned by the channel session.");
                             }
 
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame inbox [status|start [port]|stop]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame inbox [status|start|stop]");
                         }
                         case "session":
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
@@ -10523,6 +10365,12 @@ namespace HaCreator.MapSimulator
                 "/adminshop [status|show|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedAdminShopCommand);
 
+            _chat.CommandHandler.RegisterCommand(
+                "cashservice",
+                "Inspect or drive cash-service stage ingress, including the unified Cash Shop and MTS session bridges",
+                "/cashservice [status|open <cashshop|mts>|inbox [status|start [port]|stop|auto|packet <type> [payloadhex=..|payloadb64=..|hex|codec-text]|packetraw <type> <hex>|packetclientraw <hex>]|packet <type> [payloadhex=..|payloadb64=..|hex|codec-text]|packetraw <type> <hex>|packetclientraw <hex>|bridge [status|cashshop|mts <status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>]]",
+                HandleCashServiceCommand);
+
 
             _chat.CommandHandler.RegisterCommand(
 
@@ -11443,24 +11291,15 @@ namespace HaCreator.MapSimulator
 
                             if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                             {
-                                int configuredPort = ContextStagePeriodPacketInboxManager.DefaultPort;
-                                if (args.Length >= 3
-                                    && (!int.TryParse(args[2], out configuredPort) || configuredPort <= 0))
-                                {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod inbox start [port]");
-                                }
-
-                                _contextStagePeriodPacketInbox.Start(configuredPort);
-                                return ChatCommandHandler.CommandResult.Ok(DescribeContextOwnedStagePeriodStatus());
+                                return ChatCommandHandler.CommandResult.Info("Context-owned stage-period inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
                             }
 
                             if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                             {
-                                _contextStagePeriodPacketInbox.Stop();
-                                return ChatCommandHandler.CommandResult.Ok(DescribeContextOwnedStagePeriodStatus());
+                                return ChatCommandHandler.CommandResult.Info("Context-owned stage-period inbox loopback listener is already retired.");
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod inbox [status|start [port]|stop]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod inbox [status|start|stop]");
 
                         case "set":
                             if (args.Length < 2)
@@ -11546,26 +11385,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Info(DescribePacketOwnedStageTransitionStatus());
                             }
 
-                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
-                            {
-                                int configuredPort = StageTransitionPacketInboxManager.DefaultPort;
-                                if (args.Length >= 3
-                                    && (!int.TryParse(args[2], out configuredPort) || configuredPort <= 0))
-                                {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket inbox start [port]");
-                                }
-
-                                _stageTransitionPacketInbox.Start(configuredPort);
-                                return ChatCommandHandler.CommandResult.Ok(DescribePacketOwnedStageTransitionStatus());
-                            }
-
-                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
-                            {
-                                _stageTransitionPacketInbox.Stop();
-                                return ChatCommandHandler.CommandResult.Ok(DescribePacketOwnedStageTransitionStatus());
-                            }
-
-                            return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket inbox [status|start [port]|stop]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket inbox [status]");
 
                         case "field":
                             if (args.Length < 2 || !int.TryParse(args[1], out int targetMapId) || targetMapId <= 0)
@@ -11944,13 +11764,13 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "scriptmsg",
                 "Inspect or drive packet-authored CScriptMan script-message dialogs",
-                "/scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
+                "/scriptmsg [status|clear|transport <status>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_initialQuizTimerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_speedQuizOwnerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_packetScriptDedicatedOwnerRuntime.DescribeStatus()}{Environment.NewLine}{_packetScriptReplyTransport.LastStatus}{Environment.NewLine}{DescribePacketScriptOfficialSessionBridgeStatus()}");
+                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_initialQuizTimerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_speedQuizOwnerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_packetScriptDedicatedOwnerRuntime.DescribeStatus()}{Environment.NewLine}{DescribePacketScriptReplyTransportStatus()}{Environment.NewLine}{DescribePacketScriptOfficialSessionBridgeStatus()}");
                     }
 
 
@@ -11968,28 +11788,10 @@ namespace HaCreator.MapSimulator
                         case "transport":
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                             {
-                                return ChatCommandHandler.CommandResult.Info(_packetScriptReplyTransport.LastStatus);
+                                return ChatCommandHandler.CommandResult.Info(DescribePacketScriptReplyTransportStatus());
                             }
 
-                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
-                            {
-                                int port = PacketScriptReplyTransportManager.DefaultPort;
-                                if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0 || port > ushort.MaxValue))
-                                {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg transport start [port]");
-                                }
-
-                                _packetScriptReplyTransport.Start(port);
-                                return ChatCommandHandler.CommandResult.Ok(_packetScriptReplyTransport.LastStatus);
-                            }
-
-                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
-                            {
-                                _packetScriptReplyTransport.Stop();
-                                return ChatCommandHandler.CommandResult.Ok(_packetScriptReplyTransport.LastStatus);
-                            }
-
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg transport <status|start [port]|stop>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg transport <status>");
 
                         case "session":
                             return HandlePacketOwnedScriptSessionCommand(args.Skip(1).ToArray());
@@ -12367,7 +12169,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
                     }
                 });
 

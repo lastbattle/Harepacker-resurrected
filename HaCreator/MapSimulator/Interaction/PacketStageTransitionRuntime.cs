@@ -7,7 +7,9 @@ using System.Text;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class PacketStageTransitionRuntime

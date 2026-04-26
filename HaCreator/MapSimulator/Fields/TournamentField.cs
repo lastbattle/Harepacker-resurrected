@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Fields
 {
     public enum TournamentPacketType

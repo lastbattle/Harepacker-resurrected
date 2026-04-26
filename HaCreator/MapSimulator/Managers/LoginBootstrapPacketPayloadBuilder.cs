@@ -1,6 +1,6 @@
 using System;
-using System.IO;
 using System.Text;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -8,8 +8,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public static byte[] BuildCheckPinCodeResult(byte resultCode, byte? secondaryCode = null, string textValue = null)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = new(stream, Encoding.ASCII, leaveOpen: true);
+            using PacketWriter writer = new();
             writer.Write(resultCode);
             if (secondaryCode.HasValue)
             {
@@ -18,13 +17,12 @@ namespace HaCreator.MapSimulator.Managers
 
             WriteMapleString(writer, textValue);
             writer.Flush();
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
         public static byte[] BuildUpdatePinCodeResult(byte resultCode, byte? secondaryCode = null, string textValue = null)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = new(stream, Encoding.ASCII, leaveOpen: true);
+            using PacketWriter writer = new();
             writer.Write(resultCode);
             if (secondaryCode.HasValue)
             {
@@ -33,21 +31,20 @@ namespace HaCreator.MapSimulator.Managers
 
             WriteMapleString(writer, textValue);
             writer.Flush();
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
         public static byte[] BuildEnableSpwResult(bool enabled, byte resultCode = 0, string textValue = null)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = new(stream, Encoding.ASCII, leaveOpen: true);
+            using PacketWriter writer = new();
             writer.Write(enabled ? (byte)1 : (byte)0);
             writer.Write(resultCode);
             WriteMapleString(writer, textValue);
             writer.Flush();
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
-        private static void WriteMapleString(BinaryWriter writer, string value)
+        private static void WriteMapleString(PacketWriter writer, string value)
         {
             if (string.IsNullOrEmpty(value))
             {

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -49,8 +50,7 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                using MemoryStream stream = new(data, writable: false);
-                using BinaryReader reader = new(stream);
+                using PacketReader reader = new(data);
 
                 byte resultCode = reader.ReadByte();
                 byte accountBootstrapMode = reader.ReadByte();
@@ -130,7 +130,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static string ReadMapleString(BinaryReader reader)
+        private static string ReadMapleString(PacketReader reader)
         {
             short length = reader.ReadInt16();
             if (length <= 0)

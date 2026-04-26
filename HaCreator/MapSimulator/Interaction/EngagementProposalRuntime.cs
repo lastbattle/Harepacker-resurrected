@@ -7,7 +7,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using HaCreator.MapSimulator.Managers;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class EngagementProposalRuntime

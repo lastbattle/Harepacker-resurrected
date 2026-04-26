@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -33,7 +28,7 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for externally authored Cookie House point updates.
+    /// Adapter inbox for externally authored Cookie House point updates.
     /// Each line is encoded as either "<point>", "point <point>", "raw <hex>",
     /// or "packetraw <hex>" where <hex> is either the client-shaped little-endian
     /// CWvsContext Cookie House point dword recovered from v95 or a full decrypted
@@ -50,53 +45,24 @@ namespace HaCreator.MapSimulator.Managers
         public const int ClientMaximumDisplayPoint = 999;
 
         private readonly ConcurrentQueue<CookieHousePointInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
+        private readonly RetiredMapleSocketState _socketState = new("Cookie House point inbox", DefaultPort, "Cookie House point inbox ready for role-session/local ingress.");
 
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public int Port => _socketState.Port;
+        public bool IsRunning => _socketState.IsRunning;
         public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Cookie House point inbox inactive.";
+        public int ProxyIngressReceivedCount { get; private set; }
+        public int LocalIngressReceivedCount { get; private set; }
+        public string LastIngressMode { get; private set; } = "none";
+        public string LastStatus => _socketState.LastStatus;
 
         public void Start(int port = DefaultPort)
         {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Cookie House point inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Cookie House point inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Cookie House point inbox failed to start: {ex.Message}";
-                }
-            }
+            _socketState.Start(port);
         }
 
         public void Stop()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Cookie House point inbox stopped.";
-            }
+            _socketState.Stop("Cookie House point inbox ready for role-session/local ingress.");
         }
 
         public bool TryDequeue(out CookieHousePointInboxMessage message)
@@ -104,20 +70,26 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public void EnqueueProxy(CookieHousePointInboxMessage message)
+        {
+            EnqueueMessage(message, MapSimulatorNetworkIngressMode.Proxy);
+        }
+
+        public void EnqueueLocal(CookieHousePointInboxMessage message)
+        {
+            EnqueueMessage(message, MapSimulatorNetworkIngressMode.Local);
+        }
+
         public void RecordDispatchResult(string source, bool success, string message)
         {
             string summary = string.IsNullOrWhiteSpace(message) ? "point update" : message;
-            LastStatus = success
+            _socketState.SetStatus(success
                 ? $"Applied {summary} from {source}."
-                : $"Ignored {summary} from {source}.";
+                : $"Ignored {summary} from {source}.");
         }
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePointLine(
@@ -313,104 +285,31 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void EnqueueMessage(CookieHousePointInboxMessage message, string ingressMode)
         {
-            try
+            if (message == null)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
+                return;
             }
-            catch (OperationCanceledException)
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastIngressMode = MapSimulatorNetworkIngressMode.IsKnown(ingressMode)
+                ? ingressMode
+                : MapSimulatorNetworkIngressMode.Proxy;
+            switch (LastIngressMode)
             {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Cookie House point inbox error: {ex.Message}";
+                case MapSimulatorNetworkIngressMode.Proxy:
+                    ProxyIngressReceivedCount++;
+                    break;
+
+                case MapSimulatorNetworkIngressMode.Local:
+                    LocalIngressReceivedCount++;
+                    break;
+
             }
         }
 
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParsePointLine(line, out int point, out CookieHousePointInboxPayloadKind payloadKind, out string error))
-                        {
-                            LastStatus = $"Ignored Cookie House inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new CookieHousePointInboxMessage(point, remoteEndpoint, line, payloadKind));
-                        ReceivedCount++;
-                        string payloadLabel = payloadKind switch
-                        {
-                            CookieHousePointInboxPayloadKind.RawContextPoint => "raw context point",
-                            CookieHousePointInboxPayloadKind.OpcodeFramedRawContextPoint => "opcode-framed raw context point",
-                            CookieHousePointInboxPayloadKind.OpcodeFramedSessionValuePoint => "opcode-framed session value point",
-                            _ => "point"
-                        };
-                        LastStatus = $"Queued Cookie House {payloadLabel} {point} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Cookie House point inbox client error: {ex.Message}";
-            }
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch (SocketException)
-            {
-            }
-
-            _listener = null;
-            _listenerTask = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-            }
-        }
     }
 }
+

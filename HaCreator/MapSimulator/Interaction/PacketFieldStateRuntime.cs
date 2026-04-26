@@ -13,6 +13,7 @@ using System.IO;
 using System.Linq;
 using HaSharedLibrary.Util;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class PacketFieldStateRuntime

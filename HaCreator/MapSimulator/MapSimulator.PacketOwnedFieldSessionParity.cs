@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Managers;
+﻿using HaCreator.MapSimulator.Managers;
 using System;
 using System.Net;
 
@@ -6,7 +6,7 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
-        private readonly PacketFieldOfficialSessionBridgeManager _packetFieldOfficialSessionBridge = new();
+        private readonly PacketFieldOfficialSessionBridgeManager _packetFieldOfficialSessionBridge;
         private bool _packetFieldOfficialSessionBridgeEnabled;
         private bool _packetFieldOfficialSessionBridgeUseDiscovery;
         private int _packetFieldOfficialSessionBridgeConfiguredListenPort = PacketFieldOfficialSessionBridgeManager.DefaultListenPort;
@@ -264,3 +264,4 @@ namespace HaCreator.MapSimulator
         }
     }
 }
+

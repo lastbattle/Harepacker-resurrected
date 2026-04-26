@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator

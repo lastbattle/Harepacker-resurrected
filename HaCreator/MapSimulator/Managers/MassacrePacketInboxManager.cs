@@ -1,12 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
 
 namespace HaCreator.MapSimulator.Managers
@@ -72,65 +67,26 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Loopback inbox for Massacre packet and context ownership seams.
+    /// Adapter inbox for Massacre packet and context ownership seams.
     /// </summary>
     public sealed class MassacrePacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18486;
-
         private readonly ConcurrentQueue<MassacrePacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Massacre packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Massacre packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Massacre packet inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Massacre packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Massacre packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Massacre packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out MassacrePacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueLocal(MassacrePacketInboxMessage message)
+        {
+            EnqueueMessage(message, message?.Source);
+        }
+
+        public void EnqueueProxy(MassacrePacketInboxMessage message)
+        {
+            EnqueueMessage(message, message?.Source);
         }
 
         public void RecordDispatchResult(string source, MassacrePacketInboxMessage message, bool success, string result)
@@ -145,10 +101,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out MassacrePacketInboxMessage message, out string error)
@@ -325,116 +277,16 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void EnqueueMessage(MassacrePacketInboxMessage message, string sourceLabel)
         {
-            try
+            if (message == null)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Massacre packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParsePacketLine(line, out MassacrePacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored Massacre inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new MassacrePacketInboxMessage(
-                            message.Kind,
-                            remoteEndpoint,
-                            line,
-                            message.Value1,
-                            message.Value2,
-                            message.Value3,
-                            message.Value4,
-                            message.PacketType,
-                            message.Payload,
-                            message.ClearResult,
-                            message.HasScoreOverride,
-                            message.HasRankOverride,
-                            message.Rank));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribeMessage(message)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Massacre packet inbox client error: {ex.Message}";
-            }
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listenerTask = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-            }
+            _pendingMessages.Enqueue(message);
+            string source = string.IsNullOrWhiteSpace(sourceLabel) ? message.Source : sourceLabel;
+            LastStatus = $"Queued {DescribeMessage(message)} from {source}.";
         }
 
         private static bool TryParseRawPacket(string trimmed, string[] parts, out MassacrePacketInboxMessage message, out string error)

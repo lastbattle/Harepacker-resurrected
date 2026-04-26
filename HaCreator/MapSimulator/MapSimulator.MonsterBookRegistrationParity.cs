@@ -9,6 +9,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator

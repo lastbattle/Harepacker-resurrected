@@ -1,12 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Buffers.Binary;
-using System.Threading;
-using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
 using Microsoft.Xna.Framework;
 
@@ -69,7 +64,6 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class WeddingPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18486;
         private const int PacketTypeWeddingProgress = 379;
         private const int PacketTypeWeddingCeremonyEnd = 380;
         private const int PacketTypeUserEnterField = 179;
@@ -94,58 +88,21 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeNewYearCardRecordRemove = -1108;
 
         private readonly ConcurrentQueue<WeddingInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Wedding inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Wedding inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Wedding inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Wedding inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Wedding inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Wedding inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out WeddingInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueProxy(WeddingInboxMessage message)
+        {
+            EnqueueMessage(message, message?.Source ?? "wedding-proxy");
+        }
+
+        public void EnqueueLocal(WeddingInboxMessage message)
+        {
+            EnqueueMessage(message, message?.Source ?? "wedding-local");
         }
 
         public void RecordDispatchResult(WeddingInboxMessage message, bool success, string detail)
@@ -159,10 +116,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParseLine(string text, out WeddingInboxMessage message, out string error)
@@ -221,85 +174,15 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void EnqueueMessage(WeddingInboxMessage message, string source)
         {
-            try
+            if (message == null)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Wedding inbox listener stopped: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            using (client)
-            using (NetworkStream stream = client.GetStream())
-            using (var reader = new StreamReader(stream))
-            {
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    string line = await reader.ReadLineAsync().ConfigureAwait(false);
-                    if (line == null)
-                    {
-                        break;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(line))
-                    {
-                        continue;
-                    }
-
-                    if (!TryParseLine(line, out WeddingInboxMessage message, out string error))
-                    {
-                        LastStatus = error;
-                        continue;
-                    }
-
-                    _pendingMessages.Enqueue(message);
-                    ReceivedCount++;
-                    LastStatus = $"Queued {DescribeMessage(message)} from wedding inbox.";
-                }
-            }
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            _listenerCancellation?.Cancel();
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
+                return;
             }
 
-            _listener = null;
-            _listenerTask = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-            }
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {DescribeMessage(message)} from {source}.";
         }
 
         private static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)

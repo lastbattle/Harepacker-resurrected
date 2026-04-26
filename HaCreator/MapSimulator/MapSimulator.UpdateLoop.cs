@@ -214,6 +214,8 @@ namespace HaCreator.MapSimulator
                 EnsureComboCounterPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
                 EnsureAdminShopPacketInboxState(shouldRun: false);
+                EnsureCashServicePacketInboxState(shouldRun: false);
+                EnsureCashServiceOfficialSessionBridgeState(shouldRun: false);
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
                 EnsureMessengerOfficialSessionBridgeState(shouldRun: false);
                 EnsureMapleTvOfficialSessionBridgeState(shouldRun: false);
@@ -226,6 +228,8 @@ namespace HaCreator.MapSimulator
                 EnsureReactorPoolPacketInboxState(shouldRun: false);
                 EnsurePacketFieldOfficialSessionBridgeState(shouldRun: false);
                 EnsureTradingRoomPacketInboxState(shouldRun: false);
+                EnsureRemoteUserPacketInboxState(shouldRun: false);
+                EnsureRemoteUserOfficialSessionBridgeState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
                 EnsureSummonedOfficialSessionBridgeState(shouldRun: false);
                 EnsureMobAttackPacketInboxState(shouldRun: false);
@@ -261,6 +265,9 @@ namespace HaCreator.MapSimulator
             DrainDojoPacketInbox(currTickCount);
             DrainTransportPacketInbox();
             DrainTransportOfficialSessionBridge();
+            EnsureGuildBossOfficialSessionBridgeState(shouldRun: _specialFieldRuntime?.SpecialEffects?.GuildBoss?.IsActive == true);
+            RefreshGuildBossOfficialSessionBridgeDiscovery(currTickCount);
+            SyncGuildBossTransportState();
             DrainGuildBossTransport(currTickCount);
 
             DrainPartyRaidPacketInbox(currTickCount);
@@ -271,6 +278,7 @@ namespace HaCreator.MapSimulator
             DrainRockPaperScissorsOfficialSessionBridge(currTickCount);
             DrainRockPaperScissorsPendingClientPackets();
 
+            SyncCookieHousePointInboxState();
             DrainCookieHousePointInbox();
             EnsureEngagementProposalInboxState(shouldRun: true);
             DrainEngagementProposalInbox();
@@ -291,6 +299,10 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.Build?.Clone(),
                 _playerManager?.Player?.Position ?? Vector2.Zero,
                 ResolveSyntheticRemoteUserId);
+            EnsureRemoteUserPacketInboxState(shouldRun: true);
+            EnsureRemoteUserOfficialSessionBridgeState(shouldRun: true);
+            RefreshRemoteUserOfficialSessionBridgeDiscovery(currTickCount);
+            DrainRemoteUserOfficialSessionBridge(currTickCount);
             DrainRemoteUserPacketInbox(currTickCount);
             _remoteUserPool.Update(currTickCount, _playerManager?.Player);
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
@@ -326,7 +338,7 @@ namespace HaCreator.MapSimulator
             DrainStageTransitionPacketInbox();
             EnsureReactorPoolPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
             EnsureReactorPoolOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
-            RefreshReactorPoolOfficialSessionBridgeDiscovery(currTickCount);
+            EnsureReactorTouchPacketOutboxState(shouldRun: _mapBoard?.MapInfo != null);
             EnsurePacketFieldOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             RefreshPacketFieldOfficialSessionBridgeDiscovery(currTickCount);
             FlushDeferredReactorTouchOwnership(currTickCount);
@@ -342,6 +354,10 @@ namespace HaCreator.MapSimulator
             SyncInitialQuizOwnerContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
             EnsureAdminShopPacketInboxState(shouldRun: true);
+            bool shouldRunCashServiceIngress = ShouldRunCashServicePacketInbox();
+            EnsureCashServicePacketInboxState(shouldRunCashServiceIngress);
+            EnsureCashServiceOfficialSessionBridgeState(shouldRunCashServiceIngress);
+            RefreshCashServiceOfficialSessionBridgeDiscovery(currTickCount);
             EnsurePacketScriptOfficialSessionBridgeState(shouldRun: true);
             RefreshPacketScriptOfficialSessionBridgeDiscovery(currTickCount);
             EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: true);
@@ -359,6 +375,7 @@ namespace HaCreator.MapSimulator
             RefreshFamilyOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
             DrainAdminShopPacketInbox();
+            DrainCashServicePacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
             UpdatePacketOwnedAntiMacroAwaitingResultState(currTickCount);
             RestorePacketOwnedAdminShopAfterOwnerVisibilityResumes();

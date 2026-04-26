@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.UI
 {
     public static class CharacterEquipmentPacketParity
@@ -915,7 +917,7 @@ namespace HaCreator.MapSimulator.UI
             string rejectReason = null;
             if (resultKind == CharacterEquipmentAuthorityResultKind.Reject)
             {
-                rejectReason = reader.ReadString();
+                rejectReason = reader.ReadMapleString();
             }
 
             CharacterEquipmentAuthorityInventorySlotState[] authorityInventorySlotStates = null;

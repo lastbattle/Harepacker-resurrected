@@ -277,23 +277,13 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
             {
-                int port = AdminShopPacketInboxManager.DefaultPort;
-                if (args.Length > 1 && (!int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out port) || port <= 0 || port > ushort.MaxValue))
-                {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop inbox start [port]");
-                }
-
-                _adminShopPacketInboxConfiguredPort = port;
-                _adminShopPacketInboxEnabled = true;
-                EnsureAdminShopPacketInboxState(shouldRun: true);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeAdminShopPacketInboxStatus()} {_adminShopPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info(
+                    "Admin-shop packet inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
             }
 
             if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
             {
-                _adminShopPacketInboxEnabled = false;
-                EnsureAdminShopPacketInboxState(shouldRun: false);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeAdminShopPacketInboxStatus()} {_adminShopPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Admin-shop packet inbox loopback listener is already retired.");
             }
 
             if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase)
@@ -307,7 +297,7 @@ namespace HaCreator.MapSimulator
                 return HandlePacketOwnedAdminShopClientPacketRawCommand(args);
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /adminshop inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /adminshop inbox [status|start|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopPacketCommand(string[] args)

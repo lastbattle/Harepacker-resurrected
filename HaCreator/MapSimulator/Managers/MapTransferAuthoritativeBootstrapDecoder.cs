@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using HaCreator.MapSimulator.Interaction;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Managers
 {
     internal static class MapTransferAuthoritativeBootstrapDecoder

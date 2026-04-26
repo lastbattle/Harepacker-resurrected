@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -28,53 +23,29 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class MobAttackPacketInboxManager : IDisposable
     {
         public const int MovePacketType = 287;
-        public const int DefaultPort = 18488;
 
         private readonly ConcurrentQueue<MobAttackPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Mob attack packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Mob attack packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Mob attack packet inbox listening on 127.0.0.1:{Port}.";
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Mob attack packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Mob attack packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out MobAttackPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueProxy(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "mobattack-proxy" : source;
+            EnqueueMessage(
+                new MobAttackPacketInboxMessage(packetType, payload, packetSource, packetType.ToString(CultureInfo.InvariantCulture)),
+                packetSource);
+        }
+
+        public void EnqueueLocal(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "mobattack-local" : source;
+            EnqueueMessage(
+                new MobAttackPacketInboxMessage(packetType, payload, packetSource, packetType.ToString(CultureInfo.InvariantCulture)),
+                packetSource);
         }
 
         public void RecordDispatchResult(MobAttackPacketInboxMessage message, bool success, string detail)
@@ -168,92 +139,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
-        }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Mob attack packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out MobAttackPacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored mob attack inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new MobAttackPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Mob attack packet inbox client error from {remoteEndpoint}: {ex.Message}";
-            }
-        }
-
-        private void StopInternal()
-        {
-            _listenerCancellation?.Cancel();
-            _listener?.Stop();
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
         }
 
         private static int FindTokenSeparatorIndex(string text)
@@ -328,5 +213,18 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
         }
+
+        private void EnqueueMessage(MobAttackPacketInboxMessage message, string sourceLabel)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            string packetSource = string.IsNullOrWhiteSpace(sourceLabel) ? "mobattack-inbox" : sourceLabel;
+            LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {packetSource}.";
+        }
     }
 }
+

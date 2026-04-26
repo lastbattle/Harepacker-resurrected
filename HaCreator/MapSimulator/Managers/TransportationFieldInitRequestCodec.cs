@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Managers
 {
     public static class TransportationFieldInitRequestCodec

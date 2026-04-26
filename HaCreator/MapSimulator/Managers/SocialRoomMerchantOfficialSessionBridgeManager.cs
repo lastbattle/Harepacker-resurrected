@@ -1,4 +1,3 @@
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using HaCreator.MapSimulator.Interaction;
 using System;
@@ -36,11 +35,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<SocialRoomMerchantPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
 
         public readonly record struct OutboundPacketTrace(
             int Opcode,
@@ -49,61 +44,26 @@ namespace HaCreator.MapSimulator.Managers
             string PayloadHex,
             string RawPacketHex,
             string Source);
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public ushort InboundOpcode { get; private set; }
         public ushort AutoDetectedInboundOpcode { get; private set; }
         public SocialRoomKind? PreferredKind { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public int ForwardedOutboundCount { get; private set; }
         public int SentCount { get; private set; }
         public int LastSentOpcode { get; private set; } = -1;
         public string LastStatus { get; private set; } = "Merchant-room official-session bridge inactive.";
+
+        public SocialRoomMerchantOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
 
         public static byte[] BuildMerchantOutboundPacket(byte requestSubtype, ReadOnlySpan<byte> requestBody = default)
         {
@@ -144,7 +104,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : "no active Maple session";
             string inboundOpcode = InboundOpcode > 0
                 ? $"inbound opcode={InboundOpcode}"
@@ -274,13 +234,16 @@ namespace HaCreator.MapSimulator.Managers
                     RemotePort = remotePort;
                     InboundOpcode = inboundOpcode;
                     PreferredKind = preferredKind;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        return;
+                    }
+
                     LastStatus = InboundOpcode > 0
-                        ? $"Merchant-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, filtering inbound opcode {InboundOpcode}, and targeting {DescribeKind(preferredKind)}."
-                        : $"Merchant-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and targeting {DescribeKind(preferredKind)}; inbound opcode is unset so packets are shape-checked for merchant result subtypes 24, 25, 26, 27, 40, 42, 44, 46, and 47.";
+                        ? $"Merchant-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, filtering inbound opcode {InboundOpcode}, and targeting {DescribeKind(preferredKind)}. {proxyStatus}"
+                        : $"Merchant-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and targeting {DescribeKind(preferredKind)}; inbound opcode is unset so packets are shape-checked for merchant result subtypes 24, 25, 26, 27, 40, 42, 44, 46, and 47. {proxyStatus}";
                 }
                 catch (Exception ex)
                 {
@@ -378,13 +341,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            BridgePair pair;
-            lock (_sync)
-            {
-                pair = _activePair;
-            }
-
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = "Merchant-room official-session bridge has no connected Maple session for outbound injection.";
                 LastStatus = status;
@@ -392,22 +349,19 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] clonedRawPacket = (byte[])rawPacket.Clone();
-            try
+            if (!_roleSessionProxy.TrySendToServer(clonedRawPacket, out string proxyStatus))
             {
-                pair.ServerSession.SendPacket(clonedRawPacket);
-                SentCount++;
-                LastSentOpcode = opcode;
-                RecordObservedOutboundPacket(clonedRawPacket, "simulator-send");
-                status = $"Injected merchant-room outbound opcode {opcode} subtype {packetType} into live session {pair.RemoteEndpoint}.";
+                status = proxyStatus;
                 LastStatus = status;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Merchant-room official-session outbound injection failed: {ex.Message}");
-                status = LastStatus;
                 return false;
             }
+
+            SentCount++;
+            LastSentOpcode = opcode;
+            RecordObservedOutboundPacket(clonedRawPacket, "simulator-send");
+            status = $"Injected merchant-room outbound opcode {opcode} subtype {packetType} into live session.";
+            LastStatus = status;
+            return true;
         }
 
         public void Dispose()
@@ -417,211 +371,71 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
+            if (e == null || e.IsInit)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Merchant-room official-session bridge error: {ex.Message}";
-            }
-        }
-
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected merchant-room official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Merchant-room official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Merchant-room official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Merchant-room official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Merchant-room official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    LastStatus = $"Merchant-room official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-                if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload)
-                    || !PreferredKind.HasValue
-                    || !ShouldQueueInboundMerchantPacket(opcode, payload, out string autoMapDetail))
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(new SocialRoomMerchantPacketInboxMessage(
-                    PreferredKind.Value,
-                    (byte[])raw.Clone(),
-                    $"official-session:{pair.RemoteEndpoint}",
-                    $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
-                ReceivedCount++;
-                LastStatus = $"Queued {DescribeKind(PreferredKind.Value)} opcode {opcode} subtype {payload[0]} from live session {pair.RemoteEndpoint}. {autoMapDetail}";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Merchant-room official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            if (isInit)
-            {
+                LastStatus = _roleSessionProxy.LastStatus;
                 return;
             }
 
-            try
+            if (!TryDecodeOpcode(e.RawPacket, out int opcode, out byte[] payload)
+                || !ShouldQueueInboundMerchantPacket(opcode, payload, out string autoMapDetail))
             {
-                byte[] raw = packet.ToArray();
-                pair.ServerSession.SendPacket((byte[])raw.Clone());
-                RecordObservedOutboundPacket(raw, $"official-session-client:{pair.ClientEndpoint}");
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (Exception ex)
+
+            _pendingMessages.Enqueue(new SocialRoomMerchantPacketInboxMessage(
+                PreferredKind ?? SocialRoomKind.PersonalShop,
+                (byte[])e.RawPacket.Clone(),
+                $"official-session:{e.SourceEndpoint}",
+                $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
+            ReceivedCount++;
+            LastStatus = $"Queued merchant-room opcode {opcode} subtype {payload[0]} from live session {e.SourceEndpoint}. {autoMapDetail}";
+        }
+
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            if (e == null || e.IsInit)
             {
-                ClearActivePair(pair, $"Merchant-room official-session client handling failed: {ex.Message}");
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
+
+            RecordObservedOutboundPacket(e.RawPacket, $"official-session-client:{e.SourceEndpoint}");
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
         {
-            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
-                || opcode != OutboundMiniRoomOpcode
-                || payload.Length == 0)
+            if (!TryValidateOutboundRawPacket(rawPacket, out int opcode, out byte packetType, out _))
             {
                 return;
             }
 
-            ForwardedOutboundCount++;
+            byte[] payload = rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
             lock (_sync)
             {
-                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
+                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
+                    opcode,
+                    packetType,
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                    source));
+                while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
                 {
                     _recentOutboundPackets.Dequeue();
                 }
-
-                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
-                    opcode,
-                    payload[0],
-                    payload.Length,
-                    Convert.ToHexString(payload),
-                    Convert.ToHexString(rawPacket),
-                    source));
             }
-
-            LastStatus = $"Forwarded live merchant-room outbound opcode {opcode} subtype {payload[0]} from {source}.";
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            if (pair == null)
-            {
-                return;
-            }
-
-            lock (_sync)
-            {
-                if (!ReferenceEquals(_activePair, pair))
-                {
-                    return;
-                }
-
-                _activePair = null;
-            }
-
-            pair.Close();
-            LastStatus = status;
         }
 
         private void StopInternal(bool clearPending)
         {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _activePair?.Close();
-            _activePair = null;
-            _listener = null;
-            _listenerTask = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
+            _roleSessionProxy.Stop(resetCounters: clearPending);
 
             if (clearPending)
             {
@@ -878,11 +692,6 @@ namespace HaCreator.MapSimulator.Managers
                 SocialRoomKind.EntrustedShop => "entrusted-shop",
                 _ => kind.ToString()
             };
-        }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
         }
     }
 }

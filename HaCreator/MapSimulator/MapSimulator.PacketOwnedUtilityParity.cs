@@ -29,7 +29,9 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
@@ -219,16 +221,9 @@ namespace HaCreator.MapSimulator
         private bool _packetOwnedMiniMapOnOffVisible = true;
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
         private readonly AdminShopPacketInboxManager _adminShopPacketInbox = new();
-        private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge = new();
-        private readonly MessengerOfficialSessionBridgeManager _messengerOfficialSessionBridge = new();
-        private readonly MessengerOfficialSessionBridgeManager _mapleTvOfficialSessionBridge =
-            new(
-                "MapleTV",
-                18505,
-                MapleTvRuntime.PacketTypeSetMessage,
-                MapleTvRuntime.ConsumeCashItemUseRequestOpcode,
-                MapleTvRuntime.PacketTypeClearMessage,
-                MapleTvRuntime.PacketTypeSendMessageResult);
+        private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge;
+        private readonly MessengerOfficialSessionBridgeManager _messengerOfficialSessionBridge;
+        private readonly MessengerOfficialSessionBridgeManager _mapleTvOfficialSessionBridge;
         private readonly LocalUtilityPacketTransportManager _localUtilityPacketOutbox = new();
         private readonly List<PacketOwnedItemMakerHiddenRecipeUnlockEntry> _pendingPacketOwnedItemMakerHiddenUnlocks = new();
         private readonly List<PacketOwnedItemMakerResult> _pendingPacketOwnedItemMakerResults = new();
@@ -367,10 +362,6 @@ namespace HaCreator.MapSimulator
         private bool _packetOwnedRadioSessionCreateLayerLeft;
         private int _packetOwnedRadioSessionCreateLayerMutationSequence = -1;
         private string _packetOwnedRadioSessionCreateLayerSource = "uninitialized";
-        private bool _localUtilityPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _localUtilityPacketInboxConfiguredPort = LocalUtilityPacketInboxManager.DefaultPort;
-        private bool _adminShopPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _adminShopPacketInboxConfiguredPort = AdminShopPacketInboxManager.DefaultPort;
         private bool _localUtilityOfficialSessionBridgeEnabled;
         private bool _localUtilityOfficialSessionBridgeUseDiscovery;
         private int _localUtilityOfficialSessionBridgeConfiguredListenPort = LocalUtilityOfficialSessionBridgeManager.DefaultListenPort;
@@ -3172,68 +3163,10 @@ namespace HaCreator.MapSimulator
 
         private void EnsureLocalUtilityPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_localUtilityPacketInboxEnabled)
-            {
-                if (_localUtilityPacketInbox.IsRunning)
-                {
-                    _localUtilityPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_localUtilityPacketInbox.IsRunning && _localUtilityPacketInbox.Port == _localUtilityPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_localUtilityPacketInbox.IsRunning)
-            {
-                _localUtilityPacketInbox.Stop();
-            }
-
-            try
-            {
-                _localUtilityPacketInbox.Start(_localUtilityPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _localUtilityPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Local utility packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void EnsureAdminShopPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_adminShopPacketInboxEnabled)
-            {
-                if (_adminShopPacketInbox.IsRunning)
-                {
-                    _adminShopPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_adminShopPacketInbox.IsRunning && _adminShopPacketInbox.Port == _adminShopPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_adminShopPacketInbox.IsRunning)
-            {
-                _adminShopPacketInbox.Stop();
-            }
-
-            try
-            {
-                _adminShopPacketInbox.Start(_adminShopPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _adminShopPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Admin-shop packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainLocalUtilityPacketInbox()
@@ -3247,6 +3180,11 @@ namespace HaCreator.MapSimulator
 
                 bool applied = TryApplyPacketOwnedUtilityPacket(message.PacketType, message.Payload, out string detail, message.Source);
                 _localUtilityPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (message.Source?.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _localUtilityOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
+                }
+
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
                     if (applied)
@@ -3307,38 +3245,23 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyPacketOwnedUtilityPacket(message.PacketType, message.Payload, out string detail, message.Source);
-                _localUtilityOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
-                if (!string.IsNullOrWhiteSpace(detail))
-                {
-                    if (applied)
-                    {
-                        _chat?.AddSystemMessage(detail, currTickCount);
-                    }
-                    else
-                    {
-                        _chat?.AddErrorMessage(detail, currTickCount);
-                    }
-                }
+                _localUtilityPacketInbox.EnqueueProxy(message);
             }
         }
 
         private string DescribeLocalUtilityPacketInboxStatus()
         {
-            string enabledText = _localUtilityPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _localUtilityPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_localUtilityPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_localUtilityPacketInboxConfiguredPort}";
-            return $"Local utility packet inbox {enabledText}, {listeningText}, received {_localUtilityPacketInbox.ReceivedCount} packet(s).";
+            bool proxyPrimaryMode = _localUtilityOfficialSessionBridgeEnabled;
+            string ingressModeText = proxyPrimaryMode
+                ? "proxy-primary"
+                : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"Local utility packet inbox adapter-only, {ingressModeText}, {fallbackText}, received {_localUtilityPacketInbox.ReceivedCount} packet(s) [proxy={_localUtilityPacketInbox.ProxyIngressReceivedCount}, local={_localUtilityPacketInbox.LocalIngressReceivedCount}], last ingress={_localUtilityPacketInbox.LastIngressMode}.";
         }
 
         private string DescribeAdminShopPacketInboxStatus()
         {
-            string enabledText = _adminShopPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _adminShopPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_adminShopPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_adminShopPacketInboxConfiguredPort}";
-            return $"Admin-shop packet inbox {enabledText}, {listeningText}, received {_adminShopPacketInbox.ReceivedCount} packet(s).";
+            return "Admin-shop packet inbox adapter-only, listener-fallback retired.";
         }
 
         private string DescribeLocalUtilityOfficialSessionBridgeStatus()
@@ -3763,34 +3686,22 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_localUtilityPacketOutbox.IsRunning && _localUtilityPacketOutbox.Port == _localUtilityPacketOutboxConfiguredPort)
-            {
-                return;
-            }
-
             if (_localUtilityPacketOutbox.IsRunning)
             {
                 _localUtilityPacketOutbox.Stop();
-            }
-
-            try
-            {
-                _localUtilityPacketOutbox.Start(_localUtilityPacketOutboxConfiguredPort);
-            }
-            catch
-            {
-                _localUtilityPacketOutbox.Stop();
-                throw;
             }
         }
 
         private string DescribeLocalUtilityPacketOutboxStatus()
         {
             string enabledText = _localUtilityPacketOutboxEnabled ? "enabled" : "disabled";
+            bool proxyPrimaryMode = _localUtilityOfficialSessionBridgeEnabled;
+            string modeText = proxyPrimaryMode ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
             string listeningText = _localUtilityPacketOutbox.IsRunning
-                ? $"listening on 127.0.0.1:{_localUtilityPacketOutbox.Port}"
-                : $"configured for 127.0.0.1:{_localUtilityPacketOutboxConfiguredPort}";
-            return $"Local utility packet outbox {enabledText}, {listeningText}, sent {_localUtilityPacketOutbox.SentCount} packet(s), pending {_localUtilityPacketOutbox.PendingPacketCount} packet(s).";
+                ? $"listener active on 127.0.0.1:{_localUtilityPacketOutbox.Port}"
+                : $"listener configured for 127.0.0.1:{_localUtilityPacketOutboxConfiguredPort}";
+            return $"Local utility packet outbox {enabledText}, {modeText}, {fallbackText}, {listeningText}, sent {_localUtilityPacketOutbox.SentCount} packet(s), pending {_localUtilityPacketOutbox.PendingPacketCount} packet(s).";
         }
 
         private bool TryApplyPacketOwnedUtilityPacket(int packetType, byte[] payload, out string message, string source = null)
@@ -21877,23 +21788,12 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[offset], "start", StringComparison.OrdinalIgnoreCase))
             {
-                int port = LocalUtilityPacketInboxManager.DefaultPort;
-                if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
-                {
-                return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|minimaponoff|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|220|231|232|242|243|246|247|250|251|252|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1018|1023|1025|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
-                }
-
-                _localUtilityPacketInboxConfiguredPort = port;
-                _localUtilityPacketInboxEnabled = true;
-                EnsureLocalUtilityPacketInboxState(shouldRun: true);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Local utility inbox listener controls are retired; use packet commands or the role-session bridge.");
             }
 
             if (string.Equals(args[offset], "stop", StringComparison.OrdinalIgnoreCase))
             {
-                _localUtilityPacketInboxEnabled = false;
-                EnsureLocalUtilityPacketInboxState(shouldRun: false);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Local utility inbox listener controls are retired; use packet commands or the role-session bridge.");
             }
 
             if (string.Equals(args[offset], "packet", StringComparison.OrdinalIgnoreCase)
@@ -22204,6 +22104,8 @@ namespace HaCreator.MapSimulator
                 _localUtilityOfficialSessionBridgeConfiguredRemotePort = remotePort;
                 _localUtilityOfficialSessionBridgeConfiguredProcessSelector = null;
                 _localUtilityOfficialSessionBridgeConfiguredLocalPort = null;
+                EnsureLocalUtilityPacketInboxState(shouldRun: true);
+                EnsureLocalUtilityPacketOutboxState(shouldRun: true);
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: true);
                 return ChatCommandHandler.CommandResult.Ok(DescribeLocalUtilityOfficialSessionBridgeStatus());
             }
@@ -22239,6 +22141,8 @@ namespace HaCreator.MapSimulator
                 _localUtilityOfficialSessionBridgeConfiguredProcessSelector = processSelector;
                 _localUtilityOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
                 _nextLocalUtilityOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                EnsureLocalUtilityPacketInboxState(shouldRun: true);
+                EnsureLocalUtilityPacketOutboxState(shouldRun: true);
 
                 return _localUtilityOfficialSessionBridge.TryRefreshFromDiscovery(
                         autoListenPort,
@@ -22258,6 +22162,8 @@ namespace HaCreator.MapSimulator
                 _localUtilityOfficialSessionBridgeConfiguredProcessSelector = null;
                 _localUtilityOfficialSessionBridgeConfiguredLocalPort = null;
                 _localUtilityOfficialSessionBridge.Stop();
+                EnsureLocalUtilityPacketInboxState(shouldRun: true);
+                EnsureLocalUtilityPacketOutboxState(shouldRun: true);
                 return ChatCommandHandler.CommandResult.Ok(DescribeLocalUtilityOfficialSessionBridgeStatus());
             }
 

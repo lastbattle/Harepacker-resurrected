@@ -1,7 +1,8 @@
 using System;
 using System.IO;
 using System.Text;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Managers
 {
     public sealed class LoginGuestIdLoginResultProfile

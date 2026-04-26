@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal readonly record struct MonsterBookInventoryCardPickup(int ItemId, int Quantity);

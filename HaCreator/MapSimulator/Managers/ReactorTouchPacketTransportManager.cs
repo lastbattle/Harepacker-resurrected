@@ -1,12 +1,6 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -17,45 +11,6 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class ReactorTouchPacketTransportManager : IDisposable
     {
         public const int DefaultPort = 18500;
-
-        private sealed class ConnectedClient : IDisposable
-        {
-            public ConnectedClient(int id, TcpClient client, string endpoint)
-            {
-                Id = id;
-                Client = client;
-                Endpoint = endpoint;
-                Writer = new StreamWriter(client.GetStream())
-                {
-                    AutoFlush = true
-                };
-            }
-
-            public int Id { get; }
-            public TcpClient Client { get; }
-            public string Endpoint { get; }
-            public StreamWriter Writer { get; }
-            public object WriteLock { get; } = new();
-
-            public void Dispose()
-            {
-                try
-                {
-                    Writer.Dispose();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    Client.Dispose();
-                }
-                catch
-                {
-                }
-            }
-        }
 
         private sealed class PendingTouchRequest
         {
@@ -72,21 +27,15 @@ namespace HaCreator.MapSimulator.Managers
             public byte[] RawPacket { get; }
             public int SourceTick { get; }
         }
-
-        private readonly object _listenerLock = new();
         private readonly object _queueLock = new();
-        private readonly ConcurrentDictionary<int, ConnectedClient> _clients = new();
+        private readonly RetiredMapleSocketState _socketState = new("Reactor touch outbox", DefaultPort, "Reactor touch outbox inactive.");
         private readonly Queue<PendingTouchRequest> _pendingOutboundPackets = new();
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private int _nextClientId;
         private int _nextDeferredTouchFlushTick = int.MinValue;
         private bool _deferredTouchFlushTickInitialized;
 
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ConnectedClientCount => _clients.Count;
+        public int Port => _socketState.Port;
+        public bool IsRunning => _socketState.IsRunning;
+        public int ConnectedClientCount => _socketState.ConnectedClientCount;
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
         public int PendingPacketCount
@@ -105,141 +54,42 @@ namespace HaCreator.MapSimulator.Managers
         public int? LastQueuedObjectId { get; private set; }
         public bool? LastQueuedTouchFlag { get; private set; }
         public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
-        public string LastStatus { get; private set; } = "Reactor touch outbox inactive.";
+        public string LastStatus => _socketState.LastStatus;
 
         public string DescribeStatus()
         {
-            string lifecycle = IsRunning
-                ? $"listening on 127.0.0.1:{Port}"
-                : "inactive";
-            string clients = ConnectedClientCount == 1
-                ? "1 client connected"
-                : $"{ConnectedClientCount} clients connected";
             string lastSent = LastSentRawPacket.Length > 0 && LastSentObjectId.HasValue && LastSentTouchFlag.HasValue
                 ? $" Last sent={LastSentObjectId.Value}:{(LastSentTouchFlag.Value ? "enter" : "leave")} [{Convert.ToHexString(LastSentRawPacket)}]."
                 : string.Empty;
             string lastQueued = LastQueuedRawPacket.Length > 0 && LastQueuedObjectId.HasValue && LastQueuedTouchFlag.HasValue
                 ? $" Last queued={LastQueuedObjectId.Value}:{(LastQueuedTouchFlag.Value ? "enter" : "leave")} [{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Reactor touch outbox {lifecycle}; {clients}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}.{lastSent}{lastQueued} {LastStatus}";
+            return _socketState.Describe(sentCount: SentCount, pendingCount: PendingPacketCount, queuedCount: QueuedCount, detail: $"{lastSent}{lastQueued}".Trim());
         }
 
         public void Start(int port)
         {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Reactor touch outbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Reactor touch outbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearQueuedPackets: false);
-                    LastStatus = $"Reactor touch outbox failed to start: {ex.Message}";
-                }
-            }
+            _socketState.Start(port);
         }
 
         public void Stop()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearQueuedPackets: false);
-                LastStatus = "Reactor touch outbox stopped.";
-            }
+            StopInternal(clearQueuedPackets: false);
+            _socketState.SetStatus("Reactor touch outbox listener already retired.");
         }
 
         public bool TrySendTouchRequest(int objectId, bool isTouching, out string status, int currentTick = int.MinValue)
         {
-            ConnectedClient[] clients = _clients.Values.ToArray();
-            if (clients.Length == 0)
-            {
-                status = "Reactor touch outbox has no connected clients.";
-                LastStatus = status;
-                return false;
-            }
-
             if (objectId <= 0)
             {
                 status = "Reactor touch outbox requires a positive reactor object id.";
-                LastStatus = status;
+                _socketState.SetStatus(status);
                 return false;
             }
 
-            lock (_queueLock)
-            {
-                FlushQueuedOutboundPacketsUnsafe(clients, currentTick);
-                if (_pendingOutboundPackets.Count > 0)
-                {
-                    byte[] deferredPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
-                    int resolvedTick = ResolveCurrentTick(currentTick);
-                    bool queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(
-                        new PendingTouchRequest(objectId, isTouching, deferredPacket, resolvedTick));
-                    if (queued)
-                    {
-                        QueuedCount++;
-                        LastQueuedObjectId = objectId;
-                        LastQueuedTouchFlag = isTouching;
-                        LastQueuedRawPacket = deferredPacket;
-                        status = $"Queued packetoutraw {Convert.ToHexString(deferredPacket)} behind deferred reactor touch replay cadence.";
-                    }
-                    else
-                    {
-                        status = $"packetoutraw {Convert.ToHexString(deferredPacket)} is already the latest deferred reactor touch ownership state.";
-                    }
-
-                    LastStatus = status;
-                    return true;
-                }
-            }
-
-            byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
-            string rawPacketHex = Convert.ToHexString(rawPacket);
-            string line = $"packetoutraw {rawPacketHex}";
-            int sent = 0;
-
-            foreach (ConnectedClient client in clients)
-            {
-                try
-                {
-                    lock (client.WriteLock)
-                    {
-                        client.Writer.WriteLine(line);
-                    }
-
-                    sent++;
-                }
-                catch (Exception ex)
-                {
-                    RemoveClient(client.Id, $"Reactor touch outbox send failed for {client.Endpoint}: {ex.Message}");
-                }
-            }
-
-            if (sent == 0)
-            {
-                status = "Reactor touch outbox could not deliver the outbound packet.";
-                LastStatus = status;
-                return false;
-            }
-
-            SentCount++;
-            LastSentObjectId = objectId;
-            LastSentTouchFlag = isTouching;
-            LastSentRawPacket = rawPacket;
-            status = $"Sent packetoutraw {rawPacketHex} to {sent} reactor touch outbox client(s).";
-            LastStatus = status;
-            return true;
+            status = "Reactor touch outbox requires the role-session bridge or local packet command path; loopback transport is retired.";
+            _socketState.SetStatus(status);
+            return false;
         }
 
         public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status, int currentTick = int.MinValue)
@@ -247,7 +97,7 @@ namespace HaCreator.MapSimulator.Managers
             if (objectId <= 0)
             {
                 status = "Reactor touch outbox requires a positive reactor object id.";
-                LastStatus = status;
+                _socketState.SetStatus(status);
                 return false;
             }
 
@@ -272,7 +122,7 @@ namespace HaCreator.MapSimulator.Managers
                 status = $"packetoutraw {Convert.ToHexString(rawPacket)} is already the latest deferred reactor touch ownership state.";
             }
 
-            LastStatus = status;
+            _socketState.SetStatus(status);
             return true;
         }
 
@@ -299,7 +149,7 @@ namespace HaCreator.MapSimulator.Managers
             if (objectId <= 0)
             {
                 status = "Reactor touch outbox queue removal requires a positive reactor object id.";
-                LastStatus = status;
+                _socketState.SetStatus(status);
                 return false;
             }
 
@@ -312,7 +162,7 @@ namespace HaCreator.MapSimulator.Managers
             status = removedCount > 0
                 ? $"Removed {removedCount} queued packetoutraw reactor touch request(s) for object {objectId}."
                 : $"No queued packetoutraw reactor touch requests were pending for object {objectId}.";
-            LastStatus = status;
+            _socketState.SetStatus(status);
             return removedCount > 0;
         }
 
@@ -325,7 +175,7 @@ namespace HaCreator.MapSimulator.Managers
                 ResetDeferredTouchFlushScheduleUnsafe();
                 if (removedCount > 0)
                 {
-                    LastStatus = $"Cleared {removedCount} queued packetoutraw reactor touch request(s).";
+                    _socketState.SetStatus($"Cleared {removedCount} queued packetoutraw reactor touch request(s).");
                 }
 
                 return removedCount;
@@ -339,116 +189,24 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryFlushDeferredTouchRequests(int currentTick, out string status)
         {
-            ConnectedClient[] clients = _clients.Values.ToArray();
-            if (clients.Length == 0)
-            {
-                status = "Reactor touch outbox has no connected clients for deferred replay.";
-                LastStatus = status;
-                return false;
-            }
-
-            int flushed;
-            lock (_queueLock)
-            {
-                flushed = FlushQueuedOutboundPacketsUnsafe(clients, currentTick);
-            }
-
-            status = flushed > 0
-                ? $"Flushed {flushed} deferred packetoutraw reactor touch request(s)."
-                : "No deferred packetoutraw reactor touch requests were due for replay yet.";
-            LastStatus = status;
-            return flushed > 0;
+            status = "Reactor touch outbox deferred replay requires the role-session bridge or local packet command path; loopback transport is retired.";
+            _socketState.SetStatus(status);
+            return false;
         }
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearQueuedPackets: true);
-            }
+            StopInternal(clearQueuedPackets: true);
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    int clientId = Interlocked.Increment(ref _nextClientId);
-                    string endpoint = client.Client?.RemoteEndPoint?.ToString() ?? $"reactor-touch-outbox-{clientId}";
-                    var connectedClient = new ConnectedClient(clientId, client, endpoint);
-                    _clients[clientId] = connectedClient;
-                    LastStatus = $"Reactor touch outbox client connected: {endpoint}.";
-                    _ = Task.Run(() => HandleClientAsync(connectedClient, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Reactor touch outbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(ConnectedClient client, CancellationToken cancellationToken)
-        {
-            try
-            {
-                using (client)
-                using (StreamReader reader = new StreamReader(client.Client.GetStream()))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        LastStatus = $"Ignored reactor touch outbox inbound line from {client.Endpoint}: {line}";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Reactor touch outbox client error: {ex.Message}";
-            }
-            finally
-            {
-                RemoveClient(client.Id, $"Reactor touch outbox client disconnected: {client.Endpoint}.");
-            }
-        }
 
         private int FlushQueuedOutboundPackets(int currentTick)
         {
-            ConnectedClient[] clients = _clients.Values.ToArray();
-            lock (_queueLock)
-            {
-                return FlushQueuedOutboundPacketsUnsafe(clients, currentTick);
-            }
+            return 0;
         }
 
-        private int FlushQueuedOutboundPacketsUnsafe(ConnectedClient[] clients, int currentTick)
+        private int FlushQueuedOutboundPacketsUnsafe(int currentTick)
         {
-            if (clients.Length == 0)
-            {
-                return 0;
-            }
-
             if (_pendingOutboundPackets.Count == 0)
             {
                 ResetDeferredTouchFlushScheduleUnsafe();
@@ -465,31 +223,6 @@ namespace HaCreator.MapSimulator.Managers
                     _nextDeferredTouchFlushTick,
                     _deferredTouchFlushTickInitialized);
                 PendingTouchRequest packet = _pendingOutboundPackets.Peek();
-                string line = $"packetoutraw {Convert.ToHexString(packet.RawPacket)}";
-                int sent = 0;
-
-                foreach (ConnectedClient client in clients)
-                {
-                    try
-                    {
-                        lock (client.WriteLock)
-                        {
-                            client.Writer.WriteLine(line);
-                        }
-
-                        sent++;
-                    }
-                    catch (Exception ex)
-                    {
-                        RemoveClient(client.Id, $"Reactor touch outbox send failed for {client.Endpoint}: {ex.Message}");
-                    }
-                }
-
-                if (sent == 0)
-                {
-                    break;
-                }
-
                 PendingTouchRequest dequeued = _pendingOutboundPackets.Dequeue();
 
                 SentCount++;
@@ -625,56 +358,11 @@ namespace HaCreator.MapSimulator.Managers
             _deferredTouchFlushTickInitialized = false;
         }
 
-        private void RemoveClient(int clientId, string status)
-        {
-            if (_clients.TryRemove(clientId, out ConnectedClient existing))
-            {
-                LastStatus = status;
-                existing.Dispose();
-            }
-        }
-
         private void StopInternal(bool clearQueuedPackets)
         {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            foreach (ConnectedClient client in _clients.Values.ToArray())
-            {
-                RemoveClient(client.Id, $"Reactor touch outbox client disconnected: {client.Endpoint}.");
-            }
-
             if (clearQueuedPackets)
             {
-                while (_pendingOutboundPackets.TryDequeue(out _))
-                {
-                }
+                _pendingOutboundPackets.Clear();
                 ResetDeferredTouchFlushScheduleUnsafe();
 
                 SentCount = 0;

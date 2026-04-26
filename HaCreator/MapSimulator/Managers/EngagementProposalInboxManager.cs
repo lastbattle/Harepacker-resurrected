@@ -1,12 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -64,55 +59,26 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class EngagementProposalInboxManager : IDisposable
     {
-        public const int DefaultPort = 18487;
         public const string DefaultHost = "127.0.0.1";
         private const string RequestCommand = "request";
         private const string DecisionCommand = "decision";
 
         private readonly ConcurrentQueue<EngagementProposalInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Engagement proposal inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Engagement proposal inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Engagement proposal inbox listening on 127.0.0.1:{Port}.";
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Engagement proposal inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Engagement proposal inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out EngagementProposalInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueProxy(EngagementProposalInboxMessage message)
+        {
+            EnqueueMessage(message);
+        }
+
+        public void EnqueueLocal(EngagementProposalInboxMessage message)
+        {
+            EnqueueMessage(message);
         }
 
         public void RecordDispatchResult(EngagementProposalInboxMessage message, bool success, string detail)
@@ -128,10 +94,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
         }
 
         internal static string BuildRequestLine(EngagementProposalInboxDispatch dispatch)
@@ -162,24 +124,6 @@ namespace HaCreator.MapSimulator.Managers
 
             return builder.ToString();
         }
-
-        internal static void SendRequest(
-            string host,
-            int port,
-            EngagementProposalInboxDispatch dispatch)
-        {
-            string resolvedHost = string.IsNullOrWhiteSpace(host) ? DefaultHost : host.Trim();
-            int resolvedPort = port > 0 ? port : DefaultPort;
-            string line = BuildRequestLine(dispatch);
-
-            using TcpClient client = new();
-            client.Connect(resolvedHost, resolvedPort);
-            using NetworkStream stream = client.GetStream();
-            using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: false);
-            writer.WriteLine(line);
-            writer.Flush();
-        }
-
         public static bool TryParseLine(string text, out EngagementProposalInboxMessage message, out string error)
         {
             message = null;
@@ -266,85 +210,6 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Engagement proposal inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out EngagementProposalInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored engagement inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        EngagementProposalInboxMessage queuedMessage = message.Kind == EngagementProposalInboxMessageKind.Decision
-                            ? new EngagementProposalInboxMessage(
-                                message.RequestPayload,
-                                remoteEndpoint,
-                                line)
-                            : new EngagementProposalInboxMessage(
-                                message.ProposerName,
-                                message.PartnerName,
-                                message.SealItemId,
-                                message.RequestPayload,
-                                message.CustomMessage,
-                                remoteEndpoint,
-                                line);
-                        _pendingMessages.Enqueue(queuedMessage);
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribeMessage(queuedMessage)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Engagement proposal inbox client error: {ex.Message}";
-            }
-        }
-
         internal static bool TryParsePayloadToken(string token, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();
@@ -415,36 +280,16 @@ namespace HaCreator.MapSimulator.Managers
                 : $"engagement request {message.ProposerName} -> {message.PartnerName}";
         }
 
-        private void StopInternal()
+        private void EnqueueMessage(EngagementProposalInboxMessage message)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {DescribeMessage(message)} from {message.Source}.";
         }
     }
 }
+

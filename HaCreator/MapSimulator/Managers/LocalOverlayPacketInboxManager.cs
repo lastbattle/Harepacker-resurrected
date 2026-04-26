@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -27,7 +22,6 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class LocalOverlayPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18497;
         public const int FieldFadeInOutClientPacketType = 240;
         public const int FieldFadeOutForceClientPacketType = 241;
         public const int BalloonMsgClientPacketType = 245;
@@ -36,53 +30,28 @@ namespace HaCreator.MapSimulator.Managers
         public const int PetConsumeResultPacketType = LocalUtilityPacketInboxManager.PetConsumeResultPacketType;
 
         private readonly ConcurrentQueue<LocalOverlayPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Local overlay packet inbox inactive.";
+        public int ProxyIngressReceivedCount { get; private set; }
+        public int LocalIngressReceivedCount { get; private set; }
+        public string LastIngressMode { get; private set; } = "none";
+        public string LastStatus { get; private set; } = "Local overlay packet inbox ready for role-session/local ingress.";
 
-        public void Start(int port = DefaultPort)
+        public void EnqueueProxy(int packetType, byte[] payload, string source)
         {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Local overlay packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Local overlay packet inbox listening on 127.0.0.1:{Port}.";
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Local overlay packet inbox stopped.";
-            }
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "local-overlay-proxy" : source;
+            EnqueueMessage(
+                new LocalOverlayPacketInboxMessage(packetType, payload, packetSource, packetType.ToString(CultureInfo.InvariantCulture)),
+                MapSimulatorNetworkIngressMode.Proxy,
+                packetSource);
         }
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
             string packetSource = string.IsNullOrWhiteSpace(source) ? "local-overlay-ui" : source;
-            _pendingMessages.Enqueue(new LocalOverlayPacketInboxMessage(packetType, payload, packetSource, packetType.ToString(CultureInfo.InvariantCulture)));
-            ReceivedCount++;
-            LastStatus = $"Queued {DescribePacketType(packetType)} from {packetSource}.";
+            EnqueueMessage(
+                new LocalOverlayPacketInboxMessage(packetType, payload, packetSource, packetType.ToString(CultureInfo.InvariantCulture)),
+                MapSimulatorNetworkIngressMode.Local,
+                packetSource);
         }
 
         public bool TryDequeue(out LocalOverlayPacketInboxMessage message)
@@ -100,10 +69,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
         }
 
         public static bool TryParseLine(string text, out LocalOverlayPacketInboxMessage message, out string error)
@@ -264,72 +229,6 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == PetConsumeResultPacketType;
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Local overlay packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out LocalOverlayPacketInboxMessage message, out string lineError))
-                        {
-                            LastStatus = $"Ignored local overlay inbox line from {remoteEndpoint}: {lineError}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new LocalOverlayPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Local overlay packet inbox client error: {ex.Message}";
-            }
-        }
-
         private static bool TryParsePayload(string text, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();
@@ -404,30 +303,33 @@ namespace HaCreator.MapSimulator.Managers
             return -1;
         }
 
-        private void StopInternal()
+        private void EnqueueMessage(LocalOverlayPacketInboxMessage message, string ingressMode, string statusSource)
         {
-            _listenerCancellation?.Cancel();
-
-            try
+            if (message == null)
             {
-                _listener?.Stop();
-            }
-            catch
-            {
+                return;
             }
 
-            try
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastIngressMode = string.IsNullOrWhiteSpace(ingressMode)
+                ? "unknown"
+                : ingressMode;
+            switch (LastIngressMode)
             {
-                _listenerTask?.Wait(200);
-            }
-            catch
-            {
+                case MapSimulatorNetworkIngressMode.Proxy:
+                    ProxyIngressReceivedCount++;
+                    break;
+                case MapSimulatorNetworkIngressMode.Local:
+                    LocalIngressReceivedCount++;
+                    break;
             }
 
-            _listener = null;
-            _listenerTask = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
+            string source = string.IsNullOrWhiteSpace(statusSource)
+                ? message.Source
+                : statusSource;
+            LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {source}.";
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Character;
+﻿using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Fields;
@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator
             "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|-1004|-1005|-1006|-1007|179|180|181|182|183|184|210|211|212|213|214|215|216|218|219|220|221|222|223|224|225|226|227|228|229|230|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|chat|outsidechat|tutorhire|tutormsg|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|hit|emotion|activeeffect|upgradetomb|officialchair|usereffect|receivehp|throwgrenade|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname|guildmark>";
         private const int RemoteUserOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
-        private readonly RemoteUserOfficialSessionBridgeManager _remoteUserOfficialSessionBridge = new();
+        private readonly RemoteUserOfficialSessionBridgeManager _remoteUserOfficialSessionBridge;
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
         private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
         private readonly Dictionary<int, RemoteUserProfilePacket> _pendingRemoteUserProfilesByCharacterId = new();
@@ -819,34 +819,24 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 2)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox [status|start [port]|stop]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox [status|start|stop]");
             }
 
             switch (args[1].ToLowerInvariant())
             {
                 case "status":
-                    string listeningText = _remoteUserPacketInbox.IsRunning
-                        ? $"listening on 127.0.0.1:{_remoteUserPacketInbox.Port}"
-                        : $"inactive (default 127.0.0.1:{RemoteUserPacketInboxManager.DefaultPort})";
                     return ChatCommandHandler.CommandResult.Info(
-                        $"Remote user packet inbox {listeningText}, received {_remoteUserPacketInbox.ReceivedCount} packet(s). {_remoteUserPacketInbox.LastStatus}{Environment.NewLine}{DescribeRemoteUserOfficialSessionBridgeStatus()}");
+                        $"{DescribeRemoteUserPacketInboxStatus()} {_remoteUserPacketInbox.LastStatus}{Environment.NewLine}{DescribeRemoteUserOfficialSessionBridgeStatus()}");
 
                 case "start":
-                    int port = RemoteUserPacketInboxManager.DefaultPort;
-                    if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0 || port > ushort.MaxValue))
-                    {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox start [port]");
-                    }
-
-                    _remoteUserPacketInbox.Start(port);
-                    return ChatCommandHandler.CommandResult.Ok(_remoteUserPacketInbox.LastStatus);
+                    return ChatCommandHandler.CommandResult.Info(
+                        "Remote-user packet inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
 
                 case "stop":
-                    _remoteUserPacketInbox.Stop();
-                    return ChatCommandHandler.CommandResult.Ok(_remoteUserPacketInbox.LastStatus);
+                    return ChatCommandHandler.CommandResult.Info("Remote-user packet inbox loopback listener is already retired.");
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox [status|start [port]|stop]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox [status|start|stop]");
             }
         }
 
@@ -854,9 +844,43 @@ namespace HaCreator.MapSimulator
         {
             while (_remoteUserPacketInbox.TryDequeue(out RemoteUserPacketInboxMessage message))
             {
-                bool applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out string result, sourceTag: message.Source);
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = false;
+                string result = null;
+                if (message.Source?.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    applied = TryApplyRemoteUserOfficialSessionPacketThroughAriantArena(
+                        message.PacketType,
+                        message.Payload,
+                        message.Source,
+                        currentTime,
+                        out result);
+                }
+
+                if (!applied)
+                {
+                    applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out result, sourceTag: message.Source);
+                }
+
                 _remoteUserPacketInbox.RecordDispatchResult(message, applied, result);
+                if (message.Source?.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _remoteUserOfficialSessionBridge.RecordDispatchResult(
+                        new RemoteUserOfficialSessionBridgeMessage(message.PacketType, message.Payload, message.Source, 0),
+                        applied,
+                        result);
+                }
             }
+        }
+
+        private string DescribeRemoteUserPacketInboxStatus()
+        {
+            string ingressModeText = _remoteUserOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            return $"Remote-user packet inbox adapter-only, {ingressModeText}, listener-fallback retired.";
         }
 
         private string DescribeRemoteUserOfficialSessionBridgeStatus()
@@ -969,47 +993,42 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyRemoteUserOfficialSessionPacketThroughAriantArena(
-                    message,
-                    currentTime,
-                    out string detail);
-                if (!applied)
-                {
-                    applied = TryApplyRemoteUserPacket(
-                        message.PacketType,
-                        message.Payload,
-                        currentTime,
-                        out detail,
-                        sourceTag: message.Source);
-                }
-
-                _remoteUserOfficialSessionBridge.RecordDispatchResult(message, applied, detail);
+                _remoteUserPacketInbox.EnqueueProxy(
+                    message.PacketType,
+                    message.Payload,
+                    message.Source,
+                    $"opcode={message.Opcode}");
             }
         }
 
         private bool TryApplyRemoteUserOfficialSessionPacketThroughAriantArena(
-            RemoteUserOfficialSessionBridgeMessage message,
+            int packetType,
+            byte[] payload,
+            string source,
             int currentTime,
             out string detail)
         {
             detail = null;
             AriantArenaField field = _specialFieldRuntime?.Minigames?.AriantArena;
             if (field?.IsActive != true
-                || message == null
-                || !TryResolveAriantArenaOfficialRemoteUserPacketType(message.PacketType, out int ariantPacketType))
+                || !TryResolveAriantArenaOfficialRemoteUserPacketType(packetType, out int ariantPacketType))
             {
                 return false;
             }
 
             bool applied = field.TryApplyPacket(
                 ariantPacketType,
-                message.Payload,
+                payload,
                 currentTime,
                 out detail);
             detail = applied
-                ? $"Ariant Arena accepted live official remote-user packet {ariantPacketType} from {message.Source}."
+                ? $"Ariant Arena accepted live official remote-user packet {ariantPacketType} from {source}."
                 : detail;
             return applied;
+        }
+
+        private void EnsureRemoteUserPacketInboxState(bool shouldRun)
+        {
         }
 
         internal static bool TryResolveAriantArenaOfficialRemoteUserPacketType(int remoteUserPacketType, out int ariantPacketType)
@@ -1097,6 +1116,7 @@ namespace HaCreator.MapSimulator
                     _remoteUserOfficialSessionBridgeConfiguredRemotePort = remotePort;
                     _remoteUserOfficialSessionBridgeConfiguredProcessSelector = null;
                     _remoteUserOfficialSessionBridgeConfiguredLocalPort = null;
+                    EnsureRemoteUserPacketInboxState(shouldRun: true);
                     EnsureRemoteUserOfficialSessionBridgeState(shouldRun: true);
                     return ChatCommandHandler.CommandResult.Ok(DescribeRemoteUserOfficialSessionBridgeStatus());
 
@@ -1130,6 +1150,7 @@ namespace HaCreator.MapSimulator
                     _remoteUserOfficialSessionBridgeConfiguredProcessSelector = autoProcessSelector;
                     _remoteUserOfficialSessionBridgeConfiguredLocalPort = autoLocalPort;
                     _nextRemoteUserOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                    EnsureRemoteUserPacketInboxState(shouldRun: true);
                     return _remoteUserOfficialSessionBridge.TryRefreshFromDiscovery(
                             autoListenPort,
                             autoRemotePort,
@@ -1173,6 +1194,7 @@ namespace HaCreator.MapSimulator
                     _remoteUserOfficialSessionBridgeConfiguredProcessSelector = null;
                     _remoteUserOfficialSessionBridgeConfiguredLocalPort = null;
                     _remoteUserOfficialSessionBridge.Stop();
+                    EnsureRemoteUserPacketInboxState(shouldRun: true);
                     return ChatCommandHandler.CommandResult.Ok(DescribeRemoteUserOfficialSessionBridgeStatus());
 
                 default:

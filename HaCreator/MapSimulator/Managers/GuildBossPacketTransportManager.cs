@@ -1,12 +1,7 @@
 using System;
-using System.Collections.Concurrent;
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Fields;
 using MapleLib.PacketLib;
@@ -43,106 +38,31 @@ namespace HaCreator.MapSimulator.Managers
         private const int OutboundPulleyRequestOpcode = 259;
         private const string PulleyRequestPacketHex = "0301";
 
-        private sealed class ConnectedClient : IDisposable
-        {
-            public ConnectedClient(int id, TcpClient client, string endpoint)
-            {
-                Id = id;
-                Client = client;
-                Endpoint = endpoint;
-                Writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
-            }
-
-            public int Id { get; }
-            public TcpClient Client { get; }
-            public string Endpoint { get; }
-            public StreamWriter Writer { get; }
-            public object WriteLock { get; } = new();
-
-            public void Dispose()
-            {
-                try
-                {
-                    Writer.Dispose();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    Client.Dispose();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         private readonly ConcurrentQueue<GuildBossPacketInboxMessage> _pendingMessages = new();
-        private readonly ConcurrentDictionary<int, ConnectedClient> _clients = new();
-        private readonly object _listenerLock = new();
-        private int _nextClientId;
+        private readonly RetiredMapleSocketState _socketState = new("Guild boss transport", DefaultPort, "Guild boss transport inactive.");
 
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasConnectedClients => !_clients.IsEmpty;
-        public int ConnectedClientCount => _clients.Count;
+        public int Port => _socketState.Port;
+        public bool IsRunning => _socketState.IsRunning;
+        public bool HasConnectedClients => _socketState.HasConnectedClients;
+        public int ConnectedClientCount => _socketState.ConnectedClientCount;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
-        public string LastStatus { get; private set; } = "Guild boss transport inactive.";
+        public string LastStatus => _socketState.LastStatus;
 
         public string DescribeStatus()
         {
-            string lifecycle = IsRunning
-                ? $"listening on 127.0.0.1:{Port}"
-                : "inactive";
-            string clients = HasConnectedClients
-                ? $"{ConnectedClientCount} client(s) connected"
-                : "no connected clients";
-            return $"Guild boss transport {lifecycle}; {clients}; received={ReceivedCount}; sent={SentCount}. {LastStatus}";
+            return _socketState.Describe(ReceivedCount, SentCount);
         }
 
         public void Start(int port = DefaultPort)
         {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Guild boss transport already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Guild boss transport listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Guild boss transport failed to start: {ex.Message}";
-                }
-            }
+            _socketState.Start(port);
         }
 
         public void Stop()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Guild boss transport stopped.";
-            }
+            StopInternal(clearPending: true);
+            _socketState.SetStatus("GuildBoss packet transport listener already retired.");
         }
 
         public bool TryDequeue(out GuildBossPacketInboxMessage message)
@@ -152,64 +72,23 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendPulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
-            ConnectedClient[] clients = _clients.Values.ToArray();
-            if (clients.Length == 0)
-            {
-                status = "Guild boss transport has no connected clients.";
-                LastStatus = status;
-                return false;
-            }
-
-            string legacyLine = $"pulleyhit {request.Sequence} {request.TickCount}";
-            string rawPacketLine = $"packetoutraw {PulleyRequestPacketHex}";
-            int sent = 0;
-
-            foreach (ConnectedClient client in clients)
-            {
-                try
-                {
-                    lock (client.WriteLock)
-                    {
-                        client.Writer.WriteLine(legacyLine);
-                        client.Writer.WriteLine(rawPacketLine);
-                    }
-
-                    sent++;
-                }
-                catch (Exception ex)
-                {
-                    RemoveClient(client.Id, $"Guild boss transport send failed for {client.Endpoint}: {ex.Message}");
-                }
-            }
-
-            if (sent == 0)
-            {
-                status = "Guild boss transport could not deliver the pulley request.";
-                LastStatus = status;
-                return false;
-            }
-
-            SentCount++;
-            status = $"Sent pulleyhit #{request.Sequence} and packetoutraw {PulleyRequestPacketHex} to {sent} guild boss transport client(s).";
-            LastStatus = status;
-            return true;
+            status = "Guild boss pulley requests require the role-session bridge or local packet command path; loopback transport is retired.";
+            _socketState.SetStatus(status);
+            return false;
         }
 
         public void RecordDispatchResult(string source, int packetType, bool success, string message)
         {
             string packetLabel = DescribePacketType(packetType);
             string summary = string.IsNullOrWhiteSpace(message) ? packetLabel : $"{packetLabel}: {message}";
-            LastStatus = success
+            _socketState.SetStatus(success
                 ? $"Applied {summary} from {source}."
-                : $"Ignored {summary} from {source}.";
+                : $"Ignored {summary} from {source}.");
         }
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
+            StopInternal(clearPending: true);
         }
 
         public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
@@ -401,92 +280,6 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    int clientId = Interlocked.Increment(ref _nextClientId);
-                    string endpoint = client.Client?.RemoteEndPoint?.ToString() ?? $"guildboss-client-{clientId}";
-                    var connectedClient = new ConnectedClient(clientId, client, endpoint);
-                    _clients[clientId] = connectedClient;
-                    LastStatus = $"Guild boss transport client connected: {endpoint}.";
-                    _ = Task.Run(() => HandleClientAsync(connectedClient, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Guild boss transport error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(ConnectedClient client, CancellationToken cancellationToken)
-        {
-            try
-            {
-                using (client)
-                using (StreamReader reader = new StreamReader(client.Client.GetStream()))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (line.StartsWith("pulleyhit", StringComparison.OrdinalIgnoreCase))
-                        {
-                            LastStatus = $"Ignored outbound echo from {client.Endpoint}: {line}";
-                            continue;
-                        }
-
-                        if (line.StartsWith("packetoutraw", StringComparison.OrdinalIgnoreCase))
-                        {
-                            LastStatus = $"Ignored outbound echo from {client.Endpoint}: {line}";
-                            continue;
-                        }
-
-                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out bool ignored, out string error))
-                        {
-                            LastStatus = ignored
-                                ? $"Ignored outbound echo from {client.Endpoint}: {error}"
-                                : $"Ignored guild boss transport line from {client.Endpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(packetType, payload, client.Endpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(packetType)} from {client.Endpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Guild boss transport client error: {ex.Message}";
-            }
-            finally
-            {
-                RemoveClient(client.Id, $"Guild boss transport client disconnected: {client.Endpoint}.");
-            }
-        }
 
         private static bool TryParsePacketType(string token, out int packetType)
         {
@@ -602,44 +395,8 @@ namespace HaCreator.MapSimulator.Managers
             return count == 0 ? string.Empty : new string(buffer, 0, count);
         }
 
-        private void RemoveClient(int clientId, string status)
-        {
-            if (_clients.TryRemove(clientId, out ConnectedClient client))
-            {
-                client.Dispose();
-            }
-
-            LastStatus = status;
-        }
-
         private void StopInternal(bool clearPending)
         {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
-            _listenerTask = null;
-
-            foreach (var pair in _clients)
-            {
-                RemoveClient(pair.Key, "Guild boss transport client disconnected.");
-            }
-
             if (clearPending)
             {
                 while (_pendingMessages.TryDequeue(out _))

@@ -12,7 +12,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.UI
 {
     public enum CashServiceStageKind
@@ -5156,7 +5157,7 @@ namespace HaCreator.MapSimulator.UI
             byte[] trailingPayload = new byte[Math.Max(0, stream.Length - stream.Position)];
             if (trailingPayload.Length > 0)
             {
-                _ = reader.Read(trailingPayload, 0, trailingPayload.Length);
+                trailingPayload = reader.ReadBytes(trailingPayload.Length);
             }
 
             return TryDecodeEmbeddedCashItemInfoSnapshots(trailingPayload, startOffset: 0, maxCount: maxCount);

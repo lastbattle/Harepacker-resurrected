@@ -12,7 +12,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Interaction
 {
     public enum SocialRoomKind

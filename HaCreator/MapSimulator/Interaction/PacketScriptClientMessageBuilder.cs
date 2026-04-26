@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -16,8 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
             int maxInputLength,
             int remainingSeconds)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = CreateHeader(stream, npcId, 6);
+            using PacketWriter writer = CreateHeader(npcId, 6);
             writer.Write((byte)0);
             WriteMapleString(writer, title);
             WriteMapleString(writer, problemText);
@@ -25,15 +24,14 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write(minInputLength);
             writer.Write(maxInputLength);
             writer.Write(remainingSeconds);
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
         internal static byte[] BuildQuizClientClosePacket(int npcId)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = CreateHeader(stream, npcId, 6);
+            using PacketWriter writer = CreateHeader(npcId, 6);
             writer.Write((byte)1);
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
         internal static byte[] BuildSpeedQuizClientPacket(
@@ -44,23 +42,21 @@ namespace HaCreator.MapSimulator.Interaction
             int remainingQuestions,
             int remainingSeconds)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = CreateHeader(stream, npcId, 7);
+            using PacketWriter writer = CreateHeader(npcId, 7);
             writer.Write((byte)0);
             writer.Write(currentQuestion);
             writer.Write(totalQuestions);
             writer.Write(correctAnswers);
             writer.Write(remainingQuestions);
             writer.Write(remainingSeconds);
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
         internal static byte[] BuildSpeedQuizClientClosePacket(int npcId)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = CreateHeader(stream, npcId, 7);
+            using PacketWriter writer = CreateHeader(npcId, 7);
             writer.Write((byte)1);
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
         internal static byte[] BuildPetClientPacket(
@@ -87,12 +83,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static byte[] BuildSlideMenuClientPacket(int npcId, int slideMenuType, int initialSelectionId, string buttonInfo)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = CreateHeader(stream, npcId, 15);
+            using PacketWriter writer = CreateHeader(npcId, 15);
             writer.Write(slideMenuType);
             writer.Write(initialSelectionId);
             WriteMapleString(writer, buttonInfo);
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
         private static byte[] BuildPetClientPacketCore(
@@ -102,8 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<long> petSerialNumbers,
             bool exceptionExists)
         {
-            using MemoryStream stream = new();
-            using BinaryWriter writer = CreateHeader(stream, npcId, messageType);
+            using PacketWriter writer = CreateHeader(npcId, messageType);
             WriteMapleString(writer, prompt);
             int count = Math.Min(byte.MaxValue, petSerialNumbers?.Count ?? 0);
             writer.Write((byte)count);
@@ -118,12 +112,12 @@ namespace HaCreator.MapSimulator.Interaction
                 writer.Write((byte)0);
             }
 
-            return stream.ToArray();
+            return writer.ToArray();
         }
 
-        private static BinaryWriter CreateHeader(Stream stream, int npcId, byte messageType)
+        private static PacketWriter CreateHeader(int npcId, byte messageType)
         {
-            BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            PacketWriter writer = new();
             writer.Write((byte)4);
             writer.Write(npcId);
             writer.Write(messageType);
@@ -131,7 +125,7 @@ namespace HaCreator.MapSimulator.Interaction
             return writer;
         }
 
-        private static void WriteMapleString(BinaryWriter writer, string value)
+        private static void WriteMapleString(PacketWriter writer, string value)
         {
             value ??= string.Empty;
             byte[] bytes = Encoding.Default.GetBytes(value);

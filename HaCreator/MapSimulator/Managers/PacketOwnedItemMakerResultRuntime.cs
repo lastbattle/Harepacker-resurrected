@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Managers
 {
     internal readonly record struct PacketOwnedItemMakerResultItemEntry(int ItemId, int Quantity);

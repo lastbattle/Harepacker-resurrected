@@ -1,5 +1,4 @@
 using HaCreator.MapSimulator.Interaction;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
@@ -60,11 +59,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<ushort, string> _passiveInboundOpcodeSampleRawHex = new();
         private readonly Dictionary<byte, string> _observedMessengerSubtypePayloadSamples = new();
         private readonly Dictionary<byte, string> _observedMapleTvResultCodePayloadSamples = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
 
         private readonly record struct PendingOutboundPacket(int Opcode, byte[] RawPacket);
         private readonly record struct PendingResultExpectation(
@@ -100,55 +95,13 @@ namespace HaCreator.MapSimulator.Managers
         private int _expectedResultUnexpectedCount;
         private int _expectedResultEvictedCount;
         private int _unknownInboundBranchCount;
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public ushort MessengerOpcode { get; private set; } = DefaultInboundResultOpcode;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
@@ -159,16 +112,17 @@ namespace HaCreator.MapSimulator.Managers
         public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Messenger official-session bridge inactive.";
 
-        public MessengerOfficialSessionBridgeManager()
+        public MessengerOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
             : this(
                 "Messenger",
                 DefaultListenPort,
                 PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0),
-                PacketOwnedSocialUtilityPacketTable.MessengerOutboundOpcode)
+                PacketOwnedSocialUtilityPacketTable.MessengerOutboundOpcode,
+                roleSessionProxyFactory: roleSessionProxyFactory)
         {
         }
 
-        internal MessengerOfficialSessionBridgeManager(string ownerName, int defaultListenPort, ushort defaultInboundOpcode, ushort defaultOutboundOpcode = 0, params ushort[] additionalInboundOpcodes)
+        internal MessengerOfficialSessionBridgeManager(string ownerName, int defaultListenPort, ushort defaultInboundOpcode, ushort defaultOutboundOpcode = 0, Func<MapleRoleSessionProxy> roleSessionProxyFactory = null, params ushort[] additionalInboundOpcodes)
         {
             _ownerName = string.IsNullOrWhiteSpace(ownerName) ? "Messenger" : ownerName.Trim();
             _defaultListenPort = defaultListenPort <= 0 ? DefaultListenPort : defaultListenPort;
@@ -194,6 +148,9 @@ namespace HaCreator.MapSimulator.Managers
             ListenPort = _defaultListenPort;
             MessengerOpcode = _defaultInboundOpcode;
             LastStatus = $"{_ownerName} official-session bridge inactive.";
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
         }
 
         public string DescribeStatus()
@@ -202,7 +159,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : "no active Maple session";
             string lastOutbound = LastSentOpcode >= 0
                 ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
@@ -326,6 +283,14 @@ namespace HaCreator.MapSimulator.Managers
             return LastStatus;
         }
 
+        private string DescribeRecoveredParityVerificationCompact()
+        {
+            lock (_sync)
+            {
+                return $"observed={_observedInboundOpcodes.Count}; matched={_expectedResultMatchCount}; pending={_pendingResultExpectations.Count}; unknown={_unknownInboundBranchCount}";
+            }
+        }
+
         public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
         {
             if (historyIndexFromNewest <= 0)
@@ -382,11 +347,14 @@ namespace HaCreator.MapSimulator.Managers
                     RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
                     RemotePort = remotePort;
                     MessengerOpcode = messengerOpcode == 0 ? _defaultInboundOpcode : messengerOpcode;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"{_ownerName} official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {DescribeInboundOpcodeSet()}.";
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: false);
+                        LastStatus = proxyStatus;
+                        return;
+                    }
+
+                    LastStatus = $"{_ownerName} official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {DescribeInboundOpcodeSet()}. {proxyStatus}";
                 }
                 catch (Exception ex)
                 {
@@ -479,13 +447,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
         {
-            BridgePair pair;
-            lock (_sync)
-            {
-                pair = _activePair;
-            }
-
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = $"{_ownerName} official-session bridge has no connected Maple session for outbound injection.";
                 LastStatus = status;
@@ -500,19 +462,25 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                pair.ServerSession.SendPacket(rawPacket);
+                if (!_roleSessionProxy.TrySendToServer(rawPacket, out string proxyStatus))
+                {
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
                 SentCount++;
                 LastSentOpcode = opcode;
                 LastSentRawPacket = rawPacket;
                 RecordObservedOutboundPacket(rawPacket, "simulator-send");
-                status = $"Injected {_ownerName} outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
+                status = $"Injected {_ownerName} outbound opcode {opcode} into live session.";
                 LastStatus = status;
                 return true;
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"{_ownerName} official-session outbound injection failed: {ex.Message}");
-                status = LastStatus;
+                status = $"{_ownerName} official-session outbound injection failed: {ex.Message}";
+                LastStatus = status;
                 return false;
             }
         }
@@ -544,13 +512,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            BridgePair pair;
-            lock (_sync)
-            {
-                pair = _activePair;
-            }
-
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = $"{_ownerName} official-session bridge has no connected Maple session for outbound injection.";
                 LastStatus = status;
@@ -560,19 +522,25 @@ namespace HaCreator.MapSimulator.Managers
             byte[] clonedRawPacket = (byte[])rawPacket.Clone();
             try
             {
-                pair.ServerSession.SendPacket(clonedRawPacket);
+                if (!_roleSessionProxy.TrySendToServer(clonedRawPacket, out string proxyStatus))
+                {
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
                 SentCount++;
                 LastSentOpcode = opcode;
                 LastSentRawPacket = clonedRawPacket;
                 RecordObservedOutboundPacket(clonedRawPacket, "simulator-replay");
-                status = $"Injected {_ownerName} outbound opcode {opcode} raw packet into live session {pair.RemoteEndpoint}.";
+                status = $"Injected {_ownerName} outbound opcode {opcode} raw packet into live session.";
                 LastStatus = status;
                 return true;
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"{_ownerName} official-session outbound injection failed: {ex.Message}");
-                status = LastStatus;
+                status = $"{_ownerName} official-session outbound injection failed: {ex.Message}";
+                LastStatus = status;
                 return false;
             }
         }
@@ -592,240 +560,98 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"{_ownerName} official-session bridge error: {ex.Message}";
-            }
-        }
-
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = $"Rejected {_ownerName} official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Messenger official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Messenger official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                }
-
-                LastStatus = $"{_ownerName} official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"{_ownerName} official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    int flushed = FlushPendingOutboundPackets(pair);
-                    LastStatus = flushed > 0
-                        ? $"{_ownerName} official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued request(s)."
-                        : $"{_ownerName} official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-                if (!TryDecodeInboundMessengerPacket(raw, $"official-session:{pair.RemoteEndpoint}", MessengerOpcode, _additionalInboundOpcodes, out MessengerOfficialSessionBridgeMessage message))
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(message);
-                RecordObservedInboundPacket(raw, message.Source);
-                ReceivedCount++;
-                LastStatus = $"Queued {_ownerName} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"{_ownerName} official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                if (isInit)
-                {
-                    return;
-                }
-
-                pair.ServerSession.SendPacket(packet.ToArray());
-                RecordObservedOutboundPacket(packet.ToArray(), $"official-session-client:{pair.ClientEndpoint}");
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"{_ownerName} official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private static bool TryDecodeInboundMessengerPacket(byte[] rawPacket, string source, ushort messengerOpcode, IReadOnlySet<ushort> additionalOpcodes, out MessengerOfficialSessionBridgeMessage message)
-        {
-            message = null;
-            if (rawPacket == null || rawPacket.Length < sizeof(ushort) || messengerOpcode == 0)
-            {
-                return false;
-            }
-
-            int opcode = BitConverter.ToUInt16(rawPacket, 0);
-            if (opcode != messengerOpcode && additionalOpcodes?.Contains((ushort)opcode) != true)
-            {
-                return false;
-            }
-
-            byte[] payload = rawPacket.Length == sizeof(ushort)
-                ? Array.Empty<byte>()
-                : rawPacket[sizeof(ushort)..];
-            message = new MessengerOfficialSessionBridgeMessage(payload, source, $"packetclientraw {Convert.ToHexString(rawPacket)}", opcode);
-            return true;
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            lock (_sync)
-            {
-                if (_activePair != pair)
-                {
-                    return;
-                }
-
-                _activePair = null;
-                LastStatus = status;
-            }
-
-            pair?.Close();
-        }
-
-        private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
-        {
-            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
-                || !IsTrackedOutboundOpcode(opcode)
-                || payload.Length == 0)
+            if (e == null)
             {
                 return;
             }
 
-            string summary = TryDescribeOwnerClientRequest(opcode, payload, out string described)
-                ? described
-                : $"{_ownerName} request opcode={opcode} type={payload[0]}";
-
-            lock (_sync)
+            if (e.IsInit)
             {
-                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
-                {
-                    _recentOutboundPackets.Dequeue();
-                }
-
-                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
-                    opcode,
-                    payload[0],
-                    payload.Length,
-                    Convert.ToHexString(payload),
-                    Convert.ToHexString(rawPacket),
-                    source,
-                    summary));
+                int flushed = FlushPendingOutboundPacketsViaProxy();
+                LastStatus = flushed > 0
+                    ? $"{_ownerName} official-session bridge initialized Maple crypto and flushed {flushed} queued request(s)."
+                    : _roleSessionProxy.LastStatus;
+                return;
             }
 
-            _pendingObservedOutboundMessages.Enqueue(
-                new MessengerOfficialSessionBridgeMessage(
-                    payload,
-                    source,
-                    $"packetserverraw {Convert.ToHexString(rawPacket)}",
-                    opcode));
-            RecordExpectedResultForOutbound(opcode, payload, source, summary);
-            LastStatus = $"Forwarded live {_ownerName} outbound opcode {opcode} type {payload[0]} from {source}.";
+            if (!TryDecodeInboundMessengerPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", MessengerOpcode, _additionalInboundOpcodes, out MessengerOfficialSessionBridgeMessage message))
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            RecordObservedInboundPacket(e.RawPacket, message.Source);
+            ReceivedCount++;
+            LastStatus = $"Queued {_ownerName} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {e.SourceEndpoint}.";
         }
 
-        private void RecordObservedInboundPacket(byte[] rawPacket, string source)
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            if (e == null || e.IsInit)
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            RecordObservedOutboundPacket(e.RawPacket, $"official-session-client:{e.SourceEndpoint}");
+            LastStatus = _roleSessionProxy.LastStatus;
+        }
+
+        private void StopInternal(bool clearPending)
+        {
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+            if (!clearPending)
             {
                 return;
             }
 
-            byte resultType = payload.Length > 0 ? payload[0] : (byte)0;
-            RecordRecoveredInboundVerification(opcode, payload, source);
-            string summary = TryDescribeOwnerClientResult(opcode, payload, out string described)
-                ? described
-                : $"{_ownerName} result opcode={opcode} type={resultType}";
-
-            lock (_sync)
+            while (_pendingMessages.TryDequeue(out _))
             {
-                while (_recentInboundPackets.Count >= MaxRecentInboundPackets)
+            }
+
+            while (_pendingObservedOutboundMessages.TryDequeue(out _))
+            {
+            }
+
+            while (_pendingOutboundPackets.TryDequeue(out _))
+            {
+            }
+
+            _recentOutboundPackets.Clear();
+            _recentInboundPackets.Clear();
+            ResetInboundState();
+            ReceivedCount = 0;
+            SentCount = 0;
+            QueuedCount = 0;
+            LastSentOpcode = -1;
+            LastSentRawPacket = Array.Empty<byte>();
+            LastQueuedOpcode = -1;
+            LastQueuedRawPacket = Array.Empty<byte>();
+        }
+
+        private int FlushPendingOutboundPacketsViaProxy()
+        {
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket packet))
+            {
+                if (!_roleSessionProxy.TrySendToServer(packet.RawPacket, out string status))
                 {
-                    _recentInboundPackets.Dequeue();
+                    _pendingOutboundPackets.Enqueue(packet);
+                    LastStatus = status;
+                    break;
                 }
 
-                _recentInboundPackets.Enqueue(new InboundPacketTrace(
-                    opcode,
-                    resultType,
-                    payload.Length,
-                    Convert.ToHexString(payload),
-                    Convert.ToHexString(rawPacket),
-                    source,
-                    summary));
+                SentCount++;
+                LastSentOpcode = packet.Opcode;
+                LastSentRawPacket = packet.RawPacket;
+                RecordObservedOutboundPacket(packet.RawPacket, "deferred-flush");
+                flushed++;
             }
+
+            return flushed;
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
@@ -837,263 +663,94 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            opcode = BitConverter.ToUInt16(rawPacket, 0);
-            payload = rawPacket.Length == sizeof(ushort)
-                ? Array.Empty<byte>()
-                : rawPacket[sizeof(ushort)..];
+            opcode = rawPacket[0] | (rawPacket[1] << 8);
+            payload = rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
             return true;
         }
 
-        private void RecordExpectedResultForOutbound(int opcode, byte[] payload, string source, string summary)
+        private static bool TryDecodeInboundMessengerPacket(
+            byte[] rawPacket,
+            string source,
+            ushort primaryOpcode,
+            IReadOnlySet<ushort> additionalOpcodes,
+            out MessengerOfficialSessionBridgeMessage message)
         {
-            if (!PacketOwnedSocialUtilityPacketTable.TryBuildRecoveredResultExpectation(
-                    _ownerName,
-                    opcode,
-                    payload,
-                    out int[] expectedInboundOpcodes,
-                    out byte[] expectedInboundSubtypes,
-                    out string expectationSummary))
+            message = null;
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                return false;
+            }
+
+            if (opcode != primaryOpcode && additionalOpcodes?.Contains((ushort)opcode) != true)
+            {
+                return false;
+            }
+
+            message = new MessengerOfficialSessionBridgeMessage(
+                payload,
+                source,
+                $"packetclientraw {Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}",
+                opcode);
+            return true;
+        }
+
+        private void RecordObservedInboundPacket(byte[] rawPacket, string source)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
             {
                 return;
             }
 
-            byte requestSubtype = payload.Length > 0 ? payload[0] : byte.MaxValue;
+            byte subtype = payload.Length > 0 ? payload[0] : (byte)0;
             lock (_sync)
             {
-                while (_pendingResultExpectations.Count >= MaxPendingResultExpectations)
+                _observedInboundOpcodes.Add((ushort)opcode);
+                if (payload.Length > 0)
                 {
-                    _pendingResultExpectations.RemoveAt(0);
-                    _expectedResultEvictedCount++;
+                    _observedMessengerInboundSubtypes.Add(subtype);
+                    _observedMessengerSubtypePayloadSamples[subtype] = Convert.ToHexString(payload);
                 }
 
-                _pendingResultExpectations.Add(
-                    new PendingResultExpectation(
-                        opcode,
-                        requestSubtype,
-                        source,
-                        summary,
-                        expectedInboundOpcodes ?? Array.Empty<int>(),
-                        expectedInboundSubtypes ?? Array.Empty<byte>(),
-                        expectationSummary ?? string.Empty));
-                _expectedResultRequestCount++;
+                _recentInboundPackets.Enqueue(new InboundPacketTrace(
+                    opcode,
+                    subtype,
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                    source,
+                    "observed"));
+                while (_recentInboundPackets.Count > MaxRecentInboundPackets)
+                {
+                    _recentInboundPackets.Dequeue();
+                }
             }
         }
 
-        private void RecordRecoveredInboundVerification(int inboundOpcode, byte[] payload, string source)
+        private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
         {
-            byte inboundSubtype = byte.MaxValue;
-            byte resultCode = byte.MaxValue;
-            bool decodedKnownBranch = PacketOwnedSocialUtilityPacketTable.TryDecodeRecoveredInboundBranch(
-                _ownerName,
-                inboundOpcode,
-                payload,
-                out inboundSubtype,
-                out resultCode,
-                out _);
-            bool isRecoveredInboundOpcode = PacketOwnedSocialUtilityPacketTable.IsRecoveredInboundOpcode(
-                _ownerName,
-                unchecked((ushort)Math.Clamp(inboundOpcode, ushort.MinValue, ushort.MaxValue)));
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                return;
+            }
 
+            byte requestType = payload.Length > 0 ? payload[0] : (byte)0;
             lock (_sync)
             {
-                if (isRecoveredInboundOpcode)
+                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
+                    opcode,
+                    requestType,
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                    source,
+                    IsTrackedOutboundOpcode(opcode) ? "tracked" : "observed"));
+                while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
                 {
-                    _observedInboundOpcodes.Add((ushort)inboundOpcode);
-                }
-
-                if (decodedKnownBranch)
-                {
-                    if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (resultCode != byte.MaxValue)
-                        {
-                            _observedMapleTvSendResultCodes.Add(resultCode);
-                        }
-                    }
-                    else if (inboundSubtype != byte.MaxValue)
-                    {
-                        _observedMessengerInboundSubtypes.Add(inboundSubtype);
-                    }
-                }
-                else if (isRecoveredInboundOpcode)
-                {
-                    _unknownInboundBranchCount++;
-                }
-
-                int matchIndex = FindMatchingExpectationIndex(_pendingResultExpectations, inboundOpcode, inboundSubtype, decodedKnownBranch);
-                if (matchIndex >= 0)
-                {
-                    _pendingResultExpectations.RemoveAt(matchIndex);
-                    _expectedResultMatchCount++;
-                    return;
-                }
-
-                int mismatchedIndex = FindMismatchedExpectationIndex(_pendingResultExpectations, inboundOpcode);
-                if (mismatchedIndex >= 0)
-                {
-                    _pendingResultExpectations.RemoveAt(mismatchedIndex);
-                    _expectedResultMismatchCount++;
-                    return;
-                }
-
-                if (decodedKnownBranch || isRecoveredInboundOpcode)
-                {
-                    _expectedResultUnexpectedCount++;
+                    _recentOutboundPackets.Dequeue();
                 }
             }
-        }
-
-        private bool TryDescribeOwnerClientRequest(int opcode, byte[] payload, out string summary)
-        {
-            summary = null;
-            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase)
-                && opcode == MapleTvRuntime.ConsumeCashItemUseRequestOpcode)
-            {
-                if (MapleTvRuntime.TryDecodeConsumeCashItemUseRequestPayload(payload, out MapleTvConsumeCashItemUseRequest request, out _))
-                {
-                    string receiver = string.IsNullOrWhiteSpace(request.ReceiverName)
-                        ? "self broadcast"
-                        : $"receiver={request.ReceiverName}";
-                    summary = $"MapleTV consume-cash request slot={request.InventoryPosition} item={request.ItemId} {receiver}";
-                    return true;
-                }
-
-                summary = "MapleTV consume-cash request";
-                return true;
-            }
-
-            return MessengerPacketCodec.TryDescribeClientRequest(opcode, payload, out summary);
-        }
-
-        private bool TryDescribeOwnerClientResult(int opcode, byte[] payload, out string summary)
-        {
-            summary = null;
-            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
-            {
-                switch (opcode)
-                {
-                    case MapleTvRuntime.PacketTypeSetMessage:
-                        summary = "CMapleTVMan::OnSetMessage";
-                        return true;
-                    case MapleTvRuntime.PacketTypeClearMessage:
-                        summary = "CMapleTVMan::OnClearMessage";
-                        return true;
-                    case MapleTvRuntime.PacketTypeSendMessageResult:
-                        if (payload.Length >= 2)
-                        {
-                            bool showFeedback = payload[0] != 0;
-                            summary = showFeedback
-                                ? $"CMapleTVMan::OnSendMessageResult showFeedback=1 resultCode={payload[1]}"
-                                : "CMapleTVMan::OnSendMessageResult showFeedback=0";
-                            return true;
-                        }
-
-                        summary = "CMapleTVMan::OnSendMessageResult";
-                        return true;
-                }
-            }
-
-            return MessengerPacketCodec.TryDescribeClientResult(opcode, payload, out summary);
-        }
-
-        private string DescribeRecoveredParityVerificationCompact()
-        {
-            lock (_sync)
-            {
-                return $"req={_expectedResultRequestCount},match={_expectedResultMatchCount},mismatch={_expectedResultMismatchCount},unexpected={_expectedResultUnexpectedCount},pending={_pendingResultExpectations.Count},unknown={_unknownInboundBranchCount}";
-            }
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            BridgePair pair;
-            lock (_sync)
-            {
-                pair = _activePair;
-                _activePair = null;
-            }
-
-            pair?.Close();
-            if (clearPending)
-            {
-                ResetInboundState();
-                while (_pendingOutboundPackets.TryDequeue(out _))
-                {
-                }
-            }
-        }
-
-        private void ResetInboundState()
-        {
-            while (_pendingMessages.TryDequeue(out _))
-            {
-            }
-            while (_pendingObservedOutboundMessages.TryDequeue(out _))
-            {
-            }
-
-            ReceivedCount = 0;
-            SentCount = 0;
-            QueuedCount = 0;
-            LastSentOpcode = -1;
-            LastSentRawPacket = Array.Empty<byte>();
-            LastQueuedOpcode = -1;
-            LastQueuedRawPacket = Array.Empty<byte>();
-            _pendingResultExpectations.Clear();
-            _observedInboundOpcodes.Clear();
-            _observedMessengerInboundSubtypes.Clear();
-            _observedMapleTvSendResultCodes.Clear();
-            _expectedResultRequestCount = 0;
-            _expectedResultMatchCount = 0;
-            _expectedResultMismatchCount = 0;
-            _expectedResultUnexpectedCount = 0;
-            _expectedResultEvictedCount = 0;
-            _unknownInboundBranchCount = 0;
-        }
-
-        private int FlushPendingOutboundPackets(BridgePair pair)
-        {
-            int flushed = 0;
-            while (_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket pending))
-            {
-                pair.ServerSession.SendPacket(pending.RawPacket);
-                SentCount++;
-                LastSentOpcode = pending.Opcode;
-                LastSentRawPacket = pending.RawPacket;
-                RecordObservedOutboundPacket(pending.RawPacket, $"official-session-flush:{pair.ClientEndpoint}");
-                flushed++;
-            }
-
-            return flushed;
         }
 
         private bool TryBuildRawPacket(int opcode, IReadOnlyList<byte> payload, out byte[] rawPacket, out string status)
@@ -1206,9 +863,17 @@ namespace HaCreator.MapSimulator.Managers
             return string.Join(",", new[] { primaryOpcode }.Concat(_additionalInboundOpcodes).Distinct().OrderBy(opcode => opcode));
         }
 
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
+        private void ResetInboundState()
         {
-            return new MapleCrypto((byte[])iv.Clone(), version);
+            _observedInboundOpcodes.Clear();
+            _observedMessengerInboundSubtypes.Clear();
+            _observedMapleTvSendResultCodes.Clear();
+            _passiveInboundOpcodeHitCounts.Clear();
+            _passiveInboundSubtypeObservations.Clear();
+            _passiveMapleTvResultCodeObservations.Clear();
+            _passiveInboundOpcodeSampleRawHex.Clear();
+            _observedMessengerSubtypePayloadSamples.Clear();
+            _observedMapleTvResultCodePayloadSamples.Clear();
         }
 
         private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)

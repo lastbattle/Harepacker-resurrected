@@ -67,6 +67,13 @@ namespace HaCreator.MapSimulator
                 _guildBossOfficialSessionBridge.HasPassiveEstablishedSocketPair);
         }
 
+        private string DescribeGuildBossTransportRoutingStatus()
+        {
+            string modeText = _guildBossOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"Guild boss transport routing {modeText}, {fallbackText}.";
+        }
+
         private string DescribeGuildBossOfficialSessionBridgeStatus()
         {
             string enabledText = _guildBossOfficialSessionBridgeEnabled ? "enabled" : "disabled";

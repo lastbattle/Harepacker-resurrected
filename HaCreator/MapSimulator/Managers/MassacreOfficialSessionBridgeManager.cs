@@ -13,7 +13,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
@@ -56,12 +55,15 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
         private readonly object _sync = new();
         private readonly MassacreSessionValueInfoState _sessionValueInfoState = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
+
+        public MassacreOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -135,55 +137,13 @@ namespace HaCreator.MapSimulator.Managers
                 Skill = 0;
             }
         }
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Massacre official-session bridge inactive.";
 
@@ -193,7 +153,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -277,12 +237,15 @@ namespace HaCreator.MapSimulator.Managers
                     ListenPort = requestedListenPort;
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                    _listener.Start();
-                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Massacre official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        status = LastStatus;
+                        return false;
+                    }
+
+                    LastStatus = $"Massacre official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                     status = LastStatus;
                     return true;
                 }
@@ -619,27 +582,6 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Massacre official-session bridge error: {ex.Message}";
-            }
-        }
 
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
         {
@@ -652,12 +594,15 @@ namespace HaCreator.MapSimulator.Managers
                 ListenPort = requestedListenPort;
                 RemoteHost = resolvedRemoteHost;
                 RemotePort = remotePort;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                _listener.Start();
-                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                status = $"Massacre official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                {
+                    StopInternal(clearPending: false);
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
+                status = $"Massacre official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                 LastStatus = status;
                 return true;
             }
@@ -669,550 +614,166 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
         }
-
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Massacre official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Massacre official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Massacre official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _passiveEstablishedSession = null;
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Massacre official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Massacre official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    LastStatus = $"Massacre official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryDecodeInboundMassacrePacket(
-                        raw,
-                        $"official-session:{pair.RemoteEndpoint}",
-                        GetMappedInboundOpcodesSnapshot(),
-                        _sessionValueInfoState,
-                        out MassacrePacketInboxMessage message))
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(message);
-                RecordInboundPacket(raw, message, $"official-session:{pair.RemoteEndpoint}");
-                ReceivedCount++;
-                LastStatus = $"Queued {DescribeMessage(message)} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Massacre official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            if (isInit)
+            if (e == null)
             {
                 return;
             }
 
-            try
+            if (e.IsInit)
             {
-                pair.ServerSession.SendPacket(packet.ToArray());
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Massacre official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            if (pair == null)
-            {
+                LastStatus = _roleSessionProxy.LastStatus;
                 return;
             }
 
-            lock (_sync)
+            if (!TryDecodeInboundMassacrePacket(
+                    e.RawPacket,
+                    $"official-session:{e.SourceEndpoint}",
+                    GetMappedInboundOpcodesSnapshot(),
+                    _sessionValueInfoState,
+                    out MassacrePacketInboxMessage message))
             {
-                if (!ReferenceEquals(_activePair, pair))
-                {
-                    return;
-                }
-
-                _activePair = null;
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
 
-            pair.Close();
-            LastStatus = status;
+            _pendingMessages.Enqueue(message);
+            RecordInboundPacket(e.RawPacket, message, $"official-session:{e.SourceEndpoint}");
+            ReceivedCount++;
+            LastStatus = $"Queued {DescribeMessage(message)} from live session {e.SourceEndpoint}.";
+        }
+
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         private void StopInternal(bool clearPending)
         {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            BridgePair pair = _activePair;
+            _roleSessionProxy.Stop(resetCounters: clearPending);
             _passiveEstablishedSession = null;
-            _activePair = null;
-            pair?.Close();
-
-            if (clearPending)
+            if (!clearPending)
             {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
+                return;
+            }
 
-                ReceivedCount = 0;
-                _recentInboundPackets.Clear();
-                _sessionValueInfoState.Clear();
+            while (_pendingMessages.TryDequeue(out _))
+            {
+            }
+
+            _recentInboundPackets.Clear();
+            _sessionValueInfoState.Clear();
+            ReceivedCount = 0;
+        }
+
+        private Dictionary<int, MassacrePacketInboxMessageKind> GetMappedInboundOpcodesSnapshot()
+        {
+            lock (_sync)
+            {
+                return new Dictionary<int, MassacrePacketInboxMessageKind>(_mappedInboundOpcodes);
             }
         }
 
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
+        private static bool IsSupportedMappedKind(MassacrePacketInboxMessageKind kind)
         {
-            return new MapleCrypto((byte[])iv.Clone(), version);
+            return kind == MassacrePacketInboxMessageKind.ClockPayload
+                || kind == MassacrePacketInboxMessageKind.InfoPayload
+                || kind == MassacrePacketInboxMessageKind.IncGauge
+                || kind == MassacrePacketInboxMessageKind.Stage
+                || kind == MassacrePacketInboxMessageKind.Bonus
+                || kind == MassacrePacketInboxMessageKind.Result
+                || kind == MassacrePacketInboxMessageKind.Packet;
         }
 
-        internal static bool TryDecodeInboundMassacrePacket(byte[] rawPacket, string source, out MassacrePacketInboxMessage message)
+        private static string DescribeMappedKind(MassacrePacketInboxMessageKind kind)
         {
-            return TryDecodeInboundMassacrePacket(rawPacket, source, null, null, out message);
+            return kind switch
+            {
+                MassacrePacketInboxMessageKind.ClockPayload => "clock payload",
+                MassacrePacketInboxMessageKind.InfoPayload => "context payload",
+                MassacrePacketInboxMessageKind.IncGauge => "inc gauge",
+                MassacrePacketInboxMessageKind.Stage => "stage",
+                MassacrePacketInboxMessageKind.Bonus => "bonus",
+                MassacrePacketInboxMessageKind.Result => "result",
+                MassacrePacketInboxMessageKind.Packet => "packet",
+                _ => kind.ToString()
+            };
         }
 
-        internal static bool TryDecodeInboundMassacrePacket(
+        private static bool TryDecodeInboundMassacrePacket(
             byte[] rawPacket,
             string source,
-            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
-            out MassacrePacketInboxMessage message)
-        {
-            return TryDecodeInboundMassacrePacket(rawPacket, source, mappedInboundOpcodes, null, out message);
-        }
-
-        internal static bool TryDecodeInboundMassacrePacket(
-            byte[] rawPacket,
-            string source,
-            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
+            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedOpcodes,
             MassacreSessionValueInfoState sessionValueInfoState,
             out MassacrePacketInboxMessage message)
         {
             message = null;
-            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
             {
                 return false;
             }
 
             int opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
-            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
-            if (mappedInboundOpcodes != null
-                && mappedInboundOpcodes.TryGetValue(opcode, out MassacrePacketInboxMessageKind mappedKind))
-            {
-                return TryBuildMappedInboundMessage(opcode, mappedKind, payload, source, rawPacket, out message);
-            }
+            byte[] payload = rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
 
-            if (opcode == DefaultInboundSessionValueOpcode
-                && TryBuildSessionValueInboundMessage(payload, source, rawPacket, sessionValueInfoState, out message))
+            if (mappedOpcodes != null && mappedOpcodes.TryGetValue(opcode, out MassacrePacketInboxMessageKind mappedKind))
             {
+                message = new MassacrePacketInboxMessage(
+                    mappedKind,
+                    source,
+                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
+                    packetType: opcode,
+                    payload: payload);
                 return true;
             }
 
             if (opcode == CurrentWrapperRelayOpcode
-                && TryDecodeNestedRelayMassacrePacket(payload, source, rawPacket, mappedInboundOpcodes, sessionValueInfoState, out message))
+                && SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out byte[] relayedPayload, out _))
             {
-                return true;
-            }
-
-            if (opcode != CurrentWrapperRelayOpcode
-                && opcode != PacketTypeIncGauge
-                && opcode != PacketTypeResult)
-            {
-                return TryDecodeNestedRelayMassacrePacket(payload, source, rawPacket, mappedInboundOpcodes, sessionValueInfoState, out message);
-            }
-
-            if (opcode != CurrentWrapperRelayOpcode)
-            {
-                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
-                opcode = CurrentWrapperRelayOpcode;
-            }
-
-            message = new MassacrePacketInboxMessage(
-                MassacrePacketInboxMessageKind.Packet,
-                source,
-                $"packetraw {Convert.ToHexString(rawPacket)}",
-                packetType: opcode,
-                payload: payload);
-            return true;
-        }
-
-        private static bool TryBuildSessionValueInboundMessage(
-            byte[] payload,
-            string source,
-            byte[] rawPacket,
-            MassacreSessionValueInfoState sessionValueInfoState,
-            out MassacrePacketInboxMessage message)
-        {
-            message = null;
-            if (!TryDecodeSessionValueKeyValuePair(payload, out string key, out string value))
-            {
-                return false;
-            }
-
-            if (!TryParseNonNegativeAtoiValue(value, out int numericValue))
-            {
-                return false;
-            }
-
-            if (TryMatchSessionValueKey(key, MassacreStageSessionKeyStringPoolId, MassacreStageSessionKeyFallback))
-            {
-                if (numericValue <= 0)
-                {
-                    return false;
-                }
-
                 message = new MassacrePacketInboxMessage(
-                    MassacrePacketInboxMessageKind.Stage,
+                    MassacrePacketInboxMessageKind.Packet,
                     source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}",
-                    value1: numericValue);
-                return true;
+                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
+                    packetType: relayedPacketType,
+                    payload: relayedPayload);
+                return relayedPacketType == DefaultInboundSessionValueOpcode
+                    || relayedPacketType == PacketTypeIncGauge
+                    || relayedPacketType == PacketTypeResult;
             }
 
-            if (TryMatchSessionValueKey(key, MassacrePartySessionKeyStringPoolId, MassacrePartySessionKeyFallback))
+            if (opcode == DefaultInboundSessionValueOpcode
+                || opcode == PacketTypeIncGauge
+                || opcode == PacketTypeResult)
             {
-                if (numericValue <= 0)
-                {
-                    return false;
-                }
-
                 message = new MassacrePacketInboxMessage(
-                    MassacrePacketInboxMessageKind.Bonus,
+                    MassacrePacketInboxMessageKind.Packet,
                     source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}");
+                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
+                    packetType: opcode,
+                    payload: payload);
                 return true;
-            }
-
-            if (sessionValueInfoState == null
-                || !sessionValueInfoState.TryApply(key, numericValue, out bool hasInfoBaseline)
-                || !hasInfoBaseline)
-            {
-                return false;
-            }
-
-            message = new MassacrePacketInboxMessage(
-                MassacrePacketInboxMessageKind.Info,
-                source,
-                $"packetraw {Convert.ToHexString(rawPacket)}",
-                value1: sessionValueInfoState.Hit,
-                value2: sessionValueInfoState.Miss,
-                value3: sessionValueInfoState.Cool,
-                value4: sessionValueInfoState.Skill);
-            return true;
-        }
-
-        private static bool TryDecodeSessionValueKeyValuePair(byte[] payload, out string key, out string value)
-        {
-            key = string.Empty;
-            value = string.Empty;
-
-            try
-            {
-                PacketReader reader = new(payload ?? Array.Empty<byte>());
-                key = reader.ReadMapleString();
-                value = reader.ReadMapleString();
-                return !string.IsNullOrWhiteSpace(key) && reader.Remaining == 0;
-            }
-            catch (Exception ex) when (ex is ArgumentOutOfRangeException || ex is EndOfStreamException || ex is IOException)
-            {
-                return false;
-            }
-        }
-
-        private static bool TryParseNonNegativeAtoiValue(string rawValue, out int value)
-        {
-            value = 0;
-            if (rawValue == null)
-            {
-                return false;
-            }
-
-            int index = 0;
-            while (index < rawValue.Length && char.IsWhiteSpace(rawValue[index]))
-            {
-                index++;
-            }
-
-            bool negative = false;
-            if (index < rawValue.Length && (rawValue[index] == '+' || rawValue[index] == '-'))
-            {
-                negative = rawValue[index] == '-';
-                index++;
-            }
-
-            long parsed = 0;
-            bool hasDigit = false;
-            while (index < rawValue.Length && char.IsDigit(rawValue[index]))
-            {
-                hasDigit = true;
-                parsed = (parsed * 10) + (rawValue[index] - '0');
-                if (parsed > int.MaxValue)
-                {
-                    return false;
-                }
-
-                index++;
-            }
-
-            if (!hasDigit || negative)
-            {
-                return false;
-            }
-
-            value = (int)parsed;
-            return true;
-        }
-
-        private static bool TryMatchSessionValueKey(string key, int stringPoolId, string fallbackKey)
-        {
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                return false;
-            }
-
-            if (MapleStoryStringPool.TryGet(stringPoolId, out string recoveredKey)
-                && string.Equals(key, recoveredKey, StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            return string.Equals(key, fallbackKey, StringComparison.Ordinal);
-        }
-
-        private static bool TryDecodeNestedRelayMassacrePacket(
-            byte[] payload,
-            string source,
-            byte[] rawPacket,
-            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
-            MassacreSessionValueInfoState sessionValueInfoState,
-            out MassacrePacketInboxMessage message)
-        {
-            message = null;
-            byte[] relayPayload = payload ?? Array.Empty<byte>();
-            for (int depth = 0; depth < MaxNestedRelayDepth; depth++)
-            {
-                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                        relayPayload,
-                        out int relayPacketType,
-                        out byte[] nestedPayload,
-                        out _))
-                {
-                    return false;
-                }
-
-                if (TryBuildNestedRelayMessage(
-                        relayPacketType,
-                        nestedPayload,
-                        source,
-                        rawPacket,
-                        mappedInboundOpcodes,
-                        sessionValueInfoState,
-                        out message))
-                {
-                    return true;
-                }
-
-                if (relayPacketType != CurrentWrapperRelayOpcode)
-                {
-                    return false;
-                }
-
-                relayPayload = nestedPayload ?? Array.Empty<byte>();
             }
 
             return false;
         }
 
-        private static bool TryBuildNestedRelayMessage(
-            int nestedPacketType,
-            byte[] nestedPayload,
-            string source,
-            byte[] rawPacket,
-            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
-            MassacreSessionValueInfoState sessionValueInfoState,
-            out MassacrePacketInboxMessage message)
-        {
-            message = null;
-            nestedPayload ??= Array.Empty<byte>();
-
-            if (mappedInboundOpcodes != null
-                && mappedInboundOpcodes.TryGetValue(nestedPacketType, out MassacrePacketInboxMessageKind mappedKind)
-                && TryBuildMappedInboundMessage(nestedPacketType, mappedKind, nestedPayload, source, rawPacket, out message))
-            {
-                return true;
-            }
-
-            if (nestedPacketType == DefaultInboundSessionValueOpcode
-                && TryBuildSessionValueInboundMessage(nestedPayload, source, rawPacket, sessionValueInfoState, out message))
-            {
-                return true;
-            }
-
-            if (nestedPacketType != CurrentWrapperRelayOpcode
-                && nestedPacketType != PacketTypeIncGauge
-                && nestedPacketType != PacketTypeResult)
-            {
-                return false;
-            }
-
-            byte[] relayPayload = nestedPacketType == CurrentWrapperRelayOpcode
-                ? nestedPayload
-                : SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(nestedPacketType, nestedPayload);
-
-            message = new MassacrePacketInboxMessage(
-                MassacrePacketInboxMessageKind.Packet,
-                source,
-                $"packetraw {Convert.ToHexString(rawPacket)}",
-                packetType: CurrentWrapperRelayOpcode,
-                payload: relayPayload);
-            return true;
-        }
-
-        private IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> GetMappedInboundOpcodesSnapshot()
-        {
-            lock (_sync)
-            {
-                return _mappedInboundOpcodes.Count == 0
-                    ? null
-                    : new Dictionary<int, MassacrePacketInboxMessageKind>(_mappedInboundOpcodes);
-            }
-        }
-
-        private static bool TryBuildMappedInboundMessage(
-            int mappedOpcode,
-            MassacrePacketInboxMessageKind mappedKind,
-            byte[] payload,
-            string source,
-            byte[] rawPacket,
-            out MassacrePacketInboxMessage message)
-        {
-            message = null;
-            payload ??= Array.Empty<byte>();
-            if (!IsSupportedMappedKind(mappedKind) || !HasExpectedMappedPayloadLength(mappedKind, payload))
-            {
-                return false;
-            }
-
-            int packetType = mappedKind switch
-            {
-                MassacrePacketInboxMessageKind.IncGauge => PacketTypeIncGauge,
-                MassacrePacketInboxMessageKind.Result => PacketTypeResult,
-                _ => -1
-            };
-            MassacrePacketInboxMessageKind messageKind = mappedKind switch
-            {
-                MassacrePacketInboxMessageKind.IncGauge or MassacrePacketInboxMessageKind.Result => MassacrePacketInboxMessageKind.Packet,
-                _ => mappedKind
-            };
-            int stageValue = mappedKind == MassacrePacketInboxMessageKind.Stage
-                ? BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)))
-                : 0;
-
-            message = new MassacrePacketInboxMessage(
-                messageKind,
-                source,
-                $"packetraw {Convert.ToHexString(rawPacket)}",
-                value1: stageValue,
-                packetType: packetType,
-                payload: payload);
-            return true;
-        }
-
         private void RecordInboundPacket(byte[] rawPacket, MassacrePacketInboxMessage message, string source)
         {
-            if (message == null)
-            {
-                return;
-            }
-
-            int opcode = (rawPacket != null && rawPacket.Length >= sizeof(short))
-                ? BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)))
-                : 0;
-            byte[] payload = rawPacket != null && rawPacket.Length > sizeof(short)
-                ? rawPacket.Skip(sizeof(short)).ToArray()
-                : Array.Empty<byte>();
-
             lock (_sync)
             {
                 _recentInboundPackets.Enqueue(new InboundPacketTrace(
-                    opcode,
-                    message.PacketType,
-                    message.Kind,
-                    payload.Length,
-                    BuildPayloadPreview(payload),
-                    rawPacket == null ? string.Empty : Convert.ToHexString(rawPacket),
-                    string.IsNullOrWhiteSpace(source) ? "official-session" : source));
+                    rawPacket != null && rawPacket.Length >= sizeof(ushort)
+                        ? BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)))
+                        : -1,
+                    message?.PacketType ?? -1,
+                    message?.Kind ?? MassacrePacketInboxMessageKind.Packet,
+                    message?.Payload?.Length ?? 0,
+                    Convert.ToHexString(message?.Payload ?? Array.Empty<byte>()),
+                    Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                    source));
                 while (_recentInboundPackets.Count > MaxRecentInboundPackets)
                 {
                     _recentInboundPackets.Dequeue();
@@ -1220,78 +781,32 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static bool HasExpectedMappedPayloadLength(MassacrePacketInboxMessageKind kind, byte[] payload)
-        {
-            int length = payload?.Length ?? 0;
-            return kind switch
-            {
-                MassacrePacketInboxMessageKind.ClockPayload => length >= sizeof(byte) + sizeof(int),
-                MassacrePacketInboxMessageKind.InfoPayload => length >= sizeof(int) * 4,
-                MassacrePacketInboxMessageKind.IncGauge => length >= sizeof(int),
-                MassacrePacketInboxMessageKind.Result => length >= sizeof(byte) + sizeof(int),
-                MassacrePacketInboxMessageKind.Stage => length >= sizeof(int),
-                MassacrePacketInboxMessageKind.Bonus => true,
-                _ => false
-            };
-        }
-
-        private static bool IsSupportedMappedKind(MassacrePacketInboxMessageKind kind)
-        {
-            return kind is MassacrePacketInboxMessageKind.ClockPayload
-                or MassacrePacketInboxMessageKind.InfoPayload
-                or MassacrePacketInboxMessageKind.IncGauge
-                or MassacrePacketInboxMessageKind.Result
-                or MassacrePacketInboxMessageKind.Stage
-                or MassacrePacketInboxMessageKind.Bonus;
-        }
-
-        private static string DescribeMappedKind(MassacrePacketInboxMessageKind kind)
-        {
-            return kind switch
-            {
-                MassacrePacketInboxMessageKind.ClockPayload => "clock",
-                MassacrePacketInboxMessageKind.InfoPayload => "context",
-                MassacrePacketInboxMessageKind.IncGauge => "inc-gauge",
-                MassacrePacketInboxMessageKind.Result => "result",
-                MassacrePacketInboxMessageKind.Stage => "stage",
-                MassacrePacketInboxMessageKind.Bonus => "bonus",
-                _ => kind.ToString()
-            };
-        }
-
         private static string DescribeMessage(MassacrePacketInboxMessage message)
         {
             if (message == null)
             {
-                return "Massacre official-session payload";
+                return "Massacre packet";
             }
 
             return message.Kind switch
             {
+                MassacrePacketInboxMessageKind.Clock => "Massacre clock",
                 MassacrePacketInboxMessageKind.ClockPayload => "Massacre clock payload",
-                MassacrePacketInboxMessageKind.InfoPayload => "Massacre context payload",
-                MassacrePacketInboxMessageKind.Stage => "Massacre stage payload",
-                MassacrePacketInboxMessageKind.Bonus => "Massacre bonus trigger",
-                MassacrePacketInboxMessageKind.Packet => $"Massacre opcode {message.PacketType}",
-                _ => $"Massacre {message.Kind}"
+                MassacrePacketInboxMessageKind.Info => "Massacre info",
+                MassacrePacketInboxMessageKind.InfoPayload => "Massacre info payload",
+                MassacrePacketInboxMessageKind.IncGauge => "Massacre inc gauge",
+                MassacrePacketInboxMessageKind.Stage => "Massacre stage",
+                MassacrePacketInboxMessageKind.Bonus => "Massacre bonus",
+                MassacrePacketInboxMessageKind.Result => "Massacre result",
+                _ => $"Massacre packet {message.PacketType}"
             };
         }
 
-        private static string BuildPayloadPreview(byte[] payload)
+        private static bool TryMatchSessionValueKey(string key, int stringPoolId, string fallback)
         {
-            if (payload == null || payload.Length == 0)
-            {
-                return "<none>";
-            }
-
-            const int maxPreviewBytes = 24;
-            byte[] previewBytes = payload.Length <= maxPreviewBytes
-                ? payload
-                : payload.Take(maxPreviewBytes).ToArray();
-            string previewHex = Convert.ToHexString(previewBytes);
-            return payload.Length <= maxPreviewBytes
-                ? previewHex
-                : $"{previewHex}...";
+            string expected = MapleStoryStringPool.GetOrFallback(stringPoolId, fallback);
+            return string.Equals(key, expected, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, fallback, StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()

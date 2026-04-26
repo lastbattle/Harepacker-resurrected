@@ -1,12 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -27,8 +22,8 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback packet inbox for driving the login runtime from an external source.
-    /// The listener accepts newline-delimited packet names or numeric ids as either
+    /// Adapter packet inbox for driving the login runtime from role-session or local packet paths.
+    /// Lines accept packet names or numeric ids as either
     /// "<packet> <args>", "<packet>:<args>", or "<packet>=<args>" and queues them for the
     /// simulator to drain on the main thread.
     /// </summary>
@@ -37,45 +32,47 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultPort = 18484;
 
         private readonly ConcurrentQueue<LoginPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
+        private readonly RetiredMapleSocketState _socketState = new("Login packet inbox", DefaultPort, "Login packet inbox ready for role-session/local ingress.");
 
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public int Port => _socketState.Port;
+        public bool IsRunning => _socketState.IsRunning;
         public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Login packet inbox inactive.";
+        public int ProxyIngressReceivedCount { get; private set; }
+        public int LocalIngressReceivedCount { get; private set; }
+        public string LastIngressMode { get; private set; } = "none";
+        public string LastStatus => _socketState.LastStatus;
 
         public void Start(int port = DefaultPort)
         {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Login packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Login packet inbox listening on 127.0.0.1:{Port}.";
-            }
+            _socketState.Start(port);
         }
 
         public void Stop()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Login packet inbox stopped.";
-            }
+            _socketState.Stop("Login packet inbox ready for role-session/local ingress.");
+        }
+
+        public void EnqueueProxy(LoginPacketType packetType, string source, params string[] arguments)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "login-proxy" : source;
+            string[] normalizedArguments = arguments?
+                .Where(argument => !string.IsNullOrWhiteSpace(argument))
+                .ToArray() ?? Array.Empty<string>();
+            string rawText = normalizedArguments.Length == 0
+                ? packetType.ToString()
+                : $"{packetType} {string.Join(" ", normalizedArguments)}";
+            EnqueueMessage(
+                new LoginPacketInboxMessage(packetType, packetSource, rawText, normalizedArguments),
+                MapSimulatorNetworkIngressMode.Proxy,
+                packetSource);
+        }
+
+        public void EnqueueProxy(LoginPacketInboxMessage message)
+        {
+            EnqueueMessage(
+                message,
+                MapSimulatorNetworkIngressMode.Proxy,
+                message?.Source);
         }
 
         public void EnqueueLocal(LoginPacketType packetType, string source, params string[] arguments)
@@ -87,9 +84,10 @@ namespace HaCreator.MapSimulator.Managers
             string rawText = normalizedArguments.Length == 0
                 ? packetType.ToString()
                 : $"{packetType} {string.Join(" ", normalizedArguments)}";
-            _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, packetSource, rawText, normalizedArguments));
-            ReceivedCount++;
-            LastStatus = $"Queued {packetType} from {packetSource}.";
+            EnqueueMessage(
+                new LoginPacketInboxMessage(packetType, packetSource, rawText, normalizedArguments),
+                MapSimulatorNetworkIngressMode.Local,
+                packetSource);
         }
 
         public bool TryDequeue(out LoginPacketInboxMessage message)
@@ -99,87 +97,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
-        }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Login packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!LoginPacketScriptCodec.TryDecode(line, remoteEndpoint, out IReadOnlyList<LoginPacketInboxMessage> messages, out string error))
-                        {
-                            LastStatus = $"Ignored login inbox line from {remoteEndpoint}: {error ?? line}";
-                            continue;
-                        }
-
-                        if (messages.Count == 0)
-                        {
-                            continue;
-                        }
-
-                        foreach (LoginPacketInboxMessage message in messages)
-                        {
-                            _pendingMessages.Enqueue(message);
-                            ReceivedCount++;
-                        }
-
-                        LastStatus = messages.Count == 1
-                            ? $"Queued {messages[0].PacketType} from {remoteEndpoint}."
-                            : $"Queued {messages.Count} login packets from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Login packet inbox client error: {ex.Message}";
-            }
         }
 
         internal static bool TryParsePacketLine(string text, out LoginPacketType packetType, out string[] arguments)
@@ -709,28 +626,35 @@ namespace HaCreator.MapSimulator.Managers
             return trimmed;
         }
 
-        private void StopInternal()
+        private void EnqueueMessage(LoginPacketInboxMessage message, string ingressMode, string statusSource)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastIngressMode = ingressMode;
+            if (!MapSimulatorNetworkIngressMode.IsKnown(LastIngressMode))
             {
-                _listener?.Stop();
-            }
-            catch
-            {
+                LastIngressMode = MapSimulatorNetworkIngressMode.Proxy;
             }
 
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
-            _listenerTask = null;
+            switch (LastIngressMode)
+            {
+                case MapSimulatorNetworkIngressMode.Proxy:
+                    ProxyIngressReceivedCount++;
+                    break;
+                case MapSimulatorNetworkIngressMode.Local:
+                    LocalIngressReceivedCount++;
+                    break;
+            }
+
+            string source = string.IsNullOrWhiteSpace(statusSource)
+                ? message.Source
+                : statusSource;
+            _socketState.SetStatus($"Queued {message.PacketType} from {source}.");
         }
     }
 }

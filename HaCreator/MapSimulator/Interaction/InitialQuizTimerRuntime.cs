@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class InitialQuizTimerRuntime

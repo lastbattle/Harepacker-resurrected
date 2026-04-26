@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Interaction;
+﻿using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using System;
 
@@ -7,17 +7,11 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly SocialRoomMerchantPacketInboxManager _socialRoomMerchantPacketInbox = new();
-        private readonly SocialRoomMerchantOfficialSessionBridgeManager _socialRoomMerchantOfficialSessionBridge = new();
+        private readonly SocialRoomMerchantOfficialSessionBridgeManager _socialRoomMerchantOfficialSessionBridge;
 
         private string DescribeSocialRoomMerchantPacketInboxStatus(SocialRoomKind kind)
         {
-            string configuredKind = _socialRoomMerchantPacketInbox.PreferredKind.HasValue
-                ? _socialRoomMerchantPacketInbox.PreferredKind.Value.ToString()
-                : "none";
-            string kindStatus = _socialRoomMerchantPacketInbox.PreferredKind == kind
-                ? "active for this owner"
-                : $"armed for {configuredKind}";
-            return $"{_socialRoomMerchantPacketInbox.LastStatus} Merchant inbox status for {kind}: {kindStatus}.";
+            return $"{_socialRoomMerchantPacketInbox.LastStatus} Merchant inbox status for {kind}: adapter-only; listener-fallback retired.";
         }
 
         private string DescribeSocialRoomMerchantOfficialSessionBridgeStatus(SocialRoomKind kind)
@@ -88,3 +82,4 @@ namespace HaCreator.MapSimulator
         }
     }
 }
+

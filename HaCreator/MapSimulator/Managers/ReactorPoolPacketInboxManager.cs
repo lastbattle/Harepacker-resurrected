@@ -2,11 +2,6 @@ using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -28,52 +23,35 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class ReactorPoolPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18498;
-
         private readonly ConcurrentQueue<ReactorPoolPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Reactor packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Reactor packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Reactor packet inbox listening on 127.0.0.1:{Port}.";
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Reactor packet inbox stopped.";
-            }
-        }
+        public int ProxyIngressReceivedCount { get; private set; }
+        public int LocalIngressReceivedCount { get; private set; }
+        public string LastIngressMode { get; private set; } = "none";
+        public string LastStatus { get; private set; } = "Reactor packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out ReactorPoolPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueLocal(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "reactorpacket-local" : source;
+            EnqueueMessage(
+                new ReactorPoolPacketInboxMessage(packetType, payload, packetSource, packetType.ToString(CultureInfo.InvariantCulture)),
+                MapSimulatorNetworkIngressMode.Local,
+                packetSource);
+        }
+
+        public void EnqueueProxy(ReactorPoolPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            EnqueueMessage(message, MapSimulatorNetworkIngressMode.Proxy, message.Source);
         }
 
         public void RecordDispatchResult(ReactorPoolPacketInboxMessage message, bool success, string detail)
@@ -192,94 +170,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
-        }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Reactor packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out ReactorPoolPacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored reactor inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new ReactorPoolPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Reactor packet inbox client error: {ex.Message}";
-            }
-        }
-
-        private void StopInternal()
-        {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch (SocketException)
-            {
-            }
-
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listenerTask = null;
         }
 
         private static bool TryParsePayload(string text, out byte[] payload, out string error)
@@ -360,5 +250,30 @@ namespace HaCreator.MapSimulator.Managers
 
             return -1;
         }
+
+        private void EnqueueMessage(ReactorPoolPacketInboxMessage message, string ingressMode, string sourceLabel)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastIngressMode = string.IsNullOrWhiteSpace(ingressMode) ? "unknown" : ingressMode;
+            switch (LastIngressMode)
+            {
+                case MapSimulatorNetworkIngressMode.Proxy:
+                    ProxyIngressReceivedCount++;
+                    break;
+                case MapSimulatorNetworkIngressMode.Local:
+                    LocalIngressReceivedCount++;
+                    break;
+            }
+
+            string packetSource = string.IsNullOrWhiteSpace(sourceLabel) ? "reactorpacket-inbox" : sourceLabel;
+            LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {packetSource} via {LastIngressMode}.";
+        }
     }
 }
+

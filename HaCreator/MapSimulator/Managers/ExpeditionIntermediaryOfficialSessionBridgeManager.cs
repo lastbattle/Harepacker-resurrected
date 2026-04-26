@@ -1,4 +1,3 @@
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
@@ -26,11 +25,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<ExpeditionIntermediaryPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
         private readonly List<RecentOutboundPacket> _recentOutboundPackets = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
 
         public sealed class RecentOutboundPacket
         {
@@ -45,55 +40,13 @@ namespace HaCreator.MapSimulator.Managers
             public int PayloadLength { get; }
             public string RawPacketHex { get; }
         }
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public ushort ExpeditionOpcode { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int ForwardedOutboundCount { get; private set; }
@@ -101,13 +54,20 @@ namespace HaCreator.MapSimulator.Managers
         public int LastSentPayloadLength { get; private set; }
         public string LastStatus { get; private set; } = "Expedition intermediary official-session bridge inactive.";
 
+        public ExpeditionIntermediaryOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
+
         public string DescribeStatus()
         {
             string lifecycle = IsRunning
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : "no active Maple session";
             string opcodeText = ExpeditionOpcode > 0
                 ? $"opcode={ExpeditionOpcode}"
@@ -134,11 +94,14 @@ namespace HaCreator.MapSimulator.Managers
                     RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
                     RemotePort = remotePort;
                     ExpeditionOpcode = expeditionOpcode;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Expedition intermediary official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {ExpeditionOpcode}.";
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: false);
+                        LastStatus = proxyStatus;
+                        return;
+                    }
+
+                    LastStatus = $"Expedition intermediary official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {ExpeditionOpcode}. {proxyStatus}";
                 }
                 catch (Exception ex)
                 {
@@ -244,8 +207,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendRawPacket(byte[] rawPacket, out string status)
         {
-            BridgePair pair = _activePair;
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = "Expedition intermediary official-session bridge has no active Maple session.";
                 LastStatus = status;
@@ -264,11 +226,17 @@ namespace HaCreator.MapSimulator.Managers
                 byte[] clonedPacket = (byte[])rawPacket.Clone();
                 int opcode = BitConverter.ToUInt16(clonedPacket, 0);
                 int payloadLength = Math.Max(0, clonedPacket.Length - sizeof(ushort));
-                pair.ServerSession.SendPacket(clonedPacket);
+                if (!_roleSessionProxy.TrySendToServer(clonedPacket, out string proxyStatus))
+                {
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
                 SentCount++;
                 LastSentOpcode = opcode;
                 LastSentPayloadLength = payloadLength;
-                status = $"Injected expedition opcode {opcode} ({payloadLength} byte(s)) into live session {pair.RemoteEndpoint}.";
+                status = $"Injected expedition opcode {opcode} ({payloadLength} byte(s)) into live session.";
                 LastStatus = status;
                 return true;
             }
@@ -276,7 +244,6 @@ namespace HaCreator.MapSimulator.Managers
             {
                 status = $"Expedition intermediary official-session injection failed: {ex.Message}";
                 LastStatus = status;
-                ClearActivePair(pair, status);
                 return false;
             }
         }
@@ -389,188 +356,52 @@ namespace HaCreator.MapSimulator.Managers
                 opcode);
             return true;
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
+            if (e == null || e.IsInit)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (OperationCanceledException)
+
+            if (!TryDecodeInboundExpeditionPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", ExpeditionOpcode, out ExpeditionIntermediaryPacketInboxMessage message))
             {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Expedition intermediary official-session bridge error: {ex.Message}";
-            }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued expedition opcode {ExpeditionOpcode} from live session {e.SourceEndpoint}.";
         }
 
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            BridgePair pair = null;
-            try
+            if (e == null || e.IsInit)
             {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected expedition intermediary official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Expedition intermediary official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Expedition intermediary official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Expedition intermediary official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Expedition intermediary official-session bridge connect failed: {ex.Message}";
-            }
-        }
 
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    LastStatus = $"Expedition intermediary official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryDecodeInboundExpeditionPacket(raw, $"official-session:{pair.RemoteEndpoint}", ExpeditionOpcode, out ExpeditionIntermediaryPacketInboxMessage message))
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(message);
-                ReceivedCount++;
-                LastStatus = $"Queued {ExpeditionIntermediaryPacketInboxManager.DescribeMessage(message)} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Expedition intermediary official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                if (isInit)
-                {
-                    return;
-                }
-
-                byte[] rawPacket = packet.ToArray();
-                pair.ServerSession.SendPacket((byte[])rawPacket.Clone());
-                ForwardedOutboundCount++;
-                RecordObservedOutboundPacket(rawPacket);
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Expedition intermediary official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
+            ForwardedOutboundCount++;
             lock (_sync)
             {
-                if (_activePair != pair)
+                _recentOutboundPackets.Add(new RecentOutboundPacket(
+                    e.Opcode,
+                    Math.Max(0, e.RawPacket.Length - sizeof(ushort)),
+                    Convert.ToHexString(e.RawPacket)));
+                if (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
                 {
-                    return;
+                    _recentOutboundPackets.RemoveAt(0);
                 }
-
-                _activePair = null;
-                LastStatus = status;
             }
 
-            pair?.Close();
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         private void StopInternal(bool clearPending)
         {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            BridgePair pair = null;
-            lock (_sync)
-            {
-                pair = _activePair;
-                _activePair = null;
-            }
-
-            pair?.Close();
+            _roleSessionProxy.Stop(resetCounters: clearPending);
 
             if (clearPending)
             {
@@ -615,12 +446,6 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
         }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
-        }
-
         private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)
         {
             owningProcessId = null;

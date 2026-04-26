@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using MapleLib.PacketLib;
 using System;
 using System.Linq;
 
@@ -8,7 +9,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18498;
 
-        private readonly LocalUtilityOfficialSessionBridgeManager _bridge = new();
+        private readonly LocalUtilityOfficialSessionBridgeManager _bridge;
 
         public int ListenPort => _bridge.ListenPort;
         public string RemoteHost => _bridge.RemoteHost;
@@ -24,6 +25,12 @@ namespace HaCreator.MapSimulator.Managers
         public int LastQueuedOpcode => _bridge.LastQueuedOpcode;
         public byte[] LastQueuedRawPacket => _bridge.LastQueuedRawPacket;
         public string LastStatus => NormalizeStatus(_bridge.LastStatus);
+        public bool UsesUnifiedRoleSessionProxy => true;
+
+        public PacketScriptOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _bridge = new LocalUtilityOfficialSessionBridgeManager(roleSessionProxyFactory);
+        }
 
         public string DescribeStatus()
         {

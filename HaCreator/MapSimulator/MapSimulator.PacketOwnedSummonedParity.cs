@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Managers;
+﻿using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character.Skills;
 using Microsoft.Xna.Framework;
@@ -12,9 +12,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly SummonedPacketInboxManager _summonedPacketInbox = new();
-        private readonly SummonedOfficialSessionBridgeManager _summonedOfficialSessionBridge = new();
-        private bool _summonedPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _summonedPacketInboxConfiguredPort = SummonedPacketInboxManager.DefaultPort;
+        private readonly SummonedOfficialSessionBridgeManager _summonedOfficialSessionBridge;
         private bool _summonedOfficialSessionBridgeEnabled;
         private bool _summonedOfficialSessionBridgeUseDiscovery;
         private int _summonedOfficialSessionBridgeConfiguredListenPort = SummonedOfficialSessionBridgeManager.DefaultListenPort;
@@ -36,35 +34,6 @@ namespace HaCreator.MapSimulator
 
         private void EnsureSummonedPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_summonedPacketInboxEnabled)
-            {
-                if (_summonedPacketInbox.IsRunning)
-                {
-                    _summonedPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_summonedPacketInbox.IsRunning && _summonedPacketInbox.Port == _summonedPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_summonedPacketInbox.IsRunning)
-            {
-                _summonedPacketInbox.Stop();
-            }
-
-            try
-            {
-                _summonedPacketInbox.Start(_summonedPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _summonedPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Summoned packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void EnsureSummonedOfficialSessionBridgeState(bool shouldRun)
@@ -179,6 +148,11 @@ namespace HaCreator.MapSimulator
 
                 bool applied = TryApplyPacketOwnedSummonedPacket(message.PacketType, message.Payload, currTickCount, out string detail);
                 _summonedPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (message.Source?.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _summonedOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
+                }
+
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
                     if (applied)
@@ -202,29 +176,15 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyPacketOwnedSummonedPacket(message.PacketType, message.Payload, currTickCount, out string detail);
-                _summonedOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
-                if (!string.IsNullOrWhiteSpace(detail))
-                {
-                    if (applied)
-                    {
-                        _chat?.AddSystemMessage(detail, currTickCount);
-                    }
-                    else
-                    {
-                        _chat?.AddErrorMessage(detail, currTickCount);
-                    }
-                }
+                _summonedPacketInbox.EnqueueProxy(message);
             }
         }
 
         private string DescribeSummonedPacketInboxStatus()
         {
-            string enabledText = _summonedPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _summonedPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_summonedPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_summonedPacketInboxConfiguredPort}";
-            return $"Summoned packet inbox {enabledText}, {listeningText}, received {_summonedPacketInbox.ReceivedCount} packet(s).";
+            string ingressModeText = _summonedOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"Summoned packet inbox adapter-only, {ingressModeText}, {fallbackText}.";
         }
 
         private string DescribeSummonedOfficialSessionBridgeStatus()
@@ -393,26 +353,15 @@ namespace HaCreator.MapSimulator
 
                 if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                 {
-                    int port = SummonedPacketInboxManager.DefaultPort;
-                    if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                    {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket inbox start [port]");
-                    }
-
-                    _summonedPacketInboxConfiguredPort = port;
-                    _summonedPacketInboxEnabled = true;
-                    EnsureSummonedPacketInboxState(shouldRun: true);
-                    return ChatCommandHandler.CommandResult.Ok(_summonedPacketInbox.LastStatus);
+                    return ChatCommandHandler.CommandResult.Info("Summoned packet inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
                 }
 
                 if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                 {
-                    _summonedPacketInboxEnabled = false;
-                    EnsureSummonedPacketInboxState(shouldRun: false);
-                    return ChatCommandHandler.CommandResult.Ok(_summonedPacketInbox.LastStatus);
+                    return ChatCommandHandler.CommandResult.Info("Summoned packet inbox loopback listener is already retired.");
                 }
 
-                return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket inbox [status|start [port]|stop]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket inbox [status|start|stop]");
             }
 
             if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
@@ -593,6 +542,7 @@ namespace HaCreator.MapSimulator
                 _summonedOfficialSessionBridgeConfiguredRemotePort = remotePort;
                 _summonedOfficialSessionBridgeConfiguredProcessSelector = null;
                 _summonedOfficialSessionBridgeConfiguredLocalPort = null;
+                EnsureSummonedPacketInboxState(shouldRun: true);
                 EnsureSummonedOfficialSessionBridgeState(shouldRun: true);
                 return ChatCommandHandler.CommandResult.Ok(DescribeSummonedOfficialSessionBridgeStatus());
             }
@@ -628,6 +578,7 @@ namespace HaCreator.MapSimulator
                 _summonedOfficialSessionBridgeConfiguredProcessSelector = processSelector;
                 _summonedOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
                 _nextSummonedOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                EnsureSummonedPacketInboxState(shouldRun: true);
 
                 return _summonedOfficialSessionBridge.TryRefreshFromDiscovery(
                     autoListenPort,
@@ -647,6 +598,7 @@ namespace HaCreator.MapSimulator
                 _summonedOfficialSessionBridgeConfiguredProcessSelector = null;
                 _summonedOfficialSessionBridgeConfiguredLocalPort = null;
                 _summonedOfficialSessionBridge.Stop();
+                EnsureSummonedPacketInboxState(shouldRun: true);
                 return ChatCommandHandler.CommandResult.Ok(DescribeSummonedOfficialSessionBridgeStatus());
             }
 

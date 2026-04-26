@@ -10,40 +10,9 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly EngagementProposalInboxManager _engagementProposalInbox = new();
-        private bool _engagementProposalInboxEnabled;
-        private int _engagementProposalInboxConfiguredPort = EngagementProposalInboxManager.DefaultPort;
 
         private void EnsureEngagementProposalInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_engagementProposalInboxEnabled)
-            {
-                if (_engagementProposalInbox.IsRunning)
-                {
-                    _engagementProposalInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_engagementProposalInbox.IsRunning && _engagementProposalInbox.Port == _engagementProposalInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_engagementProposalInbox.IsRunning)
-            {
-                _engagementProposalInbox.Stop();
-            }
-
-            try
-            {
-                _engagementProposalInbox.Start(_engagementProposalInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _engagementProposalInbox.Stop();
-                _chat?.AddErrorMessage($"Engagement proposal inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainEngagementProposalInbox()
@@ -110,20 +79,11 @@ namespace HaCreator.MapSimulator
 
         private string DescribeEngagementProposalInboxStatus()
         {
-            string enabledText = _engagementProposalInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _engagementProposalInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_engagementProposalInbox.Port}"
-                : $"configured for 127.0.0.1:{_engagementProposalInboxConfiguredPort}";
-            return $"Engagement proposal inbox {enabledText}, {listeningText}, received {_engagementProposalInbox.ReceivedCount} request(s).";
+            return "Engagement proposal inbox adapter-only, listener-fallback retired.";
         }
 
         private string TryAutoDispatchOutgoingEngagementProposalRequest()
         {
-            if (!_engagementProposalInboxEnabled || !_engagementProposalInbox.IsRunning)
-            {
-                return string.Empty;
-            }
-
             if (!_engagementProposalController.TryBuildInboxDispatch(
                     EngagementProposalRuntime.DefaultSealItemId,
                     customMessage: null,
@@ -133,23 +93,21 @@ namespace HaCreator.MapSimulator
                 return $" {dispatchMessage}";
             }
 
-            try
-            {
-                EngagementProposalInboxManager.SendRequest(
-                    EngagementProposalInboxManager.DefaultHost,
-                    _engagementProposalInbox.Port,
-                    dispatch);
-                return $" Auto-dispatched the staged engagement request through the inbox transport to 127.0.0.1:{_engagementProposalInbox.Port}.";
-            }
-            catch (Exception ex)
-            {
-                return $" Engagement inbox transport dispatch failed after opening the requester owner: {ex.Message}";
-            }
+            EngagementProposalInboxMessage localMessage = new(
+                dispatch.ProposerName,
+                dispatch.PartnerName,
+                dispatch.SealItemId,
+                dispatch.RequestPayload,
+                dispatch.CustomMessage,
+                source: "engagement-local",
+                rawText: "local dispatch");
+            _engagementProposalInbox.EnqueueLocal(localMessage);
+            return " Auto-dispatched the staged engagement request through the local engagement inbox adapter.";
         }
 
         private ChatCommandHandler.CommandResult HandleEngagementProposalInboxCommand(string[] args)
         {
-            const string usage = "Usage: /engage inbox [status|start [port]|stop]";
+            const string usage = "Usage: /engage inbox [status|start|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info($"{DescribeEngagementProposalInboxStatus()} {_engagementProposalInbox.LastStatus}");
@@ -157,23 +115,13 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
             {
-                int port = EngagementProposalInboxManager.DefaultPort;
-                if (args.Length > 1 && (!int.TryParse(args[1], out port) || port <= 0 || port > ushort.MaxValue))
-                {
-                    return ChatCommandHandler.CommandResult.Error(usage);
-                }
-
-                _engagementProposalInboxConfiguredPort = port;
-                _engagementProposalInboxEnabled = true;
-                EnsureEngagementProposalInboxState(shouldRun: true);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeEngagementProposalInboxStatus()} {_engagementProposalInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info(
+                    "Engagement proposal inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
             }
 
             if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
             {
-                _engagementProposalInboxEnabled = false;
-                EnsureEngagementProposalInboxState(shouldRun: false);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeEngagementProposalInboxStatus()} {_engagementProposalInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Engagement proposal inbox loopback listener is already retired.");
             }
 
             return ChatCommandHandler.CommandResult.Error(usage);

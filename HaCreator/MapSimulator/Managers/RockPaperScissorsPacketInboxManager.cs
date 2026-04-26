@@ -1,12 +1,7 @@
 using HaCreator.MapSimulator.Fields;
 using System;
 using System.Collections.Concurrent;
-using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -27,67 +22,28 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for CRPSGameDlg ownership packets.
+    /// Adapter inbox for CRPSGameDlg ownership packets.
     /// Each line is encoded as "<subtype> <hex-payload>" or
     /// "packetraw <opcode-wrapped-hex>".
     /// </summary>
     public sealed class RockPaperScissorsPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18491;
-
         private readonly ConcurrentQueue<RockPaperScissorsPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Rock-Paper-Scissors packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Rock-Paper-Scissors packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Rock-Paper-Scissors packet inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Rock-Paper-Scissors packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Rock-Paper-Scissors packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Rock-Paper-Scissors packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out RockPaperScissorsPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueLocal(int packetType, byte[] payload, string source)
+        {
+            EnqueueMessage(new RockPaperScissorsPacketInboxMessage(packetType, payload, source, $"{packetType}"));
+        }
+
+        public void EnqueueProxy(RockPaperScissorsPacketInboxMessage message)
+        {
+            EnqueueMessage(message);
         }
 
         public void RecordDispatchResult(string source, int packetType, bool success, string message)
@@ -102,10 +58,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
@@ -230,97 +182,6 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Rock-Paper-Scissors packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out string error))
-                        {
-                            LastStatus = $"Ignored Rock-Paper-Scissors inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new RockPaperScissorsPacketInboxMessage(packetType, payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(packetType)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Rock-Paper-Scissors inbox client error from {remoteEndpoint}: {ex.Message}";
-            }
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
-            _listenerTask = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-            }
-        }
-
         private static string RemoveWhitespace(string text)
         {
             return string.IsNullOrWhiteSpace(text)
@@ -343,6 +204,17 @@ namespace HaCreator.MapSimulator.Managers
                 14 => "RPS reset (14)",
                 _ => $"RPS subtype {packetType}"
             };
+        }
+
+        private void EnqueueMessage(RockPaperScissorsPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {message.Source}.";
         }
     }
 }

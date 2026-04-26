@@ -1,4 +1,3 @@
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
@@ -30,11 +29,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -49,55 +44,13 @@ namespace HaCreator.MapSimulator.Managers
             string RawPacketHex,
             string Source);
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int ForwardedOutboundCount { get; private set; }
@@ -110,13 +63,20 @@ namespace HaCreator.MapSimulator.Managers
         public int PendingPacketCount => _pendingOutboundPackets.Count;
         public string LastStatus { get; private set; } = "Transport official-session bridge inactive.";
 
+        public TransportationOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
+
         public string DescribeStatus()
         {
             string lifecycle = IsRunning
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -554,7 +514,7 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            status = $"Injected {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} into live session {_activePair?.RemoteEndpoint ?? "unknown-remote"}.";
+            status = $"Injected {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} into live session {RemoteHost}:{RemotePort}.";
             LastStatus = status;
             return true;
         }
@@ -633,7 +593,7 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_sync)
             {
-                if (_activePair != null)
+                if (_roleSessionProxy.HasAttachedClient)
                 {
                     status = $"Transport official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before arming a different reconnect proxy.";
                     return false;
@@ -782,452 +742,68 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Transport official-session bridge error: {ex.Message}";
-            }
-        }
-
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Transport official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Transport official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Transport official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _passiveEstablishedSession = null;
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Transport official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Transport official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    int flushed = FlushQueuedOutboundPackets(pair);
-                    LastStatus = flushed > 0
-                        ? $"Transport official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued outbound packet(s)."
-                        : $"Transport official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryDecodeInboundTransportPacket(raw, $"official-session:{pair.RemoteEndpoint}", out TransportationPacketInboxMessage message))
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(message);
-                ReceivedCount++;
-                LastStatus = $"Queued {TransportationPacketInboxManager.DescribePacket(message.PacketType, message.Payload)} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Transport official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            if (isInit)
+            if (e == null)
             {
                 return;
             }
 
-            try
+            if (e.IsInit)
             {
-                byte[] raw = packet.ToArray();
-                pair.ServerSession.SendPacket((byte[])raw.Clone());
-                ForwardedOutboundCount++;
-
-                if (TryDecodeOpcode(raw, out int opcode, out byte[] payload))
-                {
-                    bool isTransportOpcode = opcode == TransportationPacketInboxManager.PacketTypeContiMove
-                        || opcode == TransportationPacketInboxManager.PacketTypeContiState
-                        || opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode;
-                    if (isTransportOpcode)
-                    {
-                        ForwardedOutboundTransportCount++;
-                    }
-
-                    RecordOutboundPacket(new OutboundPacketTrace(
-                        opcode,
-                        payload?.Length ?? 0,
-                        BuildPayloadPreview(payload),
-                        Convert.ToHexString(raw),
-                        pair.ClientEndpoint));
-
-                    if (isTransportOpcode)
-                    {
-                        LastStatus = $"Forwarded outbound {TransportationPacketInboxManager.DescribePacket(opcode, payload)} from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
-                    }
-                }
+                int flushed = FlushQueuedOutboundPacketsViaProxy();
+                LastStatus = flushed > 0
+                    ? $"Transport official-session bridge initialized Maple crypto and flushed {flushed} queued outbound packet(s)."
+                    : _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (Exception ex)
+
+            if (!TryDecodeInboundTransportPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", out TransportationPacketInboxMessage message))
             {
-                ClearActivePair(pair, $"Transport official-session client handling failed: {ex.Message}");
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued {TransportationPacketInboxManager.DescribePacket(message.PacketType, message.Payload)} from live session {e.SourceEndpoint}.";
         }
 
-        private void RecordOutboundPacket(OutboundPacketTrace trace)
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            lock (_sync)
+            if (e == null || e.IsInit)
             {
-                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            ForwardedOutboundCount++;
+
+            if (TryDecodeOpcode(e.RawPacket, out int opcode, out byte[] payload))
+            {
+                bool isTransportOpcode = opcode == TransportationPacketInboxManager.PacketTypeContiMove
+                    || opcode == TransportationPacketInboxManager.PacketTypeContiState
+                    || opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode;
+                if (isTransportOpcode)
                 {
-                    _recentOutboundPackets.Dequeue();
+                    ForwardedOutboundTransportCount++;
                 }
 
-                _recentOutboundPackets.Enqueue(trace);
-            }
-        }
-
-        private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
-        {
-            try
-            {
-                ListenPort = listenPort;
-                RemoteHost = remoteHost;
-                RemotePort = remotePort;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, ListenPort);
-                _listener.Start();
-                if (_listener.LocalEndpoint is IPEndPoint localEndpoint)
-                {
-                    ListenPort = localEndpoint.Port;
-                }
-
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Transport official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
-                status = LastStatus;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = $"Transport official-session bridge failed to start: {ex.Message}";
-                status = LastStatus;
-                return false;
-            }
-        }
-
-        private bool TrySendRawPacket(
-            byte[] rawPacket,
-            out string status,
-            bool countAsTypedSend,
-            bool allowDeferredQueueWhenPassive,
-            out bool queuedForDeferredInjection)
-        {
-            queuedForDeferredInjection = false;
-            BridgePair pair = _activePair;
-            if (HasPassiveEstablishedSocketPair)
-            {
-                if (allowDeferredQueueWhenPassive)
-                {
-                    if (!TryQueueRawPacket(rawPacket, out string queueStatus))
-                    {
-                        status = queueStatus;
-                        LastStatus = status;
-                        return false;
-                    }
-
-                    queuedForDeferredInjection = true;
-                    status = $"Transport official-session bridge cannot inject into an already-established Maple socket pair after the handshake, so it deferred this send request. {queueStatus}";
-                    LastStatus = status;
-                    return true;
-                }
-
-                status = $"Transport official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject outbound transport packets into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
-                LastStatus = status;
-                return false;
-            }
-
-            if (pair == null || !pair.InitCompleted)
-            {
-                status = "Transport official-session bridge has no active Maple session.";
-                LastStatus = status;
-                return false;
-            }
-
-            if (rawPacket == null || rawPacket.Length < sizeof(short))
-            {
-                status = "Transport outbound packet must include a 2-byte opcode.";
-                LastStatus = status;
-                return false;
-            }
-
-            try
-            {
-                byte[] clonedPacket = (byte[])rawPacket.Clone();
-                int opcode = BitConverter.ToUInt16(clonedPacket, 0);
-                byte[] payload = clonedPacket.Length > sizeof(short)
-                    ? clonedPacket.Skip(sizeof(short)).ToArray()
-                    : Array.Empty<byte>();
-
-                pair.ServerSession.SendPacket(clonedPacket);
-                RecordSentOutboundPacket(
+                RecordOutboundPacket(new OutboundPacketTrace(
                     opcode,
-                    clonedPacket,
-                    payload,
-                    "transport-replay",
-                    countAsTypedSend);
+                    payload?.Length ?? 0,
+                    BuildPayloadPreview(payload),
+                    Convert.ToHexString(e.RawPacket),
+                    e.SourceEndpoint));
 
-                status = $"Replayed outbound {DescribeOutboundPacket(opcode, clonedPacket)} to live session {pair.RemoteEndpoint}.";
-                LastStatus = status;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                status = $"Transport outbound replay failed: {ex.Message}";
-                LastStatus = status;
-                return false;
-            }
-        }
-
-        private bool TryResolveRecentOutboundPacket(
-            int historyIndexFromNewest,
-            string actionName,
-            out byte[] rawPacket,
-            out string status)
-        {
-            rawPacket = Array.Empty<byte>();
-            status = null;
-
-            if (historyIndexFromNewest <= 0)
-            {
-                status = $"Transport {actionName} index must be 1 or greater.";
-                return false;
-            }
-
-            OutboundPacketTrace[] entries;
-            lock (_sync)
-            {
-                if (_recentOutboundPackets.Count == 0)
+                if (isTransportOpcode)
                 {
-                    status = $"No captured transport outbound client packets are available to {actionName}.";
-                    return false;
-                }
-
-                if (historyIndexFromNewest > _recentOutboundPackets.Count)
-                {
-                    status = $"Transport {actionName} index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
-                    return false;
-                }
-
-                entries = _recentOutboundPackets.ToArray();
-            }
-
-            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
-            if (string.IsNullOrWhiteSpace(trace.RawPacketHex))
-            {
-                status = $"Captured transport outbound packet {historyIndexFromNewest} has no raw payload to {actionName}.";
-                return false;
-            }
-
-            try
-            {
-                rawPacket = Convert.FromHexString(trace.RawPacketHex);
-                return true;
-            }
-            catch (FormatException ex)
-            {
-                status = $"Captured transport outbound packet {historyIndexFromNewest} could not be used for {actionName}: {ex.Message}";
-                rawPacket = Array.Empty<byte>();
-                return false;
-            }
-        }
-
-        internal void RecordOutboundPacketForTesting(byte[] rawPacket, string source = "transport-test")
-        {
-            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
-            {
-                throw new ArgumentException("Transport outbound packet must include a 2-byte opcode.", nameof(rawPacket));
-            }
-
-            RecordSentOutboundPacket(
-                opcode,
-                (byte[])rawPacket.Clone(),
-                payload,
-                source,
-                countAsTypedSend: false);
-        }
-
-        internal bool TryPeekQueuedOutboundPacketForTesting(out int opcode, out byte[] rawPacket)
-        {
-            opcode = -1;
-            rawPacket = Array.Empty<byte>();
-            if (!_pendingOutboundPackets.TryPeek(out PendingOutboundPacket pending))
-            {
-                return false;
-            }
-
-            opcode = pending.Opcode;
-            rawPacket = (byte[])pending.RawPacket.Clone();
-            return true;
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            if (pair == null)
-            {
-                return;
-            }
-
-            lock (_sync)
-            {
-                if (!ReferenceEquals(_activePair, pair))
-                {
+                    LastStatus = $"Forwarded outbound {TransportationPacketInboxManager.DescribePacket(opcode, payload)} from {e.SourceEndpoint}.";
                     return;
                 }
-
-                _activePair = null;
             }
 
-            pair.Close();
-            LastStatus = status;
-        }
-
-        private void StopInternal(bool clearPending)
-        {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            BridgePair pair = _activePair;
-            _activePair = null;
-            _passiveEstablishedSession = null;
-            pair?.Close();
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                while (_pendingOutboundPackets.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-                SentCount = 0;
-                ForwardedOutboundCount = 0;
-                ForwardedOutboundTransportCount = 0;
-                QueuedCount = 0;
-                LastSentOpcode = -1;
-                LastSentRawPacket = Array.Empty<byte>();
-                LastQueuedOpcode = -1;
-                LastQueuedRawPacket = Array.Empty<byte>();
-                _recentOutboundPackets.Clear();
-            }
-        }
-
-        private int FlushQueuedOutboundPackets(BridgePair pair)
-        {
-            if (pair == null || !pair.InitCompleted)
-            {
-                return 0;
-            }
-
-            int flushed = 0;
-            while (_pendingOutboundPackets.TryPeek(out PendingOutboundPacket pending))
-            {
-                byte[] clonedPacket = (byte[])pending.RawPacket.Clone();
-                pair.ServerSession.SendPacket(clonedPacket);
-                if (!_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket dequeued))
-                {
-                    break;
-                }
-
-                byte[] payload = clonedPacket.Length > sizeof(short)
-                    ? clonedPacket.Skip(sizeof(short)).ToArray()
-                    : Array.Empty<byte>();
-                RecordSentOutboundPacket(
-                    dequeued.Opcode,
-                    clonedPacket,
-                    payload,
-                    "transport-queued",
-                    countAsTypedSend: true);
-                flushed++;
-            }
-
-            return flushed;
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         private void RecordSentOutboundPacket(
@@ -1260,12 +836,155 @@ namespace HaCreator.MapSimulator.Managers
                 source));
         }
 
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
+        private bool TrySendRawPacket(
+            byte[] rawPacket,
+            out string status,
+            bool countAsTypedSend,
+            bool allowDeferredQueueWhenPassive,
+            out bool queuedForDeferredInjection)
         {
-            return new MapleCrypto((byte[])iv.Clone(), version);
+            queuedForDeferredInjection = false;
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                status = "Transport outbound packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (HasPassiveEstablishedSocketPair && !HasConnectedSession)
+            {
+                if (!allowDeferredQueueWhenPassive)
+                {
+                    status = $"Transport official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)} and cannot inject until the client reconnects through the proxy.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (!TryQueueRawPacket(rawPacket, out status))
+                {
+                    return false;
+                }
+
+                queuedForDeferredInjection = true;
+                return true;
+            }
+
+            if (!_roleSessionProxy.HasConnectedSession)
+            {
+                status = "Transport official-session bridge has no active Maple session.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedPacket = (byte[])rawPacket.Clone();
+            if (!_roleSessionProxy.TrySendToServer(clonedPacket, out string proxyStatus))
+            {
+                status = proxyStatus;
+                LastStatus = status;
+                return false;
+            }
+
+            RecordSentOutboundPacket(opcode, clonedPacket, payload, "simulator-send", countAsTypedSend);
+            status = $"Injected outbound {DescribeOutboundPacket(opcode, clonedPacket)} into live session. {proxyStatus}";
+            LastStatus = status;
+            return true;
         }
 
-        public static bool TryDecodeInboundTransportPacket(byte[] rawPacket, string source, out TransportationPacketInboxMessage message)
+        private int FlushQueuedOutboundPacketsViaProxy()
+        {
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket packet))
+            {
+                if (!_roleSessionProxy.TrySendToServer(packet.RawPacket, out string status))
+                {
+                    _pendingOutboundPackets.Enqueue(packet);
+                    LastStatus = status;
+                    break;
+                }
+
+                TryDecodeOpcode(packet.RawPacket, out int opcode, out byte[] payload);
+                RecordSentOutboundPacket(opcode, packet.RawPacket, payload, "deferred-flush", countAsTypedSend: true);
+                flushed++;
+            }
+
+            return flushed;
+        }
+
+        private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
+        {
+            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            try
+            {
+                ListenPort = resolvedListenPort;
+                RemoteHost = NormalizeRemoteHost(remoteHost);
+                RemotePort = remotePort;
+                if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                {
+                    StopInternal(clearPending: false);
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
+                status = $"Transport official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                StopInternal(clearPending: false);
+                status = $"Transport official-session bridge failed to start: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
+        }
+
+        private void StopInternal(bool clearPending)
+        {
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+            _passiveEstablishedSession = null;
+            if (!clearPending)
+            {
+                return;
+            }
+
+            while (_pendingMessages.TryDequeue(out _))
+            {
+            }
+
+            while (_pendingOutboundPackets.TryDequeue(out _))
+            {
+            }
+
+            _recentOutboundPackets.Clear();
+            ReceivedCount = 0;
+            SentCount = 0;
+            ForwardedOutboundCount = 0;
+            ForwardedOutboundTransportCount = 0;
+            QueuedCount = 0;
+            LastSentOpcode = -1;
+            LastSentRawPacket = Array.Empty<byte>();
+            LastQueuedOpcode = -1;
+            LastQueuedRawPacket = Array.Empty<byte>();
+        }
+
+        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
+        {
+            opcode = 0;
+            payload = Array.Empty<byte>();
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            opcode = rawPacket[0] | (rawPacket[1] << 8);
+            payload = rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
+            return true;
+        }
+
+        private static bool TryDecodeInboundTransportPacket(byte[] rawPacket, string source, out TransportationPacketInboxMessage message)
         {
             message = null;
             if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
@@ -1279,163 +998,104 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            message = new TransportationPacketInboxMessage(opcode, payload, source, BitConverter.ToString(rawPacket).Replace("-", string.Empty, StringComparison.Ordinal));
+            message = new TransportationPacketInboxMessage(
+                opcode,
+                payload,
+                source,
+                $"packetclientraw {Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}");
             return true;
         }
 
-        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
+        private bool TryResolveRecentOutboundPacket(int historyIndexFromNewest, string action, out byte[] rawPacket, out string status)
         {
-            opcode = 0;
-            payload = Array.Empty<byte>();
-            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            rawPacket = Array.Empty<byte>();
+            if (historyIndexFromNewest <= 0)
             {
+                status = $"Transport outbound history {action} index must be 1 or greater.";
                 return false;
             }
 
-            opcode = BitConverter.ToUInt16(rawPacket, 0);
-            payload = new byte[rawPacket.Length - sizeof(short)];
-            if (payload.Length > 0)
+            lock (_sync)
             {
-                Buffer.BlockCopy(rawPacket, sizeof(short), payload, 0, payload.Length);
-            }
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"Transport outbound history has {_recentOutboundPackets.Count} packet(s); cannot {action} index {historyIndexFromNewest}.";
+                    return false;
+                }
 
-            return true;
+                OutboundPacketTrace trace = _recentOutboundPackets.ToArray()[^historyIndexFromNewest];
+                rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                status = null;
+                return true;
+            }
+        }
+
+        private void RecordOutboundPacket(OutboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Enqueue(trace);
+                while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.Dequeue();
+                }
+            }
         }
 
         private static string BuildPayloadPreview(byte[] payload)
         {
-            if (payload == null || payload.Length == 0)
-            {
-                return "<none>";
-            }
-
-            const int maxPreviewBytes = 24;
-            byte[] previewBytes = payload.Length <= maxPreviewBytes
-                ? payload
-                : payload.Take(maxPreviewBytes).ToArray();
-            string previewHex = Convert.ToHexString(previewBytes);
-            return payload.Length <= maxPreviewBytes
-                ? previewHex
-                : $"{previewHex}...";
+            return Convert.ToHexString(payload ?? Array.Empty<byte>());
         }
 
         private static string DescribeOutboundPacket(int opcode, byte[] rawPacket)
         {
-            if (opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode)
-            {
-                return TransportationFieldInitRequestCodec.DescribeRawFieldInitPacket(rawPacket);
-            }
-
-            if (TryDecodeOpcode(rawPacket, out int decodedOpcode, out byte[] payload))
-            {
-                return TransportationPacketInboxManager.DescribePacket(decodedOpcode, payload);
-            }
-
-            return $"opcode={opcode}";
+            return opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode
+                ? $"field-init ({opcode})"
+                : TransportationPacketInboxManager.DescribePacket(opcode, rawPacket != null && rawPacket.Length > sizeof(ushort) ? rawPacket[sizeof(ushort)..] : Array.Empty<byte>());
         }
 
-        public static bool TryResolveDiscoveryCandidate(
-            IReadOnlyList<SessionDiscoveryCandidate> candidates,
-            int remotePort,
-            int? owningProcessId,
-            string owningProcessName,
-            int? localPort,
-            out SessionDiscoveryCandidate candidate,
-            out string status)
+        private static string NormalizeRemoteHost(string remoteHost)
         {
-            candidate = default;
-            status = null;
-
-            if (candidates == null || candidates.Count == 0)
-            {
-                status = $"No established Maple session matched remote port {remotePort}."
-                    + FormatOwnershipSuffix(owningProcessId, owningProcessName)
-                    + FormatLocalPortSuffix(localPort);
-                return false;
-            }
-
-            IEnumerable<SessionDiscoveryCandidate> filteredCandidates = candidates;
-            if (localPort.HasValue)
-            {
-                filteredCandidates = filteredCandidates.Where(entry => entry.LocalEndpoint.Port == localPort.Value);
-            }
-
-            SessionDiscoveryCandidate[] resolvedCandidates = filteredCandidates.ToArray();
-            if (resolvedCandidates.Length == 1)
-            {
-                candidate = resolvedCandidates[0];
-                return true;
-            }
-
-            if (resolvedCandidates.Length == 0)
-            {
-                status = $"No established Maple session matched remote port {remotePort}."
-                    + FormatOwnershipSuffix(owningProcessId, owningProcessName)
-                    + FormatLocalPortSuffix(localPort);
-                return false;
-            }
-
-            status = "Transport official-session bridge found multiple candidates for remote port "
-                + remotePort
-                + FormatOwnershipSuffix(owningProcessId, owningProcessName)
-                + FormatLocalPortSuffix(localPort)
-                + ": "
-                + string.Join(", ", resolvedCandidates.Select(entry =>
-                    $"{entry.ProcessName} ({entry.ProcessId}) local {entry.LocalEndpoint.Address}:{entry.LocalEndpoint.Port} -> remote {entry.RemoteEndpoint.Address}:{entry.RemoteEndpoint.Port}"))
-                + ". Specify a local port filter.";
-            return false;
+            string trimmed = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+            return IPAddress.TryParse(trimmed, out IPAddress address) ? address.ToString() : trimmed;
         }
 
-        public static string DescribeDiscoveryCandidates(
-            IReadOnlyList<SessionDiscoveryCandidate> candidates,
-            int remotePort,
-            int? owningProcessId,
-            string owningProcessName,
-            int? localPort)
+        private static bool MatchesRequestedTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            string requestedRemoteHost,
+            int requestedRemotePort,
+            bool ignoreListenPort)
         {
-            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out string status))
-            {
-                if (candidates == null || candidates.Count == 0 || status != null)
-                {
-                    return status ?? $"No established Maple session matched remote port {remotePort}.";
-                }
-            }
-
-            IEnumerable<SessionDiscoveryCandidate> filteredCandidates = candidates ?? Array.Empty<SessionDiscoveryCandidate>();
-            if (localPort.HasValue)
-            {
-                filteredCandidates = filteredCandidates.Where(entry => entry.LocalEndpoint.Port == localPort.Value);
-            }
-
-            SessionDiscoveryCandidate[] entries = filteredCandidates.ToArray();
-            if (entries.Length == 0)
-            {
-                return $"No established Maple session matched remote port {remotePort}."
-                    + FormatOwnershipSuffix(owningProcessId, owningProcessName)
-                    + FormatLocalPortSuffix(localPort);
-            }
-
-            return "Transport official-session bridge discovery candidates:"
-                + Environment.NewLine
-                + string.Join(
-                    Environment.NewLine,
-                    entries.Select(entry =>
-                        $"{entry.ProcessName} ({entry.ProcessId}) local {entry.LocalEndpoint.Address}:{entry.LocalEndpoint.Port} -> remote {entry.RemoteEndpoint.Address}:{entry.RemoteEndpoint.Port}"))
-                + Environment.NewLine
-                + BuildDiscoveryAttachmentRequirementMessage();
+            return (ignoreListenPort || currentListenPort == requestedListenPort)
+                && currentRemotePort == requestedRemotePort
+                && string.Equals(NormalizeRemoteHost(currentRemoteHost), NormalizeRemoteHost(requestedRemoteHost), StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string BuildDiscoveryAttachmentRequirementMessage(int? listenPort = null)
+        private static bool MatchesDiscoveredTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            IPEndPoint remoteEndpoint,
+            bool ignoreListenPort)
         {
-            string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
-                ? $"127.0.0.1:{listenPort.Value}"
-                : "the configured localhost listen port";
-            return $"Discovery identifies established Maple sockets. Use `/transport session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/transport session attachproxy ...` to arm a reconnect proxy and queue transport packets until Maple reconnects through {reconnectTarget}.";
+            return remoteEndpoint != null
+                && MatchesRequestedTargetConfiguration(
+                    currentListenPort,
+                    currentRemoteHost,
+                    currentRemotePort,
+                    requestedListenPort,
+                    remoteEndpoint.Address.ToString(),
+                    remoteEndpoint.Port,
+                    ignoreListenPort);
         }
 
-        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
+        private static string BuildDiscoveryAttachmentRequirementMessage(int listenPort)
         {
-            return $"observing established socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; proxy reconnect required for decrypt/inject";
+            return $"Reconnect Maple through 127.0.0.1:{listenPort} so the role-session bridge can recover Maple crypto ownership.";
         }
 
         private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
@@ -1443,68 +1103,17 @@ namespace HaCreator.MapSimulator.Managers
             return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
         }
 
-        private static string FormatOwnershipSuffix(int? owningProcessId, string owningProcessName)
+        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
         {
-            if (owningProcessId.HasValue)
-            {
-                return $" for pid {owningProcessId.Value}";
-            }
-
-            if (!string.IsNullOrWhiteSpace(owningProcessName))
-            {
-                return $" for process '{NormalizeProcessSelector(owningProcessName)}'";
-            }
-
-            return string.Empty;
+            return $"observing established socket pair {DescribeEstablishedSession(candidate)}; proxy reconnect required for decrypt/inject";
         }
 
-        private static string FormatLocalPortSuffix(int? localPort)
-        {
-            return localPort.HasValue ? $" on local port {localPort.Value}" : string.Empty;
-        }
-
-        private static bool TryResolveProcessSelector(string selector, out int? processId, out string processName, out string error)
-        {
-            processId = null;
-            processName = null;
-            error = null;
-
-            if (string.IsNullOrWhiteSpace(selector))
-            {
-                processName = DefaultProcessName;
-                return true;
-            }
-
-            string normalized = selector.Trim();
-            if (int.TryParse(normalized, out int parsedPid))
-            {
-                processId = parsedPid;
-                return true;
-            }
-
-            processName = NormalizeProcessSelector(normalized);
-            return true;
-        }
-
-        private static string NormalizeProcessSelector(string processSelector)
-        {
-            if (string.IsNullOrWhiteSpace(processSelector))
-            {
-                return DefaultProcessName;
-            }
-
-            string normalized = processSelector.Trim();
-            return normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                ? normalized[..^4]
-                : normalized;
-        }
-
-        private static bool TryResolveProcess(int processId, out string processName)
+        private static bool TryResolveProcess(int pid, out string processName)
         {
             processName = null;
             try
             {
-                processName = Process.GetProcessById(processId).ProcessName;
+                processName = Process.GetProcessById(pid).ProcessName;
                 return !string.IsNullOrWhiteSpace(processName);
             }
             catch
@@ -1513,66 +1122,108 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        internal static bool MatchesDiscoveredTargetConfiguration(
-            int currentListenPort,
-            string currentRemoteHost,
-            int currentRemotePort,
-            int expectedListenPort,
-            IPEndPoint discoveredRemoteEndpoint,
-            bool ignoreListenPort = false)
+        private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)
         {
-            return discoveredRemoteEndpoint != null
-                && MatchesRequestedTargetConfiguration(
-                    currentListenPort,
-                    currentRemoteHost,
-                    currentRemotePort,
-                    expectedListenPort,
-                    discoveredRemoteEndpoint.Address.ToString(),
-                    discoveredRemoteEndpoint.Port,
-                    ignoreListenPort);
+            owningProcessId = null;
+            owningProcessName = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(selector))
+            {
+                owningProcessName = DefaultProcessName;
+                return true;
+            }
+
+            if (int.TryParse(selector, out int pid) && pid > 0)
+            {
+                owningProcessId = pid;
+                return true;
+            }
+
+            string normalized = NormalizeProcessSelector(selector);
+            if (normalized.Length == 0)
+            {
+                error = "Transport official-session discovery requires a process name or pid when a selector is provided.";
+                return false;
+            }
+
+            owningProcessName = normalized;
+            return true;
         }
 
-        internal static bool MatchesTargetConfiguration(
-            int currentListenPort,
-            string currentRemoteHost,
-            int currentRemotePort,
-            int expectedListenPort,
-            string expectedRemoteHost,
-            int expectedRemotePort)
+        private static string NormalizeProcessSelector(string selector)
         {
-            return currentListenPort == expectedListenPort
-                && currentRemotePort == expectedRemotePort
-                && string.Equals(
-                    NormalizeRemoteHost(currentRemoteHost),
-                    NormalizeRemoteHost(expectedRemoteHost),
-                    StringComparison.OrdinalIgnoreCase);
-        }
-
-        internal static bool MatchesRequestedTargetConfiguration(
-            int currentListenPort,
-            string currentRemoteHost,
-            int currentRemotePort,
-            int expectedListenPort,
-            string expectedRemoteHost,
-            int expectedRemotePort,
-            bool ignoreListenPort)
-        {
-            return (ignoreListenPort || currentListenPort == expectedListenPort)
-                && currentRemotePort == expectedRemotePort
-                && string.Equals(
-                    NormalizeRemoteHost(currentRemoteHost),
-                    NormalizeRemoteHost(expectedRemoteHost),
-                    StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string NormalizeRemoteHost(string remoteHost)
-        {
-            string trimmed = string.IsNullOrWhiteSpace(remoteHost)
-                ? IPAddress.Loopback.ToString()
-                : remoteHost.Trim();
-            return IPAddress.TryParse(trimmed, out IPAddress parsedAddress)
-                ? parsedAddress.ToString()
+            string trimmed = selector?.Trim() ?? string.Empty;
+            return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? trimmed[..^4]
                 : trimmed;
+        }
+
+        private static bool TryResolveDiscoveryCandidate(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort,
+            out SessionDiscoveryCandidate candidate,
+            out string status)
+        {
+            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                status = $"Transport official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+                candidate = default;
+                return false;
+            }
+
+            if (filteredCandidates.Count > 1)
+            {
+                string matches = string.Join(", ", filteredCandidates.Select(match => $"{match.RemoteEndpoint.Address}:{match.RemoteEndpoint.Port} via {match.LocalEndpoint.Address}:{match.LocalEndpoint.Port}"));
+                status = $"Transport official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Add a localPort filter.";
+                candidate = default;
+                return false;
+            }
+
+            candidate = filteredCandidates[0];
+            status = null;
+            return true;
+        }
+
+        private static string DescribeDiscoveryCandidates(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            int remotePort,
+            int? owningProcessId,
+            string owningProcessName,
+            int? localPort)
+        {
+            IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
+            if (filteredCandidates.Count == 0)
+            {
+                return $"No established TCP sessions matched {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+            }
+
+            return string.Join(Environment.NewLine, filteredCandidates.Select(DescribeEstablishedSession));
+        }
+
+        private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(IReadOnlyList<SessionDiscoveryCandidate> candidates, int? localPort)
+        {
+            if (!localPort.HasValue)
+            {
+                return candidates ?? Array.Empty<SessionDiscoveryCandidate>();
+            }
+
+            return (candidates ?? Array.Empty<SessionDiscoveryCandidate>())
+                .Where(candidate => candidate.LocalEndpoint.Port == localPort.Value)
+                .ToArray();
+        }
+
+        private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)
+        {
+            string selector = owningProcessId.HasValue
+                ? $"pid {owningProcessId.Value}"
+                : string.IsNullOrWhiteSpace(owningProcessName) ? DefaultProcessName : owningProcessName;
+            return localPort.HasValue
+                ? $"{selector} on remote port {remotePort} and local port {localPort.Value}"
+                : $"{selector} on remote port {remotePort}";
         }
 
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()

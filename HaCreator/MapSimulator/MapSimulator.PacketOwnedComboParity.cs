@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
@@ -40,8 +41,6 @@ namespace HaCreator.MapSimulator
             new(200, 21120006, "ComboTempest", 21120007, "ComboBarrier")
         };
 
-        private bool _comboCounterPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _comboCounterPacketInboxConfiguredPort = ComboCounterPacketInboxManager.DefaultPort;
         private int _packetOwnedComboCount;
         private int _packetOwnedComboLastSetTick;
         private PacketOwnedComboDisplayState _packetOwnedComboState;
@@ -190,35 +189,6 @@ namespace HaCreator.MapSimulator
 
         private void EnsureComboCounterPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_comboCounterPacketInboxEnabled)
-            {
-                if (_comboCounterPacketInbox.IsRunning)
-                {
-                    _comboCounterPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_comboCounterPacketInbox.IsRunning && _comboCounterPacketInbox.Port == _comboCounterPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_comboCounterPacketInbox.IsRunning)
-            {
-                _comboCounterPacketInbox.Stop();
-            }
-
-            try
-            {
-                _comboCounterPacketInbox.Start(_comboCounterPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _comboCounterPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Combo packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainComboCounterPacketInbox()
@@ -248,17 +218,13 @@ namespace HaCreator.MapSimulator
 
         private string DescribeComboCounterPacketInboxStatus()
         {
-            string enabledText = _comboCounterPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _comboCounterPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_comboCounterPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_comboCounterPacketInboxConfiguredPort}";
             string ownerStateText = _packetOwnedComboCount > 0
                 ? $"Owner combo count={_packetOwnedComboCount} set at tick {_packetOwnedComboLastSetTick}."
                 : "Owner combo count is clear.";
             string activeComboText = _packetOwnedComboState == null
                 ? "No packet-owned combo HUD is active."
                 : $"Combo HUD showing {_packetOwnedComboState.ComboCount} ({DescribePacketOwnedComboTier(_packetOwnedComboState.ComboLevel)}).";
-            return $"Combo packet inbox {enabledText}, {listeningText}, received {_comboCounterPacketInbox.ReceivedCount} packet(s). {ownerStateText} {activeComboText}";
+            return $"Combo packet inbox adapter-only; listener fallback retired. {ownerStateText} {activeComboText}";
         }
 
         private bool TryApplyPacketOwnedComboPacket(int packetType, byte[] payload, out string message)
@@ -536,23 +502,12 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
             {
-                int port = ComboCounterPacketInboxManager.DefaultPort;
-                if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0 || port > ushort.MaxValue))
-                {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /combopacket inbox [status|start [port]|stop|packet <inccombo> [payloadhex=..|payloadb64=..]|packetraw <inccombo> <hex>]");
-                }
-
-                _comboCounterPacketInboxConfiguredPort = port;
-                _comboCounterPacketInboxEnabled = true;
-                EnsureComboCounterPacketInboxState(shouldRun: true);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeComboCounterPacketInboxStatus()} {_comboCounterPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Combo packet inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
             }
 
             if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
             {
-                _comboCounterPacketInboxEnabled = false;
-                EnsureComboCounterPacketInboxState(shouldRun: false);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeComboCounterPacketInboxStatus()} {_comboCounterPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info("Combo packet inbox loopback listener is already retired.");
             }
 
             bool rawHex = string.Equals(args[1], "packetraw", StringComparison.OrdinalIgnoreCase);

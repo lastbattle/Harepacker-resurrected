@@ -2,10 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
 using MapleLib.PacketLib;
 
@@ -38,7 +34,7 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Loopback transport seam for Coconut minigame packets.
+    /// Adapter inbox for Coconut minigame packets.
     /// Inbound lines accept "<type> <hex-payload>", where type can be the numeric packet id
     /// or the aliases "hit" (342) and "score" (343).
     /// Outbound normal-attack requests are emitted as "attack <targetId> <delayMs> <requestedAtTick>".
@@ -51,99 +47,61 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeScore = 343;
 
         private readonly ConcurrentQueue<CoconutPacketInboxMessage> _pendingMessages = new();
-        private readonly ConcurrentDictionary<int, ConnectedClient> _clients = new();
-        private readonly object _listenerLock = new();
-        private int _nextClientId;
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        private sealed class ConnectedClient : IDisposable
-        {
-            public ConnectedClient(int id, TcpClient client, string endpoint)
-            {
-                Id = id;
-                Client = client;
-                Endpoint = endpoint;
-                Writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
-            }
-
-            public int Id { get; }
-            public TcpClient Client { get; }
-            public string Endpoint { get; }
-            public StreamWriter Writer { get; }
-            public object WriteLock { get; } = new();
-
-            public void Dispose()
-            {
-                try
-                {
-                    Writer.Dispose();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    Client.Dispose();
-                }
-                catch
-                {
-                }
-            }
-        }
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasConnectedClients => !_clients.IsEmpty;
-        public int ConnectedClientCount => _clients.Count;
+        private readonly RetiredMapleSocketState _socketState = new("Coconut packet inbox", DefaultPort, "Coconut packet inbox ready for role-session/local ingress.");
+        public int Port => _socketState.Port;
+        public bool IsRunning => _socketState.IsRunning;
+        public bool HasConnectedClients => _socketState.HasConnectedClients;
+        public int ConnectedClientCount => _socketState.ConnectedClientCount;
         public int ReceivedCount { get; private set; }
+        public int ProxyIngressReceivedCount { get; private set; }
+        public int LocalIngressReceivedCount { get; private set; }
+        public string LastIngressMode { get; private set; } = "none";
         public int SentCount { get; private set; }
-        public string LastStatus { get; private set; } = "Coconut transport inactive.";
+        public string LastStatus => _socketState.LastStatus;
 
         public void Start(int port = DefaultPort)
         {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Coconut transport already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Coconut transport listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Coconut transport failed to start: {ex.Message}";
-                }
-            }
+            _socketState.Start(port);
         }
 
         public void Stop()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Coconut transport stopped.";
-            }
+            _socketState.Stop("Coconut packet inbox ready for role-session/local ingress.");
+        }
+
+        public void EnqueueProxy(CoconutPacketInboxMessage message)
+        {
+            EnqueueMessage(
+                message,
+                MapSimulatorNetworkIngressMode.Proxy,
+                message?.Source);
+        }
+
+        public void EnqueueProxy(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "coconut-proxy" : source;
+            EnqueueMessage(
+                new CoconutPacketInboxMessage(packetType, payload, packetSource, $"{packetType}"),
+                MapSimulatorNetworkIngressMode.Proxy,
+                packetSource);
         }
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
-            _pendingMessages.Enqueue(new CoconutPacketInboxMessage(packetType, payload, source, $"{packetType}"));
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "coconut-local" : source;
+            EnqueueMessage(
+                new CoconutPacketInboxMessage(packetType, payload, packetSource, $"{packetType}"),
+                MapSimulatorNetworkIngressMode.Local,
+                packetSource);
+        }
+
+        public void EnqueueLocalTeamUpdate(int localTeam, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "coconut-local" : source;
+            EnqueueMessage(
+                CoconutPacketInboxMessage.CreateLocalTeamUpdate(localTeam, packetSource, $"team {localTeam}"),
+                MapSimulatorNetworkIngressMode.Local,
+                packetSource);
         }
 
         public bool TryDequeue(out CoconutPacketInboxMessage message)
@@ -153,64 +111,22 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendAttackRequest(CoconutField.AttackPacketRequest request, out string status)
         {
-            ConnectedClient[] clients = _clients.Values.ToArray();
-            if (clients.Length == 0)
-            {
-                status = "Coconut transport has no connected clients.";
-                LastStatus = status;
-                return false;
-            }
-
-            string line = $"attack {request.TargetId} {request.DelayMs} {request.RequestedAtTick}";
-            string rawPacketLine = $"packetoutraw {BuildOutboundAttackPacketHex(request)}";
-            int sent = 0;
-
-            foreach (ConnectedClient client in clients)
-            {
-                try
-                {
-                    lock (client.WriteLock)
-                    {
-                        client.Writer.WriteLine(line);
-                        client.Writer.WriteLine(rawPacketLine);
-                    }
-
-                    sent++;
-                }
-                catch (Exception ex)
-                {
-                    RemoveClient(client.Id, $"Coconut transport send failed for {client.Endpoint}: {ex.Message}");
-                }
-            }
-
-            if (sent == 0)
-            {
-                status = "Coconut transport could not deliver the attack request.";
-                LastStatus = status;
-                return false;
-            }
-
-            SentCount++;
-            status = $"Sent Coconut attack request for target {request.TargetId} to {sent} transport client(s), including packetoutraw opcode {OutboundNormalAttackOpcode}.";
-            LastStatus = status;
-            return true;
+            status = "Coconut attack requests require the role-session bridge or local packet command path; loopback transport is retired.";
+            _socketState.SetStatus(status);
+            return false;
         }
 
         public void RecordDispatchResult(string source, int packetType, bool success, string message)
         {
             string packetLabel = DescribePacketType(packetType);
             string summary = string.IsNullOrWhiteSpace(message) ? packetLabel : $"{packetLabel}: {message}";
-            LastStatus = success
+            _socketState.SetStatus(success
                 ? $"Applied {summary} from {source}."
-                : $"Ignored {summary} from {source}.";
+                : $"Ignored {summary} from {source}.");
         }
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
@@ -482,90 +398,6 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    int clientId = Interlocked.Increment(ref _nextClientId);
-                    string endpoint = client.Client?.RemoteEndPoint?.ToString() ?? $"coconut-client-{clientId}";
-                    var connectedClient = new ConnectedClient(clientId, client, endpoint);
-                    _clients[clientId] = connectedClient;
-                    LastStatus = $"Coconut transport client connected: {endpoint}.";
-                    _ = Task.Run(() => HandleClientAsync(connectedClient, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Coconut transport error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(ConnectedClient client, CancellationToken cancellationToken)
-        {
-            try
-            {
-                using (client)
-                using (StreamReader reader = new StreamReader(client.Client.GetStream()))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (line.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
-                            || line.StartsWith("packetoutraw", StringComparison.OrdinalIgnoreCase))
-                        {
-                            LastStatus = $"Ignored outbound echo from {client.Endpoint}: {line}";
-                            continue;
-                        }
-
-                        if (!TryParseTransportLine(line, client.Endpoint, out CoconutPacketInboxMessage message, out bool ignored, out string parseMessage))
-                        {
-                            LastStatus = ignored
-                                ? $"Ignored outbound echo from {client.Endpoint}: {parseMessage}"
-                                : $"Ignored Coconut transport line from {client.Endpoint}: {parseMessage}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(message);
-                        ReceivedCount++;
-                        LastStatus = message.IsLocalTeamUpdate
-                            ? $"Queued Coconut local team {(message.LocalTeam == 1 ? "Story" : "Maple")} from {client.Endpoint}."
-                            : $"Queued {DescribePacketType(message.PacketType)} from {client.Endpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Coconut transport client error: {ex.Message}";
-            }
-            finally
-            {
-                RemoveClient(client.Id, $"Coconut transport client disconnected: {client.Endpoint}.");
-            }
-        }
-
         private static bool TryParsePacketType(string token, out int packetType)
         {
             packetType = 0;
@@ -620,15 +452,6 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static string BuildOutboundAttackPacketHex(CoconutField.AttackPacketRequest request)
-        {
-            PacketWriter packetWriter = new PacketWriter();
-            packetWriter.WriteShort(OutboundNormalAttackOpcode);
-            packetWriter.WriteShort(request.TargetId);
-            packetWriter.WriteShort(request.DelayMs);
-            return Convert.ToHexString(packetWriter.ToArray()).ToLowerInvariant();
-        }
-
         private static string DescribePacketType(int packetType)
         {
             return packetType switch
@@ -651,48 +474,37 @@ namespace HaCreator.MapSimulator.Managers
             return string.Concat(value.Where(ch => !char.IsWhiteSpace(ch)));
         }
 
-        private void StopInternal(bool clearPending)
+        private void EnqueueMessage(CoconutPacketInboxMessage message, string ingressMode, string statusSource)
         {
-            _listenerCancellation?.Cancel();
-
-            try
+            if (message == null)
             {
-                _listener?.Stop();
-            }
-            catch (SocketException)
-            {
+                return;
             }
 
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listenerTask = null;
-            foreach (ConnectedClient client in _clients.Values)
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastIngressMode = ingressMode;
+            if (!MapSimulatorNetworkIngressMode.IsKnown(LastIngressMode))
             {
-                client.Dispose();
+                LastIngressMode = MapSimulatorNetworkIngressMode.Proxy;
             }
 
-            _clients.Clear();
-
-            if (clearPending)
+            switch (LastIngressMode)
             {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-                SentCount = 0;
-            }
-        }
-
-        private void RemoveClient(int clientId, string status)
-        {
-            if (_clients.TryRemove(clientId, out ConnectedClient client))
-            {
-                client.Dispose();
+                case MapSimulatorNetworkIngressMode.Proxy:
+                    ProxyIngressReceivedCount++;
+                    break;
+                case MapSimulatorNetworkIngressMode.Local:
+                    LocalIngressReceivedCount++;
+                    break;
             }
 
-            LastStatus = status;
+            string source = string.IsNullOrWhiteSpace(statusSource)
+                ? message.Source
+                : statusSource;
+            _socketState.SetStatus(message.IsLocalTeamUpdate
+                ? $"Queued Coconut local team {(message.LocalTeam == 1 ? "Story" : "Maple")} from {source}."
+                : $"Queued {DescribePacketType(message.PacketType)} from {source}.");
         }
     }
 }

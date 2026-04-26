@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Managers
 {
     internal readonly record struct PacketOwnedItemMakerHiddenRecipeUnlockEntry(int BucketKey, int OutputItemId);

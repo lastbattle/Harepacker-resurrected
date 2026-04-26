@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Linq;
 using HaCreator.MapSimulator.Fields;
 
@@ -27,63 +22,14 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for the tournament field wrapper.
+    /// Adapter inbox for the tournament field wrapper.
     /// Each line is encoded as "<type> <hex-payload>", where type can be the numeric packet id
     /// or aliases such as "notice", "matchtable", "prize", "uew", or "noop".
     /// </summary>
     public sealed class TournamentPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18489;
-
         private readonly ConcurrentQueue<TournamentPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Tournament packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Tournament packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Tournament packet inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Tournament packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Tournament packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Tournament packet inbox ready for role-session/local ingress.";
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
@@ -94,6 +40,18 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _pendingMessages.Enqueue(new TournamentPacketInboxMessage(packetType, payload, source, $"{packetType}"));
+            LastStatus = $"Queued {DescribePacketType(packetType)} from {source}.";
+        }
+
+        public void EnqueueProxy(TournamentPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {message.Source}.";
         }
 
         public bool TryDequeue(out TournamentPacketInboxMessage message)
@@ -112,10 +70,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out int packetType, out byte[] payload, out string error)
@@ -221,72 +175,6 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Tournament packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out string error))
-                        {
-                            LastStatus = $"Ignored Tournament inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new TournamentPacketInboxMessage(packetType, payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(packetType)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Tournament packet inbox client error: {ex.Message}";
-            }
-        }
-
         private static bool TryParsePacketType(string token, out int packetType)
         {
             packetType = 0;
@@ -347,37 +235,5 @@ namespace HaCreator.MapSimulator.Managers
             return new string(buffer, 0, count);
         }
 
-        private void StopInternal(bool clearPending)
-        {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listenerTask = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-
-                ReceivedCount = 0;
-            }
-        }
     }
 }

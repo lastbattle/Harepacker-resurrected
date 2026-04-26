@@ -1,5 +1,4 @@
 using HaCreator.MapSimulator.Fields;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
@@ -32,13 +31,9 @@ namespace HaCreator.MapSimulator.Managers
         private readonly List<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly List<InboundPacketTrace> _recentInboundPackets = new();
         private readonly object _sync = new();
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
         private bool _hasObservedLiveOutboundOpcode160;
         private bool _hasObservedLiveInboundOpcode371;
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -65,55 +60,20 @@ namespace HaCreator.MapSimulator.Managers
             string Summary,
             string PayloadHex,
             string RawPacketHex);
-
-        private sealed class BridgePair
+        public RockPaperScissorsOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
         {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
         }
 
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public bool HoldsLiveSessionOwnership => IsRunning || HasAttachedClient || HasPassiveEstablishedSocketPair;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
@@ -148,7 +108,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -265,12 +225,16 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                    _listener.Start();
-                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Rock-Paper-Scissors official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    ListenPort = requestedListenPort;
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        status = LastStatus;
+                        return false;
+                    }
+
+                    LastStatus = $"Rock-Paper-Scissors official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                     status = LastStatus;
                     return true;
                 }
@@ -602,8 +566,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool TrySendClientPacket(RockPaperScissorsClientPacket packet, out string status)
         {
             status = null;
-            BridgePair pair = _activePair;
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = "Rock-Paper-Scissors official-session bridge has no initialized Maple session.";
                 LastStatus = status;
@@ -613,21 +576,27 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 byte[] rawPacket = RockPaperScissorsClientPacketTransportManager.BuildRawPacket(packet);
-                pair.ServerSession.SendPacket(rawPacket);
+                if (!_roleSessionProxy.TrySendToServer(rawPacket, out string proxyStatus))
+                {
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
                 if (TryBuildOutboundTrace(rawPacket, "simulator-inject", out OutboundPacketTrace trace))
                 {
                     RecordOutboundTrace(trace);
                 }
 
                 SentCount++;
-                status = $"Injected Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)packet.RequestType} into live session {pair.RemoteEndpoint}.";
+                status = $"Injected Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)packet.RequestType} into live session.";
                 LastStatus = status;
                 return true;
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"Rock-Paper-Scissors official-session bridge client-packet injection failed: {ex.Message}");
-                status = LastStatus;
+                status = $"Rock-Paper-Scissors official-session bridge client-packet injection failed: {ex.Message}";
+                LastStatus = status;
                 return false;
             }
         }
@@ -639,173 +608,6 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Rock-Paper-Scissors official-session bridge error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            BridgePair pair = null;
-
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Rock-Paper-Scissors official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Rock-Paper-Scissors official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Rock-Paper-Scissors official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _passiveEstablishedSession = null;
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Rock-Paper-Scissors official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Rock-Paper-Scissors official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    int flushed = FlushQueuedClientPackets(pair);
-                    LastStatus = flushed > 0
-                        ? $"Rock-Paper-Scissors official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued client packet(s)."
-                        : $"Rock-Paper-Scissors official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryBuildInboundMessage(raw, $"official-session:{pair.RemoteEndpoint}", out RockPaperScissorsPacketInboxMessage message))
-                {
-                    return;
-                }
-
-                if (TryBuildInboundTrace(raw, $"official-session:{pair.RemoteEndpoint}", out InboundPacketTrace inboundTrace))
-                {
-                    RecordInboundTrace(inboundTrace);
-                    _hasObservedLiveInboundOpcode371 = true;
-                }
-
-                _pendingMessages.Enqueue(message);
-                ReceivedCount++;
-                LastStatus = $"Queued Rock-Paper-Scissors subtype {message.PacketType} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Rock-Paper-Scissors official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                if (isInit)
-                {
-                    return;
-                }
-
-                byte[] raw = packet.ToArray();
-                pair.ServerSession.SendPacket(raw);
-                if (TryBuildOutboundTrace(raw, $"official-session:{pair.ClientEndpoint}", out OutboundPacketTrace trace))
-                {
-                    RecordOutboundTrace(trace);
-                    _hasObservedLiveOutboundOpcode160 = true;
-                    ForwardedOutboundCount++;
-                    LastStatus = $"Forwarded live Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)trace.RequestType} from {pair.ClientEndpoint}.";
-                }
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Rock-Paper-Scissors official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private int FlushQueuedClientPackets(BridgePair pair)
-        {
-            if (pair == null || !pair.InitCompleted)
-            {
-                return 0;
-            }
-
-            int flushed = 0;
-            while (_pendingClientPackets.TryDequeue(out RockPaperScissorsClientPacket packet))
-            {
-                byte[] rawPacket = RockPaperScissorsClientPacketTransportManager.BuildRawPacket(packet);
-                pair.ServerSession.SendPacket(rawPacket);
-                if (TryBuildOutboundTrace(rawPacket, "simulator-queued", out OutboundPacketTrace trace))
-                {
-                    RecordOutboundTrace(trace);
-                }
-
-                SentCount++;
-                flushed++;
-            }
-
-            return flushed;
-        }
-
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
         {
             bool autoSelectListenPort = listenPort <= 0;
@@ -815,12 +617,16 @@ namespace HaCreator.MapSimulator.Managers
             {
                 RemoteHost = NormalizeRemoteHost(remoteHost);
                 RemotePort = remotePort;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                _listener.Start();
-                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                status = $"Rock-Paper-Scissors official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                ListenPort = requestedListenPort;
+                if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                {
+                    StopInternal(clearPending: false);
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
+                status = $"Rock-Paper-Scissors official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                 LastStatus = status;
                 return true;
             }
@@ -907,63 +713,10 @@ namespace HaCreator.MapSimulator.Managers
 
             return autoSelectListenPort || currentListenPort == requestedListenPort;
         }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            lock (_sync)
-            {
-                if (_activePair != pair)
-                {
-                    return;
-                }
-
-                _activePair = null;
-                LastStatus = status;
-            }
-
-            pair?.Close();
-        }
-
         private void StopInternal(bool clearPending)
         {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            BridgePair pair;
-            lock (_sync)
-            {
-                pair = _activePair;
-                _activePair = null;
-                _passiveEstablishedSession = null;
-            }
-
-            pair?.Close();
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+            _passiveEstablishedSession = null;
             if (clearPending)
             {
                 while (_pendingMessages.TryDequeue(out _))
@@ -983,6 +736,88 @@ namespace HaCreator.MapSimulator.Managers
                 _hasObservedLiveOutboundOpcode160 = false;
                 _hasObservedLiveInboundOpcode371 = false;
             }
+        }
+
+        private int FlushQueuedClientPacketsViaProxy()
+        {
+            if (!_roleSessionProxy.HasConnectedSession)
+            {
+                return 0;
+            }
+
+            int flushed = 0;
+            while (_pendingClientPackets.TryDequeue(out RockPaperScissorsClientPacket packet))
+            {
+                byte[] rawPacket = RockPaperScissorsClientPacketTransportManager.BuildRawPacket(packet);
+                if (!_roleSessionProxy.TrySendToServer(rawPacket, out _))
+                {
+                    _pendingClientPackets.Enqueue(packet);
+                    break;
+                }
+
+                if (TryBuildOutboundTrace(rawPacket, "simulator-queued", out OutboundPacketTrace trace))
+                {
+                    RecordOutboundTrace(trace);
+                }
+
+                SentCount++;
+                flushed++;
+            }
+
+            return flushed;
+        }
+
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            if (e == null)
+            {
+                return;
+            }
+
+            if (e.IsInit)
+            {
+                int flushed = FlushQueuedClientPacketsViaProxy();
+                LastStatus = flushed > 0
+                    ? $"Rock-Paper-Scissors official-session bridge initialized Maple crypto and flushed {flushed} queued client packet(s)."
+                    : _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (!TryBuildInboundMessage(e.RawPacket, $"official-session:{e.SourceEndpoint}", out RockPaperScissorsPacketInboxMessage message))
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (TryBuildInboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out InboundPacketTrace inboundTrace))
+            {
+                RecordInboundTrace(inboundTrace);
+                _hasObservedLiveInboundOpcode371 = true;
+            }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued Rock-Paper-Scissors subtype {message.PacketType} from live session {e.SourceEndpoint}.";
+        }
+
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            if (e == null || e.IsInit)
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (TryBuildOutboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out OutboundPacketTrace trace))
+            {
+                RecordOutboundTrace(trace);
+                _hasObservedLiveOutboundOpcode160 = true;
+                ForwardedOutboundCount++;
+                LastStatus = $"Forwarded live Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)trace.RequestType} from {e.SourceEndpoint}.";
+                return;
+            }
+
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         internal static string DescribeLiveOwnershipVerificationStatus(
@@ -1146,12 +981,6 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
         }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
-        }
-
         private static string NormalizeRemoteHost(string remoteHost)
         {
             return string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();

@@ -1,6 +1,5 @@
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
@@ -37,59 +36,20 @@ namespace HaCreator.MapSimulator.Managers
         private readonly HashSet<int> _inferredInboundPointOpcodes = new();
         private readonly HashSet<int> _suppressedDefaultInboundPointOpcodes = new();
         private readonly object _sync = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
-
-        private sealed class BridgePair
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
+        public CookieHouseOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
         {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
         }
 
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Cookie House official-session bridge inactive.";
 
@@ -99,8 +59,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
-                : "no live Maple session";
+                ? "connected Maple session" : "no live Maple session";
             return $"Cookie House official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mapped point opcodes={DescribeMappedInboundPointOpcodes()}; inference={DescribeInferenceStatus()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
@@ -345,12 +304,16 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, resolvedListenPort);
-                    _listener.Start();
-                    ListenPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Cookie House official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    ListenPort = resolvedListenPort;
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        status = LastStatus;
+                        return false;
+                    }
+
+                    LastStatus = $"Cookie House official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                     status = LastStatus;
                     return true;
                 }
@@ -472,205 +435,10 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Cookie House official-session bridge error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            BridgePair pair = null;
-
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Cookie House official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Cookie House official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Cookie House official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Cookie House official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Cookie House official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    LastStatus = $"Cookie House official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryObserveInboundPacketForInference(raw, out int opcode, out bool mapped, out _))
-                {
-                    return;
-                }
-
-                if (!mapped)
-                {
-                    return;
-                }
-
-                HashSet<int> resolvedMappedOpcodes;
-                lock (_sync)
-                {
-                    resolvedMappedOpcodes = BuildResolvedMappedOpcodeSetNoLock();
-                }
-
-                if (!TryBuildInboundPointMessageFromRawPacket(raw, resolvedMappedOpcodes, $"official-session:{pair.RemoteEndpoint}", out CookieHousePointInboxMessage message, out int resolvedOpcode, out string error))
-                {
-                    LastStatus = $"Ignored Cookie House live packet opcode {opcode}: {error}";
-                    return;
-                }
-
-                _pendingMessages.Enqueue(message);
-                ReceivedCount++;
-                LastStatus = $"Queued Cookie House point {message.Point} from live session {pair.RemoteEndpoint} via opcode {resolvedOpcode}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Cookie House official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                if (isInit)
-                {
-                    return;
-                }
-
-                pair.ServerSession.SendPacket(packet.ToArray());
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Cookie House official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            lock (_sync)
-            {
-                if (_activePair != pair)
-                {
-                    return;
-                }
-
-                _activePair = null;
-                LastStatus = status;
-            }
-
-            pair?.Close();
-        }
-
         private void StopInternal(bool clearPending)
         {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            BridgePair pair;
-            lock (_sync)
-            {
-                pair = _activePair;
-                _activePair = null;
-            }
-
-            pair?.Close();
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            if (clearPending)
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+if (clearPending)
             {
                 while (_pendingMessages.TryDequeue(out _))
                 {
@@ -679,6 +447,53 @@ namespace HaCreator.MapSimulator.Managers
                 ReceivedCount = 0;
                 _recentInferencePackets.Clear();
             }
+        }
+
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            if (e == null)
+            {
+                return;
+            }
+
+            if (e.IsInit)
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (!TryObserveInboundPacketForInference(e.RawPacket, out int opcode, out bool mapped, out _))
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (!mapped)
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            HashSet<int> resolvedMappedOpcodes;
+            lock (_sync)
+            {
+                resolvedMappedOpcodes = BuildResolvedMappedOpcodeSetNoLock();
+            }
+
+            if (!TryBuildInboundPointMessageFromRawPacket(e.RawPacket, resolvedMappedOpcodes, $"official-session:{e.SourceEndpoint}", out CookieHousePointInboxMessage message, out int resolvedOpcode, out string error))
+            {
+                LastStatus = $"Ignored Cookie House live packet opcode {opcode}: {error}";
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastStatus = $"Queued Cookie House point {message.Point} from live session {e.SourceEndpoint} via opcode {resolvedOpcode}.";
+        }
+
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         internal static bool TryBuildInboundPointMessageFromRawPacket(
@@ -1129,12 +944,6 @@ namespace HaCreator.MapSimulator.Managers
             int MinimumPoint,
             int MaximumPoint,
             int LastPoint);
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
-        }
-
         private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)
         {
             owningProcessId = null;

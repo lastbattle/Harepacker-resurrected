@@ -309,35 +309,12 @@ namespace HaCreator.MapSimulator
                 : "none";
             int mapId = _mapBoard?.MapInfo?.id ?? 0;
             string cacheSummary = $"stageBacks={_contextOwnedStageCurrentBackImages.Count.ToString(CultureInfo.InvariantCulture)} backColor={backColorText} keywords={_contextOwnedStageActiveKeywords.Count.ToString(CultureInfo.InvariantCulture)} quests={_contextOwnedStageActiveQuestIds.Count.ToString(CultureInfo.InvariantCulture)} affectedMaps={_contextOwnedStageAffectedMapIds.Count.ToString(CultureInfo.InvariantCulture)} themeModes={_contextOwnedStagePeriodCache.Count.ToString(CultureInfo.InvariantCulture)} elapsedMs={CalculateContextOwnedStagePeriodElapsedMilliseconds(currTickCount, _contextOwnedStagePeriodStartTick).ToString(CultureInfo.InvariantCulture)} applyToCurrentMap={ShouldApplyContextOwnedStageBackData(mapId)}";
-            return $"{_contextOwnedStagePeriodRuntime.DescribeStatus()}{Environment.NewLine}{cacheSummary}{Environment.NewLine}{_contextStagePeriodPacketInbox.LastStatus}";
+            string inboxSummary = "stageperiod inbox adapter-only; listener fallback retired.";
+            return $"{_contextOwnedStagePeriodRuntime.DescribeStatus()}{Environment.NewLine}{cacheSummary}{Environment.NewLine}{inboxSummary}{Environment.NewLine}{_contextStagePeriodPacketInbox.LastStatus}";
         }
 
         private void EnsureContextOwnedStagePeriodInboxState(bool shouldRun)
         {
-            if (!shouldRun)
-            {
-                if (_contextStagePeriodPacketInbox.IsRunning)
-                {
-                    _contextStagePeriodPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_contextStagePeriodPacketInbox.IsRunning)
-            {
-                return;
-            }
-
-            try
-            {
-                _contextStagePeriodPacketInbox.Start();
-            }
-            catch (Exception ex)
-            {
-                _contextStagePeriodPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Context-owned stage-period inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainContextOwnedStagePeriodInbox()

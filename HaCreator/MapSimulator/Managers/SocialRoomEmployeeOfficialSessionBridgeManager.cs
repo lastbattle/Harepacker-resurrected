@@ -1,4 +1,3 @@
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using HaCreator.MapSimulator.Interaction;
 using System;
@@ -47,67 +46,28 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly ConcurrentQueue<SocialRoomEmployeePacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public SocialRoomKind? PreferredKind { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Social-room employee official-session bridge inactive.";
+
+        public SocialRoomEmployeeOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
             int remotePort,
@@ -183,12 +143,14 @@ namespace HaCreator.MapSimulator.Managers
                     RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
                     RemotePort = remotePort;
                     PreferredKind = preferredKind;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus =
-                        $"Social-room employee official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}{DescribePreferredKindSuffix(preferredKind)}.";
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        return;
+                    }
+
+                    LastStatus = $"Social-room employee official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}{DescribePreferredKindSuffix(preferredKind)}. {proxyStatus}";
                 }
                 catch (Exception ex)
                 {
@@ -265,177 +227,39 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
+            if (e == null || e.IsInit)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Social-room employee official-session bridge error: {ex.Message}";
-            }
-        }
-
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected social-room employee official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Social-room employee official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Social-room employee official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Social-room employee official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Social-room employee official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    LastStatus = $"Social-room employee official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload)
-                    || !IsEmployeeOpcode(opcode))
-                {
-                    return;
-                }
-
-                _pendingMessages.Enqueue(new SocialRoomEmployeePacketInboxMessage(
-                    (ushort)opcode,
-                    payload,
-                    $"official-session:{pair.RemoteEndpoint}",
-                    $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
-                ReceivedCount++;
-                LastStatus = $"Queued employee-pool opcode {opcode} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Social-room employee official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            if (isInit)
-            {
+                LastStatus = _roleSessionProxy.LastStatus;
                 return;
             }
 
-            try
+            if (!TryDecodeOpcode(e.RawPacket, out int opcode, out byte[] payload)
+                || !IsEmployeeOpcode(opcode))
             {
-                pair.ServerSession.SendPacket(packet.ToArray());
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Social-room employee official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            if (pair == null)
-            {
+                LastStatus = _roleSessionProxy.LastStatus;
                 return;
             }
 
-            lock (_sync)
-            {
-                if (!ReferenceEquals(_activePair, pair))
-                {
-                    return;
-                }
+            _pendingMessages.Enqueue(new SocialRoomEmployeePacketInboxMessage(
+                (ushort)opcode,
+                payload,
+                $"official-session:{e.SourceEndpoint}",
+                $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
+            ReceivedCount++;
+            LastStatus = $"Queued employee opcode {opcode} from live session {e.SourceEndpoint}{DescribePreferredKindSuffix(PreferredKind)}.";
+        }
 
-                _activePair = null;
-            }
-
-            pair.Close();
-            LastStatus = status;
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
+        {
+            LastStatus = _roleSessionProxy.LastStatus;
         }
 
         private void StopInternal(bool clearPending)
         {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            PreferredKind = null;
-
-            BridgePair pair = _activePair;
-            _activePair = null;
-            pair?.Close();
+            _roleSessionProxy.Stop(resetCounters: clearPending);
+PreferredKind = null;
 
             if (clearPending)
             {
@@ -453,12 +277,6 @@ namespace HaCreator.MapSimulator.Managers
                 || opcode == EmployeeLeaveFieldOpcode
                 || opcode == EmployeeMiniRoomBalloonOpcode;
         }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto(iv, (short)(0xFFFF - version));
-        }
-
         private static IReadOnlyList<TcpRowOwnerPid> EnumerateTcpRows()
         {
             int size = 0;

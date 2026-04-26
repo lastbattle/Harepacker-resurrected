@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Fields;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
@@ -34,11 +33,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<GuildBossPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingPulleyRequest> _pendingOutboundRequests = new();
         private readonly object _sync = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -47,55 +42,13 @@ namespace HaCreator.MapSimulator.Managers
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
         private sealed record PendingPulleyRequest(GuildBossField.PulleyPacketRequest Request, byte[] RawPacket);
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public bool HoldsLiveSessionOwnership => IsRunning || HasAttachedClient || HasPassiveEstablishedSocketPair;
         public int PendingPacketCount => _pendingOutboundRequests.Count;
         public int ReceivedCount { get; private set; }
@@ -103,13 +56,20 @@ namespace HaCreator.MapSimulator.Managers
         public int QueuedCount { get; private set; }
         public string LastStatus { get; private set; } = "Guild boss official-session bridge inactive.";
 
+        public GuildBossOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
+
         public string DescribeStatus()
         {
             string lifecycle = IsRunning
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -214,12 +174,17 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                    _listener.Start();
-                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Guild boss official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    ListenPort = requestedListenPort;
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        status = LastStatus;
+                        return false;
+                    }
+
+                    _passiveEstablishedSession = null;
+                    LastStatus = proxyStatus;
                     status = LastStatus;
                     return true;
                 }
@@ -485,7 +450,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendPulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
-            BridgePair pair = _activePair;
             if (HasPassiveEstablishedSocketPair)
             {
                 status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode {OutboundPulleyRequestOpcode} into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
@@ -493,7 +457,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = "Guild boss official-session bridge has no active Maple session.";
                 LastStatus = status;
@@ -502,9 +466,16 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                pair.ServerSession.SendPacket(BuildPulleyRequestPacket());
+                byte[] packet = BuildPulleyRequestPacket();
+                if (!_roleSessionProxy.TrySendToServer(packet, out string proxyStatus))
+                {
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
                 SentCount++;
-                status = $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session {pair.RemoteEndpoint}.";
+                status = $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session.";
                 LastStatus = status;
                 return true;
             }
@@ -512,7 +483,6 @@ namespace HaCreator.MapSimulator.Managers
             {
                 status = $"Guild boss official-session injection failed: {ex.Message}";
                 LastStatus = status;
-                ClearActivePair(pair, status);
                 return false;
             }
         }
@@ -583,216 +553,63 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Guild boss official-session bridge error: {ex.Message}";
-            }
-        }
 
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
         {
-            bool autoSelectListenPort = listenPort <= 0;
-            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
-
-            try
-            {
-                RemoteHost = NormalizeRemoteHost(remoteHost);
-                RemotePort = remotePort;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                _listener.Start();
-                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                status = $"Guild boss official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
-                LastStatus = status;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                StopInternal(clearPending: false);
-                status = $"Guild boss official-session bridge failed to start: {ex.Message}";
-                LastStatus = status;
-                return false;
-            }
+            return TryStart(listenPort, remoteHost, remotePort, out status);
         }
-
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Guild boss official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Guild boss official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Guild boss official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _passiveEstablishedSession = null;
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Guild boss official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Guild boss official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    int flushed = FlushQueuedPulleyRequests(pair);
-                    LastStatus = flushed > 0
-                        ? $"Guild boss official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued pulley request(s)."
-                        : $"Guild boss official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload)
-                    || (opcode != PacketTypeHealerMove && opcode != PacketTypePulleyStateChange))
-                {
-                    return;
-                }
-
-                byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
-                _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(
-                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
-                    relayPayload,
-                    $"official-session:{pair.RemoteEndpoint}",
-                    $"packetraw {Convert.ToHexString(raw)}"));
-                ReceivedCount++;
-                LastStatus =
-                    $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Guild Boss opcode {opcode} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Guild boss official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            if (isInit)
+            if (e == null)
             {
                 return;
             }
 
-            try
+            if (e.IsInit)
             {
-                byte[] raw = packet.ToArray();
-                pair.ServerSession.SendPacket((byte[])raw.Clone());
+                int flushed = FlushQueuedPulleyRequestsViaProxy();
+                LastStatus = flushed > 0
+                    ? $"Guild boss official-session bridge initialized Maple crypto and flushed {flushed} queued pulley request(s)."
+                    : _roleSessionProxy.LastStatus;
+                return;
+            }
 
-                if (TryDecodeOpcode(raw, out int opcode, out _)
-                    && opcode == OutboundPulleyRequestOpcode)
-                {
-                    LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
-                }
-            }
-            catch (Exception ex)
+            if (!TryDecodeOpcode(e.RawPacket, out int opcode, out byte[] payload)
+                || (opcode != PacketTypeHealerMove && opcode != PacketTypePulleyStateChange))
             {
-                ClearActivePair(pair, $"Guild boss official-session client handling failed: {ex.Message}");
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
+
+            byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
+            _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                relayPayload,
+                $"official-session:{e.SourceEndpoint}",
+                $"packetraw {Convert.ToHexString(e.RawPacket)}"));
+            ReceivedCount++;
+            LastStatus =
+                $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Guild Boss opcode {opcode} from live session {e.SourceEndpoint}.";
         }
 
-        private void ClearActivePair(BridgePair pair, string status)
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            if (pair == null)
+            if (e == null || e.IsInit)
             {
                 return;
             }
 
-            lock (_sync)
+            if (TryDecodeOpcode(e.RawPacket, out int opcode, out _)
+                && opcode == OutboundPulleyRequestOpcode)
             {
-                if (!ReferenceEquals(_activePair, pair))
-                {
-                    return;
-                }
-
-                _activePair = null;
+                LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {e.SourceEndpoint}.";
             }
-
-            pair.Close();
-            LastStatus = status;
         }
 
         private void StopInternal(bool clearPending)
         {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            BridgePair pair = _activePair;
-            _activePair = null;
+            _roleSessionProxy.Stop(resetCounters: clearPending);
             _passiveEstablishedSession = null;
-            pair?.Close();
 
             if (clearPending)
             {
@@ -809,18 +626,26 @@ namespace HaCreator.MapSimulator.Managers
                 QueuedCount = 0;
             }
         }
-
-        private int FlushQueuedPulleyRequests(BridgePair pair)
+        private int FlushQueuedPulleyRequestsViaProxy()
         {
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 return 0;
             }
 
             int flushed = 0;
-            while (_pendingOutboundRequests.TryDequeue(out PendingPulleyRequest pending))
+            while (_pendingOutboundRequests.TryPeek(out PendingPulleyRequest pending))
             {
-                pair.ServerSession.SendPacket((byte[])pending.RawPacket.Clone());
+                if (!_roleSessionProxy.TrySendToServer(pending.RawPacket, out _))
+                {
+                    break;
+                }
+
+                if (!_pendingOutboundRequests.TryDequeue(out _))
+                {
+                    break;
+                }
+
                 SentCount++;
                 flushed++;
             }
@@ -834,12 +659,6 @@ namespace HaCreator.MapSimulator.Managers
             writer.WriteShort((short)OutboundPulleyRequestOpcode);
             return writer.ToArray();
         }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
-        }
-
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
         {
             int bufferSize = 0;

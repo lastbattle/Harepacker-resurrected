@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Managers
@@ -26,52 +21,28 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class ContextStagePeriodPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18497;
-
         private readonly ConcurrentQueue<ContextStagePeriodPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Context-owned stage-period inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Context-owned stage-period inbox already listening on 127.0.0.1:{Port.ToString(CultureInfo.InvariantCulture)}.";
-                    return;
-                }
-
-                StopInternal();
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Context-owned stage-period inbox listening on 127.0.0.1:{Port.ToString(CultureInfo.InvariantCulture)}.";
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Context-owned stage-period inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Context-owned stage-period inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out ContextStagePeriodPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueProxy(byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "stageperiod-proxy" : source;
+            EnqueueMessage(
+                new ContextStagePeriodPacketInboxMessage(payload, packetSource, "proxy"),
+                packetSource);
+        }
+
+        public void EnqueueLocal(byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "stageperiod-local" : source;
+            EnqueueMessage(
+                new ContextStagePeriodPacketInboxMessage(payload, packetSource, "local"),
+                packetSource);
         }
 
         public void RecordDispatchResult(ContextStagePeriodPacketInboxMessage message, bool success, string detail)
@@ -83,10 +54,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
         }
 
         public static bool TryParseLine(string text, out ContextStagePeriodPacketInboxMessage message, out string error)
@@ -162,72 +129,6 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Context-owned stage-period inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out ContextStagePeriodPacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored context-owned stage-period inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new ContextStagePeriodPacketInboxMessage(message.Payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued context-owned stage-period payload from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Context-owned stage-period inbox client error: {ex.Message}";
-            }
-        }
-
         private static bool TryParsePayload(string text, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();
@@ -288,21 +189,15 @@ namespace HaCreator.MapSimulator.Managers
             return -1;
         }
 
-        private void StopInternal()
+        private void EnqueueMessage(ContextStagePeriodPacketInboxMessage message, string source)
         {
-            _listenerCancellation?.Cancel();
-            try
+            if (message == null)
             {
-                _listener?.Stop();
-            }
-            catch (SocketException)
-            {
+                return;
             }
 
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listenerTask = null;
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued context-owned stage-period payload from {source}.";
         }
     }
 }

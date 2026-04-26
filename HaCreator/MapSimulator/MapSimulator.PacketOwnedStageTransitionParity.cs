@@ -571,35 +571,16 @@ namespace HaCreator.MapSimulator
         private string DescribePacketOwnedStageTransitionStatus()
         {
             _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
-            return $"{_packetStageTransitionRuntime.DescribeStatus()}{Environment.NewLine}{_stageTransitionPacketInbox.LastStatus}";
+            return $"{_packetStageTransitionRuntime.DescribeStatus()}{Environment.NewLine}{DescribeStageTransitionPacketInboxStatus()} {_stageTransitionPacketInbox.LastStatus}";
+        }
+
+        private string DescribeStageTransitionPacketInboxStatus()
+        {
+            return "Stage-transition packet inbox adapter-only, proxy-required, listener-fallback retired.";
         }
 
         private void EnsureStageTransitionPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun)
-            {
-                if (_stageTransitionPacketInbox.IsRunning)
-                {
-                    _stageTransitionPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_stageTransitionPacketInbox.IsRunning)
-            {
-                return;
-            }
-
-            try
-            {
-                _stageTransitionPacketInbox.Start();
-            }
-            catch (Exception ex)
-            {
-                _stageTransitionPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Stage-transition packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainStageTransitionPacketInbox()

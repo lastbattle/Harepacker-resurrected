@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 
@@ -52,7 +47,7 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Optional loopback inbox for Party Raid runtime updates.
+    /// Adapter inbox for Party Raid runtime updates.
     /// Each line is encoded as "<scope> <key> <value>", where scope is
     /// "field", "party", "session", "clock", or packet-oriented aliases such as
     /// "packet 93 <payloadHex>", "packet 163 <relayPayloadHex>", or
@@ -60,57 +55,8 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public sealed class PartyRaidPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18486;
-
         private readonly ConcurrentQueue<PartyRaidPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Party Raid packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Party Raid packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal(clearPending: true);
-
-                try
-                {
-                    Port = port <= 0 ? DefaultPort : port;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, Port);
-                    _listener.Start();
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Party Raid packet inbox listening on 127.0.0.1:{Port}.";
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Party Raid packet inbox failed to start: {ex.Message}";
-                }
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-                LastStatus = "Party Raid packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Party Raid packet inbox ready for role-session/local ingress.";
 
         public void EnqueueLocal(PartyRaidPacketScope scope, string key, string value, string source)
         {
@@ -126,6 +72,17 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _pendingMessages.Enqueue(new PartyRaidPacketInboxMessage(packetType, payload, source, $"packet {packetType}"));
+        }
+
+        public void EnqueueProxy(PartyRaidPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {DescribeScope(message.Scope, message.Scope == PartyRaidPacketScope.Packet ? message.PacketType.ToString() : message.Key)} from {message.Source}.";
         }
 
         public bool TryDequeue(out PartyRaidPacketInboxMessage message)
@@ -144,10 +101,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal(clearPending: true);
-            }
         }
 
         public static bool TryParsePacketLine(string text, out PartyRaidPacketScope scope, out string key, out string value, out string error)
@@ -318,82 +271,6 @@ namespace HaCreator.MapSimulator.Managers
                 && !string.Equals(key, "clear", StringComparison.OrdinalIgnoreCase));
         }
 
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Party Raid packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParsePacketLine(line, out PartyRaidPacketScope scope, out string key, out string value, out string error))
-                        {
-                            LastStatus = $"Ignored Party Raid inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        if (scope == PartyRaidPacketScope.Packet
-                            && int.TryParse(key, out int packetType)
-                            && TryParseHexPayload(value, out byte[] payload))
-                        {
-                            _pendingMessages.Enqueue(new PartyRaidPacketInboxMessage(packetType, payload, remoteEndpoint, line));
-                            ReceivedCount++;
-                            LastStatus = $"Queued {DescribeScope(PartyRaidPacketScope.Packet, key)} from {remoteEndpoint}.";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new PartyRaidPacketInboxMessage(scope, key, value, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribeScope(scope, key)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Party Raid packet inbox client error: {ex.Message}";
-            }
-        }
-
         private static bool TryParseScope(string token, out PartyRaidPacketScope scope)
         {
             scope = PartyRaidPacketScope.Field;
@@ -517,35 +394,5 @@ namespace HaCreator.MapSimulator.Managers
             return new string(buffer, 0, count);
         }
 
-        private void StopInternal(bool clearPending)
-        {
-            try
-            {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-            _listener = null;
-            _listenerTask = null;
-
-            if (clearPending)
-            {
-                while (_pendingMessages.TryDequeue(out _))
-                {
-                }
-            }
-        }
     }
 }

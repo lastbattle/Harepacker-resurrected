@@ -17,7 +17,8 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-
+
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator

@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Managers;
+﻿using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
@@ -10,7 +10,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int FieldMessageBoxOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
-        private readonly FieldMessageBoxOfficialSessionBridgeManager _fieldMessageBoxOfficialSessionBridge = new();
+        private readonly FieldMessageBoxOfficialSessionBridgeManager _fieldMessageBoxOfficialSessionBridge;
         private const int DefaultMessageBoxConsumeRequestItemId = 5370000;
         private bool _fieldMessageBoxOfficialSessionBridgeEnabled;
         private bool _fieldMessageBoxOfficialSessionBridgeUseDiscovery;
@@ -510,3 +510,4 @@ namespace HaCreator.MapSimulator
         }
     }
 }
+

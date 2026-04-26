@@ -91,6 +91,17 @@
     <EmbeddedResource Remove="GUI\Resources.resx" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Update="FHMapper\DisplayMap.resx">
+      <LogicalName>Footholds.DisplayMap.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="FHMapper\DisplayMap.zh-CHS.resx">
+      <LogicalName>Footholds.DisplayMap.zh-CHS.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="FHMapper\DisplayMap.zh-CHT.resx">
+      <LogicalName>Footholds.DisplayMap.zh-CHT.resources</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
     <None Include="..\logo.png">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>

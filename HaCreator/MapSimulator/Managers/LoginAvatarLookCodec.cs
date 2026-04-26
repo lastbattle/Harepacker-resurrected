@@ -4,7 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-
+
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Managers
 {
     public sealed class LoginAvatarLook

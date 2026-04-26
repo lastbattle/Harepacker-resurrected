@@ -15,7 +15,8 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using HaCreator.MapSimulator.Interaction;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Fields
 {
     public enum PartyRaidFieldMode { None, Field, Boss, Result }

@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Interaction;
+﻿using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using System;
@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
-        private readonly SocialListOfficialSessionBridgeManager _socialListOfficialSessionBridge = new();
+        private readonly SocialListOfficialSessionBridgeManager _socialListOfficialSessionBridge;
         private bool _socialListOfficialSessionBridgeEnabled;
         private bool _socialListOfficialSessionBridgeUseDiscovery;
         private int _socialListOfficialSessionBridgeConfiguredListenPort = SocialListOfficialSessionBridgeManager.DefaultListenPort;
@@ -859,3 +859,4 @@ namespace HaCreator.MapSimulator
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Fields;
+﻿using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using Microsoft.Xna.Framework;
@@ -10,8 +10,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly RockPaperScissorsPacketInboxManager _rockPaperScissorsPacketInbox = new();
-        private readonly RockPaperScissorsClientPacketTransportManager _rockPaperScissorsClientPacketOutbox = new();
-        private readonly RockPaperScissorsOfficialSessionBridgeManager _rockPaperScissorsOfficialSessionBridge = new();
+        private readonly RockPaperScissorsOfficialSessionBridgeManager _rockPaperScissorsOfficialSessionBridge;
         private const int RockPaperScissorsOfficialSessionBridgeDiscoveryRefreshIntervalMs = 5000;
         private bool _rockPaperScissorsOfficialSessionBridgeEnabled;
         private bool _rockPaperScissorsOfficialSessionBridgeUseDiscovery;
@@ -27,12 +26,12 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "rps",
                 "Drive the CRPSGameDlg Rock-Paper-Scissors runtime",
-                "/rps <open|close|choose|main|status|packet|packetraw|inbox|outbox|session> [...]",
+                "/rps <open|close|choose|main|status|packet|packetraw|inbox|session> [...]",
                 args =>
                 {
                     if (args.Length == 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|outbox|session> [...]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|session> [...]");
                     }
 
                     RockPaperScissorsField field = _specialFieldRuntime.Minigames.RockPaperScissors;
@@ -84,7 +83,7 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Error(mainMessage);
 
                         case "status":
-                            return ChatCommandHandler.CommandResult.Info($"{field.DescribeStatus()} | inbox={_rockPaperScissorsPacketInbox.LastStatus} | outbox={_rockPaperScissorsClientPacketOutbox.LastStatus} | {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}");
+                            return ChatCommandHandler.CommandResult.Info($"{field.DescribeStatus()} | inbox={_rockPaperScissorsPacketInbox.LastStatus} | {DescribeRockPaperScissorsClientPacketOutboxStatus()} | {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}");
 
                         case "packet":
                         {
@@ -153,47 +152,10 @@ namespace HaCreator.MapSimulator
                                 case "status":
                                     return ChatCommandHandler.CommandResult.Info(_rockPaperScissorsPacketInbox.LastStatus);
                                 case "start":
-                                {
-                                    int port = RockPaperScissorsPacketInboxManager.DefaultPort;
-                                    if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                                    {
-                                        return ChatCommandHandler.CommandResult.Error("Usage: /rps inbox start [port]");
-                                    }
-
-                                    _rockPaperScissorsPacketInbox.Start(port);
-                                    return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsPacketInbox.LastStatus);
-                                }
                                 case "stop":
-                                    _rockPaperScissorsPacketInbox.Stop();
-                                    return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsPacketInbox.LastStatus);
+                                    return ChatCommandHandler.CommandResult.Info("Rock-Paper-Scissors inbox listener controls are retired; use /rps packet, /rps packetraw, or the role-session bridge.");
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /rps inbox [status|start [port]|stop]");
-                            }
-                        }
-
-                        case "outbox":
-                        {
-                            string outboxAction = args.Length >= 2 ? args[1].ToLowerInvariant() : "status";
-                            switch (outboxAction)
-                            {
-                                case "status":
-                                    return ChatCommandHandler.CommandResult.Info(_rockPaperScissorsClientPacketOutbox.DescribeStatus());
-                                case "start":
-                                {
-                                    int port = RockPaperScissorsClientPacketTransportManager.DefaultPort;
-                                    if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                                    {
-                                        return ChatCommandHandler.CommandResult.Error("Usage: /rps outbox start [port]");
-                                    }
-
-                                    _rockPaperScissorsClientPacketOutbox.Start(port);
-                                    return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsClientPacketOutbox.LastStatus);
-                                }
-                                case "stop":
-                                    _rockPaperScissorsClientPacketOutbox.Stop();
-                                    return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsClientPacketOutbox.LastStatus);
-                                default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /rps outbox [status|start [port]|stop]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /rps inbox [status]");
                             }
                         }
 
@@ -201,7 +163,7 @@ namespace HaCreator.MapSimulator
                             return HandleRockPaperScissorsSessionCommand(args.Length > 1 ? args[1..] : Array.Empty<string>());
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|outbox|session> [...]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|session> [...]");
                     }
                 });
         }
@@ -212,14 +174,15 @@ namespace HaCreator.MapSimulator
 
             if (_gameState.IsLoginMap)
             {
-                _rockPaperScissorsPacketInbox.Stop();
-                _rockPaperScissorsClientPacketOutbox.Stop();
                 _rockPaperScissorsOfficialSessionBridge.Stop();
-                return;
             }
+        }
 
-            _rockPaperScissorsPacketInbox.Start();
-            _rockPaperScissorsClientPacketOutbox.Start();
+        private string DescribeRockPaperScissorsClientPacketOutboxStatus()
+        {
+            string modeText = _rockPaperScissorsOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"outbox={modeText}/{fallbackText}; transport manager retired";
         }
 
         private string DescribeRockPaperScissorsOfficialSessionBridgeStatus()
@@ -401,20 +364,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (_rockPaperScissorsClientPacketOutbox.TrySendClientPacket(packet, out _))
-                {
-                    continue;
-                }
-
-                string outboxStatus = "Rock-Paper-Scissors client outbox immediate delivery unavailable.";
                 if (!preferOfficialSessionBridge
                     && _rockPaperScissorsOfficialSessionBridgeEnabled
                     && _rockPaperScissorsOfficialSessionBridge.TrySendOrQueueClientPacket(packet, out _, out _))
                 {
                     continue;
                 }
-
-                _rockPaperScissorsClientPacketOutbox.TryQueueClientPacket(packet, out outboxStatus);
             }
         }
 
@@ -705,5 +660,7 @@ namespace HaCreator.MapSimulator
             return hasPassiveEstablishedSocketPair
                 || (bridgeEnabled && (isRunning || hasConnectedSession || hasAttachedClient));
         }
+
     }
 }
+

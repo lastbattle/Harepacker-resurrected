@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Fields
 {
     internal static class PortalSessionValueRequestCodec

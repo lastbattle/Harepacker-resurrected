@@ -289,18 +289,11 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            bool loopbackSent = _packetScriptReplyTransport.TrySendResponse(responsePacket, out string loopbackStatus);
-            if (!string.IsNullOrWhiteSpace(loopbackStatus))
-            {
-                statuses.Add(loopbackStatus);
-            }
-
             if (TryApplyPacketScriptAskMenuMigrateToShopParity(responsePacket, out string localParityStatus))
             {
                 statuses.Add(localParityStatus);
             }
 
-            dispatched |= loopbackSent;
             status = statuses.Count == 0 ? status : string.Join(" ", statuses);
             return dispatched;
         }
@@ -352,6 +345,13 @@ namespace HaCreator.MapSimulator
                 ? $"listening on 127.0.0.1:{_packetScriptOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_packetScriptOfficialSessionBridgeConfiguredListenPort}";
             return $"Packet-script session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_packetScriptOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private string DescribePacketScriptReplyTransportStatus()
+        {
+            string modeText = _packetScriptOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"Packet-script reply transport routing {modeText}, {fallbackText}. Transport manager retired.";
         }
 
         private void EnsurePacketScriptOfficialSessionBridgeState(bool shouldRun)

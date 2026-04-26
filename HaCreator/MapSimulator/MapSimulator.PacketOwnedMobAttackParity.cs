@@ -9,8 +9,6 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly MobAttackPacketInboxManager _mobAttackPacketInbox = new();
-        private bool _mobAttackPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _mobAttackPacketInboxConfiguredPort = MobAttackPacketInboxManager.DefaultPort;
 
         private void RegisterMobAttackPacketChatCommand()
         {
@@ -23,35 +21,6 @@ namespace HaCreator.MapSimulator
 
         private void EnsureMobAttackPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_mobAttackPacketInboxEnabled)
-            {
-                if (_mobAttackPacketInbox.IsRunning)
-                {
-                    _mobAttackPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_mobAttackPacketInbox.IsRunning && _mobAttackPacketInbox.Port == _mobAttackPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_mobAttackPacketInbox.IsRunning)
-            {
-                _mobAttackPacketInbox.Stop();
-            }
-
-            try
-            {
-                _mobAttackPacketInbox.Start(_mobAttackPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _mobAttackPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Mob attack packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainMobAttackPacketInbox()
@@ -83,11 +52,7 @@ namespace HaCreator.MapSimulator
 
         private string DescribeMobAttackPacketInboxStatus()
         {
-            string enabledText = _mobAttackPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _mobAttackPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_mobAttackPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_mobAttackPacketInboxConfiguredPort}";
-            return $"Mob attack packet inbox {enabledText}, {listeningText}, received {_mobAttackPacketInbox.ReceivedCount} packet(s).";
+            return "Mob attack packet inbox adapter-only; listener fallback retired.";
         }
 
         private bool TryApplyMobAttackPacket(int packetType, byte[] payload, int currentTime, out string message)
@@ -190,26 +155,15 @@ namespace HaCreator.MapSimulator
 
                 if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                 {
-                    int port = MobAttackPacketInboxManager.DefaultPort;
-                    if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
-                    {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /mobattackpacket inbox start [port]");
-                    }
-
-                    _mobAttackPacketInboxConfiguredPort = port;
-                    _mobAttackPacketInboxEnabled = true;
-                    EnsureMobAttackPacketInboxState(shouldRun: true);
-                    return ChatCommandHandler.CommandResult.Ok(_mobAttackPacketInbox.LastStatus);
+                    return ChatCommandHandler.CommandResult.Info("Mob attack packet inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
                 }
 
                 if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                 {
-                    _mobAttackPacketInboxEnabled = false;
-                    EnsureMobAttackPacketInboxState(shouldRun: false);
-                    return ChatCommandHandler.CommandResult.Ok(_mobAttackPacketInbox.LastStatus);
+                    return ChatCommandHandler.CommandResult.Info("Mob attack packet inbox loopback listener is already retired.");
                 }
 
-                return ChatCommandHandler.CommandResult.Error("Usage: /mobattackpacket inbox [status|start [port]|stop]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /mobattackpacket inbox [status|start|stop]");
             }
 
             bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);

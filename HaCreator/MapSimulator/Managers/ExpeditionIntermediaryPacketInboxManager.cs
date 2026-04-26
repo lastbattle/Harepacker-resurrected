@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -26,58 +21,28 @@ namespace HaCreator.MapSimulator.Managers
     }
 
     /// <summary>
-    /// Loopback inbox for decoded ExpeditionIntermediary payloads. Each line is
+    /// Adapter inbox for decoded ExpeditionIntermediary payloads. Each line is
     /// either a direct retCode-prefixed payload, or an opcode-framed client
     /// packet line starting with packetclientraw.
     /// </summary>
     public sealed class ExpeditionIntermediaryPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18502;
-
         private readonly ConcurrentQueue<ExpeditionIntermediaryPacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Expedition intermediary packet inbox inactive.";
-
-        public void Start(int port = DefaultPort)
-        {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Expedition intermediary packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Expedition intermediary packet inbox listening on 127.0.0.1:{Port}.";
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Expedition intermediary packet inbox stopped.";
-            }
-        }
+        public string LastStatus { get; private set; } = "Expedition intermediary packet inbox ready for role-session/local ingress.";
 
         public bool TryDequeue(out ExpeditionIntermediaryPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public void EnqueueProxy(ExpeditionIntermediaryPacketInboxMessage message)
+        {
+            EnqueueMessage(message, message?.Source);
+        }
+
+        public void EnqueueLocal(ExpeditionIntermediaryPacketInboxMessage message)
+        {
+            EnqueueMessage(message, message?.Source);
         }
 
         public void RecordDispatchResult(ExpeditionIntermediaryPacketInboxMessage message, bool success, string detail)
@@ -170,76 +135,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
-        }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Expedition intermediary packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out ExpeditionIntermediaryPacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored expedition intermediary inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new ExpeditionIntermediaryPacketInboxMessage(message.Payload, remoteEndpoint, line, message.Opcode));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribeMessage(message)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Expedition intermediary packet inbox client error: {ex.Message}";
-            }
         }
 
         private static bool TryParsePayload(string text, out byte[] payload, out string error)
@@ -316,36 +211,15 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private void StopInternal()
+        private void EnqueueMessage(ExpeditionIntermediaryPacketInboxMessage message, string source)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {DescribeMessage(message)} from {source ?? message.Source}.";
         }
     }
 }

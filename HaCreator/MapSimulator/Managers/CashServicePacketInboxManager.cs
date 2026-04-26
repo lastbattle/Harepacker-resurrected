@@ -1,10 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -29,52 +24,42 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultPort = 18486;
 
         private readonly ConcurrentQueue<CashServicePacketInboxMessage> _pendingMessages = new();
-        private readonly object _listenerLock = new();
+        private readonly RetiredMapleSocketState _socketState = new("Cash-service packet inbox", DefaultPort, "Cash-service packet inbox ready for role-session/local ingress.");
 
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-
-        public int Port { get; private set; } = DefaultPort;
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public int Port => _socketState.Port;
+        public bool IsRunning => _socketState.IsRunning;
         public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Cash-service packet inbox inactive.";
+        public int ProxyIngressReceivedCount { get; private set; }
+        public int LocalIngressReceivedCount { get; private set; }
+        public string LastIngressMode { get; private set; } = "none";
+        public string LastStatus => _socketState.LastStatus;
 
         public void Start(int port = DefaultPort)
         {
-            lock (_listenerLock)
-            {
-                if (IsRunning)
-                {
-                    LastStatus = $"Cash-service packet inbox already listening on 127.0.0.1:{Port}.";
-                    return;
-                }
-
-                StopInternal();
-                Port = port <= 0 ? DefaultPort : port;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, Port);
-                _listener.Start();
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Cash-service packet inbox listening on 127.0.0.1:{Port}.";
-            }
+            _socketState.Start(port);
         }
 
         public void Stop()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-                LastStatus = "Cash-service packet inbox stopped.";
-            }
+            _socketState.Stop("Cash-service packet inbox ready for role-session/local ingress.");
         }
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
             string packetSource = string.IsNullOrWhiteSpace(source) ? "cash-service-ui" : source;
-            _pendingMessages.Enqueue(new CashServicePacketInboxMessage(packetType, payload, packetSource, packetType.ToString()));
-            ReceivedCount++;
-            LastStatus = $"Queued {DescribePacketType(packetType)} from {packetSource}.";
+            EnqueueMessage(
+                new CashServicePacketInboxMessage(packetType, payload, packetSource, packetType.ToString()),
+                MapSimulatorNetworkIngressMode.Local,
+                packetSource);
+        }
+
+        public void EnqueueProxy(int packetType, byte[] payload, string source)
+        {
+            string packetSource = string.IsNullOrWhiteSpace(source) ? "cash-service-proxy" : source;
+            EnqueueMessage(
+                new CashServicePacketInboxMessage(packetType, payload, packetSource, packetType.ToString()),
+                MapSimulatorNetworkIngressMode.Proxy,
+                packetSource);
         }
 
         public bool TryDequeue(out CashServicePacketInboxMessage message)
@@ -85,83 +70,13 @@ namespace HaCreator.MapSimulator.Managers
         public void RecordDispatchResult(CashServicePacketInboxMessage message, bool success, string detail)
         {
             string summary = DescribePacketType(message?.PacketType ?? 0);
-            LastStatus = success
+            _socketState.SetStatus(success
                 ? $"Applied {summary} from {message?.Source ?? "cash-service-inbox"}."
-                : $"Ignored {summary} from {message?.Source ?? "cash-service-inbox"}: {detail}";
+                : $"Ignored {summary} from {message?.Source ?? "cash-service-inbox"}: {detail}");
         }
 
         public void Dispose()
         {
-            lock (_listenerLock)
-            {
-                StopInternal();
-            }
-        }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Cash-service packet inbox error: {ex.Message}";
-            }
-        }
-
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-        {
-            string remoteEndpoint = client.Client?.RemoteEndPoint?.ToString() ?? "loopback-client";
-            try
-            {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                using (StreamReader reader = new(stream))
-                {
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        string line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                        {
-                            break;
-                        }
-
-                        if (!TryParseLine(line, out CashServicePacketInboxMessage message, out string error))
-                        {
-                            LastStatus = $"Ignored cash-service inbox line from {remoteEndpoint}: {error}";
-                            continue;
-                        }
-
-                        _pendingMessages.Enqueue(new CashServicePacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
-                        ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {remoteEndpoint}.";
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (Exception ex)
-            {
-                LastStatus = $"Cash-service packet inbox client error: {ex.Message}";
-            }
         }
 
         public static bool TryParseLine(string text, out CashServicePacketInboxMessage message, out string error)
@@ -354,36 +269,31 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private void StopInternal()
+        private void EnqueueMessage(CashServicePacketInboxMessage message, string ingressMode, string sourceLabel)
         {
-            try
+            if (message == null)
             {
-                _listenerCancellation?.Cancel();
-            }
-            catch
-            {
+                return;
             }
 
-            try
+            _pendingMessages.Enqueue(message);
+            ReceivedCount++;
+            LastIngressMode = MapSimulatorNetworkIngressMode.IsKnown(ingressMode)
+                ? ingressMode
+                : MapSimulatorNetworkIngressMode.Proxy;
+            switch (LastIngressMode)
             {
-                _listener?.Stop();
-            }
-            catch
-            {
+                case MapSimulatorNetworkIngressMode.Proxy:
+                    ProxyIngressReceivedCount++;
+                    break;
+                case MapSimulatorNetworkIngressMode.Local:
+                    LocalIngressReceivedCount++;
+                    break;
             }
 
-            try
-            {
-                _listenerTask?.Wait(100);
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
+            string packetSource = string.IsNullOrWhiteSpace(sourceLabel) ? "cash-service-inbox" : sourceLabel;
+            _socketState.SetStatus($"Queued {DescribePacketType(message.PacketType)} from {packetSource} via {LastIngressMode}.");
         }
     }
 }
+

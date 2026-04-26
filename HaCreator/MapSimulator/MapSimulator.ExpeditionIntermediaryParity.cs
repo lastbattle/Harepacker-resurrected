@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Interaction;
+﻿using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.Helpers;
@@ -10,9 +10,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly ExpeditionIntermediaryPacketInboxManager _expeditionIntermediaryPacketInbox = new();
-        private readonly ExpeditionIntermediaryOfficialSessionBridgeManager _expeditionIntermediaryOfficialSessionBridge = new();
-        private bool _expeditionIntermediaryPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _expeditionIntermediaryPacketInboxConfiguredPort = ExpeditionIntermediaryPacketInboxManager.DefaultPort;
+        private readonly ExpeditionIntermediaryOfficialSessionBridgeManager _expeditionIntermediaryOfficialSessionBridge;
         private bool _expeditionIntermediaryOfficialSessionBridgeEnabled;
         private bool _expeditionIntermediaryOfficialSessionBridgeUseDiscovery;
         private int _expeditionIntermediaryOfficialSessionBridgeConfiguredListenPort = ExpeditionIntermediaryOfficialSessionBridgeManager.DefaultListenPort;
@@ -73,35 +71,6 @@ namespace HaCreator.MapSimulator
 
         private void EnsureExpeditionIntermediaryPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_expeditionIntermediaryPacketInboxEnabled)
-            {
-                if (_expeditionIntermediaryPacketInbox.IsRunning)
-                {
-                    _expeditionIntermediaryPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_expeditionIntermediaryPacketInbox.IsRunning && _expeditionIntermediaryPacketInbox.Port == _expeditionIntermediaryPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_expeditionIntermediaryPacketInbox.IsRunning)
-            {
-                _expeditionIntermediaryPacketInbox.Stop();
-            }
-
-            try
-            {
-                _expeditionIntermediaryPacketInbox.Start(_expeditionIntermediaryPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _expeditionIntermediaryPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Expedition intermediary packet inbox failed to start: {ex.Message}", currTickCount);
-            }
         }
 
         private void DrainExpeditionIntermediaryPacketInbox()
@@ -133,34 +102,15 @@ namespace HaCreator.MapSimulator
         {
             while (_expeditionIntermediaryOfficialSessionBridge.TryDequeue(out ExpeditionIntermediaryPacketInboxMessage message))
             {
-                if (message == null)
-                {
-                    continue;
-                }
-
-                bool applied = TryApplyExpeditionIntermediaryPayload(message.Payload, packetOwned: true, out string detail);
-                _expeditionIntermediaryOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
-                if (!string.IsNullOrWhiteSpace(detail))
-                {
-                    if (applied)
-                    {
-                        _chat?.AddSystemMessage(detail, currTickCount);
-                    }
-                    else
-                    {
-                        _chat?.AddErrorMessage(detail, currTickCount);
-                    }
-                }
+                _expeditionIntermediaryPacketInbox.EnqueueProxy(message);
             }
         }
 
         private string DescribeExpeditionIntermediaryPacketInboxStatus()
         {
-            string enabledText = _expeditionIntermediaryPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _expeditionIntermediaryPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_expeditionIntermediaryPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_expeditionIntermediaryPacketInboxConfiguredPort}";
-            return $"Expedition intermediary packet inbox {enabledText}, {listeningText}, received {_expeditionIntermediaryPacketInbox.ReceivedCount} packet(s). {_expeditionIntermediaryPacketInbox.LastStatus}";
+            string ingressModeText = _expeditionIntermediaryOfficialSessionBridgeEnabled ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            return $"Expedition intermediary packet inbox adapter-only, {ingressModeText}, {fallbackText}. {_expeditionIntermediaryPacketInbox.LastStatus}";
         }
 
         private string DescribeExpeditionIntermediaryOfficialSessionBridgeStatus()
@@ -370,29 +320,18 @@ namespace HaCreator.MapSimulator
                 "status" => ChatCommandHandler.CommandResult.Info(DescribeExpeditionIntermediaryPacketInboxStatus()),
                 "start" => HandleExpeditionInboxStartCommand(args, actionIndex + 1),
                 "stop" => HandleExpeditionInboxStopCommand(),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /expedition inbox [status|start [port]|stop]")
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /expedition inbox [status|start|stop]")
             };
         }
 
         private ChatCommandHandler.CommandResult HandleExpeditionInboxStartCommand(string[] args, int portIndex)
         {
-            int port = ExpeditionIntermediaryPacketInboxManager.DefaultPort;
-            if (args.Length > portIndex && (!int.TryParse(args[portIndex], out port) || port <= 0 || port > ushort.MaxValue))
-            {
-                return ChatCommandHandler.CommandResult.Error("Usage: /expedition inbox start [port]");
-            }
-
-            _expeditionIntermediaryPacketInboxConfiguredPort = port;
-            _expeditionIntermediaryPacketInboxEnabled = true;
-            EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
-            return ChatCommandHandler.CommandResult.Ok(DescribeExpeditionIntermediaryPacketInboxStatus());
+            return ChatCommandHandler.CommandResult.Info("Expedition intermediary inbox loopback listener is retired; use role-session ingress or packet commands for local injection.");
         }
 
         private ChatCommandHandler.CommandResult HandleExpeditionInboxStopCommand()
         {
-            _expeditionIntermediaryPacketInboxEnabled = false;
-            EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
-            return ChatCommandHandler.CommandResult.Ok(DescribeExpeditionIntermediaryPacketInboxStatus());
+            return ChatCommandHandler.CommandResult.Info("Expedition intermediary inbox loopback listener is already retired.");
         }
 
         private ChatCommandHandler.CommandResult HandleExpeditionBridgeCommand(string[] args, int actionIndex)
@@ -441,6 +380,7 @@ namespace HaCreator.MapSimulator
                     _expeditionIntermediaryOfficialSessionBridgeConfiguredProcessSelector = null;
                     _expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort = null;
                     _expeditionIntermediaryOfficialSessionBridge.Stop();
+                    EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
                     return ChatCommandHandler.CommandResult.Ok(DescribeExpeditionIntermediaryOfficialSessionBridgeStatus());
 
                 default:
@@ -731,6 +671,7 @@ namespace HaCreator.MapSimulator
             _expeditionIntermediaryOfficialSessionBridgeConfiguredProcessSelector = null;
             _expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort = null;
             _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode = opcode;
+            EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
             EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: true);
             return ChatCommandHandler.CommandResult.Ok(DescribeExpeditionIntermediaryOfficialSessionBridgeStatus());
         }
@@ -785,6 +726,7 @@ namespace HaCreator.MapSimulator
             _expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort = localPort;
             _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode = opcode;
             _nextExpeditionIntermediaryOfficialSessionBridgeDiscoveryRefreshAt = 0;
+            EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
             return _expeditionIntermediaryOfficialSessionBridge.TryRefreshFromDiscovery(
                 listenPort,
                 remotePort,
@@ -842,3 +784,4 @@ namespace HaCreator.MapSimulator
         }
     }
 }
+

@@ -21,6 +21,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
@@ -357,8 +358,9 @@ namespace HaCreator.MapSimulator
         private readonly PacketScriptDedicatedOwnerRuntime _packetScriptDedicatedOwnerRuntime = new PacketScriptDedicatedOwnerRuntime();
         private readonly InitialQuizTimerRuntime _initialQuizTimerRuntime = new InitialQuizTimerRuntime();
         private readonly SpeedQuizOwnerRuntime _speedQuizOwnerRuntime = new SpeedQuizOwnerRuntime();
-        private readonly PacketScriptReplyTransportManager _packetScriptReplyTransport = new PacketScriptReplyTransportManager();
-        private readonly PacketScriptOfficialSessionBridgeManager _packetScriptOfficialSessionBridge = new PacketScriptOfficialSessionBridgeManager();
+        private readonly MapleRoleSessionProxyFactory _officialSessionRoleProxyFactory =
+            new MapleRoleSessionProxyFactory(MapleLib.PacketLib.MapleHandshakePolicy.GlobalV95, shareRoleSessionProxyPerRole: true);
+        private readonly PacketScriptOfficialSessionBridgeManager _packetScriptOfficialSessionBridge;
         private readonly Managers.LocalOverlayRuntime _localOverlayRuntime = new();
         private readonly Dictionary<int, int> _questGrantedSkillPointsByTab = new();
         private readonly Dictionary<int, IReadOnlyList<int>> _questMobMapIdsByMobId = new();
@@ -458,7 +460,7 @@ namespace HaCreator.MapSimulator
         private readonly TransportationField _transportField = new TransportationField();
         private readonly PassengerSyncController _passengerSync = new PassengerSyncController();
         private readonly TransportationPacketInboxManager _transportPacketInbox = new TransportationPacketInboxManager();
-        private readonly TransportationOfficialSessionBridgeManager _transportOfficialSessionBridge = new TransportationOfficialSessionBridgeManager();
+        private readonly TransportationOfficialSessionBridgeManager _transportOfficialSessionBridge;
         private readonly EscortFollowController _escortFollow = new EscortFollowController();
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
         private bool _limitedViewFieldInitialized;
@@ -478,17 +480,15 @@ namespace HaCreator.MapSimulator
         private readonly WeddingPacketInboxManager _weddingPacketInbox = new WeddingPacketInboxManager();
 
         private readonly SnowBallPacketInboxManager _snowBallPacketInbox = new SnowBallPacketInboxManager();
-        private readonly SnowBallOfficialSessionBridgeManager _snowBallOfficialSessionBridge = new SnowBallOfficialSessionBridgeManager();
+        private readonly SnowBallOfficialSessionBridgeManager _snowBallOfficialSessionBridge;
         private readonly CoconutPacketInboxManager _coconutPacketInbox = new CoconutPacketInboxManager();
-        private readonly CoconutOfficialSessionBridgeManager _coconutOfficialSessionBridge = new CoconutOfficialSessionBridgeManager();
+        private readonly CoconutOfficialSessionBridgeManager _coconutOfficialSessionBridge;
 
         private readonly MemoryGamePacketInboxManager _memoryGamePacketInbox = new MemoryGamePacketInboxManager();
-        private readonly MemoryGameOfficialSessionBridgeManager _memoryGameOfficialSessionBridge = new MemoryGameOfficialSessionBridgeManager();
-        private readonly SocialRoomEmployeeOfficialSessionBridgeManager _socialRoomEmployeeOfficialSessionBridge = new SocialRoomEmployeeOfficialSessionBridgeManager();
+        private readonly MemoryGameOfficialSessionBridgeManager _memoryGameOfficialSessionBridge;
+        private readonly SocialRoomEmployeeOfficialSessionBridgeManager _socialRoomEmployeeOfficialSessionBridge;
         private readonly TradingRoomPacketInboxManager _tradingRoomPacketInbox = new TradingRoomPacketInboxManager();
-        private readonly TradingRoomOfficialSessionBridgeManager _tradingRoomOfficialSessionBridge = new TradingRoomOfficialSessionBridgeManager();
-        private bool _tradingRoomPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _tradingRoomPacketInboxConfiguredPort = TradingRoomPacketInboxManager.DefaultPort;
+        private readonly TradingRoomOfficialSessionBridgeManager _tradingRoomOfficialSessionBridge;
         private bool _tradingRoomOfficialSessionBridgeEnabled;
         private bool _tradingRoomOfficialSessionBridgeUseDiscovery;
         private int _tradingRoomOfficialSessionBridgeConfiguredListenPort = TradingRoomOfficialSessionBridgeManager.DefaultListenPort;
@@ -502,22 +502,24 @@ namespace HaCreator.MapSimulator
         private readonly AriantArenaPacketInboxManager _ariantArenaPacketInbox = new AriantArenaPacketInboxManager();
 
         private readonly MonsterCarnivalPacketInboxManager _monsterCarnivalPacketInbox = new MonsterCarnivalPacketInboxManager();
-        private readonly MonsterCarnivalOfficialSessionBridgeManager _monsterCarnivalOfficialSessionBridge = new MonsterCarnivalOfficialSessionBridgeManager();
+        private readonly MonsterCarnivalOfficialSessionBridgeManager _monsterCarnivalOfficialSessionBridge;
         private readonly Dictionary<int, int> _monsterCarnivalGuardianSlotToReactorIndex = new();
         private readonly Dictionary<int, int> _monsterCarnivalGuardianReactorIndexToSlot = new();
 
         private readonly GuildBossPacketTransportManager _guildBossTransport = new GuildBossPacketTransportManager();
-        private readonly GuildBossOfficialSessionBridgeManager _guildBossOfficialSessionBridge = new GuildBossOfficialSessionBridgeManager();
+        private readonly GuildBossOfficialSessionBridgeManager _guildBossOfficialSessionBridge;
         private readonly MassacrePacketInboxManager _massacrePacketInbox = new MassacrePacketInboxManager();
-        private readonly MassacreOfficialSessionBridgeManager _massacreOfficialSessionBridge = new MassacreOfficialSessionBridgeManager();
+        private readonly MassacreOfficialSessionBridgeManager _massacreOfficialSessionBridge;
         private readonly DojoPacketInboxManager _dojoPacketInbox = new DojoPacketInboxManager();
-        private readonly DojoOfficialSessionBridgeManager _dojoOfficialSessionBridge = new DojoOfficialSessionBridgeManager();
+        private readonly DojoOfficialSessionBridgeManager _dojoOfficialSessionBridge;
         private readonly PartyRaidPacketInboxManager _partyRaidPacketInbox = new PartyRaidPacketInboxManager();
-        private readonly PartyRaidOfficialSessionBridgeManager _partyRaidOfficialSessionBridge = new PartyRaidOfficialSessionBridgeManager();
+        private readonly PartyRaidOfficialSessionBridgeManager _partyRaidOfficialSessionBridge;
         private readonly TournamentPacketInboxManager _tournamentPacketInbox = new TournamentPacketInboxManager();
-        private readonly TournamentOfficialSessionBridgeManager _tournamentOfficialSessionBridge = new TournamentOfficialSessionBridgeManager();
+        private readonly TournamentOfficialSessionBridgeManager _tournamentOfficialSessionBridge;
         private readonly CookieHousePointInboxManager _cookieHousePointInbox = new CookieHousePointInboxManager();
-        private readonly CookieHouseOfficialSessionBridgeManager _cookieHouseOfficialSessionBridge = new CookieHouseOfficialSessionBridgeManager();
+        private readonly CookieHouseOfficialSessionBridgeManager _cookieHouseOfficialSessionBridge;
+        private bool _cookieHousePointInboxEnabled = EnablePacketConnectionsByDefault;
+        private int _cookieHousePointInboxConfiguredPort = CookieHousePointInboxManager.DefaultPort;
         private int _cookieHouseContextPoint;
         private bool _bossHpBarAssetsLoaded;
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
@@ -547,7 +549,9 @@ namespace HaCreator.MapSimulator
         private readonly DirectionModeWindowOwnerRegistry _scriptedDirectionModeWindows = new DirectionModeWindowOwnerRegistry();
         private readonly LoginRuntimeManager _loginRuntime = new LoginRuntimeManager();
         private readonly LoginPacketInboxManager _loginPacketInbox = new LoginPacketInboxManager();
-        private readonly LoginOfficialSessionBridgeManager _loginOfficialSessionBridge = new LoginOfficialSessionBridgeManager();
+        private readonly LoginOfficialSessionBridgeManager _loginOfficialSessionBridge;
+        private readonly CashServiceOfficialSessionBridgeManager _cashShopOfficialSessionBridge;
+        private readonly CashServiceOfficialSessionBridgeManager _mtsOfficialSessionBridge;
 
         private bool _loginPacketInboxEnabled = EnablePacketConnectionsByDefault;
 
@@ -561,6 +565,24 @@ namespace HaCreator.MapSimulator
         private int? _loginOfficialSessionBridgeConfiguredLocalPort;
         private const int LoginOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextLoginOfficialSessionBridgeDiscoveryRefreshAt;
+        private bool _cashShopOfficialSessionBridgeEnabled;
+        private bool _cashShopOfficialSessionBridgeUseDiscovery;
+        private int _cashShopOfficialSessionBridgeConfiguredListenPort =
+            CashServiceOfficialSessionBridgeManager.CashShopDefaultListenPort;
+        private string _cashShopOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _cashShopOfficialSessionBridgeConfiguredRemotePort;
+        private string _cashShopOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _cashShopOfficialSessionBridgeConfiguredLocalPort;
+        private bool _mtsOfficialSessionBridgeEnabled;
+        private bool _mtsOfficialSessionBridgeUseDiscovery;
+        private int _mtsOfficialSessionBridgeConfiguredListenPort =
+            CashServiceOfficialSessionBridgeManager.MtsDefaultListenPort;
+        private string _mtsOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _mtsOfficialSessionBridgeConfiguredRemotePort;
+        private string _mtsOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _mtsOfficialSessionBridgeConfiguredLocalPort;
+        private const int CashServiceOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
+        private int _nextCashServiceOfficialSessionBridgeDiscoveryRefreshAt;
         private bool _mapTransferOfficialSessionBridgeEnabled;
         private bool _mapTransferOfficialSessionBridgeUseDiscovery;
         private int _mapTransferOfficialSessionBridgeConfiguredListenPort = MapTransferOfficialSessionBridgeManager.DefaultListenPort;
@@ -15743,7 +15765,7 @@ namespace HaCreator.MapSimulator
 
             HideLoginUtilityDialog();
             _loginAccountId = null;
-            _loginTitleStatusMessage = "Queued GuestIdLoginResult through the login packet inbox. Guest-only follow-up packets can still be injected from the loopback listener.";
+            _loginTitleStatusMessage = "Queued GuestIdLoginResult through the login packet inbox. Guest-only follow-up packets can still be injected through role-session or local packet commands.";
             _loginPacketInbox.EnqueueLocal(LoginPacketType.GuestIdLoginResult, "LoginTitle.Guest");
             SyncLoginTitleWindow();
         }
@@ -18442,6 +18464,46 @@ namespace HaCreator.MapSimulator
         public MapSimulator(Board _mapBoard, string titleName, string spawnPortalName = null)
         {
             LogStartupCheckpoint($"MapSimulator ctor begin (map={_mapBoard?.MapInfo?.id}, title={titleName})");
+            _packetScriptOfficialSessionBridge = new PacketScriptOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _transportOfficialSessionBridge = new TransportationOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _snowBallOfficialSessionBridge = new SnowBallOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _coconutOfficialSessionBridge = new CoconutOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _memoryGameOfficialSessionBridge = new MemoryGameOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _socialRoomEmployeeOfficialSessionBridge = new SocialRoomEmployeeOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _tradingRoomOfficialSessionBridge = new TradingRoomOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _monsterCarnivalOfficialSessionBridge = new MonsterCarnivalOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _guildBossOfficialSessionBridge = new GuildBossOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _massacreOfficialSessionBridge = new MassacreOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _dojoOfficialSessionBridge = new DojoOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _partyRaidOfficialSessionBridge = new PartyRaidOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _tournamentOfficialSessionBridge = new TournamentOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _cookieHouseOfficialSessionBridge = new CookieHouseOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _loginOfficialSessionBridge = new LoginOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateLogin);
+            _cashShopOfficialSessionBridge = new CashServiceOfficialSessionBridgeManager(MapleLib.PacketLib.MapleServerRole.CashShop, _officialSessionRoleProxyFactory.CreateCashShop);
+            _mtsOfficialSessionBridge = new CashServiceOfficialSessionBridgeManager(MapleLib.PacketLib.MapleServerRole.Mts, _officialSessionRoleProxyFactory.CreateMts);
+            _reactorPoolOfficialSessionBridge = new ReactorPoolOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _summonedOfficialSessionBridge = new SummonedOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _localUtilityOfficialSessionBridge = new LocalUtilityOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _messengerOfficialSessionBridge = new MessengerOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _mapleTvOfficialSessionBridge = new MessengerOfficialSessionBridgeManager(
+                "MapleTV",
+                18505,
+                MapleTvRuntime.PacketTypeSetMessage,
+                MapleTvRuntime.ConsumeCashItemUseRequestOpcode,
+                roleSessionProxyFactory: _officialSessionRoleProxyFactory.CreateChannel,
+                additionalInboundOpcodes: new ushort[]
+                {
+                    MapleTvRuntime.PacketTypeClearMessage,
+                    MapleTvRuntime.PacketTypeSendMessageResult
+                });
+            _remoteUserOfficialSessionBridge = new RemoteUserOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _expeditionIntermediaryOfficialSessionBridge = new ExpeditionIntermediaryOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _fieldMessageBoxOfficialSessionBridge = new FieldMessageBoxOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _mapTransferOfficialSessionBridge = new MapTransferOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _packetFieldOfficialSessionBridge = new PacketFieldOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _rockPaperScissorsOfficialSessionBridge = new RockPaperScissorsOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _socialListOfficialSessionBridge = new SocialListOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _socialRoomMerchantOfficialSessionBridge = new SocialRoomMerchantOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _mobMirrorBoundaryResolver = ResolveMobMirrorBoundary;
             _npcMirrorBoundaryResolver = ResolveNpcMirrorBoundary;
             _chatFallbackMeasureGraphics = SD.Graphics.FromImage(_chatFallbackMeasureBitmap);
@@ -18950,13 +19012,14 @@ namespace HaCreator.MapSimulator
             _adminShopPacketInbox.Dispose();
             _localUtilityPacketOutbox.Dispose();
             _localUtilityOfficialSessionBridge.Dispose();
+            _cashShopOfficialSessionBridge.Dispose();
+            _mtsOfficialSessionBridge.Dispose();
             _reactorTouchPacketOutbox.Dispose();
             _socialListOfficialSessionBridge.Dispose();
             _mapTransferOfficialSessionBridge.Dispose();
             _summonedPacketInbox.Dispose();
             _mobAttackPacketInbox.Dispose();
             _fieldMessageBoxOfficialSessionBridge.Dispose();
-            _packetScriptReplyTransport.Dispose();
 
 
 
@@ -28967,8 +29030,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_reactorPoolOfficialSessionBridgeEnabled
-                && _reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick))
+            if (_reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick))
             {
                 return;
             }
@@ -40848,39 +40910,41 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private string DescribeCoconutPacketInboxStatus()
+        {
+            string listeningText = _coconutPacketInbox.IsRunning
+                ? $"listening on 127.0.0.1:{_coconutPacketInbox.Port}"
+                : $"configured for 127.0.0.1:{CoconutPacketInboxManager.DefaultPort}";
+            return $"Coconut packet inbox {listeningText}, received {_coconutPacketInbox.ReceivedCount} packet(s), sent {_coconutPacketInbox.SentCount} packet(s) [proxy={_coconutPacketInbox.ProxyIngressReceivedCount}, local={_coconutPacketInbox.LocalIngressReceivedCount}], last ingress={_coconutPacketInbox.LastIngressMode}.";
+        }
+
 
 
         private void SyncWeddingPacketInboxState()
         {
-            if (_specialFieldRuntime.SpecialEffects.Wedding.IsActive)
+            if (!_specialFieldRuntime.SpecialEffects.Wedding.IsActive)
             {
-                _weddingPacketInbox.Start();
-            }
-            else
-            {
-                _weddingPacketInbox.Stop();
                 ClearWeddingRemoteActorsFromSharedPool();
-
             }
-
         }
 
+
+
+        private string DescribeWeddingPacketInboxStatus()
+        {
+            return "Wedding packet inbox adapter-only; listener fallback retired.";
+        }
 
 
         private void SyncMemoryGamePacketInboxState()
         {
             if (_gameState.IsLoginMap)
             {
-                _memoryGamePacketInbox.Stop();
                 _memoryGameOfficialSessionBridge.Stop();
 
                 return;
 
             }
-
-
-
-            _memoryGamePacketInbox.Start();
 
         }
 
@@ -40888,26 +40952,13 @@ namespace HaCreator.MapSimulator
 
         private void SyncAriantArenaPacketInboxState()
         {
-            if (_specialFieldRuntime.Minigames.AriantArena.IsActive)
-            {
-                _ariantArenaPacketInbox.Start();
-            }
-            else
-            {
-                _ariantArenaPacketInbox.Stop();
-            }
         }
 
 
         private void SyncMonsterCarnivalPacketInboxState()
         {
-            if (_specialFieldRuntime.Minigames.MonsterCarnival.IsVisible)
+            if (!_specialFieldRuntime.Minigames.MonsterCarnival.IsVisible)
             {
-                _monsterCarnivalPacketInbox.Start();
-            }
-            else
-            {
-                _monsterCarnivalPacketInbox.Stop();
                 _monsterCarnivalOfficialSessionBridge.Stop();
             }
         }
@@ -40935,13 +40986,8 @@ namespace HaCreator.MapSimulator
 
         private void SyncMassacrePacketInboxState()
         {
-            if (_specialFieldRuntime.SpecialEffects.Massacre.IsActive)
+            if (!_specialFieldRuntime.SpecialEffects.Massacre.IsActive)
             {
-                _massacrePacketInbox.Start();
-            }
-            else
-            {
-                _massacrePacketInbox.Stop();
                 _massacreOfficialSessionBridge.Stop();
             }
         }
@@ -40949,13 +40995,8 @@ namespace HaCreator.MapSimulator
 
         private void SyncDojoPacketInboxState()
         {
-            if (_specialFieldRuntime.SpecialEffects.Dojo.IsActive)
+            if (!_specialFieldRuntime.SpecialEffects.Dojo.IsActive)
             {
-                _dojoPacketInbox.Start();
-            }
-            else
-            {
-                _dojoPacketInbox.Stop();
                 _dojoOfficialSessionBridge.Stop();
             }
         }
@@ -40963,26 +41004,16 @@ namespace HaCreator.MapSimulator
 
         private void SyncPartyRaidPacketInboxState()
         {
-            if (_specialFieldRuntime.PartyRaid.IsActive)
+            if (!_specialFieldRuntime.PartyRaid.IsActive)
             {
-                _partyRaidPacketInbox.Start();
-            }
-            else
-            {
-                _partyRaidPacketInbox.Stop();
                 _partyRaidOfficialSessionBridge.Stop();
             }
         }
 
         private void SyncTournamentPacketInboxState()
         {
-            if (_specialFieldRuntime.Minigames.Tournament.IsActive)
+            if (!_specialFieldRuntime.Minigames.Tournament.IsActive)
             {
-                _tournamentPacketInbox.Start();
-            }
-            else
-            {
-                _tournamentPacketInbox.Stop();
                 _tournamentOfficialSessionBridge.Stop();
             }
         }
@@ -41007,6 +41038,11 @@ namespace HaCreator.MapSimulator
 
         private void DrainCoconutPacketInbox(int currentTickCount)
         {
+            while (_coconutOfficialSessionBridge.TryDequeue(out CoconutPacketInboxMessage bridgeMessage))
+            {
+                _coconutPacketInbox.EnqueueProxy(bridgeMessage);
+            }
+
             while (_coconutPacketInbox.TryDequeue(out CoconutPacketInboxMessage message))
             {
                 if (TryApplyCoconutInboxLocalTeamUpdate(message, _specialFieldRuntime?.Minigames?.Coconut, out string localTeamMessage))
@@ -41026,26 +41062,6 @@ namespace HaCreator.MapSimulator
                     message.PacketType,
                     applied,
                     errorMessage);
-            }
-            while (_coconutOfficialSessionBridge.TryDequeue(out CoconutPacketInboxMessage bridgeMessage))
-            {
-                if (TryApplyCoconutInboxLocalTeamUpdate(bridgeMessage, _specialFieldRuntime?.Minigames?.Coconut, out string localTeamMessage))
-                {
-                    ApplyClientOwnedFieldWrappers();
-                    _coconutOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage.PacketType,
-                        success: true,
-                        localTeamMessage);
-                    continue;
-                }
-
-                bool applied = TryApplyCoconutWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
-                _coconutOfficialSessionBridge.RecordDispatchResult(
-                    bridgeMessage.Source,
-                    bridgeMessage.PacketType,
-                    applied,
-                    bridgeErrorMessage);
             }
         }
 
@@ -41299,22 +41315,6 @@ namespace HaCreator.MapSimulator
 
         private void EnsureTradingRoomPacketInboxState(bool shouldRun)
         {
-            if (!shouldRun || !_tradingRoomPacketInboxEnabled)
-            {
-                if (_tradingRoomPacketInbox.IsRunning)
-                {
-                    _tradingRoomPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_tradingRoomPacketInbox.IsRunning && _tradingRoomPacketInbox.Port == _tradingRoomPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            _tradingRoomPacketInbox.Start(_tradingRoomPacketInboxConfiguredPort);
         }
 
         private string DescribeTradingRoomPacketInboxStatus()
@@ -41551,13 +41551,8 @@ namespace HaCreator.MapSimulator
 
         private void SyncTransportPacketInboxState()
         {
-            if (IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration)
+            if (!IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) || !_transportField.HasRouteConfiguration)
             {
-                _transportPacketInbox.Start();
-            }
-            else
-            {
-                _transportPacketInbox.Stop();
                 _transportOfficialSessionBridge.Stop();
             }
         }
@@ -42001,6 +41996,11 @@ namespace HaCreator.MapSimulator
 
         private void DrainMonsterCarnivalPacketInbox(int currentTickCount)
         {
+            while (_monsterCarnivalOfficialSessionBridge.TryDequeue(out MonsterCarnivalPacketInboxMessage bridgeMessage))
+            {
+                _monsterCarnivalPacketInbox.EnqueueProxy(bridgeMessage);
+            }
+
             while (_monsterCarnivalPacketInbox.TryDequeue(out MonsterCarnivalPacketInboxMessage message))
             {
                 bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
@@ -42010,21 +42010,17 @@ namespace HaCreator.MapSimulator
                     applied,
                     errorMessage);
             }
-            while (_monsterCarnivalOfficialSessionBridge.TryDequeue(out MonsterCarnivalPacketInboxMessage bridgeMessage))
-            {
-                bool applied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
-                _monsterCarnivalOfficialSessionBridge.RecordDispatchResult(
-                    bridgeMessage.Source,
-                    bridgeMessage.PacketType,
-                    applied,
-                    bridgeErrorMessage);
-            }
         }
 
 
         private void DrainMassacrePacketInbox(int currentTickCount)
         {
             MassacreField field = _specialFieldRuntime.SpecialEffects.Massacre;
+            while (_massacreOfficialSessionBridge.TryDequeue(out MassacrePacketInboxMessage bridgeMessage))
+            {
+                _massacrePacketInbox.EnqueueProxy(bridgeMessage);
+            }
+
             while (_massacrePacketInbox.TryDequeue(out MassacrePacketInboxMessage message))
             {
                 if (!field.IsActive)
@@ -42040,26 +42036,6 @@ namespace HaCreator.MapSimulator
                     message,
                     applied,
                     applied ? field.DescribeStatus() : resultMessage);
-            }
-
-            while (_massacreOfficialSessionBridge.TryDequeue(out MassacrePacketInboxMessage bridgeMessage))
-            {
-                if (!field.IsActive)
-                {
-                    _massacreOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-                bool applied = TryApplyMassacreInboxMessage(field, bridgeMessage, currentTickCount, out string bridgeResultMessage);
-                _massacreOfficialSessionBridge.RecordDispatchResult(
-                    bridgeMessage.Source,
-                    bridgeMessage,
-                    applied,
-                    applied ? field.DescribeStatus() : bridgeResultMessage);
             }
         }
 
@@ -42115,6 +42091,11 @@ namespace HaCreator.MapSimulator
         {
             DojoField field = _specialFieldRuntime.SpecialEffects.Dojo;
             _dojoOfficialSessionBridge.UpdateInferenceContext(field);
+            while (_dojoOfficialSessionBridge.TryDequeue(out DojoPacketInboxMessage bridgeMessage))
+            {
+                _dojoPacketInbox.EnqueueProxy(bridgeMessage);
+            }
+
             while (_dojoPacketInbox.TryDequeue(out DojoPacketInboxMessage message))
             {
                 if (!field.IsActive)
@@ -42130,28 +42111,6 @@ namespace HaCreator.MapSimulator
                     message,
                     applied,
                     applied ? field.DescribeStatus() : resultMessage);
-                _dojoOfficialSessionBridge.UpdateInferenceContext(field);
-            }
-
-            _dojoOfficialSessionBridge.UpdateInferenceContext(field);
-            while (_dojoOfficialSessionBridge.TryDequeue(out DojoPacketInboxMessage bridgeMessage))
-            {
-                if (!field.IsActive)
-                {
-                    _dojoOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage,
-                        success: false,
-                        result: "runtime inactive");
-                    continue;
-                }
-
-                bool applied = TryApplyDojoInboxMessage(field, bridgeMessage, currentTickCount, out string bridgeResultMessage);
-                _dojoOfficialSessionBridge.RecordDispatchResult(
-                    bridgeMessage.Source,
-                    bridgeMessage,
-                    applied,
-                    applied ? field.DescribeStatus() : bridgeResultMessage);
                 _dojoOfficialSessionBridge.UpdateInferenceContext(field);
             }
         }
@@ -42179,18 +42138,7 @@ namespace HaCreator.MapSimulator
         {
             while (_transportOfficialSessionBridge.TryDequeue(out TransportationPacketInboxMessage message))
             {
-                if (!IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) || !_transportField.HasRouteConfiguration)
-                {
-                    _transportOfficialSessionBridge.RecordDispatchResult(message.Source, message, success: false, result: "runtime inactive");
-                    continue;
-                }
-
-                bool applied = TryApplyTransportInboxMessage(message, out string resultMessage);
-                _transportOfficialSessionBridge.RecordDispatchResult(
-                    message.Source,
-                    message,
-                    applied,
-                    applied ? _transportField.DescribeStatus() : resultMessage);
+                _transportPacketInbox.EnqueueProxy(message);
             }
         }
         private bool TryApplyTransportInboxMessage(TransportationPacketInboxMessage message, out string resultMessage)
@@ -42335,6 +42283,11 @@ namespace HaCreator.MapSimulator
         private void DrainPartyRaidPacketInbox(int currentTickCount)
         {
             PartyRaidField field = _specialFieldRuntime.PartyRaid;
+            while (_partyRaidOfficialSessionBridge.TryDequeue(out PartyRaidPacketInboxMessage bridgeMessage))
+            {
+                _partyRaidPacketInbox.EnqueueProxy(bridgeMessage);
+            }
+
             while (_partyRaidPacketInbox.TryDequeue(out PartyRaidPacketInboxMessage message))
             {
                 if (!field.IsActive)
@@ -42385,31 +42338,6 @@ namespace HaCreator.MapSimulator
                     applied
                         ? field.DescribeStatus()
                         : dispatchMessage ?? $"key not accepted ({message.Key}={message.Value})");
-            }
-
-            while (_partyRaidOfficialSessionBridge.TryDequeue(out PartyRaidPacketInboxMessage bridgeMessage))
-            {
-                if (!field.IsActive)
-                {
-                    _partyRaidOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-                bool applied = TryApplyPartyRaidWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeDispatchMessage);
-                if (applied)
-                {
-                    TryApplyPendingPortalSessionValueImpactFromPacket(bridgeMessage.PacketType, bridgeMessage.Payload);
-                }
-
-                _partyRaidOfficialSessionBridge.RecordDispatchResult(
-                    bridgeMessage.Source,
-                    bridgeMessage.PacketType,
-                    applied,
-                    bridgeDispatchMessage);
             }
         }
 
@@ -42509,15 +42437,34 @@ namespace HaCreator.MapSimulator
 
         private void SyncCookieHousePointInboxState()
         {
-            if (_specialFieldRuntime.CookieHouse.IsActive)
-            {
-                _cookieHousePointInbox.Start();
-            }
-            else
+            bool fieldActive = _specialFieldRuntime.CookieHouse.IsActive;
+
+            if (!fieldActive || !_cookieHousePointInboxEnabled)
             {
                 _cookieHousePointInbox.Stop();
                 _cookieHouseOfficialSessionBridge.Stop();
+                return;
             }
+
+            _cookieHousePointInbox.Stop();
+        }
+
+        private string DescribeCookieHousePointInboxStatus()
+        {
+            string enabledText = _cookieHousePointInboxEnabled ? "enabled" : "disabled";
+            string ingressModeText = _cookieHouseOfficialSessionBridge.IsRunning ? "proxy-primary" : "proxy-required";
+            const string fallbackText = "listener-fallback retired";
+            string listeningText = _cookieHousePointInbox.IsRunning
+                ? $"listener active on 127.0.0.1:{_cookieHousePointInbox.Port}"
+                : $"listener configured for 127.0.0.1:{_cookieHousePointInboxConfiguredPort}";
+            return $"Cookie House point inbox {enabledText}, {ingressModeText}, {fallbackText}, {listeningText}, received {_cookieHousePointInbox.ReceivedCount} packet(s) [proxy={_cookieHousePointInbox.ProxyIngressReceivedCount}, local={_cookieHousePointInbox.LocalIngressReceivedCount}], last ingress={_cookieHousePointInbox.LastIngressMode}.";
+        }
+
+        private ChatCommandHandler.CommandResult OnCookiePointSessionStarted(string startStatus)
+        {
+            _cookieHousePointInboxEnabled = true;
+            SyncCookieHousePointInboxState();
+            return ChatCommandHandler.CommandResult.Ok($"{startStatus} {DescribeCookieHousePointInboxStatus()}");
         }
 
 
@@ -43199,7 +43146,7 @@ namespace HaCreator.MapSimulator
             string listeningText = _loginPacketInbox.IsRunning
                 ? $"listening on 127.0.0.1:{_loginPacketInbox.Port}"
                 : $"configured for 127.0.0.1:{_loginPacketInboxConfiguredPort}";
-            return $"Login packet inbox {enabledText}, {listeningText}, received {_loginPacketInbox.ReceivedCount} packet(s). Formats: <packet> <args>, <packet>:<args>, <packet>=<args>, /loginpacket <packet> <args>, or a scripted stream via /loginpacket stream <line1 | line2 | ...>.";
+            return $"Login packet inbox {enabledText}, {listeningText}, received {_loginPacketInbox.ReceivedCount} packet(s) [proxy={_loginPacketInbox.ProxyIngressReceivedCount}, local={_loginPacketInbox.LocalIngressReceivedCount}], last ingress={_loginPacketInbox.LastIngressMode}. Formats: <packet> <args>, <packet>:<args>, <packet>=<args>, /loginpacket <packet> <args>, or a scripted stream via /loginpacket stream <line1 | line2 | ...>.";
         }
         private void EnsureLoginOfficialSessionBridgeState(bool shouldRun)
         {
@@ -43388,6 +43335,24 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyTransportLocalInboxMessage(TransportationPacketInboxMessage message, out string resultMessage)
+        {
+            _transportPacketInbox.EnqueueLocal(message);
+            if (!_transportPacketInbox.TryDequeue(out TransportationPacketInboxMessage queuedMessage) || queuedMessage == null)
+            {
+                resultMessage = "Transport packet inbox did not retain the injected packet.";
+                return false;
+            }
+
+            bool applied = TryApplyTransportInboxMessage(queuedMessage, out resultMessage);
+            _transportPacketInbox.RecordDispatchResult(
+                queuedMessage.Source,
+                queuedMessage,
+                applied,
+                applied ? _transportField.DescribeStatus() : resultMessage);
+            return applied;
+        }
+
 
 
 
@@ -43399,13 +43364,14 @@ namespace HaCreator.MapSimulator
             }
 
 
+            while (_loginOfficialSessionBridge.TryDequeue(out LoginPacketInboxMessage bridgedMessage))
+            {
+                _loginPacketInbox.EnqueueProxy(bridgedMessage);
+            }
+
             while (_loginPacketInbox.TryDequeue(out LoginPacketInboxMessage message))
             {
                 TryHandleLoginPacketMessage(message);
-            }
-            while (_loginOfficialSessionBridge.TryDequeue(out LoginPacketInboxMessage bridgedMessage))
-            {
-                TryHandleLoginPacketMessage(bridgedMessage);
             }
 
         }

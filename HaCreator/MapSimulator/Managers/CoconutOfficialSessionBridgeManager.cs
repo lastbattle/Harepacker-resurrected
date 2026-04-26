@@ -10,7 +10,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
-using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
@@ -29,11 +28,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly ConcurrentQueue<CoconutPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
-
-        private TcpListener _listener;
-        private CancellationTokenSource _listenerCancellation;
-        private Task _listenerTask;
-        private BridgePair _activePair;
+        private readonly MapleRoleSessionProxy _roleSessionProxy;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -41,59 +36,24 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
-
-        private sealed class BridgePair
-        {
-            public BridgePair(TcpClient clientTcpClient, TcpClient serverTcpClient, Session clientSession, Session serverSession)
-            {
-                ClientTcpClient = clientTcpClient;
-                ServerTcpClient = serverTcpClient;
-                ClientSession = clientSession;
-                ServerSession = serverSession;
-                RemoteEndpoint = serverTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-remote";
-                ClientEndpoint = clientTcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown-client";
-            }
-
-            public TcpClient ClientTcpClient { get; }
-            public TcpClient ServerTcpClient { get; }
-            public Session ClientSession { get; }
-            public Session ServerSession { get; }
-            public string RemoteEndpoint { get; }
-            public string ClientEndpoint { get; }
-            public short Version { get; set; }
-            public bool InitCompleted { get; set; }
-
-            public void Close()
-            {
-                try
-                {
-                    ClientTcpClient.Close();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    ServerTcpClient.Close();
-                }
-                catch
-                {
-                }
-            }
-        }
-
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
-        public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
-        public bool HasAttachedClient => _activePair != null;
-        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
-        public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool IsRunning => _roleSessionProxy.IsRunning;
+        public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
+        public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public bool HoldsLiveSessionOwnership => IsRunning || HasAttachedClient || HasPassiveEstablishedSocketPair;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Coconut official-session bridge inactive.";
+
+        public CoconutOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
+        {
+            _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
+            _roleSessionProxy.ServerPacketReceived += OnRoleSessionServerPacketReceived;
+            _roleSessionProxy.ClientPacketReceived += OnRoleSessionClientPacketReceived;
+        }
 
         public string DescribeStatus()
         {
@@ -101,7 +61,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                ? "connected Maple session"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no live Maple session";
@@ -205,12 +165,17 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                    _listener.Start();
-                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Coconut official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    ListenPort = requestedListenPort;
+                    if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                    {
+                        StopInternal(clearPending: true);
+                        LastStatus = proxyStatus;
+                        status = LastStatus;
+                        return false;
+                    }
+
+                    _passiveEstablishedSession = null;
+                    LastStatus = proxyStatus;
                     status = LastStatus;
                     return true;
                 }
@@ -432,7 +397,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendAttackRequest(CoconutField.AttackPacketRequest request, out string status)
         {
-            BridgePair pair = _activePair;
             if (HasPassiveEstablishedSocketPair)
             {
                 status = $"Coconut official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode 257 into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
@@ -440,7 +404,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (pair == null || !pair.InitCompleted)
+            if (!_roleSessionProxy.HasConnectedSession)
             {
                 status = "Coconut official-session bridge has no active Maple session.";
                 LastStatus = status;
@@ -453,9 +417,15 @@ namespace HaCreator.MapSimulator.Managers
                 writer.WriteShort(257);
                 writer.WriteShort((short)request.TargetId);
                 writer.WriteShort((short)request.DelayMs);
-                pair.ServerSession.SendPacket(writer.ToArray());
+                if (!_roleSessionProxy.TrySendToServer(writer.ToArray(), out string proxyStatus))
+                {
+                    status = proxyStatus;
+                    LastStatus = status;
+                    return false;
+                }
+
                 SentCount++;
-                status = $"Injected Coconut opcode 257 for target {request.TargetId} into live session {pair.RemoteEndpoint}.";
+                status = $"Injected Coconut opcode 257 for target {request.TargetId} into live session.";
                 LastStatus = status;
                 return true;
             }
@@ -463,7 +433,6 @@ namespace HaCreator.MapSimulator.Managers
             {
                 status = $"Coconut official-session injection failed: {ex.Message}";
                 LastStatus = status;
-                ClearActivePair(pair, status);
                 return false;
             }
         }
@@ -489,189 +458,54 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
             }
         }
-
-        private async Task ListenLoopAsync(CancellationToken cancellationToken)
+        private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            try
+            if (e == null || e.IsInit)
             {
-                while (!cancellationToken.IsCancellationRequested && _listener != null)
-                {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    _ = Task.Run(() => AcceptClientAsync(client, cancellationToken), cancellationToken);
-                }
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (OperationCanceledException)
+
+            if (!TryDecodeOpcode(e.RawPacket, out int opcode, out byte[] payload))
             {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (ObjectDisposedException)
+
+            if (opcode != CoconutField.PacketTypeHit && opcode != CoconutField.PacketTypeScore)
             {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
             }
-            catch (Exception ex)
-            {
-                LastStatus = $"Coconut official-session bridge error: {ex.Message}";
-            }
+
+            byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
+            _pendingMessages.Enqueue(new CoconutPacketInboxMessage(
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                relayPayload,
+                $"official-session:{e.SourceEndpoint}",
+                $"packetraw {Convert.ToHexString(e.RawPacket)}"));
+            ReceivedCount++;
+            LastStatus =
+                $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Coconut opcode {opcode} from live session {e.SourceEndpoint}.";
         }
 
-        private async Task AcceptClientAsync(TcpClient client, CancellationToken cancellationToken)
+        private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            BridgePair pair = null;
-            try
-            {
-                lock (_sync)
-                {
-                    if (_activePair != null)
-                    {
-                        LastStatus = "Rejected Coconut official-session client because a live Maple session is already attached.";
-                        client.Close();
-                        return;
-                    }
-                }
-
-                TcpClient server = new TcpClient();
-                await server.ConnectAsync(RemoteHost, RemotePort, cancellationToken).ConfigureAwait(false);
-
-                Session clientSession = new Session(client.Client, SessionType.SERVER_TO_CLIENT);
-                Session serverSession = new Session(server.Client, SessionType.CLIENT_TO_SERVER);
-                pair = new BridgePair(client, server, clientSession, serverSession);
-
-                clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Coconut official-session client disconnected: {pair.ClientEndpoint}.");
-                serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Coconut official-session server disconnected: {pair.RemoteEndpoint}.");
-
-                lock (_sync)
-                {
-                    _activePair = pair;
-                }
-
-                LastStatus = $"Coconut official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
-                serverSession.WaitForDataNoEncryption();
-            }
-            catch (Exception ex)
-            {
-                client.Close();
-                pair?.Close();
-                LastStatus = $"Coconut official-session bridge connect failed: {ex.Message}";
-            }
-        }
-
-        private void HandleServerPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            try
-            {
-                byte[] raw = packet.ToArray();
-                if (isInit)
-                {
-                    PacketReader initReader = new PacketReader(raw);
-                    initReader.ReadShort();
-                    pair.Version = initReader.ReadShort();
-                    string patchLocation = initReader.ReadMapleString();
-                    byte[] clientSendIv = initReader.ReadBytes(4);
-                    byte[] clientReceiveIv = initReader.ReadBytes(4);
-                    byte serverType = initReader.ReadByte();
-
-                    pair.ClientSession.SIV = CreateCrypto(clientReceiveIv, pair.Version);
-                    pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
-                    pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
-                    pair.InitCompleted = true;
-                    LastStatus = $"Coconut official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    pair.ClientSession.WaitForData();
-                    return;
-                }
-
-                pair.ClientSession.SendPacket((byte[])raw.Clone());
-
-                if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload))
-                {
-                    return;
-                }
-
-                if (opcode != CoconutField.PacketTypeHit && opcode != CoconutField.PacketTypeScore)
-                {
-                    return;
-                }
-
-                byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
-                _pendingMessages.Enqueue(new CoconutPacketInboxMessage(
-                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
-                    relayPayload,
-                    $"official-session:{pair.RemoteEndpoint}",
-                    $"packetraw {Convert.ToHexString(raw)}"));
-                ReceivedCount++;
-                LastStatus =
-                    $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Coconut opcode {opcode} from live session {pair.RemoteEndpoint}.";
-            }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Coconut official-session server handling failed: {ex.Message}");
-            }
-        }
-
-        private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
-        {
-            if (isInit)
+            if (e == null || e.IsInit)
             {
                 return;
             }
 
-            try
+            if (TryDecodeOpcode(e.RawPacket, out int opcode, out _)
+                && opcode == 257)
             {
-                byte[] raw = packet.ToArray();
-                pair.ServerSession.SendPacket((byte[])raw.Clone());
-
-                if (TryDecodeOpcode(raw, out int opcode, out _)
-                    && opcode == 257)
-                {
-                    LastStatus = $"Forwarded live Coconut opcode 257 from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
-                }
+                LastStatus = $"Forwarded live Coconut opcode 257 from {e.SourceEndpoint}.";
             }
-            catch (Exception ex)
-            {
-                ClearActivePair(pair, $"Coconut official-session client handling failed: {ex.Message}");
-            }
-        }
-
-        private void ClearActivePair(BridgePair pair, string status)
-        {
-            if (pair == null)
-            {
-                return;
-            }
-
-            lock (_sync)
-            {
-                if (!ReferenceEquals(_activePair, pair))
-                {
-                    return;
-                }
-
-                _activePair = null;
-            }
-
-            pair.Close();
-            LastStatus = status;
         }
 
         private void StopInternal(bool clearPending)
         {
-            _listenerCancellation?.Cancel();
-
-            try
-            {
-                _listener?.Stop();
-            }
-            catch
-            {
-            }
-
-            _listenerTask = null;
-            _listener = null;
-            _listenerCancellation?.Dispose();
-            _listenerCancellation = null;
-
-            BridgePair pair = _activePair;
-            _activePair = null;
-            pair?.Close();
+            _roleSessionProxy.Stop(resetCounters: clearPending);
             _passiveEstablishedSession = null;
 
             if (clearPending)
@@ -687,36 +521,8 @@ namespace HaCreator.MapSimulator.Managers
 
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
         {
-            bool autoSelectListenPort = listenPort <= 0;
-            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
-
-            try
-            {
-                RemoteHost = NormalizeRemoteHost(remoteHost);
-                RemotePort = remotePort;
-                _listenerCancellation = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                _listener.Start();
-                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                status = $"Coconut official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
-                LastStatus = status;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                StopInternal(clearPending: false);
-                status = $"Coconut official-session bridge failed to start: {ex.Message}";
-                LastStatus = status;
-                return false;
-            }
+            return TryStart(listenPort, remoteHost, remotePort, out status);
         }
-
-        private static MapleCrypto CreateCrypto(byte[] iv, short version)
-        {
-            return new MapleCrypto((byte[])iv.Clone(), version);
-        }
-
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
         {
             int bufferSize = 0;

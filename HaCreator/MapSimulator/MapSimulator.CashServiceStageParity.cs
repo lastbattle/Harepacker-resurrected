@@ -11,9 +11,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using CashServiceOwnerStageKind = HaCreator.MapSimulator.UI.CashServiceStageKind;
-
+
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
@@ -49,6 +51,8 @@ namespace HaCreator.MapSimulator
         };
 
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
+        private bool? _cashServicePacketInboxCommandOverrideEnabled;
+        private int _cashServicePacketInboxConfiguredPort = CashServicePacketInboxManager.DefaultPort;
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
         private const int CashShopOneADayHistorySlotCount = 12;
         private const int CashShopOneADaySelectorInitArg = 4;
@@ -2318,14 +2322,20 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_cashServicePacketInbox.IsRunning)
+            if (_cashServicePacketInbox.IsRunning
+                && _cashServicePacketInbox.Port == _cashServicePacketInboxConfiguredPort)
             {
                 return;
             }
 
+            if (_cashServicePacketInbox.IsRunning)
+            {
+                _cashServicePacketInbox.Stop();
+            }
+
             try
             {
-                _cashServicePacketInbox.Start();
+                _cashServicePacketInbox.Start(_cashServicePacketInboxConfiguredPort);
             }
             catch (Exception ex)
             {
@@ -2334,8 +2344,613 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private string DescribeCashServiceStatus()
+        {
+            return $"{DescribeCashServicePacketInboxStatus()}{Environment.NewLine}{DescribeCashServiceOfficialSessionBridgeStatus()}";
+        }
+
+        private string DescribeCashServicePacketInboxStatus()
+        {
+            string ingressEnabledText = _cashServicePacketInbox.IsRunning ? "enabled" : "disabled";
+            string listeningText = _cashServicePacketInbox.IsRunning
+                ? $"listening on 127.0.0.1:{_cashServicePacketInbox.Port}"
+                : $"configured for 127.0.0.1:{_cashServicePacketInboxConfiguredPort}";
+            string modeText = _cashServicePacketInboxCommandOverrideEnabled.HasValue
+                ? (_cashServicePacketInboxCommandOverrideEnabled.Value ? "command-forced on" : "command-forced off")
+                : "auto";
+            return $"Cash-service packet inbox {ingressEnabledText}, {listeningText}, mode={modeText}, received {_cashServicePacketInbox.ReceivedCount} packet(s) [proxy={_cashServicePacketInbox.ProxyIngressReceivedCount}, local={_cashServicePacketInbox.LocalIngressReceivedCount}], last ingress={_cashServicePacketInbox.LastIngressMode}. {_cashServicePacketInbox.LastStatus}";
+        }
+
+        private string DescribeCashServiceOfficialSessionBridgeStatus()
+        {
+            string cashShopEnabledText = _cashShopOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string cashShopModeText = _cashShopOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string cashShopTargetText = _cashShopOfficialSessionBridgeUseDiscovery
+                ? _cashShopOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_cashShopOfficialSessionBridgeConfiguredRemotePort} with local port {_cashShopOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_cashShopOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_cashShopOfficialSessionBridgeConfiguredRemoteHost}:{_cashShopOfficialSessionBridgeConfiguredRemotePort}";
+            string cashShopListeningText = _cashShopOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_cashShopOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_cashShopOfficialSessionBridgeConfiguredListenPort}";
+            string cashShopProcessText = string.IsNullOrWhiteSpace(_cashShopOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_cashShopOfficialSessionBridgeConfiguredProcessSelector}";
+
+            string mtsEnabledText = _mtsOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string mtsModeText = _mtsOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string mtsTargetText = _mtsOfficialSessionBridgeUseDiscovery
+                ? _mtsOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_mtsOfficialSessionBridgeConfiguredRemotePort} with local port {_mtsOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_mtsOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_mtsOfficialSessionBridgeConfiguredRemoteHost}:{_mtsOfficialSessionBridgeConfiguredRemotePort}";
+            string mtsListeningText = _mtsOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_mtsOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_mtsOfficialSessionBridgeConfiguredListenPort}";
+            string mtsProcessText = string.IsNullOrWhiteSpace(_mtsOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_mtsOfficialSessionBridgeConfiguredProcessSelector}";
+
+            return $"CashShop bridge {cashShopEnabledText}, {cashShopModeText}, {cashShopListeningText}, target {cashShopTargetText}{cashShopProcessText}. {_cashShopOfficialSessionBridge.DescribeStatus()}{Environment.NewLine}MTS bridge {mtsEnabledText}, {mtsModeText}, {mtsListeningText}, target {mtsTargetText}{mtsProcessText}. {_mtsOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private void EnsureCashServiceOfficialSessionBridgeState(bool shouldRun)
+        {
+            EnsureCashServiceOfficialSessionBridgeState(
+                _cashShopOfficialSessionBridge,
+                shouldRun,
+                ref _cashShopOfficialSessionBridgeEnabled,
+                _cashShopOfficialSessionBridgeUseDiscovery,
+                ref _cashShopOfficialSessionBridgeConfiguredListenPort,
+                CashServiceOfficialSessionBridgeManager.CashShopDefaultListenPort,
+                _cashShopOfficialSessionBridgeConfiguredRemoteHost,
+                _cashShopOfficialSessionBridgeConfiguredRemotePort,
+                _cashShopOfficialSessionBridgeConfiguredProcessSelector,
+                _cashShopOfficialSessionBridgeConfiguredLocalPort);
+
+            EnsureCashServiceOfficialSessionBridgeState(
+                _mtsOfficialSessionBridge,
+                shouldRun,
+                ref _mtsOfficialSessionBridgeEnabled,
+                _mtsOfficialSessionBridgeUseDiscovery,
+                ref _mtsOfficialSessionBridgeConfiguredListenPort,
+                CashServiceOfficialSessionBridgeManager.MtsDefaultListenPort,
+                _mtsOfficialSessionBridgeConfiguredRemoteHost,
+                _mtsOfficialSessionBridgeConfiguredRemotePort,
+                _mtsOfficialSessionBridgeConfiguredProcessSelector,
+                _mtsOfficialSessionBridgeConfiguredLocalPort);
+        }
+
+        private static void EnsureCashServiceOfficialSessionBridgeState(
+            CashServiceOfficialSessionBridgeManager manager,
+            bool shouldRun,
+            ref bool enabled,
+            bool useDiscovery,
+            ref int configuredListenPort,
+            int defaultListenPort,
+            string configuredRemoteHost,
+            int configuredRemotePort,
+            string configuredProcessSelector,
+            int? configuredLocalPort)
+        {
+            if (!shouldRun || !enabled)
+            {
+                if (manager.IsRunning)
+                {
+                    manager.Stop();
+                }
+
+                return;
+            }
+
+            if (configuredListenPort <= 0 || configuredListenPort > ushort.MaxValue)
+            {
+                if (manager.IsRunning)
+                {
+                    manager.Stop();
+                }
+
+                enabled = false;
+                configuredListenPort = defaultListenPort;
+                return;
+            }
+
+            if (useDiscovery)
+            {
+                if (configuredRemotePort <= 0 || configuredRemotePort > ushort.MaxValue)
+                {
+                    if (manager.IsRunning)
+                    {
+                        manager.Stop();
+                    }
+
+                    return;
+                }
+
+                manager.TryStartFromDiscovery(
+                    configuredListenPort,
+                    configuredRemotePort,
+                    configuredProcessSelector,
+                    configuredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (configuredRemotePort <= 0
+                || configuredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(configuredRemoteHost))
+            {
+                if (manager.IsRunning)
+                {
+                    manager.Stop();
+                }
+
+                return;
+            }
+
+            if (manager.IsRunning
+                && manager.ListenPort == configuredListenPort
+                && string.Equals(manager.RemoteHost, configuredRemoteHost, StringComparison.OrdinalIgnoreCase)
+                && manager.RemotePort == configuredRemotePort)
+            {
+                return;
+            }
+
+            if (manager.IsRunning)
+            {
+                manager.Stop();
+            }
+
+            manager.Start(configuredListenPort, configuredRemoteHost, configuredRemotePort);
+        }
+
+        private void RefreshCashServiceOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (currentTickCount < _nextCashServiceOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextCashServiceOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + CashServiceOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+
+            RefreshCashServiceOfficialSessionBridgeDiscovery(
+                _cashShopOfficialSessionBridge,
+                _cashShopOfficialSessionBridgeEnabled,
+                _cashShopOfficialSessionBridgeUseDiscovery,
+                _cashShopOfficialSessionBridgeConfiguredListenPort,
+                _cashShopOfficialSessionBridgeConfiguredRemotePort,
+                _cashShopOfficialSessionBridgeConfiguredProcessSelector,
+                _cashShopOfficialSessionBridgeConfiguredLocalPort);
+
+            RefreshCashServiceOfficialSessionBridgeDiscovery(
+                _mtsOfficialSessionBridge,
+                _mtsOfficialSessionBridgeEnabled,
+                _mtsOfficialSessionBridgeUseDiscovery,
+                _mtsOfficialSessionBridgeConfiguredListenPort,
+                _mtsOfficialSessionBridgeConfiguredRemotePort,
+                _mtsOfficialSessionBridgeConfiguredProcessSelector,
+                _mtsOfficialSessionBridgeConfiguredLocalPort);
+        }
+
+        private static void RefreshCashServiceOfficialSessionBridgeDiscovery(
+            CashServiceOfficialSessionBridgeManager manager,
+            bool enabled,
+            bool useDiscovery,
+            int configuredListenPort,
+            int configuredRemotePort,
+            string configuredProcessSelector,
+            int? configuredLocalPort)
+        {
+            if (!enabled
+                || !useDiscovery
+                || configuredRemotePort <= 0
+                || configuredRemotePort > ushort.MaxValue
+                || manager.HasAttachedClient)
+            {
+                return;
+            }
+
+            manager.TryStartFromDiscovery(
+                configuredListenPort,
+                configuredRemotePort,
+                configuredProcessSelector,
+                configuredLocalPort,
+                out _);
+        }
+
+        private ChatCommandHandler.CommandResult HandleCashServiceCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeCashServiceStatus());
+            }
+
+            switch (args[0].ToLowerInvariant())
+            {
+                case "open":
+                    if (args.Length < 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /cashservice open <cashshop|mts>");
+                    }
+
+                    if (string.Equals(args[1], "cashshop", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(args[1], "cs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        OpenCashServiceOwnerFamily(CashServiceOwnerStageKind.CashShop, resetStageSession: true);
+                        return ChatCommandHandler.CommandResult.Ok(DescribeCashServiceStatus());
+                    }
+
+                    if (string.Equals(args[1], "mts", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(args[1], "itc", StringComparison.OrdinalIgnoreCase))
+                    {
+                        OpenCashServiceOwnerFamily(CashServiceOwnerStageKind.ItemTradingCenter, resetStageSession: true);
+                        return ChatCommandHandler.CommandResult.Ok(DescribeCashServiceStatus());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /cashservice open <cashshop|mts>");
+
+                case "inbox":
+                    return HandleCashServiceInboxCommand(args.Skip(1).ToArray());
+
+                case "packet":
+                case "packetraw":
+                    return HandleCashServiceInboxPacketCommand(args);
+
+                case "packetclientraw":
+                    return HandleCashServiceInboxClientPacketRawCommand(args);
+
+                case "bridge":
+                case "session":
+                    return HandleCashServiceBridgeCommand(args.Skip(1).ToArray());
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error("Usage: /cashservice [status|open <cashshop|mts>|inbox [status|start [port]|stop|auto|packet <type> [payloadhex=..|payloadb64=..|hex|codec-text]|packetraw <type> <hex>|packetclientraw <hex>]|packet <type> [payloadhex=..|payloadb64=..|hex|codec-text]|packetraw <type> <hex>|packetclientraw <hex>|bridge [status|cashshop|mts <status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>]]");
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandleCashServiceInboxCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeCashServicePacketInboxStatus());
+            }
+
+            if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                int port = CashServicePacketInboxManager.DefaultPort;
+                if (args.Length > 1
+                    && (!int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out port)
+                        || port <= 0
+                        || port > ushort.MaxValue))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /cashservice inbox start [port]");
+                }
+
+                _cashServicePacketInboxConfiguredPort = port;
+                _cashServicePacketInboxCommandOverrideEnabled = true;
+                EnsureCashServicePacketInboxState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok(DescribeCashServicePacketInboxStatus());
+            }
+
+            if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _cashServicePacketInboxCommandOverrideEnabled = false;
+                EnsureCashServicePacketInboxState(shouldRun: false);
+                return ChatCommandHandler.CommandResult.Ok(DescribeCashServicePacketInboxStatus());
+            }
+
+            if (string.Equals(args[0], "auto", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "reset", StringComparison.OrdinalIgnoreCase))
+            {
+                _cashServicePacketInboxCommandOverrideEnabled = null;
+                return ChatCommandHandler.CommandResult.Ok(DescribeCashServicePacketInboxStatus());
+            }
+
+            if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleCashServiceInboxPacketCommand(args);
+            }
+
+            if (string.Equals(args[0], "packetclientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleCashServiceInboxClientPacketRawCommand(args);
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /cashservice inbox [status|start [port]|stop|auto|packet <type> [payloadhex=..|payloadb64=..|hex|codec-text]|packetraw <type> <hex>|packetclientraw <hex>]");
+        }
+
+        private ChatCommandHandler.CommandResult HandleCashServiceBridgeCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeCashServiceOfficialSessionBridgeStatus());
+            }
+
+            bool isCashShopBridge;
+            if (string.Equals(args[0], "cashshop", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "cs", StringComparison.OrdinalIgnoreCase))
+            {
+                isCashShopBridge = true;
+            }
+            else if (string.Equals(args[0], "mts", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "itc", StringComparison.OrdinalIgnoreCase))
+            {
+                isCashShopBridge = false;
+            }
+            else
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /cashservice bridge [status|cashshop|mts <status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>]");
+            }
+
+            return HandleCashServiceBridgeRoleCommand(isCashShopBridge, args.Skip(1).ToArray());
+        }
+
+        private ChatCommandHandler.CommandResult HandleCashServiceBridgeRoleCommand(bool isCashShopBridge, string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeCashServiceOfficialSessionBridgeStatus());
+            }
+
+            CashServiceOfficialSessionBridgeManager manager = isCashShopBridge ? _cashShopOfficialSessionBridge : _mtsOfficialSessionBridge;
+            string usagePrefix = isCashShopBridge
+                ? "/cashservice bridge cashshop"
+                : "/cashservice bridge mts";
+
+            if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2
+                    || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int discoverRemotePort)
+                    || discoverRemotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} discover <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 3 ? args[2] : null;
+                int? localPortFilter = null;
+                if (args.Length >= 4)
+                {
+                    if (!int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLocalPort)
+                        || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} discover <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPortFilter = parsedLocalPort;
+                }
+
+                return ChatCommandHandler.CommandResult.Info(
+                    manager.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+            }
+
+            if (string.Equals(args[0], "history", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "recent", StringComparison.OrdinalIgnoreCase))
+            {
+                int maxCount = 10;
+                if (args.Length >= 2
+                    && (!int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out maxCount)
+                        || maxCount <= 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} history [count]");
+                }
+
+                return ChatCommandHandler.CommandResult.Info(manager.DescribeRecentPackets(maxCount));
+            }
+
+            if (string.Equals(args[0], "clearhistory", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "clearrecent", StringComparison.OrdinalIgnoreCase))
+            {
+                manager.ClearRecentPackets();
+                return ChatCommandHandler.CommandResult.Ok(manager.DescribeStatus());
+            }
+
+            if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 4
+                    || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int listenPort)
+                    || listenPort <= 0
+                    || !int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int remotePort)
+                    || remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} start <listenPort> <serverHost> <serverPort>");
+                }
+
+                if (isCashShopBridge)
+                {
+                    _cashShopOfficialSessionBridgeEnabled = true;
+                    _cashShopOfficialSessionBridgeUseDiscovery = false;
+                    _cashShopOfficialSessionBridgeConfiguredListenPort = listenPort;
+                    _cashShopOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                    _cashShopOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                    _cashShopOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _cashShopOfficialSessionBridgeConfiguredLocalPort = null;
+                }
+                else
+                {
+                    _mtsOfficialSessionBridgeEnabled = true;
+                    _mtsOfficialSessionBridgeUseDiscovery = false;
+                    _mtsOfficialSessionBridgeConfiguredListenPort = listenPort;
+                    _mtsOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                    _mtsOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                    _mtsOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _mtsOfficialSessionBridgeConfiguredLocalPort = null;
+                }
+
+                EnsureCashServiceOfficialSessionBridgeState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok(DescribeCashServiceOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "startauto", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3
+                    || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int autoListenPort)
+                    || autoListenPort <= 0
+                    || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int autoRemotePort)
+                    || autoRemotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 4 ? args[3] : null;
+                int? localPortFilter = null;
+                if (args.Length >= 5)
+                {
+                    if (!int.TryParse(args[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLocalPort)
+                        || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPortFilter = parsedLocalPort;
+                }
+
+                if (isCashShopBridge)
+                {
+                    _cashShopOfficialSessionBridgeEnabled = true;
+                    _cashShopOfficialSessionBridgeUseDiscovery = true;
+                    _cashShopOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                    _cashShopOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                    _cashShopOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                    _cashShopOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                    _cashShopOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
+                }
+                else
+                {
+                    _mtsOfficialSessionBridgeEnabled = true;
+                    _mtsOfficialSessionBridgeUseDiscovery = true;
+                    _mtsOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                    _mtsOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                    _mtsOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                    _mtsOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                    _mtsOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
+                }
+
+                EnsureCashServiceOfficialSessionBridgeState(shouldRun: true);
+                return manager.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+                    ? ChatCommandHandler.CommandResult.Ok($"{startStatus}{Environment.NewLine}{DescribeCashServiceOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(startStatus);
+            }
+
+            if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                if (isCashShopBridge)
+                {
+                    _cashShopOfficialSessionBridgeEnabled = false;
+                    _cashShopOfficialSessionBridgeUseDiscovery = false;
+                    _cashShopOfficialSessionBridgeConfiguredRemotePort = 0;
+                    _cashShopOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _cashShopOfficialSessionBridgeConfiguredLocalPort = null;
+                    _cashShopOfficialSessionBridge.Stop();
+                }
+                else
+                {
+                    _mtsOfficialSessionBridgeEnabled = false;
+                    _mtsOfficialSessionBridgeUseDiscovery = false;
+                    _mtsOfficialSessionBridgeConfiguredRemotePort = 0;
+                    _mtsOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _mtsOfficialSessionBridgeConfiguredLocalPort = null;
+                    _mtsOfficialSessionBridge.Stop();
+                }
+
+                return ChatCommandHandler.CommandResult.Ok(DescribeCashServiceOfficialSessionBridgeStatus());
+            }
+
+            return ChatCommandHandler.CommandResult.Error($"{usagePrefix} <status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>");
+        }
+
+        private ChatCommandHandler.CommandResult HandleCashServiceInboxPacketCommand(string[] args)
+        {
+            bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
+            if (rawHex)
+            {
+                if (args.Length < 3
+                    || !CashServicePacketInboxManager.TryParsePacketType(args[1], out int rawPacketType)
+                    || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] rawPayload))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /cashservice packetraw <type> <hex>");
+                }
+
+                return TryApplyCashServiceInboxPacket(rawPacketType, rawPayload, "cashservice-packetraw", out string rawMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(rawMessage)
+                    : ChatCommandHandler.CommandResult.Error(rawMessage);
+            }
+
+            string parseError = null;
+            if (args.Length < 2
+                || !CashServicePacketInboxManager.TryParseLine(string.Join(" ", args.Skip(1)), out CashServicePacketInboxMessage parsedMessage, out parseError))
+            {
+                return ChatCommandHandler.CommandResult.Error(parseError ?? "Usage: /cashservice packet <type> [payloadhex=..|payloadb64=..|hex|codec-text]");
+            }
+
+            return TryApplyCashServiceInboxPacket(parsedMessage.PacketType, parsedMessage.Payload, "cashservice-packet", out string message)
+                ? ChatCommandHandler.CommandResult.Ok(message)
+                : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandleCashServiceInboxClientPacketRawCommand(string[] args)
+        {
+            if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawPacket))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /cashservice packetclientraw <hex>");
+            }
+
+            if (!TryDecodeCashServiceClientOpcodePacket(rawPacket, out int packetType, out byte[] payload, out string decodeError))
+            {
+                return ChatCommandHandler.CommandResult.Error(decodeError ?? "Usage: /cashservice packetclientraw <hex>");
+            }
+
+            return TryApplyCashServiceInboxPacket(packetType, payload, "cashservice-clientraw", out string message)
+                ? ChatCommandHandler.CommandResult.Ok($"Applied cash-service client opcode {packetType}. {message}")
+                : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private bool TryApplyCashServiceInboxPacket(int packetType, byte[] payload, string source, out string message)
+        {
+            payload ??= Array.Empty<byte>();
+            _cashServicePacketInbox.EnqueueLocal(packetType, payload, source);
+            if (!_cashServicePacketInbox.TryDequeue(out CashServicePacketInboxMessage queuedMessage) || queuedMessage == null)
+            {
+                message = "Cash-service packet inbox did not retain the injected packet.";
+                return false;
+            }
+
+            bool applied = TryApplyCashServiceStagePacket(queuedMessage.PacketType, queuedMessage.Payload, out message);
+            _cashServicePacketInbox.RecordDispatchResult(queuedMessage, applied, message);
+            return applied;
+        }
+
+        private static bool TryDecodeCashServiceClientOpcodePacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Cash-service client packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            packetType = BitConverter.ToUInt16(rawPacket, 0);
+            if (!CashServicePacketInboxManager.TryParsePacketType(packetType.ToString(CultureInfo.InvariantCulture), out _))
+            {
+                error = $"Unsupported cash-service client opcode {packetType}.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return true;
+        }
+
         private void DrainCashServicePacketInbox()
         {
+            DrainCashServiceOfficialSessionBridges();
+
             while (_cashServicePacketInbox.TryDequeue(out CashServicePacketInboxMessage message))
             {
                 if (message == null)
@@ -2358,6 +2973,27 @@ namespace HaCreator.MapSimulator
                 {
                     _chat?.AddErrorMessage(detail, currTickCount);
                 }
+            }
+        }
+
+        private void DrainCashServiceOfficialSessionBridges()
+        {
+            while (_cashShopOfficialSessionBridge.TryDequeue(out CashServicePacketInboxMessage cashShopMessage))
+            {
+                _cashServicePacketInbox.EnqueueProxy(
+                    cashShopMessage.PacketType,
+                    cashShopMessage.Payload,
+                    cashShopMessage.Source);
+                _cashShopOfficialSessionBridge.RecordDispatchResult(cashShopMessage, success: true, detail: "forwarded to cash-service inbox");
+            }
+
+            while (_mtsOfficialSessionBridge.TryDequeue(out CashServicePacketInboxMessage mtsMessage))
+            {
+                _cashServicePacketInbox.EnqueueProxy(
+                    mtsMessage.PacketType,
+                    mtsMessage.Payload,
+                    mtsMessage.Source);
+                _mtsOfficialSessionBridge.RecordDispatchResult(mtsMessage, success: true, detail: "forwarded to cash-service inbox");
             }
         }
 
@@ -3459,6 +4095,11 @@ namespace HaCreator.MapSimulator
 
         private bool ShouldRunCashServicePacketInbox()
         {
+            if (_cashServicePacketInboxCommandOverrideEnabled.HasValue)
+            {
+                return _cashServicePacketInboxCommandOverrideEnabled.Value;
+            }
+
             bool anyCashShopChildVisible = false;
             for (int i = 0; i < CashShopChildOwnerWindowNames.Length && !anyCashShopChildVisible; i++)
             {

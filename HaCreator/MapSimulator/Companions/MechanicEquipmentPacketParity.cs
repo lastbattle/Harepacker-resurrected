@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Companions
 {
     internal enum MechanicEquipPacketPayloadMode : byte
@@ -859,7 +861,7 @@ namespace HaCreator.MapSimulator.Companions
                                     ResolvedBuildStateToken: resolvedBuildStateToken,
                                     ResolvedMechanicStateToken: resolvedMechanicStateToken,
                                     AuthorityResultKind: resultKind,
-                                    RejectReason: reader.ReadString());
+                                    RejectReason: reader.ReadMapleString());
                                 return stream.Position == stream.Length
                                     ? true
                                     : FailWithTrailingBytes("Mechanic authority rejection payload should not contain extra bytes.", out decodedPayload, out errorMessage);

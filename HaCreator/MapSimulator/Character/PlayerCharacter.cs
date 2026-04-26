@@ -15,7 +15,9 @@ using Spine;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-
+
+using BinaryReader = MapleLib.PacketLib.PacketReader;
+using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Character
 {
     /// <summary>
@@ -1527,7 +1529,7 @@ namespace HaCreator.MapSimulator.Character
                 {
                     _physicsDebugLogged = true;
                     System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] maxSpeed={maxSpeed:F1} px/s, walkForce={walkForce:F1}, walkDrag={walkDrag:F1}, mass={entityMass}, tSec={tSec:F4}");
-                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/s・ゑｽｲ, decel={walkDrag/entityMass:F1} px/s・ゑｽｲ");
+                    System.Diagnostics.Debug.WriteLine($"[PlayerCharacter Physics] accel={walkForce/entityMass:F1} px/s・ゑｽ�E�, decel={walkDrag/entityMass:F1} px/s・ゑｽ�E�");
                 }
 
                 if (_inputLeft && !_inputRight)

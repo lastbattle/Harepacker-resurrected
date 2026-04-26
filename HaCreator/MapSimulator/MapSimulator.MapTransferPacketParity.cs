@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Character;
+﻿using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
@@ -22,7 +22,7 @@ namespace HaCreator.MapSimulator
             public MapTransferRuntimeResponse PredictedResponse { get; init; }
         }
 
-        private readonly MapTransferOfficialSessionBridgeManager _mapTransferOfficialSessionBridge = new();
+        private readonly MapTransferOfficialSessionBridgeManager _mapTransferOfficialSessionBridge;
         private readonly List<PendingOfficialMapTransferRequest> _pendingOfficialMapTransferRequests = new();
         private readonly Dictionary<MapTransferDestinationBook, MapTransferRuntimeRequest> _lastAuthoritativeRequestByBook = new();
 
@@ -899,3 +899,4 @@ namespace HaCreator.MapSimulator
         }
     }
 }
+

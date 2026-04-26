@@ -8,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
+using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed record ParcelAlarmPromptSnapshot(
