@@ -402,8 +402,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge.SentCount;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge.ReceivedCount;
-            _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource(
-                _localUtilityOfficialSessionBridge.ActiveRemoteEndpoint);
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
 
             window.ClearChallenge();
             if (TrySendPacketOwnedAntiMacroAnswerToOfficialSession(
@@ -1608,6 +1607,37 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(remoteEndpoint)
                 ? string.Empty
                 : $"official-session:{remoteEndpoint.Trim()}";
+        }
+
+        internal static string ResolvePacketOwnedAntiMacroExpectedResultSourceForBridge(
+            string activeRemoteEndpoint,
+            string configuredRemoteHost,
+            int configuredRemotePort)
+        {
+            if (!string.IsNullOrWhiteSpace(activeRemoteEndpoint))
+            {
+                return ResolvePacketOwnedAntiMacroExpectedResultSource(activeRemoteEndpoint);
+            }
+
+            if (configuredRemotePort <= 0 || string.IsNullOrWhiteSpace(configuredRemoteHost))
+            {
+                return string.Empty;
+            }
+
+            return ResolvePacketOwnedAntiMacroExpectedResultSource(
+                $"{configuredRemoteHost.Trim()}:{configuredRemotePort}");
+        }
+
+        private string ResolvePacketOwnedAntiMacroExpectedResultSource()
+        {
+            // Deferred opcode 117 delivery can be queued before crypto/session init.
+            // The bridge already owns the target Maple endpoint, so bind later 1011
+            // completion to that same configured server endpoint instead of accepting
+            // any official-session source.
+            return ResolvePacketOwnedAntiMacroExpectedResultSourceForBridge(
+                _localUtilityOfficialSessionBridge.ActiveRemoteEndpoint,
+                _localUtilityOfficialSessionBridge.RemoteHost,
+                _localUtilityOfficialSessionBridge.RemotePort);
         }
 
         private bool IsPacketOwnedAntiMacroNoticeVisible()

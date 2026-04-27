@@ -1965,8 +1965,13 @@ namespace HaCreator.MapSimulator
                         _remoteUserPool,
                         ResolveMobPickupSourceName,
                         ResolvePickupItemName);
-                    Vector2? pickupTargetPosition = ResolveRemoteUserDropPickupTargetPosition(dropPickupPacket);
+                    Vector2? pickupTargetPosition = ResolveRemoteUserDropPickupEffectiveTargetPosition(
+                        dropPickupPacket,
+                        resolvedPickupActorId,
+                        pickupNoticeFallbackOwnerId,
+                        (actorKind, actorId, fallbackOwnerId) => ResolveDropPickupActorPosition(actorKind, actorId, fallbackOwnerId));
                     if (dropPickupPacket.ActorKind == DropPickupActorKind.Pet
+                        && dropPickupPacket.HasExplicitTargetPosition
                         && pickupTargetPosition.HasValue)
                     {
                         foreach (int observedPetActorId in ResolveRemoteUserDropPickupObservedPetActorIds(
@@ -1986,7 +1991,15 @@ namespace HaCreator.MapSimulator
                         dropPickupPacket.ActorKind,
                         pickupActorName,
                         pickedByPet: dropPickupPacket.ActorKind == DropPickupActorKind.Pet,
-                        pickupTargetPosition: pickupTargetPosition);
+                        pickupTargetPosition: pickupTargetPosition,
+                        pickupTargetPositionResolver: () => ResolveRemoteUserDropPickupEffectiveTargetPosition(
+                            dropPickupPacket,
+                            resolvedPickupActorId,
+                            pickupNoticeFallbackOwnerId,
+                            (actorKind, actorId, fallbackOwnerId) => ResolveDropPickupActorPosition(actorKind, actorId, fallbackOwnerId)),
+                        pickupStartPositionOverride: ResolveRemoteUserDropPickupStartPosition(drop),
+                        bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled);
                     if (!pickupApplied)
                     {
                         if (TrySurfaceRecentRemoteDropPickupNotice(
@@ -2216,6 +2229,36 @@ namespace HaCreator.MapSimulator
             return packet.TargetX.HasValue && packet.TargetY.HasValue
                 ? new Vector2(packet.TargetX.Value, packet.TargetY.Value)
                 : null;
+        }
+
+        internal static Vector2? ResolveRemoteUserDropPickupEffectiveTargetPosition(
+            RemoteUserDropPickupPacket packet,
+            int resolvedActorId,
+            int fallbackOwnerId,
+            Func<DropPickupActorKind, int, int, Vector2?> actorPositionResolver)
+        {
+            Vector2? packetTargetPosition = ResolveRemoteUserDropPickupTargetPosition(packet);
+            if (packetTargetPosition.HasValue)
+            {
+                return packetTargetPosition;
+            }
+
+            return actorPositionResolver?.Invoke(
+                packet.ActorKind,
+                resolvedActorId,
+                fallbackOwnerId);
+        }
+
+        internal static Vector2? ResolveRemoteUserDropPickupStartPosition(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return null;
+            }
+
+            return drop.IsPacketControlled
+                ? new Vector2(drop.TargetX, drop.TargetY)
+                : new Vector2(drop.X, drop.Y);
         }
 
         private int ResolveRemoteUserDropPickupActorId(RemoteUserDropPickupPacket packet)

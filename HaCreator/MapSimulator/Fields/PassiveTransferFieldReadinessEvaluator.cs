@@ -172,6 +172,13 @@ namespace HaCreator.MapSimulator.Fields
             return shouldCancelQueuedRetry;
         }
 
+        public static bool ShouldStopSkillMacroForHorizontalOnKeyDown(
+            bool leftKeyPressed,
+            bool rightKeyPressed)
+        {
+            return leftKeyPressed || rightKeyPressed;
+        }
+
         public static bool IsExclusiveTransferRequestInFlight(
             bool requestSent,
             int requestSentTick,

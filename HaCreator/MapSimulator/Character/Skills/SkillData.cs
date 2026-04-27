@@ -2150,6 +2150,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int MainLayerObjectId { get; set; }
         public bool MainLayerAvailable { get; set; } = true;
         public bool MainLayerHasAlphaVector { get; set; } = true;
+        public int EffectLayerObjectId { get; set; }
+        public int EffectLayerParentObjectId { get; set; }
+        public bool EffectLayerAvailable { get; set; }
         public BulletAnimationPresentation Presentation { get; init; }
         public Vector2 CurrentPosition { get; set; }
         public Vector2 PreviousPosition { get; set; }

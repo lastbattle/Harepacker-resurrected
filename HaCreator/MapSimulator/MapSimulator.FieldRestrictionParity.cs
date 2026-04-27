@@ -83,7 +83,9 @@ namespace HaCreator.MapSimulator
 
         private string GetPetFieldRestrictionMessage()
         {
-            return FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0)
+            return FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(
+                    _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                    _mapBoard?.MapInfo)
                 ?? _playerManager?.Pets?.FieldUsageRestrictionMessage;
         }
 
@@ -209,7 +211,9 @@ namespace HaCreator.MapSimulator
             PetController pets = _playerManager?.Pets;
             if (pets != null)
             {
-                string petRestrictionMessage = FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+                string petRestrictionMessage = FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(
+                    _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                    _mapBoard?.MapInfo);
                 pets.SetFieldUsageRestriction(!string.IsNullOrWhiteSpace(petRestrictionMessage), petRestrictionMessage);
             }
 
@@ -219,7 +223,7 @@ namespace HaCreator.MapSimulator
                 equipBigBang.SetMechanicPaneAvailable(
                     CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build)
                     && FieldInteractionRestrictionEvaluator.CanUseTamingMob(fieldLimit));
-                equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(fieldLimit));
+                equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(fieldLimit, _mapBoard?.MapInfo));
             }
         }
 

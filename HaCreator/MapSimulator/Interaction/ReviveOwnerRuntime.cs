@@ -108,6 +108,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class ReviveOwnerRuntime
     {
         internal const int AutoResolveMs = 0x927C0;
+        internal const int NativeDialogCreateDelayMs = 0x898;
         internal const int NativeWindowWidth = 300;
         internal const int NativeWindowHeight = 131;
         internal const int NativeWindowLeft = -150;
@@ -313,6 +314,14 @@ namespace HaCreator.MapSimulator.Interaction
             return new Point(
                 Math.Max(0, (normalizedScreenWidth / 2) + NativeWindowLeft),
                 Math.Max(0, (normalizedScreenHeight / 2) + NativeWindowTop));
+        }
+
+        public static bool ShouldCreateDialog(int armedAtTick, int currentTick)
+        {
+            // Client evidence:
+            // - CUserLocal::OnSetDead calls CWvsContext::UI_OpenRevive.
+            // - CWvsContext::Update creates CUIRevive only after tCur - m_tReviveDialog > 0x898.
+            return unchecked(currentTick - armedAtTick) > NativeDialogCreateDelayMs;
         }
 
         public static int GetConsumableCashItemId(ReviveOwnerVariant variant)

@@ -380,6 +380,14 @@ namespace HaCreator.MapSimulator.Interaction
             [0x108E] = "BgmEvent/wedding",
             [0x108F] = "BgmEvent/wedding",
             [0x1090] = "Would you like to give your blessing to the couple?",
+            // Recovered from MapleStory.exe v95 `CField_AriantArena::OnUserScore`,
+            // `CField_AriantArena::UpdateScoreAndRank`, and
+            // `CField_AriantArena::OnShowResult`. Pin these Ariant Arena ids so the
+            // field owner keeps its score text and layer resource paths on the
+            // client-confirmed StringPool seam when generated-table ordering drifts.
+            [0x1123] = "UI/UIWindow.img/AriantMatch/characterIcon/%d",
+            [0x1124] = "UI/UIWindow.img/AriantMatch/Result",
+            [0x112A] = "%d Point",
             // Recovered from MapleStory.exe v95 `CField_MonsterCarnival::OnRequestResult`,
             // `OnProcessForDeath`, `OnShowGameResult`, and `OnShowMemberOutMsg`. The
             // generated table currently carries this block, but pin the client-owned ids

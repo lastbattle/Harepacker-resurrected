@@ -169,6 +169,27 @@ namespace HaCreator.MapSimulator
             return $"{_packetOwnedBattleRecordRuntime.BuildFooter()} {DescribePacketOwnedNpcUtilityOutboundStatus("battle-record", _lastPacketOwnedBattleRecordOutboundOpcode, _lastPacketOwnedBattleRecordOutboundPayload, _lastPacketOwnedBattleRecordOutboundSummary)}";
         }
 
+        private void UpdatePacketOwnedBattleRecordTimerLifecycle(int currentTickCount)
+        {
+            if (!_packetOwnedBattleRecordRuntime.TryBuildTimerExpiryOutboundRequest(
+                    currentTickCount,
+                    out PacketOwnedNpcUtilityOutboundRequest request,
+                    out string localMessage))
+            {
+                return;
+            }
+
+            string dispatchMessage = DispatchPacketOwnedBattleRecordOutboundRequest(
+                hasRequest: true,
+                request,
+                localMessage,
+                requestError: null);
+            if (!string.IsNullOrWhiteSpace(dispatchMessage))
+            {
+                ShowUtilityFeedbackMessage(dispatchMessage);
+            }
+        }
+
         private ChatCommandHandler.CommandResult HandlePacketOwnedNpcUtilityCommand(string[] args)
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -410,16 +431,24 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            string resultBlockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
+            bool ignoreResultAtOwnerGate = AdminShopPacketOwnedOwnerGateParity.ShouldIgnoreResultAtOwnerGate(
+                hasBlockingUniqueModelessOwner: !string.IsNullOrWhiteSpace(resultBlockingOwner),
+                acceptsResultAtOwnerGate: adminShopWindow.ShouldAcceptPacketOwnedAdminShopResultAtOwnerGate);
             if (!AdminShopPacketOwnedResultCodec.TryDecode(payload, out AdminShopPacketOwnedResultPayloadSnapshot resultSnapshot))
             {
+                if (ignoreResultAtOwnerGate)
+                {
+                    message = adminShopWindow.ApplyPacketOwnedAdminShopMalformedResultIgnoredByUniqueModelessOwner(
+                        resultBlockingOwner);
+                    return true;
+                }
+
                 message = "Admin-shop packet 366 requires the subtype byte.";
                 return false;
             }
 
-            string resultBlockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
-            if (AdminShopPacketOwnedOwnerGateParity.ShouldIgnoreResultAtOwnerGate(
-                    hasBlockingUniqueModelessOwner: !string.IsNullOrWhiteSpace(resultBlockingOwner),
-                    acceptsResultAtOwnerGate: adminShopWindow.ShouldAcceptPacketOwnedAdminShopResultAtOwnerGate))
+            if (ignoreResultAtOwnerGate)
             {
                 message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
                     resultSnapshot.Subtype,

@@ -28,18 +28,25 @@ namespace HaCreator.MapSimulator.Animation
                 int drawOrder,
                 int sourceLayerCode = -1,
                 int sourceLayerCaptureOrder = -1,
-                int simulatedLayerHandleId = 0)
+                int simulatedLayerHandleId = 0,
+                int simulatedLayerHandleRefCount = 0)
             {
                 DrawOrder = Math.Max(0, drawOrder);
                 SourceLayerCode = sourceLayerCode;
                 SourceLayerCaptureOrder = sourceLayerCaptureOrder;
                 SimulatedLayerHandleId = Math.Max(0, simulatedLayerHandleId);
+                SimulatedLayerHandleRefCount = Math.Max(
+                    0,
+                    simulatedLayerHandleRefCount > 0
+                        ? simulatedLayerHandleRefCount
+                        : SimulatedLayerHandleId > 0 ? 1 : 0);
             }
 
             public int DrawOrder { get; }
             public int SourceLayerCode { get; }
             public int SourceLayerCaptureOrder { get; }
             public int SimulatedLayerHandleId { get; }
+            public int SimulatedLayerHandleRefCount { get; }
         }
 
         internal static bool IsSecondaryMotionBlurLayerStack(IReadOnlyList<IDXObject> frames)
@@ -145,6 +152,13 @@ namespace HaCreator.MapSimulator.Animation
             int SimulatedAnimationStateId,
             bool TerminateRequested,
             bool IsTerminated,
+            int SimulatedOverlayLayerHandleId,
+            int SimulatedOverlayLayerHandleRefCount,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode);
+
+        internal readonly record struct SecondaryMotionBlurSnapshotTrace(
+            int StartTime,
             int SimulatedOverlayLayerHandleId,
             int SimulatedOverlayLayerHandleRefCount,
             IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode,
@@ -934,7 +948,8 @@ namespace HaCreator.MapSimulator.Animation
             int updateNextMs,
             int durationMs,
             int currentTimeMs,
-            Action onSpawn = null)
+            Action onSpawn = null,
+            int zOrder = 1)
         {
             if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
             {
@@ -942,7 +957,7 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var registration = new AreaAnimationRegistration();
-            registration.Initialize(frames, area, updateIntervalMs, updateCount, updateNextMs, durationMs, currentTimeMs, onSpawn);
+            registration.Initialize(frames, area, updateIntervalMs, updateCount, updateNextMs, durationMs, currentTimeMs, onSpawn, zOrder);
             _areaAnimations.Add(registration);
             return registration.Id;
         }
@@ -1917,18 +1932,25 @@ namespace HaCreator.MapSimulator.Animation
 
         private readonly struct MotionBlurSnapshot
         {
-            public MotionBlurSnapshot(Vector2 position, bool flip, int startTime, List<IDXObject> frames)
+            public MotionBlurSnapshot(
+                Vector2 position,
+                bool flip,
+                int startTime,
+                List<IDXObject> frames,
+                AnimationEffects.SecondaryMotionBlurSnapshotTrace trace)
             {
                 Position = position;
                 Flip = flip;
                 StartTime = startTime;
                 Frames = frames;
+                Trace = trace;
             }
 
             public Vector2 Position { get; }
             public bool Flip { get; }
             public int StartTime { get; }
             public List<IDXObject> Frames { get; }
+            public AnimationEffects.SecondaryMotionBlurSnapshotTrace Trace { get; }
         }
 
         public void Initialize(
@@ -2011,7 +2033,8 @@ namespace HaCreator.MapSimulator.Animation
                         snapshotPosition,
                         snapshotFlip,
                         _nextUpdateTime,
-                        snapshotFrames));
+                        snapshotFrames,
+                        CaptureSnapshotTrace(_nextUpdateTime, snapshotFrames)));
                 }
 
                 _nextUpdateTime += _intervalMs;
@@ -2216,6 +2239,126 @@ namespace HaCreator.MapSimulator.Animation
         internal static int NormalizeSnapshotIntervalMs(int intervalMs)
         {
             return Math.Max(1, intervalMs);
+        }
+
+        internal IReadOnlyList<AnimationEffects.SecondaryMotionBlurSnapshotTrace> CaptureSnapshotTracesForTesting()
+        {
+            return _snapshots
+                .Select(static snapshot => snapshot.Trace)
+                .ToArray();
+        }
+
+        private AnimationEffects.SecondaryMotionBlurSnapshotTrace CaptureSnapshotTrace(
+            int startTime,
+            IReadOnlyList<IDXObject> frames)
+        {
+            AnimationEffects.SecondaryMotionBlurAnimationStateTrace stateTrace =
+                (_state ?? new AnimationEffects.SecondaryMotionBlurAnimationState()).CaptureTrace();
+            IReadOnlyDictionary<int, int> layerHandleIds = ResolveSnapshotLayerHandleIds(
+                frames,
+                stateTrace.SimulatedLayerHandleIdsByLayerCode);
+            IReadOnlyDictionary<int, int> layerHandleRefCounts = ResolveSnapshotLayerHandleRefCounts(
+                frames,
+                layerHandleIds,
+                stateTrace.SimulatedLayerHandleRefCountsByLayerCode);
+
+            return new AnimationEffects.SecondaryMotionBlurSnapshotTrace(
+                startTime,
+                stateTrace.SimulatedOverlayLayerHandleId,
+                stateTrace.SimulatedOverlayLayerHandleRefCount,
+                layerHandleIds,
+                layerHandleRefCounts);
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveSnapshotLayerHandleIds(
+            IReadOnlyList<IDXObject> frames,
+            IReadOnlyDictionary<int, int> fallbackLayerHandleIds)
+        {
+            if (AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                var layerHandleIds = new Dictionary<int, int>();
+                for (int i = 0; i < frames.Count; i++)
+                {
+                    if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                        || tag.SourceLayerCode < 0
+                        || tag.SimulatedLayerHandleId <= 0)
+                    {
+                        continue;
+                    }
+
+                    layerHandleIds[tag.SourceLayerCode] = tag.SimulatedLayerHandleId;
+                }
+
+                if (layerHandleIds.Count > 0)
+                {
+                    return layerHandleIds;
+                }
+            }
+
+            return fallbackLayerHandleIds?.ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                ?? new Dictionary<int, int>();
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveSnapshotLayerHandleRefCounts(
+            IReadOnlyList<IDXObject> frames,
+            IReadOnlyDictionary<int, int> layerHandleIds,
+            IReadOnlyDictionary<int, int> fallbackLayerHandleRefCounts)
+        {
+            if (layerHandleIds == null || layerHandleIds.Count == 0)
+            {
+                return new Dictionary<int, int>();
+            }
+
+            IReadOnlyDictionary<int, int> taggedRefCounts = ResolveSnapshotTaggedLayerHandleRefCounts(frames);
+            var refCounts = new Dictionary<int, int>(layerHandleIds.Count);
+            foreach ((int layerCode, int handleId) in layerHandleIds)
+            {
+                if (handleId <= 0)
+                {
+                    continue;
+                }
+
+                if (taggedRefCounts.TryGetValue(layerCode, out int taggedRefCount))
+                {
+                    refCounts[layerCode] = Math.Max(0, taggedRefCount);
+                    continue;
+                }
+
+                if (fallbackLayerHandleRefCounts != null
+                    && fallbackLayerHandleRefCounts.TryGetValue(layerCode, out int refCount))
+                {
+                    refCounts[layerCode] = Math.Max(0, refCount);
+                    continue;
+                }
+
+                refCounts[layerCode] = 1;
+            }
+
+            return refCounts;
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveSnapshotTaggedLayerHandleRefCounts(
+            IReadOnlyList<IDXObject> frames)
+        {
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var refCounts = new Dictionary<int, int>();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedLayerHandleId <= 0)
+                {
+                    continue;
+                }
+
+                refCounts[tag.SourceLayerCode] = tag.SimulatedLayerHandleRefCount;
+            }
+
+            return refCounts;
         }
 
         public void Dispose()
@@ -2645,6 +2788,22 @@ namespace HaCreator.MapSimulator.Animation
         bool RegistersOneTimeAnimation);
 
     /// <summary>
+    /// Managed lifetime snapshot for the COM objects touched by CAnimationDisplayer::Effect_HP.
+    /// It records the recovered AddRef/RegisterOneTimeAnimation/Release balance without
+    /// pretending that XNA textures are real IWzGr2DLayer or IWzCanvas COM identities.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeLifetimeState(
+        int SimulatedLayerHandleId,
+        int LayerReferenceCountAfterCreate,
+        int LayerReferenceCountAfterRegisterOneTimeAnimation,
+        int LayerReferenceCountAfterOwnerRelease,
+        int SimulatedTemporaryCanvasHandleId,
+        int TemporaryCanvasReferenceCountAfterCreate,
+        int TemporaryCanvasReferenceCountAfterOwnerRelease,
+        bool RegistersOneTimeAnimation,
+        bool TemporaryCanvasReleasedAfterRegistration);
+
+    /// <summary>
     /// Owner-prepared source trace that stays attached to managed one-time canvas layers.
     /// </summary>
     internal readonly record struct CanvasLayerRecoveredPreparedSourceTrace(
@@ -2718,6 +2877,7 @@ namespace HaCreator.MapSimulator.Animation
         internal IReadOnlyList<CanvasLayerRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
             = Array.Empty<CanvasLayerRecoveredNativeOperation>();
         internal CanvasLayerRecoveredNativeLayerState RecoveredNativeLayerState { get; private set; }
+        internal CanvasLayerRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
 
         internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
@@ -2842,6 +3002,10 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeLayerState = BuildRecoveredNativeLayerState(
                 RecoveredRegistrationTrace,
                 recoveredOwnerTrace);
+            RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
+                RecoveredRegistrationTrace,
+                recoveredOwnerTrace,
+                RecoveredNativeExecutionTrace);
         }
 
         public bool Update(int currentTimeMs)
@@ -2896,6 +3060,7 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredOwnerTrace = null;
             RecoveredNativeExecutionTrace = Array.Empty<CanvasLayerRecoveredNativeOperation>();
             RecoveredNativeLayerState = default;
+            RecoveredNativeLifetimeState = default;
         }
 
         internal static CanvasLayerRecoveredNativeLayerState BuildRecoveredNativeLayerState(
@@ -2918,6 +3083,77 @@ namespace HaCreator.MapSimulator.Animation
                 overlayPosition,
                 registrationTrace.LayerSettings.FinalizeLayerOptionValue,
                 registrationTrace.RegistersOneTimeAnimation);
+        }
+
+        internal static CanvasLayerRecoveredNativeLifetimeState BuildRecoveredNativeLifetimeState(
+            CanvasLayerRecoveredRegistrationTrace registrationTrace,
+            CanvasLayerRecoveredOwnerTrace? ownerTrace,
+            IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace = null)
+        {
+            IReadOnlyList<CanvasLayerRecoveredNativeOperation> trace =
+                executionTrace ?? BuildRecoveredNativeExecutionTrace(registrationTrace, ownerTrace);
+
+            const int simulatedLayerHandleId = 1;
+            const int simulatedTemporaryCanvasHandleId = 1;
+            int layerRefCount = 0;
+            int layerReferenceCountAfterCreate = 0;
+            int layerReferenceCountAfterRegister = 0;
+            int layerReferenceCountAfterOwnerRelease = 0;
+            int temporaryCanvasRefCount = 0;
+            int temporaryCanvasReferenceCountAfterCreate = 0;
+            int temporaryCanvasReferenceCountAfterOwnerRelease = 0;
+            bool registersOneTimeAnimation = false;
+            bool temporaryCanvasReleasedAfterRegistration = false;
+            bool sawRegisterOneTimeAnimation = false;
+
+            for (int i = 0; i < trace.Count; i++)
+            {
+                CanvasLayerRecoveredNativeOperation operation = trace[i];
+                switch (operation.Kind)
+                {
+                    case CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas:
+                        temporaryCanvasRefCount = 1;
+                        temporaryCanvasReferenceCountAfterCreate = temporaryCanvasRefCount;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.CreateLayer:
+                        layerRefCount = 1;
+                        layerReferenceCountAfterCreate = layerRefCount;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration:
+                        layerRefCount++;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation:
+                        registersOneTimeAnimation = true;
+                        sawRegisterOneTimeAnimation = true;
+                        layerReferenceCountAfterRegister = layerRefCount;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration:
+                        layerRefCount = Math.Max(0, layerRefCount - 1);
+                        layerReferenceCountAfterOwnerRelease = layerRefCount;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration:
+                        temporaryCanvasRefCount = Math.Max(0, temporaryCanvasRefCount - 1);
+                        temporaryCanvasReferenceCountAfterOwnerRelease = temporaryCanvasRefCount;
+                        temporaryCanvasReleasedAfterRegistration = sawRegisterOneTimeAnimation;
+                        break;
+                }
+            }
+
+            return new CanvasLayerRecoveredNativeLifetimeState(
+                layerReferenceCountAfterCreate > 0 ? simulatedLayerHandleId : 0,
+                layerReferenceCountAfterCreate,
+                layerReferenceCountAfterRegister,
+                layerReferenceCountAfterOwnerRelease,
+                temporaryCanvasReferenceCountAfterCreate > 0 ? simulatedTemporaryCanvasHandleId : 0,
+                temporaryCanvasReferenceCountAfterCreate,
+                temporaryCanvasReferenceCountAfterOwnerRelease,
+                registersOneTimeAnimation,
+                temporaryCanvasReleasedAfterRegistration);
         }
 
         internal static CanvasLayerRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
@@ -4670,6 +4906,7 @@ namespace HaCreator.MapSimulator.Animation
         private int _nextUpdateAt;
         private int _expiresAt;
         private Action _onSpawn;
+        private int _zOrder;
 
         public int Id { get; private set; }
 
@@ -4681,7 +4918,8 @@ namespace HaCreator.MapSimulator.Animation
             int updateNextMs,
             int durationMs,
             int currentTimeMs,
-            Action onSpawn)
+            Action onSpawn,
+            int zOrder)
         {
             Id = ++_nextId;
             _frames = frames;
@@ -4693,6 +4931,7 @@ namespace HaCreator.MapSimulator.Animation
             _nextUpdateAt = currentTimeMs + Math.Max(0, updateNextMs);
             _expiresAt = durationMs > 0 ? currentTimeMs + durationMs : int.MaxValue;
             _onSpawn = onSpawn;
+            _zOrder = zOrder;
         }
 
         public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
@@ -4712,7 +4951,7 @@ namespace HaCreator.MapSimulator.Animation
                 int scheduledUpdateTime = _nextUpdateAt;
                 float x = _area.Left + random.Next(_effectiveWidth);
                 float y = _area.Top + random.Next(_effectiveHeight);
-                effects.AddOneTime(_frames, x, y, flip: false, scheduledUpdateTime, zOrder: 1);
+                effects.AddOneTime(_frames, x, y, flip: false, scheduledUpdateTime, zOrder: _zOrder);
                 _onSpawn?.Invoke();
                 _remainingUpdates--;
                 _nextUpdateAt += _updateIntervalMs;

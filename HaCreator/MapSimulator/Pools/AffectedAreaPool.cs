@@ -144,6 +144,43 @@ namespace HaCreator.MapSimulator.Pools
             return _areas.TryGetValue(objectId, out area);
         }
 
+        public bool IsAbleToInsertExclusiveArea(Rectangle worldBounds, int currentTime)
+        {
+            return IsAbleToInsertExclusiveArea(_areas.Values, worldBounds, currentTime);
+        }
+
+        internal static bool IsAbleToInsertExclusiveArea(
+            IEnumerable<ActiveAffectedArea> areas,
+            Rectangle worldBounds,
+            int currentTime)
+        {
+            if (worldBounds.Width <= 0 || worldBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            if (areas == null)
+            {
+                return true;
+            }
+
+            foreach (ActiveAffectedArea area in areas)
+            {
+                if (area == null
+                    || !area.IsActive(currentTime)
+                    || area.SourceKind != AffectedAreaSourceKind.PlayerSkill
+                    || area.Type != 4
+                    || !area.WorldBounds.Intersects(worldBounds))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
         public bool Upsert(AffectedAreaCreateInfo createInfo, int currentTime)
         {
             if (createInfo.ObjectId <= 0 || createInfo.SkillId <= 0 || createInfo.WorldBounds.Width <= 0 || createInfo.WorldBounds.Height <= 0)

@@ -77,7 +77,7 @@ namespace HaCreator.MapSimulator.Fields
             FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetMiniGameRestrictionMessage(_fieldLimit) != null ||
-            FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_fieldLimit) != null ||
+            FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_fieldLimit, _mapInfo) != null ||
             FieldInteractionRestrictionEvaluator.GetTamingMobRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetMonsterCapacityLimitMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetExpDecreaseRestrictionMessage(_fieldLimit) != null ||

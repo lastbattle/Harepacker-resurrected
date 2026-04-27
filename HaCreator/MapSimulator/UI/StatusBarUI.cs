@@ -67,6 +67,14 @@ namespace HaCreator.MapSimulator.UI {
         public int ShadowIndexUpdateSequence { get; set; }
         public int MainLayerAnimationSequence { get; set; }
         public int ShadowLayerAnimationSequence { get; set; }
+        public string ShadowCanvasPath { get; set; }
+        public int ShadowCanvasRemoveIndex { get; set; }
+        public int ShadowCanvasInsertDelayMs { get; set; }
+        public int ShadowCanvasAlphaStart { get; set; }
+        public int ShadowCanvasAlphaEnd { get; set; }
+        public int ShadowCanvasLastUpdatedTime { get; set; } = int.MinValue;
+        public int AlertLayerAnimationMode { get; set; }
+        public int AlertLayerAnimationSequence { get; set; }
     }
 
     public class StatusBarPreparedSkillRenderData

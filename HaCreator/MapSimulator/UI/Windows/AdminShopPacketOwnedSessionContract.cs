@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         public int CloseCount { get; private set; }
         public int BlockedByOwnerCount { get; private set; }
         public int ResultCount { get; private set; }
+        public int MalformedResultWithoutSubtypeCount { get; private set; }
         public int InboundPacketCount { get; private set; }
         public int InboundOpenPacketCount { get; private set; }
         public int InboundResultPacketCount { get; private set; }
@@ -62,6 +63,7 @@ namespace HaCreator.MapSimulator.UI
         public int LastSubtype { get; private set; } = -1;
         public int LastResultCode { get; private set; } = -1;
         public bool LastResultHadResultCode { get; private set; }
+        public bool LastResultMissingSubtype { get; private set; }
         public int LastOutboundOpcode { get; private set; } = -1;
         public byte[] LastOutboundPayload { get; private set; } = Array.Empty<byte>();
         public string LastNotice { get; private set; } = string.Empty;
@@ -121,6 +123,7 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            LastResultMissingSubtype = false;
             ServiceSessionId = AdvanceSessionId(ServiceSessionId);
             WishlistSearchSessionId = -1;
             LastOutboundOpcode = -1;
@@ -188,6 +191,7 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            LastResultMissingSubtype = false;
             ServiceSessionId = -1;
             WishlistSearchSessionId = -1;
             LastNotice = noticeText ?? string.Empty;
@@ -216,6 +220,7 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            LastResultMissingSubtype = false;
             WishlistSearchSessionId = -1;
             LastNotice = string.Empty;
             LastOutboundSummary = outboundSummary ?? string.Empty;
@@ -246,6 +251,7 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            LastResultMissingSubtype = false;
             ServiceSessionId = AdvanceSessionId(ServiceSessionId);
             WishlistSearchSessionId = -1;
             LastOutboundOpcode = -1;
@@ -275,6 +281,7 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = subtype;
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;
+            LastResultMissingSubtype = false;
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
@@ -325,10 +332,43 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = subtype;
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;
+            LastResultMissingSubtype = false;
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
                 : "none";
+            IsWaitingForResult = keepPendingRequestState && keepSessionActive;
+            IsOwnerSurfaceVisible = false;
+            WouldDisconnect = false;
+            IsActive = keepSessionActive && (IsActive || OpenCount > 0 || DecodedItemCount > 0 || NpcTemplateId > 0);
+            OwnerVisibilityState = keepSessionActive
+                ? preservedVisibilityState
+                : AdminShopPacketOwnedOwnerVisibilityState.Hidden;
+            LastOwnerState = ownerState ?? string.Empty;
+            if (!keepPendingRequestState)
+            {
+                ClearDeferredOwnerGatedResultCore(touchStateToken: false);
+                ClearPendingWishlistRegister();
+                ClearPendingWishlistSearch();
+            }
+
+            TouchWishlistSearchStateToken();
+        }
+
+        public void RecordMalformedResultIgnoredBeforeSubtypeDecode(
+            string ownerState,
+            bool keepSessionActive = false,
+            AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden,
+            bool keepPendingRequestState = false)
+        {
+            ResultCount++;
+            MalformedResultWithoutSubtypeCount++;
+            LastSubtype = -1;
+            LastResultCode = -1;
+            LastResultHadResultCode = false;
+            LastResultMissingSubtype = true;
+            ResultTrailingByteCount = 0;
+            ResultTrailingPayloadSignature = "none";
             IsWaitingForResult = keepPendingRequestState && keepSessionActive;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
@@ -593,6 +633,8 @@ namespace HaCreator.MapSimulator.UI
                 TrailingPayloadSignature ?? "none",
                 ResultTrailingPayloadSignature ?? "none",
                 LastResultHadResultCode ? "1" : "0",
+                LastResultMissingSubtype ? "1" : "0",
+                MalformedResultWithoutSubtypeCount,
                 CloseCount,
                 LastCloseOpenedWishlist ? "1" : "0",
                 AskItemWishlist ? "1" : "0",
@@ -648,7 +690,9 @@ namespace HaCreator.MapSimulator.UI
             string rowText = DecodedItemCount > 0
                 ? $"rows {DecodedItemCount}"
                 : "rows 0";
-            string resultStateText = LastSubtype >= 0
+            string resultStateText = LastResultMissingSubtype
+                ? "last result missing subtype byte"
+                : LastSubtype >= 0
                 ? $"last {DescribeLastResultState()}"
                 : "no result packet";
             string pendingText = HasPendingWishlistRegister
@@ -694,6 +738,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 lines.Add($"{phaseText}; {LastNotice}");
             }
+            else if (LastResultMissingSubtype)
+            {
+                lines.Add($"{phaseText}; packet 366 missing subtype byte");
+            }
             else if (LastSubtype >= 0)
             {
                 lines.Add($"{phaseText}; packet 366 {DescribeLastResultState()}");
@@ -732,7 +780,9 @@ namespace HaCreator.MapSimulator.UI
                 : "NPC unresolved";
             int buyRowCount = rows.Count(row => row != null && row.Price > 0);
             int sellRowCount = rows.Count(row => row != null && row.Price <= 0);
-            string resultText = LastSubtype >= 0
+            string resultText = LastResultMissingSubtype
+                ? "last result missing subtype byte"
+                : LastSubtype >= 0
                 ? LastResultHadResultCode
                     ? $"last result subtype {LastSubtype}, code {LastResultCode}"
                     : $"last result subtype {LastSubtype}, no result code"
@@ -782,7 +832,9 @@ namespace HaCreator.MapSimulator.UI
         {
             if (LastSubtype < 0)
             {
-                return "result pending";
+                return LastResultMissingSubtype
+                    ? "missing subtype byte"
+                    : "result pending";
             }
 
             if (!AdminShopDialogClientParityText.HandlesResultSubtype((byte)LastSubtype))

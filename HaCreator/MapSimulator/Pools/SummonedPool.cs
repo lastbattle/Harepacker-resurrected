@@ -2221,11 +2221,14 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolveSummonBodyContactDamage(MobItem mob)
         {
+            bool currentAttackIsMagic = mob?.AI?.GetCurrentAttack()?.MagicAttack == true;
             int baseDamage = SummonDamageRuntimeRules.ResolveBodyContactBaseDamage(
                 mob?.MobData?.PADamage ?? 0,
                 mob?.AI?.GetCurrentAttack()?.Damage ?? 0,
-                mob?.MobData?.MADamage ?? 0);
-            int resolvedDamage = mob?.AI?.CalculateOutgoingDamage(baseDamage, MobDamageType.Physical) ?? baseDamage;
+                mob?.MobData?.MADamage ?? 0,
+                currentAttackIsMagic);
+            MobDamageType damageType = SummonDamageRuntimeRules.ResolveBodyContactDamageType(currentAttackIsMagic);
+            int resolvedDamage = mob?.AI?.CalculateOutgoingDamage(baseDamage, damageType) ?? baseDamage;
             return Math.Max(1, resolvedDamage);
         }
 
@@ -3844,10 +3847,15 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 candidatesById[mob.PoolId] = mob;
+                IReadOnlyList<Rectangle> bodyHitboxes = mob.GetBodyHitboxes(currentTime);
                 orderedCandidates.Add(new PacketOwnedExpiryTargetCandidate(
                     mob.PoolId,
                     GetMobHitbox(mob, currentTime),
-                    sourceOrder++));
+                    sourceOrder++,
+                    bodyHitboxes,
+                    TemplateId: mob.MobId,
+                    IsDamagedByMob: mob.MobData?.DamagedByMob == true,
+                    IsDazzled: mob.AI?.IsDazzled == true));
             }
 
             float? ownerReferenceX = TryResolveOwnerPosition(state.OwnerCharacterId, out Vector2 ownerPosition)
@@ -3998,10 +4006,11 @@ namespace HaCreator.MapSimulator.Pools
             return orderedCandidates
                 .Where(candidate => candidate.MobObjectId > 0
                                     && !candidate.Hitbox.IsEmpty
-                                    && IsMobHitboxInPacketOwnedSummonAttackRange(
+                                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
+                                    && IsPacketOwnedExpiryCandidateInSummonAttackRange(
                                         summon,
                                         summonBounds,
-                                        candidate.Hitbox,
+                                        candidate,
                                         facingRight))
                 .Select(static candidate => candidate.MobObjectId)
                 .Distinct()
@@ -4021,7 +4030,8 @@ namespace HaCreator.MapSimulator.Pools
 
             return candidates
                 .Where(candidate => candidate.MobObjectId > 0
-                                    && !candidate.Hitbox.IsEmpty)
+                                    && !candidate.Hitbox.IsEmpty
+                                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate))
                 .Select(candidate => new
                 {
                     Candidate = candidate,
@@ -4067,15 +4077,16 @@ namespace HaCreator.MapSimulator.Pools
         {
             return candidate.MobObjectId > 0
                    && !candidate.Hitbox.IsEmpty
-                   && (IsMobHitboxInPacketOwnedSummonAttackRange(
+                   && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
+                   && (IsPacketOwnedExpiryCandidateInSummonAttackRange(
                            summon,
                            GetPacketOwnedSummonAttackBounds(summon, facingRightOverride: true),
-                           candidate.Hitbox,
+                           candidate,
                            facingRightOverride: true)
-                       || IsMobHitboxInPacketOwnedSummonAttackRange(
+                       || IsPacketOwnedExpiryCandidateInSummonAttackRange(
                            summon,
                            GetPacketOwnedSummonAttackBounds(summon, facingRightOverride: false),
-                           candidate.Hitbox,
+                           candidate,
                            facingRightOverride: false));
         }
 
@@ -4218,10 +4229,11 @@ namespace HaCreator.MapSimulator.Pools
                 PacketOwnedExpiryTargetCandidate candidate = candidates[i];
                 if (candidate.MobObjectId <= 0
                     || candidate.Hitbox.IsEmpty
-                    || !IsMobHitboxInPacketOwnedSummonAttackRange(
+                    || !IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
+                    || !IsPacketOwnedExpiryCandidateInSummonAttackRange(
                         summon,
                         summonBounds,
-                        candidate.Hitbox,
+                        candidate,
                         facingRight))
                 {
                     continue;
@@ -4250,7 +4262,8 @@ namespace HaCreator.MapSimulator.Pools
             float nearestVerticalDistance = float.MaxValue;
             foreach (PacketOwnedExpiryTargetCandidate candidate in candidates)
             {
-                if (!IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox, facingRight))
+                if (!IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
+                    || !IsPacketOwnedExpiryCandidateInSummonAttackRange(summon, summonBounds, candidate, facingRight))
                 {
                     continue;
                 }
@@ -4295,6 +4308,24 @@ namespace HaCreator.MapSimulator.Pools
             return !isDead
                    && !isProtectedFromPlayerDamage
                    && !isDazzled;
+        }
+
+        internal static bool IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
+            PacketOwnedExpiryTargetCandidate candidate,
+            int wishMobId = 0,
+            int wishTemplateId = 0,
+            bool includeDazzledMob = false,
+            bool includeEscortMob = false)
+        {
+            return candidate.MobObjectId > 0
+                   && candidate.InView
+                   && !candidate.IsSuspended
+                   && (wishMobId <= 0 || candidate.WishMobId == wishMobId || candidate.MobObjectId == wishMobId)
+                   && (wishTemplateId <= 0 || candidate.TemplateId == wishTemplateId)
+                   && (!candidate.IsDamagedByMob || includeEscortMob)
+                   && !candidate.IsOurTeam
+                   && candidate.IsSamePhase
+                   && (includeDazzledMob || !candidate.IsDazzled);
         }
 
         private readonly record struct PacketOwnedExpiryFacingScore(
@@ -4425,6 +4456,47 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return summonBounds.Intersects(mobHitbox);
+        }
+
+        private static bool IsPacketOwnedExpiryCandidateInSummonAttackRange(
+            ActiveSummon summon,
+            Rectangle summonBounds,
+            PacketOwnedExpiryTargetCandidate candidate,
+            bool? facingRightOverride = null)
+        {
+            foreach (Rectangle bodyHitbox in EnumeratePacketOwnedExpiryCandidateBodyHitboxes(candidate))
+            {
+                if (IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, bodyHitbox, facingRightOverride))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<Rectangle> EnumeratePacketOwnedExpiryCandidateBodyHitboxes(
+            PacketOwnedExpiryTargetCandidate candidate)
+        {
+            bool yieldedBodyHitbox = false;
+            if (candidate.BodyHitboxes != null)
+            {
+                foreach (Rectangle bodyHitbox in candidate.BodyHitboxes)
+                {
+                    if (bodyHitbox.IsEmpty)
+                    {
+                        continue;
+                    }
+
+                    yieldedBodyHitbox = true;
+                    yield return bodyHitbox;
+                }
+            }
+
+            if (!yieldedBodyHitbox && !candidate.Hitbox.IsEmpty)
+            {
+                yield return candidate.Hitbox;
+            }
         }
 
         private static bool DoesRectangleIntersectCircle(Rectangle rectangle, Vector2 circleCenter, float radius)

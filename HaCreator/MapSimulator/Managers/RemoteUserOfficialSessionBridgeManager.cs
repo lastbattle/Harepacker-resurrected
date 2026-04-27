@@ -744,6 +744,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    bool resolvedFromBuildScopedTutorMapping = false;
                     if (TryResolveBuildScopedLearnedTutorPacketTypeNoLock(
                             opcode,
                             source,
@@ -755,6 +756,7 @@ namespace HaCreator.MapSimulator.Managers
                         string learnedEvidence = $"auto:{buildScopedReason}; {OfficialRemoteOwnerEvidence}";
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
                         LastStatus = $"Restored remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from build-scoped tutor evidence ({buildScopedReason}); {OfficialRemoteOwnerEvidence}";
+                        resolvedFromBuildScopedTutorMapping = true;
                     }
                     else if (_tutorInferenceConflictMap.TryGetValue(opcode, out string conflictReason))
                     {
@@ -762,19 +764,23 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
-                    if (IsOfficialRemoteOpcodeCoveredByV95OwnerTable(opcode))
+                    if (!resolvedFromBuildScopedTutorMapping
+                        && IsOfficialRemoteOpcodeCoveredByV95OwnerTable(opcode))
                     {
                         LastStatus = $"Ignored remote-user opcode {opcode}: {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 
-                    if (!IsOfficialLocalUserOpcodeCoveredByV95OwnerTable(opcode))
+                    if (!resolvedFromBuildScopedTutorMapping
+                        && !IsOfficialLocalUserOpcodeCoveredByV95OwnerTable(opcode))
                     {
                         LastStatus = $"Ignored unmapped remote-user opcode {opcode}: it is outside the recovered CUserPool::OnPacket local-user tutor owner range. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 
-                    if (trustV95LocalOwnerTable
+                    string inferenceReason = string.Empty;
+                    if (!resolvedFromBuildScopedTutorMapping
+                        && trustV95LocalOwnerTable
                         && TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
                     {
                         if (!TryValidateKnownTutorOwnerPayloadNoLock(opcode, inferencePayload, packetType, out string knownPayloadReason))
@@ -788,31 +794,34 @@ namespace HaCreator.MapSimulator.Managers
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
                         LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from recovered CUserLocal owner table ({knownOwnerReason}) with exact remote wrapper proof ({knownPayloadReason}); {OfficialRemoteOwnerEvidence}";
                     }
-                    else if (trustV95LocalOwnerTable
+                    else if (!resolvedFromBuildScopedTutorMapping
+                        && trustV95LocalOwnerTable
                         && TryResolveKnownNonTutorLocalOwnerFromV95LocalOwnerTable(opcode, out string knownNonTutorReason))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: known recovered CUserLocal::OnPacket owner ({knownNonTutorReason}) is non-tutor. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-                    else if (trustV95LocalOwnerTable
+                    else if (!resolvedFromBuildScopedTutorMapping
+                        && trustV95LocalOwnerTable
                         && KnownNoHandlerLocalOwnerOpcodesV95.Contains(opcode))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: recovered v95 CUserLocal::OnPacket has no handler for this local-owner case, so tutor inference is disabled for this opcode. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-                    else if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(
+                    else if (!resolvedFromBuildScopedTutorMapping
+                        && !TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(
                                  opcode,
                                  inferencePayload,
                                  trustV95LocalOwnerTable,
                                  out packetType,
-                                 out string inferenceReason))
+                                 out inferenceReason))
                     {
                         LastStatus = trustV95LocalOwnerTable
                             ? $"Ignored CUserPool local-user opcode {opcode}: payload did not match an exact remote tutor-owner wrapper. {OfficialRemoteOwnerEvidence}"
                             : $"Ignored CUserPool local-user opcode {opcode} on build {officialSessionBuildTag}: payload did not match an exact remote tutor-owner wrapper while v95 owner-table shortcuts were disabled. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-                    else
+                    else if (!resolvedFromBuildScopedTutorMapping)
                     {
                         if (!TryObserveTutorInferenceNoLock(opcode, packetType, inferenceReason, source, inferencePayload, out PendingTutorInferenceEvidence pendingEvidence, out bool inferenceConfirmed, out string inferenceConflictReason))
                         {
@@ -1594,7 +1603,20 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            Dictionary<string, Dictionary<ushort, LearnedOpcodeEntry>> manualBuildScopedTutorMappings = _learnedTutorPacketMapByBuild
+                .Where(buildEntry => buildEntry.Value.Any(mapEntry => mapEntry.Value.IsManual))
+                .ToDictionary(
+                    buildEntry => buildEntry.Key,
+                    buildEntry => buildEntry.Value
+                        .Where(mapEntry => mapEntry.Value.IsManual)
+                        .ToDictionary(mapEntry => mapEntry.Key, mapEntry => mapEntry.Value),
+                    StringComparer.OrdinalIgnoreCase);
+
             _learnedTutorPacketMapByBuild.Clear();
+            foreach ((string buildTag, Dictionary<ushort, LearnedOpcodeEntry> mappings) in manualBuildScopedTutorMappings)
+            {
+                _learnedTutorPacketMapByBuild[buildTag] = mappings;
+            }
             _pendingTutorInferenceMap.Clear();
             _tutorInferenceConflictMap.Clear();
         }

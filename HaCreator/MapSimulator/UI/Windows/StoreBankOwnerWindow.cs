@@ -24,7 +24,8 @@ namespace HaCreator.MapSimulator.UI
         private const int RowIconX = 12;
         private const int RowIconY = 1;
         private const int RowIconSize = 32;
-        private const int RowClientStockRightX = 160;
+        private const int RowClientStockX = 10;
+        private const int RowClientStockY = 20;
         private const int RowCashIconRightX = 42;
         private const int RowPrimaryTextX = 53;
         private const int RowPrimaryTextY = 3;
@@ -403,8 +404,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string text = row.ClientStock.ToString(CultureInfo.InvariantCulture);
-            int x = rowX + RowClientStockRightX - MeasureDigitWidth(text);
-            int y = rowY + RowSecondaryTextY;
+            // CStoreBankDlg::DrawGetItem draws the stock image number over the icon area
+            // at x=10, y=rowTop+20, not at the row's text/right edge.
+            int x = rowX + RowClientStockX;
+            int y = rowY + RowClientStockY;
             for (int i = 0; i < text.Length; i++)
             {
                 int digit = text[i] - '0';
@@ -422,28 +425,6 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(texture, new Vector2(x, y), Color.White);
                 x += texture.Width;
             }
-        }
-
-        private int MeasureDigitWidth(string text)
-        {
-            if (string.IsNullOrEmpty(text) || _itemNumberDigits.Length < 10)
-            {
-                return 0;
-            }
-
-            int width = 0;
-            for (int i = 0; i < text.Length; i++)
-            {
-                int digit = text[i] - '0';
-                if (digit < 0 || digit > 9)
-                {
-                    continue;
-                }
-
-                width += _itemNumberDigits[digit]?.Width ?? 0;
-            }
-
-            return width;
         }
 
         private void DrawCashIcon(SpriteBatch sprite, StoreBankOwnerRowSnapshot row, int rowX, int rowY)

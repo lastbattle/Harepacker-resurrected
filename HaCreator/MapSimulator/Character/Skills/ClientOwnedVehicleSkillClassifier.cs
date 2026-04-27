@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         private const int BattleshipSkillId = 5221006;
         private const int BattleshipTamingMobItemId = 1932000;
+        private const int MechanicTamingMobItemId = 1932016;
         private static readonly int[] BattleshipMountedActionSkillIds =
         {
             5211004,
@@ -274,7 +275,24 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static readonly string[] WzOnlyMechanicVehicleOneTimeActionNames =
         {
-            "gatlingshot"
+            // WZ publishes these roots on Character/TamingMob/01932016, but v95
+            // LoadTamingMobAction falls back before load_tamingmob_action because
+            // neither IsAbleTamingMobAction nor IsAbleTamingMobOneTimeAction admits
+            // the corresponding raw action codes for vehicle 1932016.
+            "tank_siegeattack",
+            "tank_siegestand",
+            "tank_siegeafter",
+            "ride2",
+            "getoff2",
+            "flamethrower_pre",
+            "flamethrower",
+            "flamethrower_after",
+            "flamethrower_pre2",
+            "flamethrower2",
+            "flamethrower_after2",
+            "gatlingshot",
+            "herbalism_mechanic",
+            "mining_mechanic"
         };
 
         private static readonly string[] ClientConfirmedMechanicVehicleRenderableOneTimeActionNames =
@@ -523,6 +541,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(string actionName)
         {
             return ContainsActionName(WzOnlyWildHunterJaguarVehicleOneTimeActionNames, actionName);
+        }
+
+        internal static bool IsWzOnlyClientOwnedVehicleOneTimeActionName(int mountItemId, string actionName)
+        {
+            if (mountItemId == MechanicTamingMobItemId)
+            {
+                return IsWzOnlyMechanicVehicleOneTimeActionName(actionName);
+            }
+
+            return IsWildHunterJaguarTamingMobItemId(mountItemId)
+                   && IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(actionName);
         }
 
         internal static bool IsOverlappingMechanicVehicleOneTimeActionName(string actionName)

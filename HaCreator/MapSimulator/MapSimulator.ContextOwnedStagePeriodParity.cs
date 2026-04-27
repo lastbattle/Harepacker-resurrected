@@ -178,7 +178,7 @@ namespace HaCreator.MapSimulator
             int zOrder = 1;
             foreach (ContextOwnedStageBackImageEntry entry in _contextOwnedStageCurrentBackImages)
             {
-                BackgroundInfo backgroundInfo = BackgroundInfo.Get(_DxDeviceManager?.GraphicsDevice, entry.BackgroundSet, entry.InfoType, entry.Number);
+                BackgroundInfo backgroundInfo = ResolveContextOwnedStageBackInfo(entry);
                 if (backgroundInfo?.ParentObject is not WzImageProperty sourceProperty)
                 {
                     continue;
@@ -207,6 +207,45 @@ namespace HaCreator.MapSimulator
             }
 
             return backgrounds_back.Count > 0 || backgrounds_front.Count > 0;
+        }
+
+        private BackgroundInfo ResolveContextOwnedStageBackInfo(ContextOwnedStageBackImageEntry entry)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            foreach (BackgroundInfoType infoType in ContextOwnedStageSystemCatalog.ResolveClientMakeBackInfoTypeLookupOrder(entry))
+            {
+                if (!ContextOwnedStageBackPieceExists(entry.BackgroundSet, infoType, entry.Number))
+                {
+                    continue;
+                }
+
+                BackgroundInfo backgroundInfo = BackgroundInfo.Get(
+                    _DxDeviceManager?.GraphicsDevice,
+                    entry.BackgroundSet,
+                    infoType,
+                    entry.Number);
+                if (backgroundInfo != null)
+                {
+                    return backgroundInfo;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool ContextOwnedStageBackPieceExists(string backgroundSet, BackgroundInfoType infoType, string number)
+        {
+            if (string.IsNullOrWhiteSpace(backgroundSet) || string.IsNullOrWhiteSpace(number))
+            {
+                return false;
+            }
+
+            WzImage backgroundSetImage = Program.InfoManager.GetBackgroundSet(backgroundSet);
+            return backgroundSetImage?[infoType.ToPropertyString()]?[number] != null;
         }
 
         private void TryAppendContextOwnedStageBackground(BackgroundInstance background, WzImageProperty sourceProperty)

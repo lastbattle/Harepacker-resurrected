@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftSpecialItemFamily = 91;
         private const int PacketOwnedLogoutGiftPredictQuitContextDwordIndex = 4137;
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
+        private const int PacketOwnedLogoutGiftOwnerCommodityFieldByteOffset = 0xAF8;
         private const int PacketOwnedLogoutGiftPrecursorContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - 1;
         private const int PacketOwnedLogoutGiftPrecursorContextSlotCount = 3;
         private const int PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - PacketOwnedLogoutGiftPrecursorContextSlotCount;
@@ -1237,6 +1238,7 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(commodity))
             {
                 parts.Add(commodity);
+                parts.Add(DescribePacketOwnedLogoutGiftOwnerCommodityFields(_packetOwnedLogoutGiftCommodityContextFields));
             }
 
             return parts.Count == 0
@@ -1303,6 +1305,24 @@ namespace HaCreator.MapSimulator
             }
 
             return string.Join(", ", parts);
+        }
+
+        internal static string DescribePacketOwnedLogoutGiftOwnerCommodityFields(IReadOnlyList<PacketOwnedLogoutGiftContextField> contextFields)
+        {
+            if (contextFields == null || contextFields.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> parts = new(contextFields.Count);
+            for (int i = 0; i < contextFields.Count; i++)
+            {
+                PacketOwnedLogoutGiftContextField field = contextFields[i];
+                int byteOffset = PacketOwnedLogoutGiftOwnerCommodityFieldByteOffset + (i * sizeof(int));
+                parts.Add($"CUILogoutGift::m_aCommodityID[{i.ToString(CultureInfo.InvariantCulture)}]@0x{byteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            return $"owner-local copy {string.Join(", ", parts)}";
         }
 
         private static bool TryResolvePacketOwnedLogoutGiftPredictQuit(

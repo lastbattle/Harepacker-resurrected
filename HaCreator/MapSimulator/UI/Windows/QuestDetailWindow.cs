@@ -1094,6 +1094,17 @@ namespace HaCreator.MapSimulator.UI
             return positions;
         }
 
+        internal static float ResolveCtEntriesAdvanceForTesting(IReadOnlyList<QuestDetailCtEntry> entries)
+        {
+            float y = 0f;
+            foreach (CtEntryRow row in EnumerateCtEntryRows(entries))
+            {
+                y += ResolveCtRowAdvanceForTesting(row);
+            }
+
+            return y;
+        }
+
         private static float ResolveCtRowAdvanceForTesting(CtEntryRow row)
         {
             if (row.Entries.Count == 0)
@@ -2873,13 +2884,7 @@ namespace HaCreator.MapSimulator.UI
 
         private float GetLogContentHeight()
         {
-            float y = 0f;
-            foreach (QuestDetailCtEntry entry in GetLogCtEntries())
-            {
-                y = AdvanceCtEntry(entry, y);
-            }
-
-            return y;
+            return AdvanceCtEntries(GetLogCtEntries(), 0f);
         }
 
         private float GetSummaryContentHeight()
@@ -2890,13 +2895,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0f;
             }
 
-            float y = 0f;
-            foreach (QuestDetailCtEntry entry in summaryEntries)
-            {
-                y = AdvanceCtEntry(entry, y);
-            }
-
-            return y;
+            return AdvanceCtEntries(summaryEntries, 0f);
         }
 
         private float AdvanceConditionLines(IReadOnlyList<QuestLogLineSnapshot> lines, float x, float y, float maxWidth, bool rewardSection)

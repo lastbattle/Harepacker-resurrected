@@ -135,7 +135,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 bool autoSelectListenPort = listenPort <= 0;
-                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
@@ -174,6 +174,7 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
+                    ListenPort = _roleSessionProxy.ListenPort;
                     _passiveEstablishedSession = null;
                     LastStatus = proxyStatus;
                     status = LastStatus;
@@ -340,13 +341,45 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+
             lock (_sync)
             {
                 if (HasAttachedClient)
                 {
+                    if (MatchesDiscoveredTargetConfiguration(
+                            ListenPort,
+                            RemoteHost,
+                            RemotePort,
+                            requestedListenPort,
+                            candidate.RemoteEndpoint,
+                            autoSelectListenPort))
+                    {
+                        status = $"Coconut official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                        LastStatus = status;
+                        return true;
+                    }
+
                     status = $"Coconut official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
                     LastStatus = status;
                     return false;
+                }
+
+                if (IsRunning
+                    && MatchesDiscoveredTargetConfiguration(
+                        ListenPort,
+                        RemoteHost,
+                        RemotePort,
+                        requestedListenPort,
+                        candidate.RemoteEndpoint,
+                        autoSelectListenPort))
+                {
+                    _passiveEstablishedSession = candidate;
+                    status =
+                        $"Coconut official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
+                    LastStatus = status;
+                    return true;
                 }
 
                 StopInternal(clearPending: true);
@@ -354,6 +387,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
                 {
+                    _passiveEstablishedSession = candidate;
                     LastStatus = $"Observed already-established Coconut Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
                     status = LastStatus;
                     return false;
@@ -641,7 +675,7 @@ namespace HaCreator.MapSimulator.Managers
                     StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool MatchesRequestedTargetConfiguration(
+        internal static bool MatchesRequestedTargetConfiguration(
             int currentListenPort,
             string currentRemoteHost,
             int currentRemotePort,

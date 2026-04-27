@@ -1182,6 +1182,7 @@ namespace HaCreator.MapSimulator.Loaders
             var metadata = new MobAnimationSet.AttackInfoMetadata
             {
                 AttackType = InfoTool.GetInt(infoNode["type"], -1),
+                MagicAttack = ReadOptionalInt(infoNode, 0, "magicAttack", "bMagicAttack") > 0,
                 HitAttach = hitAttach,
                 HasHitAttachMetadata = resolvedHitAttach != int.MinValue || resolvedFacingAttach != int.MinValue,
                 FacingAttach = facingAttach,
@@ -1477,8 +1478,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            int index = 0;
-            while (WzInfoTools.GetRealProperty(source[(index++).ToString()]) is WzImageProperty frameProperty)
+            foreach (WzImageProperty frameProperty in EnumerateMobActionFrameProperties(source))
             {
                 if (frameProperty is WzSubProperty)
                 {
@@ -1777,8 +1777,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            int index = 0;
-            while (WzInfoTools.GetRealProperty(source[(index++).ToString()]) is WzImageProperty frameProperty)
+            foreach (WzImageProperty frameProperty in EnumerateMobActionFrameProperties(source))
             {
                 if (frameProperty is WzSubProperty)
                 {
@@ -1791,6 +1790,35 @@ namespace HaCreator.MapSimulator.Loaders
                     frameCanvases.Add(resolvedCanvas);
                 }
             }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateMobActionFrameProperties(WzImageProperty source)
+        {
+            if (source is not WzSubProperty sourceProperty || sourceProperty.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty childProperty in sourceProperty.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(childProperty);
+                if (resolvedProperty != null)
+                {
+                    yield return resolvedProperty;
+                }
+            }
+        }
+
+        internal static int CountMobActionFrameCanvasesForTests(WzImageProperty actionProperty)
+        {
+            return BuildMobActionFrameCanvases(actionProperty).Count;
+        }
+
+        internal static int CountMobActionFrameMetadataForTests(WzImageProperty actionProperty)
+        {
+            return BuildMobActionFrameMetadata(actionProperty).Count;
         }
 
         private const int MobClientActionFrameFallbackDelayMs = 120;

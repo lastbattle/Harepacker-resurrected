@@ -73,6 +73,12 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeThrowGrenade = 230;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
+        private const int ScoreTextStringPoolId = 0x112A;
+        private const string ScoreTextFallbackFormat = "{0} Point";
+        private const int ScoreLayerScreenX = 0;
+        private const int ScoreLayerScreenY = 30;
+        private const int ScoreLayerWidth = 300;
+        private const int ScoreLayerHeight = 300;
         private const int IconX = 5;
         private const int NameX = 21;
         private const int ScoreX = 106;
@@ -105,6 +111,7 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
         public int ScoreRefreshSerial => _scoreRefreshSerial;
         public int RemoteParticipantCount => CountAriantRemoteParticipants();
+        internal static Rectangle ScoreLayerBoundsForTesting => new(ScoreLayerScreenX, ScoreLayerScreenY, ScoreLayerWidth, ScoreLayerHeight);
         public void Initialize(
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
@@ -531,15 +538,28 @@ namespace HaCreator.MapSimulator.Fields
                         spriteBatch,
                         skeletonMeshRenderer,
                         gameTime,
-                        IconX + icon.X,
-                        iconY + icon.Y,
+                        ScoreLayerScreenX + IconX + icon.X,
+                        ScoreLayerScreenY + iconY + icon.Y,
                         Color.White,
                         false,
                         null);
                 }
-                DrawOutlinedText(spriteBatch, font, entry.Name, new Vector2(NameX, textY), new Color(20, 20, 20), new Color(204, 236, 255));
-                DrawOutlinedText(spriteBatch, font, entry.Score.ToString(), new Vector2(ScoreX, textY), new Color(20, 20, 20), new Color(255, 222, 112));
+                DrawOutlinedText(spriteBatch, font, entry.Name, new Vector2(ScoreLayerScreenX + NameX, ScoreLayerScreenY + textY), new Color(20, 20, 20), new Color(204, 236, 255));
+                DrawOutlinedText(spriteBatch, font, FormatScoreText(entry.Score), new Vector2(ScoreLayerScreenX + ScoreX, ScoreLayerScreenY + textY), new Color(20, 20, 20), new Color(255, 222, 112));
             }
+        }
+        internal static string FormatScoreTextForTesting(int score)
+        {
+            return FormatScoreText(score);
+        }
+        private static string FormatScoreText(int score)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                ScoreTextStringPoolId,
+                ScoreTextFallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, Math.Clamp(score, 0, MaxScore));
         }
         private void DrawResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, Texture2D pixelTexture, SpriteFont font)
         {

@@ -239,7 +239,8 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<long> backwardUpdateSecondaryRemovedSerialNumbers = null,
             byte[] characterDataTail = null,
             byte[] logoutGiftConfigPayload = null,
-            long serverFileTime = 0)
+            long serverFileTime = 0,
+            IReadOnlyDictionary<byte, long> visibleEquipmentCashSerialNumbersByBodyPart = null)
         {
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
@@ -336,7 +337,8 @@ namespace HaCreator.MapSimulator.Interaction
                         writer,
                         visibleEquipmentByBodyPart,
                         hiddenEquipmentByBodyPart,
-                        weaponStickerItemId);
+                        weaponStickerItemId,
+                        visibleEquipmentCashSerialNumbersByBodyPart);
                 }
             }
             else
@@ -644,7 +646,8 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryWriter writer,
             IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
             IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
-            int weaponStickerItemId)
+            int weaponStickerItemId,
+            IReadOnlyDictionary<byte, long> visibleEquipmentCashSerialNumbersByBodyPart)
         {
             foreach (KeyValuePair<byte, int> entry in (visibleEquipmentByBodyPart ?? new Dictionary<byte, int>()).OrderBy(static entry => entry.Key))
             {
@@ -654,7 +657,11 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 writer.Write((short)(-entry.Key));
-                WriteCharacterDataEquipItem(writer, entry.Value);
+                long cashItemSerialNumber = visibleEquipmentCashSerialNumbersByBodyPart != null
+                    && visibleEquipmentCashSerialNumbersByBodyPart.TryGetValue(entry.Key, out long configuredSerialNumber)
+                    ? configuredSerialNumber
+                    : 0L;
+                WriteCharacterDataEquipItem(writer, entry.Value, cashItemSerialNumber);
             }
 
             foreach (KeyValuePair<byte, int> entry in (hiddenEquipmentByBodyPart ?? new Dictionary<byte, int>()).OrderBy(static entry => entry.Key))
@@ -690,16 +697,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static void WriteCharacterDataEquipItem(BinaryWriter writer, int itemId)
+        private static void WriteCharacterDataEquipItem(BinaryWriter writer, int itemId, long cashItemSerialNumber = 0)
         {
             writer.Write((byte)1); // GW_ItemSlotEquip
             writer.Write(itemId);
-            writer.Write((byte)0); // hasCashItemSN
+            writer.Write(cashItemSerialNumber != 0 ? (byte)1 : (byte)0); // hasCashItemSN
+            if (cashItemSerialNumber != 0)
+            {
+                writer.Write(cashItemSerialNumber);
+            }
+
             writer.Write((long)0); // dateExpire
             writer.Write((byte)0); // nRUC
             writer.Write((byte)0); // nCUC
 
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < 15; i++)
             {
                 writer.Write((short)0);
             }
@@ -718,7 +730,11 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write((short)0); // nOption3
             writer.Write((short)0); // nSocket1
             writer.Write((short)0); // nSocket2
-            writer.Write((long)0); // liSN
+            if (cashItemSerialNumber == 0)
+            {
+                writer.Write((long)0); // liSN
+            }
+
             writer.Write((long)0); // ftEquipped
             writer.Write(0); // nPrevBonusExpRate
         }
@@ -1855,61 +1871,40 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "ExpirationFileTime", static fieldReader => fieldReader.ReadInt64());
-                long itemTypeBodyStart = reader.BaseStream.Position;
                 switch (itemType)
                 {
                     case 1:
-                        _ = reader.ReadByte();
-                        _ = reader.ReadByte();
-                        for (int i = 0; i < 14; i++)
-                        {
-                            _ = reader.ReadInt16();
-                        }
-
-                        _ = ReadMapleString(reader);
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt64();
-                        _ = reader.ReadInt64();
-                        _ = reader.ReadInt32();
+                        ReadCharacterDataEquipItemSlotBody(reader, itemSlotFieldByteCounts, hasCashItemSerialNumber);
                         break;
                     case 2:
-                        _ = reader.ReadUInt16();
-                        _ = ReadMapleString(reader);
-                        _ = reader.ReadInt16();
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "BundleNumber", static fieldReader => fieldReader.ReadUInt16());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "Title", ReadMapleString);
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "Attribute", static fieldReader => fieldReader.ReadInt16());
                         if ((itemId / 10000) is 207 or 233)
                         {
-                            _ = reader.ReadInt64();
+                            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "RechargeableCashItemSerialNumber", static fieldReader => fieldReader.ReadInt64());
+                        }
+                        else
+                        {
+                            itemSlotFieldByteCounts["RechargeableCashItemSerialNumber"] = 0;
                         }
 
                         break;
                     case 3:
-                        _ = reader.ReadBytes(13);
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt64();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadUInt16();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadInt16();
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetNameBuffer", static fieldReader => fieldReader.ReadBytes(13));
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetLevel", static fieldReader => fieldReader.ReadByte());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetCloseness", static fieldReader => fieldReader.ReadInt16());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetFullness", static fieldReader => fieldReader.ReadByte());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetExpirationFileTime", static fieldReader => fieldReader.ReadInt64());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetAttribute", static fieldReader => fieldReader.ReadInt16());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetSkill", static fieldReader => fieldReader.ReadUInt16());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetRemainLife", static fieldReader => fieldReader.ReadInt32());
+                        _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "PetAttribute2", static fieldReader => fieldReader.ReadInt16());
                         break;
                     default:
                         return false;
                 }
 
-                itemSlotFieldByteCounts["ItemTypeSpecificBody"] = checked((int)(reader.BaseStream.Position - itemTypeBodyStart));
                 itemSlot = new PacketCharacterDataItemSlot(
                     inventoryType,
                     inventoryPosition,
@@ -1927,6 +1922,68 @@ namespace HaCreator.MapSimulator.Interaction
                 itemSlot = default;
                 return false;
             }
+        }
+
+        private static void ReadCharacterDataEquipItemSlotBody(
+            BinaryReader reader,
+            IDictionary<string, int> itemSlotFieldByteCounts,
+            bool hasCashItemSerialNumber)
+        {
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipRemainingUpgradeCount", static fieldReader => fieldReader.ReadByte());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipCurrentUpgradeCount", static fieldReader => fieldReader.ReadByte());
+
+            string[] equipStatFieldNames =
+            {
+                "EquipStr",
+                "EquipDex",
+                "EquipInt",
+                "EquipLuk",
+                "EquipMaxHp",
+                "EquipMaxMp",
+                "EquipPad",
+                "EquipMad",
+                "EquipPdd",
+                "EquipMdd",
+                "EquipAcc",
+                "EquipEva",
+                "EquipCraft",
+                "EquipSpeed",
+                "EquipJump"
+            };
+            foreach (string fieldName in equipStatFieldNames)
+            {
+                _ = ReadTrackedCharacterDataField(
+                    reader,
+                    itemSlotFieldByteCounts,
+                    fieldName,
+                    static fieldReader => fieldReader.ReadInt16());
+            }
+
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipTitle", ReadMapleString);
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipAttribute", static fieldReader => fieldReader.ReadInt16());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipLevelUpType", static fieldReader => fieldReader.ReadByte());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipLevel", static fieldReader => fieldReader.ReadByte());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipExperience", static fieldReader => fieldReader.ReadInt32());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipDurability", static fieldReader => fieldReader.ReadInt32());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipIuc", static fieldReader => fieldReader.ReadInt32());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipGrade", static fieldReader => fieldReader.ReadByte());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipChuc", static fieldReader => fieldReader.ReadByte());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipOption1", static fieldReader => fieldReader.ReadInt16());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipOption2", static fieldReader => fieldReader.ReadInt16());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipOption3", static fieldReader => fieldReader.ReadInt16());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipSocket1", static fieldReader => fieldReader.ReadInt16());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipSocket2", static fieldReader => fieldReader.ReadInt16());
+            if (hasCashItemSerialNumber)
+            {
+                itemSlotFieldByteCounts["EquipSerialNumber"] = 0;
+            }
+            else
+            {
+                _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipSerialNumber", static fieldReader => fieldReader.ReadInt64());
+            }
+
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipEquippedFileTime", static fieldReader => fieldReader.ReadInt64());
+            _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "EquipPrevBonusExpRate", static fieldReader => fieldReader.ReadInt32());
         }
 
         private static int CountItemSlotsWithCashSerialNumber(IReadOnlyList<PacketCharacterDataItemSlot> items)

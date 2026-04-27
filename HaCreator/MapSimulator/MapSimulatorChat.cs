@@ -182,6 +182,8 @@ namespace HaCreator.MapSimulator
         internal WhisperTargetPickerPresentation CurrentWhisperTargetPickerPresentation => _whisperTargetPickerPresentation;
         internal string LastOutgoingWhisperText => _lastOutgoingWhisperText;
         internal string LastOutgoingWhisperTarget => _lastOutgoingWhisperTarget;
+        internal Func<string> ClipboardTextGetter { get; set; } = TryGetSystemClipboardText;
+        internal Action<string> ClipboardTextSetter { get; set; } = TrySetSystemClipboardText;
 
         private enum ChatSubmitDisposition
         {
@@ -414,6 +416,7 @@ namespace HaCreator.MapSimulator
                 return false;
 
             bool controlHeld = newKeyboardState.IsKeyDown(Keys.LeftControl) || newKeyboardState.IsKeyDown(Keys.RightControl);
+            bool shiftHeld = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
 
             // Handle Escape to cancel chat
             if (newKeyboardState.IsKeyDown(Keys.Escape))
@@ -426,6 +429,12 @@ namespace HaCreator.MapSimulator
 
                 Deactivate();
                 return true;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && ShouldForwardClientEditStageKey(newKeyboardState, oldKeyboardState))
+            {
+                return false;
             }
 
             // Handle Up arrow - browse history (older)
@@ -646,6 +655,11 @@ namespace HaCreator.MapSimulator
             else if (_lastHeldKey == Keys.Right)
             {
                 ResetKeyRepeat();
+            }
+
+            if (TryHandleClientEditClipboardShortcut(newKeyboardState, oldKeyboardState, controlHeld, shiftHeld))
+            {
+                return true;
             }
 
             // Handle backspace with key repeat - delete at cursor position
@@ -874,13 +888,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (TryHandleClientEditControlChord(newKeyboardState, oldKeyboardState, controlHeld))
-            {
-                return true;
-            }
-
             // Handle character input
-            bool shift = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
             Keys[] pressedKeys = newKeyboardState.GetPressedKeys();
 
             // First, process ALL newly pressed keys immediately (for fast typing)
@@ -902,7 +910,7 @@ namespace HaCreator.MapSimulator
                 // Process only newly pressed keys
                 if (oldKeyboardState.IsKeyUp(key))
                 {
-                    char? c = KeyToChar(key, shift);
+                    char? c = KeyToChar(key, shiftHeld);
                     if (c.HasValue && CanInsertInputCharacter())
                     {
                         if (IsWhisperTargetPickerModalFooterFocused())
@@ -928,7 +936,7 @@ namespace HaCreator.MapSimulator
             if (_lastHeldKey != Keys.None && _lastHeldKey != Keys.Back &&
                 newKeyboardState.IsKeyDown(_lastHeldKey) && ShouldRepeatKey(_lastHeldKey, tickCount))
             {
-                char? c = KeyToChar(_lastHeldKey, shift);
+                char? c = KeyToChar(_lastHeldKey, shiftHeld);
                 if (!controlHeld && c.HasValue && CanInsertInputCharacter())
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
@@ -952,17 +960,34 @@ namespace HaCreator.MapSimulator
             return true; // Consume input when chat is active
         }
 
-        private bool TryHandleClientEditControlChord(
+        private bool TryHandleClientEditClipboardShortcut(
             KeyboardState newKeyboardState,
             KeyboardState oldKeyboardState,
-            bool controlHeld)
+            bool controlHeld,
+            bool shiftHeld)
         {
-            if (!controlHeld)
+            if (!controlHeld && !shiftHeld)
             {
                 return false;
             }
 
-            if (IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.C))
+            bool copyPressed = controlHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.C);
+            bool cutPressed = (controlHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.X))
+                || (shiftHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.Delete));
+            bool pastePressed = (controlHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.V))
+                || (shiftHeld && IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.Insert));
+
+            if (!copyPressed && !cutPressed && !pastePressed)
+            {
+                return false;
+            }
+
+            if (IsWhisperTargetPickerModalFooterFocused())
+            {
+                return true;
+            }
+
+            if (copyPressed)
             {
                 if (TryGetInputSelectionText(out string selectedText))
                 {
@@ -972,7 +997,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.X))
+            if (cutPressed)
             {
                 if (TryGetInputSelectionText(out string selectedText))
                 {
@@ -984,13 +1009,8 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.V))
+            if (pastePressed)
             {
-                if (IsWhisperTargetPickerModalFooterFocused())
-                {
-                    return true;
-                }
-
                 string clipboardText = TryGetClipboardText();
                 if (!string.IsNullOrEmpty(clipboardText) && CanInsertInputText(clipboardText))
                 {
@@ -3109,7 +3129,55 @@ namespace HaCreator.MapSimulator
             return newKeyboardState.IsKeyDown(key) && oldKeyboardState.IsKeyUp(key);
         }
 
-        private static string TryGetClipboardText()
+        internal static bool ShouldForwardClientEditStageKey(Keys key)
+        {
+            return key >= Keys.F1 && key <= Keys.F12;
+        }
+
+        private static bool ShouldForwardClientEditStageKey(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState)
+        {
+            foreach (Keys key in newKeyboardState.GetPressedKeys())
+            {
+                if (oldKeyboardState.IsKeyUp(key) && ShouldForwardClientEditStageKey(key))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string TryGetClipboardText()
+        {
+            try
+            {
+                return ClipboardTextGetter?.Invoke() ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
+
+        private void TrySetClipboardText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            try
+            {
+                ClipboardTextSetter?.Invoke(text);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static string TryGetSystemClipboardText()
         {
             try
             {
@@ -3123,7 +3191,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static void TrySetClipboardText(string text)
+        private static void TrySetSystemClipboardText(string text)
         {
             if (string.IsNullOrEmpty(text))
             {

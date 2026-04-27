@@ -889,9 +889,9 @@ namespace HaCreator.MapSimulator
                     {
                         style = style with { Scale = 1f };
                     }
-                    else if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int fontSize))
+                    else if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float fontSize))
                     {
-                        style = style with { Scale = ResolvePacketOwnedBalloonFontScale(fontSize) };
+                        style = style with { Scale = ResolvePacketOwnedBalloonFontScale(value, fontSize) };
                     }
                     return;
 
@@ -914,14 +914,25 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static float ResolvePacketOwnedBalloonFontScale(int fontSize)
+        private static float ResolvePacketOwnedBalloonFontScale(string rawValue, float fontSize)
         {
-            if (fontSize <= 0)
+            string normalized = rawValue?.Trim();
+            bool isRelativeSize = !string.IsNullOrWhiteSpace(normalized)
+                                  && (normalized[0] == '+' || normalized[0] == '-');
+            if (!isRelativeSize && fontSize <= 0f)
             {
                 return 1f;
             }
 
-            float relativeScale = fontSize / PacketOwnedBalloonBaseFontSize;
+            float resolvedFontSize = isRelativeSize
+                ? PacketOwnedBalloonBaseFontSize + fontSize
+                : fontSize;
+            if (resolvedFontSize <= 0f)
+            {
+                return PacketOwnedBalloonMinFontScale;
+            }
+
+            float relativeScale = resolvedFontSize / PacketOwnedBalloonBaseFontSize;
             return Math.Clamp(relativeScale, PacketOwnedBalloonMinFontScale, PacketOwnedBalloonMaxFontScale);
         }
 
@@ -3891,8 +3902,23 @@ namespace HaCreator.MapSimulator
                 case LocalOverlayPacketInboxManager.FieldFadeOutForceClientPacketType:
                     return TryApplyPacketOwnedFieldFadeOutForcePayload(payload, out message);
 
+                case LocalOverlayPacketInboxManager.NotifyHpDecByFieldPacketType:
+                    return TryApplyPacketOwnedFieldHazardPayload(payload, out message);
+
                 case LocalOverlayPacketInboxManager.BalloonMsgClientPacketType:
                     return TryApplyPacketOwnedBalloonPayload(payload, out message);
+
+                case LocalOverlayPacketInboxManager.DamageMeterPacketType:
+                    return TryApplyPacketOwnedDamageMeterPayload(payload, out message);
+
+                case LocalOverlayPacketInboxManager.PetConsumeResultPacketType:
+                    if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
+                    {
+                        return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
+                    }
+
+                    message = "Pet-consume result 1026 is only owned by the local overlay seam while a field-hazard pet consume request is pending.";
+                    return false;
 
                 default:
                     message = $"Unsupported local overlay packet type {packetType}.";

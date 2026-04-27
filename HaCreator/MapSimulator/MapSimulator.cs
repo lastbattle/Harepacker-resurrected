@@ -2461,6 +2461,11 @@ namespace HaCreator.MapSimulator
         }
         private ItemMakerProgressionSnapshot ResolveCharacterInfoItemMakerProgressionSnapshot(CharacterBuild build)
         {
+            if (build?.HasAuthoritativeProfileCollection == true && HasCharacterInfoProfileMakerProgression(build))
+            {
+                return CreateCharacterInfoProfileMakerSnapshot(build);
+            }
+
             return _itemMakerProgressionStore.GetSnapshot(build ?? GetActiveItemMakerCharacterBuild());
         }
         private MonsterBookSnapshot GetActiveMonsterBookSnapshot()
@@ -2469,7 +2474,103 @@ namespace HaCreator.MapSimulator
         }
         private MonsterBookSnapshot ResolveCharacterInfoMonsterBookSnapshot(CharacterBuild build)
         {
+            if (build?.HasAuthoritativeProfileCollection == true && HasCharacterInfoProfileMonsterBookCounts(build))
+            {
+                return CreateCharacterInfoProfileMonsterBookSnapshot(build);
+            }
+
             return _monsterBookManager.GetSnapshot(build ?? _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build);
+        }
+
+        internal static bool HasCharacterInfoProfileMakerProgression(CharacterBuild build)
+        {
+            return build != null
+                   && (build.ProfileMakerSuccessfulCrafts > 0
+                       || build.ProfileMakerDiscoveredRecipeCount > 0
+                       || build.ProfileMakerUnlockedHiddenRecipeCount > 0
+                       || build.ProfileMakerGenericLevel > 1
+                       || build.ProfileMakerGloveLevel > 1
+                       || build.ProfileMakerShoeLevel > 1
+                       || build.ProfileMakerToyLevel > 1
+                       || build.ProfileMakerGenericProgress > 0
+                       || build.ProfileMakerGloveProgress > 0
+                       || build.ProfileMakerShoeProgress > 0
+                       || build.ProfileMakerToyProgress > 0);
+        }
+
+        internal static bool HasCharacterInfoProfileMonsterBookCounts(CharacterBuild build)
+        {
+            return build != null
+                   && (build.ProfileMonsterBookOwnedCardTypes > 0
+                       || build.ProfileMonsterBookTotalCardTypes > 0
+                       || build.ProfileMonsterBookCompletedCardTypes > 0
+                       || build.ProfileMonsterBookTotalOwnedCopies > 0);
+        }
+
+        internal static ItemMakerProgressionSnapshot CreateCharacterInfoProfileMakerSnapshot(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return ItemMakerProgressionSnapshot.Default;
+            }
+
+            return new ItemMakerProgressionSnapshot(
+                Math.Max(1, build.ProfileMakerGenericLevel),
+                Math.Max(1, build.ProfileMakerGloveLevel),
+                Math.Max(1, build.ProfileMakerShoeLevel),
+                Math.Max(1, build.ProfileMakerToyLevel),
+                Math.Max(0, build.ProfileMakerGenericProgress),
+                Math.Max(0, build.ProfileMakerGloveProgress),
+                Math.Max(0, build.ProfileMakerShoeProgress),
+                Math.Max(0, build.ProfileMakerToyProgress),
+                Math.Max(0, build.ProfileMakerSuccessfulCrafts),
+                Math.Max(0, build.TraitCraft),
+                CreateCharacterInfoSyntheticRecipeEntries("remote-visible", build.ProfileMakerDiscoveredRecipeCount),
+                CreateCharacterInfoSyntheticRecipeEntries("remote-hidden", build.ProfileMakerUnlockedHiddenRecipeCount),
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                Array.Empty<int>(),
+                Array.Empty<int>());
+        }
+
+        private static IReadOnlyCollection<ItemMakerRecipeProgressionEntry> CreateCharacterInfoSyntheticRecipeEntries(string prefix, int count)
+        {
+            int safeCount = Math.Max(0, count);
+            if (safeCount == 0)
+            {
+                return Array.Empty<ItemMakerRecipeProgressionEntry>();
+            }
+
+            ItemMakerRecipeProgressionEntry[] entries = new ItemMakerRecipeProgressionEntry[safeCount];
+            for (int i = 0; i < entries.Length; i++)
+            {
+                entries[i] = new ItemMakerRecipeProgressionEntry
+                {
+                    RecipeKey = $"{prefix}:{i + 1}",
+                    OutputItemId = 0
+                };
+            }
+
+            return entries;
+        }
+
+        internal static MonsterBookSnapshot CreateCharacterInfoProfileMonsterBookSnapshot(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return new MonsterBookSnapshot();
+            }
+
+            return new MonsterBookSnapshot
+            {
+                Title = "Monster Book",
+                Subtitle = "Remote profile payload",
+                StatusText = "Server-authored character-info collection counts.",
+                OwnedCardTypes = Math.Max(0, build.ProfileMonsterBookOwnedCardTypes),
+                TotalCardTypes = Math.Max(0, build.ProfileMonsterBookTotalCardTypes),
+                CompletedCardTypes = Math.Max(0, build.ProfileMonsterBookCompletedCardTypes),
+                TotalOwnedCopies = Math.Max(0, build.ProfileMonsterBookTotalOwnedCopies)
+            };
         }
         private MonsterBookSnapshot BuildActiveMonsterBookSnapshot()
         {
@@ -5534,6 +5635,15 @@ namespace HaCreator.MapSimulator
                 build.HasAuthoritativeProfileRide = true;
             }
 
+            if (packet.RideVehicleItemId.HasValue || packet.RideSaddleItemId.HasValue || packet.IsRidingInField.HasValue)
+            {
+                build.ProfileRideVehicleItemId = Math.Max(0, packet.RideVehicleItemId ?? 0);
+                build.ProfileRideSaddleItemId = Math.Max(0, packet.RideSaddleItemId ?? 0);
+                build.IsProfileRidingInField = packet.IsRidingInField;
+                build.HasMonsterRiding = packet.IsRidingInField == true || build.ProfileRideVehicleItemId > 0 || build.HasMonsterRiding;
+                build.HasAuthoritativeProfileRide = true;
+            }
+
             if (packet.HasPendantSlot.HasValue)
             {
                 build.HasPendantSlotExtension = packet.HasPendantSlot.Value;
@@ -5597,6 +5707,61 @@ namespace HaCreator.MapSimulator
             {
                 build.HasAuthoritativeProfileCollection = true;
             }
+
+            if (packet.PetProfiles != null)
+            {
+                build.RemotePetProfiles = packet.PetProfiles
+                    .Where(pet => pet.ItemId > 0)
+                    .Take(3)
+                    .ToArray();
+                build.RemotePetItemIds = build.RemotePetProfiles
+                    .Select(pet => pet.ItemId)
+                    .ToArray();
+            }
+
+            if (packet.MonsterBookOwnedCardTypes.HasValue
+                || packet.MonsterBookTotalCardTypes.HasValue
+                || packet.MonsterBookCompletedCardTypes.HasValue
+                || packet.MonsterBookTotalOwnedCopies.HasValue)
+            {
+                build.ProfileMonsterBookOwnedCardTypes = Math.Max(0, packet.MonsterBookOwnedCardTypes ?? 0);
+                build.ProfileMonsterBookTotalCardTypes = Math.Max(0, packet.MonsterBookTotalCardTypes ?? 0);
+                build.ProfileMonsterBookCompletedCardTypes = Math.Max(0, packet.MonsterBookCompletedCardTypes ?? 0);
+                build.ProfileMonsterBookTotalOwnedCopies = Math.Max(0, packet.MonsterBookTotalOwnedCopies ?? 0);
+                build.HasAuthoritativeProfileCollection = true;
+            }
+
+            if (packet.MakerGenericLevel.HasValue
+                || packet.MakerGloveLevel.HasValue
+                || packet.MakerShoeLevel.HasValue
+                || packet.MakerToyLevel.HasValue
+                || packet.MakerSuccessfulCrafts.HasValue
+                || packet.MakerDiscoveredRecipeCount.HasValue
+                || packet.MakerUnlockedHiddenRecipeCount.HasValue)
+            {
+                ApplyCharacterInfoProfileMakerProgression(build, packet);
+                build.HasAuthoritativeProfileCollection = true;
+            }
+        }
+
+        private static void ApplyCharacterInfoProfileMakerProgression(CharacterBuild build, RemoteUserProfilePacket packet)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            build.ProfileMakerGenericLevel = Math.Max(1, packet.MakerGenericLevel ?? 1);
+            build.ProfileMakerGloveLevel = Math.Max(1, packet.MakerGloveLevel ?? 1);
+            build.ProfileMakerShoeLevel = Math.Max(1, packet.MakerShoeLevel ?? 1);
+            build.ProfileMakerToyLevel = Math.Max(1, packet.MakerToyLevel ?? 1);
+            build.ProfileMakerGenericProgress = Math.Max(0, packet.MakerGenericProgress ?? 0);
+            build.ProfileMakerGloveProgress = Math.Max(0, packet.MakerGloveProgress ?? 0);
+            build.ProfileMakerShoeProgress = Math.Max(0, packet.MakerShoeProgress ?? 0);
+            build.ProfileMakerToyProgress = Math.Max(0, packet.MakerToyProgress ?? 0);
+            build.ProfileMakerSuccessfulCrafts = Math.Max(0, packet.MakerSuccessfulCrafts ?? 0);
+            build.ProfileMakerDiscoveredRecipeCount = Math.Max(0, packet.MakerDiscoveredRecipeCount ?? 0);
+            build.ProfileMakerUnlockedHiddenRecipeCount = Math.Max(0, packet.MakerUnlockedHiddenRecipeCount ?? 0);
         }
 
         private bool TryResolveCharacterInfoPresence(
@@ -6531,6 +6696,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryOpenQuestRewardRaiseOwnerFromInventoryItem(itemId, inventoryType, currentTime))
+            {
+                return true;
+            }
+
             if (TryUseRandomMorphInventoryItem(itemId, inventoryType, currentTime))
 
 
@@ -6625,6 +6795,11 @@ namespace HaCreator.MapSimulator
             if (TryRejectOnlyPickupInventoryUse(itemId, inventoryType, currentTime))
             {
                 return false;
+            }
+
+            if (TryOpenQuestRewardRaiseOwnerFromInventoryItem(itemId, inventoryType, currentTime, slotIndex))
+            {
+                return true;
             }
 
             if (TryUseRandomMorphInventoryItem(itemId, inventoryType, currentTime, slotIndex))
@@ -7786,34 +7961,17 @@ namespace HaCreator.MapSimulator
 
         private static int CalculateRepairDurabilityCost(CharacterPart part, int currentDurability, int maxDurability)
         {
-            if (part == null || maxDurability <= 0 || currentDurability >= maxDurability)
+            if (part == null)
             {
                 return 0;
             }
 
-
-            int level = Math.Max(1, part.RequiredLevel);
-            double sellPrice = part.SellPrice > 0
-                ? part.SellPrice
-                : Math.Max(1d, level * level * 2d);
-            double lostPercent = 100d - ((100d * currentDurability) / maxDurability);
-            double durabilityScale = maxDurability / 100d;
-            if (durabilityScale <= 0d)
-            {
-                return 0;
-            }
-
-
-            double epicMultiplier = part.IsEpic ? 1.25d : 1d;
-            double cost = lostPercent * (((double)level * level) * (sellPrice / 50d) / durabilityScale) * epicMultiplier;
-            if (double.IsNaN(cost) || double.IsInfinity(cost))
-            {
-                return 0;
-            }
-
-
-            return Math.Max(0, (int)Math.Round(cost));
-
+            return RepairDurabilityClientParity.CalculateRepairDurabilityPay(
+                part.RequiredLevel,
+                part.SellPrice,
+                maxDurability,
+                currentDurability,
+                part.IsEpic);
         }
 
 
@@ -8180,9 +8338,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!RepairDurabilityClientParity.MatchesPendingResultTarget(request.RepairAll, request.EncodedSlotPosition, result.EncodedSlotPosition))
+            if (!RepairDurabilityClientParity.MatchesPendingResultTarget(
+                    request.RepairAll,
+                    request.EncodedSlotPosition,
+                    BuildPendingRepairDurabilityEncodedPositions(request),
+                    result.EncodedSlotPosition,
+                    result.EncodedSlotPositions))
             {
-                message = $"Repair-result payload for encoded position {result.EncodedSlotPosition.Value} was ignored because position {request.EncodedSlotPosition} is still pending.";
+                message = BuildRepairDurabilityTargetMismatchMessage(request, result);
                 return false;
             }
 
@@ -11231,6 +11394,40 @@ namespace HaCreator.MapSimulator
                 maxAccumulatedExp,
                 cashExpTicketEnabled,
                 partyExpEnabled);
+        }
+
+        private static IReadOnlyList<int> BuildPendingRepairDurabilityEncodedPositions(PendingRepairDurabilityRequest request)
+        {
+            if (request?.Entries == null || request.Entries.Count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return request.Entries
+                .Where(static entry => entry != null)
+                .Select(static entry => entry.EncodedSlotPosition)
+                .Distinct()
+                .ToArray();
+        }
+
+        private static string BuildRepairDurabilityTargetMismatchMessage(
+            PendingRepairDurabilityRequest request,
+            RepairDurabilityClientParity.ResultPayload result)
+        {
+            IReadOnlyList<int> resultPositions = result.EncodedSlotPositions ?? Array.Empty<int>();
+            string resultPositionText = resultPositions.Count > 0
+                ? string.Join(", ", resultPositions)
+                : result.EncodedSlotPosition?.ToString(CultureInfo.InvariantCulture) ?? "<none>";
+            if (request?.RepairAll == true)
+            {
+                IReadOnlyList<int> pendingPositions = BuildPendingRepairDurabilityEncodedPositions(request);
+                string pendingPositionText = pendingPositions.Count > 0
+                    ? string.Join(", ", pendingPositions)
+                    : "<all pending>";
+                return $"Repair-result payload for encoded position(s) {resultPositionText} was ignored because repair-all is pending for encoded position(s) {pendingPositionText}.";
+            }
+
+            return $"Repair-result payload for encoded position {resultPositionText} was ignored because position {request?.EncodedSlotPosition.ToString(CultureInfo.InvariantCulture) ?? "<none>"} is still pending.";
         }
 
         private bool TryUseSetupPersonalityInventoryItem(int itemId, int currentTime, int? slotIndex = null)
@@ -20707,7 +20904,9 @@ namespace HaCreator.MapSimulator
                     mobTemplateId,
                     mob.CurrentX,
                     mob.CurrentY,
-                    currentTime);
+                    currentTime,
+                    mob.PoolId,
+                    ResolveMobPickupSourceName(mobTemplateId));
                 if (pickedDrop != null)
                 {
                     _lastMobPickupTimes[mob.PoolId] = currentTime;
@@ -21066,7 +21265,7 @@ namespace HaCreator.MapSimulator
 
             if (IsMobSummonSkillForTesting(skill.SkillId))
             {
-                return CanAutoSelectMobSummonSkill(skill);
+                return CanAutoSelectMobSummonSkill(sourceMob, skill);
             }
 
             MobSkillRuntimeData runtimeData = ResolveMobSkillRuntimeData(skill.SkillId, skill.Level);
@@ -21136,10 +21335,15 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private bool CanAutoSelectMobSummonSkill(MobSkillEntry skill)
+        private bool CanAutoSelectMobSummonSkill(MobItem sourceMob, MobSkillEntry skill)
         {
             MobSummonSkillInfo summonInfo = ResolveMobSummonSkillInfo(skill.SkillId, skill.Level);
             if (summonInfo == null || summonInfo.MobIds.Count == 0 || _mobPool == null)
+            {
+                return false;
+            }
+
+            if (!IsMobSummonSkillHpGateOpen(sourceMob?.AI?.HpPercent ?? 0f, summonInfo))
             {
                 return false;
             }
@@ -21150,8 +21354,30 @@ namespace HaCreator.MapSimulator
                 activeSummons += _mobPool.GetMobsByType(summonInfo.MobIds[i]).Count();
             }
 
-            int summonLimit = summonInfo.Limit > 0 ? summonInfo.Limit : summonInfo.MobIds.Count;
+            int summonLimit = summonInfo.Limit > 0 ? summonInfo.Limit : ResolveMobSummonCastCount(summonInfo);
             return activeSummons < summonLimit;
+        }
+
+        internal static bool IsMobSummonSkillHpGateOpenForTesting(float sourceHpPercent, MobSummonSkillInfo summonInfo)
+        {
+            return IsMobSummonSkillHpGateOpen(sourceHpPercent, summonInfo);
+        }
+
+        private static bool IsMobSummonSkillHpGateOpen(float sourceHpPercent, MobSummonSkillInfo summonInfo)
+        {
+            if (summonInfo == null)
+            {
+                return false;
+            }
+
+            int hpThresholdPercent = Math.Clamp(summonInfo.HpThresholdPercent, 0, 100);
+            if (hpThresholdPercent <= 0)
+            {
+                return true;
+            }
+
+            float hpPercent = Math.Clamp(sourceHpPercent, 0f, 1f) * 100f;
+            return hpPercent <= hpThresholdPercent;
         }
 
 
@@ -21442,17 +21668,18 @@ namespace HaCreator.MapSimulator
 
             int remainingCapacity = summonInfo.Limit > 0
                 ? summonInfo.Limit - activeSummons
-                : summonInfo.MobIds.Count;
+                : ResolveMobSummonCastCount(summonInfo);
             if (remainingCapacity <= 0)
             {
                 return;
             }
 
 
-            int spawnCount = Math.Min(remainingCapacity, summonInfo.MobIds.Count);
+            int spawnCount = Math.Min(remainingCapacity, ResolveMobSummonCastCount(summonInfo));
             for (int i = 0; i < spawnCount; i++)
             {
-                MobSpawnPoint summonSpawn = CreateSummonedMobSpawnPoint(mobItem, summonInfo, summonInfo.MobIds[i], i);
+                string mobId = summonInfo.MobIds[i % summonInfo.MobIds.Count];
+                MobSpawnPoint summonSpawn = CreateSummonedMobSpawnPoint(mobItem, summonInfo, mobId, i);
                 MobItem summonedMob = CreateMobFromSpawnPoint(summonSpawn);
                 if (summonedMob == null)
                 {
@@ -21470,6 +21697,23 @@ namespace HaCreator.MapSimulator
 
             }
 
+        }
+
+        internal static int ResolveMobSummonCastCountForTesting(MobSummonSkillInfo summonInfo)
+        {
+            return ResolveMobSummonCastCount(summonInfo);
+        }
+
+        private static int ResolveMobSummonCastCount(MobSummonSkillInfo summonInfo)
+        {
+            if (summonInfo == null || summonInfo.MobIds.Count == 0)
+            {
+                return 0;
+            }
+
+            return summonInfo.SummonCount > 0
+                ? summonInfo.SummonCount
+                : summonInfo.MobIds.Count;
         }
 
 
@@ -21537,7 +21781,11 @@ namespace HaCreator.MapSimulator
 
             var summonInfo = new MobSummonSkillInfo
             {
-                Limit = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "limit")
+                Limit = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "limit"),
+                HpThresholdPercent = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "hp"),
+                SummonCount = Math.Max(
+                    MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "y"),
+                    MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "count"))
             };
 
 
@@ -24185,7 +24433,7 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private void HandleDropPickedUpByMob(DropItem drop, int mobId)
+        private void HandleDropPickedUpByMob(DropItem drop, int mobId, string mobName)
         {
             if (drop == null || !ShouldSurfaceMobPickupNotice(drop))
             {
@@ -24202,7 +24450,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string mobName = ResolveMobPickupActorName(mobId);
+            mobName = !string.IsNullOrWhiteSpace(mobName)
+                ? mobName
+                : ResolveMobPickupActorNameForActor(mobId);
             string itemName = ResolvePickupResultItemName(drop);
             PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatMobPickup(
                 drop.Type,
@@ -24364,6 +24614,23 @@ namespace HaCreator.MapSimulator
             return ResolveMobPickupSourceName(mobId);
         }
 
+        private string ResolveMobPickupActorNameForActor(int mobId)
+        {
+            if (mobId > 0 && _mobPool?.ActiveMobs != null)
+            {
+                foreach (MobItem mob in _mobPool.ActiveMobs)
+                {
+                    if (mob?.PoolId == mobId
+                        && TryResolveMobPickupTemplateId(mob, out int mobTemplateId))
+                    {
+                        return ResolveMobPickupSourceName(mobTemplateId);
+                    }
+                }
+            }
+
+            return ResolveMobPickupActorName(mobId);
+        }
+
         private static int ResolveMobPickupNoticeActorAlias(int mobId)
         {
             return mobId;
@@ -24409,7 +24676,7 @@ namespace HaCreator.MapSimulator
                 Pools.DropPickupActorKind.Pet => ResolvePickupSourceName(recentPickup.PickerId, pickedByPet: true)
                     ?? ResolveRemotePickupActorName(Pools.DropPickupActorKind.Pet, recentPickup.PickerId, null),
 
-                Pools.DropPickupActorKind.Mob => ResolveMobPickupActorName(recentPickup.PickerId),
+                Pools.DropPickupActorKind.Mob => ResolveMobPickupActorNameForActor(recentPickup.PickerId),
 
 
 
@@ -24633,7 +24900,7 @@ namespace HaCreator.MapSimulator
             {
                 Pools.DropPickupActorKind.Mob => !string.IsNullOrWhiteSpace(actorName)
                     ? actorName
-                    : ResolveMobPickupActorName(actorId),
+                    : ResolveMobPickupActorNameForActor(actorId),
                 _ => ResolveRemotePickupActorName(actorKind, actorId, actorName, fallbackOwnerId)
             };
         }
@@ -29326,6 +29593,12 @@ namespace HaCreator.MapSimulator
                 skill,
                 levelData,
                 ownerLane);
+            if (ShouldGateLocalOwnedAffectedAreaByClientExclusiveInsert(skillId, ownerLane, createMetadata.Type)
+                && !_affectedAreaPool.IsAbleToInsertExclusiveArea(worldHitbox, currentTime))
+            {
+                return;
+            }
+
             int objectId = ResolveLocalOwnedAffectedAreaObjectId(skillId);
             int ownerId = Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
             bool upserted = _affectedAreaPool.Upsert(
@@ -29536,6 +29809,16 @@ namespace HaCreator.MapSimulator
             }
 
             return 0;
+        }
+
+        internal static bool ShouldGateLocalOwnedAffectedAreaByClientExclusiveInsert(
+            int skillId,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
+            int type)
+        {
+            return ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack
+                   && skillId == 12111005
+                   && type == 4;
         }
 
         internal static short ResolveLocalOwnedAffectedAreaStartDelayUnits(
@@ -30779,6 +31062,17 @@ namespace HaCreator.MapSimulator
                     InputAction.Skill1,
                     SkillMacroOwnerKeyHandler.ClientForwardedPrimarySlotKeyCount,
                     slotOffset: 0,
+                    out hotkeySlot))
+            {
+                return true;
+            }
+
+            if (TryResolveSkillMacroForwardedConfiguredSlot(
+                    key,
+                    bindingResolver,
+                    InputAction.FunctionSlot1,
+                    SkillMacroOwnerKeyHandler.ClientForwardedFunctionKeyCount,
+                    SkillManager.FUNCTION_SLOT_OFFSET,
                     out hotkeySlot))
             {
                 return true;
@@ -37346,6 +37640,7 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<SkillCooldownNoticeUI.StatusBarNoticeOwnerState> ResolveStatusBarNoticeOwnersForClientParity(int currentTime)
         {
             _statusBarNoticeOwnerBuffer.Clear();
+            bool hasActiveFloatNoticeOwner = false;
 
             if (_initialQuizTimerRuntime?.IsActive(currentTime) == true)
             {
@@ -37375,6 +37670,7 @@ namespace HaCreator.MapSimulator
 
             if (_localOverlayRuntime?.HasDamageMeterTimer(currentTime) == true)
             {
+                hasActiveFloatNoticeOwner = true;
                 _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
                     StatusBarNoticeOwnerKind.FloatNotice,
                     OwnerIdentity: 1,
@@ -37387,6 +37683,7 @@ namespace HaCreator.MapSimulator
 
             if (_localOverlayRuntime?.HasActiveFieldHazardNotice(currentTime) == true)
             {
+                hasActiveFloatNoticeOwner = true;
                 _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
                     StatusBarNoticeOwnerKind.FloatNotice,
                     OwnerIdentity: 2,
@@ -37398,7 +37695,8 @@ namespace HaCreator.MapSimulator
             }
 
             IReadOnlyList<WeatherMessageInfo> weatherMessages = _fieldEffects?.WeatherMessages;
-            if (weatherMessages != null)
+            if (weatherMessages != null
+                && SkillCooldownNoticeUI.ShouldRetainStatusBarItemMsgOwnerForClientParity(hasActiveFloatNoticeOwner))
             {
                 for (int i = 0; i < weatherMessages.Count; i++)
                 {
@@ -37410,6 +37708,10 @@ namespace HaCreator.MapSimulator
                         _statusBarNoticeOwnerBuffer.Add(itemMsgOwner);
                     }
                 }
+            }
+            else if (hasActiveFloatNoticeOwner)
+            {
+                _fieldEffects?.ClearStatusBarItemMsgOwnersForClientParity();
             }
 
             return _statusBarNoticeOwnerBuffer;
@@ -41191,6 +41493,14 @@ namespace HaCreator.MapSimulator
             renderData.ShadowIndexUpdateSequence = buffEntry.ShadowIndexUpdateSequence;
             renderData.MainLayerAnimationSequence = buffEntry.MainLayerAnimationSequence;
             renderData.ShadowLayerAnimationSequence = buffEntry.ShadowLayerAnimationSequence;
+            renderData.ShadowCanvasPath = buffEntry.ShadowCanvasPath;
+            renderData.ShadowCanvasRemoveIndex = buffEntry.ShadowCanvasRemoveIndex;
+            renderData.ShadowCanvasInsertDelayMs = buffEntry.ShadowCanvasInsertDelayMs;
+            renderData.ShadowCanvasAlphaStart = buffEntry.ShadowCanvasAlphaStart;
+            renderData.ShadowCanvasAlphaEnd = buffEntry.ShadowCanvasAlphaEnd;
+            renderData.ShadowCanvasLastUpdatedTime = buffEntry.ShadowCanvasLastUpdatedTime;
+            renderData.AlertLayerAnimationMode = buffEntry.AlertLayerAnimationMode;
+            renderData.AlertLayerAnimationSequence = buffEntry.AlertLayerAnimationSequence;
         }
 
 

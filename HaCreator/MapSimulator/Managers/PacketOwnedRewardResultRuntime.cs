@@ -163,7 +163,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             string format = ResolveTextFormat(
                 MesoGiveSucceededStringPoolId,
-                "You have received {0:N0} mesos.",
+                "You have received {0} mesos.",
                 1);
             return FormatInvariant(format, (ulong)mesoAmount);
         }
@@ -249,17 +249,27 @@ namespace HaCreator.MapSimulator.Managers
                 DialogResourcePath = dialogResourcePath,
                 OkButtonResourcePath = GetRandomMesoBagOkButtonResourcePath(),
                 DescriptionText = ResolveRandomMesoBagDescription(normalizedRank),
-                AmountText = mesoAmount.ToString("N0", CultureInfo.InvariantCulture),
-                ChatLineText = FormatInvariant(
-                    ResolveTextFormat(
-                        RandomMesoBagChatTemplateStringPoolId,
-                        "You obtained {0:N0} mesos from the Random Meso Sack.",
-                        1),
-                    mesoAmount),
+                AmountText = FormatRandomMesoBagDialogAmountText(mesoAmount),
+                ChatLineText = FormatRandomMesoBagChatLineText(mesoAmount),
                 ChatMessageType = RandomMesoBagStatusBarChatType,
                 SoundDescriptor = ResolveRandomMesoBagSound(normalizedRank),
                 SoundVolume = RandomMesoBagSoundVolume
             };
+        }
+
+        public static string FormatRandomMesoBagDialogAmountText(int mesoAmount)
+        {
+            // CUIRandomMesoBag stores the dialog amount through format_integer(..., comma = 1).
+            return mesoAmount.ToString("N0", CultureInfo.InvariantCulture);
+        }
+
+        public static string FormatRandomMesoBagChatLineText(int mesoAmount)
+        {
+            string format = ResolveTextFormat(
+                RandomMesoBagChatTemplateStringPoolId,
+                "You obtained {0} mesos from the Random Meso Sack.",
+                1);
+            return FormatInvariant(format, mesoAmount);
         }
 
         public static string GetRandomMesoBagDialogResourcePath(int rank)

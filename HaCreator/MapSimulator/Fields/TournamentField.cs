@@ -708,14 +708,19 @@ namespace HaCreator.MapSimulator.Fields
 
                     case TournamentPacketType.NoOp:
                         SetStatus(
-                            "Tournament packet 378 reached the dedicated client wrapper and intentionally performed no local UI action.",
+                            payload.Length == 0
+                                ? "Tournament packet 378 reached the dedicated client wrapper and intentionally performed no local UI action."
+                                : $"Tournament packet 378 reached the dedicated client wrapper and returned immediately with {payload.Length} trailing byte(s) left unread.",
                             currentTimeMs,
                             Array.Empty<int>(),
-                            "noop (378)");
+                            payload.Length == 0
+                                ? "noop (378)"
+                                : $"noop (378) unreadBytes={payload.Length}");
                         SetSessionPhase(
                             TournamentSessionPhase.NoOp,
-                            "CField_Tournament::OnPacket consumed opcode 378 and intentionally performed no local action.");
-                        EnsurePacketConsumed(stream, "noop");
+                            payload.Length == 0
+                                ? "CField_Tournament::OnPacket returned from opcode 378 and intentionally performed no local action."
+                                : $"CField_Tournament::OnPacket returned from opcode 378 without decoding {payload.Length} trailing byte(s).");
                         RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnPacket(noop)");
                         return true;
 

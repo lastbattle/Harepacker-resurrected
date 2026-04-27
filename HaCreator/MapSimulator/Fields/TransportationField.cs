@@ -401,7 +401,7 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void TriggerBalrogAttack(int durationMs = 5000)
         {
-            TriggerBalrogAttack(durationMs, "simulator-direct");
+            TryStartVoyageBalrogAttack(durationMs, "simulator-direct", out _);
         }
 
         private void TriggerBalrogAttack(int durationMs, string owner)
@@ -432,6 +432,11 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryStartVoyageBalrogAttack(int durationMs, out string message)
         {
+            return TryStartVoyageBalrogAttack(durationMs, "transport-voyagebalrog-command", out message);
+        }
+
+        private bool TryStartVoyageBalrogAttack(int durationMs, string owner, out string message)
+        {
             if (_shipKind != 0)
             {
                 message = "Ignored voyage Balrog event; attack choreography only applies on regular transit ships.";
@@ -451,7 +456,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int normalizedDuration = durationMs > 0 ? durationMs : 5000;
-            TriggerBalrogAttack(normalizedDuration, "transport-voyagebalrog-command");
+            TriggerBalrogAttack(normalizedDuration, owner);
             _voyageBalrogAutoTriggered = true;
             message = $"Applied voyage Balrog event -> TriggerBalrogAttack ({normalizedDuration} ms).";
             return true;
@@ -1246,8 +1251,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            TriggerBalrogAttack(_voyageBalrogAutoDurationMs, "wz-route-auto");
-            _voyageBalrogAutoTriggered = true;
+            TryStartVoyageBalrogAttack(_voyageBalrogAutoDurationMs, "wz-route-auto", out _);
         }
 
         private int ResolveDefaultVoyageBalrogTriggerOffsetMs()

@@ -79,6 +79,7 @@ namespace HaCreator.MapSimulator.Animation
         public sealed class AttackInfoMetadata
         {
             public int AttackType { get; set; } = -1;
+            public bool MagicAttack { get; set; }
             public int HitAnimationSourceFrameIndex { get; set; }
             public bool HitAttach { get; set; }
             public bool HasHitAttachMetadata { get; set; }

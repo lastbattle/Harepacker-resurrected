@@ -227,6 +227,9 @@ namespace HaCreator.MapSimulator.Fields
         private bool _localGiveUpRequestSent;
         private bool _officialClientRelayEnabled;
         private int _lastClientDialogUpdateArgument;
+        private bool _clientOpponentLayersMaterialized;
+        private int _clientReadyLayerReleaseCount;
+        private int _clientScoreLayerReleaseCount;
 
 
         public enum RoomStage
@@ -380,6 +383,8 @@ namespace HaCreator.MapSimulator.Fields
         public bool HasPendingPrompt => _pendingPrompt.IsActive;
         public string PendingPromptText => _pendingPrompt.Text;
         public int LastClientDialogUpdateArgument => _lastClientDialogUpdateArgument;
+        public int ClientReadyLayerReleaseCount => _clientReadyLayerReleaseCount;
+        public int ClientScoreLayerReleaseCount => _clientScoreLayerReleaseCount;
         public bool ClientReadyLayerVisible => HasClientOpponentSeat();
         public bool ClientScoreLayerVisible => HasClientOpponentSeat();
         public bool ClientReadyButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex != 0;
@@ -1500,6 +1505,9 @@ namespace HaCreator.MapSimulator.Fields
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
             _lastClientDialogUpdateArgument = 0;
+            _clientOpponentLayersMaterialized = false;
+            _clientReadyLayerReleaseCount = 0;
+            _clientScoreLayerReleaseCount = 0;
             SyncMiniRoomRuntime();
         }
 
@@ -2499,6 +2507,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private void SyncMiniRoomRuntime()
         {
+            RefreshClientOpponentLayerOwnership();
             if (_miniRoomRuntime == null)
             {
                 return;
@@ -2541,6 +2550,25 @@ namespace HaCreator.MapSimulator.Fields
                 ownerBuild,
                 guestBuild,
                 extraOccupants);
+        }
+
+        private void RefreshClientOpponentLayerOwnership()
+        {
+            bool hasOpponentSeat = HasClientOpponentSeat();
+            if (hasOpponentSeat)
+            {
+                _clientOpponentLayersMaterialized = true;
+                return;
+            }
+
+            if (!_clientOpponentLayersMaterialized)
+            {
+                return;
+            }
+
+            _clientOpponentLayersMaterialized = false;
+            _clientReadyLayerReleaseCount++;
+            _clientScoreLayerReleaseCount++;
         }
 
 

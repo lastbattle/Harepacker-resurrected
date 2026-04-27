@@ -832,8 +832,8 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnPetStartChasing(Action<int, DropItem> callback) => _onPetStartChasing = callback;
 
         // Mob pickup events
-        private Action<DropItem, int> _onMobPickedUp;          // (drop, mobId)
-        public void SetOnMobPickedUp(Action<DropItem, int> callback) => _onMobPickedUp = callback;
+        private Action<DropItem, int, string> _onMobPickedUp;          // (drop, mobId, mobName)
+        public void SetOnMobPickedUp(Action<DropItem, int, string> callback) => _onMobPickedUp = callback;
 
         // Booby trap events
         private Action<DropItem, int> _onBoobyTrapTriggered;   // (drop, trapOwnerId)
@@ -2122,7 +2122,13 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="mobY">Mob's Y position</param>
         /// <param name="currentTime">Current game tick</param>
         /// <returns>The picked up drop, or null if nothing picked up</returns>
-        public DropItem TryPickUpDropByMob(int mobId, float mobX, float mobY, int currentTime)
+        public DropItem TryPickUpDropByMob(
+            int mobId,
+            float mobX,
+            float mobY,
+            int currentTime,
+            int pickupActorId = 0,
+            string actorName = null)
         {
             // Check if this mob has pickup ability
             if (!_mobsWithPickupAbility.Contains(mobId))
@@ -2165,7 +2171,13 @@ namespace HaCreator.MapSimulator.Pools
 
             if (selectedDrop != null)
             {
-                return ResolveRemotePickup(selectedDrop, mobId, currentTime, DropPickupActorKind.Mob)
+                int resolvedPickupActorId = pickupActorId > 0 ? pickupActorId : mobId;
+                return ResolveRemotePickup(
+                    selectedDrop,
+                    resolvedPickupActorId,
+                    currentTime,
+                    DropPickupActorKind.Mob,
+                    actorName)
                     ? selectedDrop
                     : null;
             }
@@ -2547,7 +2559,7 @@ namespace HaCreator.MapSimulator.Pools
                     _onRemotePetPickedUp?.Invoke(drop, pickerId, actorName);
                     break;
                 case DropPickupActorKind.Mob:
-                    _onMobPickedUp?.Invoke(drop, pickerId);
+                    _onMobPickedUp?.Invoke(drop, pickerId, actorName);
                     break;
                 case DropPickupActorKind.Other:
                     _onRemoteOtherPickedUp?.Invoke(drop, pickerId, actorName);

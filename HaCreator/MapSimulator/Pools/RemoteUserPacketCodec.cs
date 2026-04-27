@@ -457,7 +457,11 @@ namespace HaCreator.MapSimulator.Pools
         TraitSense = 1 << 14,
         TraitCharm = 1 << 15,
         Medal = 1 << 16,
-        Collection = 1 << 17
+        Collection = 1 << 17,
+        PetProfiles = 1 << 18,
+        RideIdentity = 1 << 19,
+        CollectionCounts = 1 << 20,
+        MakerProgression = 1 << 21
     }
 
     public readonly record struct RemoteUserProfilePacket(
@@ -479,7 +483,26 @@ namespace HaCreator.MapSimulator.Pools
         int? TraitSense,
         int? TraitCharm,
         bool? HasMedal,
-        bool? HasCollection);
+        bool? HasCollection,
+        IReadOnlyList<RemotePetProfileSnapshot> PetProfiles = null,
+        int? RideVehicleItemId = null,
+        int? RideSaddleItemId = null,
+        bool? IsRidingInField = null,
+        int? MonsterBookOwnedCardTypes = null,
+        int? MonsterBookTotalCardTypes = null,
+        int? MonsterBookCompletedCardTypes = null,
+        int? MonsterBookTotalOwnedCopies = null,
+        int? MakerGenericLevel = null,
+        int? MakerGloveLevel = null,
+        int? MakerShoeLevel = null,
+        int? MakerToyLevel = null,
+        int? MakerGenericProgress = null,
+        int? MakerGloveProgress = null,
+        int? MakerShoeProgress = null,
+        int? MakerToyProgress = null,
+        int? MakerSuccessfulCrafts = null,
+        int? MakerDiscoveredRecipeCount = null,
+        int? MakerUnlockedHiddenRecipeCount = null);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
     public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
@@ -2319,6 +2342,56 @@ namespace HaCreator.MapSimulator.Pools
                 int? traitCharm = HasProfileFlag(flags, RemoteUserProfilePacketFlags.TraitCharm) ? reader.ReadInt32() : null;
                 bool? hasMedal = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Medal) ? reader.ReadByte() != 0 : null;
                 bool? hasCollection = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Collection) ? reader.ReadByte() != 0 : null;
+                IReadOnlyList<RemotePetProfileSnapshot> petProfiles = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PetProfiles)
+                    ? ReadProfilePetProfiles(reader)
+                    : null;
+                int? rideVehicleItemId = null;
+                int? rideSaddleItemId = null;
+                bool? isRidingInField = null;
+                if (HasProfileFlag(flags, RemoteUserProfilePacketFlags.RideIdentity))
+                {
+                    rideVehicleItemId = reader.ReadInt32();
+                    rideSaddleItemId = reader.ReadInt32();
+                    isRidingInField = reader.ReadByte() != 0;
+                }
+
+                int? monsterBookOwnedCardTypes = null;
+                int? monsterBookTotalCardTypes = null;
+                int? monsterBookCompletedCardTypes = null;
+                int? monsterBookTotalOwnedCopies = null;
+                if (HasProfileFlag(flags, RemoteUserProfilePacketFlags.CollectionCounts))
+                {
+                    monsterBookOwnedCardTypes = reader.ReadInt32();
+                    monsterBookTotalCardTypes = reader.ReadInt32();
+                    monsterBookCompletedCardTypes = reader.ReadInt32();
+                    monsterBookTotalOwnedCopies = reader.ReadInt32();
+                }
+
+                int? makerGenericLevel = null;
+                int? makerGloveLevel = null;
+                int? makerShoeLevel = null;
+                int? makerToyLevel = null;
+                int? makerGenericProgress = null;
+                int? makerGloveProgress = null;
+                int? makerShoeProgress = null;
+                int? makerToyProgress = null;
+                int? makerSuccessfulCrafts = null;
+                int? makerDiscoveredRecipeCount = null;
+                int? makerUnlockedHiddenRecipeCount = null;
+                if (HasProfileFlag(flags, RemoteUserProfilePacketFlags.MakerProgression))
+                {
+                    makerGenericLevel = reader.ReadInt32();
+                    makerGloveLevel = reader.ReadInt32();
+                    makerShoeLevel = reader.ReadInt32();
+                    makerToyLevel = reader.ReadInt32();
+                    makerGenericProgress = reader.ReadInt32();
+                    makerGloveProgress = reader.ReadInt32();
+                    makerShoeProgress = reader.ReadInt32();
+                    makerToyProgress = reader.ReadInt32();
+                    makerSuccessfulCrafts = reader.ReadInt32();
+                    makerDiscoveredRecipeCount = reader.ReadInt32();
+                    makerUnlockedHiddenRecipeCount = reader.ReadInt32();
+                }
 
                 if (reader.RemainingLength != 0)
                 {
@@ -2351,7 +2424,26 @@ namespace HaCreator.MapSimulator.Pools
                     traitSense,
                     traitCharm,
                     hasMedal,
-                    hasCollection);
+                    hasCollection,
+                    petProfiles,
+                    rideVehicleItemId,
+                    rideSaddleItemId,
+                    isRidingInField,
+                    monsterBookOwnedCardTypes,
+                    monsterBookTotalCardTypes,
+                    monsterBookCompletedCardTypes,
+                    monsterBookTotalOwnedCopies,
+                    makerGenericLevel,
+                    makerGloveLevel,
+                    makerShoeLevel,
+                    makerToyLevel,
+                    makerGenericProgress,
+                    makerGloveProgress,
+                    makerShoeProgress,
+                    makerToyProgress,
+                    makerSuccessfulCrafts,
+                    makerDiscoveredRecipeCount,
+                    makerUnlockedHiddenRecipeCount);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -2359,6 +2451,29 @@ namespace HaCreator.MapSimulator.Pools
                 error = ex.Message;
                 return false;
             }
+        }
+
+        private static IReadOnlyList<RemotePetProfileSnapshot> ReadProfilePetProfiles(PacketReader reader)
+        {
+            int count = reader.ReadByte();
+            List<RemotePetProfileSnapshot> profiles = new(Math.Min(count, 3));
+            for (int i = 0; i < count; i++)
+            {
+                int itemId = reader.ReadInt32();
+                int level = reader.ReadInt32();
+                int closeness = reader.ReadInt32();
+                int fullness = reader.ReadInt32();
+                if (itemId > 0 && profiles.Count < 3)
+                {
+                    profiles.Add(new RemotePetProfileSnapshot(
+                        itemId,
+                        Math.Max(0, level),
+                        Math.Max(0, closeness),
+                        Math.Clamp(fullness, 0, 100)));
+                }
+            }
+
+            return profiles;
         }
 
         public static bool TryParseTemporaryStatSet(ReadOnlySpan<byte> payload, out RemoteUserTemporaryStatSetPacket packet, out string error)

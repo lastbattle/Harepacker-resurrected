@@ -364,6 +364,7 @@ namespace HaCreator.MapSimulator.Character
             public Color PreparedLayerColor { get; set; } = MirrorImageTint;
             public int SourceSignature { get; set; }
             public int LastInsertedSourceSignature { get; set; }
+            public int LastInsertedSourceCanvasSignature { get; set; }
             public Rectangle Bounds { get; set; }
             public Rectangle TextureSourceBounds { get; set; }
             public Point Origin { get; set; }
@@ -5843,12 +5844,6 @@ namespace HaCreator.MapSimulator.Character
                 out bool drawUnderFaceEffectsNow,
                 out bool drawShadowPartnerNow);
 
-            if (drawShadowPartnerNow)
-            {
-                DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
-                shadowPartnerDrawn = true;
-            }
-
             if (drawUnderFaceOverlayNow)
             {
                 drawUnderFaceOverlay?.Invoke();
@@ -5859,6 +5854,12 @@ namespace HaCreator.MapSimulator.Character
             {
                 DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
                 underFaceDrawn = true;
+            }
+
+            if (drawShadowPartnerNow)
+            {
+                DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
+                shadowPartnerDrawn = true;
             }
 
             DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime, AvatarRenderLayer.UnderFace);
@@ -6637,6 +6638,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int liveSourceSignature = ComputeMirrorImageSourceLayerSignature(liveSourceParts);
+            int liveSourceCanvasSignature = ComputeMirrorImageSourceCanvasSignature(liveSourceParts);
             int liveSourceLayerCurrentTime = GetRenderAnimationTime(currentTime);
             bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
@@ -6652,12 +6654,15 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.OverlayTargetLayer,
                 preparedLayer.LastInsertCanvasOverlayTargetLayer,
                 preparedLayer.LastInsertCanvasTime,
-                currentTime);
+                currentTime,
+                liveSourceCanvasSignature,
+                preparedLayer.LastInsertedSourceCanvasSignature);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
                     preparedLayer,
                     liveSourceSignature,
+                    liveSourceCanvasSignature,
                     currentTime,
                     liveSourceLayerCurrentTime,
                     hasSourceCanvas: true,
@@ -6743,6 +6748,7 @@ namespace HaCreator.MapSimulator.Character
                 ApplyMirrorImageInsertCanvasMetadata(
                     preparedLayer,
                     sourceSignature,
+                    ComputeMirrorImageSourceCanvasSignature(sourceParts),
                     currentTime,
                     sourceLayerCurrentTime,
                     hasSourceCanvas,
@@ -6791,6 +6797,7 @@ namespace HaCreator.MapSimulator.Character
                 ApplyMirrorImageInsertCanvasMetadata(
                     preparedLayer,
                     sourceSignature,
+                    ComputeMirrorImageSourceCanvasSignature(sourceParts),
                     currentTime,
                     sourceLayerCurrentTime,
                     hasLiveInsertCanvasSource,
@@ -6858,6 +6865,7 @@ namespace HaCreator.MapSimulator.Character
             ApplyMirrorImageInsertCanvasMetadata(
                 preparedLayer,
                 sourceSignature,
+                ComputeMirrorImageSourceCanvasSignature(sourceParts),
                 currentTime,
                 sourceLayerCurrentTime,
                 HasMirrorImageInsertCanvasSource(
@@ -6884,6 +6892,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
             preparedLayer.SourceSignature = sourceSignature;
             preparedLayer.LastInsertedSourceSignature = 0;
+            preparedLayer.LastInsertedSourceCanvasSignature = 0;
             preparedLayer.Bounds = Rectangle.Empty;
             preparedLayer.TextureSourceBounds = Rectangle.Empty;
             preparedLayer.Origin = Point.Zero;
@@ -6906,6 +6915,7 @@ namespace HaCreator.MapSimulator.Character
         private static void ApplyMirrorImageInsertCanvasMetadata(
             MirrorImagePreparedSourceLayer preparedLayer,
             int sourceSignature,
+            int sourceCanvasSignature,
             int currentTime,
             int sourceLayerCurrentTime,
             bool hasSourceCanvas,
@@ -6925,6 +6935,7 @@ namespace HaCreator.MapSimulator.Character
             if (resetsStaleInsertCanvasMetadataForPreparedLayerRecreation)
             {
                 preparedLayer.LastInsertedSourceSignature = 0;
+                preparedLayer.LastInsertedSourceCanvasSignature = 0;
                 preparedLayer.LastInsertCanvasTime = int.MinValue;
                 preparedLayer.LastInsertCanvasSourceLayerCurrentTime = int.MinValue;
                 preparedLayer.LastInsertCanvasLayerObjectId = 0;
@@ -6936,6 +6947,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertedSourceSignature = ResolveMirrorImageLastInsertedSourceSignature(
                 preparedLayer.LastInsertedSourceSignature,
                 sourceSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertedSourceCanvasSignature = ResolveMirrorImageLastInsertedSourceSignature(
+                preparedLayer.LastInsertedSourceCanvasSignature,
+                sourceCanvasSignature,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasTime = ResolveMirrorImageLastInsertCanvasTime(
                 preparedLayer.LastInsertCanvasTime,
@@ -7513,7 +7528,9 @@ namespace HaCreator.MapSimulator.Character
             AvatarRenderLayer overlayTargetLayer,
             AvatarRenderLayer? lastInsertCanvasOverlayTargetLayer,
             int lastInsertCanvasTime,
-            int currentTime)
+            int currentTime,
+            int sourceCanvasSignature = 0,
+            int lastInsertedSourceCanvasSignature = 0)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -7590,7 +7607,10 @@ namespace HaCreator.MapSimulator.Character
             bool sourceSignatureChanged = sourceSignature != 0
                 && lastInsertedSourceSignature != 0
                 && sourceSignature != lastInsertedSourceSignature;
-            if (sourcePartsIdentityChanged || sourceSignatureChanged)
+            bool sourceCanvasSignatureChanged = sourceCanvasSignature != 0
+                && lastInsertedSourceCanvasSignature != 0
+                && sourceCanvasSignature != lastInsertedSourceCanvasSignature;
+            if (sourcePartsIdentityChanged || sourceSignatureChanged || sourceCanvasSignatureChanged)
             {
                 return true;
             }
@@ -7599,8 +7619,11 @@ namespace HaCreator.MapSimulator.Character
                 || lastInsertCanvasSourcePartsObjectId <= 0;
             bool sourceSignatureMetadataMissing = sourceSignature == 0
                 || lastInsertedSourceSignature == 0;
+            bool sourceCanvasSignatureMetadataMissing = (sourceCanvasSignature != 0 || lastInsertedSourceCanvasSignature != 0)
+                && (sourceCanvasSignature == 0 || lastInsertedSourceCanvasSignature == 0);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
-                || sourceSignatureMetadataMissing;
+                || sourceSignatureMetadataMissing
+                || sourceCanvasSignatureMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;
@@ -7629,6 +7652,39 @@ namespace HaCreator.MapSimulator.Character
                     SourcePortableChairLayer = part.SourcePortableChairLayer,
                     RenderLayer = part.RenderLayer
                 };
+        }
+
+        internal static int ComputeMirrorImageSourceCanvasSignature(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(sourceParts.Count);
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part == null)
+                {
+                    signature.Add(0);
+                    continue;
+                }
+
+                AddMirrorImageSourceTextureIdentity(ref signature, part.Texture);
+                signature.Add(part.OffsetX);
+                signature.Add(part.OffsetY);
+                signature.Add(part.ZIndex);
+                signature.Add(part.IsVisible);
+                signature.Add(part.VisibilityPriority);
+                signature.Add(part.Tint.PackedValue);
+                signature.Add((int)part.PartType);
+                signature.Add((int)part.RenderLayer);
+                signature.Add(part.ZLayer, StringComparer.Ordinal);
+            }
+
+            return signature.ToHashCode();
         }
 
         internal static int ComputeMirrorImageSourceLayerSignature(IReadOnlyList<AssembledPart> sourceParts)
@@ -10209,11 +10265,6 @@ namespace HaCreator.MapSimulator.Character
                 out bool drawShadowPartner);
 
             var order = new List<string>(3);
-            if (drawShadowPartner)
-            {
-                order.Add("ShadowPartner");
-            }
-
             if (drawUnderFaceOverlay)
             {
                 order.Add("UnderFaceOverlay");
@@ -10222,6 +10273,11 @@ namespace HaCreator.MapSimulator.Character
             if (drawUnderFaceEffects)
             {
                 order.Add("UnderFaceEffects");
+            }
+
+            if (drawShadowPartner)
+            {
+                order.Add("ShadowPartner");
             }
 
             return order;

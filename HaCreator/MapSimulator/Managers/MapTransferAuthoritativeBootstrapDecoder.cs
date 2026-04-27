@@ -25,7 +25,12 @@ namespace HaCreator.MapSimulator.Managers
         private const ulong CharacterDataInt16ValueRecordFlag = 0x8000UL;
         private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
         private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
+        private const ulong CharacterDataNewYearCardRecordFlag = 0x40000UL;
+        private const ulong CharacterDataQuestExRecordFlag = 0x80000UL;
         private const ulong CharacterDataTwoIntValueRecordFlag = 0x100000UL;
+        private const ulong CharacterDataWildHunterInfoFlag = 0x200000UL;
+        private const ulong CharacterDataQuestCompleteRecordFlag = 0x400000UL;
+        private const ulong CharacterDataVisitorQuestRecordFlag = 0x800000UL;
         private const int LogoutGiftConfigByteLength =
             sizeof(int) + (PacketStageTransitionRuntime.LogoutGiftEntryCount * sizeof(int));
         private const int SetFieldServerFileTimeByteLength = sizeof(long);
@@ -1199,7 +1204,7 @@ namespace HaCreator.MapSimulator.Managers
                 using MemoryStream stream = new(payload.ToArray(), writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
 
-                if ((characterDataFlags & 0x40000UL) != 0)
+                if ((characterDataFlags & CharacterDataNewYearCardRecordFlag) != 0)
                 {
                     int newYearCardCount = reader.ReadUInt16();
                     for (int i = 0; i < newYearCardCount; i++)
@@ -1218,7 +1223,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
 
-                if ((characterDataFlags & 0x80000UL) != 0)
+                if ((characterDataFlags & CharacterDataQuestExRecordFlag) != 0)
                 {
                     int questExCount = reader.ReadUInt16();
                     for (int i = 0; i < questExCount; i++)
@@ -1228,7 +1233,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
 
-                if ((characterDataFlags & 0x200000UL) != 0 &&
+                if ((characterDataFlags & CharacterDataWildHunterInfoFlag) != 0 &&
                     characterJobId / 100 == 33)
                 {
                     _ = reader.ReadByte();
@@ -1238,7 +1243,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
 
-                if ((characterDataFlags & 0x400000UL) != 0)
+                if ((characterDataFlags & CharacterDataQuestCompleteRecordFlag) != 0)
                 {
                     int questCompleteCount = reader.ReadUInt16();
                     for (int i = 0; i < questCompleteCount; i++)
@@ -1248,7 +1253,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
 
-                if ((characterDataFlags & 0x800000UL) != 0)
+                if ((characterDataFlags & CharacterDataVisitorQuestRecordFlag) != 0)
                 {
                     int visitorQuestCount = reader.ReadUInt16();
                     for (int i = 0; i < visitorQuestCount; i++)
@@ -1346,13 +1351,13 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if ((characterDataFlags & 0x40000UL) != 0 &&
+            if ((characterDataFlags & CharacterDataNewYearCardRecordFlag) != 0 &&
                 !TrySkipNewYearCardRecordGroup(payload, offset, out offset))
             {
                 return false;
             }
 
-            if ((characterDataFlags & 0x80000UL) != 0 &&
+            if ((characterDataFlags & CharacterDataQuestExRecordFlag) != 0 &&
                 !TrySkipQuestExRecordGroup(payload, offset, out offset))
             {
                 return false;
@@ -1364,7 +1369,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if ((characterDataFlags & 0x200000UL) != 0 &&
+            if ((characterDataFlags & CharacterDataWildHunterInfoFlag) != 0 &&
                 characterJobId / 100 == 33)
             {
                 if ((uint)offset > payload.Length || payload.Length - offset < sizeof(byte) + (5 * sizeof(int)))
@@ -1375,13 +1380,13 @@ namespace HaCreator.MapSimulator.Managers
                 offset += sizeof(byte) + (5 * sizeof(int));
             }
 
-            if ((characterDataFlags & 0x400000UL) != 0 &&
+            if ((characterDataFlags & CharacterDataQuestCompleteRecordFlag) != 0 &&
                 !TrySkipFixedRecordGroup(payload, offset, sizeof(ushort) + sizeof(long), out offset))
             {
                 return false;
             }
 
-            if ((characterDataFlags & 0x800000UL) != 0 &&
+            if ((characterDataFlags & CharacterDataVisitorQuestRecordFlag) != 0 &&
                 !TrySkipFixedRecordGroup(payload, offset, sizeof(ushort) + sizeof(ushort), out offset))
             {
                 return false;

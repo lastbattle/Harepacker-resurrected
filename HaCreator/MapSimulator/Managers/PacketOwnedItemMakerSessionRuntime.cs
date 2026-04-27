@@ -592,6 +592,19 @@ namespace HaCreator.MapSimulator.Managers
                             hasDisassemblyTargetRemovals,
                             additionEncoding,
                             removalEncoding,
+                            useByteCount: false,
+                            out disassemblyTargetAdditions,
+                            out disassemblyTargetRemovals,
+                            out hiddenRecipeAdditions,
+                            out hiddenRecipeRemovals,
+                            out clearsHiddenRecipes)
+                        && !TryDecodeCompactDeltaListsAndHiddenTailWithEncodings(
+                            payload,
+                            hasDisassemblyTargetAdditions,
+                            hasDisassemblyTargetRemovals,
+                            additionEncoding,
+                            removalEncoding,
+                            useByteCount: true,
                             out disassemblyTargetAdditions,
                             out disassemblyTargetRemovals,
                             out hiddenRecipeAdditions,
@@ -615,6 +628,7 @@ namespace HaCreator.MapSimulator.Managers
             bool hasDisassemblyTargetRemovals,
             DisassemblyTargetEntryEncoding additionEncoding,
             DisassemblyTargetEntryEncoding removalEncoding,
+            bool useByteCount,
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
@@ -637,7 +651,8 @@ namespace HaCreator.MapSimulator.Managers
                         additionEncoding,
                         requirePositiveItemId: false,
                         "Maker-session compact delta disassembly target addition",
-                        out disassemblyTargetAdditions))
+                        out disassemblyTargetAdditions,
+                        useByteCount))
                 {
                     return false;
                 }
@@ -648,7 +663,8 @@ namespace HaCreator.MapSimulator.Managers
                         removalEncoding,
                         requirePositiveItemId: false,
                         "Maker-session compact delta disassembly target removal",
-                        out disassemblyTargetRemovals))
+                        out disassemblyTargetRemovals,
+                        useByteCount))
                 {
                     return false;
                 }

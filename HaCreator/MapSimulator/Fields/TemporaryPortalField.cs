@@ -2601,6 +2601,11 @@ namespace HaCreator.MapSimulator.Fields
                 return RemoteTownPortalVisualPhase.Stable;
             }
 
+            if (packetState == 0)
+            {
+                return RemoteTownPortalVisualPhase.Opening;
+            }
+
             return RemoteTownPortalVisualPhase.Stable;
         }
 

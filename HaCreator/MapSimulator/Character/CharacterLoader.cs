@@ -82,6 +82,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<MorphActionCacheKey, CharacterAnimation> _morphActionCache = new();
         private readonly Dictionary<int, PortableChair> _portableChairCache = new();
         private readonly Dictionary<int, ItemEffectAnimationSet> _itemEffectCache = new();
+        private readonly Dictionary<int, ItemEffectAnimationSet> _activeEffectItemEffectCache = new();
         private readonly Dictionary<int, ItemEffectAnimationSet> _completedSetEffectCache = new();
         private readonly Dictionary<RemoteRelationshipOverlayType, RelationshipTextTagStyle> _relationshipTextTagCache = new();
         private readonly Dictionary<CharacterGender, StarterAvatarRandomizationCatalog> _starterAvatarCatalogCache = new();
@@ -532,18 +533,13 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            if (frameNode is WzCanvasProperty frameCanvas)
+            if (TryResolveMorphFrameCanvas(frameNode, out WzCanvasProperty frameCanvas))
             {
-                return LoadMorphFrame(frameCanvas, frameNode, frameName, frameUol: null);
-            }
-
-            if (frameNode is WzUOLProperty frameUol)
-            {
-                WzImageProperty linkedProperty = frameUol.GetLinkedWzImageProperty();
-                if (linkedProperty is WzCanvasProperty linkedCanvas)
-                {
-                    return LoadMorphFrame(linkedCanvas, frameNode, frameName, frameUol.Value);
-                }
+                return LoadMorphFrame(
+                    frameCanvas,
+                    frameNode,
+                    frameName,
+                    (frameNode as WzUOLProperty)?.Value);
             }
 
             return null;
@@ -746,14 +742,9 @@ namespace HaCreator.MapSimulator.Character
 
                 hasCandidateImage = true;
                 candidateImage.ParseImage();
-                foreach (WzImageProperty property in candidateImage.WzProperties)
+                foreach (string publishedActionName in BuildPublishedMorphActionSet(candidateImage))
                 {
-                    if (property != null
-                        && LooksLikePublishedMorphAction(property)
-                        && !string.IsNullOrWhiteSpace(property.Name))
-                    {
-                        availableActionNames.Add(property.Name);
-                    }
+                    availableActionNames.Add(publishedActionName);
                 }
             }
 
@@ -826,6 +817,7 @@ namespace HaCreator.MapSimulator.Character
                 };
 
                 LoadPartAnimations(candidatePart, candidateImage, includeAttackActions: false);
+                ApplyPublishedMorphActionFilter(candidatePart, candidateImage);
                 if (candidatePart.IsSuperManMorph)
                 {
                     morphPart.IsSuperManMorph = true;
@@ -1076,6 +1068,56 @@ namespace HaCreator.MapSimulator.Character
             MergeMissingAnimations(targetPart, sourcePart);
         }
 
+        private static void ApplyPublishedMorphActionFilter(CharacterPart morphPart, WzObject actionSourceRoot)
+        {
+            if (morphPart == null || actionSourceRoot == null)
+            {
+                return;
+            }
+
+            HashSet<string> publishedActions = BuildPublishedMorphActionSet(actionSourceRoot);
+            morphPart.AvailableAnimations = publishedActions;
+
+            if (morphPart.Animations == null || morphPart.Animations.Count == 0)
+            {
+                return;
+            }
+
+            foreach (string actionName in morphPart.Animations.Keys.ToArray())
+            {
+                if (!publishedActions.Contains(actionName))
+                {
+                    morphPart.Animations.Remove(actionName);
+                }
+            }
+        }
+
+        private static HashSet<string> BuildPublishedMorphActionSet(WzObject actionSourceRoot)
+        {
+            var publishedActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (actionSourceRoot == null)
+            {
+                return publishedActions;
+            }
+
+            foreach (WzImageProperty property in EnumerateChildProperties(actionSourceRoot))
+            {
+                if (property != null
+                    && LooksLikePublishedMorphAction(property)
+                    && !string.IsNullOrWhiteSpace(property.Name))
+                {
+                    publishedActions.Add(property.Name);
+                }
+            }
+
+            return publishedActions;
+        }
+
+        internal static IReadOnlyCollection<string> BuildPublishedMorphActionSetForTesting(WzObject actionSourceRoot)
+        {
+            return BuildPublishedMorphActionSet(actionSourceRoot);
+        }
+
         public PortableChair LoadPortableChair(int itemId)
         {
             if (_portableChairCache.TryGetValue(itemId, out PortableChair cached))
@@ -1177,6 +1219,38 @@ namespace HaCreator.MapSimulator.Character
             return effectSet;
         }
 
+        public ItemEffectAnimationSet LoadActiveEffectItemAnimationSet(int itemId, out bool followOwner)
+        {
+            followOwner = false;
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            if (_activeEffectItemEffectCache.TryGetValue(itemId, out ItemEffectAnimationSet cached))
+            {
+                followOwner = cached.FollowOwner;
+                return cached;
+            }
+
+            WzSubProperty effectProperty = ResolveActiveEffectItemEffectProperty(itemId);
+            if (effectProperty == null)
+            {
+                return null;
+            }
+
+            followOwner = (GetIntValue(effectProperty["follow"]) ?? 0) != 0;
+            ItemEffectAnimationSet effectSet = CreateItemEffectAnimationSet(itemId, effectProperty, loop: true);
+            if (effectSet == null)
+            {
+                return null;
+            }
+
+            effectSet.FollowOwner = followOwner;
+            _activeEffectItemEffectCache[itemId] = effectSet;
+            return effectSet;
+        }
+
         public ItemEffectAnimationSet LoadNewYearCardEffectAnimationSet(
             int itemId = RelationshipOverlayClientStringPoolText.NewYearCardDefaultItemId)
         {
@@ -1216,7 +1290,10 @@ namespace HaCreator.MapSimulator.Character
             return effectSet;
         }
 
-        private ItemEffectAnimationSet CreateItemEffectAnimationSet(int itemId, WzSubProperty itemEffectProperty)
+        private ItemEffectAnimationSet CreateItemEffectAnimationSet(
+            int itemId,
+            WzSubProperty itemEffectProperty,
+            bool loop = false)
         {
             if (itemId <= 0 || itemEffectProperty == null)
             {
@@ -1230,7 +1307,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (ItemEffectLayerSource layerSource in ResolveItemEffectLayerSources(itemEffectProperty))
             {
-                PortableChairLayer layer = LoadPortableChairLayer(layerSource.LayerProperty, layerSource.LayerName, loop: false);
+                PortableChairLayer layer = LoadPortableChairLayer(layerSource.LayerProperty, layerSource.LayerName, loop);
                 if (layer == null || IsPlaceholderPortableChairLayer(layer))
                 {
                     continue;
@@ -1252,6 +1329,31 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return effectSet;
+        }
+
+        private static WzSubProperty ResolveActiveEffectItemEffectProperty(int itemId)
+        {
+            if (!InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return null;
+            }
+
+            WzImage itemImage = Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            foreach (string itemNodeName in ActiveEffectItemMotionBlurResolver.EnumerateItemNodeNames(category, imagePath, itemId))
+            {
+                if ((itemImage[itemNodeName] as WzSubProperty)?["effect"] is WzSubProperty effectProperty)
+                {
+                    return effectProperty;
+                }
+            }
+
+            return null;
         }
 
         private static WzSubProperty ResolveNewYearCardEffectProperty(int itemId)
@@ -3035,14 +3137,42 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (actionNode is WzUOLProperty actionUol
+                && actionUol.GetLinkedWzImageProperty() is WzImageProperty linkedActionNode)
+            {
+                return LooksLikePublishedMorphActionFrameContainer(linkedActionNode);
+            }
+
+            return LooksLikePublishedMorphActionFrameContainer(actionNode);
+        }
+
+        private static bool LooksLikePublishedMorphActionFrameContainer(WzImageProperty actionNode)
+        {
             foreach (KeyValuePair<string, WzImageProperty> frameEntry in EnumerateMorphFrameNodes(actionNode as WzSubProperty))
             {
-                WzImageProperty frameNode = frameEntry.Value;
-                if (frameNode is WzCanvasProperty
-                    || (frameNode as WzUOLProperty)?.LinkValue is WzCanvasProperty)
+                if (TryResolveMorphFrameCanvas(frameEntry.Value, out _))
                 {
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveMorphFrameCanvas(WzImageProperty frameNode, out WzCanvasProperty frameCanvas)
+        {
+            frameCanvas = null;
+            if (frameNode is WzCanvasProperty directCanvas)
+            {
+                frameCanvas = directCanvas;
+                return true;
+            }
+
+            if (frameNode is WzUOLProperty frameUol
+                && frameUol.GetLinkedWzImageProperty() is WzCanvasProperty linkedCanvas)
+            {
+                frameCanvas = linkedCanvas;
+                return true;
             }
 
             return false;

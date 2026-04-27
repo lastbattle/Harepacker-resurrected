@@ -9,7 +9,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum QuestRewardRaiseSourceKind
     {
         QuestWindow,
-        NpcOverlay
+        NpcOverlay,
+        InventoryItem
     }
 
     internal sealed class QuestRewardRaiseState
@@ -22,6 +23,9 @@ namespace HaCreator.MapSimulator.Interaction
         public int OwnerItemId { get; set; }
         public int QrData { get; set; }
         public int MaxDropCount { get; set; } = 1;
+        public string UiData { get; set; } = string.Empty;
+        public int IncrementExpUnit { get; set; }
+        public int Grade { get; set; }
         public Point WindowPosition { get; set; }
         public QuestRewardRaiseWindowMode WindowMode { get; set; }
         public QuestRewardRaiseWindowMode DisplayMode { get; set; }
@@ -218,6 +222,9 @@ namespace HaCreator.MapSimulator.Interaction
                 OwnerItemId = OwnerItemId,
                 QrData = QrData,
                 MaxDropCount = MaxDropCount,
+                UiData = UiData,
+                IncrementExpUnit = IncrementExpUnit,
+                Grade = Grade,
                 WindowPosition = WindowPosition,
                 WindowMode = WindowMode,
                 DisplayMode = DisplayMode,

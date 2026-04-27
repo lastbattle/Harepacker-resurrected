@@ -1348,6 +1348,23 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            OneADayOwnerState.PlateButtonState plateButton = ResolveOneADayPlateButtonFromMouse(state, absoluteBounds, mouseState.Position);
+            if (plateButton != null)
+            {
+                if (_oneADaySelectorIndex == 1 && !string.Equals(plateButton.CommandKey, "BtClose", StringComparison.Ordinal))
+                {
+                    _oneADayPlateFocusIndex = Math.Clamp(
+                        plateButton.SlotIndex,
+                        0,
+                        Math.Max(0, Math.Max(1, state.PreviousOfferCount) - 1));
+                }
+
+                ApplyOneADayButtonState(plateButton.CommandKey);
+                ApplyStatusMessage(InvokeExternalAction(plateButton.CommandKey));
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
             Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 38, Math.Max(80, absoluteBounds.Width - 24), 56);
             if (!rowsBounds.Contains(mouseState.Position))
             {
@@ -1378,6 +1395,46 @@ namespace HaCreator.MapSimulator.UI
 
             mouseCursor?.SetMouseCursorMovedToClickableItem();
             return true;
+        }
+
+        private static OneADayOwnerState.PlateButtonState ResolveOneADayPlateButtonFromMouse(
+            OneADayOwnerState state,
+            Rectangle absoluteBounds,
+            Point mousePosition)
+        {
+            if (state?.PlateButtons == null || state.PlateButtons.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (OneADayOwnerState.PlateButtonState button in state.PlateButtons)
+            {
+                if (button == null
+                    || !button.IsEnabled
+                    || string.IsNullOrWhiteSpace(button.CommandKey)
+                    || button.Width <= 0
+                    || button.Height <= 0)
+                {
+                    continue;
+                }
+
+                Rectangle buttonBounds = new(
+                    absoluteBounds.X + button.Position.X - (button.Width / 2),
+                    absoluteBounds.Y + button.Position.Y - (button.Height / 2),
+                    button.Width,
+                    button.Height);
+                Rectangle topLeftButtonBounds = new(
+                    absoluteBounds.X + button.Position.X,
+                    absoluteBounds.Y + button.Position.Y,
+                    button.Width,
+                    button.Height);
+                if (buttonBounds.Contains(mousePosition) || topLeftButtonBounds.Contains(mousePosition))
+                {
+                    return button;
+                }
+            }
+
+            return null;
         }
 
         private static string ResolveOneADayActionKeyFromMouse(OneADayOwnerState state, Rectangle absoluteBounds, Point mousePosition)
@@ -1959,7 +2016,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Enter))
             {
-                string actionKey = "BtJoin";
+                string actionKey = ResolveOneADayEnterActionKey(state);
                 ApplyOneADayButtonState(actionKey);
                 ApplyStatusMessage(InvokeExternalAction(actionKey));
             }
@@ -1986,6 +2043,31 @@ namespace HaCreator.MapSimulator.UI
                 ApplyOneADayButtonState("BtClose");
                 ApplyStatusMessage(InvokeExternalAction("BtClose"));
             }
+        }
+
+        private string ResolveOneADayEnterActionKey(OneADayOwnerState state)
+        {
+            if (_oneADayShortcutHelpActive)
+            {
+                return "BtClose";
+            }
+
+            if (_oneADaySelectorIndex == 1 && HasOneADayPreviousLane(state))
+            {
+                return "BtJoin";
+            }
+
+            if (state?.PlateButtons != null)
+            {
+                OneADayOwnerState.PlateButtonState focusedButton = state.PlateButtons
+                    .FirstOrDefault(button => button != null && button.IsEnabled && button.IsFocused && !string.IsNullOrWhiteSpace(button.CommandKey));
+                if (focusedButton != null)
+                {
+                    return focusedButton.CommandKey;
+                }
+            }
+
+            return _oneADayPlateFocusIndex <= 0 ? "BtBuy" : "BtItemBox";
         }
 
         private void StepLockerSelector(int delta)

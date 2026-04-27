@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClassCompetitionUrlTemplateStringPoolId = 0x11DC;
         private const int PacketOwnedClassCompetitionMaxRemotePageLines = 12;
         private const int PacketOwnedClassCompetitionMaxRemoteLadderLines = 12;
+        internal const int PacketOwnedQuestDeliveryTalkToNpcOpcode = 63;
         private const int PacketOwnedDeliveryUniqueModelessNoticeStringPoolId = 0x98;
         private const int PacketOwnedQuestGuideUnavailableNoticeStringPoolId = 0x19EA;
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
@@ -1685,28 +1686,24 @@ namespace HaCreator.MapSimulator
                 sourceContext: "packet-authored quest-delivery owner",
                 localHandoff: () =>
                 {
-                    OpenPacketQuestDeliveryNpcInteraction(entry);
-                    return $"Opened packet-authored quest delivery interaction for {entry.Title}.";
+                    return OpenPacketQuestDeliveryNpcInteraction(entry);
                 },
                 resolvedInventoryType: entry.DeliveryCashInventoryType,
                 resolvedRuntimeSlotIndex: entry.DeliveryCashItemRuntimeSlotIndex,
                 resolvedClientSlotIndex: entry.DeliveryCashItemClientSlotIndex));
         }
 
-        private void OpenPacketQuestDeliveryNpcInteraction(QuestDeliveryWindow.DeliveryEntry entry)
+        private string OpenPacketQuestDeliveryNpcInteraction(QuestDeliveryWindow.DeliveryEntry entry)
         {
             if (entry == null || _npcInteractionOverlay == null)
             {
-                return;
+                return "Packet-authored delivery could not open because the local NPC interaction owner is unavailable.";
             }
 
             NpcItem targetNpc = CreateNpcPreview(entry.TargetNpcId, includeTooltips: false) ?? FindNpcById(entry.TargetNpcId);
             if (targetNpc?.NpcInstance?.NpcInfo == null)
             {
-                _chat?.AddErrorMessage(
-                    $"Packet-authored delivery could not resolve NPC template #{entry.TargetNpcId}, so the created-NPC interaction stayed closed.",
-                    currTickCount);
-                return;
+                return $"Packet-authored delivery could not resolve NPC template #{entry.TargetNpcId}, so the created-NPC interaction stayed closed.";
             }
 
             string npcName = targetNpc?.NpcInstance?.NpcInfo?.StringName;
@@ -1733,9 +1730,10 @@ namespace HaCreator.MapSimulator
                     npcName);
             if (interactionState == null)
             {
-                return;
+                return $"Packet-authored delivery could not build a single-quest interaction for quest #{entry.QuestId}.";
             }
 
+            string talkToNpcDispatchStatus = MirrorPacketOwnedQuestDeliveryTalkToNpcRequest(entry);
             _gameState.EnterDirectionMode();
             _scriptedDirectionModeOwnerActive = true;
             _activeNpcInteractionNpc = targetNpc;
@@ -1748,6 +1746,82 @@ namespace HaCreator.MapSimulator
             {
                 questDeliveryWindow.Hide();
             }
+
+            return $"Opened packet-authored quest delivery interaction for {entry.Title}. {talkToNpcDispatchStatus}";
+        }
+
+        private string MirrorPacketOwnedQuestDeliveryTalkToNpcRequest(QuestDeliveryWindow.DeliveryEntry entry)
+        {
+            if (entry == null || entry.TargetNpcId <= 0)
+            {
+                return "CUserLocal::TalkToNpc request was skipped because the selected delivery entry has no NPC template.";
+            }
+
+            Vector2 localPosition = _playerManager?.Player?.Position ?? Vector2.Zero;
+            int localX = (int)Math.Round(localPosition.X);
+            int localY = (int)Math.Round(localPosition.Y);
+            byte[] payload = BuildPacketOwnedQuestDeliveryTalkToNpcPayload(entry.TargetNpcId, localX, localY);
+            string payloadHex = Convert.ToHexString(payload);
+            short encodedX = ClampPacketOwnedQuestDeliveryTalkCoordinate(localX);
+            short encodedY = ClampPacketOwnedQuestDeliveryTalkCoordinate(localY);
+            string dispatchPrefix =
+                $"Mirrored CUIQuestDelivery OK -> CUserLocal::TalkToNpc opcode {PacketOwnedQuestDeliveryTalkToNpcOpcode} " +
+                $"for NPC {entry.TargetNpcId}, quest {entry.QuestId}, pos=({encodedX},{encodedY}) [{payloadHex}]";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                    PacketOwnedQuestDeliveryTalkToNpcOpcode,
+                    payload,
+                    out string dispatchStatus))
+            {
+                return $"{dispatchPrefix} through the live official-session bridge. {dispatchStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                    PacketOwnedQuestDeliveryTalkToNpcOpcode,
+                    payload,
+                    out string outboxStatus))
+            {
+                return $"{dispatchPrefix} through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedQuestDeliveryTalkToNpcOpcode,
+                    payload,
+                    out deferredBridgeStatus))
+            {
+                return $"{dispatchPrefix} queued for deferred live official-session injection after immediate delivery was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                    PacketOwnedQuestDeliveryTalkToNpcOpcode,
+                    payload,
+                    out string queuedStatus))
+            {
+                return $"{dispatchPrefix} queued for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"{dispatchPrefix} stayed simulator-owned because the live bridge, deferred bridge, outbox, and queued outbox paths were unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus}";
+        }
+
+        internal static byte[] BuildPacketOwnedQuestDeliveryTalkToNpcPayloadForTests(int npcTemplateId, int localX, int localY)
+        {
+            return BuildPacketOwnedQuestDeliveryTalkToNpcPayload(npcTemplateId, localX, localY);
+        }
+
+        private static byte[] BuildPacketOwnedQuestDeliveryTalkToNpcPayload(int npcTemplateId, int localX, int localY)
+        {
+            byte[] payload = new byte[sizeof(int) + sizeof(short) + sizeof(short)];
+            Buffer.BlockCopy(BitConverter.GetBytes(npcTemplateId), 0, payload, 0, sizeof(int));
+            Buffer.BlockCopy(BitConverter.GetBytes(ClampPacketOwnedQuestDeliveryTalkCoordinate(localX)), 0, payload, sizeof(int), sizeof(short));
+            Buffer.BlockCopy(BitConverter.GetBytes(ClampPacketOwnedQuestDeliveryTalkCoordinate(localY)), 0, payload, sizeof(int) + sizeof(short), sizeof(short));
+            return payload;
+        }
+
+        private static short ClampPacketOwnedQuestDeliveryTalkCoordinate(int coordinate)
+        {
+            return (short)Math.Clamp(coordinate, short.MinValue, short.MaxValue);
         }
 
         private static NpcInteractionState ApplyPacketOwnedQuestDeliveryPresentation(NpcInteractionState interactionState, string npcName)
@@ -8242,12 +8316,34 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyConsumeCashItemUseRequestPayload(byte[] payload, out string message)
         {
+            if (ShouldRouteConsumeCashItemUseRequestToVega(payload, out _))
+            {
+                return TryApplyPacketOwnedVegaLaunchPayload(payload, out message);
+            }
+
             if (ShouldRouteConsumeCashItemUseRequestToFieldMessageBox(payload, out _))
             {
                 return TryApplyFieldMessageBoxConsumeCashItemUseRequestPayload(payload, out message);
             }
 
             return TryApplyMapleTvConsumeCashItemUseRequestPayload(payload, out message);
+        }
+
+        internal static bool ShouldRouteConsumeCashItemUseRequestToVega(byte[] payload, out int itemId)
+        {
+            itemId = 0;
+            if (!TryDecodeVegaLaunchPayload(
+                    payload,
+                    fallbackModifierItemId: 0,
+                    fallbackInventoryType: InventoryType.NONE,
+                    fallbackSlotIndex: -1,
+                    out VegaLaunchPayload launchPayload))
+            {
+                return false;
+            }
+
+            itemId = launchPayload.ModifierItemId;
+            return ItemUpgradeUI.IsVegaSpellConsumable(itemId);
         }
 
         internal static bool ShouldRouteConsumeCashItemUseRequestToFieldMessageBox(byte[] payload, out int itemId)
@@ -9350,6 +9446,34 @@ namespace HaCreator.MapSimulator
                     return rejectedByClientLengthMessage;
                 }
 
+                bool rawBufferLoaded = TryLoadPacketOwnedRadioClientRawBuffer(
+                    trackResolution.AudioProperty,
+                    out string rawBufferFailureReason);
+                PacketOwnedRadioMmsPlayPlan mmsPlayPlan = ResolvePacketOwnedRadioMmsPlayPlan(
+                    trackPropertyLoaded: true,
+                    soundObjectLoaded: trackResolution.AudioProperty != null,
+                    rawBufferLoaded: rawBufferLoaded,
+                    msLength: clientTrackDurationMs,
+                    requestedPositionMs: startOffsetMs,
+                    currentTick: Environment.TickCount,
+                    rawBufferFailureReason: rawBufferFailureReason);
+                _lastPacketOwnedRadioClientTrackPropertyLoaded = mmsPlayPlan.TrackPropertyLoaded;
+                _lastPacketOwnedRadioClientSoundObjectLoaded = mmsPlayPlan.SoundObjectLoaded;
+                _lastPacketOwnedRadioClientRawBufferLoaded = mmsPlayPlan.RawBufferLoaded;
+                _lastPacketOwnedRadioClientMmsPlaySucceeded = mmsPlayPlan.Started;
+                _lastPacketOwnedRadioClientMmsPlayFailureReason = mmsPlayPlan.FailureReason;
+                _lastPacketOwnedRadioClientHandleStatus = mmsPlayPlan.HandleStatus;
+                if (!mmsPlayPlan.Started)
+                {
+                    RollBackPacketOwnedRadioScheduleContextAfterFailedStart(scheduleSource, "mms-play-failed");
+                    string mmsPlayRejectedMessage =
+                        $"Packet-owned radio track '{normalizedTrackDescriptor}' could not start through the client-shaped MMS_Play path: {mmsPlayPlan.FailureReason}";
+                    _lastPacketOwnedRadioStatusMessage = mmsPlayRejectedMessage;
+                    NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
+                    ShowUtilityFeedbackMessage(mmsPlayRejectedMessage);
+                    return mmsPlayRejectedMessage;
+                }
+
                 _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false, startOffsetMs);
                 ResolvePacketOwnedRadioRealizedPlaybackWindow(
                     _packetOwnedRadioAudio,
@@ -9623,6 +9747,121 @@ namespace HaCreator.MapSimulator
                 : PacketOwnedRadioClientHandleStatus.Unloaded;
         }
 
+        internal static PacketOwnedRadioMmsPlayPlan ResolvePacketOwnedRadioMmsPlayPlan(
+            bool trackPropertyLoaded,
+            bool soundObjectLoaded,
+            bool rawBufferLoaded,
+            int msLength,
+            int requestedPositionMs,
+            int currentTick,
+            string rawBufferFailureReason = null)
+        {
+            int normalizedLength = Math.Max(0, msLength);
+            int normalizedPosition = Math.Max(0, requestedPositionMs);
+            if (!trackPropertyLoaded)
+            {
+                return new PacketOwnedRadioMmsPlayPlan(
+                    TrackPropertyLoaded: false,
+                    SoundObjectLoaded: false,
+                    RawBufferLoaded: false,
+                    Started: false,
+                    MsLength: normalizedLength,
+                    MsPosition: normalizedPosition,
+                    LastUpdateTick: int.MinValue,
+                    HandleStatus: PacketOwnedRadioClientHandleStatus.None,
+                    FailureReason: "CRadioManager::Play could not resolve the StringPool[0x1501] track property.");
+            }
+
+            if (!soundObjectLoaded)
+            {
+                return new PacketOwnedRadioMmsPlayPlan(
+                    TrackPropertyLoaded: true,
+                    SoundObjectLoaded: false,
+                    RawBufferLoaded: false,
+                    Started: false,
+                    MsLength: normalizedLength,
+                    MsPosition: normalizedPosition,
+                    LastUpdateTick: int.MinValue,
+                    HandleStatus: PacketOwnedRadioClientHandleStatus.Loaded,
+                    FailureReason: "CRadioManager::MMS_Play could not query the StringPool[0x1502] IWzSound object.");
+            }
+
+            if (!rawBufferLoaded)
+            {
+                string failureReason = string.IsNullOrWhiteSpace(rawBufferFailureReason)
+                    ? "CRadioManager::MMS_Play could not read a raw IWzSound buffer."
+                    : rawBufferFailureReason.Trim();
+                return new PacketOwnedRadioMmsPlayPlan(
+                    TrackPropertyLoaded: true,
+                    SoundObjectLoaded: true,
+                    RawBufferLoaded: false,
+                    Started: false,
+                    MsLength: normalizedLength,
+                    MsPosition: normalizedPosition,
+                    LastUpdateTick: int.MinValue,
+                    HandleStatus: PacketOwnedRadioClientHandleStatus.Loaded,
+                    FailureReason: failureReason);
+            }
+
+            if (normalizedLength < normalizedPosition)
+            {
+                return new PacketOwnedRadioMmsPlayPlan(
+                    TrackPropertyLoaded: true,
+                    SoundObjectLoaded: true,
+                    RawBufferLoaded: true,
+                    Started: false,
+                    MsLength: normalizedLength,
+                    MsPosition: normalizedPosition,
+                    LastUpdateTick: int.MinValue,
+                    HandleStatus: PacketOwnedRadioClientHandleStatus.Unloaded,
+                    FailureReason: $"CRadioManager::MMS_Play rejected ms_position {normalizedPosition} because AIL_quick_ms_length returned {normalizedLength}.");
+            }
+
+            int lastUpdateTick = HasPacketOwnedRadioClientTrackDuration(normalizedLength)
+                ? ResolvePacketOwnedRadioMmsLastUpdateTick(currentTick, normalizedPosition, normalizedLength)
+                : int.MinValue;
+            PacketOwnedRadioClientHandleStatus handleStatus = ResolvePacketOwnedRadioClientHandleStatusAfterPlay(
+                normalizedPosition,
+                normalizedLength);
+            return new PacketOwnedRadioMmsPlayPlan(
+                TrackPropertyLoaded: true,
+                SoundObjectLoaded: true,
+                RawBufferLoaded: true,
+                Started: true,
+                MsLength: normalizedLength,
+                MsPosition: normalizedPosition,
+                LastUpdateTick: lastUpdateTick,
+                HandleStatus: handleStatus,
+                FailureReason: string.Empty);
+        }
+
+        private static bool TryLoadPacketOwnedRadioClientRawBuffer(WzBinaryProperty audioProperty, out string failureReason)
+        {
+            failureReason = string.Empty;
+            if (audioProperty == null)
+            {
+                failureReason = "CRadioManager::MMS_Play could not query the StringPool[0x1502] IWzSound object.";
+                return false;
+            }
+
+            try
+            {
+                byte[] rawBuffer = audioProperty.GetBytes(false);
+                if (rawBuffer == null || rawBuffer.Length == 0)
+                {
+                    failureReason = "CRadioManager::MMS_Play received an empty IWzSound raw buffer.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                failureReason = $"CRadioManager::MMS_Play raw IWzSound buffer load failed: {ex.Message}";
+                return false;
+            }
+        }
+
         internal static bool ShouldCompletePacketOwnedRadioSchedule(
             int currentTickCount,
             int expectedStopTick,
@@ -9788,6 +10027,11 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioClientPlaybackPositionMs = 0;
             _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusAfterStop(
                 _lastPacketOwnedRadioClientHandleStatus);
+            _lastPacketOwnedRadioClientTrackPropertyLoaded = false;
+            _lastPacketOwnedRadioClientSoundObjectLoaded = false;
+            _lastPacketOwnedRadioClientRawBufferLoaded = false;
+            _lastPacketOwnedRadioClientMmsPlaySucceeded = false;
+            _lastPacketOwnedRadioClientMmsPlayFailureReason = completed ? "completed" : "stopped";
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -10139,7 +10383,14 @@ namespace HaCreator.MapSimulator
 
         private string DescribePacketOwnedRadioAudioPipeline()
         {
-            return $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => buffer => AIL_quick_load_mem / ms_length / set_ms_position / play; simulator now mirrors the client handle status as {_lastPacketOwnedRadioClientHandleStatus} and reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
+            string started = _lastPacketOwnedRadioClientMmsPlaySucceeded ? "started" : "not-started";
+            string failure = string.IsNullOrWhiteSpace(_lastPacketOwnedRadioClientMmsPlayFailureReason)
+                ? "none"
+                : _lastPacketOwnedRadioClientMmsPlayFailureReason;
+            return
+                $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / play; " +
+                $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, failure={failure}; " +
+                "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }
 
         private string DescribePacketOwnedRadioUpdateScheduleState()
@@ -13608,7 +13859,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_passiveTransferRequestPending)
+            if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForHorizontalOnKeyDown(
+                    leftKeyPressed: releaseKeyPressed,
+                    rightKeyPressed: false))
+            {
+                StopSkillMacroForHandleUpKeyDown();
+            }
+
+            if (PassiveTransferFieldReadinessEvaluator.ShouldCancelQueuedRetryOnHorizontalKeyDown(
+                    _passiveTransferRequestPending,
+                    leftKeyPressed: releaseKeyPressed,
+                    rightKeyPressed: false))
             {
                 ClearPassiveTransferRequest();
             }
@@ -17027,6 +17288,12 @@ namespace HaCreator.MapSimulator
             }
 
             remaining = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
+            if (TryDecodeRawDeliveryQuestIdsWithOptionalType(reader, sizeof(int), out questIds)
+                || TryDecodeRawDeliveryQuestIdsWithOptionalType(reader, sizeof(short), out questIds))
+            {
+                return questIds;
+            }
+
             if (remaining % sizeof(int) == 0)
             {
                 while (reader.BaseStream.Position < reader.BaseStream.Length)
@@ -17051,6 +17318,90 @@ namespace HaCreator.MapSimulator
             }
 
             return questIds;
+        }
+
+        private static bool TryDecodeRawDeliveryQuestIdsWithOptionalType(
+            BinaryReader reader,
+            int entryWidth,
+            out List<int> questIds)
+        {
+            questIds = new List<int>();
+            if (reader == null || entryWidth <= 0)
+            {
+                return false;
+            }
+
+            long listStart = reader.BaseStream.Position;
+            int remaining = (int)(reader.BaseStream.Length - listStart);
+            foreach (int trailingTypeWidth in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+            {
+                if (remaining <= trailingTypeWidth)
+                {
+                    continue;
+                }
+
+                int listBytes = remaining - trailingTypeWidth;
+                if (listBytes <= 0 || listBytes % entryWidth != 0)
+                {
+                    continue;
+                }
+
+                long trailingTypePosition = listStart + listBytes;
+                if (!IsDeliveryTypeDiscriminatorAt(reader, trailingTypePosition, trailingTypeWidth))
+                {
+                    continue;
+                }
+
+                reader.BaseStream.Position = listStart;
+                int entryCount = listBytes / entryWidth;
+                for (int i = 0; i < entryCount; i++)
+                {
+                    int questId = entryWidth == sizeof(int)
+                        ? reader.ReadInt32()
+                        : reader.ReadUInt16();
+                    if (questId > 0)
+                    {
+                        questIds.Add(questId);
+                    }
+                }
+
+                return true;
+            }
+
+            reader.BaseStream.Position = listStart;
+            return false;
+        }
+
+        private static bool IsDeliveryTypeDiscriminatorAt(BinaryReader reader, long position, int width)
+        {
+            if (reader == null || position < 0)
+            {
+                return false;
+            }
+
+            long restorePosition = reader.BaseStream.Position;
+            try
+            {
+                if (position > reader.BaseStream.Length - width)
+                {
+                    return false;
+                }
+
+                reader.BaseStream.Position = position;
+                int rawType = width switch
+                {
+                    sizeof(byte) => reader.ReadByte(),
+                    sizeof(short) => reader.ReadUInt16(),
+                    sizeof(int) => reader.ReadInt32(),
+                    _ => int.MinValue
+                };
+
+                return rawType is >= 0 and <= 2;
+            }
+            finally
+            {
+                reader.BaseStream.Position = restorePosition;
+            }
         }
 
         private static bool TryDecodePacketOwnedDeliveryType(BinaryReader reader, out QuestDetailDeliveryType deliveryType, out string error)

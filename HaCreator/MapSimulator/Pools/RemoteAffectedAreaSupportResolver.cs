@@ -1445,7 +1445,10 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.AbnormalStatusResistance > 0
                    || levelData.ElementalResistance > 0
                    || levelData.BossDamageRate > 0
-                   || levelData.IgnoreDefenseRate > 0;
+                   || levelData.IgnoreDefenseRate > 0
+                   || levelData.U != 0
+                   || levelData.V != 0
+                   || levelData.W != 0;
         }
 
         private static bool HasStatusCleansingMetadata(SkillData skill)

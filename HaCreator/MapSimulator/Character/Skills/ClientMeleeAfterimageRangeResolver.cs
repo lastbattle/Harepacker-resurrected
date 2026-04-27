@@ -34,6 +34,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : rawActionCode.Value;
         }
 
+        internal static IEnumerable<string> EnumerateRangeLookupActionNames(int skillId, int? rawActionCode)
+        {
+            int? resolvedRawActionCode = ResolveRawActionCodeForRange(skillId, rawActionCode);
+            if (!resolvedRawActionCode.HasValue
+                || !rawActionCode.HasValue
+                || resolvedRawActionCode.Value == rawActionCode.Value
+                || !CharacterPart.TryGetActionStringFromCode(resolvedRawActionCode.Value, out string resolvedActionName)
+                || string.IsNullOrWhiteSpace(resolvedActionName))
+            {
+                yield break;
+            }
+
+            yield return resolvedActionName;
+        }
+
         public static bool TryResolveRangeOverride(int skillId, int? rawActionCode, bool facingRight, out Rectangle range)
         {
             range = Rectangle.Empty;

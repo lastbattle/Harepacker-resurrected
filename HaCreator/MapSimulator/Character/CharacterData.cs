@@ -1824,6 +1824,7 @@ namespace HaCreator.MapSimulator.Character
     public sealed class ItemEffectAnimationSet
     {
         public int ItemId { get; set; }
+        public bool FollowOwner { get; set; }
         public List<PortableChairLayer> OwnerLayers { get; set; } = new();
         public List<PortableChairLayer> SharedLayers { get; set; } = new();
 
@@ -1866,6 +1867,12 @@ namespace HaCreator.MapSimulator.Character
     }
 
     #endregion
+
+    public readonly record struct RemotePetProfileSnapshot(
+        int ItemId,
+        int Level,
+        int Closeness,
+        int Fullness);
 
     #region Character Build
 
@@ -1936,6 +1943,7 @@ namespace HaCreator.MapSimulator.Character
         public CharacterPart WeaponSticker { get; set; }
         public PortableChair ActivePortableChair { get; set; }
         public IReadOnlyList<int> RemotePetItemIds { get; set; } = Array.Empty<int>();
+        public IReadOnlyList<RemotePetProfileSnapshot> RemotePetProfiles { get; set; } = Array.Empty<RemotePetProfileSnapshot>();
         public Func<int, CharacterPart> EquipmentPartLoader { get; set; }
 
         // Equipment slots
@@ -1968,11 +1976,29 @@ namespace HaCreator.MapSimulator.Character
         public bool HasAuthoritativeProfileWorldRank { get; set; } = true;
         public bool HasAuthoritativeProfileJobRank { get; set; } = true;
         public bool HasAuthoritativeProfileRide { get; set; } = true;
+        public bool? IsProfileRidingInField { get; set; }
+        public int ProfileRideVehicleItemId { get; set; }
+        public int ProfileRideSaddleItemId { get; set; }
         public bool HasAuthoritativeProfileTraits { get; set; } = true;
         public bool HasAuthoritativeProfilePendantSlot { get; set; } = true;
         public bool HasAuthoritativeProfilePocketSlot { get; set; } = true;
         public bool HasAuthoritativeProfileMedal { get; set; } = true;
         public bool HasAuthoritativeProfileCollection { get; set; } = true;
+        public int ProfileMonsterBookOwnedCardTypes { get; set; }
+        public int ProfileMonsterBookTotalCardTypes { get; set; }
+        public int ProfileMonsterBookCompletedCardTypes { get; set; }
+        public int ProfileMonsterBookTotalOwnedCopies { get; set; }
+        public int ProfileMakerGenericLevel { get; set; } = 1;
+        public int ProfileMakerGloveLevel { get; set; } = 1;
+        public int ProfileMakerShoeLevel { get; set; } = 1;
+        public int ProfileMakerToyLevel { get; set; } = 1;
+        public int ProfileMakerGenericProgress { get; set; }
+        public int ProfileMakerGloveProgress { get; set; }
+        public int ProfileMakerShoeProgress { get; set; }
+        public int ProfileMakerToyProgress { get; set; }
+        public int ProfileMakerSuccessfulCrafts { get; set; }
+        public int ProfileMakerDiscoveredRecipeCount { get; set; }
+        public int ProfileMakerUnlockedHiddenRecipeCount { get; set; }
         public bool HasAuthoritativeProfileMarriage { get; set; }
         public bool IsProfileMarried { get; set; }
         public string GuildName { get; set; } = string.Empty;
@@ -3255,6 +3281,7 @@ namespace HaCreator.MapSimulator.Character
                 WeaponSticker = WeaponSticker,
                 ActivePortableChair = ActivePortableChair,
                 RemotePetItemIds = RemotePetItemIds != null ? new List<int>(RemotePetItemIds) : Array.Empty<int>(),
+                RemotePetProfiles = RemotePetProfiles != null ? new List<RemotePetProfileSnapshot>(RemotePetProfiles) : Array.Empty<RemotePetProfileSnapshot>(),
                 EquipmentPartLoader = EquipmentPartLoader,
                 Equipment = CloneEquipmentLayer(Equipment),
                 HiddenEquipment = CloneEquipmentLayer(HiddenEquipment),
@@ -3279,11 +3306,29 @@ namespace HaCreator.MapSimulator.Character
                 HasAuthoritativeProfileWorldRank = HasAuthoritativeProfileWorldRank,
                 HasAuthoritativeProfileJobRank = HasAuthoritativeProfileJobRank,
                 HasAuthoritativeProfileRide = HasAuthoritativeProfileRide,
+                IsProfileRidingInField = IsProfileRidingInField,
+                ProfileRideVehicleItemId = ProfileRideVehicleItemId,
+                ProfileRideSaddleItemId = ProfileRideSaddleItemId,
                 HasAuthoritativeProfileTraits = HasAuthoritativeProfileTraits,
                 HasAuthoritativeProfilePendantSlot = HasAuthoritativeProfilePendantSlot,
                 HasAuthoritativeProfilePocketSlot = HasAuthoritativeProfilePocketSlot,
                 HasAuthoritativeProfileMedal = HasAuthoritativeProfileMedal,
                 HasAuthoritativeProfileCollection = HasAuthoritativeProfileCollection,
+                ProfileMonsterBookOwnedCardTypes = ProfileMonsterBookOwnedCardTypes,
+                ProfileMonsterBookTotalCardTypes = ProfileMonsterBookTotalCardTypes,
+                ProfileMonsterBookCompletedCardTypes = ProfileMonsterBookCompletedCardTypes,
+                ProfileMonsterBookTotalOwnedCopies = ProfileMonsterBookTotalOwnedCopies,
+                ProfileMakerGenericLevel = ProfileMakerGenericLevel,
+                ProfileMakerGloveLevel = ProfileMakerGloveLevel,
+                ProfileMakerShoeLevel = ProfileMakerShoeLevel,
+                ProfileMakerToyLevel = ProfileMakerToyLevel,
+                ProfileMakerGenericProgress = ProfileMakerGenericProgress,
+                ProfileMakerGloveProgress = ProfileMakerGloveProgress,
+                ProfileMakerShoeProgress = ProfileMakerShoeProgress,
+                ProfileMakerToyProgress = ProfileMakerToyProgress,
+                ProfileMakerSuccessfulCrafts = ProfileMakerSuccessfulCrafts,
+                ProfileMakerDiscoveredRecipeCount = ProfileMakerDiscoveredRecipeCount,
+                ProfileMakerUnlockedHiddenRecipeCount = ProfileMakerUnlockedHiddenRecipeCount,
                 HasAuthoritativeProfileMarriage = HasAuthoritativeProfileMarriage,
                 IsProfileMarried = IsProfileMarried,
                 GuildName = GuildName,

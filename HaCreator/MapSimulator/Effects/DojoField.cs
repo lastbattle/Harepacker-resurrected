@@ -857,10 +857,10 @@ namespace HaCreator.MapSimulator.Effects
                 return (-1, string.Empty);
             }
 
-            foreach (PortalInstance portal in portals)
+            PortalInstance[] portalList = portals.Where(static portal => portal != null).ToArray();
+            foreach (PortalInstance portal in portalList)
             {
-                if (portal == null
-                    || !string.Equals(portal.script, "dojang_next", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(portal.script, "dojang_next", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -882,7 +882,44 @@ namespace HaCreator.MapSimulator.Effects
                 }
             }
 
+            foreach (PortalInstance portal in portalList)
+            {
+                int targetMapId = NormalizeTransferMapId(portal.tm);
+                if (!IsAuthoredDojoNextFloorPortal(_mapId, portal, targetMapId))
+                {
+                    continue;
+                }
+
+                return (targetMapId, ResolveNextFloorPortalName(portal));
+            }
+
             return (-1, string.Empty);
+        }
+
+        private static bool IsAuthoredDojoNextFloorPortal(int currentMapId, PortalInstance portal, int targetMapId)
+        {
+            if (portal == null || currentMapId <= 0 || targetMapId <= 0 || targetMapId <= currentMapId)
+            {
+                return false;
+            }
+
+            if (ResolveStage(currentMapId) < 0 || ResolveStage(targetMapId) < 0)
+            {
+                return false;
+            }
+
+            string sourcePortalName = portal.pn ?? string.Empty;
+            string targetPortalName = ResolveNextFloorPortalName(portal);
+            if (!sourcePortalName.StartsWith("in", StringComparison.OrdinalIgnoreCase)
+                || !targetPortalName.StartsWith("out", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int sameStageCandidate = currentMapId + 1;
+            int nextStageCandidate = ResolveNextFloorMapIdCore(currentMapId, hasNextFloorPortal: true, HasMapImage);
+            return targetMapId == sameStageCandidate
+                || targetMapId == nextStageCandidate;
         }
         private static string ResolveNextFloorPortalName(PortalInstance portal)
         {

@@ -1230,15 +1230,11 @@ namespace HaCreator.MapSimulator.UI
                 if (marker == null)
                     continue;
 
-                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
                 Rectangle clientHoverBounds = GetClientMarkerHoverBounds(marker, minimapPoint);
-                if (!clientHoverBounds.IsEmpty)
+                if (ShouldRegisterClientPaneMarkerHoverTargetForTesting(clientHoverBounds))
                 {
                     AddHoverTarget(npc, clientHoverBounds);
-                }
-                else if (!hoverBounds.IsEmpty)
-                {
-                    AddHoverTarget(npc, hoverBounds);
                 }
             }
         }
@@ -1266,7 +1262,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Rectangle clientHoverBounds = GetClientMarkerHoverBounds(_portalMarker, minimapPoint);
-                if (!clientHoverBounds.IsEmpty)
+                if (ShouldRegisterClientPaneMarkerHoverTargetForTesting(clientHoverBounds))
                 {
                     AddHoverTarget(portal, clientHoverBounds);
                 }
@@ -1383,7 +1379,10 @@ namespace HaCreator.MapSimulator.UI
                         trackedUser.TooltipText,
                         hoverBounds))
                 {
-                    AddHoverTarget(trackedUser.TooltipText, hoverBounds, ClientHoverTargetKind.RemoteDirection);
+                    AddHoverTarget(
+                        trackedUser.TooltipText,
+                        hoverBounds,
+                        ResolveTrackedUserHoverTargetKindForTesting(isWithinMinimapImage));
                 }
             }
         }
@@ -1397,6 +1396,14 @@ namespace HaCreator.MapSimulator.UI
             return (isWithinMinimapImage || showDirectionOverlay)
                 && !hoverBounds.IsEmpty
                 && !string.IsNullOrWhiteSpace(tooltipText);
+        }
+
+        internal static ClientHoverTargetKind ResolveTrackedUserHoverTargetKindForTesting(
+            bool isWithinMinimapImage)
+        {
+            return isWithinMinimapImage
+                ? ClientHoverTargetKind.TrackedUser
+                : ClientHoverTargetKind.RemoteDirection;
         }
 
         private BaseDXDrawableItem ResolveHelperMarker(HelperMarkerType markerType)
@@ -1443,15 +1450,12 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
-                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
                 Rectangle clientHoverBounds = GetClientMarkerHoverBounds(marker, minimapPoint);
-                if (!clientHoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
+                if (ShouldRegisterClientPaneMarkerHoverTargetForTesting(clientHoverBounds)
+                    && !string.IsNullOrWhiteSpace(employee.TooltipText))
                 {
                     AddHoverTarget(employee.TooltipText, clientHoverBounds, ClientHoverTargetKind.Employee);
-                }
-                else if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
-                {
-                    AddHoverTarget(employee.TooltipText, hoverBounds, ClientHoverTargetKind.Employee);
                 }
             }
         }
@@ -1657,6 +1661,11 @@ namespace HaCreator.MapSimulator.UI
             return isWithinMinimapImage
                 ? ResolveClientMarkerHoverBoundsForTesting(markerScreenX, markerScreenY)
                 : Rectangle.Empty;
+        }
+
+        internal static bool ShouldRegisterClientPaneMarkerHoverTargetForTesting(Rectangle clientHoverBounds)
+        {
+            return !clientHoverBounds.IsEmpty;
         }
 
         private static bool IsClientNpcHoverCandidate(NpcItem npc)

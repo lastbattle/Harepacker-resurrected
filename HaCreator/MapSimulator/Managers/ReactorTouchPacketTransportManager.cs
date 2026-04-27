@@ -87,9 +87,41 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            status = "Reactor touch outbox requires the role-session bridge or local packet command path; loopback transport is retired.";
+            byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
+            int resolvedTick = ResolveCurrentTick(currentTick);
+            lock (_queueLock)
+            {
+                FlushQueuedOutboundPacketsUnsafe(resolvedTick);
+                if (_pendingOutboundPackets.Count > 0)
+                {
+                    bool queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(
+                        new PendingTouchRequest(objectId, isTouching, rawPacket, resolvedTick));
+                    if (queued)
+                    {
+                        QueuedCount++;
+                        LastQueuedObjectId = objectId;
+                        LastQueuedTouchFlag = isTouching;
+                        LastQueuedRawPacket = rawPacket;
+                        status = $"Queued packetoutraw {Convert.ToHexString(rawPacket)} behind deferred reactor touch replay cadence.";
+                    }
+                    else
+                    {
+                        status = $"packetoutraw {Convert.ToHexString(rawPacket)} is already the latest deferred reactor touch ownership state.";
+                    }
+
+                    _socketState.SetStatus(status);
+                    return true;
+                }
+
+                SentCount++;
+                LastSentObjectId = objectId;
+                LastSentTouchFlag = isTouching;
+                LastSentRawPacket = rawPacket;
+            }
+
+            status = $"Recorded packetoutraw {Convert.ToHexString(rawPacket)} for reactor touch delivery.";
             _socketState.SetStatus(status);
-            return false;
+            return true;
         }
 
         public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status, int currentTick = int.MinValue)
@@ -189,9 +221,12 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryFlushDeferredTouchRequests(int currentTick, out string status)
         {
-            status = "Reactor touch outbox deferred replay requires the role-session bridge or local packet command path; loopback transport is retired.";
+            int flushed = FlushQueuedOutboundPackets(currentTick);
+            status = flushed > 0
+                ? $"Flushed {flushed} deferred packetoutraw reactor touch request(s)."
+                : "No deferred packetoutraw reactor touch requests were due for replay yet.";
             _socketState.SetStatus(status);
-            return false;
+            return flushed > 0;
         }
 
         public void Dispose()
@@ -202,7 +237,10 @@ namespace HaCreator.MapSimulator.Managers
 
         private int FlushQueuedOutboundPackets(int currentTick)
         {
-            return 0;
+            lock (_queueLock)
+            {
+                return FlushQueuedOutboundPacketsUnsafe(currentTick);
+            }
         }
 
         private int FlushQueuedOutboundPacketsUnsafe(int currentTick)

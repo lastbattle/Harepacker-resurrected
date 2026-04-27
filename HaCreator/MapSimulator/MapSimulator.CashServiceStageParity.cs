@@ -3840,6 +3840,20 @@ namespace HaCreator.MapSimulator
             string dispatchSummary = DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText);
             string message = stageWindow.StageReceiveGiftAcceptRequest(selectedGiftIndex, normalizedReplyText, dispatchSummary);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+            if (stageWindow.TryCompletePendingReceiveGiftAcceptFromDialogReturn(
+                out string completionSummary,
+                out string ownerNotice,
+                out int nextGiftIndex))
+            {
+                ShowCashReceiveGiftFollowUpNoticeDialog(
+                    stageWindow,
+                    nextGiftIndex,
+                    ownerNotice,
+                    completionSummary);
+                _chat?.AddSystemMessage(completionSummary, currTickCount);
+                return;
+            }
+
             _chat?.AddSystemMessage(message, currTickCount);
         }
 

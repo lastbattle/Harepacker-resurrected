@@ -154,6 +154,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _debugTooltipTexture;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
+        private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, TooltipSampleUiFrame> _sampleUiFrameCache = new();
         private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
         private CharacterLoader _characterLoader;
@@ -2372,6 +2373,7 @@ namespace HaCreator.MapSimulator.UI
             string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
             Texture2D sampleTexture = ResolveInfoSampleTexture(slot.ItemId);
+            Texture2D[] iconRewardTextures = ResolveInfoIconRewardTextures(slot.ItemId);
             TooltipSampleUiFrame sampleUiFrame = sampleTexture == null
                 ? ResolveSampleUiFrame(slot.ItemId)
                 : null;
@@ -2435,8 +2437,15 @@ namespace HaCreator.MapSimulator.UI
 
             float iconBlockHeight = Math.Max(TOOLTIP_ICON_SIZE, contentHeight);
             float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
-            float sampleGap = sampleHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
-            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_SECTION_GAP + iconBlockHeight + sampleGap + sampleHeight);
+            float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
+            float bitmapPreviewHeight = sampleHeight;
+            if (iconRewardHeight > 0f)
+            {
+                bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + iconRewardHeight;
+            }
+
+            float bitmapPreviewGap = bitmapPreviewHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_SECTION_GAP + iconBlockHeight + bitmapPreviewGap + bitmapPreviewHeight);
 
             int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
             int viewportHeight = sprite.GraphicsDevice.Viewport.Height;
@@ -2485,6 +2494,11 @@ namespace HaCreator.MapSimulator.UI
                 int sampleX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - sampleTexture.Width) / 2);
                 int sampleY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
                 sprite.Draw(sampleTexture, new Vector2(sampleX, sampleY), Color.White);
+                DrawHorizontalBitmapStrip(
+                    sprite,
+                    iconRewardTextures,
+                    backgroundRect,
+                    sampleY + sampleTexture.Height + TOOLTIP_BITMAP_GAP);
             }
             else if (drawAuthoredSampleInFrame)
             {
@@ -2492,6 +2506,16 @@ namespace HaCreator.MapSimulator.UI
                 int sampleX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - sampleWidth) / 2);
                 int sampleY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
                 DrawSampleUiFrame(sprite, sampleUiFrame, metadata.AuthoredSampleLines, sampleX, sampleY);
+                DrawHorizontalBitmapStrip(
+                    sprite,
+                    iconRewardTextures,
+                    backgroundRect,
+                    sampleY + (int)Math.Ceiling(sampleHeight) + TOOLTIP_BITMAP_GAP);
+            }
+            else if (iconRewardHeight > 0f)
+            {
+                int rewardY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
+                DrawHorizontalBitmapStrip(sprite, iconRewardTextures, backgroundRect, rewardY);
             }
         }
 
@@ -2770,6 +2794,107 @@ namespace HaCreator.MapSimulator.UI
 
             _sampleUiFrameCache[itemId] = frame;
             return frame;
+        }
+
+        private Texture2D[] ResolveInfoIconRewardTextures(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return Array.Empty<Texture2D>();
+            }
+
+            if (_infoIconRewardTextureCache.TryGetValue(itemId, out Texture2D[] cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            IReadOnlyList<WzCanvasProperty> canvases = InventoryItemMetadataResolver.ResolveInfoCanvasSequence(
+                itemId,
+                "iconReward",
+                8);
+            Texture2D[] textures = new Texture2D[canvases.Count];
+            for (int i = 0; i < canvases.Count; i++)
+            {
+                textures[i] = canvases[i]?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+
+            _infoIconRewardTextureCache[itemId] = textures;
+            return textures;
+        }
+
+        private static float MeasureHorizontalBitmapStripHeight(IReadOnlyList<Texture2D> textures)
+        {
+            if (textures == null || textures.Count == 0)
+            {
+                return 0f;
+            }
+
+            int height = 0;
+            for (int i = 0; i < textures.Count; i++)
+            {
+                if (textures[i] != null)
+                {
+                    height = Math.Max(height, textures[i].Height);
+                }
+            }
+
+            return height;
+        }
+
+        private static int MeasureHorizontalBitmapStripWidth(IReadOnlyList<Texture2D> textures)
+        {
+            if (textures == null || textures.Count == 0)
+            {
+                return 0;
+            }
+
+            int width = 0;
+            int visibleCount = 0;
+            for (int i = 0; i < textures.Count; i++)
+            {
+                if (textures[i] == null)
+                {
+                    continue;
+                }
+
+                if (visibleCount > 0)
+                {
+                    width += TOOLTIP_BITMAP_GAP;
+                }
+
+                width += textures[i].Width;
+                visibleCount++;
+            }
+
+            return width;
+        }
+
+        private static void DrawHorizontalBitmapStrip(
+            SpriteBatch sprite,
+            IReadOnlyList<Texture2D> textures,
+            Rectangle tooltipRect,
+            int y)
+        {
+            int stripHeight = (int)Math.Ceiling(MeasureHorizontalBitmapStripHeight(textures));
+            if (sprite == null || stripHeight <= 0)
+            {
+                return;
+            }
+
+            int stripWidth = MeasureHorizontalBitmapStripWidth(textures);
+            int x = tooltipRect.X + Math.Max(TOOLTIP_PADDING, (tooltipRect.Width - stripWidth) / 2);
+            for (int i = 0; i < textures.Count; i++)
+            {
+                Texture2D texture = textures[i];
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                int drawY = y + Math.Max(0, (stripHeight - texture.Height) / 2);
+                sprite.Draw(texture, new Vector2(x, drawY), Color.White);
+                x += texture.Width + TOOLTIP_BITMAP_GAP;
+            }
         }
 
         private float MeasureSampleUiFrameHeight(TooltipSampleUiFrame frame, IReadOnlyList<string> sampleLines)

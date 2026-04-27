@@ -1906,7 +1906,10 @@ namespace HaCreator.MapSimulator.Combat
             IReadOnlyList<Point> packetMultiTargetForBall,
             bool sourceFacesRight)
         {
-            int laneCount = ResolveProjectileLaneCount(attack);
+            int laneCount = ResolveProjectileLaneCount(
+                attack,
+                packetMultiTargetForBall,
+                hasPrimaryProjectileLane: targetInfo?.IsValid == true || targetX.HasValue || targetY.HasValue);
             var assignments = new List<ProjectileLaneAssignment>(laneCount);
             float preferredLaneX = targetX
                 ?? targetInfo?.TargetX
@@ -2058,13 +2061,22 @@ namespace HaCreator.MapSimulator.Combat
 
         private static int ResolveProjectileLaneCount(MobAttackEntry attack)
         {
-            if (attack == null)
-            {
-                return 1;
-            }
+            return ResolveProjectileLaneCount(attack, packetMultiTargetForBall: null, hasPrimaryProjectileLane: false);
+        }
 
-            int authoredCount = Math.Max(attack.ProjectileCount, attack.AttackCount);
-            return Math.Max(1, authoredCount);
+        internal static int ResolveProjectileLaneCount(
+            MobAttackEntry attack,
+            IReadOnlyList<Point> packetMultiTargetForBall,
+            bool hasPrimaryProjectileLane)
+        {
+            int authoredCount = attack != null
+                ? Math.Max(attack.ProjectileCount, attack.AttackCount)
+                : 0;
+            int packetExtraCount = packetMultiTargetForBall?.Count ?? 0;
+            int packetOwnedCount = packetExtraCount > 0
+                ? packetExtraCount + (hasPrimaryProjectileLane ? 1 : 0)
+                : 0;
+            return Math.Max(1, Math.Max(authoredCount, packetOwnedCount));
         }
 
         private List<Vector2> BuildProjectileLanePositions(

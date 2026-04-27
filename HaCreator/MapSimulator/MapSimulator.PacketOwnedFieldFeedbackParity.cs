@@ -787,7 +787,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return !string.IsNullOrWhiteSpace(ResolvePacketOwnedWhisperMapLocationName(mapId));
+            // `CField::OnWhisper` resolves subtype 9/72 map locations through
+            // `CField::GetFieldProp` before it formats the location or sends the
+            // chase transfer request. A string-table-only map name is not enough.
+            return TryGetMapImageForMetadataLookup(mapId) != null
+                && !string.IsNullOrWhiteSpace(ResolvePacketOwnedWhisperMapLocationName(mapId));
         }
 
         private string ResolvePacketOwnedWhisperMapLocationName(int mapId)

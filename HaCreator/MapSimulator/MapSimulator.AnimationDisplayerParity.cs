@@ -3919,11 +3919,12 @@ namespace HaCreator.MapSimulator
                         updateCount,
                         updateNextMs: 0,
                         durationMs,
-                        registerTime);
+                        registerTime,
+                        onSpawn: () => TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor),
+                        zOrder: metadata.LayerZ);
                     if (registrationId >= 0)
                     {
                         _packetOwnedAnimationDisplayerAreaAnimationIds.Add(registrationId);
-                        _ = TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor);
                         return true;
                     }
                 }
@@ -7487,12 +7488,13 @@ namespace HaCreator.MapSimulator
 
         internal static int BuildAnimationDisplayerFollowCandidateIdentity(AnimationDisplayerFollowEquipmentCandidate candidate)
         {
+            int resolvedClientEquipIndex = ResolveAnimationDisplayerFollowCandidateClientEquipIndex(candidate);
             unchecked
             {
                 int identity = 17;
                 identity = (identity * 31) + candidate.ItemId;
                 identity = (identity * 31) + (int)candidate.Slot;
-                identity = (identity * 31) + candidate.ClientEquipIndex;
+                identity = (identity * 31) + resolvedClientEquipIndex;
                 identity = (identity * 31) + (candidate.IsHidden ? 1 : 0);
                 return identity;
             }
@@ -7501,11 +7503,15 @@ namespace HaCreator.MapSimulator
         internal static (int ItemId, EquipSlot Slot, int ClientEquipIndex) BuildAnimationDisplayerFollowEquipmentCacheKey(
             AnimationDisplayerFollowEquipmentCandidate candidate)
         {
-            int resolvedClientEquipIndex = candidate.ClientEquipIndex >= 0
+            return (candidate.ItemId, candidate.Slot, ResolveAnimationDisplayerFollowCandidateClientEquipIndex(candidate));
+        }
+
+        internal static int ResolveAnimationDisplayerFollowCandidateClientEquipIndex(
+            AnimationDisplayerFollowEquipmentCandidate candidate)
+        {
+            return candidate.ClientEquipIndex >= 0
                 ? candidate.ClientEquipIndex
                 : ResolveAnimationDisplayerFollowClientEquipIndex(candidate.Slot);
-
-            return (candidate.ItemId, candidate.Slot, resolvedClientEquipIndex);
         }
 
         internal static int BuildAnimationDisplayerFollowCandidateSignature(
@@ -7521,9 +7527,10 @@ namespace HaCreator.MapSimulator
                 int signature = 17;
                 foreach (AnimationDisplayerFollowEquipmentCandidate candidate in candidates)
                 {
+                    int resolvedClientEquipIndex = ResolveAnimationDisplayerFollowCandidateClientEquipIndex(candidate);
                     signature = (signature * 31) + candidate.ItemId;
                     signature = (signature * 31) + (int)candidate.Slot;
-                    signature = (signature * 31) + candidate.ClientEquipIndex;
+                    signature = (signature * 31) + resolvedClientEquipIndex;
                     signature = (signature * 31) + (candidate.IsHidden ? 1 : 0);
                 }
 

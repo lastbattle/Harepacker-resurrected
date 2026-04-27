@@ -28,6 +28,14 @@ namespace HaCreator.MapSimulator.UI
         private const int SingleLineTextInsetX = 3;
         private const int BodyTextInsetX = 2;
         private const int BodyLineHeight = 12;
+        private const int ClientTargetEditX = 119;
+        private const int ClientTargetEditY = 189;
+        private const int ClientTargetEditWidth = 154;
+        private const int ClientTargetEditHeight = 13;
+        private const int ClientMemoEditX = 95;
+        private const int ClientMemoEditY = 111;
+        private const int ClientMemoEditWidth = 165;
+        private const int ClientMemoEditHeight = 68;
         private const uint CandidateWindowStyleRect = 0x0001;
         private const uint CandidateWindowStylePoint = 0x0002;
         private const uint CandidateWindowStyleForcePosition = 0x0020;
@@ -1329,14 +1337,14 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetComposeBodyBounds(Rectangle contentBounds, bool quickMode)
         {
-            int height = quickMode ? 80 : 92;
-            return new Rectangle(contentBounds.X + 62, contentBounds.Y + 5, 185, height);
+            // IDA: CParcelDlg::OnCreate creates CCtrlMLEdit id 2003 at 95,111 with 165x68.
+            return new Rectangle(Position.X + ClientMemoEditX, Position.Y + ClientMemoEditY, ClientMemoEditWidth, ClientMemoEditHeight);
         }
 
         private Rectangle GetComposeRecipientBounds(Rectangle contentBounds, bool quickMode)
         {
-            int y = quickMode ? contentBounds.Y + 108 : contentBounds.Y + 108;
-            return new Rectangle(contentBounds.X + 91, y, 158, 15);
+            // IDA: CParcelDlg::OnCreate creates target CCtrlEdit id 2002 at 119,189 with 154x13.
+            return new Rectangle(Position.X + ClientTargetEditX, Position.Y + ClientTargetEditY, ClientTargetEditWidth, ClientTargetEditHeight);
         }
 
         private Rectangle GetComposeMesoBounds(Rectangle contentBounds, bool quickMode)

@@ -1465,6 +1465,12 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
+                if (IsCharacterEquipmentRequestSlotTypeMismatch(request, slotType))
+                {
+                    rejectReason = $"Inventory-operation add entry decoded GW_ItemSlotBase type {slotType}, but character equipment requests require GW_ItemSlotEquip.";
+                    return false;
+                }
+
                 itemId = reader.ReadInt32();
                 bool hasCashSerial = reader.ReadByte() != 0;
                 if (hasCashSerial)
@@ -1611,6 +1617,16 @@ namespace HaCreator.MapSimulator.UI
                 default:
                     return false;
             }
+        }
+
+        private static bool IsCharacterEquipmentRequestSlotTypeMismatch(
+            EquipmentChangeRequest request,
+            byte slotType)
+        {
+            return request?.Kind is EquipmentChangeRequestKind.InventoryToCharacter
+                       or EquipmentChangeRequestKind.CharacterToCharacter
+                       or EquipmentChangeRequestKind.CharacterToInventory
+                   && slotType != ItemSlotTypeEquip;
         }
 
         private static bool TryReadClientEquipAddEntryBody(

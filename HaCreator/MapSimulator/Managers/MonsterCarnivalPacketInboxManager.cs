@@ -230,12 +230,11 @@ namespace HaCreator.MapSimulator.Managers
 
         private static bool TryResolveRelayedPacketType(byte[] relayPayload, out int packetType)
         {
-            return SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                       relayPayload,
-                       out packetType,
-                       out _,
-                       out _)
-                   && packetType is >= PacketTypeEnter and <= PacketTypeGameResult;
+            return MonsterCarnivalOfficialSessionBridgeManager.TryDecodeCarnivalPacketFromRelayPrefixChain(
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                relayPayload,
+                out packetType,
+                out _);
         }
 
         private static string RemoveWhitespace(string text)

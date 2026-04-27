@@ -107,6 +107,24 @@ namespace HaCreator.MapSimulator.Companions
             public static OwnerPhaseContext NoLocalUser { get; } = new(false, false, 255);
         }
 
+        internal readonly struct ClientDragonFlushTail
+        {
+            public ClientDragonFlushTail(byte[] keyPadStates, short left, short top, short right, short bottom)
+            {
+                KeyPadStates = keyPadStates ?? Array.Empty<byte>();
+                Left = left;
+                Top = top;
+                Right = right;
+                Bottom = bottom;
+            }
+
+            public byte[] KeyPadStates { get; }
+            public short Left { get; }
+            public short Top { get; }
+            public short Right { get; }
+            public short Bottom { get; }
+        }
+
         private readonly GraphicsDevice _device;
         private readonly DragonActionLoader _actionLoader;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
@@ -1296,6 +1314,97 @@ namespace HaCreator.MapSimulator.Companions
                 passiveKeyPadStates: passiveKeyPadStates);
         }
 
+        internal static bool TryDecodeClientDragonEndUpdateActiveFlushTail(
+            IReadOnlyList<byte> payload,
+            out ClientDragonFlushTail tail,
+            out string error)
+        {
+            tail = default;
+            error = null;
+
+            if (payload == null || payload.Count < 9)
+            {
+                error = "Dragon move-path payload is too short to contain a client flush tail.";
+                return false;
+            }
+
+            int offset = sizeof(short) * 4;
+            if (!TryReadByte(payload, ref offset, out byte movePathCount))
+            {
+                error = "Dragon move-path payload is missing its move-element count.";
+                return false;
+            }
+
+            for (int i = 0; i < movePathCount; i++)
+            {
+                if (!TrySkipClientMovePathElement(payload, ref offset))
+                {
+                    error = $"Dragon move-path payload ended inside move element {i}.";
+                    return false;
+                }
+            }
+
+            if (!TryReadByte(payload, ref offset, out byte stateCountByte))
+            {
+                error = "Dragon move-path payload is missing its keypad-state count.";
+                return false;
+            }
+
+            int stateCount = stateCountByte;
+            int packedStateByteCount = (stateCount + 1) / 2;
+            if (payload.Count - offset != packedStateByteCount + sizeof(short) * 4)
+            {
+                error = "Dragon move-path payload tail length does not match its keypad-state count.";
+                return false;
+            }
+
+            byte[] states = new byte[stateCount];
+            for (int i = 0; i < stateCount; i++)
+            {
+                byte packed = payload[offset + i / 2];
+                states[i] = (byte)(((i & 1) == 0 ? packed : packed >> 4) & 0x0F);
+            }
+
+            int boundsOffset = offset + packedStateByteCount;
+            tail = new ClientDragonFlushTail(
+                states,
+                ReadInt16LittleEndian(payload, boundsOffset),
+                ReadInt16LittleEndian(payload, boundsOffset + sizeof(short)),
+                ReadInt16LittleEndian(payload, boundsOffset + sizeof(short) * 2),
+                ReadInt16LittleEndian(payload, boundsOffset + sizeof(short) * 3));
+            return true;
+        }
+
+        internal static bool TryDecodeClientDragonEndUpdateActiveFlushTailFromRawPacket(
+            IReadOnlyList<byte> rawPacket,
+            out ClientDragonFlushTail tail,
+            out string error)
+        {
+            tail = default;
+            error = null;
+
+            if (rawPacket == null || rawPacket.Count < sizeof(ushort))
+            {
+                error = "Dragon move raw packet is too short to contain an opcode.";
+                return false;
+            }
+
+            int opcode = ReadUInt16LittleEndian(rawPacket, 0);
+            if (opcode != ClientVecCtrlDragonMovePacketOpcode)
+            {
+                error = $"Dragon move raw packet opcode {opcode} does not match client opcode {ClientVecCtrlDragonMovePacketOpcode}.";
+                return false;
+            }
+
+            byte[] payload = new byte[rawPacket.Count - sizeof(ushort)];
+            for (int i = 0; i < payload.Length; i++)
+            {
+                payload[i] = rawPacket[sizeof(ushort) + i];
+            }
+
+            return TryDecodeClientDragonEndUpdateActiveFlushTail(payload, out tail, out error);
+        }
+
         internal bool TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(out int packetOpcode, out byte[] payload)
         {
             if (_pendingVecCtrlEndUpdateActiveFlushPayloads.Count <= 0)
@@ -1307,6 +1416,57 @@ namespace HaCreator.MapSimulator.Companions
 
             payload = _pendingVecCtrlEndUpdateActiveFlushPayloads.Dequeue() ?? Array.Empty<byte>();
             packetOpcode = ClientVecCtrlDragonMovePacketOpcode;
+            return true;
+        }
+
+        private static short ReadInt16LittleEndian(IReadOnlyList<byte> buffer, int offset)
+        {
+            return (short)(buffer[offset] | (buffer[offset + 1] << 8));
+        }
+
+        private static ushort ReadUInt16LittleEndian(IReadOnlyList<byte> buffer, int offset)
+        {
+            return (ushort)(buffer[offset] | (buffer[offset + 1] << 8));
+        }
+
+        private static bool TryReadByte(IReadOnlyList<byte> buffer, ref int offset, out byte value)
+        {
+            value = 0;
+            if (buffer == null || offset < 0 || offset >= buffer.Count)
+            {
+                return false;
+            }
+
+            value = buffer[offset++];
+            return true;
+        }
+
+        private static bool TrySkipClientMovePathElement(IReadOnlyList<byte> buffer, ref int offset)
+        {
+            if (!TryReadByte(buffer, ref offset, out byte attribute))
+            {
+                return false;
+            }
+
+            int bodyLength = attribute switch
+            {
+                0 or 5 or 14 or 35 or 36 => 14,
+                12 => 16,
+                1 or 2 or 13 or 16 or 18 or 31 or 32 or 33 or 34 => 4,
+                3 or 4 or 6 or 7 or 8 or 10 => 6,
+                9 => 1,
+                11 => 6,
+                17 => 8,
+                _ => 0
+            };
+            int suffixLength = attribute == 9 ? 0 : sizeof(byte) + sizeof(short);
+            int nextOffset = offset + bodyLength + suffixLength;
+            if (nextOffset > buffer.Count)
+            {
+                return false;
+            }
+
+            offset = nextOffset;
             return true;
         }
 

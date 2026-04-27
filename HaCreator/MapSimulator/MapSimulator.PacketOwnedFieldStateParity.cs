@@ -82,7 +82,7 @@ namespace HaCreator.MapSimulator
                     SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs, stateIndex),
                 tag => TryGetDynamicObjectTagState(tag?.Trim()),
                 tag => TryGetDynamicObjectTagStateIndex(tag?.Trim()),
-                (name, stateIndex, currentTick) => TryApplyPacketOwnedNamedObjectState(name, stateIndex),
+                (name, stateIndex, currentTick) => TryApplyPacketOwnedNamedObjectState(name, stateIndex, currentTick),
                 name => TryGetPacketOwnedNamedObjectStateIndex(name),
                 HandleFieldSpecificDataPacketHandoff,
                 out message);
@@ -97,7 +97,7 @@ namespace HaCreator.MapSimulator
             return packetApplied;
         }
 
-        private bool TryApplyPacketOwnedNamedObjectState(string objectName, int stateIndex)
+        private bool TryApplyPacketOwnedNamedObjectState(string objectName, int stateIndex, int currentTick)
         {
             if (stateIndex < 0 || string.IsNullOrWhiteSpace(objectName))
             {
@@ -121,11 +121,30 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                _packetStageTransitionObjectVisibility[mapObject] = i == stateIndex;
+                bool selected = i == stateIndex;
+                _packetStageTransitionObjectVisibility[mapObject] = selected;
+                if (selected)
+                {
+                    mapObject.RestartAnimation(currentTick);
+                    StampPacketOwnedNamedObjectDebugText(mapObject, stateIndex);
+                }
+
                 applied = true;
             }
 
             return applied;
+        }
+
+        private void StampPacketOwnedNamedObjectDebugText(BaseDXDrawableItem mapObject, int stateIndex)
+        {
+            if (mapObject == null ||
+                !_packetStageTransitionNamedObjectMetadata.TryGetValue(mapObject, out PacketOwnedNamedObjectStateMetadata metadata))
+            {
+                return;
+            }
+
+            mapObject.DebugText =
+                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}";
         }
 
         private int? TryGetPacketOwnedNamedObjectStateIndex(string objectName)
@@ -164,6 +183,21 @@ namespace HaCreator.MapSimulator
             }
 
             return fallbackVisibleIndex;
+        }
+
+        private sealed record PacketOwnedNamedObjectStateMetadata(
+            string Name,
+            string ObjectSet,
+            string Layer0,
+            string Layer1,
+            string Layer2,
+            int X,
+            int Y,
+            int Z,
+            int PlatformNumber,
+            bool Flow)
+        {
+            public string ObjectPath => $"Map/Obj/{ObjectSet}.img/{Layer0}/{Layer1}/{Layer2}";
         }
 
         private bool TryApplyClientOwnedSessionValuePacket(byte[] payload, int currentTick, out string message)

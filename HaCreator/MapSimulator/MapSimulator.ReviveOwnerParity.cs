@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator
         };
 
         private readonly ReviveOwnerRuntime _reviveOwnerRuntime = new();
+        private ReviveOwnerPendingOpen? _pendingReviveOwnerOpen;
         private ReviveOwnerTransferRequest? _pendingReviveOwnerTransferRequest;
         private int _pendingReviveOwnerTransferTick = int.MinValue;
         private bool _packetOwnedRevivePremiumSafetyCharmLastObservedOfficialSessionConnected;
@@ -73,7 +74,7 @@ namespace HaCreator.MapSimulator
 
         private void HandlePlayerDeathOpenReviveOwner(PlayerCharacter player)
         {
-            if (player == null || _reviveOwnerRuntime.IsOpen)
+            if (player == null || _reviveOwnerRuntime.IsOpen || _pendingReviveOwnerOpen.HasValue)
             {
                 return;
             }
@@ -87,26 +88,19 @@ namespace HaCreator.MapSimulator
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
             ReviveOwnerRespawnPointResolution premiumRespawnResolution = ResolveCurrentFieldReviveRespawnPointResolution(variant, deathPoint);
-            Vector2 premiumRespawnPoint = premiumRespawnResolution.Point;
-            if (variant == ReviveOwnerVariant.UpgradeTombChoice)
-            {
-                Debug.WriteLine(DispatchReviveOwnerUpgradeTombEffectRequest(premiumRespawnPoint, currentTick));
-            }
-
             string normalDetail = BuildDefaultReviveDetail(variant, ownerLabel, spawnPoint);
             string premiumDetail = hasPremiumChoice
                 ? BuildPremiumReviveDetail(variant, ownerLabel, premiumRespawnResolution)
                 : string.Empty;
 
-            _reviveOwnerRuntime.Open(
+            _pendingReviveOwnerOpen = new ReviveOwnerPendingOpen(
                 GetCurrentMapTransferDisplayName(),
                 normalDetail,
                 premiumDetail,
                 variant,
+                premiumRespawnResolution.Point,
                 currentTick);
-
-            ApplyReviveOwnerWindowPlacement();
-            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Revive);
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
         }
 
         private void UpdateReviveOwnerState(int currentTick)
@@ -120,10 +114,13 @@ namespace HaCreator.MapSimulator
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
                 }
 
+                _pendingReviveOwnerOpen = null;
                 _pendingReviveOwnerTransferRequest = null;
                 _pendingReviveOwnerTransferTick = int.MinValue;
                 return;
             }
+
+            TryOpenPendingReviveOwner(currentTick);
 
             ReviveOwnerResolution resolution = _reviveOwnerRuntime.Update(currentTick);
             if (resolution.Handled)
@@ -144,6 +141,12 @@ namespace HaCreator.MapSimulator
 
             if (!_reviveOwnerRuntime.IsOpen)
             {
+                if (_pendingReviveOwnerOpen.HasValue)
+                {
+                    TryOpenPendingReviveOwner(Environment.TickCount);
+                    return true;
+                }
+
                 HandlePlayerDeathOpenReviveOwner(_playerManager.Player);
                 return true;
             }
@@ -193,8 +196,40 @@ namespace HaCreator.MapSimulator
         private void QueueReviveOwnerTransfer(ReviveOwnerResolution resolution, int currentTick)
         {
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
+            _pendingReviveOwnerOpen = null;
             _pendingReviveOwnerTransferRequest = ReviveOwnerRuntime.CreateTransferRequest(resolution);
             _pendingReviveOwnerTransferTick = currentTick;
+        }
+
+        private bool TryOpenPendingReviveOwner(int currentTick)
+        {
+            if (!_pendingReviveOwnerOpen.HasValue)
+            {
+                return false;
+            }
+
+            ReviveOwnerPendingOpen pendingOpen = _pendingReviveOwnerOpen.Value;
+            if (!ReviveOwnerRuntime.ShouldCreateDialog(pendingOpen.ArmedAtTick, currentTick))
+            {
+                return false;
+            }
+
+            _pendingReviveOwnerOpen = null;
+            if (pendingOpen.Variant == ReviveOwnerVariant.UpgradeTombChoice)
+            {
+                Debug.WriteLine(DispatchReviveOwnerUpgradeTombEffectRequest(pendingOpen.PremiumRespawnPoint, currentTick));
+            }
+
+            _reviveOwnerRuntime.Open(
+                pendingOpen.MapName,
+                pendingOpen.NormalDetail,
+                pendingOpen.PremiumDetail,
+                pendingOpen.Variant,
+                currentTick);
+
+            ApplyReviveOwnerWindowPlacement();
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Revive);
+            return true;
         }
 
         private void ApplyPendingReviveOwnerTransfer(int currentTick)
@@ -1199,6 +1234,32 @@ namespace HaCreator.MapSimulator
             byte[] bytes = Encoding.Default.GetBytes(value ?? string.Empty);
             writer.Write((ushort)bytes.Length);
             writer.Write(bytes);
+        }
+
+        private readonly struct ReviveOwnerPendingOpen
+        {
+            public ReviveOwnerPendingOpen(
+                string mapName,
+                string normalDetail,
+                string premiumDetail,
+                ReviveOwnerVariant variant,
+                Vector2 premiumRespawnPoint,
+                int armedAtTick)
+            {
+                MapName = mapName ?? string.Empty;
+                NormalDetail = normalDetail ?? string.Empty;
+                PremiumDetail = premiumDetail ?? string.Empty;
+                Variant = variant;
+                PremiumRespawnPoint = premiumRespawnPoint;
+                ArmedAtTick = armedAtTick;
+            }
+
+            public string MapName { get; }
+            public string NormalDetail { get; }
+            public string PremiumDetail { get; }
+            public ReviveOwnerVariant Variant { get; }
+            public Vector2 PremiumRespawnPoint { get; }
+            public int ArmedAtTick { get; }
         }
     }
 }

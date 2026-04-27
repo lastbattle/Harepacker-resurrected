@@ -725,7 +725,12 @@ namespace HaCreator.MapSimulator.UI
             int placedCount = _state?.PlacedPieces?.Count ?? 0;
             int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
             int ownerItemId = Math.Max(0, _state?.OwnerItemId ?? _prompt?.OwnerContext?.OwnerItemId ?? 0);
-            return $"Piece window  {placedCount}/{maxDropCount}  owner #{ownerItemId}";
+            int grade = Math.Max(0, _state?.Grade ?? _prompt?.OwnerContext?.Grade ?? 0);
+            int expUnit = Math.Max(0, _state?.IncrementExpUnit ?? _prompt?.OwnerContext?.IncrementExpUnit ?? 0);
+            string clientMetadata = grade > 0 || expUnit > 0
+                ? $"  grade {grade} exp {expUnit}"
+                : string.Empty;
+            return $"Piece window  {placedCount}/{maxDropCount}  owner #{ownerItemId}{clientMetadata}";
         }
 
         private string BuildPiecePlacementPromptText()

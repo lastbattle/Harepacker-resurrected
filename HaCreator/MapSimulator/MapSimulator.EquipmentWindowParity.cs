@@ -3558,7 +3558,7 @@ namespace HaCreator.MapSimulator
             }
 
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
-            rejectReason = FieldInteractionRestrictionEvaluator.GetAndroidRestrictionMessage(fieldLimit);
+            rejectReason = FieldInteractionRestrictionEvaluator.GetAndroidRestrictionMessage(fieldLimit, _mapBoard?.MapInfo);
             return !string.IsNullOrWhiteSpace(rejectReason);
         }
 

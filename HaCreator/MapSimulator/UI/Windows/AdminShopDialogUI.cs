@@ -971,6 +971,59 @@ namespace HaCreator.MapSimulator.UI
             return _footerMessage;
         }
 
+        internal string ApplyPacketOwnedAdminShopMalformedResultIgnoredByUniqueModelessOwner(string blockingOwner)
+        {
+            bool hasPendingRequestState = _pendingRequestEntry != null
+                || _pendingPacketOwnedWishlistRegisterEntry != null
+                || _packetOwnedAdminShopSession.IsWaitingForResult
+                || _pendingPacketOwnedAdminShopResult;
+            bool keepSessionActive = _packetOwnedAdminShopSession.IsActive
+                && (_packetOwnedAdminShopRows.Count > 0 || _packetOwnedAdminShopSession.DecodedItemCount > 0);
+            AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible
+                ? AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                : _packetOwnedAdminShopSession.OwnerVisibilityState;
+            string ownerState = string.IsNullOrWhiteSpace(blockingOwner)
+                ? keepSessionActive
+                    ? "Packet 366 was ignored at the owner gate before CAdminShopDlg decoded the subtype byte, and the packet-owned session stayed staged."
+                    : "Packet 366 was ignored at the owner gate before CAdminShopDlg decoded the subtype byte."
+                : keepSessionActive
+                    ? $"Packet 366 was ignored before subtype decode because {blockingOwner} owned the unique-modeless slot instead of CAdminShopDlg, and the packet-owned session stayed staged."
+                    : $"Packet 366 was ignored before subtype decode because {blockingOwner} owned the unique-modeless slot instead of CAdminShopDlg.";
+
+            _packetOwnedAdminShopSession.RecordMalformedResultIgnoredBeforeSubtypeDecode(
+                ownerState,
+                keepSessionActive,
+                preservedVisibilityState,
+                keepPendingRequestState: hasPendingRequestState);
+
+            _pendingPacketOwnedAdminShopResult = hasPendingRequestState;
+            if (hasPendingRequestState)
+            {
+                _packetOwnedAdminShopSession.SetWaitingForResult(true);
+            }
+            else
+            {
+                ClearPendingPacketOwnedUserSellSnapshot();
+                ClearPendingPacketOwnedWishlistRegister();
+                ClearPendingPacketOwnedWishlistSearchRequest();
+                ResetPendingRequestState();
+            }
+
+            _footerMessage = string.IsNullOrWhiteSpace(blockingOwner)
+                ? keepSessionActive
+                    ? hasPendingRequestState
+                        ? "Packet 366 arrived without a subtype byte while no live CAdminShopDlg unique-modeless owner was present, so the client OnPacket gate ignored it before decode and kept both the staged packet-owned session and pending request state."
+                        : "Packet 366 arrived without a subtype byte while no live CAdminShopDlg unique-modeless owner was present, so the client OnPacket gate ignored it before decode and kept the staged packet-owned session."
+                    : "Packet 366 arrived without a subtype byte while no live CAdminShopDlg unique-modeless owner was present, so the client OnPacket gate ignored it before decode."
+                : keepSessionActive
+                    ? hasPendingRequestState
+                        ? $"Packet 366 arrived without a subtype byte while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before decode and kept both the staged packet-owned session and pending request state."
+                        : $"Packet 366 arrived without a subtype byte while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before decode and kept the staged packet-owned session."
+                    : $"Packet 366 arrived without a subtype byte while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before decode.";
+            UpdateActionButtonStates();
+            return _footerMessage;
+        }
+
         internal bool TryApplyDeferredPacketOwnedAdminShopResultAfterOwnerVisible(
             out string summary,
             out string noticeText)
@@ -4320,8 +4373,8 @@ namespace HaCreator.MapSimulator.UI
             _modalQuantityMin = 1;
             _modalQuantityMax = maxPromptQuantity;
             _modalQuantity = 1;
-            _modalMessage = $"Select a request count for {entry.Title}.";
-            _footerMessage = $"Opened the item-count prompt for {entry.Title}.";
+            _modalMessage = BuildRequestQuantityPromptMessage(entry);
+            _footerMessage = $"Opened the CAdminShopDlg::AskItemCount prompt for {entry.Title}.";
             PositionModalButtons();
             UpdateModalButtons();
             UpdateActionButtonStates();
@@ -4497,7 +4550,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!HasEnoughMesoForRequest(entry, requestQuantity))
             {
-                blockedMessage = $"Need {FormatPriceLabel(ComputeRequestPrice(entry, requestQuantity))} before this request can be sent.";
+                blockedMessage = BuildNotEnoughMesoMessage(entry, requestQuantity);
                 return false;
             }
 
@@ -7240,7 +7293,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 entry.State = AdminShopEntryState.RequestRejected;
                 entry.StateLabel = "Need mesos";
-                _footerMessage = $"Need {FormatPriceLabel(totalPrice)} before this request can complete.";
+                _footerMessage = BuildNotEnoughMesoMessage(entry, _pendingRequestQuantity);
                 ResetPendingRequestState();
                 Money = _inventory.GetMesoCount();
                 UpdateActionButtonStates();
@@ -9157,7 +9210,8 @@ namespace HaCreator.MapSimulator.UI
                 && TryResolveInventorySlot(entry.SourceInventoryType, entry.InventorySlotIndex, out InventorySlotData selectedSlot)
                 && selectedSlot?.CashItemSerialNumber.GetValueOrDefault() > 0L)
             {
-                message = $"{ResolveSourceItemLabel(entry)} carries a cash-item serial number and cannot satisfy this zero-price trade request.";
+                message = BuildInvalidSourceSlotMessage(
+                    $"{ResolveSourceItemLabel(entry)} carries a cash-item serial number and cannot satisfy this zero-price trade request.");
                 return false;
             }
 
@@ -9217,9 +9271,12 @@ namespace HaCreator.MapSimulator.UI
             string slotLabel = sourceResolution.SlotIndex >= 0
                 ? $"selected slot {sourceResolution.SlotIndex + 1}"
                 : "selected slot";
-            return selectedStackQuantity > 0
+            string context = selectedStackQuantity > 0
                 ? $"Need {ResolveSourceItemLabel(entry, ComputeRequiredSourceQuantity(entry, requestQuantity))} before {entry.Title} can be requested ({ownedQuantity} owned, {slotLabel} only has {selectedStackQuantity})."
                 : $"Need {ResolveSourceItemLabel(entry, ComputeRequiredSourceQuantity(entry, requestQuantity))} before {entry.Title} can be requested ({ownedQuantity} owned).";
+            return BuildClientNoticeWithContext(
+                AdminShopDialogClientParityText.GetMissingSourceItemNotice(),
+                context);
         }
 
         private static string BuildTradeRestrictedSourceItemMessage(AdminShopEntry entry, bool isCashItem, bool isNotForSale, bool isQuestItem)
@@ -9231,7 +9288,15 @@ namespace HaCreator.MapSimulator.UI
                     : isQuestItem
                         ? "quest"
                         : "restricted";
-            return $"{ResolveSourceItemLabel(entry)} is marked as a {reason} item in WZ info and cannot satisfy this zero-price trade request.";
+            return BuildInvalidSourceSlotMessage(
+                $"{ResolveSourceItemLabel(entry)} is marked as a {reason} item in WZ info and cannot satisfy this zero-price trade request.");
+        }
+
+        private static string BuildInvalidSourceSlotMessage(string context)
+        {
+            return BuildClientNoticeWithContext(
+                AdminShopDialogClientParityText.GetInvalidSourceSlotNotice(),
+                context);
         }
 
         private static string ResolveSourceItemLabel(AdminShopEntry entry, int? overrideQuantity = null)
@@ -9447,6 +9512,16 @@ namespace HaCreator.MapSimulator.UI
             return $"Deliver: x{ComputeDeliveredQuantity(entry, requestQuantity)}";
         }
 
+        private static string BuildRequestQuantityPromptMessage(AdminShopEntry entry)
+        {
+            if (RequiresInventorySource(entry))
+            {
+                return AdminShopDialogClientParityText.GetSellAskItemCountPrompt();
+            }
+
+            return AdminShopDialogClientParityText.GetBuyAskItemCountPrompt();
+        }
+
         private string BuildRequestConfirmationMessage(AdminShopEntry entry)
         {
             if (entry == null)
@@ -9456,13 +9531,32 @@ namespace HaCreator.MapSimulator.UI
 
             if (RequiresInventorySource(entry))
             {
-                return $"Trade {ResolveSourceItemLabel(entry)} for {entry.Title}?";
+                return AdminShopDialogClientParityText.GetSellTreatSinglyConfirmPrompt();
             }
 
-            long totalPrice = ComputeRequestPrice(entry, 1);
-            return totalPrice > 0
-                ? $"Request {entry.Title} for {FormatPriceLabel(totalPrice)}?"
-                : $"Request {entry.Title}?";
+            return AdminShopDialogClientParityText.GetBuyTreatSinglyConfirmPrompt();
+        }
+
+        private static string BuildClientNoticeWithContext(string notice, string context)
+        {
+            if (string.IsNullOrWhiteSpace(context))
+            {
+                return notice ?? string.Empty;
+            }
+
+            return string.IsNullOrWhiteSpace(notice)
+                ? context
+                : $"{notice} {context}";
+        }
+
+        private string BuildNotEnoughMesoMessage(AdminShopEntry entry, int requestQuantity)
+        {
+            string context = entry == null
+                ? string.Empty
+                : $"Need {FormatPriceLabel(ComputeRequestPrice(entry, requestQuantity))} before this request can be sent.";
+            return BuildClientNoticeWithContext(
+                AdminShopDialogClientParityText.GetNotEnoughMesoNotice(),
+                context);
         }
 
         private AdminShopEntry CreateSyntheticCommodityEntry(AdminShopCommodityData commodity)

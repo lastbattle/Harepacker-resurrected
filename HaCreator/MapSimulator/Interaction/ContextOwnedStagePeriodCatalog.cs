@@ -603,6 +603,31 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        internal static IReadOnlyList<BackgroundInfoType> ResolveClientMakeBackInfoTypeLookupOrder(
+            ContextOwnedStageBackImageEntry entry)
+        {
+            if (entry == null)
+            {
+                return Array.Empty<BackgroundInfoType>();
+            }
+
+            if (!entry.UseSourceBackPieceFields)
+            {
+                return new[] { entry.InfoType };
+            }
+
+            BackgroundInfoType[] clientPieceFamilies =
+            {
+                entry.InfoType,
+                BackgroundInfoType.Spine,
+                BackgroundInfoType.Animation,
+                BackgroundInfoType.Background
+            };
+            return clientPieceFamilies
+                .Distinct()
+                .ToArray();
+        }
+
         private static void UpsertNativeStageBackImageEntry(
             List<ContextOwnedStageBackImageEntry> entries,
             ContextOwnedStageBackImageEntry entry)

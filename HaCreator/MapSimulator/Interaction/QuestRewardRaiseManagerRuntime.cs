@@ -83,6 +83,9 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveRaise.OwnerItemId = ownerItemId;
             ActiveRaise.QrData = qrData;
             ActiveRaise.MaxDropCount = maxDropCount;
+            ActiveRaise.UiData = prompt.OwnerContext?.UiData ?? string.Empty;
+            ActiveRaise.IncrementExpUnit = Math.Max(0, prompt.OwnerContext?.IncrementExpUnit ?? 0);
+            ActiveRaise.Grade = Math.Max(0, prompt.OwnerContext?.Grade ?? 0);
             ActiveRaise.WindowMode = windowMode;
             ActiveRaise.DisplayMode = displayMode;
             ActiveRaise.WindowPosition = windowPosition;

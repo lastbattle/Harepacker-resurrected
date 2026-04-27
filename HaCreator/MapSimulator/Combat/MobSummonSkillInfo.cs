@@ -9,6 +9,10 @@ namespace HaCreator.MapSimulator
 
         public int Limit { get; set; }
 
+        public int HpThresholdPercent { get; set; }
+
+        public int SummonCount { get; set; }
+
         public Point? Lt { get; set; }
 
         public Point? Rb { get; set; }

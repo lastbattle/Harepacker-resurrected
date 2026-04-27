@@ -307,7 +307,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearCompositionText();
-            string insertText = ResolveClientCommittedInsertText(text, _inputText, GetSelectionTextElementLength(), _maxLength);
+            string insertText = NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
+                text,
+                _inputText,
+                HasSelection ? GetSelectionStart() : _caretIndex,
+                HasSelection ? GetSelectionEnd() : _caretIndex,
+                _maxLength);
             if (insertText.Length == 0)
             {
                 return;
@@ -519,28 +524,39 @@ namespace HaCreator.MapSimulator.UI
 
         public bool TryInsertCharacter(char character)
         {
-            if (char.IsControl(character) || GetTextElementCount(_inputText) >= _maxLength)
+            if (char.IsControl(character))
+            {
+                return false;
+            }
+
+            string insertText = NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
+                character.ToString(),
+                _inputText,
+                HasSelection ? GetSelectionStart() : _caretIndex,
+                HasSelection ? GetSelectionEnd() : _caretIndex,
+                _maxLength);
+            if (insertText.Length == 0)
             {
                 return false;
             }
 
             ClearCompositionText();
             DeleteSelectionIfAny();
-            InsertCharacter(character);
+            InsertText(insertText);
             return true;
         }
 
         internal static string ResolveClientCommittedInsertText(string text, string currentText, int selectedLength, int maxLength)
         {
-            string sanitized = NativeAntiMacroEditHost.RemoveControlCharacters(text);
-            if (sanitized.Length == 0)
-            {
-                return string.Empty;
-            }
-
-            int currentLength = GetTextElementCount(currentText ?? string.Empty);
-            int availableLength = Math.Max(0, maxLength - (currentLength - Math.Max(0, selectedLength)));
-            return NativeAntiMacroEditHost.TrimToMaxTextElements(sanitized, availableLength);
+            string resolvedCurrent = currentText ?? string.Empty;
+            int selectionEnd = resolvedCurrent.Length;
+            int selectionStart = Math.Max(0, selectionEnd - Math.Max(0, selectedLength));
+            return NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
+                text,
+                resolvedCurrent,
+                selectionStart,
+                selectionEnd,
+                maxLength);
         }
 
         public bool TryReplaceCharacterBeforeCaret(char character)
@@ -563,9 +579,20 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            string insertText = NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
+                character.ToString(),
+                _inputText,
+                previousCaret,
+                currentCaret,
+                _maxLength);
+            if (insertText.Length == 0)
+            {
+                return false;
+            }
+
             _inputText = _inputText.Remove(previousCaret, currentCaret - previousCaret);
-            _inputText = _inputText.Insert(previousCaret, character.ToString());
-            _caretIndex = previousCaret + character.ToString().Length;
+            _inputText = _inputText.Insert(previousCaret, insertText);
+            _caretIndex = previousCaret + insertText.Length;
             ClearSelection();
             _caretBlinkTick = Environment.TickCount;
             return true;
@@ -843,17 +870,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void PasteClipboardText()
         {
-            try
+            if (NativeAntiMacroEditHost.TryGetClientClipboardText(out string clipboardText))
             {
-                if (!System.Windows.Forms.Clipboard.ContainsText())
-                {
-                    return;
-                }
-
-                HandleCommittedText(System.Windows.Forms.Clipboard.GetText(), capturesKeyboardInput: true);
-            }
-            catch
-            {
+                HandleCommittedText(clipboardText, capturesKeyboardInput: true);
             }
         }
 

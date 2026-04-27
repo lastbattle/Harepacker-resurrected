@@ -1928,7 +1928,10 @@ namespace HaCreator.MapSimulator.Physics
                 ? (hasDynamicFoothold ? 200 : 500)
                 : 1000;
 
-            if (GetCurrentGatherDuration(currentTimeMs) < thresholdMs)
+            // CMovePath::IsTimeForFlush checks m_tGatherDuration, which only
+            // includes closed gathered elements. The still-open tail is shaped
+            // during encode, but it does not admit the flush cadence early.
+            if (_pathGatherDurationMs < thresholdMs)
             {
                 return false;
             }

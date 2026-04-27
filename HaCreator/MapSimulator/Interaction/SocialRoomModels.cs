@@ -4305,6 +4305,19 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (nestedPayload.Length >= 8 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(0, sizeof(uint)), out int rawPayloadLength) &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: rawPayloadLength,
+                    envelopeSummary: "len32 envelope",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
             if (nestedPayload.Length >= 5)
             {
                 int fourByteRoomType = BinaryPrimitives.ReadInt32LittleEndian(nestedPayload.AsSpan(0, sizeof(int)));
@@ -4420,10 +4433,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (nestedPayload.Length >= 8 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(1, sizeof(uint)), out int roomTypePayloadLength) &&
                 TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
                     nestedPayload,
                     prefixLength: 5,
-                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(1, sizeof(uint)))),
+                    payloadLength: roomTypePayloadLength,
                     envelopeSummary: $"room-type+len32 envelope roomType={nestedPayload[0]}",
                     tickCount,
                     out result))
@@ -4432,10 +4446,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (nestedPayload.Length >= 9 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(2, sizeof(uint)), out int opcodePayloadLength) &&
                 TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
                     nestedPayload,
                     prefixLength: 6,
-                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(2, sizeof(uint)))),
+                    payloadLength: opcodePayloadLength,
                     envelopeSummary: $"opcode+len32 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
                     tickCount,
                     out result))
@@ -4467,10 +4482,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (nestedPayload.Length >= 8 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(0, sizeof(uint)), out int payloadLength) &&
                 TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
                     nestedPayload,
                     prefixLength: 4,
-                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(0, sizeof(uint)))),
+                    payloadLength: payloadLength,
                     envelopeSummary: "len32 envelope",
                     tickCount,
                     out result))
@@ -4479,6 +4495,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private static bool TryReadUInt32PayloadLength(ReadOnlySpan<byte> source, out int payloadLength)
+        {
+            payloadLength = 0;
+            uint rawLength = BinaryPrimitives.ReadUInt32LittleEndian(source);
+            if (rawLength > int.MaxValue)
+            {
+                return false;
+            }
+
+            payloadLength = (int)rawLength;
+            return true;
         }
 
         private bool TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
@@ -4643,10 +4672,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (nestedPayload.Length >= 9 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(3, sizeof(uint)), out int roomTypeOpcodePayloadLength) &&
                 TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
                     nestedPayload,
                     prefixLength: 7,
-                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(3, sizeof(uint)))),
+                    payloadLength: roomTypeOpcodePayloadLength,
                     envelopeSummary: $"room-type+opcode+len32 envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
                     tickCount,
                     out result))
@@ -4655,10 +4685,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (nestedPayload.Length >= 9 &&
+                TryReadUInt32PayloadLength(nestedPayload.AsSpan(3, sizeof(uint)), out int opcodeRoomTypePayloadLength) &&
                 TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
                     nestedPayload,
                     prefixLength: 7,
-                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(3, sizeof(uint)))),
+                    payloadLength: opcodeRoomTypePayloadLength,
                     envelopeSummary: $"opcode+room-type+len32 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
                     tickCount,
                     out result))

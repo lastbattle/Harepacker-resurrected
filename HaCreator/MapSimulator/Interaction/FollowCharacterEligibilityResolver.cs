@@ -155,6 +155,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return CharacterAssembler.SupportsTamingMobAction(tamingMobPart, actionName);
             }
 
+            if (ClientOwnedVehicleSkillClassifier.IsWzOnlyClientOwnedVehicleOneTimeActionName(
+                    mountItemId,
+                    actionName))
+            {
+                return false;
+            }
+
             // Keep known client-gated vehicle current-action coverage owner-positive even when the
             // root is owner-only in the client branch (for example, non-render roots admitted by
             // vehicle-id families in LoadTamingMobAction).
@@ -163,12 +170,6 @@ namespace HaCreator.MapSimulator.Interaction
                     actionName))
             {
                 return true;
-            }
-
-            if (ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(mountItemId)
-                && ClientOwnedVehicleSkillClassifier.IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(actionName))
-            {
-                return false;
             }
 
             // Unknown action names must only keep ownership on truly authored exact roots.

@@ -90,6 +90,10 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle ClientRightCollectionPageContentBounds = new(255, 30, 190, 248);
         private static readonly Rectangle ClientLeftCollectionPageIndexBounds = new(38, 293, 190, 16);
         private static readonly Rectangle ClientRightCollectionPageIndexBounds = new(258, 293, 190, 16);
+        private const int ClientCollectionTextDrawBaseX = 35;
+        private const int ClientCollectionTextDrawBaseY = 30;
+        private const int ClientCollectionRuleDrawBaseX = 3;
+        private const int ClientCollectionRuleDrawBaseY = 30;
         private static readonly Color TitleColor = new(82, 59, 29);
         private static readonly Color ValueColor = new(56, 45, 33);
         private static readonly Color AccentColor = new(173, 120, 48);
@@ -798,10 +802,7 @@ namespace HaCreator.MapSimulator.UI
                     {
                         _caretBlinkTick = Environment.TickCount;
                     }
-                    else if (ctrl && WasPressed(keyboard, Keys.A))
-                    {
-                        SelectAllSearchText();
-                    }
+                    // Ctrl+A is not a CCtrlEdit-owned command in the recovered client path.
                     else if (ctrl && WasPressed(keyboard, Keys.C))
                     {
                         CopySelectedSearchText(cutSelection: false);
@@ -838,10 +839,6 @@ namespace HaCreator.MapSimulator.UI
                             DeleteSearchSelectionIfAny();
                             OnSearchQueryChanged();
                         }
-                        else if (ctrl)
-                        {
-                            DeletePreviousSearchWord();
-                        }
                         else if (SkillMacroNameRules.TryRemoveTextElementBeforeCaret(_searchQuery, _searchCursorPosition, out string updatedText, out int updatedCaretIndex))
                         {
                             _searchQuery = updatedText;
@@ -868,10 +865,6 @@ namespace HaCreator.MapSimulator.UI
                             DeleteSearchSelectionIfAny();
                             OnSearchQueryChanged();
                         }
-                        else if (ctrl)
-                        {
-                            DeleteNextSearchWord();
-                        }
                         else if (SkillMacroNameRules.TryRemoveTextElementAtCaret(_searchQuery, _searchCursorPosition, out string updatedText, out int updatedCaretIndex))
                         {
                             _searchQuery = updatedText;
@@ -882,6 +875,7 @@ namespace HaCreator.MapSimulator.UI
                     if (WasPressedOrRepeated(keyboard, Keys.Left, tickCount))
                     {
                         ClearCompositionText();
+                        // CCtrlEdit::OnKey still moves one caret stop for Ctrl+Left/Right, then forwards to the owner.
                         int baseCaret = shift
                             ? Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length)
                             : ClientEditSelectionHelper.ResolveNavigationCaret(
@@ -891,9 +885,7 @@ namespace HaCreator.MapSimulator.UI
                                 moveRight: false);
                         int nextCursorPosition = !shift && HasSearchSelection
                             ? baseCaret
-                            : ctrl
-                                ? FindPreviousSearchWordBoundary(baseCaret)
-                                : SkillMacroNameRules.GetPreviousCaretStop(_searchQuery, baseCaret);
+                            : SkillMacroNameRules.GetPreviousCaretStop(_searchQuery, baseCaret);
                         MoveSearchCaret(nextCursorPosition, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
@@ -909,19 +901,18 @@ namespace HaCreator.MapSimulator.UI
                                 moveRight: true);
                         int nextCursorPosition = !shift && HasSearchSelection
                             ? baseCaret
-                            : ctrl
-                                ? FindNextSearchWordBoundary(baseCaret)
-                                : SkillMacroNameRules.GetNextCaretStop(_searchQuery, baseCaret);
+                            : SkillMacroNameRules.GetNextCaretStop(_searchQuery, baseCaret);
                         MoveSearchCaret(nextCursorPosition, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
-                    if (WasPressed(keyboard, Keys.Home))
+                    // CCtrlEdit::OnKey forwards Ctrl+Home/End to the parent instead of consuming them locally.
+                    if (!ctrl && WasPressed(keyboard, Keys.Home))
                     {
                         ClearCompositionText();
                         MoveSearchCaret(0, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
-                    if (WasPressed(keyboard, Keys.End))
+                    if (!ctrl && WasPressed(keyboard, Keys.End))
                     {
                         ClearCompositionText();
                         MoveSearchCaret(_searchQuery.Length, shift);
@@ -1687,8 +1678,8 @@ namespace HaCreator.MapSimulator.UI
 
             // CBookDlg::Draw places CT_INFO rule records from a page-local +3,+30 origin.
             return new Rectangle(
-                pageOrigin.X + record.Left + 3,
-                pageOrigin.Y + record.Top + 30,
+                pageOrigin.X + record.Left + ClientCollectionRuleDrawBaseX,
+                pageOrigin.Y + record.Top + ClientCollectionRuleDrawBaseY,
                 record.Width,
                 Math.Max(1, record.Height));
         }
@@ -1697,7 +1688,9 @@ namespace HaCreator.MapSimulator.UI
         {
             if (record?.UsesResolvedAnalyzerOffset == true)
             {
-                return new Vector2(pageOrigin.X + record.Left + 35, pageOrigin.Y + record.Top + 30);
+                return new Vector2(
+                    pageOrigin.X + record.Left + ClientCollectionTextDrawBaseX,
+                    pageOrigin.Y + record.Top + ClientCollectionTextDrawBaseY);
             }
 
             HorizontalAlignment alignment = record?.Alignment switch
@@ -1706,13 +1699,13 @@ namespace HaCreator.MapSimulator.UI
                 CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
                 _ => HorizontalAlignment.Left
             };
-            float anchorX = pageOrigin.X + record.Left + 35;
+            float anchorX = pageOrigin.X + record.Left + ClientCollectionTextDrawBaseX;
             if (alignment == HorizontalAlignment.Right)
             {
                 anchorX += record.Width;
             }
 
-            return new Vector2(anchorX, pageOrigin.Y + record.Top + 30);
+            return new Vector2(anchorX, pageOrigin.Y + record.Top + ClientCollectionTextDrawBaseY);
         }
 
         private void DrawRule(SpriteBatch sprite, Rectangle bounds)
@@ -2499,73 +2492,6 @@ namespace HaCreator.MapSimulator.UI
             RefreshSearchMatches(true, false);
         }
 
-        private void DeletePreviousSearchWord()
-        {
-            if (_searchCursorPosition <= 0 || string.IsNullOrEmpty(_searchQuery))
-            {
-                return;
-            }
-
-            int removalStart = _searchCursorPosition;
-            while (removalStart > 0 && ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalStart - 1]))
-            {
-                removalStart--;
-            }
-
-            while (removalStart > 0 && !ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalStart - 1]))
-            {
-                removalStart--;
-            }
-
-            _searchQuery = _searchQuery.Remove(removalStart, _searchCursorPosition - removalStart);
-            _searchCursorPosition = removalStart;
-            OnSearchQueryChanged();
-        }
-
-        private void DeleteNextSearchWord()
-        {
-            if (_searchCursorPosition >= _searchQuery.Length || string.IsNullOrEmpty(_searchQuery))
-            {
-                return;
-            }
-
-            int removalEnd = _searchCursorPosition;
-            while (removalEnd < _searchQuery.Length && ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalEnd]))
-            {
-                removalEnd++;
-            }
-
-            while (removalEnd < _searchQuery.Length && !ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalEnd]))
-            {
-                removalEnd++;
-            }
-
-            _searchQuery = _searchQuery.Remove(_searchCursorPosition, removalEnd - _searchCursorPosition);
-            OnSearchQueryChanged();
-        }
-
-        private int FindPreviousSearchWordBoundary(int cursorPosition)
-        {
-            int safeCursorPosition = Math.Clamp(cursorPosition, 0, _searchQuery?.Length ?? 0);
-            if (safeCursorPosition <= 0 || string.IsNullOrEmpty(_searchQuery))
-            {
-                return 0;
-            }
-
-            return ClientEditWordNavigator.FindPreviousWordBoundary(_searchQuery, safeCursorPosition);
-        }
-
-        private int FindNextSearchWordBoundary(int cursorPosition)
-        {
-            int safeCursorPosition = Math.Clamp(cursorPosition, 0, _searchQuery?.Length ?? 0);
-            if (string.IsNullOrEmpty(_searchQuery) || safeCursorPosition >= _searchQuery.Length)
-            {
-                return _searchQuery?.Length ?? 0;
-            }
-
-            return ClientEditWordNavigator.FindNextWordBoundary(_searchQuery, safeCursorPosition);
-        }
-
         private void SelectSearchWordAt(int mouseX)
         {
             if (string.IsNullOrEmpty(_searchQuery))
@@ -2918,20 +2844,6 @@ namespace HaCreator.MapSimulator.UI
             _searchCursorPosition = selectionStart;
             ClearSearchSelection();
             return true;
-        }
-
-        private void SelectAllSearchText()
-        {
-            if (string.IsNullOrEmpty(_searchQuery))
-            {
-                ClearSearchSelection();
-                _searchCursorPosition = 0;
-                return;
-            }
-
-            _searchSelectionAnchor = 0;
-            _searchCursorPosition = _searchQuery.Length;
-            _caretBlinkTick = Environment.TickCount;
         }
 
         private void CopySelectedSearchText(bool cutSelection)

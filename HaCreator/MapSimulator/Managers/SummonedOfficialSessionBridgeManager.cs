@@ -2347,19 +2347,27 @@ namespace HaCreator.MapSimulator.Managers
                         mismatchPairs,
                         PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseMoveActionByteIndex,
                         out byte observedMoveAction,
-                        out byte rebuiltMoveAction)
-                    && (observedMoveAction & 1) == (rebuiltMoveAction & 1))
+                        out byte rebuiltMoveAction))
                 {
-                    return "mismatch:moveActionHighBitsOnly";
+                    return (observedMoveAction & 1) == (rebuiltMoveAction & 1)
+                        ? "mismatch:moveActionHighBitsOnly"
+                        : "mismatch:moveActionLowBitChanged";
                 }
 
                 if (mismatchByteIndices.Count == 1
                     && PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityMoveActionMismatchClass(
                         decodeDetail,
-                        out string moveActionMismatchClass)
-                    && string.Equals(moveActionMismatchClass, "highBitsOnly", StringComparison.Ordinal))
+                        out string moveActionMismatchClass))
                 {
-                    return "mismatch:moveActionHighBitsOnly";
+                    if (string.Equals(moveActionMismatchClass, "highBitsOnly", StringComparison.Ordinal))
+                    {
+                        return "mismatch:moveActionHighBitsOnly";
+                    }
+
+                    if (string.Equals(moveActionMismatchClass, "lowBitChanged", StringComparison.Ordinal))
+                    {
+                        return "mismatch:moveActionLowBitChanged";
+                    }
                 }
 
                 return mismatchByteIndices.Count == 1

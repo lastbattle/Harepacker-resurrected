@@ -12,7 +12,7 @@ namespace HaCreator.MapSimulator
     {
         private const short ItemUpgradeOwnerRequestOpcode = 0x55;
         private const int ItemUpgradeOwnerResultFallbackDelayMs = 750;
-        private const int ItemUpgradeOwnerResultApplyDelayMs = 50;
+        private const int ItemUpgradeOwnerResultApplyDelayMs = 0;
         private const int ItemUpgradeOwnerExternalResultFallbackDelayMs = 3000;
         private const int ItemUpgradeOwnerExclusiveRequestCooldownMs = 500;
         private const int ItemUpgradeOwnerResultAckViciousHammerDelayMs = 1000;
@@ -461,9 +461,10 @@ namespace HaCreator.MapSimulator
             // (Decode4 reason + immediate notice/recovery path), while non-65/66 outcomes
             // transition through the regular result-state show path.
             //
-            // CUIItemUpgrade::ShowResult sets m_tEnd to now+1000 specifically when
-            // m_nReturnResult==61 and m_nResult==0 (Vicious' Hammer fail), so keep
-            // that result branch on the delayed apply lane before owner completion.
+            // CUIItemUpgrade::ShowResult sets m_tEnd to now for normal outcomes,
+            // but to now+1000 specifically when m_nReturnResult==61 and
+            // m_nResult==0 (Vicious' Hammer fail), so only that result branch
+            // stays on the delayed apply lane before owner completion.
             return resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot ||
                    resultCode == ItemUpgradePacketResultCodeClientRejected
                 ? 0
@@ -797,7 +798,7 @@ namespace HaCreator.MapSimulator
             string outboxStatus = "packet outbox unavailable";
             string requestPathLabel = useConsumeCashRequestPayload
                 ? "consume-cash-prefixed request body"
-                : "CUIItemUpgrade::OnButtonClicked 3xDecode4 request body";
+                : "CUIItemUpgrade::OnButtonClicked 3xEncode4 request body";
 
             if (payload != null &&
                 _localUtilityOfficialSessionBridge.TrySendOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out dispatchStatus))

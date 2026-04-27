@@ -186,9 +186,45 @@ namespace HaCreator.MapSimulator.Effects
                 Alpha = 0f,
                 OwnerKind = ownerKind,
                 OwnerSkillId = ownerSkillId,
-                OwnerSourceKind = ownerSourceKind
+                OwnerSourceKind = ownerSourceKind,
+                OwnerIdentity = AllocateWeatherMessageOwnerIdentity(ownerKind)
             };
             _weatherMessages.Add(msgInfo);
+        }
+
+        internal static bool ShouldDrawWeatherMessageForClientParity(WeatherMessageInfo message)
+        {
+            return message != null && message.OwnerKind == WeatherMessageOwnerKind.WeatherOverlay;
+        }
+
+        public void ClearStatusBarItemMsgOwnersForClientParity()
+        {
+            for (int i = _weatherMessages.Count - 1; i >= 0; i--)
+            {
+                if (_weatherMessages[i]?.OwnerKind == WeatherMessageOwnerKind.StatusBarItemMsg)
+                {
+                    _weatherMessages.RemoveAt(i);
+                }
+            }
+        }
+
+        private int _nextWeatherMessageOwnerIdentity = 1;
+
+        private int AllocateWeatherMessageOwnerIdentity(WeatherMessageOwnerKind ownerKind)
+        {
+            if (ownerKind == WeatherMessageOwnerKind.WeatherOverlay)
+            {
+                return 0;
+            }
+
+            int ownerIdentity = _nextWeatherMessageOwnerIdentity;
+            _nextWeatherMessageOwnerIdentity++;
+            if (_nextWeatherMessageOwnerIdentity <= 0)
+            {
+                _nextWeatherMessageOwnerIdentity = 1;
+            }
+
+            return ownerIdentity;
         }
 
         /// <summary>
@@ -720,6 +756,7 @@ namespace HaCreator.MapSimulator.Effects
             int yOffset = 100;
             foreach (var msg in _weatherMessages)
             {
+                if (!ShouldDrawWeatherMessageForClientParity(msg)) continue;
                 if (msg.Alpha <= 0) continue;
 
                 Vector2 textSize = font.MeasureString(msg.Message);
@@ -840,6 +877,7 @@ namespace HaCreator.MapSimulator.Effects
         public WeatherMessageOwnerKind OwnerKind;
         public WeatherMessageOwnerSourceKind OwnerSourceKind;
         public int OwnerSkillId;
+        public int OwnerIdentity;
         public int StartTime;
         public int Duration;
         public bool FadeIn;

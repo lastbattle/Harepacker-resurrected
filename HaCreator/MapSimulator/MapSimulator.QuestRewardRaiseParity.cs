@@ -81,6 +81,157 @@ namespace HaCreator.MapSimulator
             ShowActiveQuestRewardRaiseGroup();
         }
 
+        private bool TryOpenQuestRewardRaiseOwnerFromInventoryItem(
+            int itemId,
+            InventoryType inventoryType,
+            int currentTime,
+            int? slotIndex = null)
+        {
+            if (itemId <= 0
+                || inventoryType == InventoryType.NONE
+                || !InventoryItemMetadataResolver.TryResolveRaiseOwnerContextForItem(
+                    itemId,
+                    out QuestRewardRaiseOwnerContext ownerContext,
+                    out QuestRewardRaiseItemMetadata metadata))
+            {
+                return false;
+            }
+
+            int questId = Math.Max(0, metadata?.QuestId ?? 0);
+            if (questId <= 0 || string.IsNullOrWhiteSpace(metadata?.UiData))
+            {
+                return false;
+            }
+
+            int initialQrData = ResolveQuestRewardRaiseInitialQrData(questId);
+            QuestRewardChoicePrompt prompt = BuildQuestRewardRaiseItemOwnerPrompt(
+                metadata,
+                ownerContext,
+                initialQrData);
+            if (prompt == null)
+            {
+                return false;
+            }
+
+            OpenQuestRewardChoicePrompt(prompt, QuestRewardRaiseSourceKind.InventoryItem);
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise == null || activeRaise.OwnerItemId != itemId)
+            {
+                return false;
+            }
+
+            _chat?.AddSystemMessage(
+                slotIndex is int resolvedSlotIndex
+                    ? $"Opened raise owner #{itemId} from {inventoryType} slot {resolvedSlotIndex + 1} for quest #{questId}. {activeRaise.OpenDispatchSummary}"
+                    : $"Opened raise owner #{itemId} from {inventoryType} for quest #{questId}. {activeRaise.OpenDispatchSummary}",
+                currentTime);
+            return true;
+        }
+
+        private int ResolveQuestRewardRaiseInitialQrData(int questId)
+        {
+            return questId > 0
+                && _questRuntime != null
+                && _questRuntime.TryGetQuestRecordValue(questId, out string questRecordValue)
+                && TryParseQuestRewardRaiseQrData(questRecordValue, out int qrData)
+                    ? qrData
+                    : 0;
+        }
+
+        private static QuestRewardChoicePrompt BuildQuestRewardRaiseItemOwnerPrompt(
+            QuestRewardRaiseItemMetadata metadata,
+            QuestRewardRaiseOwnerContext ownerContext,
+            int initialQrData)
+        {
+            if (metadata == null || ownerContext == null || metadata.QuestId <= 0 || metadata.OwnerItemId <= 0)
+            {
+                return null;
+            }
+
+            QuestRewardRaiseOwnerContext resolvedOwnerContext = new()
+            {
+                OwnerItemId = ownerContext.OwnerItemId,
+                WindowMode = QuestRewardRaiseWindowMode.PiecePlacement,
+                MaxDropCount = Math.Max(1, ownerContext.MaxDropCount),
+                InitialQrData = initialQrData,
+                UiData = ownerContext.UiData,
+                IncrementExpUnit = Math.Max(0, ownerContext.IncrementExpUnit),
+                Grade = Math.Max(0, ownerContext.Grade),
+                MessageLines = ownerContext.MessageLines ?? Array.Empty<string>()
+            };
+
+            return new QuestRewardChoicePrompt
+            {
+                QuestId = metadata.QuestId,
+                QuestName = string.IsNullOrWhiteSpace(metadata.Name)
+                    ? ResolveQuestRewardRaiseItemName(metadata.OwnerItemId)
+                    : metadata.Name,
+                CompletionPhase = false,
+                ActionLabel = "Raise",
+                OwnerContext = resolvedOwnerContext,
+                Groups = BuildQuestRewardRaiseItemOwnerGroups(metadata, initialQrData)
+            };
+        }
+
+        private static IReadOnlyList<QuestRewardChoiceGroup> BuildQuestRewardRaiseItemOwnerGroups(
+            QuestRewardRaiseItemMetadata metadata,
+            int initialQrData)
+        {
+            IReadOnlyList<int> dropItemIds = metadata?.DropItemIds ?? Array.Empty<int>();
+            string promptText = ResolveQuestRewardRaiseItemOwnerPromptText(metadata, initialQrData);
+            if (dropItemIds.Count == 0)
+            {
+                return new[]
+                {
+                    new QuestRewardChoiceGroup
+                    {
+                        GroupKey = Math.Max(1, metadata?.OwnerItemId ?? 1),
+                        PromptText = promptText,
+                        Options = Array.Empty<QuestRewardChoiceOption>()
+                    }
+                };
+            }
+
+            QuestRewardChoiceOption[] options = dropItemIds
+                .Where(itemId => itemId > 0)
+                .Distinct()
+                .Select(itemId => new QuestRewardChoiceOption
+                {
+                    ItemId = itemId,
+                    Label = ResolveQuestRewardRaiseItemName(itemId),
+                    DetailText = "WZ raise item list entry.",
+                    InventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId)
+                })
+                .ToArray();
+
+            return new[]
+            {
+                new QuestRewardChoiceGroup
+                {
+                    GroupKey = Math.Max(1, metadata.OwnerItemId),
+                    PromptText = promptText,
+                    Options = options
+                }
+            };
+        }
+
+        private static string ResolveQuestRewardRaiseItemOwnerPromptText(
+            QuestRewardRaiseItemMetadata metadata,
+            int initialQrData)
+        {
+            IReadOnlyList<string> messages = metadata?.MessageLines ?? Array.Empty<string>();
+            if (messages.Count > 0)
+            {
+                int messageIndex = Math.Clamp(initialQrData, 0, messages.Count - 1);
+                if (!string.IsNullOrWhiteSpace(messages[messageIndex]))
+                {
+                    return messages[messageIndex];
+                }
+            }
+
+            return "Drag qualifying items from the inventory into the raise surface. Right-click a placed row to release that local PutItem request.";
+        }
+
         private void ShowActiveQuestRewardRaiseGroup()
         {
             QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
@@ -144,7 +295,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (activeRaise.Prompt?.Groups?.Count > 0)
+            if (activeRaise.Source != QuestRewardRaiseSourceKind.InventoryItem
+                && activeRaise.Prompt?.Groups?.Count > 0)
             {
                 activeRaise.DisplayMode = QuestRewardRaiseWindowMode.Selection;
                 activeRaise.GroupIndex = 0;
@@ -309,6 +461,12 @@ namespace HaCreator.MapSimulator
                         _playerManager?.Player?.Build,
                         activeRaise.SelectedItemsByGroup);
                     HandleNpcOverlayQuestActionResult(npcResult, activeRaise.Prompt.QuestId);
+                    break;
+
+                case QuestRewardRaiseSourceKind.InventoryItem:
+                    _chat?.AddSystemMessage(
+                        $"Confirmed raise owner #{Math.Max(0, activeRaise.OwnerItemId)} for quest #{Math.Max(0, activeRaise.Prompt.QuestId)}; waiting for packet-owned QR/update acknowledgement if one is supplied.",
+                        currTickCount);
                     break;
             }
         }

@@ -72,7 +72,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex StandaloneColorBlockRegex = new(@"#c(?!\d)(?<text>[^#]*)#", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex RewardCategoryRegex = new(@"#W(?<category>[^#\s]*)#", RegexOptions.Compiled);
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex FontSizeRegex = new(@"#fs[+-]?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontSizeRegex = new(@"#fs[+-]?\d+(?:\.\d+)?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontSizeResetRegex = new(@"#fs#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|default|black|red|green|blue|yellow|orange|gray|grey|purple|violet|magenta|0x[0-9a-fA-F]+|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
@@ -80,7 +80,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex TerminatedInlineStyleRegex = new(@"#(?<tag>[bkrgdenmc])#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex InlineStyleBlockRegex = new(@"#(?<tag>[bkrgdemc])(?<text>[A-Z0-9][^#\r\n]*)#", RegexOptions.Compiled);
         private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>[!?,.;:)])#?", RegexOptions.Compiled);
-        private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)(?:#l|(?=(?:\s|#(?:[A-Za-z])#?|#W[^#\s]*#|#(?:[!?,.;:)])#?)*#L-?\d+#)|\z)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex LiteralPhraseHashRegex = new(@"#(?<text>[A-Z][^#\r\n]*\s[^#\r\n]*)#", RegexOptions.Compiled);

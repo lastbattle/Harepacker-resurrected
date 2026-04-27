@@ -538,15 +538,34 @@ namespace HaCreator.MapSimulator
 
             if (runtimeData != null)
             {
-                _playerManager?.TryApplyMobSkillStatus(
+                bool applied = _playerManager?.TryApplyMobSkillStatus(
                     area.SkillId,
                     runtimeData,
                     currentTime,
                     area.WorldBounds.Center.X,
-                    area.ElementAttribute);
+                    area.ElementAttribute) == true;
+                if (applied)
+                {
+                    _playerManager?.PlayMobSkillHitEffect(area.SkillId, Math.Max(1, area.SkillLevel), currentTime);
+                }
+
+                if (ShouldMirrorMobAffectedAreaSkillBlock(area.SkillId, applied))
+                {
+                    _playerManager?.TryApplyMobSkillBlockingStatus(
+                        area.SkillId,
+                        Math.Max(1, area.SkillLevel),
+                        runtimeData,
+                        currentTime);
+                }
             }
 
             _fieldEffects?.TriggerDamageMist(0.35f, Math.Max(250, intervalMs), currentTime);
+        }
+
+        internal static bool ShouldMirrorMobAffectedAreaSkillBlock(int skillId, bool appliedStatus)
+        {
+            return appliedStatus
+                   && HaCreator.MapSimulator.Character.Skills.PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out _);
         }
 
         private void UpdateRemotePlayerAffectedAreaGameplay(

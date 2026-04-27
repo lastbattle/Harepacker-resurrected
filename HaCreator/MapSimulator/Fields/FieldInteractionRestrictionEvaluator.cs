@@ -163,6 +163,19 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetAndroidRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetAndroidRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return IsInfoFlagSet(mapInfo, "vanishAndroid")
+                ? "Android companion features are disabled in this map."
+                : null;
+        }
+
         public static string GetPartyBossRestrictionMessage(long fieldLimit)
         {
             return GetPartyBossRestrictionMessage(fieldLimit, mapInfo: null);
@@ -395,6 +408,19 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetPetRuntimeRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetPetRuntimeRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return IsInfoFlagSet(mapInfo, "vanishPet")
+                ? "Pet runtime interactions are disabled in this map."
+                : null;
+        }
+
         public static string GetMapTransferRestrictionMessage(long fieldLimit)
         {
             return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
@@ -435,6 +461,11 @@ namespace HaCreator.MapSimulator.Fields
         public static bool CanUseAndroid(long fieldLimit)
         {
             return GetAndroidRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanUseAndroid(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetAndroidRestrictionMessage(fieldLimit, mapInfo) == null;
         }
 
         public static bool CanChangePartyLeader(long fieldLimit)
@@ -597,7 +628,7 @@ namespace HaCreator.MapSimulator.Fields
             List<string> messages = new();
             AddFieldEntryMessage(messages, GetParcelOpenRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetQuestAlertRestrictionMessage(fieldLimit));
-            AddFieldEntryMessage(messages, GetAndroidRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetAndroidRestrictionMessage(fieldLimit, mapInfo));
             AddFieldEntryMessage(messages, GetTamingMobRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit, mapInfo));
             AddFieldEntryMessage(messages, GetDropRestrictionMessage(fieldLimit));
@@ -610,6 +641,10 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFollowCharacterRestrictionMessage(mapInfo));
+            if (GetPetRuntimeRestrictionMessage(fieldLimit) == null)
+            {
+                AddFieldEntryMessage(messages, GetPetRuntimeRestrictionMessage(fieldLimit, mapInfo));
+            }
             return messages;
         }
 

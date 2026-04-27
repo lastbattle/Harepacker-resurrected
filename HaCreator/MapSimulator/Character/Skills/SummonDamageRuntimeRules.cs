@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.AI;
 using System;
 
 namespace HaCreator.MapSimulator.Character.Skills
@@ -27,8 +28,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             return damage > 0;
         }
 
-        public static int ResolveBodyContactBaseDamage(int physicalDamage, int currentAttackDamage, int magicalDamage)
+        public static int ResolveBodyContactBaseDamage(
+            int physicalDamage,
+            int currentAttackDamage,
+            int magicalDamage,
+            bool currentAttackIsMagic = false)
         {
+            if (currentAttackIsMagic)
+            {
+                if (magicalDamage > 0)
+                {
+                    return magicalDamage;
+                }
+
+                if (currentAttackDamage > 0)
+                {
+                    return currentAttackDamage;
+                }
+            }
+
             if (physicalDamage > 0)
             {
                 return physicalDamage;
@@ -45,6 +63,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 1;
+        }
+
+        public static MobDamageType ResolveBodyContactDamageType(bool currentAttackIsMagic)
+        {
+            return currentAttackIsMagic
+                ? MobDamageType.Magical
+                : MobDamageType.Physical;
         }
 
         public static int ResolveBodyContactRelativeMotionX(

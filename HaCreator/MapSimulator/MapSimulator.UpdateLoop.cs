@@ -383,6 +383,7 @@ namespace HaCreator.MapSimulator
             DrainAdminShopPacketInbox();
             DrainCashServicePacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
+            UpdatePacketOwnedBattleRecordTimerLifecycle(currTickCount);
             UpdatePacketOwnedAntiMacroAwaitingResultState(currTickCount);
             RestorePacketOwnedAdminShopAfterOwnerVisibilityResumes();
             FlushPendingLocalItemDropRequests(currTickCount);

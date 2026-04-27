@@ -374,10 +374,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (ShouldDismissInitialQuizOwnerWithCancelKey(newKeyboardState, oldKeyboardState))
+            if (ShouldSwallowInitialQuizOwnerCancelKey(newKeyboardState, oldKeyboardState))
             {
-                // `CUIInitialQuiz::SetRet` special-cases ret=2 (cancel) and skips SendResult.
-                CloseInitialQuizOwnerWithoutSubmission();
+                // `CUIInitialQuiz::SetRet` returns immediately for ret=2, so cancel is swallowed.
                 return true;
             }
 
@@ -449,13 +448,6 @@ namespace HaCreator.MapSimulator
             SyncInitialQuizOwnerLegacyInputStateFromEditControl();
             ResetInitialQuizOwnerHeldEditKey();
             return true;
-        }
-
-        private void CloseInitialQuizOwnerWithoutSubmission()
-        {
-            _initialQuizTimerRuntime.Clear();
-            ClearInitialQuizOwnerInputState();
-            SyncUtilityChannelSelectorAvailability();
         }
 
         private static bool TryResolveInitialQuizOwnerNewEditKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, out Keys editKey)
@@ -1791,7 +1783,7 @@ namespace HaCreator.MapSimulator
             return enabled && pressedOkButton && hoveringOkButton;
         }
 
-        internal static bool ShouldDismissInitialQuizOwnerWithCancelKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState)
+        internal static bool ShouldSwallowInitialQuizOwnerCancelKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState)
         {
             return newKeyboardState.IsKeyDown(Keys.Escape)
                 && oldKeyboardState.IsKeyUp(Keys.Escape);

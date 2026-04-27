@@ -745,13 +745,15 @@ namespace HaCreator.MapSimulator.Managers
                 : Array.Empty<byte>();
 
             if (opcode == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
-                && SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out byte[] relayedPayload, out _)
-                && relayedPacketType >= FirstCarnivalOpcode
-                && relayedPacketType <= LastCarnivalOpcode)
+                && TryDecodeCarnivalPacketFromRelayPrefixChain(
+                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                    payload,
+                    out int relayedPacketType,
+                    out byte[] relayedPayload))
             {
                 message = new MonsterCarnivalPacketInboxMessage(
                     opcode,
-                    payload,
+                    SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(relayedPacketType, relayedPayload),
                     source,
                     $"packetclientraw {Convert.ToHexString(rawPacket)}",
                     relayedPacketType);
@@ -770,6 +772,45 @@ namespace HaCreator.MapSimulator.Managers
                 $"packetclientraw {Convert.ToHexString(rawPacket)}",
                 opcode);
             return true;
+        }
+
+        internal static bool TryDecodeCarnivalPacketFromRelayPrefixChain(
+            int firstPacketType,
+            byte[] firstPayload,
+            out int carnivalPacketType,
+            out byte[] carnivalPayload)
+        {
+            carnivalPacketType = 0;
+            carnivalPayload = Array.Empty<byte>();
+            firstPayload ??= Array.Empty<byte>();
+
+            int relayPacketType = firstPacketType;
+            byte[] relayPayload = firstPayload;
+            for (int depth = 0; depth < SpecialFieldRuntimeCoordinator.RelayPrefixChainMaxDepth; depth++)
+            {
+                if (relayPacketType >= FirstCarnivalOpcode && relayPacketType <= LastCarnivalOpcode)
+                {
+                    carnivalPacketType = relayPacketType;
+                    carnivalPayload = relayPayload;
+                    return true;
+                }
+
+                if (relayPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    return false;
+                }
+
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        relayPayload,
+                        out relayPacketType,
+                        out relayPayload,
+                        out _))
+                {
+                    return false;
+                }
+            }
+
+            return false;
         }
 
         private bool TryMapInboundPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)

@@ -5821,6 +5821,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return candidate;
                 }
             }
+
+            foreach (WzImageProperty node in EnumerateClientSummonedUolTableOnlyCandidateNodes(skillNode, infoNode))
+            {
+                foreach (string propertyName in propertyNames)
+                {
+                    foreach (ClientSummonedUolCandidateValue tableCandidate in EnumerateClientSummonedUolTableCandidateValues(
+                                 node,
+                                 skillNode,
+                                 propertyName))
+                    {
+                        yield return tableCandidate;
+                    }
+                }
+            }
         }
 
         private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolCandidateNodes(
@@ -5878,6 +5892,44 @@ namespace HaCreator.MapSimulator.Character.Skills
                     if (infoNode != null)
                     {
                         yield return infoNode;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolTableOnlyCandidateNodes(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode)
+        {
+            if (skillNode == null)
+            {
+                yield break;
+            }
+
+            var yieldedNodePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (WzImageProperty node in EnumerateClientSummonedUolCandidateNodes(skillNode, infoNode))
+            {
+                TryAddClientSummonedUolCandidateNode(yieldedNodePaths, node);
+            }
+
+            for (WzObject ancestor = skillNode.Parent; ancestor != null; ancestor = ancestor.Parent)
+            {
+                if (ancestor is not WzImageProperty ancestorProperty)
+                {
+                    continue;
+                }
+
+                if (TryAddClientSummonedUolCandidateNode(yieldedNodePaths, ancestorProperty))
+                {
+                    yield return ancestorProperty;
+                }
+
+                foreach (string wrapperName in new[] { "client", "hidden", "sidecar", "skillEntry", "SKILLENTRY" })
+                {
+                    WzImageProperty wrapperNode = ancestorProperty[wrapperName];
+                    if (TryAddClientSummonedUolCandidateNode(yieldedNodePaths, wrapperNode))
+                    {
+                        yield return wrapperNode;
                     }
                 }
             }
@@ -5953,44 +6005,121 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             WzImageProperty tableNode = node[propertyName];
-            WzImageProperty tableEntry = tableNode?[skillId.ToString(CultureInfo.InvariantCulture)];
-            if (tableEntry == null)
+            foreach (WzImageProperty tableEntry in EnumerateClientSummonedUolTableEntryNodes(tableNode, skillId))
             {
-                yield break;
-            }
+                string entryRelativePath = BuildClientSummonedUolTableEntryRelativePath(
+                    propertyName,
+                    tableNode,
+                    tableEntry,
+                    skillId);
+                string[] entryPathParts = BuildClientSummonedUolCandidateContextPathParts(
+                    node,
+                    entryRelativePath,
+                    skillNode);
+                string value = GetClientSummonedUolCandidateValue(tableEntry);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    yield return new ClientSummonedUolCandidateValue(value, entryPathParts);
+                }
 
-            string[] entryPathParts = BuildClientSummonedUolCandidateContextPathParts(
-                node,
-                $"{propertyName}/{skillId.ToString(CultureInfo.InvariantCulture)}",
-                skillNode);
-            string value = GetClientSummonedUolCandidateValue(tableEntry);
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                yield return new ClientSummonedUolCandidateValue(value, entryPathParts);
-            }
-
-            if (tableEntry.WzProperties == null)
-            {
-                yield break;
-            }
-
-            foreach (WzImageProperty child in tableEntry.WzProperties)
-            {
-                if (child == null || !IsClientSummonedUolTableEntryValueName(child.Name))
+                if (tableEntry.WzProperties == null)
                 {
                     continue;
                 }
 
-                value = GetClientSummonedUolCandidateValue(child);
-                if (string.IsNullOrWhiteSpace(value))
+                foreach (WzImageProperty child in tableEntry.WzProperties)
                 {
-                    continue;
-                }
+                    if (child == null || !IsClientSummonedUolTableEntryValueName(child.Name))
+                    {
+                        continue;
+                    }
 
-                yield return new ClientSummonedUolCandidateValue(
-                    value,
-                    BuildResolvedClientSummonedUolChildPathParts(entryPathParts, child.Name));
+                    value = GetClientSummonedUolCandidateValue(child);
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        continue;
+                    }
+
+                    yield return new ClientSummonedUolCandidateValue(
+                        value,
+                        BuildResolvedClientSummonedUolChildPathParts(entryPathParts, child.Name));
+                }
             }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolTableEntryNodes(
+            WzImageProperty tableNode,
+            int skillId)
+        {
+            if (tableNode == null || skillId <= 0)
+            {
+                yield break;
+            }
+
+            string skillIdText = skillId.ToString(CultureInfo.InvariantCulture);
+            var yieldedNodePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (WzImageProperty entryNode in EnumerateClientSummonedUolTableEntryNodeCandidates(tableNode, skillId, skillIdText))
+            {
+                if (TryAddClientSummonedUolCandidateNode(yieldedNodePaths, entryNode))
+                {
+                    yield return entryNode;
+                }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolTableEntryNodeCandidates(
+            WzImageProperty tableNode,
+            int skillId,
+            string skillIdText)
+        {
+            WzImageProperty directEntry = tableNode[skillIdText];
+            if (directEntry != null)
+            {
+                yield return directEntry;
+            }
+
+            int jobId = skillId / 10000;
+            string jobIdText = jobId.ToString(CultureInfo.InvariantCulture);
+            string imageName = $"{jobIdText}.img";
+            foreach (string groupName in new[] { jobIdText, imageName })
+            {
+                WzImageProperty groupedEntry = tableNode[groupName]?[skillIdText];
+                if (groupedEntry != null)
+                {
+                    yield return groupedEntry;
+                }
+            }
+
+            WzImageProperty mountedSkillEntry = tableNode["Skill"]?[imageName]?["skill"]?[skillIdText];
+            if (mountedSkillEntry != null)
+            {
+                yield return mountedSkillEntry;
+            }
+        }
+
+        private static string BuildClientSummonedUolTableEntryRelativePath(
+            string propertyName,
+            WzImageProperty tableNode,
+            WzImageProperty tableEntry,
+            int skillId)
+        {
+            string skillIdText = skillId.ToString(CultureInfo.InvariantCulture);
+            string tablePath = NormalizeClientSummonedUolFullPath(tableNode?.FullPath)
+                               ?? tableNode?.FullPath?.Trim().Replace('\\', '/');
+            string entryPath = NormalizeClientSummonedUolFullPath(tableEntry?.FullPath)
+                               ?? tableEntry?.FullPath?.Trim().Replace('\\', '/');
+            if (!string.IsNullOrWhiteSpace(tablePath)
+                && !string.IsNullOrWhiteSpace(entryPath)
+                && entryPath.StartsWith(tablePath, StringComparison.OrdinalIgnoreCase))
+            {
+                string suffix = entryPath[tablePath.Length..].TrimStart('/');
+                if (!string.IsNullOrWhiteSpace(suffix))
+                {
+                    return $"{propertyName}/{suffix}";
+                }
+            }
+
+            return $"{propertyName}/{skillIdText}";
         }
 
         private static bool IsClientSummonedUolTableEntryValueName(string name)
@@ -6004,7 +6133,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || name.Equals("path", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uol", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("value", StringComparison.OrdinalIgnoreCase)
-                   || ClientSummonedUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase);
+                   || ClientSummonedUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
+                   || ClientTileUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
+                   || ClientBallUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
+                   || ClientFlipBallUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolHeuristicCandidateValues(
@@ -6881,6 +7013,42 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Concat(new[] { string.IsNullOrWhiteSpace(propertyName) ? "uol" : propertyName })
                 .ToArray();
             return NormalizeClientSummonedUolCandidatePath(candidateValue, contextPathParts);
+        }
+
+        internal static string ResolveClientSkillAssetRootUolPathForTest(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode,
+            string propertyName)
+        {
+            IReadOnlyList<string> propertyNames = ResolveClientSkillAssetUolPropertyNamesForTest(propertyName);
+            return ResolveClientSkillAssetUolPathResolution(skillNode, infoNode, propertyNames).RootPath;
+        }
+
+        private static IReadOnlyList<string> ResolveClientSkillAssetUolPropertyNamesForTest(string propertyName)
+        {
+            if (ClientTileUolPropertyNames.Contains(propertyName, StringComparer.OrdinalIgnoreCase))
+            {
+                return ClientTileUolPropertyNames;
+            }
+
+            if (ClientBallUolPropertyNames.Contains(propertyName, StringComparer.OrdinalIgnoreCase))
+            {
+                return ClientBallUolPropertyNames;
+            }
+
+            if (ClientFlipBallUolPropertyNames.Contains(propertyName, StringComparer.OrdinalIgnoreCase))
+            {
+                return ClientFlipBallUolPropertyNames;
+            }
+
+            if (ClientSummonedUolPropertyNames.Contains(propertyName, StringComparer.OrdinalIgnoreCase))
+            {
+                return ClientSummonedUolPropertyNames;
+            }
+
+            return string.IsNullOrWhiteSpace(propertyName)
+                ? Array.Empty<string>()
+                : new[] { propertyName };
         }
 
         internal static (
@@ -9894,6 +10062,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.Speed = PreferPrimaryStat(levelData.Speed, GetInt(node, "psdSpeed", 0, level));
             levelData.SpeedMax = PreferPrimaryStat(levelData.SpeedMax, GetInt(node, "speedMax", 0, level));
             levelData.Jump = PreferPrimaryStat(levelData.Jump, GetInt(node, "psdJump", 0, level));
+            levelData.StrengthToDexterityPercent = GetInt(node, "str2dex", 0, level);
+            levelData.DexterityToStrengthPercent = GetInt(node, "dex2str", 0, level);
+            levelData.IntelligenceToLuckPercent = GetInt(node, "int2luk", 0, level);
+            levelData.LuckToDexterityPercent = GetInt(node, "luk2dex", 0, level);
             levelData.EnhancedPAD = GetInt(node, "epad", 0, level);
             levelData.EnhancedMAD = GetInt(node, "emad", 0, level);
             levelData.EnhancedPDD = GetInt(node, "epdd", 0, level);

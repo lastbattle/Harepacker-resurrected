@@ -854,6 +854,7 @@ namespace HaCreator.MapSimulator.Entities
                 {
                     AttackId = actionIndex,
                     AttackType = attackInfo?.AttackType >= 0 ? attackInfo.AttackType : attackMeta?.Type ?? -1,
+                    MagicAttack = attackInfo?.MagicAttack == true,
                     AnimationName = animationName,
                     Damage = Math.Max(1, damage),
                     Range = range,

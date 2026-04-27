@@ -627,6 +627,14 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        internal static bool ShouldRetainStatusBarItemMsgOwnerForClientParity(
+            bool hasActiveFloatNoticeOwner)
+        {
+            // Client evidence: CUIStatusBar::FloatNotice calls SetItemMsg(0, 0, 0, 0x1388)
+            // before creating its own CFloatNotice layer, deleting any item-message layer.
+            return !hasActiveFloatNoticeOwner;
+        }
+
         internal static bool TryCreateStatusBarItemMsgOwnerForClientParity(
             WeatherMessageInfo message,
             int currentTime,
@@ -648,7 +656,7 @@ namespace HaCreator.MapSimulator.UI
 
             owner = new StatusBarNoticeOwnerState(
                 StatusBarNoticeOwnerKind.ItemMsg,
-                OwnerIdentity: message.GetHashCode(),
+                OwnerIdentity: message.OwnerIdentity,
                 OwnerExpiresAtTick: ownerExpiresAtTick,
                 OwnerSourceKind: message.OwnerSourceKind,
                 OwnerSkillId: message.OwnerSkillId,

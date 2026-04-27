@@ -210,10 +210,70 @@ namespace HaCreator.MapSimulator.Interaction
                 resolvedGuildName,
                 packet.GuildLevel);
             SetPacketGuildPointsAndLevel(packet.GuildPoints, packet.GuildLevel, packet.GuildId);
+            SetPacketGuildRankTitles(packet.RankTitles, packet.GuildId);
+            ApplyClientGuildDataSnapshotMembers(packet.GuildMembers, packet.RankTitles, resolvedGuildName, packet.GuildId);
 
             int skillRecordCount = packet.GuildSkillRecords?.Count ?? 0;
-            string summary = $"Client OnGuildResult({packet.RawSubtype}) decoded guild snapshot for {resolvedGuildName} (id={packet.GuildId}, level={Math.Max(0, packet.GuildLevel)}, points={Math.Max(0, packet.GuildPoints)}, skillRecords={skillRecordCount}).";
+            int memberCount = packet.GuildMembers?.Count ?? 0;
+            string summary = $"Client OnGuildResult({packet.RawSubtype}) decoded guild snapshot for {resolvedGuildName} (id={packet.GuildId}, level={Math.Max(0, packet.GuildLevel)}, points={Math.Max(0, packet.GuildPoints)}, members={memberCount}, skillRecords={skillRecordCount}).";
             return SetPacketSyncSummary(SocialListTab.Guild, summary);
+        }
+
+        private void ApplyClientGuildDataSnapshotMembers(
+            IReadOnlyList<SocialListClientGuildMemberEntry> members,
+            IReadOnlyList<string> rankTitles,
+            string guildName,
+            int guildId)
+        {
+            List<SocialEntryState> entries = _entriesByTab[SocialListTab.Guild];
+            entries.Clear();
+            if (members != null)
+            {
+                for (int i = 0; i < members.Count; i++)
+                {
+                    SocialListClientGuildMemberEntry member = members[i];
+                    if (string.IsNullOrWhiteSpace(member.Name))
+                    {
+                        continue;
+                    }
+
+                    entries.Add(CreateClientGuildSnapshotEntry(member, rankTitles, guildName));
+                }
+            }
+
+            _packetOwnedRosterByTab[SocialListTab.Guild] = true;
+            _lastPendingRequestByTab[SocialListTab.Guild] = null;
+            _packetGuildRosterRevision = AdvanceGuildDialogRevision(_packetGuildRosterRevision);
+            RememberPacketGuildId(guildId);
+            ResetSelectionAfterMutation(SocialListTab.Guild);
+            TryFinalizePendingGuildDialogRequestFromPacket();
+        }
+
+        private SocialEntryState CreateClientGuildSnapshotEntry(
+            SocialListClientGuildMemberEntry member,
+            IReadOnlyList<string> rankTitles,
+            string guildName)
+        {
+            int rankIndex = Math.Clamp(member.Grade - 1, 0, Math.Max(0, (rankTitles?.Count ?? 1) - 1));
+            string roleLabel = rankTitles != null && rankIndex < rankTitles.Count && !string.IsNullOrWhiteSpace(rankTitles[rankIndex])
+                ? rankTitles[rankIndex].Trim()
+                : $"Rank {Math.Max(1, member.Grade)}";
+            bool isLocal = (_playerCharacterId > 0 && member.MemberId == _playerCharacterId)
+                           || string.Equals(member.Name, _playerName, StringComparison.OrdinalIgnoreCase);
+            string secondary = string.IsNullOrWhiteSpace(guildName) ? ResolveEffectiveGuildName(null, hasGuildMembership: true) : guildName.Trim();
+            return new SocialEntryState(
+                member.Name.Trim(),
+                roleLabel,
+                secondary,
+                member.IsOnline ? $"Job {member.JobId}, Lv. {member.Level}" : "Offline",
+                member.IsOnline ? _channel : 0,
+                member.IsOnline,
+                rankIndex == 0,
+                isBlocked: false)
+            {
+                MemberId = member.MemberId > 0 ? member.MemberId : null,
+                IsLocalPlayer = isLocal
+            };
         }
 
         private string BuildClientGuildSkillRecordSummary(SocialListClientGuildResultPacket packet)

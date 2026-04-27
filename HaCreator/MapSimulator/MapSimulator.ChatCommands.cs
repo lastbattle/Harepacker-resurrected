@@ -3582,7 +3582,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        if (!guildBoss.TryApplyPacket(rawPacketType, rawPayload, currTickCount, out string applyError))
+                        if (!TryDispatchCurrentWrapperPacketIngress(rawPacketType, rawPayload, currTickCount, out string applyError))
                         {
                             return ChatCommandHandler.CommandResult.Error(applyError);
                         }

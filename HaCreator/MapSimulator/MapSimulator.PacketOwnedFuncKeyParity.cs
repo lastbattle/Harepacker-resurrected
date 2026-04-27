@@ -923,10 +923,10 @@ namespace HaCreator.MapSimulator
             string detail = skillLevel > 0
                 ? fromLiveHotkeySlot
                     ? $"Packet-owned skill entry {skillId} is staged through the live hotkey map at level {skillLevel}."
-                    : $"Packet-owned skill entry {skillId} currently falls through to a direct footer visual at level {skillLevel} while the full live palette owner stays unresolved."
+                    : $"Packet-owned skill entry {skillId} is staged through the hidden packet-owned owner slot at level {skillLevel}."
                 : fromLiveHotkeySlot
                     ? $"Packet-owned skill entry {skillId} is staged through the live hotkey map."
-                    : $"Packet-owned skill entry {skillId} currently falls through to a direct footer visual while the full live palette owner stays unresolved.";
+                    : $"Packet-owned skill entry {skillId} is staged through the hidden packet-owned owner slot.";
             string badgeText = skillLevel > 0
                 ? $"Lv{skillLevel}"
                 : "SKILL";
@@ -965,10 +965,10 @@ namespace HaCreator.MapSimulator
             string detail = drawsUnavailableOverlay
                 ? fromLiveHotkeySlot
                     ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is mapped through the {clientLayer}, but the live inventory count is empty."
-                    : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} falls through to a direct footer visual through the {clientLayer}, but the live inventory count is empty."
+                    : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the hidden packet-owned owner slot and {clientLayer}, but the live inventory count is empty."
                 : fromLiveHotkeySlot
                     ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the {clientLayer}."
-                    : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} currently falls through to a direct footer visual through the {clientLayer}.";
+                    : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the hidden packet-owned owner slot and {clientLayer}.";
             string badgeText = isCashItemEntry || inventoryType == InventoryType.CASH
                 ? "CASH"
                 : "ITEM";
@@ -1021,10 +1021,10 @@ namespace HaCreator.MapSimulator
             string detail = configuredSkillCount > 0
                 ? fromLiveHotkeySlot
                     ? $"Packet-owned macro entry {packetMacroId} is staged through the live hotkey map with {configuredSkillCount} configured skill step{(configuredSkillCount == 1 ? string.Empty : "s")}."
-                    : $"Packet-owned macro entry {packetMacroId} currently falls through to a direct footer visual with {configuredSkillCount} configured skill step{(configuredSkillCount == 1 ? string.Empty : "s")}."
+                    : $"Packet-owned macro entry {packetMacroId} is staged through the hidden packet-owned owner slot with {configuredSkillCount} configured skill step{(configuredSkillCount == 1 ? string.Empty : "s")}."
                 : fromLiveHotkeySlot
                     ? $"Packet-owned macro entry {packetMacroId} is staged through the live hotkey map, but the macro is still empty."
-                    : $"Packet-owned macro entry {packetMacroId} currently falls through to a direct footer visual, but the macro is still empty.";
+                    : $"Packet-owned macro entry {packetMacroId} is staged through the hidden packet-owned owner slot, but the macro is still empty.";
             bool unavailable = macro == null || !macro.IsEnabled || configuredSkillCount <= 0;
             return new KeyConfigWindow.ShortcutVisualState(
                 (macroIndex >= 0
@@ -1175,6 +1175,9 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                int ownerSlotIndex = ComposePacketOwnedFuncKeyOwnerHotkeySlot(scanCode);
+                TryApplyPacketOwnedCastMappingToOwnerSlot(ownerSlotIndex, entry);
+
                 int bindableSlotIndex = -1;
                 if (TryResolvePacketOwnedBindableHotkeySlot(
                         input,
@@ -1260,6 +1263,23 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private bool TryApplyPacketOwnedCastMappingToOwnerSlot(int ownerSlotIndex, PacketOwnedFuncKeyMappedEntry entry)
+        {
+            if (_playerManager?.Skills == null || !SkillManager.IsPacketOwnedOwnerHotkeySlot(ownerSlotIndex))
+            {
+                return false;
+            }
+
+            return entry.Type switch
+            {
+                PacketOwnedFuncKeySkillType => _playerManager.Skills.TrySetPacketOwnedOwnerSkillHotkey(ownerSlotIndex, entry.Id),
+                PacketOwnedFuncKeyItemType or PacketOwnedFuncKeyItemTypeAlt or PacketOwnedFuncKeyItemTypeCash
+                    => _playerManager.Skills.TrySetPacketOwnedOwnerItemHotkey(ownerSlotIndex, entry.Id, ResolvePacketOwnedHotkeyInventoryType(entry.Id)),
+                PacketOwnedFuncKeyMacroType => TryApplyPacketOwnedOwnerMacroHotkey(ownerSlotIndex, entry.Id),
+                _ => false,
+            };
+        }
+
         private bool TryApplyPacketOwnedMacroHotkey(int slotIndex, int packetMacroId)
         {
             if (_playerManager?.Skills == null || packetMacroId <= 0)
@@ -1275,6 +1295,23 @@ namespace HaCreator.MapSimulator
             int zeroBasedMacroIndex = packetMacroId - 1;
             return zeroBasedMacroIndex >= 0
                 && _playerManager.Skills.TrySetMacroHotkey(slotIndex, zeroBasedMacroIndex);
+        }
+
+        private bool TryApplyPacketOwnedOwnerMacroHotkey(int ownerSlotIndex, int packetMacroId)
+        {
+            if (_playerManager?.Skills == null || packetMacroId <= 0)
+            {
+                return false;
+            }
+
+            if (_playerManager.Skills.TrySetPacketOwnedOwnerMacroHotkey(ownerSlotIndex, packetMacroId))
+            {
+                return true;
+            }
+
+            int zeroBasedMacroIndex = packetMacroId - 1;
+            return zeroBasedMacroIndex >= 0
+                && _playerManager.Skills.TrySetPacketOwnedOwnerMacroHotkey(ownerSlotIndex, zeroBasedMacroIndex);
         }
 
         private bool TryExecutePacketOwnedMacro(int packetMacroId, int currentTime)
@@ -1405,13 +1442,14 @@ namespace HaCreator.MapSimulator
         {
             return entry.Type switch
             {
-                PacketOwnedFuncKeySkillType => _playerManager?.Skills?.TryCastPacketOwnedFuncKeySkill(
-                    entry.Id,
-                    currentTime,
-                    ResolvePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken),
-                    ownerInputToken) == true,
-                PacketOwnedFuncKeyItemType or PacketOwnedFuncKeyItemTypeAlt or PacketOwnedFuncKeyItemTypeCash => TryUsePacketOwnedFuncKeyItem(entry.Id, currentTime),
-                PacketOwnedFuncKeyMacroType => TryExecutePacketOwnedMacro(entry.Id, currentTime),
+                PacketOwnedFuncKeySkillType
+                    or PacketOwnedFuncKeyItemType
+                    or PacketOwnedFuncKeyItemTypeAlt
+                    or PacketOwnedFuncKeyItemTypeCash
+                    or PacketOwnedFuncKeyMacroType => _playerManager?.Skills?.TryCastPacketOwnedOwnerHotkey(
+                        ResolvePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken),
+                        currentTime,
+                        ownerInputToken) == true,
                 _ => false,
             };
         }
@@ -1859,6 +1897,10 @@ namespace HaCreator.MapSimulator
             }
 
             Array.Fill(_packetOwnedBindableHotkeyAssignedScanCodes, -1);
+            _playerManager.Skills.ClearPacketOwnedOwnerHotkeySlots(
+                ComposePacketOwnedFuncKeyOwnerHotkeySlot(0),
+                PacketOwnedFuncKeyEntryCount);
+
             for (int i = 0; i < PacketOwnedBindableHotkeySlots.Length; i++)
             {
                 PacketOwnedKeyActionSlot slot = PacketOwnedBindableHotkeySlots[i];

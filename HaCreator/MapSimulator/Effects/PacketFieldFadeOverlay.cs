@@ -68,6 +68,12 @@ namespace HaCreator.MapSimulator.Effects
                 return 0;
             }
 
+            Update(currentTickCount);
+            if (_entries.Count == 0)
+            {
+                return 0;
+            }
+
             int forcedCount = 0;
             int resolvedFadeOutMs = Math.Max(0, fadeOutMs);
             for (int index = 0; index < _entries.Count; index++)
@@ -79,11 +85,6 @@ namespace HaCreator.MapSimulator.Effects
                 }
 
                 float currentAlpha = GetAlpha(entry, currentTickCount);
-                if (currentAlpha <= 0f)
-                {
-                    continue;
-                }
-
                 _entries[index] = entry.WithForcedFadeOut(currentTickCount, resolvedFadeOutMs, currentAlpha);
                 forcedCount++;
             }

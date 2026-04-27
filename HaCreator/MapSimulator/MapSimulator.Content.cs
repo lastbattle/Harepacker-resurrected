@@ -1097,7 +1097,9 @@ namespace HaCreator.MapSimulator
                         CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build)
                         && FieldInteractionRestrictionEvaluator.CanUseTamingMob(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
-                    equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
+                    equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(
+                        _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                        _mapBoard?.MapInfo));
                 }
             }
             if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow && _playerManager?.Player?.Build != null)
@@ -1936,7 +1938,9 @@ namespace HaCreator.MapSimulator
                         CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build)
                         && FieldInteractionRestrictionEvaluator.CanUseTamingMob(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
-                    equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
+                    equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(
+                        _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                        _mapBoard?.MapInfo));
                 }
             }
             if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow && _playerManager?.Player?.Build != null)

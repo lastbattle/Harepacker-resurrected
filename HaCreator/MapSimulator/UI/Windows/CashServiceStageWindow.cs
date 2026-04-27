@@ -1282,6 +1282,11 @@ namespace HaCreator.MapSimulator.UI
             _cashItemCommoditySerialNumber = _cashPacketCatalogEntries.FirstOrDefault()?.ListingId ?? 0;
             _cashItemProductId = _cashPacketCatalogEntries.FirstOrDefault()?.ItemId ?? 0;
             _cashItemPrice = _cashPacketCatalogEntries.FirstOrDefault()?.Price ?? 0;
+            if (IsPacketDecodeFailureSummary(summary))
+            {
+                AppendCashDecodeFailurePacketEntry(subtypeLabel, packetPayload, summary);
+            }
+
             if (_pendingCommoditySerialNumber > 0 && _cashItemResultSubtype is 92 or 98 or 100)
             {
                 summary += $" Pending commodity SN {_pendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)} was resumed.";
@@ -2751,7 +2756,11 @@ namespace HaCreator.MapSimulator.UI
                 Detail = failureMessage,
                 Seller = "CCashShop",
                 PriceLabel = reason >= 0 ? $"Reason {reason.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = "Failed"
+                StateLabel = "Failed",
+                PacketSource = ownerName,
+                PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: true),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
 
             _noticeState = failureMessage;
@@ -2774,6 +2783,36 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return failureMessage;
+        }
+
+        private void AppendCashDecodeFailurePacketEntry(string subtypeLabel, byte[] payload, string summary)
+        {
+            byte[] normalizedPayload = payload ?? Array.Empty<byte>();
+            string title = string.IsNullOrWhiteSpace(subtypeLabel)
+                ? "Cash-item decode failure"
+                : subtypeLabel;
+            AppendCashPacketCatalogEntry("Packet decode failures", "Decode", new PacketCatalogEntry
+            {
+                Title = title,
+                Detail = string.IsNullOrWhiteSpace(summary)
+                    ? $"{title} reached CCashShop, but the packet body could not be decoded from {normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)."
+                    : summary,
+                Seller = "CCashShop",
+                PriceLabel = normalizedPayload.Length > 0
+                    ? $"{normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} bytes"
+                    : "0 bytes",
+                StateLabel = "Decode failed",
+                PacketSource = title,
+                PacketFieldSummary = BuildRawPayloadFieldSummary(normalizedPayload, includeSubtypeByte: true),
+                PacketRawByteLength = normalizedPayload.Length,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(normalizedPayload)
+            });
+        }
+
+        private static bool IsPacketDecodeFailureSummary(string summary)
+        {
+            return !string.IsNullOrWhiteSpace(summary)
+                && summary.Contains("could not be decoded", StringComparison.Ordinal);
         }
 
         private string BuildCashUnknownResultSummary(int subtype, string subtypeLabel, byte[] payload)
@@ -6259,7 +6298,11 @@ namespace HaCreator.MapSimulator.UI
                 Detail = message,
                 Seller = "CITC",
                 PriceLabel = reason >= 0 ? $"Reason {reason.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = "Failed"
+                StateLabel = "Failed",
+                PacketSource = ownerName,
+                PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: true),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = message;
             return message;

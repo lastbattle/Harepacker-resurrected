@@ -313,12 +313,20 @@ namespace HaCreator.MapSimulator.UI
 
             GetSelection(out int selectionStart, out int selectionEnd);
             string currentText = GetControlText();
-            if (selectionStart == selectionEnd && currentText.Length >= _maxLength)
+            string replacementText = ResolveClientLimitedReplacementText(
+                character.ToString(),
+                currentText,
+                selectionStart,
+                selectionEnd,
+                _maxLength);
+            if (replacementText.Length == 0)
             {
                 return false;
             }
 
-            ReplaceSelection(character.ToString());
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            ReplaceSelection(replacementText);
+            UpdateImePlacement();
             return true;
         }
 
@@ -346,8 +354,19 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            string replacementText = ResolveClientLimitedReplacementText(
+                character.ToString(),
+                GetControlText(),
+                replacementStart,
+                selectionStart,
+                _maxLength);
+            if (replacementText.Length == 0)
+            {
+                return false;
+            }
+
             SendMessage(_editHandle, EmSetSel, new IntPtr(replacementStart), new IntPtr(selectionStart));
-            ReplaceSelection(character.ToString());
+            ReplaceSelection(replacementText);
             UpdateImePlacement();
             return true;
         }
@@ -655,6 +674,11 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
+            if (msg == WmChar && HandleClientOwnedCharacterInput(virtualKey))
+            {
+                return IntPtr.Zero;
+            }
+
             if (msg == WmLButtonDblClk)
             {
                 ApplyClientWordSelectionFromDoubleClick(lParam);
@@ -896,6 +920,18 @@ namespace HaCreator.MapSimulator.UI
                 default:
                     return false;
             }
+        }
+
+        private bool HandleClientOwnedCharacterInput(int charCode)
+        {
+            char character = (char)charCode;
+            if (char.IsControl(character))
+            {
+                return true;
+            }
+
+            TryInsertCharacter(character);
+            return true;
         }
 
         private void HandleClientOwnedEditCommand(uint msg)
@@ -1484,17 +1520,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string clipboardText;
-            try
-            {
-                if (!System.Windows.Forms.Clipboard.ContainsText())
-                {
-                    return;
-                }
-
-                clipboardText = System.Windows.Forms.Clipboard.GetText();
-            }
-            catch
+            if (!TryGetClientClipboardText(out string clipboardText))
             {
                 return;
             }
@@ -1511,15 +1537,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             GetSelection(out int selectionStart, out int selectionEnd);
-            int selectedLength = Math.Max(0, selectionEnd - selectionStart);
-            int currentLength = GetWindowTextLength(_editHandle);
-            int availableLength = Math.Max(0, _maxLength - (currentLength - selectedLength));
-            if (availableLength <= 0)
-            {
-                return;
-            }
-
-            string limitedText = TrimToMaxTextElements(sanitized, availableLength);
+            string limitedText = ResolveClientLimitedReplacementText(
+                sanitized,
+                GetControlText(),
+                selectionStart,
+                selectionEnd,
+                _maxLength);
             if (limitedText.Length == 0)
             {
                 return;
@@ -1528,6 +1551,30 @@ namespace HaCreator.MapSimulator.UI
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
             ReplaceSelection(limitedText);
             UpdateImePlacement();
+        }
+
+        internal static bool TryGetClientClipboardText(out string clipboardText)
+        {
+            clipboardText = string.Empty;
+            try
+            {
+                if (System.Windows.Forms.Clipboard.ContainsText(System.Windows.Forms.TextDataFormat.Text))
+                {
+                    clipboardText = System.Windows.Forms.Clipboard.GetText(System.Windows.Forms.TextDataFormat.Text);
+                    return !string.IsNullOrEmpty(clipboardText);
+                }
+
+                if (System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    clipboardText = System.Windows.Forms.Clipboard.GetText();
+                    return !string.IsNullOrEmpty(clipboardText);
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
         }
 
         internal static int ResolveClientOwnedNavigationCaret(string text, int selectionStart, int selectionEnd, bool moveRight)
@@ -1556,6 +1603,76 @@ namespace HaCreator.MapSimulator.UI
             string resolvedText = text ?? string.Empty;
             int resolvedCaret = Math.Clamp(caretIndex, 0, resolvedText.Length);
             return ResolveNextTextElementBoundary(resolvedText, resolvedCaret);
+        }
+
+        internal static string ResolveClientLimitedReplacementText(
+            string replacementText,
+            string currentText,
+            int selectionStart,
+            int selectionEnd,
+            int maxHorzUnits,
+            Encoding encoding = null)
+        {
+            string sanitized = RemoveControlCharacters(replacementText);
+            if (sanitized.Length == 0 || maxHorzUnits <= 0)
+            {
+                return string.Empty;
+            }
+
+            string resolvedCurrent = currentText ?? string.Empty;
+            int start = Math.Clamp(Math.Min(selectionStart, selectionEnd), 0, resolvedCurrent.Length);
+            int end = Math.Clamp(Math.Max(selectionStart, selectionEnd), 0, resolvedCurrent.Length);
+            string prefix = resolvedCurrent[..start];
+            string suffix = resolvedCurrent[end..];
+            int occupiedUnits = GetClientHorzUnitCount(prefix, encoding) + GetClientHorzUnitCount(suffix, encoding);
+            int availableUnits = Math.Max(0, maxHorzUnits - occupiedUnits);
+            if (availableUnits <= 0)
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(sanitized.Length);
+            int insertedUnits = 0;
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(sanitized);
+            while (enumerator.MoveNext())
+            {
+                string textElement = enumerator.GetTextElement();
+                int elementUnits = GetClientHorzUnitCount(textElement, encoding);
+                if (elementUnits <= 0 || insertedUnits + elementUnits > availableUnits)
+                {
+                    break;
+                }
+
+                builder.Append(textElement);
+                insertedUnits += elementUnits;
+            }
+
+            return builder.ToString();
+        }
+
+        internal static int GetClientHorzUnitCount(string text, Encoding encoding = null)
+        {
+            string value = text ?? string.Empty;
+            if (value.Length == 0)
+            {
+                return 0;
+            }
+
+            try
+            {
+                return SkillMacroNameRules.GetByteCount(value, encoding);
+            }
+            catch (EncoderFallbackException)
+            {
+                int count = 0;
+                TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+                while (enumerator.MoveNext())
+                {
+                    count++;
+                }
+
+                return count;
+            }
         }
 
         internal static string RemoveControlCharacters(string text)

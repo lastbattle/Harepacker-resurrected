@@ -9504,7 +9504,8 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             // CWnd::SetBackgrnd creates destination canvases as source-size plus
-            // expand deltas before copying the source at (0,0).
+            // expand deltas; the account-more-info seam applies the source canvas
+            // offset during composition so recovered non-zero origins keep placement.
             int width = Math.Max(1, sourceWidth + expandWidth);
             int height = Math.Max(1, sourceHeight + expandHeight);
             return (width, height);
@@ -10063,11 +10064,14 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (backgrounds.Count < 4)
             {
-                Texture2D fallbackTexture = CreateUtilDlgNoticeFrameTexture(
-                    uiWindow2Image?["UtilDlgEx"] as WzSubProperty,
-                    uiWindowImage,
-                    uiWindow2Image,
-                    device);
+                Texture2D fallbackTexture = LoadCanvasTexture(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "notice", device)
+                    ?? LoadCanvasTexture(uiWindowImage?["UtilDlgEx"] as WzSubProperty, "notice", device)
+                    ?? LoadTextureFromUiPath(PacketOwnedRewardResultRuntime.GetUtilDlgNoticeBackgroundResourcePath(), device, uiWindow2Image, uiWindowImage)
+                    ?? CreateUtilDlgNoticeFrameTexture(
+                        uiWindow2Image?["UtilDlgEx"] as WzSubProperty,
+                        uiWindowImage,
+                        uiWindow2Image,
+                        device);
                 if (fallbackTexture != null)
                 {
                     IDXObject fallbackFrame = new DXObject(0, 0, fallbackTexture, 0);

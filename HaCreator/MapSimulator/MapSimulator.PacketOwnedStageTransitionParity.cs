@@ -1,4 +1,5 @@
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Info;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
@@ -19,6 +20,7 @@ namespace HaCreator.MapSimulator
         private readonly PacketStageTransitionRuntime _packetStageTransitionRuntime = new();
         private readonly StageTransitionPacketInboxManager _stageTransitionPacketInbox = new();
         private readonly Dictionary<string, List<BaseDXDrawableItem>> _packetStageTransitionNamedObjects = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectStateMetadata> _packetStageTransitionNamedObjectMetadata = new();
         private readonly Dictionary<BaseDXDrawableItem, bool> _packetStageTransitionObjectVisibility = new();
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
         private int _packetStageTransitionBackEffectDurationMs;
@@ -386,6 +388,20 @@ namespace HaCreator.MapSimulator
             }
 
             items.Add(mapItem);
+            if (objInst.BaseInfo is ObjectInfo objectInfo)
+            {
+                _packetStageTransitionNamedObjectMetadata[mapItem] = new PacketOwnedNamedObjectStateMetadata(
+                    objectName,
+                    objectInfo.oS,
+                    objectInfo.l0,
+                    objectInfo.l1,
+                    objectInfo.l2,
+                    objInst.X,
+                    objInst.Y,
+                    objInst.Z,
+                    objInst.PlatformNumber,
+                    objInst.flow == true);
+            }
         }
 
         private void BindPacketOwnedStageTransitionMapState()
@@ -398,6 +414,7 @@ namespace HaCreator.MapSimulator
         {
             ResetPacketOwnedStageTransitionRuntimeState();
             _packetStageTransitionNamedObjects.Clear();
+            _packetStageTransitionNamedObjectMetadata.Clear();
             ResetPacketOwnedLogoutGiftRuntimeState(clearConfig: true, hideWindow: true, summary: "Packet-owned logout-gift owner cleared with stage-transition state.");
         }
 

@@ -1086,6 +1086,9 @@ namespace HaCreator.MapSimulator.UI
 
             if (TryGetSelectedRemotePetItemId(out int remotePetItemId, out int remotePetCount))
             {
+                RemotePetProfileSnapshot? remotePetProfile = TryGetSelectedRemotePetProfile(out RemotePetProfileSnapshot resolvedProfile)
+                    ? resolvedProfile
+                    : null;
                 string petName = ResolveRemotePetDisplayName(remotePetItemId);
                 Texture2D petIcon = TryResolveItemIcon(sprite, remotePetItemId);
                 if (petIcon != null)
@@ -1098,12 +1101,26 @@ namespace HaCreator.MapSimulator.UI
 
                 DrawLabeledRow(sprite, 50, "Pet", petName, ValueColor, 132);
                 DrawLabeledRow(sprite, 74, "Slot", $"Remote pet slot {_selectedPetTabIndex + 1}", MutedColor, 132);
-                DrawLabeledRow(sprite, 98, "Source", "Remote AvatarLook / user packet", SecondaryColor, 132);
-                DrawLabeledRow(sprite, 122, "State", "Live server-owned pet state unavailable", WarningColor, 132);
+                DrawLabeledRow(
+                    sprite,
+                    98,
+                    "Level",
+                    remotePetProfile.HasValue ? $"Lv. {remotePetProfile.Value.Level}" : "Live level unavailable",
+                    remotePetProfile.HasValue ? ValueColor : WarningColor,
+                    132);
+                DrawLabeledRow(
+                    sprite,
+                    122,
+                    "Bond",
+                    remotePetProfile.HasValue ? $"Close {remotePetProfile.Value.Closeness} / Full {remotePetProfile.Value.Fullness}" : "Server-owned pet state unavailable",
+                    remotePetProfile.HasValue ? MutedColor : WarningColor,
+                    132);
                 DrawLabeledRow(sprite, 146, "Active", $"{remotePetCount} remote pet slot(s) authored", SecondaryColor, 132);
                 DrawPlainText(
                     sprite,
-                    $"Viewing remote pet {_selectedPetTabIndex + 1} of {remotePetCount}.",
+                    remotePetProfile.HasValue
+                        ? $"Viewing server-authored pet profile {_selectedPetTabIndex + 1} of {remotePetCount}."
+                        : $"Viewing remote pet {_selectedPetTabIndex + 1} of {remotePetCount}.",
                     new Vector2(Position.X + 20, Position.Y + 174),
                     MutedColor,
                     0.56f);
@@ -1996,6 +2013,23 @@ namespace HaCreator.MapSimulator.UI
         private string GetEquippedItemName(EquipSlot slot, CharacterBuild build = null)
         {
             build ??= GetDisplayedBuild();
+            if (build != null)
+            {
+                int profileRideItemId = slot switch
+                {
+                    EquipSlot.TamingMob => build.ProfileRideVehicleItemId,
+                    EquipSlot.Saddle => build.ProfileRideSaddleItemId,
+                    _ => 0
+                };
+                if (profileRideItemId > 0)
+                {
+                    return InventoryItemMetadataResolver.TryResolveItemName(profileRideItemId, out string itemName) &&
+                           !string.IsNullOrWhiteSpace(itemName)
+                        ? itemName
+                        : $"Item {profileRideItemId}";
+                }
+            }
+
             if (build?.Equipment != null &&
                 build.Equipment.TryGetValue(slot, out CharacterPart part) &&
                 !string.IsNullOrWhiteSpace(part?.Name))
@@ -2854,6 +2888,16 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<int> GetResolvedRemotePetItemIds()
         {
+            IReadOnlyList<RemotePetProfileSnapshot> petProfiles = GetDisplayedBuild()?.RemotePetProfiles;
+            if (petProfiles != null && petProfiles.Count > 0)
+            {
+                return petProfiles
+                    .Where(pet => pet.ItemId > 0)
+                    .Take(3)
+                    .Select(pet => pet.ItemId)
+                    .ToArray();
+            }
+
             IReadOnlyList<int> remotePetItemIds = GetDisplayedBuild()?.RemotePetItemIds;
             if (remotePetItemIds == null || remotePetItemIds.Count == 0)
             {
@@ -2876,6 +2920,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return resolvedPetItemIds;
+        }
+
+        private bool TryGetSelectedRemotePetProfile(out RemotePetProfileSnapshot profile)
+        {
+            profile = default;
+            IReadOnlyList<RemotePetProfileSnapshot> petProfiles = GetDisplayedBuild()?.RemotePetProfiles;
+            if (petProfiles == null || petProfiles.Count == 0)
+            {
+                return false;
+            }
+
+            int selectedIndex = Math.Clamp(_selectedPetTabIndex, 0, Math.Min(3, petProfiles.Count) - 1);
+            profile = petProfiles[selectedIndex];
+            return profile.ItemId > 0;
         }
 
         private static string ResolveRemotePetDisplayName(int petItemId)
@@ -3262,6 +3320,14 @@ namespace HaCreator.MapSimulator.UI
             if (!IsRemoteInspectionActive())
             {
                 return default;
+            }
+
+            CharacterBuild displayBuild = GetDisplayedBuild();
+            if (displayBuild?.IsProfileRidingInField.HasValue == true)
+            {
+                return new RemoteRideSnapshot(
+                    hasAuthoritativeRideState: true,
+                    isMountedInField: displayBuild.IsProfileRidingInField.Value);
             }
 
             return _remoteRideSnapshotProvider?.Invoke(BuildCurrentActionContext()) ?? default;

@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         private const int RocketBoosterSkillId = 35101004;
         private const int WildHunterSwallowAbsorbSkillId = 33101005;
+        private const int WildHunterMineSkillId = 33101004;
         private const int MechanicSiegeModeSkillId = 35111005;
         private static readonly HashSet<int> MysticDoorSkillIds = new HashSet<int>
         {
@@ -32,6 +33,7 @@ namespace HaCreator.MapSimulator.Fields
             public bool SnowBallBasicActionOwned { get; init; }
             public bool GuildBossBasicActionOwned { get; init; }
             public bool? HasLocalDragonActor { get; init; }
+            public bool ClientFieldMineSkillBlocked { get; init; }
         }
 
         private static readonly HashSet<int> ClientUnableToUseSkillForbiddenSet = new HashSet<int>
@@ -303,6 +305,12 @@ namespace HaCreator.MapSimulator.Fields
                 && runtimeState?.GuildBossBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Guild Boss field owns basic attacks.";
+            }
+
+            if (runtimeState?.ClientFieldMineSkillBlocked == true
+                && IsWildHunterMineSkill(skill))
+            {
+                return "Wild Hunter Mine cannot be used in the current field state.";
             }
 
             if (IsEvanDragonMagicAttack(skill)
@@ -692,6 +700,13 @@ namespace HaCreator.MapSimulator.Fields
             // Client evidence: CUserLocal::TryDoingSwallowAbsorb checks
             // CField::IsUnableToUseSkill directly before sending the absorb packet.
             return skill?.SkillId == WildHunterSwallowAbsorbSkillId;
+        }
+
+        private static bool IsWildHunterMineSkill(SkillData skill)
+        {
+            // Client evidence: CUserLocal::DoActiveSkill@0x9445b0 checks CField+0x18C
+            // before allowing Wild Hunter Mine (33101004) through the active-skill branch.
+            return skill?.SkillId == WildHunterMineSkillId;
         }
 
         private static bool UsesTamingMobRestrictedSkill(SkillData skill)

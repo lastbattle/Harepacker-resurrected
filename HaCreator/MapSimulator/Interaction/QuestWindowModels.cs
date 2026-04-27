@@ -283,6 +283,10 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestRewardRaiseWindowMode WindowMode { get; init; }
         public int MaxDropCount { get; init; } = 1;
         public int InitialQrData { get; init; }
+        public string UiData { get; init; } = string.Empty;
+        public int IncrementExpUnit { get; init; }
+        public int Grade { get; init; }
+        public IReadOnlyList<string> MessageLines { get; init; } = Array.Empty<string>();
     }
 
     internal sealed class QuestWorldMapTarget

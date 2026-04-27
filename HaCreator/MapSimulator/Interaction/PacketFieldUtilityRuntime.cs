@@ -391,10 +391,12 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             int count = reader.ReadInt32();
-            if (count < 0)
+            if (count <= 0)
             {
-                message = "Packet-owned foothold-info count cannot be negative.";
-                return false;
+                _lastFootholdSummary = "Received packet-authored foothold info with no entries; preserved the existing dynamic foothold state.";
+                _statusMessage = _lastFootholdSummary;
+                message = _lastFootholdSummary;
+                return true;
             }
 
             List<PacketFieldUtilityFootholdEntry> entries = new(count);
@@ -403,14 +405,11 @@ namespace HaCreator.MapSimulator.Interaction
                 string name = ReadMapleString(reader);
                 int state = reader.ReadInt32();
                 int footholdCount = reader.ReadInt32();
-                if (footholdCount < 0)
-                {
-                    message = "Packet-owned foothold-info foothold count cannot be negative.";
-                    return false;
-                }
 
-                int[] serialNumbers = new int[footholdCount];
-                for (int footholdIndex = 0; footholdIndex < footholdCount; footholdIndex++)
+                int[] serialNumbers = footholdCount > 0
+                    ? new int[footholdCount]
+                    : Array.Empty<int>();
+                for (int footholdIndex = 0; footholdIndex < serialNumbers.Length; footholdIndex++)
                 {
                     serialNumbers[footholdIndex] = reader.ReadInt32();
                 }

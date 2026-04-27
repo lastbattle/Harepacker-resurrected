@@ -376,7 +376,7 @@ namespace HaCreator.MapSimulator.Loaders
                         continue;
                     }
 
-                    WzImageProperty hitProperty = ResolveExactReactorSourceProperty(eventProperty);
+                    WzImageProperty hitProperty = ResolveReactorIndexedHitSourceProperty(eventProperty);
                     if (hitProperty == null)
                     {
                         continue;
@@ -391,14 +391,24 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal static bool IsReactorIndexedHitPropertyCandidate(WzImageProperty property)
         {
+            return ResolveReactorIndexedHitSourceProperty(property) != null;
+        }
+
+        private static WzImageProperty ResolveReactorIndexedHitSourceProperty(WzImageProperty property)
+        {
             WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
             if (resolvedProperty is not WzSubProperty)
             {
-                return false;
+                return null;
             }
 
-            return ResolveReactorFrameSourceProperty(resolvedProperty) != null
-                || ResolveReactorFrameSourceProperty(WzInfoTools.GetRealProperty(resolvedProperty["hit"])) != null;
+            WzImageProperty directFrameSource = ResolveReactorFrameSourceProperty(resolvedProperty);
+            if (directFrameSource != null)
+            {
+                return directFrameSource;
+            }
+
+            return ResolveReactorFrameSourceProperty(WzInfoTools.GetRealProperty(resolvedProperty["hit"]));
         }
 
         private static IEnumerable<(int ProperEventIndex, WzImageProperty EventProperty)> EnumerateReactorIndexedHitProperties(WzImageProperty stateProperty)

@@ -8,6 +8,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using SD = System.Drawing;
 using SDG = System.Drawing.Graphics;
@@ -1368,18 +1369,19 @@ namespace HaCreator.MapSimulator.Companions
                 using (SDG graphics = SDG.FromImage(composedBitmap))
                 {
                     graphics.Clear(SD.Color.Transparent);
+                    ApplyNativeCanvasCopySettings(graphics);
                     bool drawOverlayAfterBase = ShouldDrawPetWearOverlayAfterBase(
                         ResolveCanvasZ(baseCanvas),
                         ResolveCanvasZ(overlayCanvas));
                     if (drawOverlayAfterBase)
                     {
-                        graphics.DrawImage(baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
-                        graphics.DrawImage(overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
+                        DrawCanvasCopyAlpha255(graphics, baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
+                        DrawCanvasCopyAlpha255(graphics, overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
                     }
                     else
                     {
-                        graphics.DrawImage(overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
-                        graphics.DrawImage(baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
+                        DrawCanvasCopyAlpha255(graphics, overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
+                        DrawCanvasCopyAlpha255(graphics, baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
                     }
                 }
 
@@ -1456,9 +1458,11 @@ namespace HaCreator.MapSimulator.Companions
                 using (SDG graphics = SDG.FromImage(composedBitmap))
                 {
                     graphics.Clear(SD.Color.Transparent);
+                    ApplyNativeCanvasCopySettings(graphics);
                     foreach (LayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, LayeredFrameEntryComparer.Instance))
                     {
-                        graphics.DrawImage(
+                        DrawCanvasCopyAlpha255(
+                            graphics,
                             layerEntry.Bitmap,
                             layerEntry.Bounds.X - composedBounds.X,
                             layerEntry.Bounds.Y - composedBounds.Y);
@@ -1548,6 +1552,38 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return leftIndex.CompareTo(rightIndex);
+        }
+
+        internal static int ResolveNativeCanvasCopyAlphaForTesting()
+        {
+            return 255;
+        }
+
+        internal static CompositingMode ResolveNativeCanvasCopyCompositingModeForTesting()
+        {
+            return CompositingMode.SourceOver;
+        }
+
+        private static void ApplyNativeCanvasCopySettings(SDG graphics)
+        {
+            if (graphics == null)
+            {
+                return;
+            }
+
+            graphics.CompositingMode = ResolveNativeCanvasCopyCompositingModeForTesting();
+            graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+            graphics.PixelOffsetMode = PixelOffsetMode.Half;
+        }
+
+        private static void DrawCanvasCopyAlpha255(SDG graphics, SD.Bitmap bitmap, int x, int y)
+        {
+            if (graphics == null || bitmap == null)
+            {
+                return;
+            }
+
+            graphics.DrawImageUnscaled(bitmap, x, y);
         }
 
         private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)

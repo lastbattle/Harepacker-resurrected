@@ -215,6 +215,17 @@ namespace HaSharedLibrary.Render.DX
         }
 
         /// <summary>
+        /// Restarts animated drawable playback from the first frame.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void RestartAnimation(int tickCount)
+        {
+            currFrame = 0;
+            lastFrameSwitchTime = tickCount;
+            _lastFrameDrawn = notAnimated ? frame0 : frames?[0];
+        }
+
+        /// <summary>
         /// Draw as object
         /// </summary>
         /// <param name="sprite"></param>

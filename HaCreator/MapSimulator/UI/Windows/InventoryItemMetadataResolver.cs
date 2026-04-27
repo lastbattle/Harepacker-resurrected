@@ -28,7 +28,10 @@ namespace HaCreator.MapSimulator.UI
         public int IncrementExpUnit { get; init; }
         public int Grade { get; init; }
         public int MaxDropCount { get; init; }
+        public string Name { get; init; } = string.Empty;
         public string UiData { get; init; } = string.Empty;
+        public IReadOnlyList<string> MessageLines { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<int> DropItemIds { get; init; } = Array.Empty<int>();
     }
 
     public sealed class InventoryItemTooltipMetadata
@@ -663,6 +666,39 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static bool TryResolveRaiseOwnerContextForItem(
+            int ownerItemId,
+            out QuestRewardRaiseOwnerContext ownerContext,
+            out QuestRewardRaiseItemMetadata metadata)
+        {
+            ownerContext = null;
+            metadata = null;
+            if (ownerItemId <= 0)
+            {
+                return false;
+            }
+
+            metadata = EnumerateRaiseItemMetadata()
+                .FirstOrDefault(candidate => candidate.OwnerItemId == ownerItemId);
+            if (metadata == null)
+            {
+                return false;
+            }
+
+            ownerContext = new QuestRewardRaiseOwnerContext
+            {
+                OwnerItemId = metadata.OwnerItemId,
+                WindowMode = QuestRewardRaiseWindowMode.PiecePlacement,
+                MaxDropCount = Math.Max(1, metadata.MaxDropCount),
+                InitialQrData = 0,
+                UiData = metadata.UiData,
+                IncrementExpUnit = metadata.IncrementExpUnit,
+                Grade = metadata.Grade,
+                MessageLines = metadata.MessageLines
+            };
+            return true;
+        }
+
         public static IReadOnlyList<ConsumeItemRequirementMetadata> ResolveConsumeItemRequirements(int itemId)
         {
             if (itemId <= 0)
@@ -945,6 +981,28 @@ namespace HaCreator.MapSimulator.UI
             return canvas != null;
         }
 
+        public static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequence(int itemId, string groupName, int limit = 8)
+        {
+            if (itemId <= 0 || string.IsNullOrWhiteSpace(groupName))
+            {
+                return Array.Empty<WzCanvasProperty>();
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return ResolveInfoCanvasSequence(itemProperty, groupName, limit);
+        }
+
+        private static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequence(WzSubProperty itemProperty, string groupName, int limit)
+        {
+            if (itemProperty?["info"] is not WzSubProperty infoProperty
+                || infoProperty[groupName] is not WzSubProperty groupProperty)
+            {
+                return Array.Empty<WzCanvasProperty>();
+            }
+
+            return GetNumericNamedCanvasRows(groupProperty, limit);
+        }
+
         public static bool TryResolveRootCanvas(int itemId, string canvasPath, out WzCanvasProperty canvas)
         {
             canvas = null;
@@ -1097,14 +1155,18 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                IReadOnlyList<int> dropItemIds = GetPositiveRaiseItemEntries(infoProperty["item"] as WzSubProperty);
                 metadata.Add(new QuestRewardRaiseItemMetadata
                 {
                     OwnerItemId = ownerItemId,
                     QuestId = questId,
                     IncrementExpUnit = GetIntValue(infoProperty["exp"]),
                     Grade = GetIntValue(infoProperty["grade"]),
-                    MaxDropCount = CountPositiveRaiseItemEntries(infoProperty["item"] as WzSubProperty),
-                    UiData = uiData
+                    MaxDropCount = dropItemIds.Count,
+                    Name = (infoProperty["name"] as WzStringProperty)?.Value?.Trim() ?? string.Empty,
+                    UiData = uiData,
+                    MessageLines = GetStringList(infoProperty["message"] as WzSubProperty),
+                    DropItemIds = dropItemIds
                 });
             }
 
@@ -1112,25 +1174,58 @@ namespace HaCreator.MapSimulator.UI
             return _raiseItemMetadataCache;
         }
 
-        private static int CountPositiveRaiseItemEntries(WzSubProperty itemListProperty)
+        private static IReadOnlyList<int> GetPositiveRaiseItemEntries(WzSubProperty itemListProperty)
         {
             if (itemListProperty?.WzProperties == null || itemListProperty.WzProperties.Count == 0)
             {
-                return 0;
+                return Array.Empty<int>();
             }
 
-            int count = 0;
+            var itemIdsByIndex = new SortedDictionary<int, int>();
             for (int i = 0; i < itemListProperty.WzProperties.Count; i++)
             {
                 WzSubProperty entryProperty = itemListProperty.WzProperties[i] as WzSubProperty;
                 int itemId = GetIntValue(entryProperty?["0"]);
                 if (itemId > 0)
                 {
-                    count++;
+                    int index = int.TryParse(entryProperty.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedIndex)
+                        ? parsedIndex
+                        : i;
+                    itemIdsByIndex[index] = itemId;
                 }
             }
 
-            return count;
+            return itemIdsByIndex.Count == 0
+                ? Array.Empty<int>()
+                : itemIdsByIndex.Values.ToArray();
+        }
+
+        private static IReadOnlyList<string> GetStringList(WzSubProperty listProperty)
+        {
+            if (listProperty?.WzProperties == null || listProperty.WzProperties.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var stringsByIndex = new SortedDictionary<int, string>();
+            for (int i = 0; i < listProperty.WzProperties.Count; i++)
+            {
+                WzImageProperty property = listProperty.WzProperties[i];
+                string text = (property as WzStringProperty)?.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    continue;
+                }
+
+                int index = int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedIndex)
+                    ? parsedIndex
+                    : i;
+                stringsByIndex[index] = text;
+            }
+
+            return stringsByIndex.Count == 0
+                ? Array.Empty<string>()
+                : stringsByIndex.Values.ToArray();
         }
 
         private static int TryResolveSkillBookSuccessRate(WzSubProperty infoProperty, string description)
@@ -2420,7 +2515,7 @@ namespace HaCreator.MapSimulator.UI
             AppendLevelBandMetadataLines(metadataLines, infoProperty);
             AppendBundleLimitMetadataLines(metadataLines, infoProperty);
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
-            AppendRecipeMetadataLines(metadataLines, specProperty);
+            AppendRecipeMetadataLines(metadataLines, specProperty, specExProperty);
             AppendConditionalMapMetadataLines(metadataLines, specProperty);
             AppendRepeatEffectMetadataLines(metadataLines, specProperty, specExProperty);
             AppendItemBagMetadataLines(metadataLines, specProperty);
@@ -3365,14 +3460,14 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private static void AppendRecipeMetadataLines(List<string> metadataLines, WzSubProperty specProperty)
+        private static void AppendRecipeMetadataLines(List<string> metadataLines, WzSubProperty specProperty, WzSubProperty specExProperty)
         {
-            if (specProperty == null)
+            if (specProperty == null && specExProperty == null)
             {
                 return;
             }
 
-            int recipeId = GetIntOrStringValue(specProperty["recipe"]);
+            int recipeId = GetIntOrStringValue(specProperty?["recipe"]);
             if (recipeId > 0)
             {
                 string recipeLine = TryResolveMakerRecipeFamily(recipeId, out string familyLabel)
@@ -3381,37 +3476,37 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add(recipeLine);
             }
 
-            int requiredSkillLevel = GetIntOrStringValue(specProperty["reqSkillLevel"]);
+            int requiredSkillLevel = GetIntOrStringValue(specProperty?["reqSkillLevel"]);
             if (requiredSkillLevel > 0)
             {
                 metadataLines.Add($"Maker Skill Level Required: {requiredSkillLevel.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            int requiredSkillId = GetIntOrStringValue(specProperty["reqSkill"]);
+            int requiredSkillId = GetIntOrStringValue(specProperty?["reqSkill"]);
             if (requiredSkillId > 0)
             {
                 metadataLines.Add($"Required Skill: {ResolveSkillTooltipLabel(requiredSkillId)}");
             }
 
-            int requiredSkillProficiency = GetIntOrStringValue(specProperty["reqSkillProficiency"]);
+            int requiredSkillProficiency = GetIntOrStringValue(specProperty?["reqSkillProficiency"]);
             if (requiredSkillProficiency > 0)
             {
                 metadataLines.Add($"Required Skill Proficiency: {requiredSkillProficiency.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            int useLevel = GetIntOrStringValue(specProperty["useLevel"]);
+            int useLevel = ResolveSetupUseLevelRequirement(specProperty, specExProperty);
             if (useLevel > 0)
             {
                 metadataLines.Add($"Use Level: {useLevel.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            int recipeUseCount = GetIntOrStringValue(specProperty["recipeUseCount"]);
+            int recipeUseCount = GetIntOrStringValue(specProperty?["recipeUseCount"]);
             if (recipeUseCount > 0)
             {
                 metadataLines.Add($"Recipe Uses: {recipeUseCount.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            int recipeValidDays = GetIntOrStringValue(specProperty["recipeValidDay"]);
+            int recipeValidDays = GetIntOrStringValue(specProperty?["recipeValidDay"]);
             if (recipeValidDays > 0)
             {
                 metadataLines.Add($"Recipe valid for {FormatDayCount(recipeValidDays)}");
@@ -3677,6 +3772,42 @@ namespace HaCreator.MapSimulator.UI
 
             rows.Sort((left, right) => left.Index.CompareTo(right.Index));
             return rows;
+        }
+
+        private static IReadOnlyList<WzCanvasProperty> GetNumericNamedCanvasRows(WzSubProperty property, int limit)
+        {
+            if (property?.WzProperties == null)
+            {
+                return Array.Empty<WzCanvasProperty>();
+            }
+
+            int maxCount = limit <= 0 ? int.MaxValue : limit;
+            List<(int Index, WzCanvasProperty Canvas)> rows = new();
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child is not WzCanvasProperty canvas
+                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                rows.Add((index, canvas));
+            }
+
+            if (rows.Count == 0)
+            {
+                return Array.Empty<WzCanvasProperty>();
+            }
+
+            rows.Sort((left, right) => left.Index.CompareTo(right.Index));
+            int count = Math.Min(maxCount, rows.Count);
+            WzCanvasProperty[] canvases = new WzCanvasProperty[count];
+            for (int i = 0; i < count; i++)
+            {
+                canvases[i] = rows[i].Canvas;
+            }
+
+            return canvases;
         }
 
         private static IReadOnlyList<string> BuildAuthoredSampleTextLines(WzSubProperty sampleProperty)
@@ -4591,6 +4722,14 @@ namespace HaCreator.MapSimulator.UI
             out WzCanvasProperty bottomCanvas)
         {
             return TryResolveSampleUiFrame(itemProperty, out topCanvas, out centerCanvas, out bottomCanvas);
+        }
+
+        public static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequenceForTests(
+            WzSubProperty itemProperty,
+            string groupName,
+            int limit = 8)
+        {
+            return ResolveInfoCanvasSequence(itemProperty, groupName, limit);
         }
 
         public static bool TrySelectConsumeItemRequirementForTests(

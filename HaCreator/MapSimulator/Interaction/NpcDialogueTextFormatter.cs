@@ -155,8 +155,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            string preservedMarkers = RewardCategoryRegex.Replace(
-                text,
+            string preservedMarkers = StripQuestDetailInlineSelectionTagsPreservingText(text);
+            preservedMarkers = RewardCategoryRegex.Replace(
+                preservedMarkers,
                 match => BuildQuestSurfaceMarker(match.Value.TrimStart('#', 'W', 'w').TrimEnd('#')));
             preservedMarkers = QuestDetailFontNameResetRegex.Replace(
                 preservedMarkers,
@@ -218,6 +219,21 @@ namespace HaCreator.MapSimulator.Interaction
                 match => PreserveQuestDetailStyleTag(match, styleInput));
             string formatted = Format(preservedMarkers, context);
             return NormalizeWhitespace(formatted, preserveLeadingLineWhitespace: true);
+        }
+
+        private static string StripQuestDetailInlineSelectionTagsPreservingText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string preservedText = InlineSelectionRegex.Replace(
+                text,
+                match => NormalizeLineBreaks(match.Groups["text"].Value)
+                    .Replace("\r", string.Empty));
+            preservedText = SelectionRegex.Replace(preservedText, string.Empty);
+            return preservedText.Replace("#l", string.Empty, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsClientQuestDetailCanvasTokenPayload(string canvasPath)

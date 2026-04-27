@@ -45,7 +45,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Receive => ParcelDialogKeyboardAction.ClaimReceiveAttachment,
                 global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Send => ParcelDialogKeyboardAction.DispatchSend,
-                global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.QuickSend => ParcelDialogKeyboardAction.DispatchSend,
+                // CParcelDlg::OnKey only dispatches Enter for receive and normal send tabs; quick-send stays button-owned.
+                global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.QuickSend => ParcelDialogKeyboardAction.None,
                 _ => ParcelDialogKeyboardAction.None
             };
         }

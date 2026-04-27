@@ -206,6 +206,7 @@ namespace HaCreator.MapSimulator.Interaction
         SocialListClientGuildResultKind Kind,
         int GuildId,
         IReadOnlyList<GuildRankingSeedEntry> RankingEntries,
+        IReadOnlyList<SocialListClientGuildMemberEntry> GuildMembers,
         IReadOnlyList<string> RankTitles,
         string Notice,
         GuildMarkSelection? MarkSelection,
@@ -224,6 +225,15 @@ namespace HaCreator.MapSimulator.Interaction
         string ExplicitBranchSummary = null,
         string GuildName = null,
         IReadOnlyList<SocialListGuildSkillRecordPacket> GuildSkillRecords = null);
+
+    internal readonly record struct SocialListClientGuildMemberEntry(
+        int MemberId,
+        string Name,
+        int JobId,
+        int Level,
+        int Grade,
+        bool IsOnline,
+        int Commitment);
 
     internal readonly record struct SocialListGuildSkillRecordPacket(
         int SkillId,
@@ -933,6 +943,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -960,6 +971,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 kind,
                                 0,
                                 Array.Empty<GuildRankingSeedEntry>(),
+                                Array.Empty<SocialListClientGuildMemberEntry>(),
                                 Array.Empty<string>(),
                                 null,
                                 null,
@@ -990,6 +1002,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1023,6 +1036,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1048,6 +1062,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1071,16 +1086,27 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         int guildId = reader.ReadInt32();
                         string guildName = reader.ReadString16().Trim();
-                        for (int i = 0; i < 5; i++)
+                        string[] rankTitles = new string[5];
+                        for (int i = 0; i < rankTitles.Length; i++)
                         {
-                            _ = reader.ReadString16();
+                            rankTitles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
                         int memberCount = reader.ReadByte();
+                        int[] memberIds = Array.Empty<int>();
+                        List<SocialListClientGuildMemberEntry> guildMembers = new(Math.Max(0, memberCount));
                         if (memberCount > 0)
                         {
-                            _ = reader.ReadBytes(memberCount * sizeof(int));
-                            _ = reader.ReadBytes(memberCount * 37);
+                            memberIds = new int[memberCount];
+                            for (int i = 0; i < memberIds.Length; i++)
+                            {
+                                memberIds[i] = reader.ReadInt32();
+                            }
+
+                            for (int i = 0; i < memberCount; i++)
+                            {
+                                guildMembers.Add(ReadClientGuildMemberEntry(ref reader, memberIds[i]));
+                            }
                         }
 
                         _ = reader.ReadInt32(); // nMaxMemberNum
@@ -1109,7 +1135,8 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             guildId,
                             Array.Empty<GuildRankingSeedEntry>(),
-                            Array.Empty<string>(),
+                            guildMembers,
+                            rankTitles,
                             notice,
                             null,
                             guildPoints,
@@ -1139,6 +1166,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1167,6 +1195,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1199,6 +1228,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             guildId,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1239,7 +1269,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<SocialListClientGuildMemberEntry>(), Array.Empty<string>(), null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1252,7 +1282,7 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), Array.Empty<SocialListClientGuildMemberEntry>(), titles, null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1263,6 +1293,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             guildId,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             reader.ReadString16().Trim(),
                             null,
@@ -1289,6 +1320,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             guildId,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             selection,
@@ -1311,6 +1343,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             guildId,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1354,6 +1387,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             guildId,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1375,6 +1409,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1396,6 +1431,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1417,6 +1453,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1440,6 +1477,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1460,6 +1498,7 @@ namespace HaCreator.MapSimulator.Interaction
                             kind,
                             0,
                             Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<SocialListClientGuildMemberEntry>(),
                             Array.Empty<string>(),
                             null,
                             null,
@@ -1538,6 +1577,25 @@ namespace HaCreator.MapSimulator.Interaction
                 1,
                 out _);
             return FormatSingleStringArgument(format, name);
+        }
+
+        private static SocialListClientGuildMemberEntry ReadClientGuildMemberEntry(ref PacketReader reader, int memberId)
+        {
+            ReadOnlySpan<byte> memberData = reader.ReadBytes(37);
+            string name = ReadFixedString(memberData[..13]);
+            int jobId = ReadInt32(memberData, 13);
+            int level = ReadInt32(memberData, 17);
+            int grade = ReadInt32(memberData, 21);
+            bool isOnline = ReadInt32(memberData, 25) != 0;
+            int commitment = ReadInt32(memberData, 33);
+            return new SocialListClientGuildMemberEntry(
+                Math.Max(0, memberId),
+                string.IsNullOrWhiteSpace(name) ? $"Member {Math.Max(0, memberId)}" : name.Trim(),
+                jobId,
+                Math.Max(1, level),
+                Math.Max(1, grade),
+                isOnline,
+                Math.Max(0, commitment));
         }
 
         private static bool TryReadGuildSkillRecord(

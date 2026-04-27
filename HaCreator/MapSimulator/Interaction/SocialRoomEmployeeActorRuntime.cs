@@ -1161,13 +1161,24 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
+            (int drawX, int drawY) = ResolveEmployeeFrameDrawOffset(origin);
             int delay = GetIntValue(canvasProperty["delay"]) ?? defaultDelay;
-            var frame = new DXObject(origin, texture, Math.Max(1, delay))
+            var frame = new DXObject(drawX, drawY, texture, Math.Max(1, delay))
             {
                 Tag = canvasProperty
             };
             _usedProps.Add(canvasProperty);
             return frame;
+        }
+
+        private static (int X, int Y) ResolveEmployeeFrameDrawOffset(System.Drawing.PointF origin)
+        {
+            return (-(int)origin.X, -(int)origin.Y);
+        }
+
+        internal static (int X, int Y) ResolveEmployeeFrameDrawOffsetForTesting(float originX, float originY)
+        {
+            return ResolveEmployeeFrameDrawOffset(new System.Drawing.PointF(originX, originY));
         }
 
         private static void EnsureEmployeeCanvasTextureLoaded(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device)
