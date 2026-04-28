@@ -23,6 +23,12 @@ namespace HaCreator.MapSimulator.UI
                 AllCategoryIndex);
         }
 
+        public static bool ShouldClearPendingRequestOnSetAdminShopDlg()
+        {
+            // CAdminShopDlg::SetAdminShopDlg clears m_bShopRequestSent before rebuilding packet-owned rows.
+            return true;
+        }
+
         public static AdminShopPacketOwnedOpenViewState ResolveUserSellRefocus(int categoryIndex)
         {
             return new AdminShopPacketOwnedOpenViewState(

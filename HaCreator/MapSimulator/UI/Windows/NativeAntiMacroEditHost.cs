@@ -639,7 +639,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int localX = Math.Clamp(pointInParentClientCoordinates.X - _currentBounds.X, 0, Math.Max(0, _currentBounds.Width - 1));
-            int localY = Math.Clamp(pointInParentClientCoordinates.Y - _currentBounds.Y, 0, Math.Max(0, _currentBounds.Height - 1));
+            int localY = ResolveClientOwnedCaretHitTestY(_currentBounds.Height);
             int packedPoint = (localY << 16) | (localX & 0xFFFF);
             int caretIndex = SendMessageInt(_editHandle, EmCharFromPos, IntPtr.Zero, new IntPtr(packedPoint));
             if (caretIndex < 0)
@@ -1121,6 +1121,14 @@ namespace HaCreator.MapSimulator.UI
             return msg is WmLButtonDown or WmMouseMove or WmLButtonUp;
         }
 
+        internal static int ResolveClientOwnedCaretHitTestY(int controlHeight)
+        {
+            // `CCtrlEdit::MouseDown`, `MouseDblClk`, and `MouseMove` all pass
+            // only rx into `CalcCaretPos`; use a stable single-line Y when the
+            // hosted EDIT needs a Win32 point for equivalent X-only hit tests.
+            return Math.Max(0, Math.Max(1, controlHeight) / 2);
+        }
+
         private static bool IsControlKeyDown()
         {
             return (GetKeyState(VkControl) & 0x8000) != 0;
@@ -1398,7 +1406,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int clampedLocalX = Math.Clamp(localX, 0, Math.Max(0, _currentBounds.Width - 1));
-            int clampedLocalY = Math.Clamp(localY, 0, Math.Max(0, _currentBounds.Height - 1));
+            int clampedLocalY = ResolveClientOwnedCaretHitTestY(_currentBounds.Height);
             int packedPoint = (clampedLocalY << 16) | (clampedLocalX & 0xFFFF);
             int caretIndex = SendMessageInt(_editHandle, EmCharFromPos, IntPtr.Zero, new IntPtr(packedPoint));
             if (caretIndex < 0)

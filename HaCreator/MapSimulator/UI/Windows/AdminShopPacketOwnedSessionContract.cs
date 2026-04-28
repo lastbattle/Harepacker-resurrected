@@ -174,7 +174,7 @@ namespace HaCreator.MapSimulator.UI
             string noticeText,
             string outboundSummary,
             string ownerState = null,
-            AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily,
+            AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden,
             int rejectedNpcTemplateId = 0,
             int rejectedDecodedItemCount = 0)
         {

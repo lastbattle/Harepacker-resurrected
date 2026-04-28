@@ -34,5 +34,15 @@ namespace HaCreator.MapSimulator.UI
                 || snapshotSearchSessionId == activeOrPendingSearchSessionId;
             return serviceSessionCompatible && searchSessionCompatible;
         }
+
+        internal static bool CanRegisterPacketAuthoredResult(
+            bool sessionCurrent,
+            int registerItemId,
+            bool alreadyWishlisted)
+        {
+            return sessionCurrent
+                && registerItemId > 0
+                && !alreadyWishlisted;
+        }
     }
 }

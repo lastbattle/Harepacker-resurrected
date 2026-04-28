@@ -2211,6 +2211,24 @@ namespace HaCreator.MapSimulator.UI
             _cashGachaponLastSummary = result.ItemId > 0
                 ? $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} yielded item {result.ItemId.ToString(CultureInfo.InvariantCulture)} x{result.Count.ToString(CultureInfo.InvariantCulture)}{(result.IsJackpot ? " with jackpot animation" : string.Empty)}."
                 : $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} completed inside the dedicated stage.";
+            int trailingOffset = ResolveCashGachaponResultPayloadConsumedLength(payload, hasSubtypeByte: true);
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                trailingOffset,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(
+                    payload,
+                    startOffset: trailingOffset,
+                    preferredCount: 2),
+                paneLabel: "Packet gachapon",
+                browseModeLabel: "Gachapon",
+                titlePrefix: isCopyResult ? "Gachapon copy packet body" : "Gachapon open packet body",
+                seller: "CCashShop gachapon",
+                stateLabel: isCopyResult ? "Copied body" : "Opened body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _cashGachaponLastSummary += $" {trailingSummary}";
+            }
+
             AppendCashPacketCatalogEntry("Packet gachapon", "Gachapon", new PacketCatalogEntry
             {
                 Title = isCopyResult ? "Gachapon copy" : "Gachapon open",
@@ -3497,6 +3515,30 @@ namespace HaCreator.MapSimulator.UI
             string cashItemInfoDetail = result.CashItemInfoEntry?.Detail ?? string.Empty;
             _cashGachaponLastSummary =
                 $"CashShop gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} staged item {result.RevealResult.ItemId.ToString(CultureInfo.InvariantCulture)} x{result.RevealResult.Count.ToString(CultureInfo.InvariantCulture)}{(result.RevealResult.IsJackpot ? " with jackpot animation" : string.Empty)}{(string.IsNullOrWhiteSpace(cashItemInfoDetail) ? string.Empty : $"; embedded {cashItemInfoDetail}")}.";
+            if (result.CashItemInfoEntry != null)
+            {
+                UpsertCashLockerPacketEntry(ClonePacketCatalogEntry(result.CashItemInfoEntry, "Gachapon locker"));
+                _cashLockerItemCount = Math.Max(_cashLockerItemCount, _cashLockerPacketEntries.Count);
+            }
+
+            int trailingOffset = ResolveCashGachaponStagePacketRevealConsumedLength(payload);
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                trailingOffset,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(
+                    payload,
+                    startOffset: trailingOffset,
+                    preferredCount: 2),
+                paneLabel: "Packet gachapon",
+                browseModeLabel: "Gachapon",
+                titlePrefix: $"Gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} tail",
+                seller: "CCashShop gachapon",
+                stateLabel: "Reveal body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _cashGachaponLastSummary += $" {trailingSummary}";
+            }
+
             AppendCashPacketCatalogEntry(
                 "Packet gachapon",
                 "Gachapon",
@@ -3601,6 +3643,28 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private static int ResolveCashGachaponResultPayloadConsumedLength(byte[] payload, bool hasSubtypeByte)
+        {
+            int offset = hasSubtypeByte ? 1 : 0;
+            if (payload == null || payload.Length < offset + sizeof(int))
+            {
+                return payload?.Length ?? 0;
+            }
+
+            offset += sizeof(int);
+            if (payload.Length > offset)
+            {
+                offset++;
+            }
+
+            if (payload.Length > offset)
+            {
+                offset++;
+            }
+
+            return Math.Min(payload.Length, offset);
+        }
+
         internal static bool TryDecodeCashGachaponStagePacketPayload(
             byte[] payload,
             out CashGachaponStagePacketPayload result)
@@ -3664,6 +3728,31 @@ namespace HaCreator.MapSimulator.UI
                 cashItemInfoEntry,
                 failureNotice: string.Empty);
             return true;
+        }
+
+        private static int ResolveCashGachaponStagePacketRevealConsumedLength(byte[] payload)
+        {
+            if (payload == null || payload.Length < 1)
+            {
+                return payload?.Length ?? 0;
+            }
+
+            if (payload[0] == 192)
+            {
+                return 1;
+            }
+
+            const int cashItemResultSuccessStatus = 193;
+            int revealOffset = 1 + sizeof(long) + sizeof(int) + CashItemInfoPacketByteLength;
+            if (payload[0] != cashItemResultSuccessStatus || payload.Length < revealOffset)
+            {
+                return payload.Length;
+            }
+
+            int revealConsumedLength = ResolveCashGachaponResultPayloadConsumedLength(
+                payload.AsSpan(revealOffset).ToArray(),
+                hasSubtypeByte: false);
+            return Math.Min(payload.Length, revealOffset + revealConsumedLength);
         }
 
         internal static bool TryDecodeCashItemInfoPacketBodyForTests(
@@ -5153,6 +5242,7 @@ namespace HaCreator.MapSimulator.UI
                 PacketSource = "GW_CashItemInfo",
                 PacketFieldSummary = BuildCashItemInfoFieldSummary(snapshot),
                 PacketRawByteLength = snapshot?.RawByteLength ?? CashItemInfoPacketByteLength,
+                PacketPayloadRawHex = BuildCashItemInfoRawPayloadHexSummary(snapshot),
                 PacketBuyerCharacterIdByteLength = snapshot?.BuyerCharacterIdByteLength ?? 13,
                 PacketBuyerCharacterIdRawHex = snapshot?.BuyerCharacterIdRawHex ?? string.Empty
             };
@@ -5208,6 +5298,59 @@ namespace HaCreator.MapSimulator.UI
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"GW_CashItemInfo[{snapshot.RawByteLength}]: liSN={snapshot.SerialNumber}, nAccountID={snapshot.AccountId}, nCharacterID={snapshot.CharacterId}, nItemID={snapshot.ItemId}, nCommodityID={snapshot.CommodityId}, nNumber={Math.Max(1, snapshot.Quantity)}, sBuyCharacterID[{snapshot.BuyerCharacterIdByteLength}]={SanitizePacketString(snapshot.BuyerCharacterId, string.Empty)}, sBuyCharacterIDRawHex[{snapshot.BuyerCharacterIdByteLength}]={snapshot.BuyerCharacterIdRawHex}, ftExpire={snapshot.RawExpireFileTime}, nPaybackRate={snapshot.PaybackRate}, nDiscountRate={snapshot.DiscountRate}");
+        }
+
+        private static string BuildCashItemInfoRawPayloadHexSummary(CashItemInfoPacketSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return string.Empty;
+            }
+
+            byte[] buyerCharacterIdBytes = BuildFixedPacketStringBytes(
+                snapshot.BuyerCharacterId,
+                snapshot.BuyerCharacterIdRawHex,
+                Math.Max(1, snapshot.BuyerCharacterIdByteLength));
+            List<byte> bytes = new(CashItemInfoPacketByteLength);
+            bytes.AddRange(BitConverter.GetBytes(snapshot.SerialNumber));
+            bytes.AddRange(BitConverter.GetBytes(snapshot.AccountId));
+            bytes.AddRange(BitConverter.GetBytes(snapshot.CharacterId));
+            bytes.AddRange(BitConverter.GetBytes(snapshot.ItemId));
+            bytes.AddRange(BitConverter.GetBytes(snapshot.CommodityId));
+            bytes.AddRange(BitConverter.GetBytes((short)Math.Clamp(snapshot.Quantity, 1, short.MaxValue)));
+            bytes.AddRange(buyerCharacterIdBytes);
+            bytes.AddRange(BitConverter.GetBytes(snapshot.RawExpireFileTime));
+            bytes.AddRange(BitConverter.GetBytes(snapshot.PaybackRate));
+            bytes.AddRange(BitConverter.GetBytes(snapshot.DiscountRate));
+            return $"GW_CashItemInfo raw[{bytes.Count.ToString(CultureInfo.InvariantCulture)}]={Convert.ToHexString(bytes.ToArray())}";
+        }
+
+        private static byte[] BuildFixedPacketStringBytes(string value, string rawHex, int byteLength)
+        {
+            int normalizedLength = Math.Max(1, byteLength);
+            if (!string.IsNullOrWhiteSpace(rawHex))
+            {
+                try
+                {
+                    byte[] rawBytes = Convert.FromHexString(rawHex);
+                    if (rawBytes.Length == normalizedLength)
+                    {
+                        return rawBytes;
+                    }
+                }
+                catch (FormatException)
+                {
+                }
+            }
+
+            byte[] bytes = new byte[normalizedLength];
+            if (!string.IsNullOrEmpty(value))
+            {
+                byte[] ascii = Encoding.ASCII.GetBytes(value);
+                Buffer.BlockCopy(ascii, 0, bytes, 0, Math.Min(bytes.Length, ascii.Length));
+            }
+
+            return bytes;
         }
 
         private static string BuildGiftListRawPayloadHexSummary(GiftListPacketSnapshot snapshot)

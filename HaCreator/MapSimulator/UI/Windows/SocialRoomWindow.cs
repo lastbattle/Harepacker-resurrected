@@ -652,6 +652,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float noteY = itemY;
+            if (ShouldDrawMerchantSoldLedger())
+            {
+                noteY += 2f;
+                DrawMerchantSoldLedger(sprite, itemPanel, ref noteY);
+            }
+
             foreach (string note in _runtime.Notes)
             {
                 DrawWrapped(sprite, note, itemPanel.X + 12, ref noteY, itemPanel.Width - 24, MutedColor, 0.5f);
@@ -673,6 +679,65 @@ namespace HaCreator.MapSimulator.UI
 
             DrawEntrustedChildDialog(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, _runtime.GetEntrustedChildDialogSnapshot());
             DrawEntrustedBlacklistModal(sprite);
+        }
+
+        private bool ShouldDrawMerchantSoldLedger()
+        {
+            return _runtime.Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop
+                && (_runtime.SoldItems.Count > 0 || _runtime.PersonalShopTotalSoldGross > 0 || _runtime.PersonalShopTotalReceivedNet > 0);
+        }
+
+        private void DrawMerchantSoldLedger(SpriteBatch sprite, Rectangle itemPanel, ref float y)
+        {
+            if (y > itemPanel.Bottom - 42)
+            {
+                return;
+            }
+
+            DrawText(sprite, "Sold Ledger", new Vector2(itemPanel.X + 12, y), HeaderColor, 0.6f);
+            y += 18f;
+
+            int rowsDrawn = 0;
+            foreach (SocialRoomSoldItemEntry soldItem in _runtime.SoldItems.Take(3))
+            {
+                if (y > itemPanel.Bottom - 34)
+                {
+                    return;
+                }
+
+                DrawText(
+                    sprite,
+                    $"{soldItem.BuyerName} | {soldItem.ItemName} x{soldItem.QuantitySold}",
+                    new Vector2(itemPanel.X + 18, y),
+                    ValueColor,
+                    0.52f);
+                y += 15f;
+                DrawText(
+                    sprite,
+                    $"{soldItem.GrossMeso:N0} gross | {soldItem.NetMeso:N0} net",
+                    new Vector2(itemPanel.X + 24, y),
+                    MutedColor,
+                    0.48f);
+                y += 18f;
+                rowsDrawn++;
+            }
+
+            if (_runtime.SoldItems.Count > rowsDrawn && y <= itemPanel.Bottom - 20)
+            {
+                DrawText(sprite, $"+{_runtime.SoldItems.Count - rowsDrawn} more sold entr{(_runtime.SoldItems.Count - rowsDrawn == 1 ? "y" : "ies")}", new Vector2(itemPanel.X + 18, y), MutedColor, 0.48f);
+                y += 16f;
+            }
+
+            if (y <= itemPanel.Bottom - 20)
+            {
+                DrawText(
+                    sprite,
+                    $"Totals: {_runtime.PersonalShopTotalSoldGross:N0} gross, {_runtime.PersonalShopTotalReceivedNet:N0} net",
+                    new Vector2(itemPanel.X + 18, y),
+                    AccentColor,
+                    0.5f);
+                y += 20f;
+            }
         }
 
         private void DrawTradingRoomContents(SpriteBatch sprite)

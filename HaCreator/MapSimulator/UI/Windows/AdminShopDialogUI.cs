@@ -753,6 +753,13 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopSession.BeginOpen(
                 snapshot,
                 "CAdminShopDlg::OnPacket reused the admin-shop unique-modeless owner surface.");
+            if (AdminShopPacketOwnedOpenViewParity.ShouldClearPendingRequestOnSetAdminShopDlg())
+            {
+                ResetPendingRequestState();
+                _pendingPacketOwnedAdminShopResult = false;
+                _packetOwnedAdminShopSession.ClearWaitingForResult();
+            }
+
             _packetOwnedAdminShopRows.Clear();
             _packetOwnedAdminShopRows.AddRange(snapshot.Rows);
             ClearPendingPacketOwnedUserSellSnapshot();

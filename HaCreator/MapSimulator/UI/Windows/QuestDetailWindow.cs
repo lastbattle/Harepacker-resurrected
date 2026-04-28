@@ -743,19 +743,34 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach (CtEntryRow row in EnumerateCtEntryRows(entries))
             {
+                float rowAdvance = ResolveCtRowAdvance(row);
                 if (!row.IsGrouped)
                 {
-                    y = DrawCtEntry(sprite, clipRect, row.Entries[0], y);
+                    QuestDetailCtEntry entry = row.Entries[0];
+                    if (IsCtRowWithinClientClip(y, rowAdvance, clipRect) &&
+                        IsCtEntryWithinClientCullBand(entry, y + (entry?.YOffset ?? 0), clipRect))
+                    {
+                        DrawCtEntry(sprite, clipRect, entry, y);
+                    }
+
+                    y += rowAdvance;
                     continue;
                 }
 
                 float rowBaseY = y;
-                foreach (QuestDetailCtEntry entry in row.Entries)
+                if (IsCtRowWithinClientClip(rowBaseY, rowAdvance, clipRect))
                 {
-                    DrawCtEntryBody(sprite, clipRect, entry, rowBaseY + entry.YOffset);
+                    foreach (QuestDetailCtEntry entry in row.Entries)
+                    {
+                        float entryY = rowBaseY + (entry?.YOffset ?? 0);
+                        if (IsCtEntryWithinClientCullBand(entry, entryY, clipRect))
+                        {
+                            DrawCtEntryBody(sprite, clipRect, entry, entryY);
+                        }
+                    }
                 }
 
-                y = rowBaseY + ResolveCtRowAdvance(row);
+                y = rowBaseY + rowAdvance;
             }
 
             return y;
@@ -1047,6 +1062,44 @@ namespace HaCreator.MapSimulator.UI
             return bottom;
         }
 
+        private bool IsCtRowWithinClientClip(float rowY, float rowHeight, Rectangle clipRect)
+        {
+            float height = Math.Max(0f, rowHeight);
+            return rowY + height >= clipRect.Top && rowY < clipRect.Bottom;
+        }
+
+        private bool IsCtEntryWithinClientCullBand(QuestDetailCtEntry entry, float entryY, Rectangle clipRect)
+        {
+            int cullBottomPadding = clipRect.Height == ClientSummaryClipHeight
+                ? ClientCtSummaryCullBottomPadding
+                : ClientCtLogCullBottomPadding;
+            float entryHeight = ResolveCtEntryCullHeight(entry);
+            float entryBottom = entryY + Math.Max(0f, entryHeight);
+            float cullTop = clipRect.Top - ClientCtCullTopPadding;
+            float cullBottom = clipRect.Bottom + Math.Max(0, cullBottomPadding);
+            return entryBottom >= cullTop && entryY < cullBottom;
+        }
+
+        private float ResolveCtEntryCullHeight(QuestDetailCtEntry entry)
+        {
+            if (entry == null)
+            {
+                return 0f;
+            }
+
+            if (entry.RowHeight > 0)
+            {
+                return entry.RowHeight;
+            }
+
+            if (entry.Height > 0)
+            {
+                return entry.Height;
+            }
+
+            return Math.Max(0f, AdvanceCtEntryBody(entry, 0f));
+        }
+
         private static IEnumerable<CtEntryRow> EnumerateCtEntryRows(IReadOnlyList<QuestDetailCtEntry> entries)
         {
             if (entries == null || entries.Count == 0)
@@ -1103,6 +1156,22 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return y;
+        }
+
+        internal static bool IsCtEntryWithinClientCullBandForTesting(
+            QuestDetailCtEntry entry,
+            float entryY,
+            int clipTop,
+            int clipHeight)
+        {
+            int cullBottomPadding = clipHeight == ClientSummaryClipHeight
+                ? ClientCtSummaryCullBottomPadding
+                : ClientCtLogCullBottomPadding;
+            float entryHeight = Math.Max(0, entry?.Height ?? 0);
+            float entryBottom = entryY + entryHeight;
+            float cullTop = clipTop - ClientCtCullTopPadding;
+            float cullBottom = clipTop + clipHeight + Math.Max(0, cullBottomPadding);
+            return entryBottom >= cullTop && entryY < cullBottom;
         }
 
         private static float ResolveCtRowAdvanceForTesting(CtEntryRow row)

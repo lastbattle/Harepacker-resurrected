@@ -117,6 +117,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _debugTooltipTexture;
         private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
+        private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
         private readonly Dictionary<int, TooltipSampleUiFrame> _sampleUiFrameCache = new();
 
         private InventoryUI _inventory;

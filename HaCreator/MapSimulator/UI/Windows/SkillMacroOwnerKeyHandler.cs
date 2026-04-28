@@ -171,6 +171,23 @@ namespace HaCreator.MapSimulator.UI
             return !controlHeld;
         }
 
+        internal static bool ShouldHandleClipboardPasteCommand(Keys key, bool controlHeld, bool shiftHeld)
+        {
+            return key == Keys.V && controlHeld
+                || key == Keys.Insert && shiftHeld;
+        }
+
+        internal static bool ShouldHandleClipboardCopyCommand(Keys key, bool controlHeld)
+        {
+            return key == Keys.C && controlHeld;
+        }
+
+        internal static bool ShouldHandleClipboardCutCommand(Keys key, bool controlHeld, bool shiftHeld)
+        {
+            return key == Keys.X && controlHeld
+                || key == Keys.Delete && shiftHeld;
+        }
+
         private static bool ShouldForwardImeNavigationKeyToParent(Keys key)
         {
             // `CCtrlEdit::OnKey` still forwards cursor-navigation arrows to the parent

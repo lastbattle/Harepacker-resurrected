@@ -91,6 +91,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
             Texture2D sampleTexture = ResolveInfoSampleTexture(sprite.GraphicsDevice, slot.ItemId);
             Texture2D[] iconRewardTextures = ResolveInfoIconRewardTextures(sprite.GraphicsDevice, slot.ItemId);
+            Texture2D[] rewardPreviewTextures = HasDrawableBitmap(iconRewardTextures)
+                ? Array.Empty<Texture2D>()
+                : ResolveRewardPreviewTextures(sprite.GraphicsDevice, slot.ItemId);
             TooltipSampleUiFrame sampleUiFrame = sampleTexture == null
                 ? ResolveSampleUiFrame(sprite.GraphicsDevice, slot.ItemId)
                 : null;
@@ -155,10 +158,15 @@ namespace HaCreator.MapSimulator.UI
             float iconBlockHeight = Math.Max(TooltipIconSize, contentHeight);
             float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
             float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
+            float rewardPreviewHeight = MeasureHorizontalBitmapStripHeight(rewardPreviewTextures);
             float bitmapPreviewHeight = sampleHeight;
             if (iconRewardHeight > 0f)
             {
                 bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TooltipBitmapGap : 0f) + iconRewardHeight;
+            }
+            else if (rewardPreviewHeight > 0f)
+            {
+                bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TooltipBitmapGap : 0f) + rewardPreviewHeight;
             }
 
             float bitmapPreviewGap = bitmapPreviewHeight > 0f ? TooltipSectionGap : 0f;
@@ -213,6 +221,11 @@ namespace HaCreator.MapSimulator.UI
                     iconRewardTextures,
                     backgroundRect,
                     sampleY + sampleTexture.Height + TooltipBitmapGap);
+                DrawHorizontalBitmapStrip(
+                    sprite,
+                    rewardPreviewTextures,
+                    backgroundRect,
+                    sampleY + sampleTexture.Height + TooltipBitmapGap);
             }
             else if (drawAuthoredSampleInFrame)
             {
@@ -225,11 +238,21 @@ namespace HaCreator.MapSimulator.UI
                     iconRewardTextures,
                     backgroundRect,
                     sampleY + (int)Math.Ceiling(sampleHeight) + TooltipBitmapGap);
+                DrawHorizontalBitmapStrip(
+                    sprite,
+                    rewardPreviewTextures,
+                    backgroundRect,
+                    sampleY + (int)Math.Ceiling(sampleHeight) + TooltipBitmapGap);
             }
             else if (iconRewardHeight > 0f)
             {
                 int rewardY = contentY + (int)Math.Ceiling(iconBlockHeight) + TooltipSectionGap;
                 DrawHorizontalBitmapStrip(sprite, iconRewardTextures, backgroundRect, rewardY);
+            }
+            else if (rewardPreviewHeight > 0f)
+            {
+                int rewardY = contentY + (int)Math.Ceiling(iconBlockHeight) + TooltipSectionGap;
+                DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, rewardY);
             }
         }
 
@@ -521,6 +544,61 @@ namespace HaCreator.MapSimulator.UI
 
             _infoIconRewardTextureCache[itemId] = textures;
             return textures;
+        }
+
+        private Texture2D[] ResolveRewardPreviewTextures(GraphicsDevice device, int itemId)
+        {
+            if (itemId <= 0 || device == null)
+            {
+                return Array.Empty<Texture2D>();
+            }
+
+            if (_rewardPreviewTextureCache.TryGetValue(itemId, out Texture2D[] cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            IReadOnlyList<InventoryRewardPreviewItem> rewardItems =
+                InventoryItemMetadataResolver.ResolveRewardPreviewItems(itemId, 8);
+            var textures = new List<Texture2D>(rewardItems.Count);
+            for (int i = 0; i < rewardItems.Count; i++)
+            {
+                if (!InventoryItemMetadataResolver.TryResolveRootCanvas(
+                        rewardItems[i].ItemId,
+                        "info/icon",
+                        out WzCanvasProperty iconCanvas))
+                {
+                    continue;
+                }
+
+                Texture2D texture = iconCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                if (texture != null)
+                {
+                    textures.Add(texture);
+                }
+            }
+
+            Texture2D[] resolvedTextures = textures.ToArray();
+            _rewardPreviewTextureCache[itemId] = resolvedTextures;
+            return resolvedTextures;
+        }
+
+        private static bool HasDrawableBitmap(IReadOnlyList<Texture2D> textures)
+        {
+            if (textures == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < textures.Count; i++)
+            {
+                if (textures[i] != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static float MeasureHorizontalBitmapStripHeight(IReadOnlyList<Texture2D> textures)

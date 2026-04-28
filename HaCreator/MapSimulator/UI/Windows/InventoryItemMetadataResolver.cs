@@ -55,6 +55,14 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<string> AuthoredSampleLines { get; init; } = Array.Empty<string>();
     }
 
+    public sealed class InventoryRewardPreviewItem
+    {
+        public int ItemId { get; init; }
+        public int Count { get; init; } = 1;
+        public int Probability { get; init; }
+        public int PeriodMinutes { get; init; }
+    }
+
     public readonly struct SkillBookUseMetadata
     {
         public SkillBookUseMetadata(
@@ -660,6 +668,7 @@ namespace HaCreator.MapSimulator.UI
                 WindowMode = metadata.MaxDropCount > 0
                     ? QuestRewardRaiseWindowMode.PiecePlacement
                     : QuestRewardRaiseWindowMode.Selection,
+                ClientWindowKind = ResolveRaiseClientWindowKind(metadata),
                 MaxDropCount = Math.Max(1, metadata.MaxDropCount),
                 InitialQrData = 0,
                 UiData = metadata.UiData,
@@ -693,6 +702,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 OwnerItemId = metadata.OwnerItemId,
                 WindowMode = QuestRewardRaiseWindowMode.PiecePlacement,
+                ClientWindowKind = ResolveRaiseClientWindowKind(metadata),
                 MaxDropCount = Math.Max(1, metadata.MaxDropCount),
                 InitialQrData = 0,
                 UiData = metadata.UiData,
@@ -701,6 +711,18 @@ namespace HaCreator.MapSimulator.UI
                 MessageLines = metadata.MessageLines
             };
             return true;
+        }
+
+        private static QuestRewardRaiseClientWindowKind ResolveRaiseClientWindowKind(QuestRewardRaiseItemMetadata metadata)
+        {
+            if (metadata == null)
+            {
+                return QuestRewardRaiseClientWindowKind.Selection;
+            }
+
+            return Math.Max(0, metadata.IncrementExpUnit) > 0
+                ? QuestRewardRaiseClientWindowKind.RaiseWnd
+                : QuestRewardRaiseClientWindowKind.RaisePieceWnd;
         }
 
         public static IReadOnlyList<ConsumeItemRequirementMetadata> ResolveConsumeItemRequirements(int itemId)
@@ -994,6 +1016,52 @@ namespace HaCreator.MapSimulator.UI
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
             return ResolveInfoCanvasSequence(itemProperty, groupName, limit);
+        }
+
+        public static IReadOnlyList<InventoryRewardPreviewItem> ResolveRewardPreviewItems(int itemId, int limit = 8)
+        {
+            if (itemId <= 0)
+            {
+                return Array.Empty<InventoryRewardPreviewItem>();
+            }
+
+            return ResolveRewardPreviewItems(LoadItemProperty(itemId)?["reward"] as WzSubProperty, limit);
+        }
+
+        private static IReadOnlyList<InventoryRewardPreviewItem> ResolveRewardPreviewItems(WzSubProperty rewardProperty, int limit)
+        {
+            if (rewardProperty?.WzProperties == null)
+            {
+                return Array.Empty<InventoryRewardPreviewItem>();
+            }
+
+            List<WzSubProperty> entries = GetNumericNamedChildren(rewardProperty);
+            if (entries.Count == 0)
+            {
+                return Array.Empty<InventoryRewardPreviewItem>();
+            }
+
+            int maxItems = limit <= 0 ? RewardPreviewLineLimit : limit;
+            List<InventoryRewardPreviewItem> items = new(Math.Min(entries.Count, maxItems));
+            for (int i = 0; i < entries.Count && items.Count < maxItems; i++)
+            {
+                WzSubProperty entry = entries[i];
+                int rewardItemId = GetIntOrStringValue(entry["item"]);
+                if (rewardItemId <= 0)
+                {
+                    continue;
+                }
+
+                items.Add(new InventoryRewardPreviewItem
+                {
+                    ItemId = rewardItemId,
+                    Count = Math.Max(1, GetIntOrStringValue(entry["count"])),
+                    Probability = Math.Max(0, GetIntOrStringValue(entry["prob"])),
+                    PeriodMinutes = Math.Max(0, GetIntOrStringValue(entry["period"]))
+                });
+            }
+
+            return items;
         }
 
         private static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequence(WzSubProperty itemProperty, string groupName, int limit)
@@ -4745,6 +4813,13 @@ namespace HaCreator.MapSimulator.UI
             int limit = 8)
         {
             return ResolveInfoCanvasSequence(itemProperty, groupName, limit);
+        }
+
+        public static IReadOnlyList<InventoryRewardPreviewItem> ResolveRewardPreviewItemsForTests(
+            WzSubProperty rewardProperty,
+            int limit = 8)
+        {
+            return ResolveRewardPreviewItems(rewardProperty, limit);
         }
 
         public static bool TrySelectConsumeItemRequirementForTests(

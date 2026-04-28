@@ -730,7 +730,13 @@ namespace HaCreator.MapSimulator.UI
             string clientMetadata = grade > 0 || expUnit > 0
                 ? $"  grade {grade} exp {expUnit}"
                 : string.Empty;
-            return $"Piece window  {placedCount}/{maxDropCount}  owner #{ownerItemId}{clientMetadata}";
+            string clientKind = (_state?.ClientWindowKind ?? QuestRewardRaiseClientWindowKind.Selection) switch
+            {
+                QuestRewardRaiseClientWindowKind.RaiseWnd => "CUIRaiseWnd",
+                QuestRewardRaiseClientWindowKind.RaisePieceWnd => "CUIRaisePieceWnd",
+                _ => "Piece window"
+            };
+            return $"{clientKind}  {placedCount}/{maxDropCount}  owner #{ownerItemId}{clientMetadata}";
         }
 
         private string BuildPiecePlacementPromptText()

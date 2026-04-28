@@ -1581,6 +1581,12 @@ namespace HaCreator.MapSimulator.UI
             PlayerInput input = _joypadBindingSource?.Invoke();
             _originalJoypadSession = CaptureJoypadSession(input);
             _stagedJoypadSession = _originalJoypadSession?.Clone();
+            int normalizedClientComboCount = 0;
+            if (_mode == OptionMenuMode.Joypad)
+            {
+                NormalizeClientComboBindingsToDetectedButtons(_stagedJoypadSession, out normalizedClientComboCount);
+            }
+
             ResetJoypadCaptureState(_stagedJoypadSession);
             _previousKeyboardState = Keyboard.GetState();
             _previousJoypadNavigationKeyboardState = _previousKeyboardState;
@@ -1597,6 +1603,10 @@ namespace HaCreator.MapSimulator.UI
             if (_mode == OptionMenuMode.Joypad && _selectedJoypadActionButton != JoypadActionButtonKind.None)
             {
                 _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
+                if (normalizedClientComboCount > 0)
+                {
+                    _statusMessage += $" Cleared {normalizedClientComboCount} stale combo binding{(normalizedClientComboCount == 1 ? string.Empty : "s")} that no longer exists in the current Button 1..N set.";
+                }
             }
         }
 
@@ -1651,7 +1661,12 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (!TryFindDuplicateClientJoypadComboAssignment(session.Bindings, out InputAction firstAction, out InputAction duplicateAction, out Buttons duplicateButton))
+            if (TryBuildClientJoypadNativeButtonMap(
+                    session,
+                    out _,
+                    out InputAction firstAction,
+                    out InputAction duplicateAction,
+                    out int duplicateItemNumber))
             {
                 return true;
             }
@@ -1659,44 +1674,89 @@ namespace HaCreator.MapSimulator.UI
             string clientNotice = MapleStoryStringPool.GetOrFallback(
                 JoypadClientDuplicateButtonNoticeStringPoolId,
                 "The same button is assigned to two different hotkeys. Please change one of the hotkeys before proceeding.");
-            validationMessage = $"{NormalizeClientNotice(clientNotice)} ({FormatActionLabel(firstAction)} / {FormatActionLabel(duplicateAction)} both use Pad:{FormatGamepadButton(duplicateButton)}).";
+            validationMessage = $"{NormalizeClientNotice(clientNotice)} ({FormatActionLabel(firstAction)} / {FormatActionLabel(duplicateAction)} both select {FormatClientJoypadButtonItem(duplicateItemNumber)}).";
             return false;
         }
 
-        private static bool TryFindDuplicateClientJoypadComboAssignment(
-            Dictionary<InputAction, Buttons> bindings,
+        private static bool TryBuildClientJoypadNativeButtonMap(
+            JoypadSessionSnapshot session,
+            out int[] nativeButtonMap,
             out InputAction firstAction,
             out InputAction duplicateAction,
-            out Buttons duplicateButton)
+            out int duplicateItemNumber)
         {
+            return TryBuildClientJoypadNativeButtonMapCore(
+                action => ResolveClientJoypadComboSelectedItemNumber(session, action),
+                out nativeButtonMap,
+                out firstAction,
+                out duplicateAction,
+                out duplicateItemNumber);
+        }
+
+        internal static bool TryBuildClientJoypadNativeButtonMapForTests(
+            IReadOnlyDictionary<InputAction, int> selectedItemByAction,
+            out int[] nativeButtonMap,
+            out InputAction firstAction,
+            out InputAction duplicateAction,
+            out int duplicateItemNumber)
+        {
+            return TryBuildClientJoypadNativeButtonMapCore(
+                action => selectedItemByAction != null && selectedItemByAction.TryGetValue(action, out int itemNumber)
+                    ? itemNumber
+                    : 0,
+                out nativeButtonMap,
+                out firstAction,
+                out duplicateAction,
+                out duplicateItemNumber);
+        }
+
+        private static bool TryBuildClientJoypadNativeButtonMapCore(
+            Func<InputAction, int> resolveSelectedItemNumber,
+            out int[] nativeButtonMap,
+            out InputAction firstAction,
+            out InputAction duplicateAction,
+            out int duplicateItemNumber)
+        {
+            nativeButtonMap = new int[JoypadClientSelectableButtonCount];
             firstAction = default;
             duplicateAction = default;
-            duplicateButton = 0;
+            duplicateItemNumber = 0;
 
-            if (bindings == null)
+            if (resolveSelectedItemNumber == null)
             {
-                return false;
+                return true;
             }
 
-            Dictionary<Buttons, InputAction> seenButtons = new();
-            foreach (InputAction action in JoypadClientCoreBindingActions)
+            // Client evidence:
+            // - CUIJoyPad::CheckControls (0x969580) rejects duplicate selected combo item numbers.
+            // - CUIJoyPad::GetJoyPadFromCtrl (0x969500) writes native button slots back as 1-based combo ids.
+            for (int i = 0; i < JoypadClientCoreBindingActions.Length; i++)
             {
-                if (!bindings.TryGetValue(action, out Buttons button) || button == 0)
+                InputAction action = JoypadClientCoreBindingActions[i];
+                int selectedItemNumber = resolveSelectedItemNumber(action);
+                if (selectedItemNumber <= 0)
                 {
                     continue;
                 }
 
-                if (seenButtons.TryGetValue(button, out firstAction))
+                if (selectedItemNumber > nativeButtonMap.Length)
                 {
-                    duplicateAction = action;
-                    duplicateButton = button;
-                    return true;
+                    return false;
                 }
 
-                seenButtons[button] = action;
+                int mapIndex = selectedItemNumber - 1;
+                if (nativeButtonMap[mapIndex] > 0)
+                {
+                    firstAction = JoypadClientCoreBindingActions[nativeButtonMap[mapIndex] - 1];
+                    duplicateAction = action;
+                    duplicateItemNumber = selectedItemNumber;
+                    return false;
+                }
+
+                nativeButtonMap[mapIndex] = i + 1;
             }
 
-            return false;
+            return true;
         }
 
         private static string NormalizeClientNotice(string notice)

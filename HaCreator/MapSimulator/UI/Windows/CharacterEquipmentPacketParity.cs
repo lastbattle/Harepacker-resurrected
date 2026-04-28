@@ -179,6 +179,19 @@ namespace HaCreator.MapSimulator.UI
                                     reservedTrailerBytes: requiresSecondaryStatChangedPointTrailer ? sizeof(byte) : 0,
                                     out int addedItemId,
                                     out bool matchedByHeader,
+                                    out bool hasCashSerial,
+                                    out long cashItemSerialNumber,
+                                    out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            if (!TryValidateClientInventoryOperationAddEntryBaseOwnership(
+                                    request,
+                                    inventoryType,
+                                    addedItemId,
+                                    hasCashSerial,
+                                    cashItemSerialNumber,
                                     out rejectReason))
                             {
                                 return false;
@@ -1448,10 +1461,14 @@ namespace HaCreator.MapSimulator.UI
             int reservedTrailerBytes,
             out int itemId,
             out bool matchedByHeader,
+            out bool hasCashSerial,
+            out long cashItemSerialNumber,
             out string rejectReason)
         {
             itemId = 0;
             matchedByHeader = false;
+            hasCashSerial = false;
+            cashItemSerialNumber = 0;
             rejectReason = null;
             if (!TryEnsureRemaining(reader?.BaseStream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
             {
@@ -1474,10 +1491,10 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 itemId = reader.ReadInt32();
-                bool hasCashSerial = reader.ReadByte() != 0;
+                hasCashSerial = reader.ReadByte() != 0;
                 if (hasCashSerial)
                 {
-                    _ = reader.ReadInt64();
+                    cashItemSerialNumber = reader.ReadInt64();
                 }
 
                 _ = reader.ReadInt64(); // dateExpire
@@ -1551,6 +1568,36 @@ namespace HaCreator.MapSimulator.UI
                 rejectReason = "Inventory-operation add entry is truncated.";
                 return false;
             }
+        }
+
+        private static bool TryValidateClientInventoryOperationAddEntryBaseOwnership(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            int addedItemId,
+            bool hasCashSerial,
+            long cashItemSerialNumber,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null || !IsSupportedClientCharacterInventoryType(inventoryType))
+            {
+                return true;
+            }
+
+            bool expectedCashOwner = inventoryType == ClientCashInventoryType
+                                     || request.RequestedPart?.IsCash == true && addedItemId == request.ItemId;
+            if (!expectedCashOwner)
+            {
+                return true;
+            }
+
+            if (!hasCashSerial || cashItemSerialNumber <= 0)
+            {
+                rejectReason = "Inventory-operation cash add entry is missing the GW_ItemSlotBase cash item serial ownership stamp.";
+                return false;
+            }
+
+            return true;
         }
 
         private static bool TryConsumeHeaderMatchedModeZeroFallbackBody(

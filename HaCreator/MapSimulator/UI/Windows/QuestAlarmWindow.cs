@@ -274,7 +274,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!alreadyTracked)
             {
-                int insertIndex = ResolveManualTrackInsertIndex(_currentSnapshot, _trackedQuestIds.Count);
+                int insertIndex = ResolveManualTrackInsertIndex(_currentSnapshot, _trackedQuestIds, _trackedQuestIds.Count);
                 _trackedQuestIds.Insert(insertIndex, questId);
             }
 
@@ -555,7 +555,18 @@ namespace HaCreator.MapSimulator.UI
             SavePersistedState();
         }
 
-        private static int ResolveManualTrackInsertIndex(QuestAlarmSnapshot snapshot, int fallbackIndex)
+        internal static int ResolveManualTrackInsertIndexForTesting(
+            QuestAlarmSnapshot snapshot,
+            IReadOnlyCollection<int> manualTrackedQuestIds,
+            int fallbackIndex)
+        {
+            return ResolveManualTrackInsertIndex(snapshot, manualTrackedQuestIds, fallbackIndex);
+        }
+
+        private static int ResolveManualTrackInsertIndex(
+            QuestAlarmSnapshot snapshot,
+            IReadOnlyCollection<int> manualTrackedQuestIds,
+            int fallbackIndex)
         {
             if (snapshot?.Entries == null || snapshot.Entries.Count == 0)
             {
@@ -563,11 +574,21 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int clampedFallbackIndex = Math.Max(0, Math.Min(fallbackIndex, snapshot.Entries.Count));
-            for (int i = 0; i < clampedFallbackIndex; i++)
+            HashSet<int> manualTrackedQuestSet = manualTrackedQuestIds == null
+                ? new HashSet<int>()
+                : new HashSet<int>(manualTrackedQuestIds.Where(static questId => questId > 0));
+
+            for (int i = 0; i < snapshot.Entries.Count; i++)
             {
-                if (snapshot.Entries[i]?.IsRecentlyUpdated == true)
+                QuestAlarmEntrySnapshot entry = snapshot.Entries[i];
+                if (entry == null || manualTrackedQuestSet.Contains(entry.QuestId))
                 {
-                    return i;
+                    continue;
+                }
+
+                if (entry.IsAutoRegisterActive || entry.AutoRegisterActivitySequence != long.MinValue)
+                {
+                    return Math.Min(i, clampedFallbackIndex);
                 }
             }
 

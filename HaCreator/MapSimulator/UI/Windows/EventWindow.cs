@@ -1034,21 +1034,23 @@ namespace HaCreator.MapSimulator.UI
             Point statusLaneAnchorOffset,
             int authoredStatusWidth)
         {
-            int contentLeft = slotBounds.Right + 10;
-            int statusLeft = rowBounds.X + statusLaneAnchorOffset.X;
-            int statusTop = rowBounds.Y + statusLaneAnchorOffset.Y;
-            int statusWidth = Math.Max(40, Math.Min(Math.Max(40, authoredStatusWidth), rowBounds.Right - statusLeft - 5));
-            float titleWidth = Math.Max(40f, statusLeft - contentLeft - 8f);
+            EventEntryRowLayoutSnapshot wzBackedLayout = ProgressionUtilityParityRules.ResolveWzBackedEventRowBodyLayout(
+                rowBounds.Width,
+                slotBounds.X - rowBounds.X,
+                slotBounds.Y - rowBounds.Y,
+                slotBounds.Width,
+                statusLaneAnchorOffset,
+                authoredStatusWidth);
             return new EventRowTextLayout(
-                contentLeft,
-                rowBounds.Y + 8,
-                titleWidth,
-                contentLeft,
-                rowBounds.Y + 30,
-                Math.Max(40f, rowBounds.Right - contentLeft - 12f),
-                statusLeft,
-                statusTop,
-                statusWidth);
+                rowBounds.X + (wzBackedLayout.TitleLeft ?? 0),
+                rowBounds.Y + (wzBackedLayout.TitleTop ?? 0),
+                Math.Max(40f, wzBackedLayout.TitleWidth ?? 40),
+                rowBounds.X + (wzBackedLayout.DetailLeft ?? 0),
+                rowBounds.Y + (wzBackedLayout.DetailTop ?? 0),
+                Math.Max(40f, wzBackedLayout.DetailWidth ?? 40),
+                rowBounds.X + (wzBackedLayout.StatusLeft ?? 0),
+                rowBounds.Y + (wzBackedLayout.StatusTop ?? 0),
+                Math.Max(40, wzBackedLayout.StatusWidth ?? 40));
         }
 
         internal static EventRowTextLayout ResolveEventRowTextLayout(

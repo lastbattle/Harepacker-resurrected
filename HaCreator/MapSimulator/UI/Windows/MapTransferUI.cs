@@ -256,7 +256,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                _selectedIndex = Math.Clamp(_selectedIndex, 0, _destinations.Count - 1);
+                if (_selectedIndex >= 0)
+                {
+                    _selectedIndex = Math.Clamp(_selectedIndex, 0, _destinations.Count - 1);
+                }
+
                 ClampScrollOffset();
             }
 

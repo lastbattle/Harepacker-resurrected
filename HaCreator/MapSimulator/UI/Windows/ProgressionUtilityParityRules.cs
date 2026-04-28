@@ -170,6 +170,43 @@ namespace HaCreator.MapSimulator.UI
             return (resolvedAnchor, resolvedLaneWidth);
         }
 
+        internal static EventEntryRowLayoutSnapshot ResolveWzBackedEventRowBodyLayout(
+            int rowWidth,
+            int slotLeft,
+            int slotTop,
+            int slotWidth,
+            Point statusLaneAnchorOffset,
+            int statusLaneWidth)
+        {
+            int normalizedRowWidth = Math.Max(1, rowWidth);
+            int normalizedSlotLeft = Math.Max(0, slotLeft);
+            int normalizedSlotTop = Math.Max(0, slotTop);
+            int normalizedSlotWidth = Math.Max(1, slotWidth);
+            Point normalizedStatusAnchor = new(
+                Math.Clamp(statusLaneAnchorOffset.X, 0, Math.Max(0, normalizedRowWidth - 40)),
+                Math.Max(0, statusLaneAnchorOffset.Y));
+            int normalizedStatusWidth = Math.Max(40, Math.Min(Math.Max(40, statusLaneWidth), normalizedRowWidth - normalizedStatusAnchor.X - 5));
+
+            int titleLeft = normalizedSlotLeft + normalizedSlotWidth + 10;
+            int titleTop = normalizedSlotTop;
+            int detailTop = normalizedSlotTop + 22;
+            int titleWidth = Math.Max(40, normalizedStatusAnchor.X - titleLeft - 8);
+            int detailWidth = Math.Max(40, normalizedRowWidth - titleLeft - 12);
+
+            return new EventEntryRowLayoutSnapshot
+            {
+                TitleLeft = titleLeft,
+                TitleTop = titleTop,
+                TitleWidth = titleWidth,
+                DetailLeft = titleLeft,
+                DetailTop = detailTop,
+                DetailWidth = detailWidth,
+                StatusLeft = normalizedStatusAnchor.X,
+                StatusTop = normalizedStatusAnchor.Y,
+                StatusWidth = normalizedStatusWidth
+            };
+        }
+
         internal static RankingWindowSnapshot ApplyPacketOwnedRankingOwnerState(
             RankingWindowSnapshot fallback,
             PacketOwnedRankingOwnerStateSnapshot ownerState)
