@@ -277,6 +277,57 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (requestOpcode == MerchantOutboundOpcode && payload.Length > 0)
+            {
+                byte merchantRequestSubtype = payload[0];
+                switch (merchantRequestSubtype)
+                {
+                    case 10:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 25 };
+                        expectationSummary = "expect CPersonalShopDlg::OnPacket -> CMiniRoomBaseDlg::OnPacketBase close/leave update (subtype 25)";
+                        return true;
+                    case 23:
+                    case 34:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 24, 26 };
+                        expectationSummary = "expect CPersonalShopDlg::OnPacket buy/sold result (subtypes 24/26)";
+                        return true;
+                    case 39:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 25 };
+                        expectationSummary = "expect CEntrustedShopDlg::OnGoOut to be followed by a MiniRoom base leave/update (subtype 25)";
+                        return true;
+                    case 40:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 40 };
+                        expectationSummary = "expect CEntrustedShopDlg::OnArrangeItemResult (subtype 40)";
+                        return true;
+                    case 41:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 42 };
+                        expectationSummary = "expect CEntrustedShopDlg::OnPacket withdraw-all result (subtype 42)";
+                        return true;
+                    case 43:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 44 };
+                        expectationSummary = "expect CEntrustedShopDlg::OnPacket withdraw-money result (subtype 44)";
+                        return true;
+                    case 46:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 46 };
+                        expectationSummary = "expect CEntrustedShopDlg::OnPacket visit-list result (subtype 46)";
+                        return true;
+                    case 47:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 47 };
+                        expectationSummary = "expect CEntrustedShopDlg::OnPacket blacklist result (subtype 47)";
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+
             if (requestOpcode != MessengerOutboundOpcode || payload.Length == 0)
             {
                 return false;
@@ -355,6 +406,28 @@ namespace HaCreator.MapSimulator.Interaction
                     default:
                         return false;
                 }
+            }
+
+            if (inboundOpcode == MerchantInboundOpcode && payload.Length > 0)
+            {
+                inboundSubtype = payload[0];
+                if (MerchantInboundSubtypeHandlers.TryGetValue(inboundSubtype, out string merchantHandlerName))
+                {
+                    branchSummary = $"{merchantHandlerName} (subtype {inboundSubtype})";
+                    if (inboundSubtype == 24 && payload.Length > 1)
+                    {
+                        resultCode = payload[1];
+                    }
+                    else if (inboundSubtype == 42 && payload.Length > 1)
+                    {
+                        resultCode = payload[1];
+                    }
+
+                    return true;
+                }
+
+                branchSummary = $"CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket subtype {inboundSubtype}";
+                return true;
             }
 
             if (inboundOpcode != MessengerInboundOpcode || payload.Length == 0)

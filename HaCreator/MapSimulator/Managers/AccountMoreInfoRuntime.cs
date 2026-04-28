@@ -210,8 +210,8 @@ namespace HaCreator.MapSimulator.Managers
 
             uint area = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(1, 4));
             uint birthday = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(5, 4));
-            _playStyleMask = MaskClientPlayStyleBits(_playStyleMask | BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(9, 4)));
-            _activityMask = MaskClientActivityBits(_activityMask | BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(13, 4)));
+            _playStyleMask = MaskClientPlayStyleBits(BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(9, 4)));
+            _activityMask = MaskClientActivityBits(BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(13, 4)));
 
             int requestedAreaGroup = (int)(area & 0xFF);
             int requestedAreaDetail = (int)((area >> 8) & 0xFF);

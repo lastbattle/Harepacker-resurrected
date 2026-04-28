@@ -2444,7 +2444,9 @@ namespace HaCreator.MapSimulator.Fields
 
         private static RemoteTownPortalOwnerFieldObservation? CreateRemoteTownPortalExistingSourceObservation(RemoteTownPortalState? existingState)
         {
-            if (!existingState.HasValue || !existingState.Value.Destination.HasValue)
+            if (!existingState.HasValue
+                || existingState.Value.Phase == RemoteTownPortalVisualPhase.Removing
+                || !existingState.Value.Destination.HasValue)
             {
                 return null;
             }
@@ -3987,6 +3989,61 @@ namespace HaCreator.MapSimulator.Fields
                 .ToList();
             return SelectPreferredRemoteTownPortalSourceMapId(
                 FilterRemoteTownPortalStateByTownMap(existingState, currentMapId),
+                metadata,
+                observationGroups);
+        }
+
+        internal static int? ResolvePreferredRemoteTownPortalSourceMapIdWithExistingPhaseForTesting(
+            int currentMapId,
+            bool hasExistingDestination,
+            int existingDestinationMapId,
+            float existingDestinationX,
+            float existingDestinationY,
+            RemoteTownPortalVisualPhase existingPhase,
+            bool hasMetadata,
+            int metadataSourceMapId,
+            float metadataSourceX,
+            float metadataSourceY,
+            int metadataTownMapId,
+            RemoteTownPortalObservationSource metadataObservationSource,
+            int metadataRecordedAt,
+            params (int SourceMapId, float SourceX, float SourceY, int TownMapId, RemoteTownPortalObservationSource ObservationSource, int RecordedAt)[] observations)
+        {
+            RemoteTownPortalState? existingState = hasExistingDestination
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: 1,
+                    MapId: currentMapId,
+                    X: 0,
+                    Y: 0,
+                    Destination: new RemoteTownPortalResolvedDestination(existingDestinationMapId, existingDestinationX, existingDestinationY),
+                    Phase: existingPhase,
+                    PhaseStartedAt: 0,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            RemoteTownPortalFieldMetadata? metadata = hasMetadata
+                ? new RemoteTownPortalFieldMetadata(
+                    metadataSourceMapId,
+                    metadataSourceX,
+                    metadataSourceY,
+                    metadataTownMapId,
+                    metadataObservationSource,
+                    metadataRecordedAt)
+                : null;
+            List<RemoteTownPortalOwnerFieldObservation[]> observationGroups = observations
+                .Select(observation => new RemoteTownPortalOwnerFieldObservation(
+                    observation.SourceMapId,
+                    observation.SourceX,
+                    observation.SourceY,
+                    observation.TownMapId,
+                    observation.ObservationSource,
+                    observation.RecordedAt))
+                .GroupBy(observation => observation.SourceMapId)
+                .Select(group => group.ToArray())
+                .ToList();
+            return SelectPreferredRemoteTownPortalSourceMapId(
+                existingState,
                 metadata,
                 observationGroups);
         }

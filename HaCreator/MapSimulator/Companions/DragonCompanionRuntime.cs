@@ -1074,10 +1074,42 @@ namespace HaCreator.MapSimulator.Companions
             return (byte)(keyPadState & 0x0F);
         }
 
-        private int ApplyClientVecCtrlPostFlushRetainedElements(IReadOnlyList<MovePathElement> sourcePath)
+        internal static IReadOnlyList<byte> ResolveClientDragonFlushRetainedKeyPadStates(
+            IReadOnlyList<MovePathElement> sourcePath,
+            IReadOnlyList<byte> sourceKeyPadStates)
         {
             List<MovePathElement> sourceElements = sourcePath?.ToList() ?? new List<MovePathElement>();
             int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(sourceElements);
+            if (retainedStartIndex < 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            List<byte> retainedKeyPadStates = new(sourceElements.Count - retainedStartIndex);
+            for (int i = retainedStartIndex; i < sourceElements.Count; i++)
+            {
+                if (sourceKeyPadStates != null && i < sourceKeyPadStates.Count)
+                {
+                    retainedKeyPadStates.Add(NormalizeClientVecCtrlPassiveKeyPadState(sourceKeyPadStates[i]));
+                }
+                else
+                {
+                    retainedKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner: null, sourceElements[i]));
+                }
+            }
+
+            return retainedKeyPadStates;
+        }
+
+        private int ApplyClientVecCtrlPostFlushRetainedElements(
+            IReadOnlyList<MovePathElement> sourcePath,
+            IReadOnlyList<byte> sourceKeyPadStates)
+        {
+            List<MovePathElement> sourceElements = sourcePath?.ToList() ?? new List<MovePathElement>();
+            int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(sourceElements);
+            IReadOnlyList<byte> retainedKeyPadStates = ResolveClientDragonFlushRetainedKeyPadStates(
+                sourceElements,
+                sourceKeyPadStates);
             _clientVecCtrlMovePathBuffer.Clear();
             _clientVecCtrlMovePathKeyPadStates.Clear();
             if (retainedStartIndex < 0)
@@ -1089,6 +1121,11 @@ namespace HaCreator.MapSimulator.Companions
             {
                 MovePathElement element = sourceElements[i];
                 _clientVecCtrlMovePathBuffer.Add(element);
+            }
+
+            for (int i = 0; i < retainedKeyPadStates.Count; i++)
+            {
+                _clientVecCtrlMovePathKeyPadStates.Add(retainedKeyPadStates[i]);
             }
 
             return ResolveClientDragonFlushRetainedGatherDuration(sourceElements);
@@ -1107,7 +1144,9 @@ namespace HaCreator.MapSimulator.Companions
                 payload = Array.Empty<byte>();
             }
 
-            _vecCtrlEndUpdateActiveFlushCarryMilliseconds = ApplyClientVecCtrlPostFlushRetainedElements(movePath);
+            _vecCtrlEndUpdateActiveFlushCarryMilliseconds = ApplyClientVecCtrlPostFlushRetainedElements(
+                movePath,
+                _clientVecCtrlMovePathKeyPadStates);
 
             return payload ?? Array.Empty<byte>();
         }

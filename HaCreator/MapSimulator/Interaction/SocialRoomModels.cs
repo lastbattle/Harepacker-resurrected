@@ -1976,6 +1976,12 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case TradingRoomPutMoneyPacketType:
                 {
+                    if (reader.Remaining < sizeof(byte) + sizeof(int))
+                    {
+                        message = "Trading-room put-money packet is too short to decode.";
+                        return false;
+                    }
+
                     int traderIndex = reader.ReadByte();
                     int offeredMeso = reader.ReadInt();
                     ApplyTradingRoomMesoPacket(traderIndex, offeredMeso);
@@ -2009,7 +2015,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int traderIndex = payload[1];
-            int slotIndex = Math.Max(1, (int)payload[2]);
+            int slotIndex = NormalizeTradingRoomClientSlot(payload[2]);
             if (!TryDecodePacketOwnedTradeItem(payload.AsSpan(3), out PacketOwnedTradeItem item, out string error))
             {
                 message = error;
@@ -2031,7 +2037,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int traderIndex = reader.ReadByte();
-            int slotIndex = Math.Max(1, (int)reader.ReadByte());
+            int slotIndex = NormalizeTradingRoomClientSlot(reader.ReadByte());
             byte[] itemPayload = reader.ReadBytes(reader.Remaining);
             if (!TryDecodePacketOwnedTradeItem(itemPayload, out PacketOwnedTradeItem item, out string error))
             {
@@ -2250,10 +2256,23 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyTradingRoomCrcPacket(PacketReader reader, out string message)
         {
             message = null;
+            if (reader == null || reader.Remaining < 1)
+            {
+                message = "Trading-room CRC packet is too short to contain a checksum-row count.";
+                return false;
+            }
+
             int count = reader.ReadByte();
             if (count < 0)
             {
                 message = "Trading-room CRC packet contained an invalid row count.";
+                return false;
+            }
+
+            int requiredBytes = count * (sizeof(int) + sizeof(int));
+            if (reader.Remaining < requiredBytes)
+            {
+                message = $"Trading-room CRC packet is truncated: count={count}, remaining={reader.Remaining}, required={requiredBytes}.";
                 return false;
             }
 
@@ -2349,8 +2368,9 @@ namespace HaCreator.MapSimulator.Interaction
             ClearTradeHandshake();
             string ownerName = ResolveTradeOwnerName(traderIndex);
             string ownerLabel = traderIndex == 0 ? "Owner" : "Guest";
+            int clientSlotIndex = NormalizeTradingRoomClientSlot(slotIndex);
             string packetOwnedItemLabel = ResolveTradePacketItemLabel(item);
-            SocialRoomItemEntry entry = FindTradingRoomPacketEntry(ownerName, slotIndex);
+            SocialRoomItemEntry entry = FindTradingRoomPacketEntry(ownerName, clientSlotIndex);
             if (entry == null)
             {
                 entry = new SocialRoomItemEntry(
@@ -2358,22 +2378,27 @@ namespace HaCreator.MapSimulator.Interaction
                     packetOwnedItemLabel,
                     item.Quantity,
                     mesoAmount: 0,
-                    detail: BuildTradingRoomPacketItemDetail(ownerLabel, slotIndex, item),
+                    detail: BuildTradingRoomPacketItemDetail(ownerLabel, clientSlotIndex, item),
                     itemId: item.ItemId,
-                    packetSlotIndex: slotIndex);
+                    packetSlotIndex: clientSlotIndex);
                 _items.Add(entry);
             }
             else
             {
-                entry.UpdatePacketIdentity(item.ItemId, slotIndex);
-                entry.Update(BuildTradingRoomPacketItemDetail(ownerLabel, slotIndex, item), item.Quantity, 0, false, false);
+                entry.UpdatePacketIdentity(item.ItemId, clientSlotIndex);
+                entry.Update(BuildTradingRoomPacketItemDetail(ownerLabel, clientSlotIndex, item), item.Quantity, 0, false, false);
             }
 
             SortTradeRoomItems();
             RoomState = "Negotiating";
             RefreshTradeOccupantsAndRows();
-            StatusMessage = $"{ownerName} placed packet-backed {packetOwnedItemLabel} x{item.Quantity} into trade slot {slotIndex}.";
+            StatusMessage = $"{ownerName} placed packet-backed {packetOwnedItemLabel} x{item.Quantity} into trade slot {clientSlotIndex}.";
             PersistState();
+        }
+
+        private static int NormalizeTradingRoomClientSlot(int slotIndex)
+        {
+            return Math.Clamp(slotIndex, 1, TradingRoomClientItemSlotCount);
         }
 
         private SocialRoomItemEntry FindTradingRoomPacketEntry(string ownerName, int slotIndex)
@@ -4366,6 +4391,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
             if (TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(nestedPayload, tickCount, out result))
             {
                 return true;
@@ -4550,6 +4580,137 @@ namespace HaCreator.MapSimulator.Interaction
                 ForwardedPayload = forwardedPayload,
                 RemainingBytes = checked(result.RemainingBytes + Math.Max(0, trailingLength))
             };
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 3)
+            {
+                return false;
+            }
+
+            return TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 0, 1, "count+len8 batch envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 0, 2, "count+len16 batch envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 0, 4, "count+len32 batch envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 1, $"room-type+count+len8 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 2, $"room-type+count+len16 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 4, $"room-type+count+len32 batch envelope roomType={nestedPayload[0]}", tickCount, out result);
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(
+            byte[] nestedPayload,
+            int countOffset,
+            int lengthSize,
+            string envelopeLabel,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null
+                || countOffset < 0
+                || countOffset >= nestedPayload.Length
+                || lengthSize is not (1 or 2 or 4))
+            {
+                return false;
+            }
+
+            int entryCount = nestedPayload[countOffset];
+            if (entryCount <= 0 || entryCount > 16)
+            {
+                return false;
+            }
+
+            int offset = countOffset + 1;
+            int handledCount = 0;
+            int unhandledCount = 0;
+            int remainingBytes = 0;
+            byte firstPacketType = 0;
+            byte[] firstForwardedPayload = null;
+            List<string> packetTypes = new();
+            List<string> details = new();
+            string lastOwnerName = "room-specific owner";
+
+            for (int entryIndex = 0; entryIndex < entryCount; entryIndex++)
+            {
+                if (offset + lengthSize > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                int payloadLength = lengthSize switch
+                {
+                    1 => nestedPayload[offset],
+                    2 => BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(offset, sizeof(ushort))),
+                    _ => TryReadUInt32PayloadLength(nestedPayload.AsSpan(offset, sizeof(uint)), out int len32) ? len32 : -1
+                };
+                offset += lengthSize;
+                if (payloadLength <= 0 || offset + payloadLength > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                byte packetType = nestedPayload[offset];
+                if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+                {
+                    return false;
+                }
+
+                byte[] forwardedPayload = nestedPayload.Skip(offset).Take(payloadLength).ToArray();
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult entryResult))
+                {
+                    return false;
+                }
+
+                if (firstForwardedPayload == null)
+                {
+                    firstPacketType = entryResult.PacketType;
+                    firstForwardedPayload = forwardedPayload;
+                }
+
+                lastOwnerName = entryResult.OwnerName;
+                remainingBytes += Math.Max(0, entryResult.RemainingBytes);
+                packetTypes.Add(entryResult.PacketType.ToString(CultureInfo.InvariantCulture));
+                if (entryResult.Handled)
+                {
+                    handledCount++;
+                }
+                else
+                {
+                    unhandledCount++;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entryResult.Message))
+                {
+                    details.Add($"entry {entryIndex + 1}: {entryResult.Message}");
+                }
+
+                offset += payloadLength;
+            }
+
+            int trailingLength = nestedPayload.Length - offset;
+            remainingBytes += Math.Max(0, trailingLength);
+            string handledText = unhandledCount == 0
+                ? $"handled all {entryCount} entr{(entryCount == 1 ? "y" : "ies")}"
+                : $"handled {handledCount} and retained {unhandledCount} unmodeled entr{(unhandledCount == 1 ? "y" : "ies")} on the owner seam";
+            string detailText = details.Count == 0
+                ? "No nested owner detail was produced."
+                : string.Join(" ", details);
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handledCount > 0,
+                entryCount == 1 ? lastOwnerName : "CMiniRoomBaseDlg::OnPacketBase batch forwarding",
+                $"Counted subtype-6 batch {handledText}; packet types [{string.Join(", ", packetTypes)}]. {detailText}",
+                firstPacketType,
+                remainingBytes,
+                trailingLength > 0
+                    ? $"{envelopeLabel} count={entryCount} trailing={trailingLength}B"
+                    : $"{envelopeLabel} count={entryCount}",
+                firstForwardedPayload ?? Array.Empty<byte>());
             return true;
         }
 
@@ -6006,6 +6167,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (EntrustedBlacklistPromptRequested == null)
             {
+                _entrustedBlacklistPromptRequest = null;
+                PersistState();
                 message = "Entrusted-shop blacklist add requires a registered UtilDlgEx prompt owner.";
                 return false;
             }
@@ -6023,6 +6186,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (!shown)
             {
                 _entrustedBlacklistPromptRequest = null;
+                PersistState();
                 message = "Entrusted-shop blacklist add prompt could not be opened.";
                 return false;
             }

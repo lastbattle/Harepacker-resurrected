@@ -324,6 +324,12 @@ namespace HaCreator.MapSimulator
                     ShowUtilityFeedbackMessage(packetOwnedOutcomeWithoutPendingRequest);
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
                     {
+                        if (decodeState.HasOutcomeState)
+                        {
+                            itemUpgradeWindow.ApplyPacketOwnedUpgradeSlotStateToCurrentSelection(
+                                decodeState.OutcomeUpgradeState);
+                        }
+
                         itemUpgradeWindow.SetOwnerStatusMessage(packetOwnedOutcomeWithoutPendingRequest, packetOwnedOutcomeSuccess);
                     }
 

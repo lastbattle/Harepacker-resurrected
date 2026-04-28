@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.UI
         public int Count { get; init; } = 1;
         public int Probability { get; init; }
         public int PeriodMinutes { get; init; }
+        public string EffectPath { get; init; } = string.Empty;
     }
 
     public readonly struct SkillBookUseMetadata
@@ -1046,7 +1047,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < entries.Count && items.Count < maxItems; i++)
             {
                 WzSubProperty entry = entries[i];
-                int rewardItemId = GetIntOrStringValue(entry["item"]);
+                int rewardItemId = ResolveRewardEntryItemId(entry);
                 if (rewardItemId <= 0)
                 {
                     continue;
@@ -1057,7 +1058,8 @@ namespace HaCreator.MapSimulator.UI
                     ItemId = rewardItemId,
                     Count = Math.Max(1, GetIntOrStringValue(entry["count"])),
                     Probability = Math.Max(0, GetIntOrStringValue(entry["prob"])),
-                    PeriodMinutes = Math.Max(0, GetIntOrStringValue(entry["period"]))
+                    PeriodMinutes = Math.Max(0, GetIntOrStringValue(entry["period"])),
+                    EffectPath = GetStringValue(entry["Effect"]) ?? string.Empty
                 });
             }
 
@@ -4706,7 +4708,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < visibleCount; i++)
             {
                 WzSubProperty entry = entries[i];
-                int itemId = GetIntOrStringValue(entry["item"]);
+                int itemId = ResolveRewardEntryItemId(entry);
                 if (itemId <= 0)
                 {
                     continue;
@@ -4732,6 +4734,34 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines;
+        }
+
+        private static int ResolveRewardEntryItemId(WzSubProperty entry)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            int itemId = GetIntOrStringValue(entry["item"]);
+            if (itemId > 0)
+            {
+                return itemId;
+            }
+
+            itemId = GetIntOrStringValue(entry["itemcode"]);
+            if (itemId > 0)
+            {
+                return itemId;
+            }
+
+            itemId = GetIntOrStringValue(entry["itemID"]);
+            if (itemId > 0)
+            {
+                return itemId;
+            }
+
+            return GetIntOrStringValue(entry["id"]);
         }
 
         private static IReadOnlyList<string> BuildConsumeItemRequirementLines(WzSubProperty consumeItemProperty, int previewLineLimit)

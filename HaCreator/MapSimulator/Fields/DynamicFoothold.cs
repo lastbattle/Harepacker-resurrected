@@ -577,6 +577,7 @@ namespace HaCreator.MapSimulator.Fields
         // X1/X2 and Y1/Y2, while simulator bounds are normalized for local movement.
         public int? PacketOwnedMovingX1, PacketOwnedMovingX2;
         public int? PacketOwnedMovingY1, PacketOwnedMovingY2;
+        public bool? PacketOwnedReverseVertical, PacketOwnedReverseHorizontal;
 
         // Waypoint path
         public List<Vector2> Waypoints;

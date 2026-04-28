@@ -882,11 +882,33 @@ namespace HaCreator.MapSimulator
                 if (message.Source?.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase) == true)
                 {
                     _remoteUserOfficialSessionBridge.RecordDispatchResult(
-                        new RemoteUserOfficialSessionBridgeMessage(message.PacketType, message.Payload, message.Source, 0),
+                        new RemoteUserOfficialSessionBridgeMessage(
+                            message.PacketType,
+                            message.Payload,
+                            message.Source,
+                            ResolveRemoteUserOfficialSessionOpcodeForParity(message.RawText)),
                         applied,
                         result);
                 }
             }
+        }
+
+        internal static ushort ResolveRemoteUserOfficialSessionOpcodeForParity(string rawText)
+        {
+            if (string.IsNullOrWhiteSpace(rawText))
+            {
+                return 0;
+            }
+
+            string trimmed = rawText.Trim();
+            const string opcodePrefix = "opcode=";
+            if (trimmed.StartsWith(opcodePrefix, StringComparison.OrdinalIgnoreCase)
+                && ushort.TryParse(trimmed.Substring(opcodePrefix.Length), out ushort opcode))
+            {
+                return opcode;
+            }
+
+            return 0;
         }
 
         private string DescribeRemoteUserPacketInboxStatus()

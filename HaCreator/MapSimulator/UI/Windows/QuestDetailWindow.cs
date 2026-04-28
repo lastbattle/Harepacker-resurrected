@@ -778,13 +778,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawDetailInset(SpriteBatch sprite, int tickCount)
         {
-            if (_state == null || !ShouldDrawDetailTip() || _state.TimeLimitSeconds <= 0)
+            if (_state == null || !ShouldDrawDetailTip())
             {
                 return;
             }
 
             Rectangle insetBounds = GetDetailInsetBounds();
             if (insetBounds.Width <= 0 || insetBounds.Height <= 0)
+            {
+                return;
+            }
+
+            if (_state.DeliveryType != QuestDetailDeliveryType.None && _state.TargetItemId.HasValue)
+            {
+                DrawDeliveryInset(sprite, insetBounds);
+                return;
+            }
+
+            if (_state.TimeLimitSeconds <= 0)
             {
                 return;
             }
@@ -805,6 +816,40 @@ namespace HaCreator.MapSimulator.UI
             DrawTextLine(sprite, timerText, timerPosition, new Color(255, 244, 199), ClientDetailScale, lane: QuestDetailTextLane.Detail);
 
             DrawTimeLimitGauge(sprite, insetBounds);
+        }
+
+        private void DrawDeliveryInset(SpriteBatch sprite, Rectangle insetBounds)
+        {
+            int itemId = _state?.TargetItemId ?? 0;
+            if (itemId <= 0)
+            {
+                return;
+            }
+
+            Texture2D iconTexture = ResolveItemIcon(itemId);
+            int textX = insetBounds.X + 8;
+            if (iconTexture != null)
+            {
+                Rectangle iconBounds = GetDeliveryInsetItemIconBounds(insetBounds, iconTexture);
+                DrawTextureClipped(sprite, iconTexture, iconBounds, insetBounds, Color.White);
+                textX = iconBounds.Right + 5;
+            }
+
+            string label = !string.IsNullOrWhiteSpace(_state.TargetItemName)
+                ? _state.TargetItemName
+                : ResolveItemName(itemId);
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                Vector2 labelPosition = new(textX, insetBounds.Y + 8);
+                DrawTextLineClipped(
+                    sprite,
+                    label,
+                    labelPosition,
+                    new Color(255, 244, 199),
+                    insetBounds,
+                    ClientDetailScale,
+                    lane: QuestDetailTextLane.Detail);
+            }
         }
 
         private float DrawRequirementSection(SpriteBatch sprite, Rectangle clipRect, float y, float x, float maxWidth)
@@ -1115,26 +1160,46 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            for (int i = 0; i < entries.Count;)
+            if (UsesClientCtIndexedRowLayout(entries))
+            {
+                foreach (IGrouping<int, QuestDetailCtEntry> rowGroup in entries
+                    .Where(entry => entry?.RowIndex is int)
+                    .GroupBy(entry => entry.RowIndex.Value)
+                    .OrderBy(group => group.Key))
+                {
+                    QuestDetailCtEntry[] rowEntries = rowGroup.ToArray();
+                    yield return new CtEntryRow(rowEntries, rowEntries.Length > 1 || rowEntries[0].RowHeight > 0);
+                }
+
+                yield break;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
             {
                 QuestDetailCtEntry entry = entries[i];
-                if (entry?.RowIndex is not int rowIndex)
+                yield return new CtEntryRow(new[] { entry }, entry?.RowHeight > 0);
+            }
+        }
+
+        private static bool UsesClientCtIndexedRowLayout(IReadOnlyList<QuestDetailCtEntry> entries)
+        {
+            bool hasIndexedEntry = false;
+            foreach (QuestDetailCtEntry entry in entries)
+            {
+                if (entry == null)
                 {
-                    yield return new CtEntryRow(new[] { entry }, false);
-                    i++;
                     continue;
                 }
 
-                List<QuestDetailCtEntry> rowEntries = new();
-                do
+                if (!entry.RowIndex.HasValue)
                 {
-                    rowEntries.Add(entries[i]);
-                    i++;
+                    return false;
                 }
-                while (i < entries.Count && entries[i]?.RowIndex == rowIndex);
 
-                yield return new CtEntryRow(rowEntries, rowEntries.Count > 1 || rowEntries[0].RowHeight > 0);
+                hasIndexedEntry = true;
             }
+
+            return hasIndexedEntry;
         }
 
         private static bool UsesClientCtVerbatimLineLayout(QuestDetailCtEntry entry)
@@ -2344,6 +2409,12 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            HoveredQuestItemInfo deliveryInsetItem = TryResolveHoveredDeliveryInsetItem(mouseX, mouseY);
+            if (deliveryInsetItem != null)
+            {
+                return deliveryInsetItem;
+            }
+
             Rectangle logClipRect = GetLogClipRectangle();
             float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
             foreach (CtEntryRow row in EnumerateCtEntryRows(GetLogCtEntries()))
@@ -2392,6 +2463,52 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        private HoveredQuestItemInfo TryResolveHoveredDeliveryInsetItem(int mouseX, int mouseY)
+        {
+            int itemId = _state?.TargetItemId ?? 0;
+            if (_state?.DeliveryType == QuestDetailDeliveryType.None ||
+                itemId <= 0 ||
+                !ShouldDrawDetailTip())
+            {
+                return null;
+            }
+
+            Rectangle insetBounds = GetDetailInsetBounds();
+            if (!insetBounds.Contains(mouseX, mouseY))
+            {
+                return null;
+            }
+
+            Texture2D iconTexture = ResolveItemIcon(itemId);
+            Rectangle hitBounds = iconTexture != null
+                ? Rectangle.Union(GetDeliveryInsetItemIconBounds(insetBounds, iconTexture), insetBounds)
+                : insetBounds;
+            if (!hitBounds.Contains(mouseX, mouseY))
+            {
+                return null;
+            }
+
+            string label = !string.IsNullOrWhiteSpace(_state.TargetItemName)
+                ? _state.TargetItemName
+                : ResolveItemName(itemId);
+            return CreateHoveredQuestItem(
+                itemId,
+                label,
+                quantity: null,
+                QuestDetailInlineReferenceSource.DeliveryInset);
+        }
+
+        private static Rectangle GetDeliveryInsetItemIconBounds(Rectangle insetBounds, Texture2D iconTexture)
+        {
+            int width = Math.Min(iconTexture?.Width ?? 0, Math.Max(0, insetBounds.Width - 4));
+            int height = Math.Min(iconTexture?.Height ?? 0, Math.Max(0, insetBounds.Height - 4));
+            return new Rectangle(
+                insetBounds.X + 4,
+                insetBounds.Y + Math.Max(0, (insetBounds.Height - height) / 2),
+                width,
+                height);
         }
 
         private QuestDetailInlineReference? ResolveHoveredInlineReference(int mouseX, int mouseY)

@@ -2635,8 +2635,22 @@ namespace HaCreator.MapSimulator.Managers
             return normalized is "mismatchpairs"
                 or "replaymismatchpairs"
                 or "replayparitymismatchpairs"
+                or "mismatchdeltas"
+                or "replaymismatchdeltas"
+                or "replayparitymismatchdeltas"
+                or "mismatches"
+                or "mismatch"
+                or "diffs"
+                or "diff"
+                or "deltas"
+                or "delta"
                 or "pairs"
-                or "bytepairs";
+                or "bytepairs"
+                or "bytepair"
+                or "bytedeltas"
+                or "bytedelta"
+                or "bytediffs"
+                or "bytediff";
         }
 
         private static bool TryParseSg88MismatchPairPropertyByteIndex(string propertyName, out int byteIndex)
@@ -2778,14 +2792,39 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string normalized = token.Trim()
-                .Trim('"', '\'');
+                .Trim('"', '\'')
+                .TrimEnd('.', ',', ';');
             if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
-                return byte.TryParse(
-                    normalized[2..],
-                    System.Globalization.NumberStyles.HexNumber,
-                    null,
-                    out value);
+                string hex = normalized[2..];
+                int hexLength = 0;
+                while (hexLength < hex.Length && Uri.IsHexDigit(hex[hexLength]))
+                {
+                    hexLength++;
+                }
+
+                return hexLength > 0
+                    && byte.TryParse(
+                        hex.Substring(0, hexLength),
+                        System.Globalization.NumberStyles.HexNumber,
+                        null,
+                        out value);
+            }
+
+            if (normalized.EndsWith("h", StringComparison.OrdinalIgnoreCase)
+                && normalized.Length > 1)
+            {
+                string hex = normalized.Substring(0, normalized.Length - 1);
+                if (hex.Length > 0
+                    && hex.All(Uri.IsHexDigit)
+                    && byte.TryParse(
+                        hex,
+                        System.Globalization.NumberStyles.HexNumber,
+                        null,
+                        out value))
+                {
+                    return true;
+                }
             }
 
             bool hasHexAlpha = normalized.Any(ch => (ch >= 'A' && ch <= 'F') || (ch >= 'a' && ch <= 'f'));
@@ -2794,6 +2833,16 @@ namespace HaCreator.MapSimulator.Managers
                 return byte.TryParse(
                     normalized,
                     System.Globalization.NumberStyles.HexNumber,
+                    null,
+                    out value);
+            }
+
+            Match decimalPrefix = Regex.Match(normalized, @"^\d{1,3}\b", RegexOptions.CultureInvariant);
+            if (decimalPrefix.Success)
+            {
+                return byte.TryParse(
+                    decimalPrefix.Value,
+                    System.Globalization.NumberStyles.Integer,
                     null,
                     out value);
             }

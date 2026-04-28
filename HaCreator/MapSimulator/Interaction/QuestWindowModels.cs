@@ -52,7 +52,8 @@ namespace HaCreator.MapSimulator.Interaction
         RewardText,
         RewardLine,
         HintText,
-        SummaryText
+        SummaryText,
+        DeliveryInset
     }
 
     internal enum QuestDetailCtSection

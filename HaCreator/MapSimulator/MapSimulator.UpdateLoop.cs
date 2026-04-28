@@ -384,6 +384,9 @@ namespace HaCreator.MapSimulator
             RefreshSocialListOfficialSessionBridgeDiscovery(currTickCount);
             EnsureFamilyOfficialSessionBridgeState(shouldRun: true);
             RefreshFamilyOfficialSessionBridgeDiscovery(currTickCount);
+            RefreshGuildBbsLocalContext();
+            EnsureGuildBbsOfficialSessionBridgeState(shouldRun: true);
+            RefreshGuildBbsOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
             DrainAdminShopPacketInbox();
             DrainCashServicePacketInbox();
@@ -398,6 +401,7 @@ namespace HaCreator.MapSimulator
             DrainExpeditionIntermediaryOfficialSessionBridge();
             DrainSocialListOfficialSessionBridge();
             DrainFamilyOfficialSessionBridge();
+            DrainGuildBbsOfficialSessionBridge();
             EnsureMapTransferOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             RefreshMapTransferOfficialSessionBridgeDiscovery(currTickCount);
             DrainMapTransferOfficialSessionBridge();

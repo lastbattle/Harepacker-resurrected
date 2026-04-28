@@ -3205,45 +3205,77 @@ namespace HaCreator.MapSimulator
             {
                 case FieldHazardPetConsumeInboundResultKind.Deferred:
                 {
+                    FieldHazardPetConsumeDispatchState dispatchState =
+                        ResolveFieldHazardPetConsumeDispatchStateAfterInboundResult(
+                            result.Kind,
+                            request.DispatchState);
+                    bool inboundAcknowledged =
+                        ResolveFieldHazardPetConsumeInboundAcknowledgedAfterInboundResult(
+                            result.Kind,
+                            request.InboundAcknowledged);
                     FieldHazardPetAutoConsumeRequest deferredRequest = request with
                     {
                         ResolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved,
-                        DispatchState = FieldHazardPetConsumeDispatchState.DeferredQueued,
-                        AckAt = currentTickCount + ResolveFieldHazardSyntheticAckDelayMs(externalObserved: true, deferredQueued: true),
+                        DispatchState = dispatchState,
+                        AckAt = inboundAcknowledged
+                            ? request.AckAt
+                            : currentTickCount + ResolveFieldHazardSyntheticAckDelayMs(
+                                externalObserved: true,
+                                deferredQueued: dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued),
                         ResultAt = currentTickCount
-                            + ResolveFieldHazardSyntheticAckDelayMs(externalObserved: true, deferredQueued: true)
+                            + ResolveFieldHazardSyntheticAckDelayMs(
+                                externalObserved: true,
+                                deferredQueued: dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
                             + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
-                        RemoteResultDeadlineAt = currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(externalObserved: true, deferredQueued: true),
-                        InboundAcknowledged = false,
+                        RemoteResultDeadlineAt = currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(
+                            externalObserved: true,
+                            deferredQueued: dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued),
+                        InboundAcknowledged = inboundAcknowledged,
                         TransportDisposition = string.IsNullOrWhiteSpace(result.Detail)
                             ? request.TransportDisposition
                             : result.Detail.Trim()
                     };
                     _pendingFieldHazardPetAutoConsumeRequest = deferredRequest;
-                    string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still deferred under packet-owned remote observation for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.{resultDetailSuffix}";
-                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Deferred, currentTickCount);
+                    FieldHazardFollowUpKind followUpKind =
+                        ResolveFieldHazardOutstandingExternalFollowUpKind(dispatchState, inboundAcknowledged);
+                    string detail = dispatchState == FieldHazardPetConsumeDispatchState.Dispatched
+                        ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} kept the dispatched packet-owned result path under remote observation for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}; later deferred state did not demote ownership.{resultDetailSuffix}"
+                        : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still deferred under packet-owned remote observation for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.{resultDetailSuffix}";
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, followUpKind, currentTickCount);
                     return detail;
                 }
 
                 case FieldHazardPetConsumeInboundResultKind.Dispatched:
                 {
+                    FieldHazardPetConsumeDispatchState dispatchState =
+                        ResolveFieldHazardPetConsumeDispatchStateAfterInboundResult(
+                            result.Kind,
+                            request.DispatchState);
+                    bool inboundAcknowledged =
+                        ResolveFieldHazardPetConsumeInboundAcknowledgedAfterInboundResult(
+                            result.Kind,
+                            request.InboundAcknowledged);
                     FieldHazardPetAutoConsumeRequest dispatchedRequest = request with
                     {
                         ResolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved,
-                        DispatchState = FieldHazardPetConsumeDispatchState.Dispatched,
-                        AckAt = currentTickCount + ResolveFieldHazardSyntheticAckDelayMs(externalObserved: true, deferredQueued: false),
+                        DispatchState = dispatchState,
+                        AckAt = inboundAcknowledged
+                            ? request.AckAt
+                            : currentTickCount + ResolveFieldHazardSyntheticAckDelayMs(externalObserved: true, deferredQueued: false),
                         ResultAt = currentTickCount
                             + ResolveFieldHazardSyntheticAckDelayMs(externalObserved: true, deferredQueued: false)
                             + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
                         RemoteResultDeadlineAt = currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(externalObserved: true, deferredQueued: false),
-                        InboundAcknowledged = false,
+                        InboundAcknowledged = inboundAcknowledged,
                         TransportDisposition = string.IsNullOrWhiteSpace(result.Detail)
                             ? request.TransportDisposition
                             : result.Detail.Trim()
                     };
                     _pendingFieldHazardPetAutoConsumeRequest = dispatchedRequest;
+                    FieldHazardFollowUpKind followUpKind =
+                        ResolveFieldHazardOutstandingExternalFollowUpKind(dispatchState, inboundAcknowledged);
                     string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} left the deferred packet-owned path and is now awaiting remote result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.{resultDetailSuffix}";
-                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Dispatched, currentTickCount);
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, followUpKind, currentTickCount);
                     return detail;
                 }
 
@@ -3672,16 +3704,38 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private static FieldHazardPetConsumeDispatchState ResolveFieldHazardPetConsumeDispatchStateAfterInboundResult(
+        internal static FieldHazardPetConsumeDispatchState ResolveFieldHazardPetConsumeDispatchStateAfterInboundResult(
             FieldHazardPetConsumeInboundResultKind kind,
             FieldHazardPetConsumeDispatchState currentState)
         {
-            return kind switch
+            FieldHazardPetConsumeDispatchState candidate = kind switch
             {
                 FieldHazardPetConsumeInboundResultKind.Acknowledged => FieldHazardPetConsumeDispatchState.Dispatched,
                 FieldHazardPetConsumeInboundResultKind.Dispatched => FieldHazardPetConsumeDispatchState.Dispatched,
                 FieldHazardPetConsumeInboundResultKind.Deferred => FieldHazardPetConsumeDispatchState.DeferredQueued,
                 _ => currentState
+            };
+
+            return RankFieldHazardPetConsumeDispatchState(candidate) >= RankFieldHazardPetConsumeDispatchState(currentState)
+                ? candidate
+                : currentState;
+        }
+
+        internal static bool ResolveFieldHazardPetConsumeInboundAcknowledgedAfterInboundResult(
+            FieldHazardPetConsumeInboundResultKind kind,
+            bool currentInboundAcknowledged)
+        {
+            return currentInboundAcknowledged
+                || kind == FieldHazardPetConsumeInboundResultKind.Acknowledged;
+        }
+
+        private static int RankFieldHazardPetConsumeDispatchState(FieldHazardPetConsumeDispatchState state)
+        {
+            return state switch
+            {
+                FieldHazardPetConsumeDispatchState.Dispatched => 2,
+                FieldHazardPetConsumeDispatchState.DeferredQueued => 1,
+                _ => 0
             };
         }
 
@@ -3767,6 +3821,15 @@ namespace HaCreator.MapSimulator
                 FieldHazardPetConsumeDispatchState.Dispatched => FieldHazardFollowUpKind.Dispatched,
                 _ => FieldHazardFollowUpKind.Pending
             };
+        }
+
+        internal static FieldHazardFollowUpKind ResolveFieldHazardOutstandingExternalFollowUpKind(
+            FieldHazardPetConsumeDispatchState state,
+            bool inboundAcknowledged)
+        {
+            return inboundAcknowledged
+                ? FieldHazardFollowUpKind.Acknowledged
+                : ResolveFieldHazardOutstandingExternalFollowUpKind(state);
         }
 
         private bool TryCreateFieldHazardHpPotionCandidate(

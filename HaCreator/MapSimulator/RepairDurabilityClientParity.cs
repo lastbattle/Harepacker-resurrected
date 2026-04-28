@@ -183,7 +183,7 @@ namespace HaCreator.MapSimulator
             int preferredActionSetIndex,
             IEnumerable<string> preferredActionCandidates)
         {
-            if (actionSets == null || actionSets.Count <= 0 || shopActionId.GetValueOrDefault() <= 0)
+            if (actionSets == null || actionSets.Count <= 0)
             {
                 return automaticActionSetIndex;
             }
@@ -1256,8 +1256,10 @@ namespace HaCreator.MapSimulator
                     : string.Empty;
                 bool preferShortReasonAndText = shortTextLength > 0
                     && LooksLikeReasonCode(shortReasonCode)
-                    && !LooksLikeReasonCode(intReasonCode)
-                    && !string.IsNullOrWhiteSpace(shortStatusText);
+                    && !string.IsNullOrWhiteSpace(shortStatusText)
+                    && (!LooksLikeReasonCode(intReasonCode)
+                        || string.IsNullOrWhiteSpace(intStatusText)
+                        || LooksLikeMapleStringPayload(payload.AsSpan(shortTextOffset, shortTextLength)));
 
                 if (preferShortReasonAndText)
                 {
@@ -1687,6 +1689,25 @@ namespace HaCreator.MapSimulator
             }
 
             return Encoding.UTF8.GetString(payload).Trim();
+        }
+
+        private static bool LooksLikeMapleStringPayload(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            short lengthPrefix = BinaryPrimitives.ReadInt16LittleEndian(payload);
+            if (lengthPrefix >= 0)
+            {
+                return payload.Length >= sizeof(short) + lengthPrefix
+                       && HasOnlyZeroPadding(payload[(sizeof(short) + lengthPrefix)..]);
+            }
+
+            int byteLength = -lengthPrefix * sizeof(char);
+            return payload.Length >= sizeof(short) + byteLength
+                   && HasOnlyZeroPadding(payload[(sizeof(short) + byteLength)..]);
         }
 
         private static bool TryDecodeMapleStringStatusText(ReadOnlySpan<byte> payload, out string statusText)

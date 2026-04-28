@@ -729,14 +729,9 @@ namespace HaCreator.MapSimulator.Fields
                         return true;
                     }
 
-                    if (_shipKind == 0)
-                    {
-                        LeaveShipMove();
-                        message = $"Applied OnContiState ({state}, {stateValue}) -> LeaveShipMove.";
-                        return true;
-                    }
-
-                    message = $"Handled OnContiState ({state}, {stateValue}) with no visible ship change; Balrog-type maps only appear when the second byte is 1.";
+                    message = _shipKind == 1
+                        ? $"Handled OnContiState ({state}, {stateValue}) with no visible ship change; Balrog-type maps only appear when the second byte is 1."
+                        : $"Handled OnContiState ({state}, {stateValue}) with no visible ship change; client routes states 3 and 4 only to the Balrog ship appear gate.";
                     return true;
 
                 default:

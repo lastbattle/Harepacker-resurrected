@@ -208,6 +208,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyCreateFailed()
         {
+            return ApplyCreateFailed(Environment.TickCount);
+        }
+
+        internal string ApplyCreateFailed(int currentTick)
+        {
             if (TryResolvePendingConsumeRequestFailure(out PendingConsumeRequestEntry failedRequest))
             {
                 _statusMessage = $"{ResolveCreateFailedNoticeText()} [client notice StringPool 0x{CreateFailedStringPoolId:X}]. Pending consume request for item {failedRequest.Request.ItemId} from slot {failedRequest.Request.InventoryPosition} failed at CMessageBoxPool::OnCreateFailed.";
@@ -220,14 +225,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryResolvePendingConsumeRequestFailure(out PendingConsumeRequestEntry failedRequest)
         {
+            return TryResolvePendingConsumeRequestFailure(Environment.TickCount, out failedRequest);
+        }
+
+        private bool TryResolvePendingConsumeRequestFailure(int currentTick, out PendingConsumeRequestEntry failedRequest)
+        {
             failedRequest = null;
             if (_pendingConsumeRequests.Count == 0)
             {
                 return false;
             }
 
-            int currentTick = Environment.TickCount;
-            _pendingConsumeRequests.RemoveAll(entry => currentTick - entry.RequestedAtTick >= PendingConsumeRequestTimeoutMs);
+            PruneExpiredPendingConsumeRequests(currentTick);
             if (_pendingConsumeRequests.Count == 0)
             {
                 return false;
@@ -238,6 +247,57 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        private bool TryResolvePendingConsumeRequestSuccess(
+            int itemId,
+            string messageText,
+            Point hostPosition,
+            int currentTick,
+            out PendingConsumeRequestEntry resolvedRequest)
+        {
+            resolvedRequest = null;
+            if (_pendingConsumeRequests.Count == 0)
+            {
+                return false;
+            }
+
+            PruneExpiredPendingConsumeRequests(currentTick);
+            int requestIndex = _pendingConsumeRequests.FindIndex(entry =>
+                entry.Request.ItemId == itemId
+                && string.Equals(entry.Request.MessageText ?? string.Empty, messageText ?? string.Empty, StringComparison.Ordinal)
+                && IsHostPositionWithinTolerance(entry.HostPosition, hostPosition));
+            if (requestIndex < 0)
+            {
+                return false;
+            }
+
+            resolvedRequest = _pendingConsumeRequests[requestIndex];
+            _pendingConsumeRequests.RemoveAt(requestIndex);
+            return true;
+        }
+
+        private void PruneExpiredPendingConsumeRequests(int currentTick)
+        {
+            _pendingConsumeRequests.RemoveAll(entry =>
+                unchecked(currentTick - entry.RequestedAtTick) > PendingConsumeRequestTimeoutMs);
+        }
+
+        private static bool IsSamePendingConsumeRequest(
+            MessageBoxConsumeCashItemUseRequest first,
+            MessageBoxConsumeCashItemUseRequest second)
+        {
+            return first != null
+                && second != null
+                && first.InventoryPosition == second.InventoryPosition
+                && first.ItemId == second.ItemId
+                && string.Equals(first.MessageText ?? string.Empty, second.MessageText ?? string.Empty, StringComparison.Ordinal);
+        }
+
+        private static bool IsHostPositionWithinTolerance(Point first, Point second)
+        {
+            return Math.Abs(first.X - second.X) <= PendingConsumeRequestHostTolerance
+                && Math.Abs(first.Y - second.Y) <= PendingConsumeRequestHostTolerance;
+        }
+
         internal bool TryApplyPacket(int packetType, byte[] payload, int currentTick, out string message)
         {
             message = string.Empty;
@@ -245,7 +305,7 @@ namespace HaCreator.MapSimulator.Interaction
             switch (packetType)
             {
                 case 325:
-                    message = ApplyCreateFailed();
+                    message = ApplyCreateFailed(currentTick);
                     return true;
 
                 case 326:
@@ -335,6 +395,14 @@ namespace HaCreator.MapSimulator.Interaction
                 string characterName = reader.ReadMapleString();
                 short hostX = reader.ReadShort();
                 short hostY = reader.ReadShort();
+                string consumeResolutionMessage = TryResolvePendingConsumeRequestSuccess(
+                    itemId,
+                    text,
+                    new Point(hostX, hostY),
+                    currentTick,
+                    out PendingConsumeRequestEntry resolvedRequest)
+                    ? $" Matched pending CUserLocal::ConsumeCashItem request from slot {resolvedRequest.Request.InventoryPosition}."
+                    : string.Empty;
 
                 if (_entries.ContainsKey(messageBoxId))
                 {
@@ -351,7 +419,7 @@ namespace HaCreator.MapSimulator.Interaction
                     messageBoxId,
                     MessageBoxEntrySource.PacketEnterField);
 
-                message = $"Applied packet-owned message-box enter-field packet for {characterName} ({messageBoxId}).";
+                message = $"Applied packet-owned message-box enter-field packet for {characterName} ({messageBoxId}).{consumeResolutionMessage}";
                 return true;
             }
             catch (EndOfStreamException)
@@ -709,6 +777,38 @@ namespace HaCreator.MapSimulator.Interaction
             message = $"Applied CUserLocal::ConsumeCashItem chalkboard request for item {request.ItemId} from slot {request.InventoryPosition}. {_statusMessage}";
             return true;
         }
+
+        internal bool TryRegisterPendingConsumeCashItemUseRequest(
+            byte[] payload,
+            Point hostPosition,
+            int currentTick,
+            out string message)
+        {
+            message = string.Empty;
+            if (!TryDecodeConsumeCashItemUseRequestPayload(payload, out MessageBoxConsumeCashItemUseRequest request, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            PruneExpiredPendingConsumeRequests(currentTick);
+            int existingIndex = _pendingConsumeRequests.FindIndex(entry =>
+                IsSamePendingConsumeRequest(entry.Request, request)
+                && IsHostPositionWithinTolerance(entry.HostPosition, hostPosition));
+            PendingConsumeRequestEntry pendingEntry = new(request, hostPosition, currentTick);
+            if (existingIndex >= 0)
+            {
+                _pendingConsumeRequests[existingIndex] = pendingEntry;
+                message = $"Refreshed pending CUserLocal::ConsumeCashItem message-box request for item {request.ItemId} from slot {request.InventoryPosition}.";
+                return true;
+            }
+
+            _pendingConsumeRequests.Add(pendingEntry);
+            message = $"Registered pending CUserLocal::ConsumeCashItem message-box request for item {request.ItemId} from slot {request.InventoryPosition}.";
+            return true;
+        }
+
+        internal int PendingConsumeRequestCountForTest => _pendingConsumeRequests.Count;
 
         internal static bool TryDecodeConsumeCashItemUseRequestPayload(
             byte[] payload,

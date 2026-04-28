@@ -915,7 +915,12 @@ namespace HaCreator.MapSimulator.Character
             bool runtimeApplied;
             if (applyRuntimeStatus)
             {
-                runtimeApplied = TryApplyMobSkillStatus(skillId, runtimeData, currentTime, sourceX);
+                runtimeApplied = TryApplyMobSkillStatus(
+                    skillId,
+                    runtimeData,
+                    currentTime,
+                    sourceX,
+                    runtimeData?.ElementAttribute ?? 0);
             }
             else
             {

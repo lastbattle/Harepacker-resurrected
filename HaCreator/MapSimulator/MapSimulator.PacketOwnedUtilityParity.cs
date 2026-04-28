@@ -2752,21 +2752,30 @@ namespace HaCreator.MapSimulator
 
                 JsonElement root = document.RootElement;
                 string authKey = TryGetClassCompetitionRemoteStringProperty(root, "authKey")
+                    ?? TryGetClassCompetitionRemoteStringProperty(root, "auth_key")
                     ?? TryGetClassCompetitionRemoteStringProperty(root, "auth")
                     ?? TryGetClassCompetitionRemoteStringProperty(root, "key");
                 string navigateUrl = TryGetClassCompetitionRemoteStringProperty(root, "navigateUrl")
+                    ?? TryGetClassCompetitionRemoteStringProperty(root, "navigate_url")
                     ?? TryGetClassCompetitionRemoteStringProperty(root, "navigate")
                     ?? TryGetClassCompetitionRemoteStringProperty(root, "url");
-                string source = TryGetClassCompetitionRemoteStringProperty(root, "source");
+                string source = TryGetClassCompetitionRemoteStringProperty(root, "source")
+                    ?? TryGetClassCompetitionRemoteStringProperty(root, "origin");
                 IReadOnlyList<string> pageLines = NormalizeClassCompetitionRemoteLines(
                     TryGetClassCompetitionRemoteStringValues(root, "pageLines")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "page_lines")
                         ?? TryGetClassCompetitionRemoteStringValues(root, "lines")
                         ?? TryGetClassCompetitionRemoteStringValues(root, "page")
-                        ?? TryGetClassCompetitionRemoteStringValues(root, "line"),
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "line")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "body")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "html"),
                     PacketOwnedClassCompetitionMaxRemotePageLines);
                 IReadOnlyList<string> ladderLines = NormalizeClassCompetitionRemoteLines(
                     TryGetClassCompetitionRemoteStringValues(root, "ladderLines")
-                        ?? TryGetClassCompetitionRemoteStringValues(root, "ladder"),
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "ladder_lines")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "ladder")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "standings")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "rows"),
                     PacketOwnedClassCompetitionMaxRemoteLadderLines);
                 if (string.IsNullOrWhiteSpace(authKey)
                     && TryExtractClassCompetitionAuthKeyFromNavigateUrl(navigateUrl, out string extractedAuthKey))
@@ -3041,9 +3050,7 @@ namespace HaCreator.MapSimulator
                     return null;
                 }
 
-                string[] parts = value.Split(
-                    new[] { "\r\n", "\n", "\0" },
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                string[] parts = SplitClassCompetitionRemoteTextLines(value);
                 return parts.Length == 0
                     ? null
                     : parts.ToArray();
@@ -3062,7 +3069,7 @@ namespace HaCreator.MapSimulator
                     string value = item.GetString();
                     if (!string.IsNullOrWhiteSpace(value))
                     {
-                        lines.Add(value.Trim());
+                        lines.AddRange(SplitClassCompetitionRemoteTextLines(value));
                     }
                 }
             }
@@ -3120,6 +3127,45 @@ namespace HaCreator.MapSimulator
                     lines.Add(splitLines[i].Trim());
                 }
             }
+        }
+
+        private static string[] SplitClassCompetitionRemoteTextLines(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            string normalized = NormalizeClassCompetitionRemoteText(text);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return Array.Empty<string>();
+            }
+
+            return normalized.Split(
+                new[] { "\r\n", "\n", "\0", "|" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        private static string NormalizeClassCompetitionRemoteText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string normalized = WebUtility.HtmlDecode(text)
+                .Replace("<br>", "\n", StringComparison.OrdinalIgnoreCase)
+                .Replace("<br/>", "\n", StringComparison.OrdinalIgnoreCase)
+                .Replace("<br />", "\n", StringComparison.OrdinalIgnoreCase)
+                .Replace("</tr>", "\n", StringComparison.OrdinalIgnoreCase)
+                .Replace("</li>", "\n", StringComparison.OrdinalIgnoreCase)
+                .Replace("</p>", "\n", StringComparison.OrdinalIgnoreCase)
+                .Replace("</div>", "\n", StringComparison.OrdinalIgnoreCase);
+            normalized = Regex.Replace(normalized, "<[^>]+>", " ");
+            normalized = Regex.Replace(normalized, "[ \t\f\v]+", " ");
+            normalized = Regex.Replace(normalized, " *(\r\n|\n|\r) *", "\n");
+            return normalized.Trim();
         }
 
         private static string DecodeClassCompetitionFormTextValue(string rawValue)
@@ -3966,6 +4012,36 @@ namespace HaCreator.MapSimulator
 
         private void DrainMapleTvOfficialSessionBridge()
         {
+            while (_mapleTvOfficialSessionBridge.TryDequeueObservedOutbound(out MessengerOfficialSessionBridgeMessage observedOutbound))
+            {
+                if (observedOutbound == null)
+                {
+                    continue;
+                }
+
+                bool observed = _mapleTvRuntime.TryObserveConsumeCashItemUseRequestPayload(
+                    observedOutbound.Payload,
+                    currTickCount,
+                    ResolveMapleTvItemMetadata,
+                    out string observedDetail,
+                    observedOutbound.Source);
+                _mapleTvOfficialSessionBridge.RecordDispatchResult(
+                    observedOutbound.Source,
+                    observed,
+                    $"CUserLocal::ConsumeCashItem {observedOutbound.Opcode}: {observedDetail}");
+                if (!string.IsNullOrWhiteSpace(observedDetail))
+                {
+                    if (observed)
+                    {
+                        _chat?.AddSystemMessage(observedDetail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(observedDetail, currTickCount);
+                    }
+                }
+            }
+
             while (_mapleTvOfficialSessionBridge.TryDequeue(out MessengerOfficialSessionBridgeMessage message))
             {
                 if (message == null)
@@ -4208,6 +4284,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.PassMateNameClientPacketType:
                     return TryApplyPacketOwnedPassMateNamePayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.EngagementRequestPacketType:
+                    return TryApplyPacketOwnedEngagementRequestPayload(payload, source, out message);
 
                 case LocalUtilityPacketInboxManager.RandomMorphResultClientPacketType:
                     return TryApplyRandomMorphResultPayload(payload, out message);
@@ -4484,18 +4563,36 @@ namespace HaCreator.MapSimulator
         private bool TryApplyCharacterInfoRemoteProfilePayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload == null || payload.Length < sizeof(int))
+            if (payload == null || payload.Length < sizeof(int) + sizeof(int))
             {
-                message = "Character-info remote profile payload is missing the target character id.";
+                message = "Character-info remote profile payload is missing the target character id or profile flags.";
                 return false;
             }
 
-            int characterId = BitConverter.ToInt32(payload, 0);
+            if (!RemoteUserPacketCodec.TryParseProfile(payload, out RemoteUserProfilePacket profilePacket, out string profileError))
+            {
+                message = profileError ?? "Character-info remote profile payload could not be decoded.";
+                return false;
+            }
+
             StampPacketOwnedUtilityRequestState();
             ShowPacketOwnedWindow(MapSimulatorWindowNames.CharacterInfo, "Character Info");
-            message = payload.Length > sizeof(int)
-                ? $"Applied packet-owned character-info remote profile handoff for character {characterId.ToString(CultureInfo.InvariantCulture)} and preserved {payload.Length - sizeof(int)} profile byte(s) for the Character Info owner."
-                : $"Applied packet-owned character-info remote profile handoff for character {characterId.ToString(CultureInfo.InvariantCulture)}.";
+
+            if (!_remoteUserPool.TryGetActor(profilePacket.CharacterId, out _))
+            {
+                _pendingRemoteUserProfilesByCharacterId[profilePacket.CharacterId] = profilePacket;
+                message = $"Queued packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} until the remote actor or UserInfo inspection owner is available.";
+                return true;
+            }
+
+            if (!_remoteUserPool.TryApplyProfileMetadata(profilePacket, out string profileMessage))
+            {
+                message = profileMessage;
+                return false;
+            }
+
+            _pendingRemoteUserProfilesByCharacterId.Remove(profilePacket.CharacterId);
+            message = $"Applied packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} through the shared remote-user profile metadata seam.";
             return true;
         }
 
@@ -7069,7 +7166,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            HashSet<int> parsedQuestIds = new();
+            List<int> parsedQuestIds = new();
             bool sawDirective = false;
             bool sawQuestRegistrationListDirective = false;
             string[] segments = normalizedText.Split(
@@ -7127,7 +7224,7 @@ namespace HaCreator.MapSimulator
                     && questId > 0
                     && parsedQuestIds.Count < QuestAlarmRegistrationSyncMaxQuestCount)
                 {
-                    parsedQuestIds.Add(questId);
+                    AddQuestAlarmRegistrationSyncQuestId(parsedQuestIds, questId);
                     continue;
                 }
 
@@ -7142,7 +7239,7 @@ namespace HaCreator.MapSimulator
                     && questId > 0
                     && parsedQuestIds.Count < QuestAlarmRegistrationSyncMaxQuestCount)
                 {
-                    parsedQuestIds.Add(questId);
+                    AddQuestAlarmRegistrationSyncQuestId(parsedQuestIds, questId);
                 }
             }
 
@@ -7157,7 +7254,7 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private static bool TryParseQuestAlarmRegistrationSyncListDirective(string text, HashSet<int> destination)
+        private static bool TryParseQuestAlarmRegistrationSyncListDirective(string text, List<int> destination)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -7202,11 +7299,24 @@ namespace HaCreator.MapSimulator
                     && questId > 0)
                 {
                     parsedAnyQuestId = true;
-                    destination.Add(questId);
+                    AddQuestAlarmRegistrationSyncQuestId(destination, questId);
                 }
             }
 
             return parsedAnyQuestId;
+        }
+
+        private static void AddQuestAlarmRegistrationSyncQuestId(List<int> destination, int questId)
+        {
+            if (destination == null
+                || questId <= 0
+                || destination.Count >= QuestAlarmRegistrationSyncMaxQuestCount
+                || destination.Contains(questId))
+            {
+                return;
+            }
+
+            destination.Add(questId);
         }
 
         private static bool TryParseQuestAlarmRegistrationSyncFlagDirective(string text, string key, out bool value)
@@ -8325,9 +8435,47 @@ namespace HaCreator.MapSimulator
                 {
                     ShowUtilityFeedbackMessage(alarmNotice.Trim());
                 }
+
+                ShowPacketOwnedParcelAlarmPrompt(alarmPrompt);
             }
 
             return true;
+        }
+
+        private void ShowPacketOwnedParcelAlarmPrompt(ParcelAlarmPromptSnapshot alarmPrompt)
+        {
+            if (alarmPrompt == null
+                || !alarmPrompt.RequiresFadeYesNoOwner
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                return;
+            }
+
+            string title = string.IsNullOrWhiteSpace(alarmPrompt.Title)
+                ? (alarmPrompt.IsQuickDelivery ? "Quick Delivery" : "Parcel Delivery")
+                : alarmPrompt.Title.Trim();
+            string body = string.IsNullOrWhiteSpace(alarmPrompt.Body)
+                ? $"{title} notice has arrived."
+                : alarmPrompt.Body.Trim();
+            ConfigureInGameConfirmDialog(
+                title,
+                body,
+                $"CParcelDlg packet {alarmPrompt.PacketSubtype.ToString(CultureInfo.InvariantCulture)} CUIFadeYesNo parcel alarm.",
+                onConfirm: () =>
+                {
+                    TryOpenFieldRestrictedWindow(
+                        MapSimulatorWindowNames.MemoMailbox,
+                        inheritDirectionModeOwner: true,
+                        beforeShow: () => _memoMailbox.SetActiveTab(alarmPrompt.IsQuickDelivery
+                            ? ParcelDialogTab.QuickSend
+                            : ParcelDialogTab.Receive));
+                },
+                onCancel: null,
+                presentation: confirmDialogWindow.CreateParcelAlarmPresentation());
+            ShowWindow(
+                MapSimulatorWindowNames.InGameConfirmDialog,
+                confirmDialogWindow,
+                trackDirectionModeOwner: true);
         }
 
         private bool TryApplyPacketOwnedTrunkDialogPayload(byte[] payload, out string message)
@@ -8719,8 +8867,32 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            message = dispatchStatus;
+            int chatLineCount = CountMessengerClaimChatLogLines(chatLog);
+            if (chatLineCount <= 0)
+            {
+                chatLineCount = _messengerRuntime.CountClaimableChatLines();
+            }
+
+            string runtimeStatus = _messengerRuntime.QueueSessionOwnedChatClaimRequest(
+                targetCharacterName,
+                claimType,
+                context,
+                chatLineCount,
+                queueOnly);
+            message = $"{runtimeStatus} {dispatchStatus}";
             return true;
+        }
+
+        private static int CountMessengerClaimChatLogLines(string chatLog)
+        {
+            if (string.IsNullOrWhiteSpace(chatLog))
+            {
+                return 0;
+            }
+
+            return chatLog
+                .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+                .Count(line => !string.IsNullOrWhiteSpace(line));
         }
 
         private bool TryMirrorMessengerBlockedAutoRejectClientRequest(string blockedArguments, out string message, bool queueOnly = false)
@@ -9592,6 +9764,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioLastPollTick = ResolvePacketOwnedRadioInitialUpdateTick(
                     startTick,
                     _lastPacketOwnedRadioAvailableDurationMs);
+                _packetOwnedRadioMuted = false;
                 _appliedPacketOwnedRadioVolume = 0f;
                 _utilityAudioMixLastTick = startTick;
                 _lastPacketOwnedRadioStatusMessage = FormatPacketOwnedRadioStartStatusMessage(
@@ -10093,6 +10266,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
+            _packetOwnedRadioMuted = true;
             ClearPacketOwnedRadioScheduleContext("radio-stop");
             ResetPacketOwnedRadioCreateLayerSessionState();
             ApplyUtilityAudioSettings();
@@ -10245,7 +10419,7 @@ namespace HaCreator.MapSimulator
         private string BuildPacketOwnedRadioWindowFooter()
         {
             return IsPacketOwnedRadioPlaying()
-                ? $"Client parity: CRadioManager owns playback, UI, and chat; CUIRadio::CreateLayer(int bLeft) anchors Off/0 to Origin_RT with x=-3-width-(bLeft?40:0), y=+3, and the simulator now keeps Off resident while the animated On overlay fades against _utilityBgmMuted after the session's CreateLayer bLeft is latched until CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] is explicitly mutated or the session ends; completion now follows the recovered CRadioManager m_tLastUpdate cadence even when the MonoGame backend has not reported SoundState.Stopped, but MMS_Play still terminates through MonoGame instead of the client's raw AIL handle."
+                ? $"Client parity: CRadioManager owns playback, UI, and chat; CUIRadio::CreateLayer(int bLeft) anchors Off/0 to Origin_RT with x=-3-width-(bLeft?40:0), y=+3, and the simulator now keeps Off resident while the animated On overlay fades against the radio owner's mute state after the session's CreateLayer bLeft is latched until CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] is explicitly mutated or the session ends; completion now follows the recovered CRadioManager m_tLastUpdate cadence even when the MonoGame backend has not reported SoundState.Stopped, but MMS_Play still terminates through MonoGame instead of the client's raw AIL handle."
                 : $"Client parity: waiting for OnRadioSchedule; CreateLayer(int bLeft) prefers packet-owned CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] and otherwise falls back to the live minimap-expanded branch before applying the Origin_RT anchor, with Off/0 staying resident until the On overlay fades in.";
         }
 
@@ -10436,7 +10610,7 @@ namespace HaCreator.MapSimulator
 
         private string DescribePacketOwnedRadioUiAnimationState()
         {
-            return $"Ctor fade: bMute=0 keeps the animated On overlay visible over Off/0 and fades the Off alpha to 0 over {PacketOwnedRadioUiFadeDurationMs} ms; bMute=1 performs the inverse fade before playback ownership flips, and the simulator now mirrors that state by fading the On overlay against _utilityBgmMuted while Off/0 stays resident.";
+            return $"Ctor fade: bMute=0 keeps the animated On overlay visible over Off/0 and fades the Off alpha to 0 over {PacketOwnedRadioUiFadeDurationMs} ms; bMute=1 performs the inverse fade before playback ownership flips, and the simulator mirrors that state by unmuting the radio owner on Play, remuting it on Stop, and fading the On overlay against the radio owner's mute state while Off/0 stays resident.";
         }
 
         private string DescribePacketOwnedRadioAudioPipeline()
@@ -16927,6 +17101,7 @@ namespace HaCreator.MapSimulator
             int appliedCardUpdates = 0;
             int fullCardUpdates = 0;
             int observedPickupRows = 0;
+            HashSet<int> registeredCardGetItemIds = new();
             MonsterBookSnapshot latestSnapshot = null;
             for (int i = 0; i < pickups.Count; i++)
             {
@@ -16951,11 +17126,16 @@ namespace HaCreator.MapSimulator
                     latestSnapshot = pickupResult.Snapshot;
                     if (activeCharacterId > 0 && _playerManager?.Player?.Build?.Id == activeCharacterId)
                     {
-                        TryRegisterAnimationDisplayerMonsterBookCardPickup(
-                            activeCharacterId,
-                            () => _playerManager?.Player?.Position ?? Vector2.Zero,
-                            pickup.ItemId,
-                            out _);
+                        if (ShouldRegisterAnimationDisplayerPacketOwnedMonsterBookCardGetForChangedPickup(
+                                registeredCardGetItemIds,
+                                pickup.ItemId))
+                        {
+                            TryRegisterAnimationDisplayerMonsterBookCardPickup(
+                                activeCharacterId,
+                                () => _playerManager?.Player?.Position ?? Vector2.Zero,
+                                pickup.ItemId,
+                                out _);
+                        }
                     }
                 }
                 else if (pickupResult.Outcome == MonsterBookManager.CardPickupOutcome.AlreadyFull)
@@ -17964,10 +18144,14 @@ namespace HaCreator.MapSimulator
             }
 
             StampPacketOwnedUtilityRequestState();
-            _packetOwnedRankingEntries.Clear();
-            if (!clearRequested)
+            if (ShouldReplacePacketOwnedRankingEntries(clearRequested, entries?.Length ?? 0))
             {
-                _packetOwnedRankingEntries.AddRange(entries ?? Array.Empty<RankingEntrySnapshot>());
+                _packetOwnedRankingEntries.Clear();
+            }
+
+            if (!clearRequested && entries is { Length: > 0 })
+            {
+                _packetOwnedRankingEntries.AddRange(entries);
             }
 
             if (clearRequested)
@@ -17994,6 +18178,11 @@ namespace HaCreator.MapSimulator
                 allowVisibleReset: false);
             message = _lastPacketOwnedRankingSummary;
             return true;
+        }
+
+        internal static bool ShouldReplacePacketOwnedRankingEntries(bool clearRequested, int decodedEntryCount)
+        {
+            return clearRequested || decodedEntryCount > 0;
         }
 
         private static PacketOwnedRankingOwnerStateSnapshot NormalizePacketOwnedRankingOwnerState(
@@ -19292,6 +19481,99 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private bool TryApplyPacketOwnedEngagementRequestPayload(byte[] payload, string source, out string message)
+        {
+            if (!EngagementProposalRuntime.TryDecodePayloadSubtype(payload, out byte subtype, out message))
+            {
+                return false;
+            }
+
+            if (subtype == EngagementProposalRuntime.RequestPayloadValue)
+            {
+                string proposerName = ResolvePacketOwnedEngagementSourceName(source);
+                string partnerName = ResolvePacketOwnedEngagementLocalName();
+                if (!_engagementProposalController.TryOpenIncomingProposalFromRequestPayload(
+                        proposerName,
+                        partnerName,
+                        EngagementProposalRuntime.DefaultSealItemId,
+                        payload,
+                        ResolvePacketOwnedEngagementSourceMessage(source),
+                        uiWindowManager,
+                        _playerManager?.Player?.Build,
+                        _fontChat,
+                        ShowUtilityFeedbackMessage,
+                        () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal),
+                        out message))
+                {
+                    return false;
+                }
+
+                message = $"Applied client-shaped engagement request packet {EngagementProposalRuntime.AcceptPacketType} [00] from {proposerName}. {message}";
+                return true;
+            }
+
+            if (subtype == EngagementProposalRuntime.WithdrawPayloadValue)
+            {
+                message = _engagementProposalController.Withdraw(uiWindowManager);
+                return !string.Equals(message, "No engagement proposal is active.", StringComparison.Ordinal)
+                    && !message.Contains("Only the requester-owned engagement wait dialog", StringComparison.Ordinal);
+            }
+
+            if (subtype == EngagementProposalRuntime.DecisionPayloadValue)
+            {
+                return _engagementProposalController.TryApplyDecisionPayload(payload, uiWindowManager, out message);
+            }
+
+            message = $"Engagement request packet {EngagementProposalRuntime.AcceptPacketType} subtype {subtype:00} is not owned by CEngageDlg.";
+            return false;
+        }
+
+        internal static string ResolvePacketOwnedEngagementSourceName(string source)
+        {
+            string normalized = source?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return "Requester";
+            }
+
+            Match match = Regex.Match(normalized, @"(?:^|[;,\s])(?:from|proposer|requester|name)[:=](?<name>[^;,\s]+)", RegexOptions.IgnoreCase);
+            if (match.Success && !string.IsNullOrWhiteSpace(match.Groups["name"].Value))
+            {
+                return match.Groups["name"].Value.Trim();
+            }
+
+            if (normalized.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Requester";
+            }
+
+            return normalized.Length <= 12 && normalized.All(ch => char.IsLetterOrDigit(ch) || ch == '_')
+                ? normalized
+                : "Requester";
+        }
+
+        private string ResolvePacketOwnedEngagementLocalName()
+        {
+            string localName = _playerManager?.Player?.Build?.Name;
+            return string.IsNullOrWhiteSpace(localName)
+                ? "Player"
+                : localName.Trim();
+        }
+
+        private static string ResolvePacketOwnedEngagementSourceMessage(string source)
+        {
+            string normalized = source?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return string.Empty;
+            }
+
+            Match match = Regex.Match(normalized, @"(?:^|[;,\s])(?:message|note)[:=](?<message>[^;]+)", RegexOptions.IgnoreCase);
+            return match.Success
+                ? match.Groups["message"].Value.Trim()
+                : string.Empty;
         }
 
         private static bool TryDecodePacketOwnedRankingCompactRowWithLeadingRank(byte[] rowPayload, int rankByteWidth, out RankingEntrySnapshot rowEntry)

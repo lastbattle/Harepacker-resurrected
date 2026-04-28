@@ -101,6 +101,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _activeFrameIndex;
         private int _lastStateTick;
         private IDXObject[] _transientFrames;
+        private int[] _transientFrameDelays;
         private WzImageProperty _transientHitLayerSourceProperty;
         private int _transientHitLayerSourceState = -1;
         private int _transientHitLayerProperEventIndex = -1;
@@ -502,7 +503,7 @@ namespace HaCreator.MapSimulator.Entities
             if (_transientFrames != null)
             {
                 ResolveLoadLayerFrameTiming(
-                    frames,
+                    ResolveTransientFrameDelays(frames),
                     Math.Max(0, tickCount - _transientStartTick),
                     repeat: false,
                     out frameIndex,
@@ -578,6 +579,7 @@ namespace HaCreator.MapSimulator.Entities
             if (frames != null && frames.Length > 0)
             {
                 _transientFrames = frames;
+                _transientFrameDelays = ResolveLoadLayerFrameDelays(sourceProperty, frames);
                 _transientFrameIndex = 0;
                 _transientStartTick = tickCount;
             }
@@ -588,6 +590,7 @@ namespace HaCreator.MapSimulator.Entities
         public void ClearTransientAnimation()
         {
             _transientFrames = null;
+            _transientFrameDelays = null;
             _transientHitLayerSourceProperty = null;
             _transientHitLayerSourceState = -1;
             _transientHitLayerProperEventIndex = -1;
@@ -904,6 +907,106 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return TryReadHitDuration(WzInfoTools.GetRealProperty(sourceProperty)?["hit"]);
+        }
+
+        internal static int[] ResolveLoadLayerFrameDelaysForTesting(WzImageProperty sourceProperty, int frameCount)
+        {
+            return ResolveLoadLayerFrameDelays(sourceProperty, frameCount);
+        }
+
+        private static int[] ResolveLoadLayerFrameDelays(WzImageProperty sourceProperty, IReadOnlyList<IDXObject> frames)
+        {
+            return ResolveLoadLayerFrameDelays(sourceProperty, frames?.Count ?? 0, frames);
+        }
+
+        private static int[] ResolveLoadLayerFrameDelays(WzImageProperty sourceProperty, int frameCount)
+        {
+            return ResolveLoadLayerFrameDelays(sourceProperty, frameCount, frames: null);
+        }
+
+        private static int[] ResolveLoadLayerFrameDelays(
+            WzImageProperty sourceProperty,
+            int frameCount,
+            IReadOnlyList<IDXObject> frames)
+        {
+            if (frameCount <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> sourceDelays = new List<int>();
+            CollectLoadLayerFrameDelays(WzInfoTools.GetRealProperty(sourceProperty), sourceDelays);
+            if (sourceDelays.Count == 0)
+            {
+                WzImageProperty nestedHit = WzInfoTools.GetRealProperty(sourceProperty)?["hit"];
+                CollectLoadLayerFrameDelays(WzInfoTools.GetRealProperty(nestedHit), sourceDelays);
+            }
+
+            int[] frameDelays = new int[frameCount];
+            bool hasSourceDelays = sourceDelays.Count > 0;
+            for (int i = 0; i < frameDelays.Length; i++)
+            {
+                if (hasSourceDelays && i < sourceDelays.Count)
+                {
+                    frameDelays[i] = sourceDelays[i];
+                    continue;
+                }
+
+                frameDelays[i] = Math.Max(
+                    1,
+                    !hasSourceDelays && frames != null && i < frames.Count
+                        ? frames[i]?.Delay ?? ClientLoadLayerFallbackDelayMs
+                        : ClientLoadLayerFallbackDelayMs);
+            }
+
+            return frameDelays;
+        }
+
+        private static void CollectLoadLayerFrameDelays(WzImageProperty property, ICollection<int> delays)
+        {
+            WzImageProperty realProperty = WzInfoTools.GetRealProperty(property);
+            if (realProperty == null)
+            {
+                return;
+            }
+
+            if (realProperty is WzCanvasProperty canvasProperty)
+            {
+                delays.Add(Math.Max(
+                    1,
+                    TryReadOptionalInt(WzInfoTools.GetRealProperty(canvasProperty["delay"]))
+                        ?? ClientLoadLayerFallbackDelayMs));
+                return;
+            }
+
+            if (realProperty is not WzSubProperty subProperty)
+            {
+                return;
+            }
+
+            if (subProperty.WzProperties.Count == 1)
+            {
+                CollectLoadLayerFrameDelays(subProperty.WzProperties[0], delays);
+                return;
+            }
+
+            for (int i = 0; ; i++)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(subProperty[i.ToString()]);
+                if (frameProperty == null)
+                {
+                    return;
+                }
+
+                CollectLoadLayerFrameDelays(frameProperty, delays);
+            }
+        }
+
+        private IReadOnlyList<int> ResolveTransientFrameDelays(IReadOnlyList<IDXObject> frames)
+        {
+            return _transientFrameDelays != null && _transientFrameDelays.Length > 0
+                ? _transientFrameDelays
+                : frames?.Select(static frame => frame?.Delay ?? 0).ToArray() ?? Array.Empty<int>();
         }
 
         private bool HasAuthoredState(int state)
@@ -1224,7 +1327,7 @@ namespace HaCreator.MapSimulator.Entities
             if (_transientFrames != null && _transientFrames.Length > 0)
             {
                 ResolveLoadLayerFrameTiming(
-                    _transientFrames,
+                    ResolveTransientFrameDelays(_transientFrames),
                     Math.Max(0, tickCount - _transientStartTick),
                     repeat: false,
                     out frameIndex,

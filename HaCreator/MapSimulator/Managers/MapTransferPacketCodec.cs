@@ -380,6 +380,12 @@ namespace HaCreator.MapSimulator.Managers
                     : MapTransferRuntimeManager.RegularCapacity;
                 packetLength += fieldCount * sizeof(int);
             }
+            else if (resultCode is MapTransferRuntimePacketResultCode.OfficialFailure6 or MapTransferRuntimePacketResultCode.OfficialFailure7 &&
+                     rawStream.Length - offset > packetLength &&
+                     TryResolveOptionalTargetUserStringByteLength(rawStream, offset, packetLength, out int stringByteLength))
+            {
+                packetLength += stringByteLength;
+            }
 
             if (rawStream.Length - offset < packetLength)
             {
@@ -388,6 +394,45 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return true;
+        }
+
+        private static bool TryResolveOptionalTargetUserStringByteLength(
+            byte[] rawStream,
+            int packetOffset,
+            int packetLength,
+            out int byteLength)
+        {
+            byteLength = 0;
+            int offset = packetOffset + packetLength;
+            if (rawStream == null || offset < 0 || rawStream.Length - offset < sizeof(short))
+            {
+                return false;
+            }
+
+            short encodedLength = BitConverter.ToInt16(rawStream, offset);
+            if (encodedLength == 0 || encodedLength < -32 || encodedLength > 32)
+            {
+                return false;
+            }
+
+            int payloadByteLength = encodedLength < 0
+                ? checked(-encodedLength * sizeof(char))
+                : encodedLength;
+            byteLength = sizeof(short) + payloadByteLength;
+            if (payloadByteLength < 0 || rawStream.Length - offset < byteLength)
+            {
+                return false;
+            }
+
+            int nextPacketOffset = offset + byteLength;
+            return nextPacketOffset == rawStream.Length ||
+                   (rawStream.Length - nextPacketOffset >= sizeof(ushort) &&
+                    IsKnownMapTransferOpcode(BitConverter.ToUInt16(rawStream, nextPacketOffset)));
+        }
+
+        private static bool IsKnownMapTransferOpcode(ushort opcode)
+        {
+            return opcode == OutboundRequestOpcode || opcode == InboundResultOpcode;
         }
 
         private static bool FailUnknownOpcode(ushort opcode, out int packetLength, out string errorMessage)

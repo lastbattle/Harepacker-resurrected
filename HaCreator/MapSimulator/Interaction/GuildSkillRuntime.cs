@@ -479,6 +479,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             GuildSkillPendingRequest pendingRequest = ResolveMatchingPendingSkillRecord(selectedSkill.SkillId, previousLevel, resolvedLevel, previousExpiration, resolvedExpiration);
             string pendingResolutionDetail = ApplyPendingSkillRecordResolution(pendingRequest, selectedSkill, previousLevel, resolvedLevel, previousExpiration, resolvedExpiration);
+            if (string.IsNullOrWhiteSpace(pendingResolutionDetail) &&
+                _pendingRequest != null &&
+                _pendingRequest.SkillId == selectedSkill.SkillId)
+            {
+                GuildSkillPendingRequest unchangedPendingRequest = _pendingRequest;
+                _pendingRequest = null;
+                pendingResolutionDetail = $"Pending packet-owned {unchangedPendingRequest.ActionLabel.ToLowerInvariant()} for {unchangedPendingRequest.SkillName} was cleared by the authoritative OnGuildResult(81) guild-skill record without a visible skill-record change.";
+            }
 
             SaveCurrentGuildState(_activeGuildStateKey);
             EnsureRecommendation();

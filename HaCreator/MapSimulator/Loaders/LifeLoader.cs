@@ -1514,6 +1514,7 @@ namespace HaCreator.MapSimulator.Loaders
             List<Rectangle> clientBodyBounds = TryGetBodyBounds(canvasProperty, "rect");
             List<Rectangle> multiBodyBounds = CombineBodyBounds(clientMultiBodyBounds, clientBodyBounds);
             Rectangle bodyBounds = ResolvePrimaryBodyBounds(frameBounds, clientBodyBounds);
+            Rectangle clientBodyBoundsUnion = ResolveClientBodyBounds(clientBodyBounds);
             int? alphaStart = TryGetOptionalInt(canvasProperty?["a0"]);
             int? alphaEnd = TryGetOptionalInt(canvasProperty?["a1"]);
             bool hasAlphaRange = alphaStart.HasValue || alphaEnd.HasValue;
@@ -1532,6 +1533,7 @@ namespace HaCreator.MapSimulator.Loaders
                 HeadAnchor = headAnchor ?? Point.Zero,
                 MultiBodyBounds = multiBodyBounds,
                 ClientMultiBodyBounds = clientMultiBodyBounds,
+                ClientBodyBounds = clientBodyBoundsUnion,
                 HasAlphaRange = hasAlphaRange,
                 AlphaStart = resolvedAlphaStart,
                 AlphaEnd = resolvedAlphaEnd,
@@ -1581,6 +1583,7 @@ namespace HaCreator.MapSimulator.Loaders
                 HeadAnchor = Point.Zero,
                 MultiBodyBounds = null,
                 ClientMultiBodyBounds = null,
+                ClientBodyBounds = Rectangle.Empty,
                 HasAlphaRange = false,
                 AlphaStart = byte.MaxValue,
                 AlphaEnd = byte.MaxValue,
@@ -1720,6 +1723,22 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return resolved.IsEmpty ? fallbackBounds : resolved;
+        }
+
+        private static Rectangle ResolveClientBodyBounds(IReadOnlyList<Rectangle> bodyBounds)
+        {
+            if (bodyBounds == null || bodyBounds.Count == 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle resolved = bodyBounds[0];
+            for (int i = 1; i < bodyBounds.Count; i++)
+            {
+                resolved = Rectangle.Union(resolved, bodyBounds[i]);
+            }
+
+            return resolved;
         }
 
         private static bool ShouldAppendReversePlayback(WzSubProperty mobStateProperty)

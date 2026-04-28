@@ -1319,7 +1319,7 @@ namespace HaCreator.MapSimulator.UI
             int lineWidth = MeasureCollectionTextWidth(line, styleIndex, measureTextWidth);
             if (alignment == CollectionBookTextAlignment.Center)
             {
-                return left + Math.Max(0, (width - lineWidth) / 2);
+                return analyzerInnerLeft + Math.Max(0, (analyzerInnerWidth - lineWidth) / 2);
             }
 
             return left + Math.Max(0, width - lineWidth);

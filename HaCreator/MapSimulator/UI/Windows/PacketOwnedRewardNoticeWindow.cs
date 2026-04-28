@@ -84,6 +84,32 @@ namespace HaCreator.MapSimulator.UI
             return new Point(x, y);
         }
 
+        internal static int ResolveBodyStartY(
+            int frameHeight,
+            int displayedLineCount,
+            bool hasTitle)
+        {
+            if (hasTitle)
+            {
+                return (int)BodyTopY;
+            }
+
+            int separatorY = ResolveSeparatorPosition(
+                DefaultFrameWidth,
+                frameHeight,
+                DefaultFrameWidth,
+                separatorHeight: 0).Y;
+            int textBandHeight = Math.Max(0, separatorY);
+            int bodyLineCount = Math.Max(0, displayedLineCount);
+            if (bodyLineCount == 0)
+            {
+                return (int)BodyTopY;
+            }
+
+            int bodyHeight = bodyLineCount * (int)BodyLineSpacing;
+            return Math.Max(0, (textBandHeight - bodyHeight) / 2);
+        }
+
         internal static int ResolveOkButtonX(int frameWidth, int buttonWidth)
         {
             int normalizedFrameWidth = Math.Max(0, frameWidth);
@@ -252,7 +278,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            float y = Position.Y + BodyTopY;
+            bool hasTitle = !string.IsNullOrWhiteSpace(_title);
+            float y = Position.Y + ResolveBodyStartY(
+                CurrentFrame?.Height ?? DefaultFrameHeight,
+                _bodyLines.Count,
+                hasTitle);
             if (!string.IsNullOrWhiteSpace(_title))
             {
                 SelectorWindowDrawing.DrawShadowedText(

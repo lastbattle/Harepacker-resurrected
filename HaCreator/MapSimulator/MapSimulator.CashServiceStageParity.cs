@@ -1177,7 +1177,50 @@ namespace HaCreator.MapSimulator
                 ActiveTabName = packetFocus?.ActiveTabName ?? string.Empty,
                 SelectedEntryTitle = selectedEntryTitle,
                 PacketFocusSignature = packetFocus?.FocusSignature ?? string.Empty,
-                PacketFocusMessage = packetFocus?.FocusMessage ?? string.Empty
+                PacketFocusMessage = packetFocus?.FocusMessage ?? string.Empty,
+                ButtonControls = BuildCashShopInventoryButtonControlStates()
+            };
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.InventoryOwnerState.ButtonControlState> BuildCashShopInventoryButtonControlStates()
+        {
+            return new[]
+            {
+                new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtExEquip",
+                    ControlId = 0,
+                    StringPoolUolId = 0xC94,
+                    Position = new Microsoft.Xna.Framework.Point(176, 27)
+                },
+                new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtExConsume",
+                    ControlId = 1,
+                    StringPoolUolId = 0xC94,
+                    Position = new Microsoft.Xna.Framework.Point(176, 54)
+                },
+                new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtExInstall",
+                    ControlId = 2,
+                    StringPoolUolId = 0xC94,
+                    Position = new Microsoft.Xna.Framework.Point(176, 81)
+                },
+                new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtExEtc",
+                    ControlId = 3,
+                    StringPoolUolId = 0xC94,
+                    Position = new Microsoft.Xna.Framework.Point(176, 108)
+                },
+                new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtExTrunk",
+                    ControlId = 4,
+                    StringPoolUolId = 0,
+                    Position = new Microsoft.Xna.Framework.Point(176, 135)
+                }
             };
         }
 

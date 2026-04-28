@@ -7396,6 +7396,12 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<string>();
             }
 
+            string[] sourceSequencePathTokens = FilterPacketMobAttackGeneralEffectSourceSequencePathTokens(effectPathTokens);
+            if (sourceSequencePathTokens.Length == 0)
+            {
+                sourceSequencePathTokens = effectPathTokens;
+            }
+
             var candidates = new List<string>();
             string normalizedTemplateId = mobTemplateId?.Trim();
             if (!string.IsNullOrWhiteSpace(normalizedTemplateId))
@@ -7404,23 +7410,23 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string sequenceSourceRootPath = TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
-                effectPathTokens,
+                sourceSequencePathTokens,
                 "Mob");
             if (!string.IsNullOrWhiteSpace(sequenceSourceRootPath))
             {
                 candidates.Add(sequenceSourceRootPath);
             }
             else if (!string.IsNullOrWhiteSpace(normalizedTemplateId)
-                     && effectPathTokens.Length > 0
-                     && !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(effectPathTokens[0], "Mob", out _))
+                     && sourceSequencePathTokens.Length > 0
+                     && !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(sourceSequencePathTokens[0], "Mob", out _))
             {
-                string[] seededSourcePathTokens = new string[effectPathTokens.Length];
-                if (effectPathTokens.Length > 1)
+                string[] seededSourcePathTokens = new string[sourceSequencePathTokens.Length];
+                if (sourceSequencePathTokens.Length > 1)
                 {
-                    Array.Copy(effectPathTokens, 1, seededSourcePathTokens, 1, effectPathTokens.Length - 1);
+                    Array.Copy(sourceSequencePathTokens, 1, seededSourcePathTokens, 1, sourceSequencePathTokens.Length - 1);
                 }
                 string normalizedFirstSourcePathToken = NormalizePacketMobAttackGeneralEffectRelativeFrameAliasToken(
-                    effectPathTokens[0]);
+                    sourceSequencePathTokens[0]);
                 foreach (string basePath in EnumeratePacketMobAttackGeneralEffectBasePaths(normalizedTemplateId, attackAction))
                 {
                     if (!TryCombinePacketMobAttackGeneralEffectPath(
@@ -7516,6 +7522,29 @@ namespace HaCreator.MapSimulator.Pools
                 .Where(static candidate => !string.IsNullOrWhiteSpace(candidate))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        private static string[] FilterPacketMobAttackGeneralEffectSourceSequencePathTokens(
+            IReadOnlyList<string> effectPathTokens)
+        {
+            if (effectPathTokens == null || effectPathTokens.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var sourceSequencePathTokens = new List<string>(effectPathTokens.Count);
+            for (int i = 0; i < effectPathTokens.Count; i++)
+            {
+                string token = effectPathTokens[i];
+                if (IsPacketMobAttackGeneralEffectNonSourceAssignmentNoiseToken(token))
+                {
+                    continue;
+                }
+
+                sourceSequencePathTokens.Add(token);
+            }
+
+            return sourceSequencePathTokens.ToArray();
         }
 
         internal static string[] EnumeratePacketMobAttackGeneralEffectPathTokens(string effectPath)

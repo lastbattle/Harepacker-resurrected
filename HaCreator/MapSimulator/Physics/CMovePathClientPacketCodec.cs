@@ -208,13 +208,7 @@ namespace HaCreator.MapSimulator.Physics
                 return Array.Empty<MovePathElement>();
             }
 
-            MovePathElement[] carry = new MovePathElement[flushAdmittedPath.Count - carryStartIndex];
-            for (int i = 0; i < carry.Length; i++)
-            {
-                carry[i] = flushAdmittedPath[carryStartIndex + i];
-            }
-
-            return carry;
+            return new[] { flushAdmittedPath[carryStartIndex] };
         }
 
         internal static IReadOnlyList<MovePathElement> TrimPortalOwnedClientFlushRetainedTailForEncode(

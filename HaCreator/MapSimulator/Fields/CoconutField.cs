@@ -905,7 +905,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     if (hit.Target >= 0 && hit.Target < _coconuts.Count)
                     {
-                        ApplyPacketState(_coconuts[hit.Target], (CoconutState)hit.NewState);
+                        ApplyPacketState(_coconuts[hit.Target], (CoconutState)hit.NewState, tickCount);
                     }
                     _hitQueue.RemoveAt(i);
                     continue;
@@ -1069,10 +1069,10 @@ namespace HaCreator.MapSimulator.Fields
                 _localBasicActionOwnerUntilTick = ownerUntil;
             }
         }
-        private void ApplyPacketState(Coconut coconut, CoconutState newState)
+        private void ApplyPacketState(Coconut coconut, CoconutState newState, int appliedAtTick)
         {
             coconut.State = newState;
-            ApplyAuthoredStateFrames(coconut, (int)newState);
+            ApplyAuthoredStateFrames(coconut, (int)newState, appliedAtTick);
             MarkBoardLayerDirty();
             switch (newState)
             {
@@ -1144,17 +1144,17 @@ namespace HaCreator.MapSimulator.Fields
                 : coconut.Frames;
         }
 
-        private static void ApplyAuthoredStateFrames(Coconut coconut, int stateId)
+        private static void ApplyAuthoredStateFrames(Coconut coconut, int stateId, int frameStartTick = 0)
         {
             List<IDXObject> resolvedFrames = ResolveFramesForState(coconut, stateId);
-            if (resolvedFrames == null || ReferenceEquals(coconut?.Frames, resolvedFrames))
+            if (resolvedFrames == null || coconut == null)
             {
                 return;
             }
 
             coconut.Frames = resolvedFrames;
             coconut.FrameIndex = 0;
-            coconut.LastFrameTime = 0;
+            coconut.LastFrameTime = frameStartTick;
         }
         private void ShowMessage(string message, int durationMs, int currentTick)
         {

@@ -530,7 +530,7 @@ namespace HaCreator.MapSimulator.UI
             // Client select-row mapping is owned by CCtrlComboBoxSelect::OnMouseButton.
             // Scrollbar child ownership belongs to CCtrlScrollBar::OnMouseButton, so row
             // mapping should not run while pointer is in the scrollbar lane.
-            if (!rowContentBounds.Contains(releaseX, releaseY))
+            if (!ContainsWhisperPickerComboRowReleasePoint(rowContentBounds, releaseX, releaseY))
             {
                 return -1;
             }
@@ -575,7 +575,7 @@ namespace HaCreator.MapSimulator.UI
             // Client delete-row mapping is owned by CCtrlComboBoxSelect::OnMouseButton.
             // Scrollbar child ownership belongs to CCtrlScrollBar::OnMouseButton, so row
             // mapping should not run while pointer is in the scrollbar lane.
-            if (!rowContentBounds.Contains(releaseX, releaseY))
+            if (!ContainsWhisperPickerComboRowReleasePoint(rowContentBounds, releaseX, releaseY))
             {
                 return -1;
             }
@@ -585,6 +585,16 @@ namespace HaCreator.MapSimulator.UI
                 dropdownBounds,
                 candidateCount,
                 rowHeight);
+        }
+
+        private static bool ContainsWhisperPickerComboRowReleasePoint(Rectangle rowContentBounds, int releaseX, int releaseY)
+        {
+            // CCtrlComboBoxSelect::OnMouseButton owns bottom-edge in-window releases;
+            // keep the right edge exclusive so scrollbar-child ownership does not leak.
+            return releaseX >= rowContentBounds.Left
+                && releaseX < rowContentBounds.Right
+                && releaseY >= rowContentBounds.Top
+                && releaseY <= rowContentBounds.Bottom;
         }
 
         internal static bool ShouldKeepWhisperPickerDropdownScrollThumbCapture(

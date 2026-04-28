@@ -103,6 +103,20 @@ namespace HaCreator.MapSimulator
                 or PacketOwnedAntiMacroNoticeMode;
         }
 
+        internal static bool ShouldReleasePacketOwnedAntiMacroComboOnTerminalResult(
+            int mode,
+            bool wasAwaitingResult,
+            bool authoritativeRoundTrip)
+        {
+            // `CUIAntiMacro::SetRet` and `CUIAdminAntiMacro::SetRet` close the owner
+            // locally and keep the combo hold while the result is outstanding. Once
+            // the packet-owned terminal result is accepted, release that held input
+            // even for the mode 11 notice branch that does not enter the 7/9 teardown.
+            return wasAwaitingResult
+                && authoritativeRoundTrip
+                && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
+        }
+
         internal static bool ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(int mode)
         {
             // `CWvsContext::OnAntiMacroResult` zeroes m_tRemainAntiMacroQuestion only
@@ -393,7 +407,9 @@ namespace HaCreator.MapSimulator
             }
 
             _lastPacketOwnedAntiMacroSubmittedAnswer = submittedAnswer;
-            _lastPacketOwnedAntiMacroSubmittedRemainingMs = Math.Max(0, window.ExpiresAt - Environment.TickCount);
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = AntiMacroChallengeWindow.ResolveRemainingMilliseconds(
+                window.ExpiresAt,
+                Environment.TickCount);
             _packetOwnedAntiMacroCurrentRemainingMs = _lastPacketOwnedAntiMacroSubmittedRemainingMs;
             _packetOwnedAntiMacroAwaitingResult = true;
             _lastPacketOwnedAntiMacroSubmittedTick = Environment.TickCount;
@@ -436,7 +452,7 @@ namespace HaCreator.MapSimulator
             string ownerState;
             if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
             {
-                int remainingMs = Math.Max(0, window.ExpiresAt - currentTickCount);
+                int remainingMs = AntiMacroChallengeWindow.ResolveRemainingMilliseconds(window.ExpiresAt, currentTickCount);
                 ownerState = $"{window.WindowName} active, remaining={remainingMs}ms, input=\"{window.CurrentInput}\"";
             }
             else
@@ -528,7 +544,7 @@ namespace HaCreator.MapSimulator
         {
             if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
             {
-                return Math.Max(0, window.ExpiresAt - currentTickCount);
+                return AntiMacroChallengeWindow.ResolveRemainingMilliseconds(window.ExpiresAt, currentTickCount);
             }
 
             if (_packetOwnedAntiMacroAwaitingResult)
@@ -1450,6 +1466,15 @@ namespace HaCreator.MapSimulator
                     && !shouldKeepAwaitingNoticeAuthoritativeResult)
                 {
                     _packetOwnedAntiMacroAwaitingResult = false;
+                }
+
+                if (ShouldReleasePacketOwnedAntiMacroComboOnTerminalResult(
+                    mode,
+                    wasAwaitingResult,
+                    noticeAuthoritativeRoundTrip)
+                    && _packetOwnedAntiMacroComboHeld)
+                {
+                    SetPacketOwnedAntiMacroComboHold(false);
                 }
 
                 message = AppendPacketOwnedAntiMacroResultSourceSummary(

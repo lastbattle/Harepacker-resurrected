@@ -3315,7 +3315,14 @@ namespace HaCreator.MapSimulator.Interaction
                         masterLevel,
                         rawSkillLevel,
                         rawMasterLevel,
-                        hasMasterLevelData));
+                        hasMasterLevelData,
+                        DecodedByteCount: entryByteCount,
+                        FieldByteCounts: new Dictionary<string, int>(StringComparer.Ordinal)
+                        {
+                            [nameof(PacketCharacterDataSkillRecord.SkillId)] = sizeof(int),
+                            [nameof(PacketCharacterDataSkillRecord.RawSkillLevel)] = sizeof(int),
+                            [nameof(PacketCharacterDataSkillRecord.RawMasterLevel)] = hasMasterLevelData ? sizeof(int) : 0
+                        }));
                     rawLevelsBySkillId[skillId] = rawSkillLevel;
                     levelsBySkillId[skillId] = normalizedSkillLevel;
                     if (hasMasterLevelData)
@@ -3354,7 +3361,15 @@ namespace HaCreator.MapSimulator.Interaction
                 long value = reader.ReadInt64();
                 if (key > 0)
                 {
-                    entries.Add(new PacketCharacterDataSkillExpirationRecord(key, value));
+                    entries.Add(new PacketCharacterDataSkillExpirationRecord(
+                        key,
+                        value,
+                        DecodedByteCount: sizeof(int) + sizeof(long),
+                        FieldByteCounts: new Dictionary<string, int>(StringComparer.Ordinal)
+                        {
+                            [nameof(PacketCharacterDataSkillExpirationRecord.SkillId)] = sizeof(int),
+                            [nameof(PacketCharacterDataSkillExpirationRecord.ExpirationFileTime)] = sizeof(long)
+                        }));
                     recordsBySkillId[key] = value;
                 }
             }
@@ -3408,7 +3423,15 @@ namespace HaCreator.MapSimulator.Interaction
                 if (key > 0)
                 {
                     int normalizedValue = Math.Max(0, value);
-                    entries.Add(new PacketCharacterDataInt16ValueRecord(key, normalizedValue));
+                    entries.Add(new PacketCharacterDataInt16ValueRecord(
+                        key,
+                        normalizedValue,
+                        DecodedByteCount: sizeof(int) + sizeof(ushort),
+                        FieldByteCounts: new Dictionary<string, int>(StringComparer.Ordinal)
+                        {
+                            [nameof(PacketCharacterDataInt16ValueRecord.Key)] = sizeof(int),
+                            [nameof(PacketCharacterDataInt16ValueRecord.Value)] = sizeof(ushort)
+                        }));
                     recordsByKey[key] = normalizedValue;
                 }
             }

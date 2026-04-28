@@ -801,6 +801,11 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastActionSummary;
         }
 
+        internal int CountClaimableChatLines()
+        {
+            return GetClaimableLogEntries().Length;
+        }
+
         internal bool TryBuildPacketAvatarPayload(
             string participantToken,
             Func<LoginAvatarLook> localAvatarLookResolver,

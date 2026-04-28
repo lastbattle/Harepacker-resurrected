@@ -1915,9 +1915,17 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            bool hadOpponentLayers = HasClientOpponentSeat();
             if (!TryResolveLobbyExit(_localPlayerIndex, out message))
             {
                 return false;
+            }
+
+            if (hadOpponentLayers)
+            {
+                _clientOpponentLayersMaterialized = false;
+                _clientReadyLayerReleaseCount++;
+                _clientScoreLayerReleaseCount++;
             }
 
             _lastClientDialogUpdateArgument = ClientDialogLeaveUpdateArgument;

@@ -1567,28 +1567,30 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (localAliasMap == null || localAliasMap.Count == 0)
-            {
-                return false;
-            }
-
             foreach (Match match in FunctionBodyReturnAliasVariablePattern.Matches(value))
             {
                 string variableName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value).TrimEnd(';');
-                if (string.IsNullOrWhiteSpace(variableName)
-                    || !localAliasMap.TryGetValue(variableName, out string mappedAlias))
+                if (string.IsNullOrWhiteSpace(variableName))
                 {
                     continue;
                 }
 
-                string normalizedMappedAlias = NormalizeFunctionAliasArgument(mappedAlias).TrimEnd(';');
-                if (!IsPotentialFunctionAliasName(normalizedMappedAlias))
+                if (localAliasMap != null
+                    && localAliasMap.TryGetValue(variableName, out string mappedAlias))
                 {
-                    continue;
+                    string normalizedMappedAlias = NormalizeFunctionAliasArgument(mappedAlias).TrimEnd(';');
+                    if (IsPotentialFunctionAliasName(normalizedMappedAlias))
+                    {
+                        aliasName = normalizedMappedAlias;
+                        return true;
+                    }
                 }
 
-                aliasName = normalizedMappedAlias;
-                return true;
+                if (IsPotentialFunctionAliasName(variableName))
+                {
+                    aliasName = variableName;
+                    return true;
+                }
             }
 
             return false;
@@ -1673,6 +1675,20 @@ namespace HaCreator.MapSimulator.Fields
                              objectMemberAliasMap))
                 {
                     yield return branchCandidate;
+                }
+            }
+
+            if (IsFunctionExpressionText(normalizedCandidate))
+            {
+                foreach (string returnExpression in EnumerateFunctionReturnExpressions(normalizedCandidate))
+                {
+                    foreach (string returnCandidate in EnumerateCanonicalAliasCandidates(
+                                 returnExpression,
+                                 localAliasMap,
+                                 objectMemberAliasMap))
+                    {
+                        yield return returnCandidate;
+                    }
                 }
             }
 

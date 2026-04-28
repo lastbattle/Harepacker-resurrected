@@ -591,6 +591,11 @@ namespace HaCreator.MapSimulator.Effects
                 errorMessage = $"Massacre clock type {clockType} does not own the timerboard.";
                 return false;
             }
+            if (durationSec < 0)
+            {
+                errorMessage = "Massacre clock duration must be non-negative.";
+                return false;
+            }
 
             OnClock(clockType, durationSec, currentTimeMs);
             return true;
@@ -1124,6 +1129,12 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             int newIncGauge = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            if (newIncGauge < 0)
+            {
+                errorMessage = "Massacre inc-gauge packet value must be non-negative.";
+                return false;
+            }
+
             OnMassacreIncGauge(newIncGauge, currentTimeMs);
             return true;
         }

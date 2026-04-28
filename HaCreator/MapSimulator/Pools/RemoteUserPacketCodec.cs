@@ -3528,6 +3528,12 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = directionSegmentIndex + 1; i < segments.Length; i++)
             {
                 string candidate = NormalizeHelperMarkerNameSegment(segments[i]);
+                if (TryResolveMinimapIconDirectionCompositeMarkerName(segments, i, out string compositeDirectionAlias))
+                {
+                    directionMarkerName = compositeDirectionAlias;
+                    return true;
+                }
+
                 if (candidate.Length == 0 || IsNumericHelperMarkerPathSegment(candidate))
                 {
                     continue;
@@ -3547,6 +3553,38 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        private static bool TryResolveMinimapIconDirectionCompositeMarkerName(
+            string[] segments,
+            int startIndex,
+            out string directionMarkerName)
+        {
+            directionMarkerName = null;
+            string firstSegment = NormalizeHelperMarkerNameSegmentAt(segments, startIndex);
+            string secondSegment = NormalizeHelperMarkerNameSegmentAt(segments, startIndex + 1);
+            if (string.IsNullOrWhiteSpace(firstSegment)
+                || string.IsNullOrWhiteSpace(secondSegment)
+                || IsNumericHelperMarkerPathSegment(firstSegment)
+                || IsNumericHelperMarkerPathSegment(secondSegment))
+            {
+                return false;
+            }
+
+            directionMarkerName = (firstSegment, secondSegment) switch
+            {
+                ("up", "left") => "nw",
+                ("left", "up") => "nw",
+                ("up", "right") => "ne",
+                ("right", "up") => "ne",
+                ("down", "left") => "sw",
+                ("left", "down") => "sw",
+                ("down", "right") => "se",
+                ("right", "down") => "se",
+                _ => null
+            };
+
+            return directionMarkerName != null;
         }
 
         private static bool TryResolveCompositeHelperMarkerName(
@@ -3734,6 +3772,14 @@ namespace HaCreator.MapSimulator.Pools
                 "southwest" => "sw",
                 "south" => "s",
                 "southeast" => "se",
+                "upleft" => "nw",
+                "leftup" => "nw",
+                "upright" => "ne",
+                "rightup" => "ne",
+                "downleft" => "sw",
+                "leftdown" => "sw",
+                "downright" => "se",
+                "rightdown" => "se",
                 "clear" => "clear",
                 "none" => "none",
                 _ => lowered
@@ -3781,6 +3827,18 @@ namespace HaCreator.MapSimulator.Pools
                 "southwest" => "sw",
                 "south" => "s",
                 "southeast" => "se",
+                "upleft" => "nw",
+                "leftup" => "nw",
+                "upright" => "ne",
+                "rightup" => "ne",
+                "downleft" => "sw",
+                "leftdown" => "sw",
+                "downright" => "se",
+                "rightdown" => "se",
+                "up" => "n",
+                "down" => "s",
+                "left" => "w",
+                "right" => "e",
                 _ => null
             };
 
@@ -4745,6 +4803,22 @@ namespace HaCreator.MapSimulator.Pools
                     rawPayload,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByAdjacentSkillElementPairConsensusFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int adjacentPairConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    adjacentPairConsensusChargeElement,
                     out chargeSkillId))
             {
                 return true;

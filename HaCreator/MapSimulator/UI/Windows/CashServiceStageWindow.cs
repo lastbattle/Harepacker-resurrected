@@ -5603,6 +5603,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<CashItemInfoPacketSnapshot> snapshots = TryDecodeEmbeddedCashItemInfoSnapshots(payload, startOffset, maxCount);
+            int decodedOffset = startOffset;
+            if (snapshots.Count == 0
+                && TryDecodeEmbeddedCashItemInfoSnapshotsAtAnyOffset(payload, startOffset, maxCount, out List<CashItemInfoPacketSnapshot> offsetSnapshots, out int recoveredOffset))
+            {
+                snapshots = offsetSnapshots;
+                decodedOffset = recoveredOffset;
+            }
+
             string decodedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
                 snapshots,
                 paneLabel,
@@ -5612,7 +5620,9 @@ namespace HaCreator.MapSimulator.UI
                 stateLabel);
             if (!string.IsNullOrWhiteSpace(decodedSummary))
             {
-                return decodedSummary;
+                return decodedOffset == startOffset
+                    ? decodedSummary
+                    : $"{decodedSummary} Recovered at packet offset {decodedOffset.ToString(CultureInfo.InvariantCulture)}.";
             }
 
             int trailingLength = payload.Length - startOffset;
@@ -5651,6 +5661,14 @@ namespace HaCreator.MapSimulator.UI
 
             byte[] trailingPayload = reader.ReadBytes(trailingLength);
             List<CashItemInfoPacketSnapshot> snapshots = TryDecodeEmbeddedCashItemInfoSnapshots(trailingPayload, startOffset: 0, maxCount: maxCount);
+            int decodedOffset = 0;
+            if (snapshots.Count == 0
+                && TryDecodeEmbeddedCashItemInfoSnapshotsAtAnyOffset(trailingPayload, 0, maxCount, out List<CashItemInfoPacketSnapshot> offsetSnapshots, out int recoveredOffset))
+            {
+                snapshots = offsetSnapshots;
+                decodedOffset = recoveredOffset;
+            }
+
             string decodedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
                 snapshots,
                 paneLabel,
@@ -5660,7 +5678,9 @@ namespace HaCreator.MapSimulator.UI
                 stateLabel);
             if (!string.IsNullOrWhiteSpace(decodedSummary))
             {
-                return decodedSummary;
+                return decodedOffset == 0
+                    ? decodedSummary
+                    : $"{decodedSummary} Recovered at trailing offset {decodedOffset.ToString(CultureInfo.InvariantCulture)}.";
             }
 
             int previewLength = Math.Min(trailingPayload.Length, 24);
@@ -5697,6 +5717,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return snapshots;
+        }
+
+        private static bool TryDecodeEmbeddedCashItemInfoSnapshotsAtAnyOffset(
+            byte[] payload,
+            int startOffset,
+            int maxCount,
+            out List<CashItemInfoPacketSnapshot> snapshots,
+            out int recoveredOffset)
+        {
+            snapshots = new List<CashItemInfoPacketSnapshot>();
+            recoveredOffset = -1;
+            if (payload == null || maxCount <= 0)
+            {
+                return false;
+            }
+
+            int firstOffset = Math.Clamp(startOffset, 0, payload.Length);
+            int lastOffset = payload.Length - CashItemInfoPacketByteLength;
+            if (firstOffset > lastOffset)
+            {
+                return false;
+            }
+
+            for (int offset = firstOffset; offset <= lastOffset; offset++)
+            {
+                List<CashItemInfoPacketSnapshot> candidate = TryDecodeEmbeddedCashItemInfoSnapshots(payload, offset, maxCount);
+                if (candidate.Count == 0)
+                {
+                    continue;
+                }
+
+                snapshots = candidate;
+                recoveredOffset = offset;
+                return true;
+            }
+
+            return false;
         }
 
         private string AppendEmbeddedCashItemInfoCatalogEntries(

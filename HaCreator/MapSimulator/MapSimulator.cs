@@ -3991,17 +3991,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-
-            CharacterBuild build = _playerManager?.Player?.Build;
-            string playerName = build?.Name ?? "Player";
-            string guildName = string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple Guild" : build.GuildName;
-            _guildBbsRuntime.ConfigureEmoticonCatalog(guildBbsWindow.BasicEmoticonSlotCount, guildBbsWindow.CashEmoticonSlotCount);
-            _guildBbsRuntime.UpdateLocalContext(
-                playerName,
-                guildName,
-                GetCurrentMapTransferDisplayName(),
-                _socialListRuntime.GetLocalGuildRoleLabel(),
-                ResolveOwnedGuildBbsCashEmoticonIds(guildBbsWindow.CashEmoticonSlotCount));
+            RefreshGuildBbsLocalContext(guildBbsWindow);
             _guildBbsRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
 
 
@@ -4030,6 +4020,27 @@ namespace HaCreator.MapSimulator
                 (kind, slotIndex, pageIndex) => _guildBbsRuntime.SelectReplyEmoticon(kind, slotIndex, pageIndex),
                 ShowUtilityFeedbackMessage);
             guildBbsWindow.SetFont(_fontChat);
+        }
+
+
+        private void RefreshGuildBbsLocalContext(GuildBbsWindow guildBbsWindow = null)
+        {
+            guildBbsWindow ??= uiWindowManager?.GetWindow(MapSimulatorWindowNames.GuildBbs) as GuildBbsWindow;
+            if (guildBbsWindow == null)
+            {
+                return;
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            string playerName = build?.Name ?? "Player";
+            string guildName = string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple Guild" : build.GuildName;
+            _guildBbsRuntime.ConfigureEmoticonCatalog(guildBbsWindow.BasicEmoticonSlotCount, guildBbsWindow.CashEmoticonSlotCount);
+            _guildBbsRuntime.UpdateLocalContext(
+                playerName,
+                guildName,
+                GetCurrentMapTransferDisplayName(),
+                _socialListRuntime.GetLocalGuildRoleLabel(),
+                ResolveOwnedGuildBbsCashEmoticonIds(guildBbsWindow.CashEmoticonSlotCount));
         }
 
 
@@ -8998,6 +9009,18 @@ namespace HaCreator.MapSimulator
         {
             return TryApplyMapleTvPacket(MapleTvRuntime.PacketTypeSetMessage, payload, out message);
         }
+
+        private static (string ItemName, string ItemDescription) ResolveMapleTvItemMetadata(int itemId)
+        {
+            string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                ? resolvedName
+                : null;
+            string itemDescription = InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string resolvedDescription)
+                ? resolvedDescription
+                : null;
+            return (itemName, itemDescription);
+        }
+
         private void FlushPendingMapleTvSendResultFeedback(int tickCount)
         {
             MapleTvSendResultFeedback feedback = _mapleTvRuntime.ConsumePendingSendResultFeedback();
@@ -21422,7 +21445,12 @@ namespace HaCreator.MapSimulator
             }
 
 
-            bool applied = _playerManager.TryApplyMobSkillStatus(skill.SkillId, runtimeData, currentTick, sourceMob.CurrentX);
+            bool applied = _playerManager.TryApplyMobSkillStatus(
+                skill.SkillId,
+                runtimeData,
+                currentTick,
+                sourceMob.CurrentX,
+                runtimeData.ElementAttribute);
 
             if (applied)
             {
@@ -21911,6 +21939,7 @@ namespace HaCreator.MapSimulator
                     MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "interval"),
                     MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "inteval")) * 1000,
                 BombDelayMs = bombDelayMs,
+                ElementAttribute = MobSkillLevelResolver.ResolveInheritedElementAttributeMask(levelNode, level),
                 PropPercent = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "prop"),
                 Count = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "count"),
                 TargetMobType = (MobSkillTargetMobType)MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "targetMobType"),
@@ -22977,7 +23006,8 @@ namespace HaCreator.MapSimulator
                     effect.CraftExperience,
                     effect.SenseExperience,
                     effect.CharmExperience,
-                    effect.EventPoint);
+                    effect.EventPoint,
+                    effect.FatigueDelta);
             }
 
 
@@ -25038,6 +25068,7 @@ namespace HaCreator.MapSimulator
             public int SenseExperience { get; init; }
             public int CharmExperience { get; init; }
             public int EventPoint { get; init; }
+            public int FatigueDelta { get; init; }
             public int MoveToMapId { get; init; }
             public int Booster { get; init; }
             public int Pad { get; init; }
@@ -25108,7 +25139,8 @@ namespace HaCreator.MapSimulator
                 CraftExperience > 0 ||
                 SenseExperience > 0 ||
                 CharmExperience > 0 ||
-                EventPoint > 0;
+                EventPoint > 0 ||
+                FatigueDelta != 0;
 
 
 
@@ -25418,7 +25450,8 @@ namespace HaCreator.MapSimulator
                     effect.CraftExperience,
                     effect.SenseExperience,
                     effect.CharmExperience,
-                    effect.EventPoint);
+                    effect.EventPoint,
+                    effect.FatigueDelta);
             }
 
             if (hpGain > 0)
@@ -25539,7 +25572,8 @@ namespace HaCreator.MapSimulator
             int craftExperience,
             int senseExperience,
             int charmExperience,
-            int eventPoint = 0)
+            int eventPoint = 0,
+            int fatigueDelta = 0)
         {
             if (build == null)
             {
@@ -25581,6 +25615,13 @@ namespace HaCreator.MapSimulator
             int cookieHousePoint = build.CookieHousePoint;
             changed |= TryApplyTraitExperience(ref cookieHousePoint, eventPoint);
             build.CookieHousePoint = cookieHousePoint;
+
+            if (fatigueDelta != 0)
+            {
+                build.Fatigue = ApplyFatigueDelta(build.Fatigue, fatigueDelta);
+                changed = true;
+            }
+
             return changed;
         }
 
@@ -25594,6 +25635,17 @@ namespace HaCreator.MapSimulator
 
             traitValue = SaturatingAdd(traitValue, normalizedGain);
             return true;
+        }
+
+        internal static int ApplyFatigueDelta(int currentFatigue, int fatigueDelta)
+        {
+            long updatedFatigue = (long)Math.Max(0, currentFatigue) + fatigueDelta;
+            if (updatedFatigue <= 0)
+            {
+                return 0;
+            }
+
+            return updatedFatigue >= int.MaxValue ? int.MaxValue : (int)updatedFatigue;
         }
 
         private static long SaturatingAdd(long value, long gain)
@@ -25758,6 +25810,7 @@ namespace HaCreator.MapSimulator
                 SenseExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "senseEXP")),
                 CharmExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "charmEXP")),
                 EventPoint = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "eventPoint")),
+                FatigueDelta = ResolveConsumableIntValue(specProperty, specExProperty, "incFatigue"),
                 MoveToMapId = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "moveTo")),
                 Booster = ResolveConsumableIntValue(specProperty, specExProperty, "booster", "indieBooster"),
                 Pad = ResolveConsumableIntValue(specProperty, specExProperty, "pad", "indiePad"),
@@ -31104,6 +31157,14 @@ namespace HaCreator.MapSimulator
             {
                 if (suppressImeOwnedForwarding)
                 {
+                    if (_skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.Remove(key, out SkillMacroForwardedHotkeyState suppressedHotkeyState))
+                    {
+                        HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyStateChanged(
+                            suppressedHotkeyState.HotkeySlot,
+                            suppressedHotkeyState.InputToken,
+                            keyDown: false);
+                    }
+
                     _skillMacroImeSuppressedConfiguredHotkeyPhysicalKeys.Add(key);
                     return;
                 }
@@ -31116,6 +31177,19 @@ namespace HaCreator.MapSimulator
                         out int hotkeySlot))
                 {
                     return;
+                }
+
+                if (_skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.TryGetValue(key, out SkillMacroForwardedHotkeyState activeHotkeyState))
+                {
+                    if (activeHotkeyState.HotkeySlot == hotkeySlot)
+                    {
+                        return;
+                    }
+
+                    HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyStateChanged(
+                        activeHotkeyState.HotkeySlot,
+                        activeHotkeyState.InputToken,
+                        keyDown: false);
                 }
 
                 int inputToken = GetNextSkillMacroForwardedInputToken();
@@ -32091,25 +32165,23 @@ namespace HaCreator.MapSimulator
 
             if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
-                PassiveTransferFieldReplayState replayState = ResolvePassiveTransferFieldReplayState(currentTime);
-                bool canAttemptHandleUpKeyDownReplay =
-                    PassiveTransferFieldReadinessEvaluator.CanAttemptHandleUpKeyDownReplay(replayState);
-                bool canReplayHandleUpKeyDown =
-                    PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(replayState);
+                PassiveTransferFieldQueuedReplayDecision replayDecision =
+                    PassiveTransferFieldReadinessEvaluator.EvaluateQueuedReplayDecision(
+                        _passiveTransferRequestPending,
+                        queuedRetryDecision,
+                        ResolvePassiveTransferFieldReplayState(currentTime));
 
-                if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForQueuedReplay(canAttemptHandleUpKeyDownReplay))
+                if (replayDecision.ShouldStopSkillMacro)
                 {
                     StopSkillMacroForHandleUpKeyDown();
                 }
 
-                if (canReplayHandleUpKeyDown)
+                if (replayDecision.ShouldReplayHandleUpKeyDown)
                 {
                     TryHandlePortalInteractCore(currentTime);
                 }
 
-                if (PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryAfterInterfaceGateAdmission(
-                        _passiveTransferRequestPending,
-                        queuedRetryDecision))
+                if (replayDecision.ShouldClearQueuedRetry)
                 {
                     ClearPassiveTransferRequest();
                 }
@@ -36351,7 +36423,7 @@ namespace HaCreator.MapSimulator
             {
                 radioWindow.SetFont(_fontChat);
                 radioWindow.SetIndicatorActiveProvider(IsPacketOwnedRadioPlaying);
-                radioWindow.SetIndicatorMutedProvider(() => _utilityBgmMuted);
+                radioWindow.SetIndicatorMutedProvider(() => _packetOwnedRadioMuted);
                 radioWindow.SetClientLeftInsetProvider(ShouldUsePacketOwnedRadioLeftInset);
                 radioWindow.SetIndicatorAnimationStartTickProvider(() =>
                     _lastPacketOwnedRadioStartTick == int.MinValue ? null : _lastPacketOwnedRadioStartTick);
@@ -36718,6 +36790,7 @@ namespace HaCreator.MapSimulator
                 or QuestDetailInlineReferenceSource.RequirementLine
                 or QuestDetailInlineReferenceSource.HintText
                 or QuestDetailInlineReferenceSource.SummaryText
+                or QuestDetailInlineReferenceSource.DeliveryInset
                 or QuestDetailInlineReferenceSource.Unknown;
         }
 
@@ -37996,9 +38069,11 @@ namespace HaCreator.MapSimulator
                     _localOverlayRuntime.HasDamageMeterStatusBarFloatNoticeOwnerForClientParity(),
                     _localOverlayRuntime.DamageMeterStartedAt,
                     _localOverlayRuntime.DamageMeterExpiresAt,
+                    _localOverlayRuntime.DamageMeterFloatNoticeOwnerIdentity,
                     _localOverlayRuntime.HasFieldHazardStatusBarFloatNoticeOwnerForClientParity(),
                     _localOverlayRuntime.LastFieldHazardNoticeStartedAt,
                     _localOverlayRuntime.LastFieldHazardNoticeExpiresAt,
+                    _localOverlayRuntime.LastFieldHazardFloatNoticeOwnerIdentity,
                     currentTime,
                     out SkillCooldownNoticeUI.StatusBarNoticeOwnerState floatNoticeOwner))
             {

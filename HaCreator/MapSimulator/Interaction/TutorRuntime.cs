@@ -236,7 +236,7 @@ namespace HaCreator.MapSimulator.Interaction
             return IsActive
                 && MessageKind != TutorMessageKind.None
                 && currentTick < ActiveMessageExpiresAt
-                && (MessageKind == TutorMessageKind.Indexed || !string.IsNullOrWhiteSpace(ActiveMessageText));
+                && (MessageKind == TutorMessageKind.Indexed || !string.IsNullOrEmpty(ActiveMessageText));
         }
 
         internal bool HasVisibleIndexedCue(int currentTick)
@@ -269,7 +269,7 @@ namespace HaCreator.MapSimulator.Interaction
             return IsActive
                 && MessageKind == TutorMessageKind.Text
                 && currentTick < ActiveMessageExpiresAt
-                && !string.IsNullOrWhiteSpace(ActiveMessageText);
+                && !string.IsNullOrEmpty(ActiveMessageText);
         }
 
         internal int ResolveActorHeight()
@@ -543,7 +543,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int normalizedCharacterId = Math.Max(0, runtimeCharacterId);
             int normalizedSkillId = NormalizeTutorSkillId(skillId);
-            string normalizedText = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+            string normalizedText = text ?? string.Empty;
             if (normalizedCharacterId <= 0 || normalizedSkillId <= 0)
             {
                 return;
@@ -601,7 +601,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void ApplyTextMessage(string text, int width, int durationMs, int currentTick)
         {
-            string normalizedText = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+            string normalizedText = text ?? string.Empty;
             if (string.IsNullOrEmpty(normalizedText))
             {
                 ClearMessage(clearSharedState: true);

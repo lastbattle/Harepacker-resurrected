@@ -476,9 +476,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (HasPassiveEstablishedSocketPair)
                 {
-                    status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode {OutboundPulleyRequestOpcode} into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
-                    LastStatus = status;
-                    return false;
+                    return TryQueuePulleyRequest(request, out status);
                 }
 
                 status = "Guild boss official-session bridge has no active Maple session.";

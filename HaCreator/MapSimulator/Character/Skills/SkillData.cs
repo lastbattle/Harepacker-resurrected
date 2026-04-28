@@ -2155,6 +2155,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int EffectLayerObjectId { get; set; }
         public int EffectLayerParentObjectId { get; set; }
         public bool EffectLayerAvailable { get; set; }
+        public int EffectLayerRegisteredAnimationStartTime { get; set; }
+        public int EffectLayerRegisteredAnimationEndTime { get; set; }
         public BulletAnimationPresentation Presentation { get; init; }
         public Vector2 CurrentPosition { get; set; }
         public Vector2 PreviousPosition { get; set; }
@@ -2192,6 +2194,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Duration { get; init; }
         public int RegisteredAnimationStartTime { get; init; }
         public int RegisteredAnimationEndTime { get; init; }
+        public int RegisteredAnimationStateObjectId { get; init; }
         public int AlphaStart { get; init; }
         public int AlphaEnd { get; init; }
         public int AlphaVectorStart { get; init; }

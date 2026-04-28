@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
         public int DamageMeterDurationSeconds { get; private set; }
         public int DamageMeterStartedAt { get; private set; } = int.MinValue;
         public int DamageMeterExpiresAt { get; private set; } = int.MinValue;
+        public int DamageMeterFloatNoticeOwnerIdentity { get; private set; }
         public int DamageMeterSharedTimingResetValue { get; private set; }
         public int DamageMeterSharedTimingUpdatedAt { get; private set; } = int.MinValue;
         public int LastDamageMeterPacketTick { get; private set; } = int.MinValue;
@@ -40,6 +41,9 @@ namespace HaCreator.MapSimulator.Managers
         public int LastFieldHazardFollowUpUpdatedAt { get; private set; } = int.MinValue;
         public int LastFieldHazardNoticeStartedAt { get; private set; } = int.MinValue;
         public int LastFieldHazardNoticeExpiresAt { get; private set; } = int.MinValue;
+        public int LastFieldHazardFloatNoticeOwnerIdentity { get; private set; }
+
+        private int _nextStatusBarFloatNoticeOwnerIdentity = 1;
 
         public bool HasDamageMeterTimer(int currentTickCount)
         {
@@ -96,6 +100,9 @@ namespace HaCreator.MapSimulator.Managers
             DamageMeterExpiresAt = normalizedDuration > 0
                 ? currentTickCount + (normalizedDuration * 1000)
                 : int.MinValue;
+            DamageMeterFloatNoticeOwnerIdentity = normalizedDuration > 0
+                ? AllocateStatusBarFloatNoticeOwnerIdentity()
+                : 0;
         }
 
         public void ClearDamageMeter(int currentTickCount, bool updateSharedTiming)
@@ -103,6 +110,7 @@ namespace HaCreator.MapSimulator.Managers
             DamageMeterDurationSeconds = 0;
             DamageMeterStartedAt = int.MinValue;
             DamageMeterExpiresAt = int.MinValue;
+            DamageMeterFloatNoticeOwnerIdentity = 0;
             if (updateSharedTiming)
             {
                 DamageMeterSharedTimingResetValue = 0;
@@ -149,6 +157,7 @@ namespace HaCreator.MapSimulator.Managers
             LastFieldHazardFollowUpUpdatedAt = int.MinValue;
             LastFieldHazardNoticeStartedAt = currentTickCount;
             LastFieldHazardNoticeExpiresAt = currentTickCount + Math.Max(400, durationMs);
+            LastFieldHazardFloatNoticeOwnerIdentity = AllocateStatusBarFloatNoticeOwnerIdentity();
         }
 
         public void SetFieldHazardFollowUp(string detail, FieldHazardFollowUpKind kind, int currentTickCount)
@@ -190,6 +199,7 @@ namespace HaCreator.MapSimulator.Managers
             LastFieldHazardFollowUpUpdatedAt = int.MinValue;
             LastFieldHazardNoticeStartedAt = int.MinValue;
             LastFieldHazardNoticeExpiresAt = int.MinValue;
+            LastFieldHazardFloatNoticeOwnerIdentity = 0;
         }
 
         public void Update(int currentTickCount)
@@ -199,12 +209,25 @@ namespace HaCreator.MapSimulator.Managers
                 DamageMeterDurationSeconds = 0;
                 DamageMeterStartedAt = int.MinValue;
                 DamageMeterExpiresAt = int.MinValue;
+                DamageMeterFloatNoticeOwnerIdentity = 0;
             }
 
             if (LastFieldHazardNoticeExpiresAt != int.MinValue && unchecked(currentTickCount - LastFieldHazardNoticeExpiresAt) > 0)
             {
                 ClearFieldHazardNotice();
             }
+        }
+
+        private int AllocateStatusBarFloatNoticeOwnerIdentity()
+        {
+            int ownerIdentity = _nextStatusBarFloatNoticeOwnerIdentity;
+            _nextStatusBarFloatNoticeOwnerIdentity++;
+            if (_nextStatusBarFloatNoticeOwnerIdentity <= 0)
+            {
+                _nextStatusBarFloatNoticeOwnerIdentity = 1;
+            }
+
+            return ownerIdentity;
         }
 
         public string DescribeDamageMeterStatus(int currentTickCount)

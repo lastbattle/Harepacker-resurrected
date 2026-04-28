@@ -27,6 +27,32 @@ namespace HaCreator.MapSimulator.Interaction
 
         public QuestRewardRaiseState ActiveRaise { get; private set; }
 
+        public QuestRewardRaiseState CreateWindowForItemOwner(QuestRewardChoicePrompt prompt, Point defaultPosition)
+        {
+            if (prompt?.OwnerContext == null || prompt.OwnerContext.OwnerItemId <= 0)
+            {
+                ActiveRaise = null;
+                return null;
+            }
+
+            QuestRewardRaiseState state = Open(prompt, QuestRewardRaiseSourceKind.InventoryItem, defaultPosition);
+            if (state == null)
+            {
+                return null;
+            }
+
+            state.OwnerItemId = Math.Max(0, prompt.OwnerContext.OwnerItemId);
+            state.WindowMode = QuestRewardRaiseWindowMode.PiecePlacement;
+            state.DisplayMode = QuestRewardRaiseWindowMode.PiecePlacement;
+            state.ClientWindowKind = ResolveOpenClientWindowKind(
+                prompt,
+                state,
+                null,
+                QuestRewardRaiseWindowMode.PiecePlacement);
+            RememberState(state);
+            return state;
+        }
+
         public QuestRewardRaiseState Open(QuestRewardChoicePrompt prompt, QuestRewardRaiseSourceKind source, Point defaultPosition)
         {
             if (prompt == null)
@@ -255,6 +281,11 @@ namespace HaCreator.MapSimulator.Interaction
             observedRaise.QrData = qrData;
             updatedState = observedRaise;
             return true;
+        }
+
+        public bool SetQrDataWithQuestId(int questId, int qrData, out QuestRewardRaiseState updatedState)
+        {
+            return TrySetQrDataForQuest(questId, qrData, out updatedState);
         }
 
         public void ObserveOwnerState(
@@ -563,6 +594,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ClearRetainedRaiseByQuestId(questId);
+        }
+
+        public QuestRewardRaiseState DestroyWindowWithQuestId(int questId)
+        {
+            return DestroyByQuestId(questId);
         }
 
         public int QuestToItem(int questId)

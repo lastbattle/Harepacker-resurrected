@@ -102,6 +102,16 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
         }
+        public int RecentLiveOutboundPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentOutboundPackets.Count(IsLiveProxiedSource);
+                }
+            }
+        }
         public int PendingPacketCount => _pendingClientPackets.Count;
         internal bool HasObservedLiveOutboundOpcode160 => _hasObservedLiveOutboundOpcode160;
         internal bool HasObservedLiveInboundOpcode371 => _hasObservedLiveInboundOpcode371;
@@ -121,6 +131,16 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
         }
+        public int RecentLiveInboundPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentInboundPackets.Count(IsLiveProxiedSource);
+                }
+            }
+        }
         public string LastStatus { get; private set; } = "Rock-Paper-Scissors official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -134,11 +154,11 @@ namespace HaCreator.MapSimulator.Managers
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
             string outboundHistory = RecentOutboundPacketCount == 0
-                ? "no captured client opcode 160 history"
-                : $"{RecentOutboundPacketCount} captured client opcode 160 packet(s)";
+                ? "no opcode 160 outbound trace history"
+                : $"{RecentOutboundPacketCount} opcode 160 outbound trace(s), {RecentLiveOutboundPacketCount} live proxied";
             string inboundHistory = RecentInboundPacketCount == 0
-                ? "no captured server opcode 371 history"
-                : $"{RecentInboundPacketCount} captured server opcode 371 packet(s)";
+                ? "no opcode 371 inbound trace history"
+                : $"{RecentInboundPacketCount} opcode 371 inbound trace(s), {RecentLiveInboundPacketCount} live proxied";
             string guidance = DescribeSessionControlGuidance();
             string verification = DescribeLiveOwnershipVerificationStatus(
                 HasConnectedSession,
@@ -882,8 +902,6 @@ namespace HaCreator.MapSimulator.Managers
             if (TryBuildInboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out InboundPacketTrace inboundTrace))
             {
                 RecordInboundTrace(inboundTrace);
-                _hasObservedLiveInboundOpcode371 = true;
-                _liveInboundOpcode371Evidence = inboundTrace;
             }
 
             _pendingMessages.Enqueue(message);
@@ -902,8 +920,6 @@ namespace HaCreator.MapSimulator.Managers
             if (TryBuildOutboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out OutboundPacketTrace trace))
             {
                 RecordOutboundTrace(trace);
-                _hasObservedLiveOutboundOpcode160 = true;
-                _liveOutboundOpcode160Evidence = trace;
                 ForwardedOutboundCount++;
                 LastStatus = $"Forwarded live Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)trace.RequestType} from {e.SourceEndpoint}.";
                 return;
@@ -1138,6 +1154,12 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     _recentOutboundPackets.RemoveAt(0);
                 }
+
+                if (IsLiveProxiedSource(trace.Source))
+                {
+                    _hasObservedLiveOutboundOpcode160 = true;
+                    _liveOutboundOpcode160Evidence = trace;
+                }
             }
         }
 
@@ -1150,7 +1172,29 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     _recentInboundPackets.RemoveAt(0);
                 }
+
+                if (IsLiveProxiedSource(trace.Source))
+                {
+                    _hasObservedLiveInboundOpcode371 = true;
+                    _liveInboundOpcode371Evidence = trace;
+                }
             }
+        }
+
+        private static bool IsLiveProxiedSource(OutboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace.Source);
+        }
+
+        private static bool IsLiveProxiedSource(InboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace.Source);
+        }
+
+        private static bool IsLiveProxiedSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
         }
         private static string NormalizeRemoteHost(string remoteHost)
         {

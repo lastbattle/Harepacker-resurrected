@@ -2111,15 +2111,43 @@ namespace HaCreator.MapSimulator.Effects
                 return relationshipRecord;
             }
 
-            bool ownerIsLowerCharacterId = ownerCharacterId <= matchedOwnerCharacterId;
+            bool packetOwnerIsCanonicalOwner = IsWeddingRelationshipPacketOwnerCanonicalOwner(
+                ownerCharacterId,
+                matchedOwnerCharacterId,
+                matchedRecord);
             return relationshipRecord with
             {
                 ItemId = relationshipRecord.ItemId > 0 ? relationshipRecord.ItemId : matchedRecord.ItemId,
-                ItemSerial = ownerIsLowerCharacterId ? ownerItemSerial.Value : matchedItemSerial.Value,
-                PairItemSerial = ownerIsLowerCharacterId ? matchedItemSerial.Value : ownerItemSerial.Value,
-                CharacterId = ownerIsLowerCharacterId ? ownerCharacterId : matchedOwnerCharacterId,
-                PairCharacterId = ownerIsLowerCharacterId ? matchedOwnerCharacterId : ownerCharacterId
+                ItemSerial = packetOwnerIsCanonicalOwner ? ownerItemSerial.Value : matchedItemSerial.Value,
+                PairItemSerial = packetOwnerIsCanonicalOwner ? matchedItemSerial.Value : ownerItemSerial.Value,
+                CharacterId = packetOwnerIsCanonicalOwner ? ownerCharacterId : matchedOwnerCharacterId,
+                PairCharacterId = packetOwnerIsCanonicalOwner ? matchedOwnerCharacterId : ownerCharacterId
             };
+        }
+
+        private static bool IsWeddingRelationshipPacketOwnerCanonicalOwner(
+            int packetOwnerCharacterId,
+            int matchedOwnerCharacterId,
+            RemoteUserRelationshipRecord matchedRecord)
+        {
+            int recoveredOwnerCharacterId = matchedRecord.CharacterId.GetValueOrDefault();
+            int recoveredPairCharacterId = matchedRecord.PairCharacterId.GetValueOrDefault();
+            if (recoveredOwnerCharacterId > 0 || recoveredPairCharacterId > 0)
+            {
+                if (recoveredOwnerCharacterId == packetOwnerCharacterId
+                    || recoveredPairCharacterId == matchedOwnerCharacterId)
+                {
+                    return true;
+                }
+
+                if (recoveredOwnerCharacterId == matchedOwnerCharacterId
+                    || recoveredPairCharacterId == packetOwnerCharacterId)
+                {
+                    return false;
+                }
+            }
+
+            return packetOwnerCharacterId <= matchedOwnerCharacterId;
         }
 
         private bool TryFindWeddingRelationshipRecord(

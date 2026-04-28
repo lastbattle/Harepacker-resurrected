@@ -1545,8 +1545,11 @@ namespace HaCreator.MapSimulator.UI
             string coreText = BuildJoypadClientCoreSummary(session);
             DrawWindowText(sprite, coreText, new Vector2(bounds.X + 6, bounds.Y + 2), new Color(255, 228, 151), 0.39f);
 
+            string nativeMapText = BuildJoypadClientNativeButtonMapSummary(session);
+            DrawWindowText(sprite, nativeMapText, new Vector2(bounds.X + 6, bounds.Y + 8), new Color(238, 238, 238), 0.34f);
+
             string extensionText = BuildJoypadExtensionSummary(session);
-            DrawWindowText(sprite, extensionText, new Vector2(bounds.X + 6, bounds.Y + 10), new Color(214, 214, 214), 0.37f);
+            DrawWindowText(sprite, extensionText, new Vector2(bounds.X + 6, bounds.Y + 14), new Color(214, 214, 214), 0.32f);
         }
 
         private void BeginSession()
@@ -3332,6 +3335,55 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"CUIJoyPad combos: {string.Join("  ", slots)}";
+        }
+
+        private static string BuildJoypadClientNativeButtonMapSummary(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return "Native slots: unavailable";
+            }
+
+            if (!TryBuildClientJoypadNativeButtonMap(
+                    session,
+                    out int[] nativeButtonMap,
+                    out InputAction firstAction,
+                    out InputAction duplicateAction,
+                    out int duplicateItemNumber))
+            {
+                return $"Native slots: duplicate {FormatClientJoypadButtonItem(duplicateItemNumber)} on {FormatActionLabel(firstAction)} / {FormatActionLabel(duplicateAction)}";
+            }
+
+            return BuildJoypadClientNativeButtonMapSummaryCore(nativeButtonMap);
+        }
+
+        internal static string BuildJoypadClientNativeButtonMapSummaryForTests(IReadOnlyList<int> nativeButtonMap)
+        {
+            return BuildJoypadClientNativeButtonMapSummaryCore(nativeButtonMap);
+        }
+
+        private static string BuildJoypadClientNativeButtonMapSummaryCore(IReadOnlyList<int> nativeButtonMap)
+        {
+            if (nativeButtonMap == null || nativeButtonMap.Count == 0)
+            {
+                return "Native slots: none";
+            }
+
+            List<string> populatedSlots = new(nativeButtonMap.Count);
+            for (int i = 0; i < nativeButtonMap.Count && i < JoypadClientSelectableButtonCount; i++)
+            {
+                int comboControlNumber = nativeButtonMap[i];
+                if (comboControlNumber <= 0)
+                {
+                    continue;
+                }
+
+                populatedSlots.Add($"{FormatClientJoypadButtonItem(i + 1)}=>{JoypadClientComboFirstId + comboControlNumber - 1}");
+            }
+
+            return populatedSlots.Count == 0
+                ? "Native slots: none"
+                : $"Native slots: {string.Join("  ", populatedSlots)}";
         }
 
         private static string BuildJoypadExtensionSummary(JoypadSessionSnapshot session)

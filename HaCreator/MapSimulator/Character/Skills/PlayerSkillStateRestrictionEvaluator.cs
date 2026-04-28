@@ -594,11 +594,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (IsConstrainedType40BoundJumpSkillId(skill.SkillId))
+            {
+                return true;
+            }
+
             if (skill.ClientInfoType == 40
                 && skill.CasterMove
                 && skill.AvailableInJumpingState
-                && (UsesBoundJumpActionProfile(skill)
-                    || IsConstrainedType40BoundJumpSkillId(skill.SkillId)))
+                && UsesBoundJumpActionProfile(skill))
             {
                 return true;
             }

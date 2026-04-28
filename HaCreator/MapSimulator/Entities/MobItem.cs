@@ -468,12 +468,10 @@ namespace HaCreator.MapSimulator.Entities
             MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
             if (frameMetadata == null)
             {
-                return GetBodyHitbox(tickCount);
+                return Rectangle.Empty;
             }
 
-            Rectangle bodyBounds = frameMetadata.BodyBounds.IsEmpty
-                ? frameMetadata.EffectiveBodyBounds
-                : frameMetadata.BodyBounds;
+            Rectangle bodyBounds = frameMetadata.ClientBodyBounds;
             return bodyBounds.IsEmpty
                 ? Rectangle.Empty
                 : TranslateMobBodyBoundsToWorld(bodyBounds);

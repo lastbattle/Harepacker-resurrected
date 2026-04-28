@@ -10357,7 +10357,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "npcutility",
                 "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
-                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
+                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
                 HandlePacketOwnedNpcUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "adminshop",

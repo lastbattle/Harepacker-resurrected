@@ -1178,7 +1178,7 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(2, "swingO1", 0, 120, move: new Point(-75, 0)),
                     CreateIndexedPiece(3, "swingO1", 1, 120),
                     CreateIndexedPiece(4, "swingO1", 2, 120, move: new Point(21, 0)),
-                    CreateIndexedPiece(5, "swingOF", 2, 120, move: new Point(0, -65)),
+                    CreateIndexedPiece(5, "swingOF", 2, 120, flip: true, move: new Point(0, -65)),
                     CreateIndexedPiece(6, "swingOF", 1, 90, move: new Point(0, -65)),
                     CreateIndexedPiece(7, "swingOF", 2, 90, move: new Point(0, -65)),
                     CreateIndexedPiece(8, "swingOF", 3, 300),
@@ -4677,5 +4677,4 @@ namespace HaCreator.MapSimulator.Character
         }
     }
 }
-
 

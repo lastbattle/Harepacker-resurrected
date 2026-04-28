@@ -261,6 +261,11 @@ namespace HaCreator.MapSimulator.Fields
                 }
                 if (ShouldSuppressLocalRankEntry(normalizedName))
                 {
+                    if (existingIndex >= 0)
+                    {
+                        _entries.RemoveAt(existingIndex);
+                        changed = true;
+                    }
                     continue;
                 }
                 int clampedScore = Math.Clamp(update.Score, 0, MaxScore);
@@ -274,7 +279,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
                 else
                 {
-                    _entries.Add(new AriantArenaScoreEntry(normalizedName, clampedScore, GetNextIconIndex()));
+                    _entries.Add(new AriantArenaScoreEntry(normalizedName, clampedScore));
                     changed = true;
                 }
             }
@@ -288,6 +293,7 @@ namespace HaCreator.MapSimulator.Fields
                         ? scoreCompare
                         : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
                 });
+                ReassignRankIconIndexes();
             }
 
             _scoreRefreshSerial++;
@@ -1198,9 +1204,16 @@ namespace HaCreator.MapSimulator.Fields
                 && string.Equals(actor.SourceTag, AriantRemoteSourceTag, StringComparison.OrdinalIgnoreCase);
         }
 
-        private int GetNextIconIndex()
+        private void ReassignRankIconIndexes()
         {
-            return Math.Clamp(_entries.Count, 0, MaxRankEntries - 1);
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                int iconIndex = i < MaxRankEntries ? i : -1;
+                if (_entries[i].IconIndex != iconIndex)
+                {
+                    _entries[i] = _entries[i] with { IconIndex = iconIndex };
+                }
+            }
         }
         private static string NormalizeRemoteActionName(string actionName)
         {

@@ -738,7 +738,9 @@ namespace HaCreator.MapSimulator.UI
                 message = ApplyPacketOwnedAdminShopOpenRejected(
                     AdminShopDialogClientParityText.GetOpenRejectedNotice(),
                     snapshot.NpcTemplateId,
-                    snapshot.CommodityCount);
+                    snapshot.CommodityCount,
+                    snapshot.TrailingByteCount,
+                    snapshot.TrailingPayloadSignature);
                 return true;
             }
 
@@ -1068,7 +1070,12 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        public string ApplyPacketOwnedAdminShopOpenRejected(string noticeText, int npcTemplateId = 0, int decodedItemCount = 0)
+        public string ApplyPacketOwnedAdminShopOpenRejected(
+            string noticeText,
+            int npcTemplateId = 0,
+            int decodedItemCount = 0,
+            int trailingByteCount = 0,
+            string trailingPayloadSignature = null)
         {
             _packetOwnedAdminShopRows.Clear();
             _packetOwnedAdminShopSellTemplates.Clear();
@@ -1078,7 +1085,9 @@ namespace HaCreator.MapSimulator.UI
                 outboundSummary,
                 "Packet 367 refusal closed the admin-shop unique-modeless owner.",
                 rejectedNpcTemplateId: npcTemplateId,
-                rejectedDecodedItemCount: decodedItemCount);
+                rejectedDecodedItemCount: decodedItemCount,
+                rejectedTrailingByteCount: trailingByteCount,
+                rejectedTrailingPayloadSignature: trailingPayloadSignature);
             ClearPendingPacketOwnedUserSellSnapshot();
             ClearPendingPacketOwnedWishlistRegister();
             ClearPendingPacketOwnedWishlistSearchRequest();
@@ -5147,12 +5156,6 @@ namespace HaCreator.MapSimulator.UI
             Dictionary<int, List<AdminShopEntry>> wishlistRowsByItemId = BuildWishlistRowsByItemId(
                 entry => MatchesWishlistCategory(entry, categoryKey)
                          && MatchesWishlistPriceRange(entry, priceRangeIndex));
-            if (wishlistRowsByItemId.Count == 0)
-            {
-                summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {packetRowCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog.";
-                return true;
-            }
-
             Dictionary<int, List<AdminShopEntry>> wishlistRowsByItemIdWithoutRequestedFilters = BuildWishlistRowsByItemId();
             HashSet<string> seenEntryKeys = new(StringComparer.Ordinal);
             Dictionary<int, int> itemCursorByItemId = new();
@@ -5481,7 +5484,10 @@ namespace HaCreator.MapSimulator.UI
                 AlreadyWishlisted = row?.AlreadyWishlisted.GetValueOrDefault() == true,
                 Score = int.MaxValue - rowIndex,
                 IsClientItemNameResult = false,
-                CanRegister = false,
+                CanRegister = AdminShopPacketOwnedWishlistSearchSessionParity.CanRegisterPacketAuthoredResult(
+                    sessionCurrent: true,
+                    registerItemId: resolvedItemId,
+                    alreadyWishlisted: row?.AlreadyWishlisted.GetValueOrDefault() == true),
                 IsPacketAuthored = true,
                 HasLiveCatalogBinding = false,
                 PacketServiceSessionId = snapshot?.ServiceSessionId ?? -1,

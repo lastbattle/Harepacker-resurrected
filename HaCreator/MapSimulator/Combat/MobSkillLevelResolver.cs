@@ -105,6 +105,54 @@ internal static class MobSkillLevelResolver
         return FindInheritedProperty(levelNode, level, propertyName) as WzSubProperty;
     }
 
+    public static int ResolveInheritedElementAttributeMask(WzSubProperty levelNode, int level)
+    {
+        WzImageProperty property = FindInheritedProperty(levelNode, level, "elemAttr");
+        string token = property is WzStringProperty stringProperty
+            ? stringProperty.Value
+            : MapleLib.WzLib.WzStructure.InfoTool.GetOptionalString(property);
+        return ResolveElementAttributeMask(token);
+    }
+
+    internal static int ResolveElementAttributeMask(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return 0;
+        }
+
+        int mask = 0;
+        string[] parts = token.Split(
+            new[] { ',', '|', '&', ' ', '/', '\\', ';', ':', '+', '(', ')', '[', ']', '{', '}', '-', '_' },
+            StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            parts = new[] { token };
+        }
+
+        for (int i = 0; i < parts.Length; i++)
+        {
+            string part = parts[i]?.Trim();
+            if (string.IsNullOrWhiteSpace(part))
+            {
+                continue;
+            }
+
+            if (TryResolveElementAttributeToken(part, out int partMask))
+            {
+                mask |= partMask;
+                continue;
+            }
+
+            if (TryResolveCompactElementAttributeToken(part, out int compactMask))
+            {
+                mask |= compactMask;
+            }
+        }
+
+        return mask & (1 | 2 | 4 | 8 | 16 | 32);
+    }
+
     public static int ResolveInheritedAreaRange(WzSubProperty levelNode, int level)
     {
         Point? lt = ResolveInheritedVector(levelNode, level, "lt");
@@ -117,6 +165,50 @@ internal static class MobSkillLevelResolver
         int horizontalRange = Math.Max(Math.Abs(lt.Value.X), Math.Abs(rb.Value.X));
         int verticalRange = Math.Max(Math.Abs(lt.Value.Y), Math.Abs(rb.Value.Y));
         return Math.Max(horizontalRange, verticalRange);
+    }
+
+    private static bool TryResolveElementAttributeToken(string token, out int mask)
+    {
+        if (int.TryParse(token, out int numericMask) && numericMask >= 0)
+        {
+            mask = numericMask;
+            return true;
+        }
+
+        mask = token?.Trim().ToLowerInvariant() switch
+        {
+            "f" or "fire" or "burn" or "blaze" => 1,
+            "i" or "ice" or "cold" or "freeze" or "frost" or "frostbite" => 2,
+            "l" or "lightning" or "thunder" => 4,
+            "s" or "poison" or "venom" => 8,
+            "h" or "holy" or "heal" or "light" => 16,
+            "d" or "dark" or "darkness" or "shadow" => 32,
+            _ => 0
+        };
+
+        return mask != 0;
+    }
+
+    private static bool TryResolveCompactElementAttributeToken(string token, out int mask)
+    {
+        mask = 0;
+        string compact = token?.Trim();
+        if (string.IsNullOrWhiteSpace(compact) || compact.Length > 6)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < compact.Length; i++)
+        {
+            if (!TryResolveElementAttributeToken(compact[i].ToString(), out int charMask))
+            {
+                return false;
+            }
+
+            mask |= charMask;
+        }
+
+        return mask != 0;
     }
 
     private static IEnumerable<int> EnumerateCandidateLevels(WzSubProperty levelNode, int level)

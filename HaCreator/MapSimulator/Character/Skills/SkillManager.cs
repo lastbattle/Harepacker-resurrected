@@ -5380,12 +5380,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int ResolveSkillSpecificShootAmmoItemId(int skillId, SkillLevelData levelData)
         {
-            if (levelData?.ProjectileItemConsume > 0)
-            {
-                return levelData.ProjectileItemConsume;
-            }
-
-            return skillId switch
+            int clientSpecialPelletItemId = skillId switch
             {
                 // `GetProperBulletPosition` first scans for the skill-owned elemental
                 // pellet family before falling back to ordinary non-elemental bullets.
@@ -5393,6 +5388,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 5211005 => 2332000,
                 _ => 0
             };
+            if (clientSpecialPelletItemId > 0)
+            {
+                return clientSpecialPelletItemId;
+            }
+
+            return levelData?.ProjectileItemConsume > 0
+                ? ClientShootAmmoResolver.NormalizeClientSpecialPelletRequiredAmmoItemId(levelData.ProjectileItemConsume)
+                : 0;
         }
 
         private static bool IsValidShootingWeaponForSkill(int skillId, int weaponCode)
@@ -6186,6 +6189,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (ClientOwnedVehicleSkillClassifier.IsWzOnlyMechanicVehicleOneTimeActionName(actionName)
+                || ClientOwnedVehicleSkillClassifier.IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(actionName))
+            {
+                return false;
+            }
+
             if (mechanicMount.TamingMobActionFrameOwner?.SupportsAction(mechanicMount, actionName) == true)
             {
                 return true;
@@ -6205,9 +6214,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "ladder2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool MechanicMountSupportsSkillActionForTesting(CharacterPart mechanicMount, string actionName)
+        {
+            return MechanicMountSupportsSkillAction(mechanicMount, actionName);
         }
 
         private static bool IsMechanicSkill(int skillId)
@@ -12066,6 +12078,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             // skill-id branches plus WZ-authored type-40 profiles. Other caster-move skills
             // such as Assaulter, Backspin Blow, and Corkscrew Blow publish movement-flavored
             // action names, but they remain outside `DoActiveSkill_BoundJump`.
+            if (IsConstrainedType40BoundJumpSkillId(skill?.SkillId ?? 0))
+            {
+                return true;
+            }
+
             if (skill?.ClientInfoType != 40)
             {
                 return false;
@@ -12074,7 +12091,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             candidateActions ??= EnumerateMovementActionCandidates(skill);
             return candidateActions.Any(IsConstrainedType40BoundJumpActionName)
                    || IsConstrainedType40BoundJumpActionName(movementActionName)
-                   || IsConstrainedType40BoundJumpSkillId(skill.SkillId)
                    || SkillTextContains(skill, "flash jump");
         }
 
@@ -12239,7 +12255,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return skill?.IsPrepareSkill == true
                    || skill?.IsKeydownSkill == true
-                   || skill?.ClientInfoType == 98;
+                   || (skill?.ClientInfoType == 98 && skill.HasStandaloneActiveCastSurface);
         }
 
         private static bool IsMovementDoActiveSkillFamily(SkillData skill)
@@ -14289,7 +14305,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (HasBoundJumpMovementProfile(skill))
             {
-                return skill.AvailableInJumpingState;
+                return skill.AvailableInJumpingState
+                       || IsConstrainedType40BoundJumpSkillId(skill.SkillId);
             }
 
             return false;
@@ -14877,8 +14894,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (targets.Count == 0)
                 return false;
 
-            TryNotifyLocalAttackAreaResolved(
+            Rectangle localAttackAreaWorldHitbox = ResolveLocalAttackOwnedAffectedAreaWorldHitbox(
                 worldHitbox,
+                GetMobHitbox(targets[0], currentTime),
+                skill.SkillId,
+                resolvedOwnerLane);
+            TryNotifyLocalAttackAreaResolved(
+                localAttackAreaWorldHitbox,
                 currentTime,
                 skill.SkillId,
                 resolvedOwnerLane,
@@ -16142,11 +16164,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                     RemoteAffectedAreaSupportResolver.ResolveDerivedProjectedOutgoingDamageRate(
                         buff.SkillData,
                         buff.LevelData);
-                if (outgoingDamagePercent <= 0)
-                {
-                    outgoingDamagePercent = Math.Max(0, buff.LevelData.X);
-                }
-
                 bestPercent = Math.Max(bestPercent, outgoingDamagePercent);
             }
 
@@ -16556,6 +16573,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             owner.EffectLayerAvailable = ShouldOwnNormalBulletEffectLayer(owner.Presentation)
                                          && owner.EffectLayerObjectId > 0
                                          && owner.EffectLayerParentObjectId > 0;
+            owner.EffectLayerRegisteredAnimationStartTime = ResolveNormalBulletEffectLayerAnimationStartTime(owner);
+            owner.EffectLayerRegisteredAnimationEndTime = ResolveNormalBulletEffectLayerAnimationEndTime(owner);
 
             projectile.BulletAnimationOwnerId = owner.Id;
             _bulletAnimationOwners.Add(owner);
@@ -18789,6 +18808,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int parentRepeatLayerObjectId = ResolveBulletAfterimageParentRepeatLayerObjectId(owner, previousLayer);
             int sourceLayerObjectId = ResolveBulletAfterimageSourceLayerObjectId(owner, previousLayer);
             int repeatAnimationEndTime = ResolveBulletAfterimageRepeatAnimationEndTime(currentTime, updateInterval);
+            int repeatAnimationStateObjectId = ResolveBulletAfterimageRepeatAnimationStateObjectId(repeatLayerObjectId);
             owner.AfterimageLayers.Add(new ProjectileAfterimageLayer
             {
                 RepeatLayerObjectId = repeatLayerObjectId,
@@ -18808,6 +18828,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Duration = ResolveBulletAfterimageRepeatDuration(currentTime, repeatAnimationEndTime),
                 RegisteredAnimationStartTime = currentTime,
                 RegisteredAnimationEndTime = repeatAnimationEndTime,
+                RegisteredAnimationStateObjectId = repeatAnimationStateObjectId,
                 AlphaStart = alphaStart,
                 AlphaEnd = 0,
                 AlphaVectorStart = alphaVectorStart,
@@ -18857,6 +18878,43 @@ namespace HaCreator.MapSimulator.Character.Skills
             return owner?.MainLayerObjectId > 0 && ShouldOwnNormalBulletEffectLayer(owner.Presentation)
                 ? owner.MainLayerObjectId
                 : 0;
+        }
+
+        internal static int ResolveNormalBulletEffectLayerAnimationStartTime(ActiveBulletAnimationOwner owner)
+        {
+            return owner?.EffectLayerAvailable == true && owner.Presentation != null
+                ? owner.Presentation.StartTime
+                : 0;
+        }
+
+        internal static int ResolveNormalBulletEffectLayerAnimationEndTime(ActiveBulletAnimationOwner owner)
+        {
+            if (owner?.EffectLayerAvailable != true || owner.Presentation == null)
+            {
+                return 0;
+            }
+
+            int effectDuration = ResolveBulletAnimationDurationMs(owner.Presentation.EffectAnimation);
+            return effectDuration > 0
+                ? Math.Min(owner.Presentation.EndTime, owner.Presentation.StartTime + effectDuration)
+                : owner.Presentation.EndTime;
+        }
+
+        internal static bool ShouldDrawNormalBulletEffectLayer(ActiveBulletAnimationOwner owner, int currentTime)
+        {
+            if (owner?.EffectLayerAvailable != true)
+            {
+                return false;
+            }
+
+            int startTime = owner.EffectLayerRegisteredAnimationStartTime;
+            int endTime = owner.EffectLayerRegisteredAnimationEndTime;
+            if (endTime <= startTime)
+            {
+                return owner.CanDrawMainAnimation(currentTime);
+            }
+
+            return currentTime >= startTime && currentTime < endTime;
         }
 
         internal static int ResolveBulletAfterimageRepeatLayerObjectId(ActiveBulletAnimationOwner owner)
@@ -18910,6 +18968,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static int ResolveBulletAfterimageRepeatAnimationEndTime(int currentTime, int updateInterval)
         {
             return currentTime + Math.Max(1, updateInterval);
+        }
+
+        internal static int ResolveBulletAfterimageRepeatAnimationStateObjectId(int repeatLayerObjectId)
+        {
+            return repeatLayerObjectId > 0
+                ? repeatLayerObjectId + 80000
+                : 0;
         }
 
         internal static int ResolveBulletAfterimageRepeatDuration(int startTime, int endTime)
@@ -24063,6 +24128,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && resolvedOwnerCount > 0;
         }
 
+        internal static Rectangle ResolveLocalAttackOwnedAffectedAreaWorldHitbox(
+            Rectangle attackWorldHitbox,
+            Rectangle targetWorldHitbox,
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane)
+        {
+            if (ShouldUseTargetBasedLocalAttackOwnedAffectedAreaBounds(skillId, ownerLane)
+                && targetWorldHitbox.Width > 0
+                && targetWorldHitbox.Height > 0)
+            {
+                return targetWorldHitbox;
+            }
+
+            return attackWorldHitbox;
+        }
+
+        private static bool ShouldUseTargetBasedLocalAttackOwnedAffectedAreaBounds(
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane)
+        {
+            // WZ: Skill/311.img/skill/3111003/info/rectBasedOnTarget = 1.
+            // Keep the target-bound shape scoped to the recovered explicit shoot owner.
+            return ownerLane == LocalAttackAreaOwnerLane.TryDoingShootAttack
+                   && skillId == 3111003;
+        }
+
         private void TryRegisterSecondaryFootholdOwner(Rectangle worldHitbox, int currentTime, int skillId)
         {
             if (_animationEffects == null || skillId <= 0)
@@ -26134,6 +26225,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     BuffStatType.AccuracyPercent => data.AccuracyPercent,
                     BuffStatType.Avoidability => data.EVA,
                     BuffStatType.AvoidabilityPercent => data.AvoidabilityPercent,
+                    BuffStatType.Craft => data.Craft,
                     BuffStatType.Speed => data.Speed,
                     BuffStatType.SpeedPercent => data.SpeedPercent,
                     BuffStatType.SpeedMax => data.SpeedMax,
@@ -28004,7 +28096,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Where(stat => stat != null && !string.IsNullOrWhiteSpace(stat.Label))
                 .GroupBy(stat => stat.Label, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-            if (!IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel))
+            if (!IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel)
+                && !IsAuthoredVehicleTransformMetadataCleanupContext(activeTemporaryStatsByLabel, levelData))
             {
                 return;
             }
@@ -28030,6 +28123,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static bool IsAuthoredVehicleTransformMetadataCleanupContext(
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel,
+            SkillLevelData levelData)
+        {
+            if (activeTemporaryStatsByLabel == null
+                || activeTemporaryStatsByLabel.Count == 0
+                || !activeTemporaryStatsByLabel.ContainsKey(TransformBuffLabel)
+                || !HasAuthoredTemporaryStatProperty(levelData, "morph", "prop"))
+            {
+                return false;
+            }
+
+            foreach (string activeLabel in activeTemporaryStatsByLabel.Keys)
+            {
+                if (string.IsNullOrWhiteSpace(activeLabel)
+                    || string.Equals(activeLabel, TransformBuffLabel, StringComparison.OrdinalIgnoreCase)
+                    || IsVehicleTransformSupportedTemporaryStatLabel(activeLabel))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
         private static bool IsVehicleTransformSupportedTemporaryStatLabel(string label)
         {
             return string.Equals(label, "PAD", StringComparison.OrdinalIgnoreCase)
@@ -28047,6 +28167,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(label, MapleWarriorBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, DebuffResistanceBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, AllStatsBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, DarkSightBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, InvincibleBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, StrengthBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, DexterityBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, IntelligenceBuffLabel, StringComparison.OrdinalIgnoreCase)
@@ -29680,6 +29802,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 BuffStatType.AccuracyPercent => levelData.AccuracyPercent,
                 BuffStatType.Avoidability => levelData.EVA,
                 BuffStatType.AvoidabilityPercent => levelData.AvoidabilityPercent,
+                BuffStatType.Craft => levelData.Craft,
                 BuffStatType.Speed => levelData.Speed,
                 BuffStatType.SpeedPercent => levelData.SpeedPercent,
                 BuffStatType.SpeedMax => levelData.SpeedMax,
@@ -32428,7 +32551,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Color.White);
 
             SkillFrame effectFrame = owner.Presentation.EffectAnimation?.GetFrameAtTime(animationTime);
-            if (owner.EffectLayerAvailable && effectFrame?.Texture != null)
+            if (ShouldDrawNormalBulletEffectLayer(owner, currentTime) && effectFrame?.Texture != null)
             {
                 DrawBulletAnimationOwnerFrame(
                     spriteBatch,

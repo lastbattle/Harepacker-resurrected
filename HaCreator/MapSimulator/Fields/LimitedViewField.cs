@@ -74,12 +74,14 @@ namespace HaCreator.MapSimulator.Fields
         internal enum ClientOwnedDrawViewrangeOperationKind
         {
             AcquireDarkLayerCanvas,
+            ResolvePreviousSmallDarkPatchRectangle,
             RestorePreviousSmallDarkPatch,
             ClearPreviousMaskHistory,
             ResolveLocalUserPosition,
             ResolveGraphicsCenter,
             QueryViewrangeCanvasDimensions,
             DrawDarkLayerFallback,
+            ResolveViewrangeCopyRectangles,
             CopyLocalViewrange,
             EvaluateShareViewRemoteLoop,
             SkipRemoteViewrangeBecauseShareViewDisabled,
@@ -1110,6 +1112,12 @@ namespace HaCreator.MapSimulator.Fields
                 for (int i = 0; i < previousMaskTopLefts.Count; i++)
                 {
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
+                        ClientOwnedDrawViewrangeOperationKind.ResolvePreviousSmallDarkPatchRectangle,
+                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
+                        i,
+                        sourceWidth: sourceWidth,
+                        sourceHeight: sourceHeight));
+                    operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch,
                         NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
                         i));
@@ -1164,6 +1172,13 @@ namespace HaCreator.MapSimulator.Fields
                         i));
                 }
 
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles,
+                    NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[i]),
+                    i,
+                    sourceWidth: sourceWidth,
+                    sourceHeight: sourceHeight,
+                    usesRemoveAlphaCopy: true));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     copyKind,
                     NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[i]),
@@ -1365,9 +1380,11 @@ namespace HaCreator.MapSimulator.Fields
                 switch (operation.Kind)
                 {
                     case ClientOwnedDrawViewrangeOperationKind.AcquireDarkLayerCanvas:
+                    case ClientOwnedDrawViewrangeOperationKind.ResolvePreviousSmallDarkPatchRectangle:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveLocalUserPosition:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveGraphicsCenter:
                     case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions:
+                    case ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles:
                     case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseLocalUserMissing:

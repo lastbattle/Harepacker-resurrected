@@ -147,6 +147,7 @@ namespace HaCreator.MapSimulator.Interaction
             ApspSendContextToken = resolvedCharacterId;
             ResetRadioCreateLayerState(resolvedCharacterId);
             ResetRadioScheduleState(resolvedCharacterId);
+            ResetRevivePremiumSafetyCharmState(resolvedCharacterId);
             ClearChairContext();
             ClearQuestDeliveryItemPosContext(resolvedCharacterId);
         }

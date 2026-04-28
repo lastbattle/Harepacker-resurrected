@@ -3134,7 +3134,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     pieceActionName,
                     GetInt(pieceNode, "frame"),
                     pieceNode["delay"] != null ? GetInt(pieceNode, "delay") : ShadowPartnerClientActionResolver.ClientActionManInitDefaultPieceDelayMs,
-                    GetInt(pieceNode, "flip") != 0,
+                    ResolveShadowPartnerClientActionPieceFlip(pieceNode),
                     GetVector(pieceNode, "move"),
                     GetInt(pieceNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
@@ -3150,7 +3150,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     pieceOwnerNode["action"]?.GetString(),
                     GetInt(pieceOwnerNode, "frame"),
                     pieceOwnerNode["delay"] != null ? GetInt(pieceOwnerNode, "delay") : ShadowPartnerClientActionResolver.ClientActionManInitDefaultPieceDelayMs,
-                    GetInt(pieceOwnerNode, "flip") != 0,
+                    ResolveShadowPartnerClientActionPieceFlip(pieceOwnerNode),
                     GetVector(pieceOwnerNode, "move"),
                     GetInt(pieceOwnerNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
@@ -3239,6 +3239,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static bool ResolveShadowPartnerClientActionPieceFlip(WzImageProperty pieceNode)
+        {
+            if (pieceNode == null)
+            {
+                return false;
+            }
+
+            if (pieceNode["flip"] != null)
+            {
+                return GetInt(pieceNode, "flip") != 0;
+            }
+
+            // Character/00002000/fatalBlow/5 publishes the client-init flip flag as
+            // `filp`; keep it in the loader parser instead of normalizing the WZ row.
+            return pieceNode["filp"] != null && GetInt(pieceNode, "filp") != 0;
         }
 
         private static int ResolveShadowPartnerClientActionPieceSlotIndex(string pieceName, int fallbackSlotIndex)
@@ -6203,6 +6220,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             WzImageProperty tableNode = node[propertyName];
+            foreach (ClientSummonedUolCandidateValue recordCandidate in EnumerateClientSummonedUolTableRecordCandidateValues(
+                         tableNode,
+                         node,
+                         skillNode,
+                         propertyName,
+                         skillId))
+            {
+                yield return recordCandidate;
+            }
+
             foreach (WzImageProperty tableEntry in EnumerateClientSummonedUolTableEntryNodes(tableNode, skillId))
             {
                 string entryRelativePath = BuildClientSummonedUolTableEntryRelativePath(
@@ -6238,6 +6265,87 @@ namespace HaCreator.MapSimulator.Character.Skills
                         BuildResolvedClientSummonedUolNestedPathParts(entryPathParts, tableValue.RelativePath));
                 }
             }
+        }
+
+        private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolTableRecordCandidateValues(
+            WzImageProperty tableNode,
+            WzImageProperty contextNode,
+            WzImageProperty skillNode,
+            string propertyName,
+            int skillId)
+        {
+            if (tableNode?.WzProperties == null || skillId <= 0)
+            {
+                yield break;
+            }
+
+            foreach ((WzImageProperty Property, string RelativePath) recordLeaf in EnumerateClientSummonedUolTableRecordLeaves(
+                         tableNode,
+                         relativePathPrefix: string.Empty,
+                         depthRemaining: ClientSummonedUolTableEntryTraversalDepth))
+            {
+                string value = GetClientSummonedUolCandidateValue(recordLeaf.Property);
+                if (string.IsNullOrWhiteSpace(value)
+                    || !ClientSummonedUolTableRecordReferencesSkill(value, skillId))
+                {
+                    continue;
+                }
+
+                string relativePath = string.IsNullOrWhiteSpace(recordLeaf.RelativePath)
+                    ? propertyName
+                    : $"{propertyName}/{recordLeaf.RelativePath}";
+                yield return new ClientSummonedUolCandidateValue(
+                    value,
+                    BuildClientSummonedUolCandidateContextPathParts(contextNode, relativePath, skillNode));
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Property, string RelativePath)> EnumerateClientSummonedUolTableRecordLeaves(
+            WzImageProperty node,
+            string relativePathPrefix,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || depthRemaining <= 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
+                    ? child.Name
+                    : $"{relativePathPrefix}/{child.Name}";
+                if (IsClientSummonedUolCandidateValueProperty(child)
+                    && !IsClientSummonedUolTableEntryValueName(child.Name)
+                    && !TryParseRequiredSkillId(child.Name, out _))
+                {
+                    yield return (child, relativePath);
+                }
+
+                foreach ((WzImageProperty Property, string RelativePath) nestedLeaf in EnumerateClientSummonedUolTableRecordLeaves(
+                             child,
+                             relativePath,
+                             depthRemaining - 1))
+                {
+                    yield return nestedLeaf;
+                }
+            }
+        }
+
+        private static bool ClientSummonedUolTableRecordReferencesSkill(string value, int skillId)
+        {
+            if (string.IsNullOrWhiteSpace(value) || skillId <= 0)
+            {
+                return false;
+            }
+
+            string skillIdText = skillId.ToString(CultureInfo.InvariantCulture);
+            return ContainsClientSummonedUolTableSkillIdToken(value, skillIdText);
         }
 
         private static IEnumerable<(WzImageProperty Property, string RelativePath, bool UseNameAsValue)> EnumerateClientSummonedUolTableEntryValues(
@@ -8561,7 +8669,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             yield return value;
-            foreach (string token in value.Split(new[] { '&', '|', ',', ';', '=', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (string token in value.Split(new[] { '&', '|', ',', ';', '=', ':', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string trimmedToken = ExtractEmbeddedClientSummonedUolPathToken(token);
                 if (!string.IsNullOrWhiteSpace(trimmedToken))
@@ -10369,17 +10477,43 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AddActionNames(actionNames, seen, GetActionNames(skillNode));
             }
 
-            foreach (WzImageProperty child in skillNode?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            foreach (WzImageProperty actionNode in EnumerateNestedMorphActionNodes(skillNode))
             {
-                if (child == null || string.Equals(child.Name, "action", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                AddActionNames(actionNames, seen, GetActionNamesFromActionNode(child["action"]));
+                AddActionNames(actionNames, seen, GetActionNamesFromActionNode(actionNode));
             }
 
             return actionNames;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateNestedMorphActionNodes(WzImageProperty skillNode)
+        {
+            if (skillNode?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            var stack = new Stack<WzImageProperty>(
+                skillNode.WzProperties
+                    .Where(static child => child != null)
+                    .Reverse());
+
+            while (stack.Count > 0)
+            {
+                WzImageProperty node = stack.Pop();
+                if (string.Equals(node.Name, "action", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return node;
+                    continue;
+                }
+
+                foreach (WzImageProperty child in node.WzProperties?
+                             .Where(static child => child != null)
+                             .Reverse()
+                         ?? Enumerable.Empty<WzImageProperty>())
+                {
+                    stack.Push(child);
+                }
+            }
         }
 
         internal static IReadOnlyList<string> GetMorphTemplateRequestedActionNamesForTesting(
@@ -10680,6 +10814,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.DEX = GetInt(node, "dex", 0, level);
             levelData.INT = GetInt(node, "int", 0, level);
             levelData.LUK = GetInt(node, "luk", 0, level);
+            levelData.Craft = GetInt(node, "incCraft", 0, level);
             levelData.ACC = GetInt(node, "acc", 0, level);
             levelData.EVA = GetInt(node, "eva", 0, level);
             levelData.Speed = GetInt(node, "speed", 0, level);
@@ -10770,6 +10905,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.DEX = PreferPrimaryStat(levelData.DEX, GetInt(node, "dexX", 0, level));
             levelData.INT = PreferPrimaryStat(levelData.INT, GetInt(node, "intX", 0, level));
             levelData.LUK = PreferPrimaryStat(levelData.LUK, GetInt(node, "lukX", 0, level));
+            levelData.Craft = PreferPrimaryStat(levelData.Craft, GetInt(node, "craft", 0, level));
+            levelData.Craft = PreferPrimaryStat(levelData.Craft, GetInt(node, "craftX", 0, level));
+            levelData.Craft = PreferPrimaryStat(levelData.Craft, GetInt(node, "incCraft", 0, level));
             int avoidabilityRateAlias = GetInt(node, "er", 0, level);
             if (ResolveDescriptionBackedNamedPercentAlias(
                     skill,

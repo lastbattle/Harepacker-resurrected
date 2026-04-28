@@ -68,15 +68,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             35101009,
             SG88SkillId
         };
-        private static readonly HashSet<int> AuthoredKeydownWithoutClientLayerSkillIds = new()
+        private static readonly HashSet<int> PrepareWithoutClientKeyDownLayerSkillIds = new()
         {
             23121000,
             24121000,
             24121005,
             31001000,
             31101000,
+            31101002,
             31111005,
-            5721001
+            5721001,
+            9001020
         };
         private static readonly HashSet<int> ClientMaxGaugeTimeSkillIds = new()
         {
@@ -206,7 +208,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool IsSupportedKeyDownSkill(int skillId)
         {
-            if (AuthoredKeydownWithoutClientLayerSkillIds.Contains(skillId))
+            if (PrepareWithoutClientKeyDownLayerSkillIds.Contains(skillId))
             {
                 return false;
             }
@@ -222,7 +224,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (AuthoredKeydownWithoutClientLayerSkillIds.Contains(skillId))
+            if (PrepareWithoutClientKeyDownLayerSkillIds.Contains(skillId))
             {
                 return false;
             }
@@ -245,13 +247,19 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool ShouldShowLocalPreparedSkillHud(int skillId, bool resolvedAsKeydownSkill)
         {
-            if (!ResolveProfile(skillId).Visible)
-            {
-                return false;
-            }
+            return ShouldShowPreparedSkillHud(skillId, resolvedAsKeydownSkill);
+        }
 
-            return resolvedAsKeydownSkill
-                || NonKeyDownPreparedReleaseSkillIds.Contains(skillId);
+        public static bool ShouldShowRemotePreparedSkillHud(int skillId, bool resolvedAsKeydownSkill)
+        {
+            return ShouldShowPreparedSkillHud(skillId, resolvedAsKeydownSkill);
+        }
+
+        private static bool ShouldShowPreparedSkillHud(int skillId, bool resolvedAsKeydownSkill)
+        {
+            return ResolveProfile(skillId).Visible
+                && (resolvedAsKeydownSkill
+                    || NonKeyDownPreparedReleaseSkillIds.Contains(skillId));
         }
 
         public static bool TryResolveClientKeyDownEndSkillEffectRequestId(int skillId, out int effectSkillId)

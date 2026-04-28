@@ -508,6 +508,7 @@ namespace HaCreator.MapSimulator.AI
 
             if (!canTargetPlayer)
             {
+                _autoAggro = false;
                 _target.IsValid = false;
                 _target.Distance = float.MaxValue;
                 _isAggroed = false;

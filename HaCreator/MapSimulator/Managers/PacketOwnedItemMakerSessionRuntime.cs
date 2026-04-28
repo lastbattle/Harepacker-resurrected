@@ -283,8 +283,15 @@ namespace HaCreator.MapSimulator.Managers
                         "Maker-session hidden recipe",
                         out hiddenEntries))
                 {
-                    error = "Maker-session hidden recipe entries are truncated or invalid.";
-                    return false;
+                    if (hiddenEncoding != HiddenRecipeEntryEncoding.OutputOnly
+                        || !TryReadRemainingCountlessOutputOnlyHiddenRecipeEntries(
+                            reader,
+                            requirePositiveOutputItemId: true,
+                            out hiddenEntries))
+                    {
+                        error = "Maker-session hidden recipe entries are truncated or invalid.";
+                        return false;
+                    }
                 }
             }
 
@@ -423,7 +430,14 @@ namespace HaCreator.MapSimulator.Managers
                         out hiddenEntries,
                         useByteCount: useByteCounts))
                 {
-                    continue;
+                    if (hiddenEncoding != HiddenRecipeEntryEncoding.OutputOnly
+                        || !TryReadRemainingCountlessOutputOnlyHiddenRecipeEntries(
+                            reader,
+                            requirePositiveOutputItemId: true,
+                            out hiddenEntries))
+                    {
+                        continue;
+                    }
                 }
 
                 if (reader.BaseStream.Position != reader.BaseStream.Length)
@@ -1829,6 +1843,70 @@ namespace HaCreator.MapSimulator.Managers
             catch (InvalidDataException)
             {
                 entries = null;
+                return false;
+            }
+        }
+
+        private static bool TryReadRemainingCountlessOutputOnlyHiddenRecipeEntries(
+            BinaryReader reader,
+            bool requirePositiveOutputItemId,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            entries = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                long remainingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
+                if (remainingBytes <= 0 || remainingBytes % sizeof(int) != 0)
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                int count = checked((int)(remainingBytes / sizeof(int)));
+                entries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    int outputItemId = reader.ReadInt32();
+                    if (requirePositiveOutputItemId && outputItemId <= 0)
+                    {
+                        entries = null;
+                        reader.BaseStream.Position = startPosition;
+                        return false;
+                    }
+
+                    entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(-1, outputItemId));
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                entries = null;
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (IOException)
+            {
+                entries = null;
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                entries = null;
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (OverflowException)
+            {
+                entries = null;
+                reader.BaseStream.Position = startPosition;
                 return false;
             }
         }

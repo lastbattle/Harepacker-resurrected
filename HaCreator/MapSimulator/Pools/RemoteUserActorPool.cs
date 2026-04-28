@@ -286,7 +286,7 @@ namespace HaCreator.MapSimulator.Pools
             public int NextSampleTime { get; set; }
             public bool TerminateRequested { get; private set; }
             public bool IsTerminated { get; private set; }
-            public IReadOnlyDictionary<AvatarRenderLayer, int> SimulatedLayerHandleIds { get; init; } =
+            public IReadOnlyDictionary<AvatarRenderLayer, int> SimulatedLayerHandleIds { get; set; } =
                 new Dictionary<AvatarRenderLayer, int>();
             public IReadOnlyDictionary<AvatarRenderLayer, int> SimulatedLayerHandleRefCounts { get; private set; } =
                 new Dictionary<AvatarRenderLayer, int>();
@@ -295,6 +295,10 @@ namespace HaCreator.MapSimulator.Pools
             public void CaptureRegisteredLayerReferences()
             {
                 SimulatedOverlayLayerHandleRefCount = SimulatedOverlayLayerHandleId > 0 ? 1 : 0;
+                SimulatedLayerHandleIds = SimulatedLayerHandleIds?
+                    .Where(static entry => entry.Value > 0)
+                    .ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                    ?? new Dictionary<AvatarRenderLayer, int>();
                 SimulatedLayerHandleRefCounts = SimulatedLayerHandleIds?
                     .Where(static entry => entry.Value > 0)
                     .ToDictionary(static entry => entry.Key, static _ => 1)
@@ -318,11 +322,23 @@ namespace HaCreator.MapSimulator.Pools
         {
             public int ItemId { get; init; }
             public ItemEffectAnimationSet Effect { get; init; }
+            public int SimulatedOwnerLayerHandleId { get; init; }
+            public int SimulatedOwnerLayerHandleRefCount { get; private set; }
             public int AnimationStartTime { get; init; }
             public Vector2 WorldOrigin { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public bool FollowOwner { get; init; }
+
+            public void CaptureRegisteredLayerReference()
+            {
+                SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
+            }
+
+            public void MarkTerminated()
+            {
+                SimulatedOwnerLayerHandleRefCount = 0;
+            }
         }
 
         public sealed class RemoteDragonCompanionPresentationState
@@ -3774,9 +3790,12 @@ namespace HaCreator.MapSimulator.Pools
             int hpDelta,
             int? packetSkillId)
         {
-            // Client `CUserRemote::OnHit` reserves `nHPDamage == -1` for an explicit packet skill id.
-            // The WZ `info/condition = damaged` fallback should only emulate a real damage branch.
-            return hpDelta > 0 && packetSkillId.GetValueOrDefault() <= 0;
+            // Client `CUserRemote::OnHit` reserves `nHPDamage == -1` for the
+            // dedicated explicit packet skill-id tail handled before this path.
+            // Ordinary HP-damage packets do not scan active temporary stats for WZ
+            // `info/condition = damaged` rows; those chance owners stay local to
+            // `CUserLocal::SetDamaged`.
+            return false;
         }
 
         internal static int ResolveRemoteHitDamageReactiveRandomRollPercentForParity(RemoteUserHitPacket packet)
@@ -5040,7 +5059,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             return actor?.IsVisibleInWorld == true
                 && !actor.HiddenLikeClient
-                && actor.PreparedSkill != null;
+                && actor.PreparedSkill != null
+                && PreparedSkillHudRules.ShouldShowRemotePreparedSkillHud(
+                    actor.PreparedSkill.SkillId,
+                    actor.PreparedSkill.IsKeydownSkill);
         }
 
         internal static bool ShouldIncludePreparedSkillWorldOverlayForTesting(
@@ -5050,7 +5072,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             return isVisibleInWorld
                 && !hiddenLikeClient
-                && prepared != null;
+                && prepared != null
+                && PreparedSkillHudRules.ShouldShowRemotePreparedSkillHud(
+                    prepared.SkillId,
+                    prepared.IsKeydownSkill);
         }
 
         private StatusBarPreparedSkillRenderData BuildPreparedSkillWorldOverlay(RemoteUserActor actor, int currentTime, int bufferIndex)
@@ -8179,6 +8204,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 ItemId = itemId,
                 Effect = effect,
+                SimulatedOwnerLayerHandleId = NextRemoteActiveEffectItemEffectLayerHandleId(),
                 AnimationStartTime = hasRestoredAnimationElapsed
                     ? unchecked(currentTime - restoredAnimationElapsedMs)
                     : currentTime,
@@ -8187,6 +8213,7 @@ namespace HaCreator.MapSimulator.Pools
                 OwnerFacingRight = ownerFacingRight,
                 FollowOwner = followOwner
             };
+            actor.ActiveEffectItemEffect.CaptureRegisteredLayerReference();
             return true;
         }
 
@@ -8257,6 +8284,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
+            actor.ActiveEffectItemEffect?.MarkTerminated();
             actor.ActiveEffectItemEffect = null;
         }
 
@@ -8610,6 +8638,11 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteActiveEffectItemEffectLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         internal static IReadOnlyDictionary<AvatarRenderLayer, int> CreateRemoteActiveEffectMotionBlurLayerHandleIdsForTesting()
         {
             return CreateRemoteActiveEffectMotionBlurLayerHandleIds();
@@ -8623,6 +8656,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteActiveEffectMotionBlurLayerHandleIdForTesting()
         {
             return NextRemoteActiveEffectMotionBlurLayerHandleId();
+        }
+
+        internal static int NextRemoteActiveEffectItemEffectLayerHandleIdForTesting()
+        {
+            return NextRemoteActiveEffectItemEffectLayerHandleId();
         }
 
         internal static bool IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMapForTesting(

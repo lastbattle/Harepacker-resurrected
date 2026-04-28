@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyAuthorityState _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
         private FamilyInfoPacketSnapshot _lastInfoPacketSnapshot;
         private PendingFamilyPrivilegeRequest _pendingPrivilegeRequest;
+        private PendingFamilyManagementRequest _pendingManagementRequest;
         private bool _queuedPrivilegeTeleport;
         private Vector2 _queuedPrivilegeTeleportPosition;
         private string _queuedPrivilegeTeleportMessage = string.Empty;
@@ -305,32 +306,17 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"{selectedMember.Name} cannot register another junior in the simulator roster.";
             }
 
-            FamilyRecruitSeed recruit = _juniorSeeds.Count > 0
-                ? _juniorSeeds.Dequeue()
-                : new FamilyRecruitSeed($"Junior {_members.Count + 1}", "Adventurer", 18 + _members.Count, "Family Hall", true, new Vector2(180f + (_members.Count * 12f), -30f));
-            int nextId = _members.Keys.Max() + 1;
+            FamilyRecruitSeed recruit = PeekNextJuniorSeed();
+            if (RequiresPacketOwnedManagementCompletion())
+            {
+                _pendingManagementRequest = PendingFamilyManagementRequest.CreateJuniorEntry(
+                    selectedMember.Id,
+                    selectedMember.Name,
+                    recruit);
+                return $"Sent a packet-shaped junior-entry request for {recruit.Name} under {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` before mutating the family roster.";
+            }
 
-            FamilyMemberState newJunior = new(
-                nextId,
-                recruit.Name,
-                recruit.JobName,
-                recruit.Level,
-                recruit.LocationSummary,
-                selectedMember.Id,
-                65 + (selectedMember.Children.Count * 15),
-                12 + selectedMember.Children.Count,
-                recruit.IsOnline,
-                recruit.SimulatedPosition);
-            _members[newJunior.Id] = newJunior;
-            selectedMember.Children.Add(newJunior.Id);
-            selectedMember.CurrentReputation += 30;
-            selectedMember.TodayReputation += 8;
-            _selectedMemberId = newJunior.Id;
-            _selectedEmptyTreeSlot = -1;
-
-            string message = $"{newJunior.Name} was registered under {selectedMember.Name}.";
-            NotifySocialChatObserved(message);
-            return message;
+            return ApplyJuniorRegistration(selectedMember, DequeueNextJuniorSeed());
         }
 
         internal string RemoveSelectedMember()
@@ -348,26 +334,15 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"{selectedMember.Name} cannot be removed from the simulator family tree.";
             }
 
-            List<int> branchMembers = new();
-            CollectBranchMemberIds(selectedMember.Id, branchMembers);
-            foreach (int memberId in branchMembers.OrderByDescending(GetDepth))
+            if (RequiresPacketOwnedManagementCompletion())
             {
-                if (_members.TryGetValue(memberId, out FamilyMemberState member))
-                {
-                    if (member.ParentId.HasValue && _members.TryGetValue(member.ParentId.Value, out FamilyMemberState parent))
-                    {
-                        parent.Children.Remove(memberId);
-                    }
-
-                    _members.Remove(memberId);
-                }
+                _pendingManagementRequest = PendingFamilyManagementRequest.CreateRemove(
+                    selectedMember.Id,
+                    selectedMember.Name);
+                return $"Sent a packet-shaped family removal request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` before mutating the family roster.";
             }
 
-            _selectedMemberId = LocalPlayerId;
-            _selectedEmptyTreeSlot = -1;
-            string message = $"Removed {selectedMember.Name}'s simulator family branch.";
-            NotifySocialChatObserved(message);
-            return message;
+            return RemoveSelectedMemberCore(selectedMember);
         }
 
         internal string CyclePrecept()
@@ -384,7 +359,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return BuildAuthorityBlockedMessage("edit the family precept");
             }
 
-            return SetPreceptCore(precept, packetAuthored: false);
+            string resolvedPrecept = NormalizePrecept(precept);
+            if (RequiresPacketOwnedManagementCompletion())
+            {
+                _pendingManagementRequest = PendingFamilyManagementRequest.CreatePrecept(resolvedPrecept);
+                return string.IsNullOrWhiteSpace(resolvedPrecept)
+                    ? "Sent a packet-shaped request to clear the family precept. Await `CWvsContext::OnFamilyResult` before updating the compact Family window."
+                    : $"Sent a packet-shaped family precept request: {resolvedPrecept}. Await `CWvsContext::OnFamilyResult` before updating the compact Family window.";
+            }
+
+            return SetPreceptCore(resolvedPrecept, packetAuthored: false);
         }
 
         internal string SetPreceptFromPacket(string precept)
@@ -663,13 +647,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string SetPreceptCore(string precept, bool packetAuthored)
         {
-            string resolvedPrecept = string.IsNullOrWhiteSpace(precept)
-                ? string.Empty
-                : precept.Trim();
-            if (resolvedPrecept.Length > 200)
-            {
-                resolvedPrecept = resolvedPrecept[..200].TrimEnd();
-            }
+            string resolvedPrecept = NormalizePrecept(precept);
 
             _familyPrecept = resolvedPrecept;
             if (string.IsNullOrWhiteSpace(_familyPrecept))
@@ -683,6 +661,111 @@ namespace HaCreator.MapSimulator.Interaction
             return packetAuthored
                 ? $"Set the packet-authored family precept to: {_familyPrecept}"
                 : $"Set the simulator family precept to: {_familyPrecept}";
+        }
+
+        private string ApplyJuniorRegistration(FamilyMemberState selectedMember, FamilyRecruitSeed recruit)
+        {
+            int nextId = _members.Count == 0 ? LocalPlayerId : _members.Keys.Max() + 1;
+
+            FamilyMemberState newJunior = new(
+                nextId,
+                recruit.Name,
+                recruit.JobName,
+                recruit.Level,
+                recruit.LocationSummary,
+                selectedMember.Id,
+                65 + (selectedMember.Children.Count * 15),
+                12 + selectedMember.Children.Count,
+                recruit.IsOnline,
+                recruit.SimulatedPosition);
+            _members[newJunior.Id] = newJunior;
+            selectedMember.Children.Add(newJunior.Id);
+            selectedMember.CurrentReputation += 30;
+            selectedMember.TodayReputation += 8;
+            _selectedMemberId = newJunior.Id;
+            _selectedEmptyTreeSlot = -1;
+
+            string message = $"{newJunior.Name} was registered under {selectedMember.Name}.";
+            NotifySocialChatObserved(message);
+            return message;
+        }
+
+        private string RemoveSelectedMemberCore(FamilyMemberState selectedMember)
+        {
+            List<int> branchMembers = new();
+            CollectBranchMemberIds(selectedMember.Id, branchMembers);
+            foreach (int memberId in branchMembers.OrderByDescending(GetDepth))
+            {
+                if (_members.TryGetValue(memberId, out FamilyMemberState member))
+                {
+                    if (member.ParentId.HasValue && _members.TryGetValue(member.ParentId.Value, out FamilyMemberState parent))
+                    {
+                        parent.Children.Remove(memberId);
+                    }
+
+                    _members.Remove(memberId);
+                }
+            }
+
+            _selectedMemberId = LocalPlayerId;
+            _selectedEmptyTreeSlot = -1;
+            string message = $"Removed {selectedMember.Name}'s simulator family branch.";
+            NotifySocialChatObserved(message);
+            return message;
+        }
+
+        private FamilyRecruitSeed PeekNextJuniorSeed()
+        {
+            return _juniorSeeds.Count > 0
+                ? _juniorSeeds.Peek()
+                : CreateFallbackJuniorSeed();
+        }
+
+        private FamilyRecruitSeed DequeueNextJuniorSeed()
+        {
+            return _juniorSeeds.Count > 0
+                ? _juniorSeeds.Dequeue()
+                : CreateFallbackJuniorSeed();
+        }
+
+        private FamilyRecruitSeed DequeueExpectedJuniorSeed(FamilyRecruitSeed expectedSeed)
+        {
+            if (_juniorSeeds.Count > 0)
+            {
+                FamilyRecruitSeed queuedSeed = _juniorSeeds.Peek();
+                if (string.Equals(queuedSeed.Name, expectedSeed.Name, StringComparison.Ordinal)
+                    && string.Equals(queuedSeed.JobName, expectedSeed.JobName, StringComparison.Ordinal)
+                    && queuedSeed.Level == expectedSeed.Level)
+                {
+                    return _juniorSeeds.Dequeue();
+                }
+            }
+
+            return expectedSeed;
+        }
+
+        private FamilyRecruitSeed CreateFallbackJuniorSeed()
+        {
+            return new FamilyRecruitSeed(
+                $"Junior {_members.Count + 1}",
+                "Adventurer",
+                18 + _members.Count,
+                "Family Hall",
+                true,
+                new Vector2(180f + (_members.Count * 12f), -30f));
+        }
+
+        private static string NormalizePrecept(string precept)
+        {
+            string resolvedPrecept = string.IsNullOrWhiteSpace(precept)
+                ? string.Empty
+                : precept.Trim();
+            if (resolvedPrecept.Length > 200)
+            {
+                resolvedPrecept = resolvedPrecept[..200].TrimEnd();
+            }
+
+            return resolvedPrecept;
         }
 
         internal string CycleEntitlement()
@@ -908,7 +991,10 @@ namespace HaCreator.MapSimulator.Interaction
             string pendingPrivilege = _pendingPrivilegeRequest == null
                 ? "none"
                 : $"{GetEntitlementLabel(_pendingPrivilegeRequest.Type)} -> {_pendingPrivilegeRequest.TargetName} (#{_pendingPrivilegeRequest.TargetMemberId})";
-            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, pending request {pendingPrivilege}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
+            string pendingManagement = _pendingManagementRequest == null
+                ? "none"
+                : $"{_pendingManagementRequest.Kind} for {_pendingManagementRequest.MemberName}";
+            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, pending privilege request {pendingPrivilege}, pending management request {pendingManagement}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
         }
 
         internal string ResetToSeedFamily()
@@ -1095,6 +1181,7 @@ namespace HaCreator.MapSimulator.Interaction
             _packetChartIsMine = null;
             _packetChartSuppressRootSlot = false;
             _pendingPrivilegeRequest = null;
+            _pendingManagementRequest = null;
             _queuedPrivilegeTeleport = false;
             _queuedPrivilegeTeleportPosition = Vector2.Zero;
             _queuedPrivilegeTeleportMessage = string.Empty;
@@ -1493,6 +1580,11 @@ namespace HaCreator.MapSimulator.Interaction
             return _authorityState.CanResolveCrossMapPrivileges;
         }
 
+        private bool RequiresPacketOwnedManagementCompletion()
+        {
+            return !_authorityState.IsSimulatorLocal;
+        }
+
         private string BuildAuthorityBlockedMessage(string action)
         {
             return $"Family authority does not permit this client seam to {action}. Current profile: {_authorityState.SourceLabel}.";
@@ -1540,6 +1632,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (_pendingManagementRequest != null
+                && TryResolvePendingManagementRequest(packet, out string managementCompletionMessage))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? managementCompletionMessage
+                    : $"{message} {managementCompletionMessage}";
+                return true;
+            }
+
             if (string.IsNullOrWhiteSpace(message))
             {
                 message = $"Family result packet type {packet.Type} is not modeled yet.";
@@ -1547,6 +1648,55 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private bool TryResolvePendingManagementRequest(FamilyResultPacket packet, out string message)
+        {
+            message = string.Empty;
+            PendingFamilyManagementRequest pendingRequest = _pendingManagementRequest;
+            if (pendingRequest == null)
+            {
+                return false;
+            }
+
+            if (packet.Type == 1)
+            {
+                switch (pendingRequest.Kind)
+                {
+                    case FamilyManagementRequestKind.JuniorEntry:
+                        FamilyMemberState parent = GetMember(pendingRequest.MemberId);
+                        if (parent == null)
+                        {
+                            message = $"Family junior-entry completion arrived, but parent #{pendingRequest.MemberId} is no longer present.";
+                            _pendingManagementRequest = null;
+                            return true;
+                        }
+
+                        message = ApplyJuniorRegistration(parent, DequeueExpectedJuniorSeed(pendingRequest.RecruitSeed));
+                        _pendingManagementRequest = null;
+                        return true;
+
+                    case FamilyManagementRequestKind.RemoveMember:
+                        string removedMessage = RemoveMemberFromPacket(pendingRequest.MemberId);
+                        message = $"Applied packet-owned family removal completion for {pendingRequest.MemberName}. {removedMessage}";
+                        _pendingManagementRequest = null;
+                        return true;
+
+                    case FamilyManagementRequestKind.Precept:
+                        message = $"{SetPreceptFromPacket(pendingRequest.Precept)} Applied packet-owned family precept completion.";
+                        _pendingManagementRequest = null;
+                        return true;
+                }
+            }
+
+            if (packet.Type is >= 64 and <= 82)
+            {
+                _pendingManagementRequest = null;
+                message = $"Cleared pending family {pendingRequest.Kind} request after result type {packet.Type}.";
+                return true;
+            }
+
+            return false;
         }
 
         private bool TryResolvePendingPrivilegeRequest(FamilyResultPacket packet, out string message)
@@ -2370,6 +2520,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool CanRemoveMembers { get; }
             public bool CanUsePrivileges { get; }
             public bool CanResolveCrossMapPrivileges { get; }
+            public bool IsSimulatorLocal => string.Equals(SourceLabel, "simulator-local", StringComparison.Ordinal);
 
             public static FamilyAuthorityState CreateSimulatorLocal() => new(
                 "simulator-local",
@@ -2440,6 +2591,62 @@ namespace HaCreator.MapSimulator.Interaction
             string LocationSummary,
             bool IsOnline,
             Vector2 SimulatedPosition);
+
+        private sealed class PendingFamilyManagementRequest
+        {
+            private PendingFamilyManagementRequest(
+                FamilyManagementRequestKind kind,
+                int memberId,
+                string memberName,
+                string precept,
+                FamilyRecruitSeed recruitSeed)
+            {
+                Kind = kind;
+                MemberId = memberId;
+                MemberName = string.IsNullOrWhiteSpace(memberName) ? "member" : memberName.Trim();
+                Precept = precept ?? string.Empty;
+                RecruitSeed = recruitSeed;
+            }
+
+            public FamilyManagementRequestKind Kind { get; }
+            public int MemberId { get; }
+            public string MemberName { get; }
+            public string Precept { get; }
+            public FamilyRecruitSeed RecruitSeed { get; }
+
+            public static PendingFamilyManagementRequest CreateJuniorEntry(
+                int parentId,
+                string parentName,
+                FamilyRecruitSeed recruitSeed) => new(
+                    FamilyManagementRequestKind.JuniorEntry,
+                    parentId,
+                    parentName,
+                    string.Empty,
+                    recruitSeed);
+
+            public static PendingFamilyManagementRequest CreateRemove(
+                int memberId,
+                string memberName) => new(
+                    FamilyManagementRequestKind.RemoveMember,
+                    memberId,
+                    memberName,
+                    string.Empty,
+                    default);
+
+            public static PendingFamilyManagementRequest CreatePrecept(string precept) => new(
+                FamilyManagementRequestKind.Precept,
+                0,
+                string.Empty,
+                precept,
+                default);
+        }
+
+        private enum FamilyManagementRequestKind
+        {
+            JuniorEntry,
+            RemoveMember,
+            Precept
+        }
     }
 
         internal readonly record struct FamilyEntitlementUseResult(

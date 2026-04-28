@@ -214,7 +214,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -395,14 +395,16 @@ namespace HaCreator.MapSimulator
 
                 int npcTemplateId = BitConverter.ToInt32(payload, 0);
                 int itemCount = BitConverter.ToUInt16(payload, sizeof(int));
+                if (!AdminShopPacketOwnedOpenCodec.TryDecode(payload, out AdminShopPacketOwnedOpenPayloadSnapshot snapshot))
+                {
+                    message = itemCount > 0
+                        ? "Admin-shop packet 367 payload could not be decoded with the recovered CAdminShopDlg::SetAdminShopDlg layout."
+                        : "Admin-shop packet 367 rejected-open payload could not be decoded with the recovered CAdminShopDlg::SetAdminShopDlg header layout.";
+                    return false;
+                }
+
                 if (itemCount > 0)
                 {
-                    if (!AdminShopPacketOwnedOpenCodec.TryDecode(payload, out AdminShopPacketOwnedOpenPayloadSnapshot snapshot))
-                    {
-                        message = "Admin-shop packet 367 payload could not be decoded with the recovered CAdminShopDlg::SetAdminShopDlg layout.";
-                        return false;
-                    }
-
                     string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
                     if (AdminShopPacketOwnedOwnerGateParity.ShouldIgnoreOpenAtOwnerGate(
                             hasBlockingUniqueModelessOwner: !string.IsNullOrWhiteSpace(blockingOwner),
@@ -427,8 +429,10 @@ namespace HaCreator.MapSimulator
                 string rejectionNotice = AdminShopDialogClientParityText.GetOpenRejectedNotice();
                 message = adminShopWindow.ApplyPacketOwnedAdminShopOpenRejected(
                     rejectionNotice,
-                    npcTemplateId,
-                    itemCount);
+                    snapshot.NpcTemplateId,
+                    snapshot.CommodityCount,
+                    snapshot.TrailingByteCount,
+                    snapshot.TrailingPayloadSignature);
                 HideCashShopOwnerFamilyWindows();
                 ShowPacketOwnedNoticeDialog(rejectionNotice);
                 return true;
@@ -1152,7 +1156,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeOnCalcMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
             }
         }
 
@@ -1273,11 +1277,12 @@ namespace HaCreator.MapSimulator
                 || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int beforeHp)
                 || !int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int beforeMp))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]");
             }
 
             int? currentHp = null;
             int? currentMp = null;
+            bool hasWvsContext = true;
             for (int i = 4; i < args.Length; i++)
             {
                 string argument = args[i];
@@ -1285,7 +1290,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (!int.TryParse(argument.Substring("currenthp=".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedCurrentHp))
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]");
                     }
 
                     currentHp = parsedCurrentHp;
@@ -1296,14 +1301,24 @@ namespace HaCreator.MapSimulator
                 {
                     if (!int.TryParse(argument.Substring("currentmp=".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedCurrentMp))
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]");
                     }
 
                     currentMp = parsedCurrentMp;
                     continue;
                 }
 
-                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+                if (argument.StartsWith("wvscontext=", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!TryParseOnOffArgument(argument.Substring("wvscontext=".Length), out hasWvsContext))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]");
+                    }
+
+                    continue;
+                }
+
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]");
             }
 
             return ChatCommandHandler.CommandResult.Ok(
@@ -1314,7 +1329,8 @@ namespace HaCreator.MapSimulator
                     beforeMp,
                     currentHp,
                     currentMp,
-                    currTickCount));
+                    currTickCount,
+                    hasWvsContext));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordClearCommand(string[] args)

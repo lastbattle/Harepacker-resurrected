@@ -299,6 +299,71 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        internal static bool TryFindMatchingClientInventoryOperationCompletionRequest(
+            IReadOnlyList<EquipmentChangeRequest> requests,
+            IReadOnlyList<byte> payload,
+            out EquipmentChangeRequest matchedRequest,
+            out string rejectReason)
+        {
+            matchedRequest = null;
+            rejectReason = null;
+            if (requests == null || requests.Count == 0)
+            {
+                rejectReason = "Inventory-operation payload did not match an active character equipment packet-owned request.";
+                return false;
+            }
+
+            string lastMismatchReason = null;
+            string structuralRejectReason = null;
+            for (int i = 0; i < requests.Count; i++)
+            {
+                EquipmentChangeRequest candidate = requests[i];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                if (TryRecognizeClientInventoryOperationCompletion(candidate, payload, out string candidateRejectReason))
+                {
+                    matchedRequest = candidate;
+                    return true;
+                }
+
+                if (IsCharacterInventoryOperationRequestMismatch(candidateRejectReason))
+                {
+                    lastMismatchReason = candidateRejectReason;
+                    continue;
+                }
+
+                structuralRejectReason = candidateRejectReason;
+                break;
+            }
+
+            rejectReason = !string.IsNullOrWhiteSpace(structuralRejectReason)
+                ? structuralRejectReason
+                : !string.IsNullOrWhiteSpace(lastMismatchReason)
+                    ? lastMismatchReason
+                    : "Inventory-operation payload did not match an active character equipment packet-owned request.";
+            return false;
+        }
+
+        private static bool IsCharacterInventoryOperationRequestMismatch(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                return false;
+            }
+
+            return reason.StartsWith("Inventory-operation swap did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation add entry did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Character equip-in inventory-operation ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Character move inventory-operation ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Character unequip inventory-operation ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Character equip-in request is missing ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Character move request is missing ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Character unequip request is missing ", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool ShouldRequireSecondaryStatChangedPointTrailer(
             byte inventoryType,
             short sourcePosition,

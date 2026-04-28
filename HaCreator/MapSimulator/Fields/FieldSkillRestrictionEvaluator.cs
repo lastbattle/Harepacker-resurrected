@@ -653,6 +653,11 @@ namespace HaCreator.MapSimulator.Fields
             // get_skill_class -> get_job_level(nSkillID / 10000).
             // Mirror get_job_level so noSkill/class matches Field::SkillInfo::IsSkill.
             jobId = Math.Abs(jobId);
+            if (jobId <= 0)
+            {
+                return 0;
+            }
+
             if (jobId % 100 == 0 || jobId == 2001)
             {
                 return 1;

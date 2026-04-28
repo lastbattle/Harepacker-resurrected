@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
                 FailureMessage = !string.IsNullOrWhiteSpace(authoritativeResponse.FailureMessage)
                     ? authoritativeResponse.FailureMessage
                     : predictedResponse?.FailureMessage,
+                TargetUserName = authoritativeResponse.TargetUserName ?? predictedResponse?.TargetUserName,
                 FocusMapId = resolvedFocusMapId,
                 FocusSlotIndex = resolvedFocusSlotIndex,
                 ResultType = authoritativeResponse.ResultType,

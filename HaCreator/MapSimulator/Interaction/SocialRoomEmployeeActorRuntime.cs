@@ -1414,6 +1414,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Signboard = signboardTexture,
                 SignboardOrigin = GetAuthoredCanvasOriginVector(signboardCanvas),
+                SlotMax = ResolveTemplateSlotMax(templateRoot),
                 EffectFrames = effectFrames,
                 TotalEffectDurationMs = effectFrames.Sum(frame => Math.Max(1, frame.DelayMs))
             };
@@ -1431,6 +1432,17 @@ namespace HaCreator.MapSimulator.Interaction
             return ResolveCanvasProperty(skinSource["signboard"])
                 ?? ResolveCanvasProperty(skinSource["shop"])
                 ?? ResolveCanvasProperty(skinSource["backgrnd"]);
+        }
+
+        private static byte ResolveTemplateSlotMax(WzImageProperty templateRoot)
+        {
+            int? slotMax = GetIntValue(templateRoot?["info"]?["slotMax"]);
+            if (!slotMax.HasValue || slotMax.Value <= 0)
+            {
+                return 0;
+            }
+
+            return (byte)Math.Min(byte.MaxValue, slotMax.Value);
         }
 
         internal static string ResolveMiniRoomBoardCanvasNameForTesting(params string[] childNames)
@@ -1609,11 +1621,11 @@ namespace HaCreator.MapSimulator.Interaction
             DrawMiniRoomBalloonCount(
                 spriteBatch,
                 assets.MaxCountDigits,
-                ResolveMiniRoomMaxUsers(_activeSnapshot),
+                ResolveMiniRoomMaxUsers(_activeSnapshot, _activeMiniRoomBoardAssets),
                 boardX + layout.MaxCountX,
                 boardY + layout.MaxCountY);
 
-            Texture2D statusTexture = ResolveMiniRoomStatusTexture(_activeSnapshot, assets);
+            Texture2D statusTexture = ResolveMiniRoomStatusTexture(_activeSnapshot, assets, _activeMiniRoomBoardAssets);
             if (statusTexture != null)
             {
                 spriteBatch.Draw(statusTexture, new Vector2(boardX + layout.StatusX, boardY + layout.StatusY), Color.White);
@@ -1917,14 +1929,17 @@ namespace HaCreator.MapSimulator.Interaction
             return assets.PointedBackground ?? assets.Background;
         }
 
-        private static Texture2D ResolveMiniRoomStatusTexture(SocialRoomFieldActorSnapshot snapshot, MiniRoomBalloonAssets assets)
+        private static Texture2D ResolveMiniRoomStatusTexture(
+            SocialRoomFieldActorSnapshot snapshot,
+            MiniRoomBalloonAssets assets,
+            EmployeeMiniRoomBoardAssets templateAssets = null)
         {
             if (snapshot == null || assets == null)
             {
                 return null;
             }
 
-            string statusName = ResolveMiniRoomStatusTextureName(snapshot);
+            string statusName = ResolveMiniRoomStatusTextureName(snapshot, templateAssets);
             if (string.Equals(statusName, "Disable", StringComparison.Ordinal))
             {
                 return assets.Disable;
@@ -1938,14 +1953,16 @@ namespace HaCreator.MapSimulator.Interaction
             return ResolveMiniRoomStatusTextureName(snapshot);
         }
 
-        private static string ResolveMiniRoomStatusTextureName(SocialRoomFieldActorSnapshot snapshot)
+        private static string ResolveMiniRoomStatusTextureName(
+            SocialRoomFieldActorSnapshot snapshot,
+            EmployeeMiniRoomBoardAssets templateAssets = null)
         {
             if (snapshot == null)
             {
                 return string.Empty;
             }
 
-            byte maxUsers = ResolveMiniRoomMaxUsers(snapshot);
+            byte maxUsers = ResolveMiniRoomMaxUsers(snapshot, templateAssets);
             byte currentUsers = ResolveMiniRoomCurrentUsers(snapshot);
             return maxUsers > 0 && currentUsers >= maxUsers
                 ? "Disable"
@@ -1978,9 +1995,12 @@ namespace HaCreator.MapSimulator.Interaction
             return snapshot?.MiniRoomBalloonByte1 ?? 0;
         }
 
-        private static byte ResolveMiniRoomMaxUsers(SocialRoomFieldActorSnapshot snapshot)
+        private static byte ResolveMiniRoomMaxUsers(
+            SocialRoomFieldActorSnapshot snapshot,
+            EmployeeMiniRoomBoardAssets templateAssets = null)
         {
-            return snapshot?.MiniRoomBalloonByte2 ?? 0;
+            byte packetMaxUsers = snapshot?.MiniRoomBalloonByte2 ?? 0;
+            return packetMaxUsers > 0 ? packetMaxUsers : templateAssets?.SlotMax ?? 0;
         }
 
         internal static byte ResolveMiniRoomCurrentUsersForTesting(SocialRoomFieldActorSnapshot snapshot)
@@ -2817,6 +2837,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public Texture2D Signboard { get; init; }
             public Vector2? SignboardOrigin { get; init; }
+            public byte SlotMax { get; init; }
             public EmployeeMiniRoomBoardEffectFrame[] EffectFrames { get; init; } = Array.Empty<EmployeeMiniRoomBoardEffectFrame>();
             public int TotalEffectDurationMs { get; init; }
         }

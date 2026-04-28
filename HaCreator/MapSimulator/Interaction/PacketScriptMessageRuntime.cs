@@ -1751,7 +1751,7 @@ namespace HaCreator.MapSimulator.Interaction
                     writer.WriteByte(accepted ? (byte)1 : (byte)0);
                     if (accepted)
                     {
-                        writer.WriteMapleString(submittedValue);
+                        WriteClientMapleString(writer, submittedValue);
                     }
 
                     break;
@@ -1785,7 +1785,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 7:
                 {
-                    writer.WriteMapleString(submittedValue ?? string.Empty);
+                    WriteClientMapleString(writer, submittedValue);
                     break;
                 }
 
@@ -1924,6 +1924,11 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static void WriteInitialQuizOwnerClientMapleString(PacketWriter writer, string value)
+        {
+            WriteClientMapleString(writer, value);
+        }
+
+        private static void WriteClientMapleString(PacketWriter writer, string value)
         {
             byte[] encoded = InitialQuizTimerRuntime.EncodeClientMapleString(value);
             int length = Math.Min(encoded.Length, ushort.MaxValue);

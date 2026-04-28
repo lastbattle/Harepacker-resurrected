@@ -476,7 +476,7 @@ namespace HaCreator.MapSimulator.Character
         {
             return skillId switch
             {
-                120 or 121 or 122 or 123 or 124 or 125 or 126 or 127 or 128 or 129 or 131 or 132 or 133 or 134 or 135 or 136 or 137 or 138 or 170 or 171 or 172 or 173 => true,
+                120 or 121 or 122 or 123 or 124 or 125 or 126 or 127 or 128 or 129 or 131 or 132 or 133 or 134 or 135 or 136 or 137 or 138 or 170 or 171 or 172 or 173 or 799 => true,
                 _ => false
             };
         }

@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public bool Applied { get; init; }
         public string FailureMessage { get; init; }
+        public string TargetUserName { get; init; }
         public int FocusMapId { get; init; }
         public int FocusSlotIndex { get; init; } = -1;
         public MapTransferRuntimeResultType ResultType { get; init; }
@@ -441,6 +442,21 @@ namespace HaCreator.MapSimulator.Managers
                     fieldList.Add(reader.ReadInt32());
                 }
             }
+            else if (packetResultCode is MapTransferRuntimePacketResultCode.OfficialFailure6 or MapTransferRuntimePacketResultCode.OfficialFailure7 &&
+                     stream.Position < stream.Length)
+            {
+                string targetUserName = ReadOptionalMapleString(reader, stream);
+                return new MapTransferRuntimeResponse
+                {
+                    Applied = false,
+                    FailureMessage = MapTransferClientParityText.ResolveFailureMessage(packetResultCode, targetUserName),
+                    TargetUserName = targetUserName,
+                    ResultType = MapTransferRuntimeResultType.None,
+                    PacketResultCode = packetResultCode,
+                    CanTransferContinent = canTransferContinent,
+                    FieldList = fieldList
+                };
+            }
 
             return new MapTransferRuntimeResponse
             {
@@ -456,6 +472,33 @@ namespace HaCreator.MapSimulator.Managers
                 CanTransferContinent = canTransferContinent,
                 FieldList = fieldList
             };
+        }
+
+        private static string ReadOptionalMapleString(BinaryReader reader, Stream stream)
+        {
+            if (stream.Position + sizeof(short) > stream.Length)
+            {
+                return null;
+            }
+
+            short encodedLength = reader.ReadInt16();
+            if (encodedLength == 0)
+            {
+                return string.Empty;
+            }
+
+            int byteLength = encodedLength < 0
+                ? checked(-encodedLength * sizeof(char))
+                : encodedLength;
+            if (stream.Position + byteLength > stream.Length)
+            {
+                return null;
+            }
+
+            byte[] bytes = reader.ReadBytes(byteLength);
+            return encodedLength < 0
+                ? System.Text.Encoding.Unicode.GetString(bytes)
+                : System.Text.Encoding.Default.GetString(bytes);
         }
 
         private static string ResolveFailureMessage(MapTransferRuntimePacketResultCode packetResultCode)

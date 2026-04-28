@@ -143,7 +143,7 @@ namespace HaCreator.MapSimulator.Effects
                 _guildBoss.Enable();
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] GuildBoss field detected: {mapId}");
             }
-            else if (IsDojoMap(mapId, fieldType))
+            else if (IsDojoMap(mapInfo))
             {
                 _dojo.Enable(mapId);
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] Dojo field detected: {mapId}");
@@ -241,10 +241,18 @@ namespace HaCreator.MapSimulator.Effects
         }
 
 
-        private static bool IsDojoMap(int mapId, FieldType? fieldType)
+        private static bool IsDojoMap(MapInfo mapInfo)
         {
-            return fieldType == FieldType.FIELDTYPE_DOJANG
-                || (mapId >= 925020000 && mapId <= 925040999);
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_DOJANG
+                || (mapInfo.id >= 925020000 && mapInfo.id <= 925040999)
+                || string.Equals(mapInfo.mapMark, "MuruengRaid", StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
+                    && mapInfo.onUserEnter.StartsWith("dojang", StringComparison.OrdinalIgnoreCase));
         }
 
 

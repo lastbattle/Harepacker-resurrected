@@ -1067,6 +1067,11 @@ namespace HaCreator.MapSimulator
             {
                 resultCode = payload[0];
             }
+            else if (payload.Length == sizeof(int)
+                && BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))) == 0)
+            {
+                resultCode = 0;
+            }
             else if (payload.Length >= sizeof(byte) + sizeof(int)
                 && TryReadMonsterBookAckStatusTail(payload, sizeof(byte) + sizeof(int), out statusText))
             {
@@ -1132,10 +1137,37 @@ namespace HaCreator.MapSimulator
 
             if (remaining != sizeof(ushort) + byteCount)
             {
-                return false;
+                return TryReadMonsterBookAckLooseStatusTail(payload, offset, out statusText);
             }
 
             statusText = Encoding.UTF8.GetString(payload, offset + sizeof(ushort), byteCount).Trim();
+            return true;
+        }
+
+        private static bool TryReadMonsterBookAckLooseStatusTail(byte[] payload, int offset, out string statusText)
+        {
+            statusText = string.Empty;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> tail = payload.AsSpan(offset);
+            string decoded = DecodeMonsterBookResultStatusText(tail);
+            if (string.IsNullOrWhiteSpace(decoded))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < decoded.Length; i++)
+            {
+                if (char.IsControl(decoded[i]) && decoded[i] != '\r' && decoded[i] != '\n' && decoded[i] != '\t')
+                {
+                    return false;
+                }
+            }
+
+            statusText = decoded;
             return true;
         }
 

@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftPredictQuitContextDwordIndex = 4137;
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
         private const int PacketOwnedLogoutGiftOwnerCommodityFieldByteOffset = 0xAF8;
+        private const int PacketOwnedLogoutGiftSetFieldServerFileTimeByteLength = sizeof(long);
         private const int PacketOwnedLogoutGiftPrecursorContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - 1;
         private const int PacketOwnedLogoutGiftPrecursorContextSlotCount = 3;
         private const int PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - PacketOwnedLogoutGiftPrecursorContextSlotCount;
@@ -848,7 +849,13 @@ namespace HaCreator.MapSimulator
                 values.Add(value.ToString(CultureInfo.InvariantCulture));
             }
 
-            return $"{opaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} {placementLabel} opaque byte(s) [0x{hex}] / aligned int32 [{string.Join(", ", values)}]";
+            string serverFileTimeSuffix = TryDecodePacketOwnedLogoutGiftSetFieldServerFileTime(
+                opaqueBytes,
+                placementLabel,
+                out long serverFileTime)
+                ? $" / CStage::OnSetField server FILETIME {serverFileTime.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            return $"{opaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} {placementLabel} opaque byte(s) [0x{hex}] / aligned int32 [{string.Join(", ", values)}]{serverFileTimeSuffix}";
         }
 
         private bool HasPacketOwnedLogoutGiftOpaqueTail()
@@ -1215,6 +1222,23 @@ namespace HaCreator.MapSimulator
             }
 
             return string.Join(", ", values);
+        }
+
+        internal static bool TryDecodePacketOwnedLogoutGiftSetFieldServerFileTime(
+            byte[] opaqueBytes,
+            string placementLabel,
+            out long serverFileTime)
+        {
+            serverFileTime = 0;
+            if (opaqueBytes == null
+                || opaqueBytes.Length != PacketOwnedLogoutGiftSetFieldServerFileTimeByteLength
+                || !string.Equals(placementLabel, "post-`OnSetLogoutGiftConfig`", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            serverFileTime = BinaryPrimitives.ReadInt64LittleEndian(opaqueBytes);
+            return serverFileTime > 0;
         }
 
         internal static PacketOwnedLogoutGiftContextField DecodePacketOwnedLogoutGiftPredictQuitContextField(int predictQuitRawValue)

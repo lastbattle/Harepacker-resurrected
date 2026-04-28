@@ -645,6 +645,31 @@ namespace HaCreator.MapSimulator.UI
             int currentTime,
             out StatusBarNoticeOwnerState owner)
         {
+            return TryResolveStatusBarFloatNoticeOwnerForClientParity(
+                hasDamageMeterOwner,
+                damageMeterStartedAt,
+                damageMeterExpiresAt,
+                1,
+                hasFieldHazardOwner,
+                fieldHazardStartedAt,
+                fieldHazardExpiresAt,
+                1,
+                currentTime,
+                out owner);
+        }
+
+        internal static bool TryResolveStatusBarFloatNoticeOwnerForClientParity(
+            bool hasDamageMeterOwner,
+            int damageMeterStartedAt,
+            int damageMeterExpiresAt,
+            int damageMeterOwnerIdentity,
+            bool hasFieldHazardOwner,
+            int fieldHazardStartedAt,
+            int fieldHazardExpiresAt,
+            int fieldHazardOwnerIdentity,
+            int currentTime,
+            out StatusBarNoticeOwnerState owner)
+        {
             owner = default;
             if (!hasDamageMeterOwner && !hasFieldHazardOwner)
             {
@@ -656,10 +681,13 @@ namespace HaCreator.MapSimulator.UI
             int ownerExpiresAtTick = useFieldHazardOwner
                 ? fieldHazardExpiresAt
                 : damageMeterExpiresAt;
+            int ownerIdentity = useFieldHazardOwner
+                ? fieldHazardOwnerIdentity
+                : damageMeterOwnerIdentity;
 
             owner = new StatusBarNoticeOwnerState(
                 StatusBarNoticeOwnerKind.FloatNotice,
-                OwnerIdentity: 1,
+                OwnerIdentity: ownerIdentity > 0 ? ownerIdentity : 1,
                 OwnerExpiresAtTick: ownerExpiresAtTick,
                 OwnerSourceKind: WeatherMessageOwnerSourceKind.Unknown,
                 OwnerSkillId: 0,

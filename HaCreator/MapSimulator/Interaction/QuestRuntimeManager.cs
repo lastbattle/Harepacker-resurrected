@@ -327,6 +327,7 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<int> StartRequiredBuffIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> StartExcludedBuffIds { get; init; } = Array.Empty<int>();
             public int? StartInfoNumber { get; init; }
+            public int? StartFakeQuestId { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> StartInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> StartInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
@@ -353,6 +354,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string EndTimeKeepFieldSet { get; init; } = string.Empty;
             public int? EndPvpGradeRequirement { get; init; }
             public int? EndInfoNumber { get; init; }
+            public int? EndFakeQuestId { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> EndInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> EndInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
             public WzImageProperty StartSayProperty { get; init; }
@@ -942,6 +944,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (HasUnmetQuestRecordRequirements(
                     definition.QuestId,
                     definition.EndInfoNumber,
+                    definition.EndFakeQuestId,
                     definition.EndInfoRequirements,
                     definition.EndInfoExRequirements))
             {
@@ -5040,6 +5043,9 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetQuestRecordRequirements = HasUnmetQuestRecordRequirements(
                 definition.QuestId,
                 infoNumber,
+                state == QuestStateType.Not_Started
+                    ? definition.StartFakeQuestId
+                    : definition.EndFakeQuestId,
                 infoRequirements,
                 infoExRequirements);
             bool hasUnmetTraitRequirement = state == QuestStateType.Not_Started
@@ -5256,7 +5262,19 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (state == QuestStateType.Not_Started &&
                 hasUnmetJobRequirement &&
-                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> jobPages, "job", "jobid", "jobno"))
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> jobPages,
+                    "job",
+                    "jobid",
+                    "jobno",
+                    "subjob",
+                    "subjobid",
+                    "subjobflag",
+                    "subjobflags",
+                    "jobex",
+                    "jobexflag",
+                    "jobexflags"))
             {
                 return jobPages;
             }
@@ -9050,6 +9068,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StartRequiredBuffIds = ParseQuestDemandIntegerList(startCheck?["buff"]),
                 StartExcludedBuffIds = ParseQuestDemandIntegerList(startCheck?["exceptbuff"]),
                 StartInfoNumber = ParsePositiveInt(startCheck?["infoNumber"]),
+                StartFakeQuestId = ParsePositiveInt(startCheck?["fakeQuestID"]),
                 StartInfoRequirements = ParseQuestRecordTextRequirements(startCheck?["info"]),
                 StartInfoExRequirements = ParseQuestRecordValueRequirements(startCheck?["infoex"]),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
@@ -9076,6 +9095,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
                 EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
+                EndFakeQuestId = ParsePositiveInt(endCheck?["fakeQuestID"]),
                 EndInfoRequirements = ParseQuestRecordTextRequirements(endCheck?["info"]),
                 EndInfoExRequirements = ParseQuestRecordValueRequirements(endCheck?["infoex"]),
                 StartSayProperty = startSay,
@@ -11365,6 +11385,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool HasUnmetQuestRecordRequirements(
             int questId,
             int? infoNumber,
+            int? fakeQuestId,
             IReadOnlyList<QuestRecordTextRequirement> textRequirements,
             IReadOnlyList<QuestRecordValueRequirement> valueRequirements)
         {
@@ -11375,9 +11396,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int recordQuestId = infoNumber.GetValueOrDefault() > 0
-                ? infoNumber.Value
-                : questId;
+            int recordQuestId = ResolveQuestRecordRequirementQuestId(questId, infoNumber, fakeQuestId);
             if (!TryGetQuestRecordValue(recordQuestId, out string recordValue))
             {
                 return true;
@@ -11443,6 +11462,24 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        internal static int ResolveQuestRecordRequirementQuestId(
+            int questId,
+            int? infoNumber,
+            int? fakeQuestId)
+        {
+            if (infoNumber.GetValueOrDefault() > 0)
+            {
+                return infoNumber.Value;
+            }
+
+            if (fakeQuestId.GetValueOrDefault() > 0)
+            {
+                return fakeQuestId.Value;
+            }
+
+            return Math.Max(0, questId);
         }
 
         internal static bool IsQuestRecordValueRequirementMet(

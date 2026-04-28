@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator.UI
                 && payload[0] == DropPickupMessageKind
                 && TryDecodePickupMessageBody(
                     payload,
-                    offset: 1,
+                    offset: 2,
                     pickupMessageType: unchecked((sbyte)payload[1]),
                     itemNameResolver,
                     itemTypeNameResolver,

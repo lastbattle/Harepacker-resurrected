@@ -371,6 +371,17 @@ namespace HaCreator.MapSimulator.UI
             return Math.Max(1, state.TotalSlots);
         }
 
+        public bool ApplyPacketOwnedUpgradeSlotStateToCurrentSelection(int packetUpgradeState)
+        {
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
+            {
+                return false;
+            }
+
+            return ApplyPacketOwnedUpgradeSlotState(candidates[_selectedIndex].Key, packetUpgradeState);
+        }
+
         public void SetDecorations(Texture2D backgroundOverlay, Point backgroundOverlayOffset, Texture2D headerOverlay, Point headerOverlayOffset)
         {
             _backgroundOverlay = backgroundOverlay;

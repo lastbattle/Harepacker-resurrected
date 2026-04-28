@@ -1392,6 +1392,11 @@ namespace HaCreator.MapSimulator.Companions
                     return false;
                 }
 
+                if (!TryValidateMechanicItemFamilyForSlot(addedItemId, request.TargetMechanicSlot.Value, out rejectReason))
+                {
+                    return false;
+                }
+
                 if (!TryValidateMechanicAddEntrySourceEvidence(request, operationContext, out rejectReason))
                 {
                     return false;
@@ -1423,6 +1428,11 @@ namespace HaCreator.MapSimulator.Companions
                 if (addedItemId != request.ItemId)
                 {
                     rejectReason = "Inventory-operation add entry did not carry the requested mechanic machine-part item id.";
+                    return false;
+                }
+
+                if (!TryValidateMechanicItemFamilyForSlot(addedItemId, request.SourceMechanicSlot.Value, out rejectReason))
+                {
                     return false;
                 }
 
@@ -1651,6 +1661,11 @@ namespace HaCreator.MapSimulator.Companions
                 && slotType == ItemSlotTypeEquip
                 && itemId > 0)
             {
+                if (!TryValidateMechanicItemFamilyForSlot(itemId, mechanicSlot, out rejectReason))
+                {
+                    return false;
+                }
+
                 mutation = new MechanicInventoryOperationMutation(mechanicSlot, itemId);
             }
 
@@ -1950,6 +1965,27 @@ namespace HaCreator.MapSimulator.Companions
 
             int bodyPart = -position;
             return MechanicEquipmentSlotMap.TryResolveBodyPart(bodyPart, out slot);
+        }
+
+        private static bool TryValidateMechanicItemFamilyForSlot(
+            int itemId,
+            MechanicEquipSlot targetSlot,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (!CompanionEquipmentController.TryResolveMechanicSlot(itemId, out MechanicEquipSlot itemSlot))
+            {
+                rejectReason = "Inventory-operation add entry did not carry a Character/Mechanic machine-part item id.";
+                return false;
+            }
+
+            if (itemSlot != targetSlot)
+            {
+                rejectReason = "Inventory-operation add entry carried a machine-part item id for a different mechanic slot family.";
+                return false;
+            }
+
+            return true;
         }
 
         private static bool TryResolvePassiveEquipInventoryItemId(

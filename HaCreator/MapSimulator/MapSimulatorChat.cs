@@ -605,8 +605,13 @@ namespace HaCreator.MapSimulator
                 if (oldKeyboardState.IsKeyUp(Keys.Left))
                 {
                     if (_cursorPosition > 0)
-                        _cursorPosition--;
-                    ClearInputSelection();
+                    {
+                        MoveInputCaret(_cursorPosition - 1, shiftHeld);
+                    }
+                    else
+                    {
+                        MoveInputCaret(_cursorPosition, shiftHeld);
+                    }
                     _lastHeldKey = Keys.Left;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
@@ -614,8 +619,13 @@ namespace HaCreator.MapSimulator
                 else if (ShouldRepeatKey(Keys.Left, tickCount))
                 {
                     if (_cursorPosition > 0)
-                        _cursorPosition--;
-                    ClearInputSelection();
+                    {
+                        MoveInputCaret(_cursorPosition - 1, shiftHeld);
+                    }
+                    else
+                    {
+                        MoveInputCaret(_cursorPosition, shiftHeld);
+                    }
                     _lastKeyRepeatTime = tickCount;
                 }
                 return !forwardEditCaretMoveToParent;
@@ -653,8 +663,13 @@ namespace HaCreator.MapSimulator
                 if (oldKeyboardState.IsKeyUp(Keys.Right))
                 {
                     if (_cursorPosition < _inputText.Length)
-                        _cursorPosition++;
-                    ClearInputSelection();
+                    {
+                        MoveInputCaret(_cursorPosition + 1, shiftHeld);
+                    }
+                    else
+                    {
+                        MoveInputCaret(_cursorPosition, shiftHeld);
+                    }
                     _lastHeldKey = Keys.Right;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
@@ -662,8 +677,13 @@ namespace HaCreator.MapSimulator
                 else if (ShouldRepeatKey(Keys.Right, tickCount))
                 {
                     if (_cursorPosition < _inputText.Length)
-                        _cursorPosition++;
-                    ClearInputSelection();
+                    {
+                        MoveInputCaret(_cursorPosition + 1, shiftHeld);
+                    }
+                    else
+                    {
+                        MoveInputCaret(_cursorPosition, shiftHeld);
+                    }
                     _lastKeyRepeatTime = tickCount;
                 }
                 return !forwardEditCaretMoveToParent;
@@ -796,20 +816,17 @@ namespace HaCreator.MapSimulator
                     }
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
-                        _cursorPosition = 0;
-                        ClearInputSelection();
+                        MoveInputCaret(0, shiftHeld);
                     }
                     else
                     {
-                        _cursorPosition = 0;
-                        ClearInputSelection();
+                        MoveInputCaret(0, shiftHeld);
                     }
 
                     return true;
                 }
 
-                _cursorPosition = 0;
-                ClearInputSelection();
+                MoveInputCaret(0, shiftHeld);
                 return true;
             }
 
@@ -837,20 +854,17 @@ namespace HaCreator.MapSimulator
                     }
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
-                        _cursorPosition = _inputText.Length;
-                        ClearInputSelection();
+                        MoveInputCaret(_inputText.Length, shiftHeld);
                     }
                     else
                     {
-                        _cursorPosition = _inputText.Length;
-                        ClearInputSelection();
+                        MoveInputCaret(_inputText.Length, shiftHeld);
                     }
 
                     return true;
                 }
 
-                _cursorPosition = _inputText.Length;
-                ClearInputSelection();
+                MoveInputCaret(_inputText.Length, shiftHeld);
                 return true;
             }
 
@@ -3079,6 +3093,24 @@ namespace HaCreator.MapSimulator
         private void ClearInputSelection()
         {
             _selectionAnchor = -1;
+        }
+
+        private void MoveInputCaret(int targetPosition, bool extendSelection)
+        {
+            int clampedTargetPosition = Math.Clamp(targetPosition, 0, _inputText.Length);
+            if (extendSelection)
+            {
+                if (_selectionAnchor < 0)
+                {
+                    _selectionAnchor = _cursorPosition;
+                }
+            }
+            else
+            {
+                ClearInputSelection();
+            }
+
+            _cursorPosition = clampedTargetPosition;
         }
 
         private bool TryDeleteInputSelection()

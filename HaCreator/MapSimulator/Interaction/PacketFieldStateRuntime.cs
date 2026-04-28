@@ -458,8 +458,17 @@ namespace HaCreator.MapSimulator.Interaction
                 using var stream = new MemoryStream(payload, writable: false);
                 using var reader = new BinaryReader(stream);
                 byte count = reader.ReadByte();
+                long expectedLength = 1L + (count * (sizeof(int) + sizeof(long) + sizeof(long)));
+                if (stream.Length != expectedLength)
+                {
+                    message = stream.Length < expectedLength
+                        ? $"Quest timer packet ended early: expected {expectedLength} byte(s), got {stream.Length}."
+                        : $"Quest timer packet has {stream.Length - expectedLength} trailing byte(s).";
+                    return false;
+                }
+
                 DateTime utcNow = DateTime.UtcNow;
-                int appliedCount = 0;
+                List<PacketQuestTimerEntry> decodedTimers = new(count);
 
                 for (int i = 0; i < count; i++)
                 {
@@ -472,7 +481,7 @@ namespace HaCreator.MapSimulator.Interaction
                     int durationMs = Math.Max(remainingMs, (int)Math.Min(int.MaxValue, Math.Max(0d, (endUtc - startUtc).TotalMilliseconds)));
 
                     (string questName, string timerUiKey) = ResolveQuestMetadata(questId);
-                    _questTimers[questId] = new PacketQuestTimerEntry(
+                    decodedTimers.Add(new PacketQuestTimerEntry(
                         questId,
                         questName,
                         timerUiKey,
@@ -480,19 +489,18 @@ namespace HaCreator.MapSimulator.Interaction
                         endUtc,
                         currentTick,
                         unchecked(currentTick + remainingMs),
-                        durationMs);
-                    PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(questId);
+                        durationMs));
+                }
+
+                foreach (PacketQuestTimerEntry timer in decodedTimers)
+                {
+                    _questTimers[timer.QuestId] = timer;
+                    PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(timer.QuestId);
                     owner.IsDismissed = false;
                     owner.IsDragging = false;
-                    appliedCount++;
                 }
 
-                if (stream.Position != stream.Length)
-                {
-                    message = $"Quest timer packet has {stream.Length - stream.Position} trailing byte(s).";
-                    return false;
-                }
-
+                int appliedCount = decodedTimers.Count;
                 _statusMessage = appliedCount == 1 ? "Applied 1 packet-authored quest timer." : $"Applied {appliedCount} packet-authored quest timers.";
                 message = _statusMessage;
                 return true;

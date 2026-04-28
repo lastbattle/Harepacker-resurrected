@@ -1274,6 +1274,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int VariantActionTrailCapacity = 4;
         private const int VariantTransportTrailCapacity = 6;
         private const int ReviveRouteTrailCapacity = 6;
+        private const int WaitingRoomRouteTrailCapacity = 6;
         private const int Season2TimerTrailCapacity = 6;
         private const int Season2ChatRouteTrailCapacity = 6;
         private const int Season2SubDialogRouteTrailCapacity = 6;
@@ -1315,6 +1316,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Queue<string> _variantTransportTrail = new();
         private readonly Queue<string> _reviveDirectRouteTrail = new();
         private readonly Queue<string> _reviveForwardedRouteTrail = new();
+        private readonly Queue<string> _waitingRoomLobbyRouteTrail = new();
         private readonly Queue<string> _season2SubDialogTimerTrail = new();
         private readonly Queue<string> _season2ChatRouteTrail = new();
         private readonly Queue<string> _season2SubDialogRouteTrail = new();
@@ -1356,6 +1358,9 @@ namespace HaCreator.MapSimulator.Fields
         private int _reviveForwardedPacketCount;
         private int _reviveRoundSequence;
         private int _reviveResultSequence;
+        private int _waitingRoomDelegatedPacketCount;
+        private int _waitingRoomRawPacketCount;
+        private int _waitingRoomStructuredPacketCount;
         private string _variantTransportLastRoute;
         private GraphicsDevice _graphicsDevice;
         private MonsterCarnivalHudAssets _hudAssets = new();
@@ -1395,6 +1400,10 @@ namespace HaCreator.MapSimulator.Fields
         public int ReviveResultSequence => _reviveResultSequence;
         public string ReviveDirectRouteTrailSummary => BuildReviveDirectRouteTrailSummary();
         public string ReviveForwardedRouteTrailSummary => BuildReviveForwardedRouteTrailSummary();
+        public int WaitingRoomDelegatedPacketCount => _waitingRoomDelegatedPacketCount;
+        public int WaitingRoomRawPacketCount => _waitingRoomRawPacketCount;
+        public int WaitingRoomStructuredPacketCount => _waitingRoomStructuredPacketCount;
+        public string WaitingRoomLobbyRouteTrailSummary => BuildWaitingRoomLobbyRouteTrailSummary();
         public string VariantTransportSummary => BuildVariantTransportSummary();
         public string LastRequestFailureChatRoute => _lastRequestFailureChatRoute;
         public string LastMemberOutChatRoute => _lastMemberOutChatRoute;
@@ -2586,6 +2595,7 @@ namespace HaCreator.MapSimulator.Fields
             _variantTransportTrail.Clear();
             _reviveDirectRouteTrail.Clear();
             _reviveForwardedRouteTrail.Clear();
+            _waitingRoomLobbyRouteTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
             _season2ChatRouteTrail.Clear();
             _season2SubDialogRouteTrail.Clear();
@@ -2609,6 +2619,9 @@ namespace HaCreator.MapSimulator.Fields
             _reviveForwardedPacketCount = 0;
             _reviveRoundSequence = 0;
             _reviveResultSequence = 0;
+            _waitingRoomDelegatedPacketCount = 0;
+            _waitingRoomRawPacketCount = 0;
+            _waitingRoomStructuredPacketCount = 0;
             _variantTransportLastRoute = null;
             _ownedClockPhase = MonsterCarnivalOwnedClockPhase.None;
             _ownedClockSummary = null;
@@ -2648,6 +2661,7 @@ namespace HaCreator.MapSimulator.Fields
             _variantTransportTrail.Clear();
             _reviveDirectRouteTrail.Clear();
             _reviveForwardedRouteTrail.Clear();
+            _waitingRoomLobbyRouteTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
             _season2ChatRouteTrail.Clear();
             _season2SubDialogRouteTrail.Clear();
@@ -2664,6 +2678,9 @@ namespace HaCreator.MapSimulator.Fields
             _reviveForwardedPacketCount = 0;
             _reviveRoundSequence = 0;
             _reviveResultSequence = 0;
+            _waitingRoomDelegatedPacketCount = 0;
+            _waitingRoomRawPacketCount = 0;
+            _waitingRoomStructuredPacketCount = 0;
             _variantTransportLastRoute = null;
             _ownedClockPhase = MonsterCarnivalOwnedClockPhase.None;
             _ownedClockSummary = null;
@@ -3454,7 +3471,7 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-            return TryConsumeNextPendingLocalRequest(out consumedToken);
+            return TryConsumeNextResolvablePendingLocalRequest(out consumedToken);
         }
 
         private bool TryResolveEntryFromPendingLocalRequest(
@@ -3469,6 +3486,38 @@ namespace HaCreator.MapSimulator.Fields
 
             entry = GetEntry(token.Tab, token.EntryIndex);
             return entry != null;
+        }
+
+        private bool TryConsumeNextResolvablePendingLocalRequest(out PendingLocalRequestToken token)
+        {
+            token = default;
+            if (_pendingLocalRequests.Count <= 0)
+            {
+                return false;
+            }
+
+            int pendingCount = _pendingLocalRequests.Count;
+            bool consumed = false;
+            List<PendingLocalRequestToken> unmatched = new(pendingCount);
+            for (int i = 0; i < pendingCount; i++)
+            {
+                PendingLocalRequestToken pending = _pendingLocalRequests.Dequeue();
+                if (!consumed && TryResolveEntryFromPendingLocalRequest(pending, out _))
+                {
+                    token = pending;
+                    consumed = true;
+                    continue;
+                }
+
+                unmatched.Add(pending);
+            }
+
+            foreach (PendingLocalRequestToken pending in unmatched)
+            {
+                _pendingLocalRequests.Enqueue(pending);
+            }
+
+            return consumed;
         }
 
         private bool TryConsumeNextPendingLocalRequest(out PendingLocalRequestToken token)
@@ -4401,6 +4450,20 @@ namespace HaCreator.MapSimulator.Fields
                     RecordReviveRouteTrail(_reviveForwardedRouteTrail, packetType, delegatedOwner);
                 }
             }
+            else if (_definition?.IsWaitingRoom == true)
+            {
+                _waitingRoomDelegatedPacketCount++;
+                if (rawPacket)
+                {
+                    _waitingRoomRawPacketCount++;
+                }
+                else
+                {
+                    _waitingRoomStructuredPacketCount++;
+                }
+
+                RecordWaitingRoomLobbyRoute(packetType, rawPacket, packetBucket, delegatedOwner);
+            }
 
             string reviveDetail = string.IsNullOrWhiteSpace(reviveRoute) ? string.Empty : $" ({reviveRoute})";
             _variantTransportLastRoute = $"{packetLabel} {packetType} [{packetBucket}] -> {delegatedOwner}{reviveDetail}";
@@ -4991,6 +5054,10 @@ namespace HaCreator.MapSimulator.Fields
             {
                 summary += $",reviveDirect={_reviveDirectPacketCount},reviveForwarded={_reviveForwardedPacketCount},reviveRounds={_reviveRoundSequence},reviveResults={_reviveResultSequence},reviveDirectTrail={BuildReviveDirectRouteTrailSummary()},reviveForwardedTrail={BuildReviveForwardedRouteTrailSummary()}";
             }
+            else if (_definition?.IsWaitingRoom == true)
+            {
+                summary += $",waitingRoomDelegated={_waitingRoomDelegatedPacketCount},waitingRoomRaw={_waitingRoomRawPacketCount},waitingRoomPacket={_waitingRoomStructuredPacketCount},waitingRoomTrail={BuildWaitingRoomLobbyRouteTrailSummary()}";
+            }
 
             return summary;
         }
@@ -5037,6 +5104,26 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join(" => ", _reviveForwardedRouteTrail.Select(entry => TrimVariantActionText(entry, 40)));
+        }
+
+        private void RecordWaitingRoomLobbyRoute(int packetType, bool rawPacket, string packetBucket, string delegatedOwner)
+        {
+            string transport = rawPacket ? "raw" : "packet";
+            _waitingRoomLobbyRouteTrail.Enqueue($"{transport}:{packetType}[{packetBucket}]->{delegatedOwner}");
+            while (_waitingRoomLobbyRouteTrail.Count > WaitingRoomRouteTrailCapacity)
+            {
+                _waitingRoomLobbyRouteTrail.Dequeue();
+            }
+        }
+
+        private string BuildWaitingRoomLobbyRouteTrailSummary()
+        {
+            if (_definition?.IsWaitingRoom != true || _waitingRoomLobbyRouteTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _waitingRoomLobbyRouteTrail.Select(entry => TrimVariantActionText(entry, 54)));
         }
 
         private string BuildSeason2SubDialogTimerTrailSummary()

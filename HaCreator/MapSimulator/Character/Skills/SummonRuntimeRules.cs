@@ -1173,7 +1173,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             string healBranchName = ResolveSupportOwnedBranch(skill, preferHealFirst: true);
             if (string.IsNullOrWhiteSpace(healBranchName))
             {
-                return false;
+                return skill.TryGetSummonAttackRange(facingRight, branchName: null, out range)
+                       && !range.IsEmpty;
             }
 
             return skill.TryGetSummonAttackRange(facingRight, healBranchName, out range)

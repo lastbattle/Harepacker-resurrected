@@ -1965,7 +1965,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!ignoreRandomTimeGate
                 && RandomTimeSeconds > 0
-                && elapsedStagePeriodMilliseconds < RandomTimeSeconds * 1000)
+                && elapsedStagePeriodMilliseconds < ResolveRandomTimeGateMilliseconds(RandomTimeSeconds))
             {
                 return false;
             }
@@ -1990,6 +1990,19 @@ namespace HaCreator.MapSimulator.Interaction
                 && ItemMakerQuestRequirementPolicy.MatchesClientQuestRequirement(
                     questStateProvider(QuestId),
                     QuestState);
+        }
+
+        internal static int ResolveRandomTimeGateMilliseconds(int randomTimeSeconds)
+        {
+            if (randomTimeSeconds <= 0)
+            {
+                return 0;
+            }
+
+            long milliseconds = (long)randomTimeSeconds * 1000L;
+            return milliseconds > int.MaxValue
+                ? int.MaxValue
+                : (int)milliseconds;
         }
     }
 

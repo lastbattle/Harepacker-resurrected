@@ -46,6 +46,26 @@ namespace HaCreator.MapSimulator
             ObserveRemoteDropPacketLeavePartyLink(packet);
 
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            int resolvedPetActorId = packet.Reason == PacketDropLeaveReason.PetPickup
+                ? ResolveRemoteDropPacketPetActorId(packet)
+                : packet.ActorId;
+            int resolvedPetOwnerCharacterId = packet.Reason == PacketDropLeaveReason.PetPickup
+                ? ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedPetActorId)
+                : 0;
+            Vector2? petTargetPosition = packet.Reason == PacketDropLeaveReason.PetPickup
+                ? ResolveRemoteDropPacketTargetPosition(packet.Reason, packet)
+                : null;
+            if (ShouldRetainRemoteDropPacketPetTargetPosition(packet, petTargetPosition))
+            {
+                foreach (int observedPetActorId in ResolveRemoteDropPacketLeaveObservedPetActorIds(
+                    packet,
+                    resolvedPetActorId,
+                    resolvedPetOwnerCharacterId))
+                {
+                    RememberObservedRemotePetPickupActorPosition(observedPetActorId, petTargetPosition.Value);
+                }
+            }
+
             bool applied = _dropPool?.ApplyPacketLeave(
                 packet,
                 currentTime,
@@ -646,6 +666,43 @@ namespace HaCreator.MapSimulator
             }
 
             return linkedActorIds.ToArray();
+        }
+
+        internal static int[] ResolveRemoteDropPacketLeaveObservedPetActorIds(
+            RemoteDropLeavePacket packet,
+            int resolvedActorId,
+            int resolvedOwnerCharacterId)
+        {
+            if (packet.Reason != PacketDropLeaveReason.PetPickup)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> observedActorIds = new();
+            if (packet.ActorId != 0)
+            {
+                observedActorIds.Add(packet.ActorId);
+            }
+
+            if (resolvedActorId != 0)
+            {
+                observedActorIds.Add(resolvedActorId);
+            }
+
+            if (resolvedOwnerCharacterId > 0)
+            {
+                AddRemotePetPickupActorAliasesForOwner(observedActorIds, resolvedOwnerCharacterId);
+            }
+
+            return observedActorIds.ToArray();
+        }
+
+        internal static bool ShouldRetainRemoteDropPacketPetTargetPosition(
+            RemoteDropLeavePacket packet,
+            Vector2? pickupTargetPosition)
+        {
+            return packet.Reason == PacketDropLeaveReason.PetPickup
+                && pickupTargetPosition.HasValue;
         }
 
         internal static void AddRemotePetPickupActorAliasesForOwner(ISet<int> actorIds, int ownerCharacterId)

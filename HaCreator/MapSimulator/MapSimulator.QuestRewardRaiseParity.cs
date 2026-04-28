@@ -136,7 +136,7 @@ namespace HaCreator.MapSimulator
             }
 
             Point defaultPosition = uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestRewardRaise)?.Position ?? Point.Zero;
-            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.Open(prompt, QuestRewardRaiseSourceKind.InventoryItem, defaultPosition);
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.CreateWindowForItemOwner(prompt, defaultPosition);
             if (activeRaise == null)
             {
                 return;
@@ -812,7 +812,7 @@ namespace HaCreator.MapSimulator
                     activeRaise.QrData = qrData;
                 }
 
-                if (_questRewardRaiseManager.TrySetQrDataForQuest(questId, qrData, out QuestRewardRaiseState observedRaise)
+                if (_questRewardRaiseManager.SetQrDataWithQuestId(questId, qrData, out QuestRewardRaiseState observedRaise)
                     && observedRaise != null)
                 {
                     observedRaise.QrData = qrData;
@@ -1016,7 +1016,7 @@ namespace HaCreator.MapSimulator
                     int questOwnerItemId = _questRewardRaiseManager.QuestToItem(questId);
                     if (questOwnerItemId == 0 || questOwnerItemId == observedRaise.OwnerItemId)
                     {
-                        _questRewardRaiseManager.DestroyByQuestId(questId);
+                        _questRewardRaiseManager.DestroyWindowWithQuestId(questId);
                     }
 
                     if (raiseIsActive)

@@ -1992,7 +1992,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PendingEquipmentChangeEnvelope pendingEnvelope = null;
+            List<PendingEquipmentChangeEnvelope> characterCandidates = new();
             foreach (PendingEquipmentChangeEnvelope envelope in _pendingEquipmentChangeRequests.Values)
             {
                 if (envelope?.Request == null
@@ -2002,22 +2002,45 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                pendingEnvelope = envelope;
-                break;
+                characterCandidates.Add(envelope);
             }
 
-            if (pendingEnvelope?.Request == null)
+            if (characterCandidates.Count == 0)
             {
                 message = "Inventory-operation payload did not match an active character equipment packet-owned request.";
                 return false;
             }
 
-            if (!CharacterEquipmentPacketParity.TryRecognizeClientInventoryOperationCompletion(
-                    pendingEnvelope.Request,
+            List<EquipmentChangeRequest> candidateRequests = new(characterCandidates.Count);
+            foreach (PendingEquipmentChangeEnvelope candidate in characterCandidates)
+            {
+                candidateRequests.Add(candidate.Request);
+            }
+
+            if (!CharacterEquipmentPacketParity.TryFindMatchingClientInventoryOperationCompletionRequest(
+                    candidateRequests,
                     payload,
+                    out EquipmentChangeRequest matchedRequest,
                     out string rejectReason))
             {
                 message = rejectReason;
+                return false;
+            }
+
+            PendingEquipmentChangeEnvelope pendingEnvelope = null;
+            foreach (PendingEquipmentChangeEnvelope candidate in characterCandidates)
+            {
+                if (ReferenceEquals(candidate.Request, matchedRequest)
+                    || candidate.Request.RequestId == matchedRequest.RequestId)
+                {
+                    pendingEnvelope = candidate;
+                    break;
+                }
+            }
+
+            if (pendingEnvelope?.Request == null)
+            {
+                message = "Inventory-operation payload matched a character equipment request that is no longer pending.";
                 return false;
             }
 

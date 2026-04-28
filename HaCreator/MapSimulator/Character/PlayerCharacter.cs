@@ -15,7 +15,7 @@ using Spine;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-
+
 using BinaryReader = MapleLib.PacketLib.PacketReader;
 using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Character
@@ -7611,7 +7611,6 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-
             bool sourceLayerTimeMissing = sourceLayerCurrentTime == int.MinValue
                 || lastInsertCanvasSourceLayerCurrentTime == int.MinValue;
             if (sourceLayerTimeMissing)
@@ -7872,6 +7871,15 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(sourcePart.UsesWeeklyVariantOverride);
             signature.Add(sourcePart.ResolvedWeeklyVariantIndex);
             signature.Add(sourcePart.ClientItemToken);
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.Animations));
+            signature.Add(sourcePart.Animations?.Count ?? 0);
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.AvailableAnimations));
+            signature.Add(sourcePart.AvailableAnimations?.Count ?? 0);
+            signature.Add(sourcePart.ItemCategory, StringComparer.Ordinal);
+            signature.Add(sourcePart.ExpirationDateUtc?.Ticks ?? 0L);
+            signature.Add(sourcePart.Durability ?? int.MinValue);
+            signature.Add(sourcePart.MaxDurability ?? int.MinValue);
+            signature.Add(sourcePart.OwnerAccountId ?? int.MinValue);
         }
 
         internal static Point ResolveMirrorImageSourceLayerOrigin(Rectangle bounds)
@@ -9080,14 +9088,11 @@ namespace HaCreator.MapSimulator.Character
                 return Point.Zero;
             }
 
-            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
-                ? resolvedRawActionCode
-                : null;
             return ResolveShadowPartnerClientOffset(
                 _activeShadowPartner.ObservedPlayerActionName,
                 State,
                 facingRight,
-                rawActionCode,
+                _activeShadowPartner.ObservedPlayerRawActionCode,
                 HasActiveMorphTransform,
                 HasActiveGhostActionTransform(_activeShadowPartner.ObservedPlayerActionName));
         }

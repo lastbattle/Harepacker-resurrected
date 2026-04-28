@@ -3847,7 +3847,16 @@ namespace HaCreator.MapSimulator
             if (metadata.Type == 2)
             {
                 consumed = true;
-                _ = TryApplyAnimationDisplayerReservedTransferFieldOwnerEffect(metadata.FieldId, registerTime);
+                // Client evidence (`RESERVEDINFO::Update`, case 2):
+                // transfer requests are CUserLocal-owned side effects.
+                if (ShouldApplyAnimationDisplayerReservedLocalTransferFieldOwnerEffect(
+                        metadata.Type,
+                        presentation.CharacterId,
+                        localCharacterId,
+                        metadata.FieldId))
+                {
+                    _ = TryApplyAnimationDisplayerReservedTransferFieldOwnerEffect(metadata.FieldId, registerTime);
+                }
             }
 
             if (metadata.Type == 6)
@@ -4125,6 +4134,17 @@ namespace HaCreator.MapSimulator
             return metadataType == 4
                 && ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(effectCharacterId, localCharacterId)
                 && !string.IsNullOrWhiteSpace(actionName);
+        }
+
+        internal static bool ShouldApplyAnimationDisplayerReservedLocalTransferFieldOwnerEffect(
+            int metadataType,
+            int effectCharacterId,
+            int localCharacterId,
+            int targetFieldId)
+        {
+            return metadataType == 2
+                && targetFieldId > 0
+                && ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(effectCharacterId, localCharacterId);
         }
 
         internal static bool ShouldApplyAnimationDisplayerReservedLocalEmotionOwnerEffect(
@@ -5333,6 +5353,18 @@ namespace HaCreator.MapSimulator
             return itemId <= 0
                 ? string.Empty
                 : itemId.ToString(CultureInfo.InvariantCulture);
+        }
+
+        internal static bool ShouldRegisterAnimationDisplayerPacketOwnedMonsterBookCardGetForChangedPickup(
+            ISet<int> registeredItemIds,
+            int itemId)
+        {
+            if (registeredItemIds == null || itemId <= 0)
+            {
+                return false;
+            }
+
+            return registeredItemIds.Add(itemId);
         }
 
         internal static int ResolveAnimationDisplayerRemoteHookingChainDurationMsForTesting(int attackWindowMs)

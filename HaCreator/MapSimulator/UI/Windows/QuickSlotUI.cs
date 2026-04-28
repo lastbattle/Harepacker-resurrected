@@ -2,6 +2,8 @@ using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -53,6 +55,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D[] _cooldownMaskTextures = Array.Empty<Texture2D>();
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
+        private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
+        private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
         private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
         private Texture2D _debugPlaceholder;
 
@@ -792,6 +796,10 @@ namespace HaCreator.MapSimulator.UI
             string description = metadata.Description;
             Texture2D itemTexture = ResolveQuickSlotItemTexture(itemId, inventoryType);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
+            Texture2D[] iconRewardTextures = ResolveInfoIconRewardTextures(itemId);
+            Texture2D[] rewardPreviewTextures = HasDrawableBitmap(iconRewardTextures)
+                ? Array.Empty<Texture2D>()
+                : ResolveRewardPreviewTextures(itemId);
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TOOLTIP_PADDING + SLOT_SIZE + TOOLTIP_ICON_GAP;
@@ -842,7 +850,11 @@ namespace HaCreator.MapSimulator.UI
                 contentHeight += (contentHeight > 0f ? 2f : 0f) + cashLabelHeight;
             }
             float iconBlockHeight = Math.Max(SLOT_SIZE, contentHeight);
-            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
+            float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
+            float rewardPreviewHeight = MeasureHorizontalBitmapStripHeight(rewardPreviewTextures);
+            float bitmapPreviewHeight = iconRewardHeight > 0f ? iconRewardHeight : rewardPreviewHeight;
+            float bitmapPreviewGap = bitmapPreviewHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight + bitmapPreviewGap + bitmapPreviewHeight);
 
             Rectangle backgroundRect = ResolveTooltipRect(
                 tooltipAnchor,
@@ -890,6 +902,16 @@ namespace HaCreator.MapSimulator.UI
                     DrawTooltipLines(sprite, lines, textX, sectionY, color);
                     sectionY += height;
                 }
+            }
+
+            int rewardY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
+            if (iconRewardHeight > 0f)
+            {
+                DrawHorizontalBitmapStrip(sprite, iconRewardTextures, backgroundRect, rewardY);
+            }
+            else if (rewardPreviewHeight > 0f)
+            {
+                DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, rewardY);
             }
         }
 
@@ -1032,6 +1054,163 @@ namespace HaCreator.MapSimulator.UI
                 tooltipFrameIndex,
                 _debugPlaceholder,
                 rect);
+        }
+
+        private Texture2D[] ResolveInfoIconRewardTextures(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return Array.Empty<Texture2D>();
+            }
+
+            if (_infoIconRewardTextureCache.TryGetValue(itemId, out Texture2D[] cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            IReadOnlyList<WzCanvasProperty> canvases = InventoryItemMetadataResolver.ResolveInfoCanvasSequence(
+                itemId,
+                "iconReward",
+                8);
+            Texture2D[] textures = new Texture2D[canvases.Count];
+            for (int i = 0; i < canvases.Count; i++)
+            {
+                textures[i] = canvases[i]?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+
+            _infoIconRewardTextureCache[itemId] = textures;
+            return textures;
+        }
+
+        private Texture2D[] ResolveRewardPreviewTextures(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return Array.Empty<Texture2D>();
+            }
+
+            if (_rewardPreviewTextureCache.TryGetValue(itemId, out Texture2D[] cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            IReadOnlyList<InventoryRewardPreviewItem> rewardItems =
+                InventoryItemMetadataResolver.ResolveRewardPreviewItems(itemId, 8);
+            List<Texture2D> textures = new(rewardItems.Count);
+            for (int i = 0; i < rewardItems.Count; i++)
+            {
+                if (!InventoryItemMetadataResolver.TryResolveRootCanvas(
+                        rewardItems[i].ItemId,
+                        "info/icon",
+                        out WzCanvasProperty iconCanvas))
+                {
+                    continue;
+                }
+
+                Texture2D texture = iconCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+                if (texture != null)
+                {
+                    textures.Add(texture);
+                }
+            }
+
+            Texture2D[] resolvedTextures = textures.ToArray();
+            _rewardPreviewTextureCache[itemId] = resolvedTextures;
+            return resolvedTextures;
+        }
+
+        private static bool HasDrawableBitmap(IReadOnlyList<Texture2D> textures)
+        {
+            if (textures == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < textures.Count; i++)
+            {
+                if (textures[i] != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static float MeasureHorizontalBitmapStripHeight(IReadOnlyList<Texture2D> textures)
+        {
+            if (textures == null || textures.Count == 0)
+            {
+                return 0f;
+            }
+
+            int height = 0;
+            for (int i = 0; i < textures.Count; i++)
+            {
+                if (textures[i] != null)
+                {
+                    height = Math.Max(height, textures[i].Height);
+                }
+            }
+
+            return height;
+        }
+
+        private static int MeasureHorizontalBitmapStripWidth(IReadOnlyList<Texture2D> textures)
+        {
+            if (textures == null || textures.Count == 0)
+            {
+                return 0;
+            }
+
+            int width = 0;
+            int visibleCount = 0;
+            for (int i = 0; i < textures.Count; i++)
+            {
+                Texture2D texture = textures[i];
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                if (visibleCount > 0)
+                {
+                    width += 1;
+                }
+
+                width += texture.Width;
+                visibleCount++;
+            }
+
+            return width;
+        }
+
+        private static void DrawHorizontalBitmapStrip(
+            SpriteBatch sprite,
+            IReadOnlyList<Texture2D> textures,
+            Rectangle tooltipRect,
+            int y)
+        {
+            int stripHeight = (int)Math.Ceiling(MeasureHorizontalBitmapStripHeight(textures));
+            if (sprite == null || stripHeight <= 0)
+            {
+                return;
+            }
+
+            int stripWidth = MeasureHorizontalBitmapStripWidth(textures);
+            int x = tooltipRect.X + Math.Max(TOOLTIP_PADDING, (tooltipRect.Width - stripWidth) / 2);
+            for (int i = 0; i < textures.Count; i++)
+            {
+                Texture2D texture = textures[i];
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                int drawY = y + Math.Max(0, (stripHeight - texture.Height) / 2);
+                sprite.Draw(texture, new Vector2(x, drawY), Color.White);
+                x += texture.Width + 1;
+            }
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 using BinaryReader = MapleLib.PacketLib.PacketReader;
@@ -937,16 +938,16 @@ namespace HaCreator.MapSimulator.Interaction
             _requestInFlight = true;
             LastGetRequestSnapshotNativeItemType = itemType;
             LastGetRequestSnapshotNativeRow = trunkRow;
-            bool preConfirmShown = ShouldShowTrunkPreConfirmPrompt(slotData);
-            string preConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetPreConfirm());
-            string costConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetCostConfirm(0));
+            IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> confirmSteps =
+                TrunkDialogClientParityText.BuildSendGetConfirmationChoreography(slotData, 0);
+            bool preConfirmShown = confirmSteps.Any(step => step.StringPoolId == TrunkSendGetConfirmStringPoolId);
             string preConfirmSummary = preConfirmShown
-                ? $"Accepted owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)}: {preConfirm}"
+                ? $"Accepted owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)} through {FormatConfirmationChoreography(confirmSteps, TrunkSendGetConfirmStringPoolId)}"
                 : $"Skipped owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)} because the native pre-confirm predicate evaluated false for this row.";
             StatusMessage =
                 $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}). " +
                 $"{preConfirmSummary} " +
-                $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendGetNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendGetCostConfirmStringPoolId)}: {costConfirm}. " +
+                $"Accepted modal choreography: {FormatConfirmationChoreography(confirmSteps)}. " +
                 $"Native post-send branch set m_nSnapshotTI={itemType.ToString(CultureInfo.InvariantCulture)} and called SetPutItems(m_nSnapshotTI, m_aSnapShot) before waiting for the packet refresh.";
             message = StatusMessage;
             return true;
@@ -1023,26 +1024,27 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Mirrored CTrunkDlg::SendPutItemRequest (opcode 67, mode 5, pos {inventoryPosition.ToString(CultureInfo.InvariantCulture)}, item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)}, count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
             bool sharableOnce = slotData.CashItemSerialNumber.GetValueOrDefault() > 0;
-            bool preConfirmShown = sharableOnce || ShouldShowTrunkPreConfirmPrompt(slotData);
-            string preConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutPreConfirm(sharableOnce));
-            string askCount = !treatSingly && availableQuantity > 1
-                ? TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt())
-                : "No AskItemCount branch (client treat-singly path).";
-            string costConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutCostConfirm(0));
+            IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> confirmSteps =
+                TrunkDialogClientParityText.BuildSendPutConfirmationChoreography(slotData, treatSingly, availableQuantity, 0);
             int preConfirmStringPoolId = sharableOnce
                 ? TrunkSendPutSharableOnceConfirmStringPoolId
                 : TrunkSendPutConfirmStringPoolId;
+            bool preConfirmShown = confirmSteps.Any(step => step.StringPoolId == preConfirmStringPoolId);
+            bool askCountShown = confirmSteps.Any(step => step.StringPoolId == TrunkDialogClientParityText.SendPutAskItemCountStringPoolId);
             string preConfirmSummary = preConfirmShown
-                ? $"Accepted pre-send confirm {FormatStringPoolId(preConfirmStringPoolId)}: {preConfirm}"
+                ? $"Accepted pre-send confirm {FormatStringPoolId(preConfirmStringPoolId)} through {FormatConfirmationChoreography(confirmSteps, preConfirmStringPoolId)}"
                 : $"Skipped pre-send confirm {FormatStringPoolId(preConfirmStringPoolId)} because the native pre-confirm predicate evaluated false for this row.";
+            string askCountSummary = askCountShown
+                ? $"AskItemCount path {FormatStringPoolId(TrunkDialogClientParityText.SendPutAskItemCountStringPoolId)} is part of the accepted choreography."
+                : "No AskItemCount branch (client treat-singly path).";
             string quantitySummary = normalizedQuantity == availableQuantity
                 ? $"full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"
                 : $"partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}";
             StatusMessage =
                 $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with {quantitySummary}. " +
                 $"{preConfirmSummary} " +
-                $"AskItemCount path {FormatStringPoolId(TrunkDialogClientParityText.SendPutAskItemCountStringPoolId)}: {askCount} " +
-                $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendPutNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendPutCostConfirmStringPoolId)}: {costConfirm}.";
+                $"{askCountSummary} " +
+                $"Accepted modal choreography: {FormatConfirmationChoreography(confirmSteps)}.";
             message = StatusMessage;
             return true;
         }
@@ -1152,6 +1154,20 @@ namespace HaCreator.MapSimulator.Interaction
         private static string FormatStringPoolId(int stringPoolId)
         {
             return $"StringPool 0x{stringPoolId.ToString("X", CultureInfo.InvariantCulture)}";
+        }
+
+        private static string FormatConfirmationChoreography(IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> steps, int? onlyStringPoolId = null)
+        {
+            if (steps == null || steps.Count == 0)
+            {
+                return "none";
+            }
+
+            IEnumerable<TrunkDialogClientParityText.ConfirmationStep> selectedSteps = onlyStringPoolId.HasValue
+                ? steps.Where(step => step.StringPoolId == onlyStringPoolId.Value)
+                : steps;
+            return string.Join(" -> ", selectedSteps.Select(step =>
+                $"{step.OwnerCall} {FormatStringPoolId(step.StringPoolId)} \"{TrunkDialogClientParityText.ToInlineText(step.Text)}\""));
         }
 
         private bool ApplyNotice(string statusMessage, out string message)
@@ -1321,19 +1337,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
                 && slotData.OwnerAccountId.GetValueOrDefault() > 0;
-        }
-
-        private static bool ShouldShowTrunkPreConfirmPrompt(InventorySlotData slotData)
-        {
-            if (slotData == null)
-            {
-                return false;
-            }
-
-            return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
-                || slotData.OwnerAccountId.GetValueOrDefault() > 0
-                || slotData.OwnerCharacterId.GetValueOrDefault() > 0
-                || slotData.IsCashOwnershipLocked;
         }
     }
 }

@@ -200,6 +200,11 @@ namespace HaCreator.MapSimulator.UI
             bool commodityOnSale,
             bool isPreviewOnly)
         {
+            if (isPacketOwnedSnapshotRow)
+            {
+                return packetSaleState != 0;
+            }
+
             bool hasClientCommodityIdentity = isPacketOwnedSnapshotRow || commoditySerialNumber > 0;
             if (!hasClientCommodityIdentity)
             {

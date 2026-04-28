@@ -24,10 +24,10 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int FieldFadeInOutClientPacketType = 240;
         public const int FieldFadeOutForceClientPacketType = 241;
-        public const int NotifyHpDecByFieldPacketType = LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType;
+        public const int NotifyHpDecByFieldPacketType = 243;
         public const int BalloonMsgClientPacketType = 245;
-        public const int DamageMeterPacketType = LocalUtilityPacketInboxManager.DamageMeterPacketType;
-        public const int PetConsumeResultPacketType = LocalUtilityPacketInboxManager.PetConsumeResultPacketType;
+        public const int DamageMeterPacketType = 267;
+        public const int PetConsumeResultPacketType = 1026;
 
         private readonly ConcurrentQueue<LocalOverlayPacketInboxMessage> _pendingMessages = new();
         public int ReceivedCount { get; private set; }
@@ -168,7 +168,6 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (string.Equals(normalized, "hpdec", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "hazard", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "notifyhpdecbyfield", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "onnotifyhpdecbyfield", StringComparison.OrdinalIgnoreCase))
             {
@@ -188,9 +187,6 @@ namespace HaCreator.MapSimulator.Managers
                 || string.Equals(normalized, "onpetconsumeresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "petitemuseresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "onpetitemuseresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "petitemconsume", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "petconsume", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "petconsumeack", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "hpresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "hazardresult", StringComparison.OrdinalIgnoreCase))
             {

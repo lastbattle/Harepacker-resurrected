@@ -1040,6 +1040,12 @@ namespace HaCreator.MapSimulator.Physics
         /// <param name="fh">Foothold to land on</param>
         public void LandOnFoothold(FootholdLine fh)
         {
+            if (NoLandingMap)
+            {
+                DetachFromFoothold();
+                return;
+            }
+
             CurrentFoothold = fh;
             FallStartFoothold = null;
             VelocityY = 0;

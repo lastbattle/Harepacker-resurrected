@@ -2131,12 +2131,6 @@ namespace HaCreator.MapSimulator
             }
 
             using ClientTextRasterizer transientRasterizer = CreateInitialQuizOwnerTransientLabelRasterizer();
-            displayText = FitInitialQuizOwnerTextToBounds(displayText, bounds.Width, scale, transientRasterizer);
-            if (string.IsNullOrEmpty(displayText))
-            {
-                return;
-            }
-
             if (transientRasterizer != null)
             {
                 // `CUIInitialQuiz::Draw` acquires/releases draw resources per text call.
@@ -2147,6 +2141,12 @@ namespace HaCreator.MapSimulator
                     color,
                     scale,
                     bounds.Width);
+                return;
+            }
+
+            displayText = FitInitialQuizOwnerTextToBounds(displayText, bounds.Width, scale, null);
+            if (string.IsNullOrEmpty(displayText))
+            {
                 return;
             }
 

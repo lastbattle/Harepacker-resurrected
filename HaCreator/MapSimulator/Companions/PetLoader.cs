@@ -1627,6 +1627,16 @@ namespace HaCreator.MapSimulator.Companions
             return PixelOffsetMode.Half;
         }
 
+        internal static CompositingQuality ResolveNativeCanvasCopyCompositingQualityForTesting()
+        {
+            return CompositingQuality.HighSpeed;
+        }
+
+        internal static SmoothingMode ResolveNativeCanvasCopySmoothingModeForTesting()
+        {
+            return SmoothingMode.None;
+        }
+
         private static void ApplyNativeCanvasCopySettings(SDG graphics)
         {
             if (graphics == null)
@@ -1635,8 +1645,10 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             graphics.CompositingMode = ResolveNativeCanvasCopyCompositingModeForTesting();
+            graphics.CompositingQuality = ResolveNativeCanvasCopyCompositingQualityForTesting();
             graphics.InterpolationMode = ResolveNativeCanvasCopyInterpolationModeForTesting();
             graphics.PixelOffsetMode = ResolveNativeCanvasCopyPixelOffsetModeForTesting();
+            graphics.SmoothingMode = ResolveNativeCanvasCopySmoothingModeForTesting();
         }
 
         private static void DrawCanvasCopyAlpha255(SDG graphics, SD.Bitmap bitmap, int x, int y)

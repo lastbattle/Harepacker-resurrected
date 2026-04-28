@@ -2080,9 +2080,9 @@ namespace HaCreator.MapSimulator.Combat
                         out Vector2 resolvedLaneTarget))
                 {
                     assignment.TargetInfo = laneTargetInfo?.Clone();
-                    assignment.LanePoint = resolvedLaneTarget;
                 }
 
+                assignment.LanePoint = ResolvePacketProjectileLanePoint(packetLanePoint);
                 assignments.Add(assignment);
             }
 
@@ -2688,6 +2688,14 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return packetLanePoints;
+        }
+
+        internal static Vector2 ResolvePacketProjectileLanePoint(Vector2 packetLanePoint)
+        {
+            // Packet-owned m_aMultiTargetForBall points are already client-selected
+            // ball destinations. Live body resolution may attach impact ownership,
+            // but it must not move the authored lane away from the packet point.
+            return packetLanePoint;
         }
 
         private PendingAttackPacketOverrides TryConsumeAttackPacketOverrides(MobItem mobItem, MobAttackEntry attack, int currentTime)

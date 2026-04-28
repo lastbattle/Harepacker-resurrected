@@ -59,6 +59,11 @@ namespace HaCreator.MapSimulator.Fields
         bool ShouldStopSkillMacro,
         bool ShouldClearQueuedRetry);
 
+    public readonly record struct PassiveTransferFieldQueuedReplayDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldReplayHandleUpKeyDown,
+        bool ShouldClearQueuedRetry);
+
     public static class PassiveTransferFieldReadinessEvaluator
     {
         public enum QueuedRetryDecision
@@ -156,6 +161,29 @@ namespace HaCreator.MapSimulator.Fields
         {
             return hasPendingRequest
                    && decision == QueuedRetryDecision.ReplayHandleUpKeyDown;
+        }
+
+        public static PassiveTransferFieldQueuedReplayDecision EvaluateQueuedReplayDecision(
+            bool hasPendingRequest,
+            QueuedRetryDecision decision,
+            PassiveTransferFieldReplayState replayState)
+        {
+            if (decision != QueuedRetryDecision.ReplayHandleUpKeyDown)
+            {
+                return new PassiveTransferFieldQueuedReplayDecision(
+                    ShouldStopSkillMacro: false,
+                    ShouldReplayHandleUpKeyDown: false,
+                    ShouldClearQueuedRetry: false);
+            }
+
+            bool canAttemptHandleUpKeyDownReplay = CanAttemptHandleUpKeyDownReplay(replayState);
+
+            return new PassiveTransferFieldQueuedReplayDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForQueuedReplay(canAttemptHandleUpKeyDownReplay),
+                ShouldReplayHandleUpKeyDown: CanReplayHandleUpKeyDown(replayState),
+                ShouldClearQueuedRetry: ShouldClearQueuedRetryAfterInterfaceGateAdmission(
+                    hasPendingRequest,
+                    decision));
         }
 
         public static bool ShouldClearQueuedRetryFromTransferLifecycle(bool hasPendingRequest)

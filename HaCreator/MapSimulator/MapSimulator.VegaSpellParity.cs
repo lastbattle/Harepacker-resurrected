@@ -830,7 +830,14 @@ namespace HaCreator.MapSimulator
             {
                 if (_pendingVegaCastState.PacketOwnedPreludeSuccess.HasValue)
                 {
-                    terminalSuccess = _pendingVegaCastState.PacketOwnedPreludeSuccess.Value;
+                    bool preludeSuccess = _pendingVegaCastState.PacketOwnedPreludeSuccess.Value;
+                    if (!DoesVegaTerminalMatchPrelude(preludeSuccess, resultCode))
+                    {
+                        message = $"Observed mismatched packet-owned Vega terminal result code {resultCode} after {(_pendingVegaCastState.PacketOwnedPreludeCode.HasValue ? _pendingVegaCastState.PacketOwnedPreludeCode.Value.ToString() : "unknown")} prelude; preserving deferred fallback until the matching terminal packet arrives.";
+                        return true;
+                    }
+
+                    terminalSuccess = preludeSuccess;
                 }
 
                 if (!_pendingVegaCastState.OutcomeResolved)
@@ -2126,6 +2133,18 @@ namespace HaCreator.MapSimulator
         {
             success = resultCode == VegaPacketOwnedSuccessTerminalCode;
             return resultCode == VegaPacketOwnedSuccessTerminalCode || resultCode == VegaPacketOwnedFailTerminalCode;
+        }
+
+        private static bool DoesVegaTerminalMatchPrelude(bool preludeSuccess, byte terminalResultCode)
+        {
+            return preludeSuccess
+                ? terminalResultCode == VegaPacketOwnedSuccessTerminalCode
+                : terminalResultCode == VegaPacketOwnedFailTerminalCode;
+        }
+
+        internal static bool DoesVegaTerminalMatchPreludeForTests(bool preludeSuccess, byte terminalResultCode)
+        {
+            return DoesVegaTerminalMatchPrelude(preludeSuccess, terminalResultCode);
         }
 
         private bool HasLiveVegaLaunchIngressRoute()

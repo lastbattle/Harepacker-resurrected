@@ -455,6 +455,8 @@ namespace HaCreator.MapSimulator
             platform.PacketOwnedMovingX2 = movingState.X2;
             platform.PacketOwnedMovingY1 = movingState.Y1;
             platform.PacketOwnedMovingY2 = movingState.Y2;
+            platform.PacketOwnedReverseVertical = movingState.ReverseVertical;
+            platform.PacketOwnedReverseHorizontal = movingState.ReverseHorizontal;
             platform.MovementType = ResolvePacketOwnedMovingFootholdMovementTypeForPacketParity(
                 movingState.X1,
                 movingState.X2,
@@ -1157,14 +1159,8 @@ namespace HaCreator.MapSimulator
                 y2,
                 (int)platform.X,
                 (int)platform.Y,
-                EncodePacketOwnedMovingFootholdReverseVerticalForPacketParity(
-                    y1,
-                    y2,
-                    platform.MovingDown),
-                EncodePacketOwnedMovingFootholdReverseHorizontalForPacketParity(
-                    x1,
-                    x2,
-                    platform.MovingRight));
+                ResolvePacketOwnedMovingFootholdSnapshotReverseVerticalForPacketParity(platform, x1, x2, y1, y2),
+                ResolvePacketOwnedMovingFootholdSnapshotReverseHorizontalForPacketParity(platform, x1, x2, y1, y2));
         }
 
         internal static void ResolvePacketOwnedMovingFootholdEndpointOrderForPacketParity(
@@ -1234,6 +1230,57 @@ namespace HaCreator.MapSimulator
 
             bool secondEndpointIsBelow = y2 > y1;
             return movingDown != secondEndpointIsBelow;
+        }
+
+        internal static bool ResolvePacketOwnedMovingFootholdSnapshotReverseHorizontalForPacketParity(
+            DynamicPlatform platform,
+            int x1,
+            int x2,
+            int y1,
+            int y2)
+        {
+            if (HasCurrentPacketOwnedMovingFootholdEndpointOrderForPacketParity(platform, x1, x2, y1, y2)
+                && platform.PacketOwnedReverseHorizontal is bool packetReverseHorizontal)
+            {
+                return packetReverseHorizontal;
+            }
+
+            return EncodePacketOwnedMovingFootholdReverseHorizontalForPacketParity(
+                x1,
+                x2,
+                platform?.MovingRight ?? false);
+        }
+
+        internal static bool ResolvePacketOwnedMovingFootholdSnapshotReverseVerticalForPacketParity(
+            DynamicPlatform platform,
+            int x1,
+            int x2,
+            int y1,
+            int y2)
+        {
+            if (HasCurrentPacketOwnedMovingFootholdEndpointOrderForPacketParity(platform, x1, x2, y1, y2)
+                && platform.PacketOwnedReverseVertical is bool packetReverseVertical)
+            {
+                return packetReverseVertical;
+            }
+
+            return EncodePacketOwnedMovingFootholdReverseVerticalForPacketParity(
+                y1,
+                y2,
+                platform?.MovingDown ?? false);
+        }
+
+        private static bool HasCurrentPacketOwnedMovingFootholdEndpointOrderForPacketParity(
+            DynamicPlatform platform,
+            int x1,
+            int x2,
+            int y1,
+            int y2)
+        {
+            return platform?.PacketOwnedMovingX1 == x1
+                && platform.PacketOwnedMovingX2 == x2
+                && platform.PacketOwnedMovingY1 == y1
+                && platform.PacketOwnedMovingY2 == y2;
         }
 
         private bool TryBuildPacketOwnedCachedFootholdSnapshotEntry(

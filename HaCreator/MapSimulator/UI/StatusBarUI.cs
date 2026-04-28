@@ -1071,8 +1071,9 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            if (!_temporaryStatViewShadowTextures.TryGetValue(
-                    Math.Clamp(buffEntry.ShadowIndex, 0, 15),
+            if (!TryResolveTemporaryStatViewShadowTextureForParity(
+                    _temporaryStatViewShadowTextures,
+                    buffEntry.ShadowIndex,
                     out Texture2D shadowTexture)
                 || shadowTexture == null)
             {
@@ -1086,6 +1087,62 @@ namespace HaCreator.MapSimulator.UI {
                 buffEntry.ShadowCanvasAlphaStart,
                 buffEntry.ShadowCanvasAlphaEnd);
             sprite.Draw(shadowTexture, iconRect, new Color((byte)255, (byte)255, (byte)255, alpha));
+        }
+
+        private static bool TryResolveTemporaryStatViewShadowTextureForParity(
+            IReadOnlyDictionary<int, Texture2D> shadowTextures,
+            int shadowIndex,
+            out Texture2D shadowTexture)
+        {
+            shadowTexture = null;
+            if (shadowTextures == null || shadowTextures.Count == 0)
+            {
+                return false;
+            }
+
+            int clampedIndex = Math.Clamp(shadowIndex, 0, 15);
+            if (shadowTextures.TryGetValue(clampedIndex, out shadowTexture)
+                && shadowTexture != null)
+            {
+                return true;
+            }
+
+            int fallbackIndex = ResolveTemporaryStatViewShadowTextureFallbackIndexForParity(
+                clampedIndex,
+                shadowTextures.Keys);
+            return shadowTextures.TryGetValue(fallbackIndex, out shadowTexture)
+                && shadowTexture != null;
+        }
+
+        internal static int ResolveTemporaryStatViewShadowTextureFallbackIndexForParity(
+            int shadowIndex,
+            IEnumerable<int> availableShadowIndexes)
+        {
+            if (availableShadowIndexes == null)
+            {
+                return Math.Clamp(shadowIndex, 0, 15);
+            }
+
+            HashSet<int> available = new HashSet<int>(
+                availableShadowIndexes
+                    .Where(index => index >= 0 && index <= 15));
+            int clampedIndex = Math.Clamp(shadowIndex, 0, 15);
+            if (available.Contains(clampedIndex))
+            {
+                return clampedIndex;
+            }
+
+            // WZ v95 exposes only UI/UIWindow(.2).img/TemporaryStatView/1.
+            // Keep the client SetLeft shadow-index metadata, but reuse the
+            // resident authored canvas instead of suppressing the layer.
+            if (available.Contains(1))
+            {
+                return 1;
+            }
+
+            return available.Count == 0
+                ? clampedIndex
+                : available.Min();
         }
 
         internal static byte ResolveTemporaryStatViewShadowAlphaForParity(

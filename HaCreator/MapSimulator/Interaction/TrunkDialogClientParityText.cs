@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -7,6 +8,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class TrunkDialogClientParityText
     {
+        internal readonly record struct ConfirmationStep(int StringPoolId, string OwnerCall, string Text);
+
         internal const int SendGetPreConfirmStringPoolId = 0x1246;
         internal const int SendPutPreConfirmStringPoolId = 0x1245;
         internal const int SendPutSharableOnceConfirmStringPoolId = 0x169D;
@@ -107,6 +110,27 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{ResolveSendGetPreConfirm()}\r\n\r\n{costConfirm}";
         }
 
+        internal static IReadOnlyList<ConfirmationStep> BuildSendGetConfirmationChoreography(InventorySlotData slotData, int mesoCost)
+        {
+            List<ConfirmationStep> steps = new(2);
+            if (RequiresOwnershipPreConfirm(slotData))
+            {
+                steps.Add(new ConfirmationStep(
+                    SendGetPreConfirmStringPoolId,
+                    "CUtilDlg::YesNo",
+                    ResolveSendGetPreConfirm()));
+            }
+
+            int costStringPoolId = mesoCost <= 0
+                ? SendGetNoCostConfirmStringPoolId
+                : SendGetCostConfirmStringPoolId;
+            steps.Add(new ConfirmationStep(
+                costStringPoolId,
+                "CUtilDlg::YesNo",
+                ResolveSendGetCostConfirm(mesoCost)));
+            return steps;
+        }
+
         internal static string BuildSendPutConfirmationBody(InventorySlotData slotData, bool treatSingly, int availableQuantity, int mesoCost)
         {
             string preConfirm = RequiresOwnershipPreConfirm(slotData)
@@ -117,6 +141,36 @@ namespace HaCreator.MapSimulator.Interaction
                 : string.Empty;
 
             return $"{preConfirm}{askCount}{ResolveSendPutCostConfirm(mesoCost)}";
+        }
+
+        internal static IReadOnlyList<ConfirmationStep> BuildSendPutConfirmationChoreography(InventorySlotData slotData, bool treatSingly, int availableQuantity, int mesoCost)
+        {
+            List<ConfirmationStep> steps = new(3);
+            bool sharableOnce = slotData?.CashItemSerialNumber.GetValueOrDefault() > 0;
+            if (RequiresOwnershipPreConfirm(slotData))
+            {
+                steps.Add(new ConfirmationStep(
+                    sharableOnce ? SendPutSharableOnceConfirmStringPoolId : SendPutPreConfirmStringPoolId,
+                    "CUtilDlg::YesNo",
+                    ResolveSendPutPreConfirm(sharableOnce)));
+            }
+
+            if (!treatSingly && availableQuantity > 1)
+            {
+                steps.Add(new ConfirmationStep(
+                    SendPutAskItemCountStringPoolId,
+                    "CUtilDlg::AskNumber",
+                    ResolveSendPutAskItemCountPrompt()));
+            }
+
+            int costStringPoolId = mesoCost <= 0
+                ? SendPutNoCostConfirmStringPoolId
+                : SendPutCostConfirmStringPoolId;
+            steps.Add(new ConfirmationStep(
+                costStringPoolId,
+                "CUtilDlg::YesNo",
+                ResolveSendPutCostConfirm(mesoCost)));
+            return steps;
         }
 
         internal static string ToInlineText(string text)

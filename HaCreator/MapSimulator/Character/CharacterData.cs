@@ -2015,6 +2015,7 @@ namespace HaCreator.MapSimulator.Character
         public string AllianceName { get; set; } = string.Empty;
         public int Fame { get; set; } = 0;
         public int CookieHousePoint { get; set; } = 0;
+        public int Fatigue { get; set; } = 0;
         public int WorldRank { get; set; }
         public int JobRank { get; set; }
         public bool HasMonsterRiding { get; set; }
@@ -2196,7 +2197,7 @@ namespace HaCreator.MapSimulator.Character
 
         public int TotalAccuracy => Math.Max(0, ApplyRateBonus(GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy) + GetSkillStatBonus(BuffStatType.Accuracy), GetSkillStatBonus(BuffStatType.AccuracyPercent)));
         public int TotalAvoidability => Math.Max(0, ApplyRateBonus(GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability), GetSkillStatBonus(BuffStatType.AvoidabilityPercent)));
-        public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK + SumEquipmentBonus(part => part.BonusHands));
+        public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK + SumEquipmentBonus(part => part.BonusHands) + GetSkillStatBonus(BuffStatType.Craft));
         public int TotalCriticalRate => Math.Max(0, CriticalRate + GetSkillStatBonus(BuffStatType.CriticalRate));
         public float TotalSpeed => Math.Clamp(
             ApplyRateBonus(Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed), GetSkillStatBonus(BuffStatType.SpeedPercent)),
@@ -3367,6 +3368,7 @@ namespace HaCreator.MapSimulator.Character
                 AllianceName = AllianceName,
                 Fame = Fame,
                 CookieHousePoint = CookieHousePoint,
+                Fatigue = Fatigue,
                 WorldRank = WorldRank,
                 JobRank = JobRank,
                 HasMonsterRiding = HasMonsterRiding,
