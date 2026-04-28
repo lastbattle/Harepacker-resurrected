@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ClientSummonedUolHeuristicInfoTraversalDepth = 4;
         private const int ClientSummonedUolHeuristicSkillTraversalDepth = 2;
         private const int ClientSummonedUolTableEntryTraversalDepth = 3;
+        private const int ClientSummonedUolTableOwnerFieldTraversalDepth = 3;
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -711,12 +712,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.SummonSelfDestructionFormula = GetString(commonNode, "selfDestruction");
             }
 
+            IReadOnlyList<string> morphRequestedActionNames = GetMorphTemplateRequestedActionNames(
+                skillNode,
+                skill.ActionNames);
             skill.MorphId = ResolveMorphTemplateId(
                 skill.SkillId,
                 commonNode,
                 pvpCommonNode,
                 infoNode,
-                skill.ActionNames);
+                morphRequestedActionNames);
 
             // Parse level nodes to find max level
             var levelNode = skillNode["level"];
@@ -1204,6 +1208,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.HitEffect = LoadSkillAnimation(hitNode, "hit");
                 skill.TargetHitEffects = LoadIndexedSkillAnimations(hitNode, "hit");
             }
+            PopulateTargetHitCharacterLevelVariants(skill, skillNode["CharLevel"]);
+            PopulateTargetHitLevelVariants(skill, skillNode["level"]);
 
             skill.MultipleLayerTargetHitEffects = LoadPrefixedIndexedSkillAnimations(skillNode, "hit");
 
@@ -2421,6 +2427,76 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return animations;
+        }
+
+        private void PopulateTargetHitCharacterLevelVariants(SkillData skill, WzImageProperty charLevelNode)
+        {
+            if (skill == null || charLevelNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in charLevelNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int requiredLevel))
+                {
+                    continue;
+                }
+
+                List<SkillAnimation> variants = LoadTargetHitVariantAnimations(
+                    child["hit"],
+                    $"hit/CharLevel/{requiredLevel}");
+                if (variants.Count > 0)
+                {
+                    skill.CharacterLevelTargetHitEffects[requiredLevel] = variants;
+                }
+            }
+        }
+
+        private void PopulateTargetHitLevelVariants(SkillData skill, WzImageProperty levelNode)
+        {
+            if (skill == null || levelNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in levelNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int skillLevel))
+                {
+                    continue;
+                }
+
+                List<SkillAnimation> variants = LoadTargetHitVariantAnimations(
+                    child["hit"],
+                    $"hit/level/{skillLevel}");
+                if (variants.Count > 0)
+                {
+                    skill.LevelTargetHitEffects[skillLevel] = variants;
+                }
+            }
+        }
+
+        private List<SkillAnimation> LoadTargetHitVariantAnimations(WzImageProperty hitNode, string baseName)
+        {
+            if (hitNode == null)
+            {
+                return new List<SkillAnimation>();
+            }
+
+            List<SkillAnimation> indexedAnimations = LoadIndexedSkillAnimations(hitNode, baseName);
+            if (indexedAnimations.Count > 0)
+            {
+                return indexedAnimations;
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(hitNode, baseName);
+            if (animation.Frames.Count <= 0)
+            {
+                return new List<SkillAnimation>();
+            }
+
+            return new List<SkillAnimation> { animation };
         }
 
         private void LoadShadowPartnerActionAnimations(SkillData skill, WzImageProperty skillNode)
@@ -6242,6 +6318,93 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 yield return mountedSkillEntry;
             }
+
+            foreach (WzImageProperty ownerMatchedEntry in EnumerateClientSummonedUolTableOwnerFieldEntryNodes(
+                         tableNode,
+                         skillId,
+                         depthRemaining: ClientSummonedUolTableOwnerFieldTraversalDepth))
+            {
+                yield return ownerMatchedEntry;
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolTableOwnerFieldEntryNodes(
+            WzImageProperty node,
+            int skillId,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || skillId <= 0 || depthRemaining < 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child?.WzProperties == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                if (TryReadClientSummonedUolTableOwnerSkillId(child, out int ownerSkillId))
+                {
+                    if (ownerSkillId == skillId)
+                    {
+                        yield return child;
+                    }
+
+                    continue;
+                }
+
+                foreach (WzImageProperty nestedEntry in EnumerateClientSummonedUolTableOwnerFieldEntryNodes(
+                             child,
+                             skillId,
+                             depthRemaining - 1))
+                {
+                    yield return nestedEntry;
+                }
+            }
+        }
+
+        private static bool TryReadClientSummonedUolTableOwnerSkillId(WzImageProperty rowNode, out int skillId)
+        {
+            skillId = 0;
+            if (rowNode?.WzProperties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in rowNode.WzProperties)
+            {
+                if (child == null || !IsClientSummonedUolTableOwnerFieldName(child.Name))
+                {
+                    continue;
+                }
+
+                string value = GetClientSummonedUolCandidateValue(child);
+                if (!string.IsNullOrWhiteSpace(value)
+                    && int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSkillId)
+                    && parsedSkillId > 0)
+                {
+                    skillId = parsedSkillId;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsClientSummonedUolTableOwnerFieldName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
+            return normalizedName.Equals("skillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("nskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("summonskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("ownerskillid", StringComparison.Ordinal);
         }
 
         private static string BuildClientSummonedUolTableEntryRelativePath(
@@ -7415,7 +7578,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             string normalized = token;
             for (int pass = 0; pass < 3; pass++)
             {
-                string decoded = NormalizeClientSummonedUolEncodedPathSyntaxOnce(normalized);
+                string decoded = NormalizeClientSummonedUolEncodedPathSyntaxOnce(
+                    NormalizeClientSummonedUolEntityEncodedPathSyntax(normalized));
                 if (string.Equals(decoded, normalized, StringComparison.Ordinal))
                 {
                     return decoded;
@@ -7425,6 +7589,110 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return normalized;
+        }
+
+        private static string NormalizeClientSummonedUolEntityEncodedPathSyntax(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token)
+                || token.IndexOf('&') < 0)
+            {
+                return token ?? string.Empty;
+            }
+
+            var builder = new System.Text.StringBuilder(token.Length);
+            for (int i = 0; i < token.Length; i++)
+            {
+                char current = token[i];
+                if (current == '&'
+                    && TryParseClientSummonedUolEntityEncodedChar(
+                        token,
+                        i,
+                        out char decoded,
+                        out int consumedLength)
+                    && IsClientSummonedUolDecodedPathCharacter(decoded))
+                {
+                    builder.Append(decoded == '\\' ? '/' : decoded);
+                    i += consumedLength - 1;
+                    continue;
+                }
+
+                builder.Append(current);
+            }
+
+            return builder.ToString();
+        }
+
+        private static bool TryParseClientSummonedUolEntityEncodedChar(
+            string token,
+            int startIndex,
+            out char decoded,
+            out int consumedLength)
+        {
+            decoded = '\0';
+            consumedLength = 0;
+            if (string.IsNullOrEmpty(token)
+                || startIndex < 0
+                || startIndex >= token.Length
+                || token[startIndex] != '&')
+            {
+                return false;
+            }
+
+            int semicolonIndex = token.IndexOf(';', startIndex + 1);
+            if (semicolonIndex < 0 || semicolonIndex - startIndex > 10)
+            {
+                return false;
+            }
+
+            string entity = token.Substring(startIndex + 1, semicolonIndex - startIndex - 1);
+            if (string.IsNullOrWhiteSpace(entity))
+            {
+                return false;
+            }
+
+            consumedLength = semicolonIndex - startIndex + 1;
+            switch (entity.ToLowerInvariant())
+            {
+                case "quot":
+                    decoded = '"';
+                    return true;
+                case "apos":
+                    decoded = '\'';
+                    return true;
+                case "amp":
+                    decoded = '&';
+                    return true;
+                case "lt":
+                    decoded = '<';
+                    return true;
+                case "gt":
+                    decoded = '>';
+                    return true;
+            }
+
+            if (entity[0] != '#')
+            {
+                return false;
+            }
+
+            NumberStyles style = NumberStyles.Integer;
+            string numericToken = entity.Substring(1);
+            if (numericToken.Length > 1
+                && (numericToken[0] == 'x' || numericToken[0] == 'X'))
+            {
+                style = NumberStyles.HexNumber;
+                numericToken = numericToken.Substring(1);
+            }
+
+            if (!int.TryParse(numericToken, style, CultureInfo.InvariantCulture, out int codePoint)
+                || codePoint < 0
+                || codePoint > char.MaxValue)
+            {
+                return false;
+            }
+
+            decoded = (char)codePoint;
+            return true;
         }
 
         private static string NormalizeClientSummonedUolEncodedPathSyntaxOnce(string token)
@@ -8997,6 +9265,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (string candidate in EnumerateItemBulletAnimationBranchKeys(weaponItemId, weaponCode))
             {
                 if (bulletContainer[candidate] is WzImageProperty candidateProperty
+                    && candidateProperty is not WzCanvasProperty
                     && HasItemBulletAnimationFrames(candidateProperty))
                 {
                     return candidateProperty;
@@ -9957,31 +10226,101 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<string>();
             }
 
+            return GetActionNamesFromActionNode(actionNode);
+        }
+
+        private static IReadOnlyList<string> GetMorphTemplateRequestedActionNames(
+            WzImageProperty skillNode,
+            IEnumerable<string> rootActionNames)
+        {
             var actionNames = new List<string>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (string preferredName in new[]
+            AddActionNames(actionNames, seen, rootActionNames);
+
+            if (skillNode?["action"] != null && actionNames.Count == 0)
             {
-                GetString(actionNode, "0"),
-                GetString(actionNode, "action")
-            })
-            {
-                if (!string.IsNullOrWhiteSpace(preferredName) && seen.Add(preferredName.Trim()))
-                {
-                    actionNames.Add(preferredName.Trim());
-                }
+                AddActionNames(actionNames, seen, GetActionNames(skillNode));
             }
 
-            foreach (WzImageProperty property in actionNode.WzProperties)
+            foreach (WzImageProperty child in skillNode?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
             {
-                string actionName = GetPropertyStringValue(property);
-                if (!string.IsNullOrWhiteSpace(actionName) && seen.Add(actionName.Trim()))
+                if (child == null || string.Equals(child.Name, "action", StringComparison.OrdinalIgnoreCase))
                 {
-                    actionNames.Add(actionName.Trim());
+                    continue;
                 }
+
+                AddActionNames(actionNames, seen, GetActionNamesFromActionNode(child["action"]));
             }
 
             return actionNames;
+        }
+
+        internal static IReadOnlyList<string> GetMorphTemplateRequestedActionNamesForTesting(
+            WzImageProperty skillNode,
+            IEnumerable<string> rootActionNames = null)
+        {
+            return GetMorphTemplateRequestedActionNames(skillNode, rootActionNames ?? Array.Empty<string>());
+        }
+
+        private static IReadOnlyList<string> GetActionNamesFromActionNode(WzImageProperty actionNode)
+        {
+            if (actionNode == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            var actionNames = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (actionNode is WzStringProperty directActionProperty)
+            {
+                AddActionName(actionNames, seen, directActionProperty.Value);
+                return actionNames;
+            }
+
+            AddActionNames(actionNames, seen, new[]
+            {
+                GetString(actionNode, "0"),
+                GetString(actionNode, "action")
+            });
+
+            foreach (WzImageProperty property in actionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                AddActionName(actionNames, seen, GetPropertyStringValue(property));
+            }
+
+            return actionNames;
+        }
+
+        private static void AddActionNames(
+            ICollection<string> actionNames,
+            ISet<string> seen,
+            IEnumerable<string> candidates)
+        {
+            if (candidates == null)
+            {
+                return;
+            }
+
+            foreach (string candidate in candidates)
+            {
+                AddActionName(actionNames, seen, candidate);
+            }
+        }
+
+        private static void AddActionName(ICollection<string> actionNames, ISet<string> seen, string actionName)
+        {
+            if (actionNames == null || seen == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return;
+            }
+
+            string normalizedActionName = actionName.Trim();
+            if (seen.Add(normalizedActionName))
+            {
+                actionNames.Add(normalizedActionName);
+            }
         }
 
         private static string GetPropertyStringValue(WzImageProperty property)

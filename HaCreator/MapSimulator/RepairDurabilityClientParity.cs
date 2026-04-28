@@ -1035,11 +1035,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryDecodeResultAndReasonFromOffset(
+            bool success = payload[0] == 0;
+            if (!TryDecodeReasonAndStatusTail(
                     payload,
-                    headerOffset - 1,
-                    successIndexInTail: 0,
-                    out bool success,
+                    headerOffset,
                     out int? reasonCode,
                     out string statusText,
                     out string decodeError))
@@ -1214,10 +1213,30 @@ namespace HaCreator.MapSimulator
 
             success = resultByte == 0;
             int reasonOffset = offset + successIndexInTail + 1;
+            return TryDecodeReasonAndStatusTail(payload, reasonOffset, out reasonCode, out statusText, out error);
+        }
+
+        private static bool TryDecodeReasonAndStatusTail(
+            byte[] payload,
+            int reasonOffset,
+            out int? reasonCode,
+            out string statusText,
+            out string error)
+        {
+            reasonCode = null;
+            statusText = string.Empty;
+            error = null;
+
             int reasonPayloadLength = payload.Length - reasonOffset;
             if (reasonPayloadLength == 0)
             {
                 return true;
+            }
+
+            if (reasonPayloadLength < 0)
+            {
+                error = "Repair-result payload reason segment starts beyond the result body.";
+                return false;
             }
 
             if (reasonPayloadLength >= sizeof(int))

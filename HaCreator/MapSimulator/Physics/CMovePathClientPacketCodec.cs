@@ -206,6 +206,41 @@ namespace HaCreator.MapSimulator.Physics
             return carry;
         }
 
+        internal static IReadOnlyList<MovePathElement> TrimPortalOwnedClientFlushRetainedTailForEncode(
+            IReadOnlyList<MovePathElement> flushAdmittedPath,
+            bool retainsPostGroundTail)
+        {
+            if (!retainsPostGroundTail
+                || flushAdmittedPath == null
+                || flushAdmittedPath.Count <= 1)
+            {
+                return flushAdmittedPath ?? Array.Empty<MovePathElement>();
+            }
+
+            int lastGroundedIndex = -1;
+            for (int i = flushAdmittedPath.Count - 1; i >= 0; i--)
+            {
+                if (flushAdmittedPath[i].FootholdId > 0)
+                {
+                    lastGroundedIndex = i;
+                    break;
+                }
+            }
+
+            if (lastGroundedIndex < 0 || lastGroundedIndex >= flushAdmittedPath.Count - 1)
+            {
+                return flushAdmittedPath;
+            }
+
+            MovePathElement[] encoded = new MovePathElement[lastGroundedIndex + 1];
+            for (int i = 0; i <= lastGroundedIndex; i++)
+            {
+                encoded[i] = flushAdmittedPath[i];
+            }
+
+            return encoded;
+        }
+
         private static void WriteElement(BinaryWriter writer, MovePathElement element, bool includeClientRandomCounts)
         {
             byte attribute = (byte)Math.Clamp(element.MovePathAttribute, byte.MinValue, byte.MaxValue);

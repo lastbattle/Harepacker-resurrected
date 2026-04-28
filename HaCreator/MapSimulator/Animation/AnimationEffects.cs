@@ -29,7 +29,10 @@ namespace HaCreator.MapSimulator.Animation
                 int sourceLayerCode = -1,
                 int sourceLayerCaptureOrder = -1,
                 int simulatedLayerHandleId = 0,
-                int simulatedLayerHandleRefCount = 0)
+                int simulatedLayerHandleRefCount = 0,
+                int simulatedSnapshotLayerHandleId = 0,
+                int simulatedSnapshotLayerHandleRefCount = 0,
+                int simulatedRepeatAnimationStateId = 0)
             {
                 DrawOrder = Math.Max(0, drawOrder);
                 SourceLayerCode = sourceLayerCode;
@@ -40,6 +43,13 @@ namespace HaCreator.MapSimulator.Animation
                     simulatedLayerHandleRefCount > 0
                         ? simulatedLayerHandleRefCount
                         : SimulatedLayerHandleId > 0 ? 1 : 0);
+                SimulatedSnapshotLayerHandleId = Math.Max(0, simulatedSnapshotLayerHandleId);
+                SimulatedSnapshotLayerHandleRefCount = Math.Max(
+                    0,
+                    simulatedSnapshotLayerHandleRefCount > 0
+                        ? simulatedSnapshotLayerHandleRefCount
+                        : SimulatedSnapshotLayerHandleId > 0 ? 1 : 0);
+                SimulatedRepeatAnimationStateId = Math.Max(0, simulatedRepeatAnimationStateId);
             }
 
             public int DrawOrder { get; }
@@ -47,6 +57,9 @@ namespace HaCreator.MapSimulator.Animation
             public int SourceLayerCaptureOrder { get; }
             public int SimulatedLayerHandleId { get; }
             public int SimulatedLayerHandleRefCount { get; }
+            public int SimulatedSnapshotLayerHandleId { get; }
+            public int SimulatedSnapshotLayerHandleRefCount { get; }
+            public int SimulatedRepeatAnimationStateId { get; }
         }
 
         internal static bool IsSecondaryMotionBlurLayerStack(IReadOnlyList<IDXObject> frames)
@@ -162,7 +175,10 @@ namespace HaCreator.MapSimulator.Animation
             int SimulatedOverlayLayerHandleId,
             int SimulatedOverlayLayerHandleRefCount,
             IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode,
-            IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode);
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedSnapshotLayerHandleIdsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedSnapshotLayerHandleRefCountsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedRepeatAnimationStateIdsByLayerCode);
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
         private readonly List<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayers = new();
@@ -235,6 +251,39 @@ namespace HaCreator.MapSimulator.Animation
                 usesOverlayParent: false,
                 recoveredRegistrationTrace: null,
                 initialElapsedMs: initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        internal void AddPacketOwnedMonsterBookCardGet(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedMonsterBookCardGet(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                registrationTrace.LoadLayerFlip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip: null,
+                AnimationOneTimeOwner.PacketOwnedMonsterBookCardGet,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs);
             InsertOneTimeAnimation(anim);
         }
 
@@ -949,7 +998,8 @@ namespace HaCreator.MapSimulator.Animation
             int durationMs,
             int currentTimeMs,
             Action onSpawn = null,
-            int zOrder = 1)
+            int zOrder = 1,
+            float? spawnProbability = null)
         {
             if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
             {
@@ -957,7 +1007,7 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var registration = new AreaAnimationRegistration();
-            registration.Initialize(frames, area, updateIntervalMs, updateCount, updateNextMs, durationMs, currentTimeMs, onSpawn, zOrder);
+            registration.Initialize(frames, area, updateIntervalMs, updateCount, updateNextMs, durationMs, currentTimeMs, onSpawn, zOrder, spawnProbability);
             _areaAnimations.Add(registration);
             return registration.Id;
         }
@@ -2261,13 +2311,21 @@ namespace HaCreator.MapSimulator.Animation
                 frames,
                 layerHandleIds,
                 stateTrace.SimulatedLayerHandleRefCountsByLayerCode);
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds = ResolveTaggedSnapshotLayerHandleIds(frames);
+            IReadOnlyDictionary<int, int> snapshotLayerHandleRefCounts = ResolveTaggedSnapshotLayerHandleRefCounts(
+                frames,
+                snapshotLayerHandleIds);
+            IReadOnlyDictionary<int, int> repeatAnimationStateIds = ResolveTaggedRepeatAnimationStateIds(frames);
 
             return new AnimationEffects.SecondaryMotionBlurSnapshotTrace(
                 startTime,
                 stateTrace.SimulatedOverlayLayerHandleId,
                 stateTrace.SimulatedOverlayLayerHandleRefCount,
                 layerHandleIds,
-                layerHandleRefCounts);
+                layerHandleRefCounts,
+                snapshotLayerHandleIds,
+                snapshotLayerHandleRefCounts,
+                repeatAnimationStateIds);
         }
 
         private static IReadOnlyDictionary<int, int> ResolveSnapshotLayerHandleIds(
@@ -2359,6 +2417,82 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return refCounts;
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveTaggedSnapshotLayerHandleIds(
+            IReadOnlyList<IDXObject> frames)
+        {
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var layerHandleIds = new Dictionary<int, int>();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedSnapshotLayerHandleId <= 0)
+                {
+                    continue;
+                }
+
+                layerHandleIds[tag.SourceLayerCode] = tag.SimulatedSnapshotLayerHandleId;
+            }
+
+            return layerHandleIds;
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveTaggedSnapshotLayerHandleRefCounts(
+            IReadOnlyList<IDXObject> frames,
+            IReadOnlyDictionary<int, int> snapshotLayerHandleIds)
+        {
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames)
+                || snapshotLayerHandleIds == null
+                || snapshotLayerHandleIds.Count == 0)
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var refCounts = new Dictionary<int, int>();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedSnapshotLayerHandleId <= 0
+                    || !snapshotLayerHandleIds.ContainsKey(tag.SourceLayerCode))
+                {
+                    continue;
+                }
+
+                refCounts[tag.SourceLayerCode] = tag.SimulatedSnapshotLayerHandleRefCount;
+            }
+
+            return refCounts;
+        }
+
+        private static IReadOnlyDictionary<int, int> ResolveTaggedRepeatAnimationStateIds(
+            IReadOnlyList<IDXObject> frames)
+        {
+            if (!AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+            {
+                return new Dictionary<int, int>();
+            }
+
+            var stateIds = new Dictionary<int, int>();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                if (frames[i]?.Tag is not AnimationEffects.SecondaryMotionBlurLayerStackEntryTag tag
+                    || tag.SourceLayerCode < 0
+                    || tag.SimulatedRepeatAnimationStateId <= 0)
+                {
+                    continue;
+                }
+
+                stateIds[tag.SourceLayerCode] = tag.SimulatedRepeatAnimationStateId;
+            }
+
+            return stateIds;
         }
 
         public void Dispose()
@@ -2510,7 +2644,8 @@ namespace HaCreator.MapSimulator.Animation
     internal enum AnimationOneTimeOwner
     {
         Generic = 0,
-        FullChargedAngerGauge = 1
+        FullChargedAngerGauge = 1,
+        PacketOwnedMonsterBookCardGet = 2
     }
 
     internal enum AnimationOneTimePlaybackMode
@@ -2594,6 +2729,31 @@ namespace HaCreator.MapSimulator.Animation
                 LoadLayerOriginOffsetY: 0,
                 UsesOverlayLayer: true,
                 OverlayParentKind: AnimationOneTimeOverlayParentKind.MobActionLayer,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                LoadLayerFlip: false,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
+                RegisterOneTimeAnimationHasCallback: false);
+        }
+
+        public static OneTimeAnimationRecoveredRegistrationTrace CreatePacketOwnedMonsterBookCardGet(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                MobTemplatePathStringPoolId: 0,
+                EffectNameStringPoolId: 0,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: true,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: false,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.None,
                 LoadLayerOptionValue: unchecked((int)0xC00614A4),
                 LoadLayerAlphaValue: 255,
                 LoadLayerReservedValue: 0,
@@ -4912,6 +5072,7 @@ namespace HaCreator.MapSimulator.Animation
         private int _expiresAt;
         private Action _onSpawn;
         private int _zOrder;
+        private float? _spawnProbability;
 
         public int Id { get; private set; }
 
@@ -4924,7 +5085,8 @@ namespace HaCreator.MapSimulator.Animation
             int durationMs,
             int currentTimeMs,
             Action onSpawn,
-            int zOrder)
+            int zOrder,
+            float? spawnProbability = null)
         {
             Id = ++_nextId;
             _frames = frames;
@@ -4937,6 +5099,9 @@ namespace HaCreator.MapSimulator.Animation
             _expiresAt = durationMs > 0 ? currentTimeMs + durationMs : int.MaxValue;
             _onSpawn = onSpawn;
             _zOrder = zOrder;
+            _spawnProbability = spawnProbability.HasValue
+                ? Math.Clamp(spawnProbability.Value, 0f, 1f)
+                : null;
         }
 
         public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
@@ -4954,10 +5119,17 @@ namespace HaCreator.MapSimulator.Animation
             while (_remainingUpdates > 0 && _nextUpdateAt <= currentTimeMs && _nextUpdateAt <= _expiresAt)
             {
                 int scheduledUpdateTime = _nextUpdateAt;
-                float x = _area.Left + random.Next(_effectiveWidth);
-                float y = _area.Top + random.Next(_effectiveHeight);
-                effects.AddOneTime(_frames, x, y, flip: false, scheduledUpdateTime, zOrder: _zOrder);
-                _onSpawn?.Invoke();
+                bool shouldSpawn = !_spawnProbability.HasValue
+                    || _spawnProbability.Value >= 1f
+                    || (_spawnProbability.Value > 0f && random.NextDouble() < _spawnProbability.Value);
+                if (shouldSpawn)
+                {
+                    float x = _area.Left + random.Next(_effectiveWidth);
+                    float y = _area.Top + random.Next(_effectiveHeight);
+                    effects.AddOneTime(_frames, x, y, flip: false, scheduledUpdateTime, zOrder: _zOrder);
+                    _onSpawn?.Invoke();
+                }
+
                 _remainingUpdates--;
                 _nextUpdateAt += _updateIntervalMs;
             }

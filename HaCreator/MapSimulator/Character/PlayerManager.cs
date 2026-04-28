@@ -76,6 +76,7 @@ namespace HaCreator.MapSimulator.Character
         private byte? _latestDragonClientKeyPadState;
         private bool _isFlyingMap;
         private bool _requiresFlyingSkillForMap;
+        private bool _noLandingMap;
 
         // Mob/Drop pools for combat
         private MobPool _mobPool;
@@ -232,6 +233,19 @@ namespace HaCreator.MapSimulator.Character
             {
                 Player.Physics.IsFlyingMap = isFlyingMap;
                 Player.Physics.RequiresFlyingSkillForMap = requiresFlyingSkillForMap;
+            }
+        }
+
+        public void SetNoLandingMap(bool noLandingMap)
+        {
+            _noLandingMap = noLandingMap;
+            if (Player != null)
+            {
+                Player.Physics.NoLandingMap = noLandingMap;
+                if (noLandingMap)
+                {
+                    Player.Physics.DetachFromFoothold();
+                }
             }
         }
 
@@ -588,6 +602,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetLandingHandler(_onLanded);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
+            Player.Physics.NoLandingMap = _noLandingMap;
 
             // Set up attack callback
             Player.OnAttackHitbox = (player, hitbox) =>
@@ -2038,6 +2053,12 @@ namespace HaCreator.MapSimulator.Character
             if (Player == null || _findFoothold == null)
                 return;
 
+            if (_noLandingMap)
+            {
+                Player.Physics.DetachFromFoothold();
+                return;
+            }
+
             var fh = _findFoothold(x, y, 500);
             if (fh != null)
             {
@@ -2118,7 +2139,7 @@ namespace HaCreator.MapSimulator.Character
             // Find a foothold at or below the target position to prevent falling
             // Search up to 500 pixels below the portal to find a platform
             float snappedY = y;
-            if (_findFoothold != null)
+            if (_findFoothold != null && !_noLandingMap)
             {
                 var fh = _findFoothold(x, y, 500); // Large search range to find platform below
                 if (fh != null)
@@ -2138,6 +2159,10 @@ namespace HaCreator.MapSimulator.Character
                 {
                     System.Diagnostics.Debug.WriteLine($"[TeleportTo] No foothold found at ({x}, {y})");
                 }
+            }
+            else if (_noLandingMap)
+            {
+                Player.Physics.DetachFromFoothold();
             }
 
             Player.SetPosition(x, snappedY);
@@ -2471,6 +2496,7 @@ namespace HaCreator.MapSimulator.Character
             _checkSwimArea = null;
             _isFlyingMap = false;
             _requiresFlyingSkillForMap = false;
+            _noLandingMap = false;
             _mobPool = null;
             _dropPool = null;
 
@@ -2505,6 +2531,7 @@ namespace HaCreator.MapSimulator.Character
             Func<float, float, float, bool> checkSwimArea,
             bool isFlyingMap,
             bool requiresFlyingSkillForMap,
+            bool noLandingMap,
             MobPool mobPool,
             DropPool dropPool,
             CombatEffects combatEffects)
@@ -2513,6 +2540,7 @@ namespace HaCreator.MapSimulator.Character
             SetLadderLookup(findLadder);
             SetSwimAreaCheck(checkSwimArea);
             SetFlyingMap(isFlyingMap, requiresFlyingSkillForMap);
+            SetNoLandingMap(noLandingMap);
             SetMobPool(mobPool);
             SetDropPool(dropPool);
             SetCombatEffects(combatEffects);

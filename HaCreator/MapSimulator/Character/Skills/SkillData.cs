@@ -1160,6 +1160,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation MobAnimation { get; set; }     // Target-bound branch used by client-owned secondary managers (e.g. Monster Magnet hook/chain)
         public string MobAnimationPath { get; set; }
         public List<SkillAnimation> TargetHitEffects { get; set; } = new(); // Indexed client hit UOL branches (hit/0, hit/1, ...)
+        public SortedDictionary<int, List<SkillAnimation>> CharacterLevelTargetHitEffects { get; set; } = new(); // CharLevel/<level>/hit UOL variants
+        public Dictionary<int, List<SkillAnimation>> LevelTargetHitEffects { get; set; } = new(); // level/<skillLevel>/hit UOL variants
         public List<SkillAnimation> MultipleLayerTargetHitEffects { get; set; } = new(); // Indexed client multiple-layer hit roots (hit0, hit1, ...)
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation AffectedSecondaryEffect { get; set; } // Secondary buff/affected branch (e.g. affected0)

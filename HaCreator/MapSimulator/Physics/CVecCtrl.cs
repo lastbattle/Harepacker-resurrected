@@ -333,6 +333,11 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public bool RequiresFlyingSkillForMap { get; set; }
 
+        /// <summary>
+        /// WZ field metadata noLanding prevents foothold landing while map-owned float state is active.
+        /// </summary>
+        public bool NoLandingMap { get; set; }
+
         #endregion
 
         #region Float State Preservation (SaveFloatState*)
@@ -1911,6 +1916,14 @@ namespace HaCreator.MapSimulator.Physics
             _lastPathFlushTime = currentTimeMs;
         }
 
+        internal bool RetainsPostGroundTailAfterClientFlush(
+            bool isFlying = false,
+            bool hasDynamicFoothold = false)
+        {
+            return !IsShortMovePathUpdate(isFlying, hasDynamicFoothold)
+                   && !isFlying;
+        }
+
         /// <summary>
         /// Check if it's time to flush the movement path.
         /// Client: CMovePath::IsTimeForFlush
@@ -2049,6 +2062,7 @@ namespace HaCreator.MapSimulator.Physics
             IsFlyingMap = false;
             HasFlyingAbility = false;
             RequiresFlyingSkillForMap = false;
+            NoLandingMap = false;
             _ladderOrRopeLookup = null;
 
             // Float state preservation

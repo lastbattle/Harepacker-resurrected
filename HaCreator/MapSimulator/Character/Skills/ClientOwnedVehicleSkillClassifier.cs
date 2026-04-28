@@ -496,6 +496,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (IsWzOnlyMechanicVehicleOneTimeActionName(actionName))
+            {
+                return false;
+            }
+
             if (includeTransformStates
                 && (string.Equals(actionName, "tank", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(actionName, "siege", StringComparison.OrdinalIgnoreCase)))
@@ -725,6 +730,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsKnownMechanicVehicleCurrentActionName(string actionName)
         {
+            if (IsWzOnlyMechanicVehicleOneTimeActionName(actionName))
+            {
+                return false;
+            }
+
             return IsMountedMoveActionName(actionName)
                    || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName)
                    || ContainsActionName(SharedClientOwnedVehicleVehicleIdOnlyActionNames, actionName)

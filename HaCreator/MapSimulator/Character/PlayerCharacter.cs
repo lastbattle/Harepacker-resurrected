@@ -382,6 +382,7 @@ namespace HaCreator.MapSimulator.Character
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
             public Texture2D ComposedTexture { get; set; }
             public IReadOnlyList<AssembledPart> Parts { get; set; } = Array.Empty<AssembledPart>();
+            public IReadOnlyList<AssembledPart> LastInsertedLiveSourceParts { get; set; } = Array.Empty<AssembledPart>();
         }
 
         private readonly struct MirrorImageRenderableSourceLayer
@@ -1851,7 +1852,7 @@ namespace HaCreator.MapSimulator.Character
 
             Physics.ReleaseLadder(yOverride: exitY);
 
-            if (exitFoothold != null)
+            if (exitFoothold != null && !Physics.NoLandingMap)
             {
                 Physics.X = Physics.LadderX;
                 Physics.LandOnFoothold(exitFoothold);
@@ -1867,6 +1868,7 @@ namespace HaCreator.MapSimulator.Character
         private void CheckFootholdLanding()
         {
             if (_findFoothold == null || Physics.VelocityY <= 0) return;
+            if (Physics.NoLandingMap) return;
 
             float previousY = Physics.HasSavedFloatState ? (float)Physics.SavedFloatY : Y;
             float downwardTravel = Math.Max(0f, Y - previousY);
@@ -6475,7 +6477,8 @@ namespace HaCreator.MapSimulator.Character
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
                     ComposedTexture = null,
-                    Parts = Array.Empty<AssembledPart>()
+                    Parts = Array.Empty<AssembledPart>(),
+                    LastInsertedLiveSourceParts = Array.Empty<AssembledPart>()
                 };
             }
 
@@ -6577,6 +6580,25 @@ namespace HaCreator.MapSimulator.Character
                     ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
                     preparedLayer.PreparedLayerColor,
                     liveSourceParts);
+            }
+
+            if (CanRenderLastInsertedMirrorImageSourceCanvas(preparedLayer))
+            {
+                IReadOnlyList<AssembledPart> lastInsertedLiveSourceParts = preparedLayer.LastInsertedLiveSourceParts;
+                return new MirrorImageRenderableSourceLayer(
+                    preparedLayer.ComposedTexture,
+                    ResolveMirrorImagePreparedSnapshotSourceBounds(
+                        preparedLayer.TextureSourceBounds,
+                        preparedLayer.Bounds),
+                    ResolveMirrorImageRenderablePositionBounds(
+                        preparedLayer.Bounds,
+                        CalculateMirrorImageSourceLayerBounds(lastInsertedLiveSourceParts)),
+                    preparedLayer.Origin,
+                    ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
+                    preparedLayer.PreparedTargetOffsetPx,
+                    ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
+                    preparedLayer.PreparedLayerColor,
+                    lastInsertedLiveSourceParts);
             }
 
             if (!CanRenderPreparedMirrorImageSourceLayer(
@@ -6910,6 +6932,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = Array.Empty<AssembledPart>();
+            preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             return preparedLayer;
         }
 
@@ -6943,6 +6966,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceLayer = null;
                 preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
                 preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
+                preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             }
 
             preparedLayer.LastInsertedSourceSignature = ResolveMirrorImageLastInsertedSourceSignature(
@@ -6976,6 +7000,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourcePartsObjectId = ResolveMirrorImageLastInsertCanvasSourcePartsObjectId(
                 preparedLayer.LastInsertCanvasSourcePartsObjectId,
                 ResolveMirrorImageSourcePartsObjectId(sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
+                preparedLayer.LastInsertedLiveSourceParts,
+                sourceParts,
                 updatesFromLiveInsertCanvas);
         }
 
@@ -7631,6 +7659,48 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return false;
+        }
+
+        internal static bool CanRenderLastInsertedMirrorImageSourceCanvas(IReadOnlyList<AssembledPart> lastInsertedLiveSourceParts)
+        {
+            return lastInsertedLiveSourceParts != null
+                   && lastInsertedLiveSourceParts.Count > 0
+                   && HasMirrorImageLiveSourceCanvas(lastInsertedLiveSourceParts);
+        }
+
+        private static bool CanRenderLastInsertedMirrorImageSourceCanvas(MirrorImagePreparedSourceLayer preparedLayer)
+        {
+            return preparedLayer?.LastInsertedLiveSourceParts != null
+                   && CanRenderLastInsertedMirrorImageSourceCanvas(preparedLayer.LastInsertedLiveSourceParts);
+        }
+
+        internal static IReadOnlyList<AssembledPart> ResolveMirrorImageLastInsertedLiveSourceParts(
+            IReadOnlyList<AssembledPart> lastInsertedLiveSourceParts,
+            IReadOnlyList<AssembledPart> sourceParts,
+            bool updatesFromLiveInsertCanvas)
+        {
+            if (!updatesFromLiveInsertCanvas)
+            {
+                return lastInsertedLiveSourceParts ?? Array.Empty<AssembledPart>();
+            }
+
+            return CloneMirrorImageSourceParts(sourceParts);
+        }
+
+        private static IReadOnlyList<AssembledPart> CloneMirrorImageSourceParts(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return Array.Empty<AssembledPart>();
+            }
+
+            var clonedParts = new AssembledPart[sourceParts.Count];
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                clonedParts[partIndex] = CloneMirrorImageSourcePart(sourceParts[partIndex]);
+            }
+
+            return clonedParts;
         }
 
         private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)

@@ -118,68 +118,18 @@ namespace HaCreator.MapSimulator.Character
                     "icemanAttack"
                 },
                 // The client morph action table still exposes older magician spell-family
-                // raw names, while Morph/2002.img and Morph/2001.img only publish the
-                // authored ice-family combat roots plus the legacy `icemanAttack`.
-                ["magic1"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["magic2"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["magic3"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["magic4"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["magic5"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["magic6"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
+                // raw names. Character/00002000.img keeps the checked body redirect rows:
+                // `magic1 -> shootF, swingO3`, `magic2 -> alert`,
+                // `magic3 -> stand1`, `magic4 -> swingO3`, and
+                // `magic5`/`magic6 -> alert`. Keep those WZ-authored body aliases first
+                // for templates that publish them, then fall through to the older ice
+                // morph family roots in Morph/2002.img and Morph/2001.img.
+                ["magic1"] = new[] { "shootF", "swingO3", "iceAttack1", "iceAttack2", "iceSmash", "iceTempest", "iceChop", "icePanic", "icemanAttack" },
+                ["magic2"] = new[] { "alert", "iceAttack1", "iceAttack2", "iceSmash", "iceTempest", "iceChop", "icePanic", "icemanAttack" },
+                ["magic3"] = new[] { "stand1", "stand", "iceAttack1", "iceAttack2", "iceSmash", "iceTempest", "iceChop", "icePanic", "icemanAttack" },
+                ["magic4"] = new[] { "swingO3", "iceAttack1", "iceAttack2", "iceSmash", "iceTempest", "iceChop", "icePanic", "icemanAttack" },
+                ["magic5"] = new[] { "alert", "iceAttack1", "iceAttack2", "iceSmash", "iceTempest", "iceChop", "icePanic", "icemanAttack" },
+                ["magic6"] = new[] { "alert", "iceAttack1", "iceAttack2", "iceSmash", "iceTempest", "iceChop", "icePanic", "icemanAttack" },
                 // Character/00002000.img keeps mage ultimate and chain rows on body-action
                 // redirects (`explosion`/`meteor`/`blizzard`/`genesis` -> `alert`,
                 // `chainlightning` -> `swingO3`, then `stabO2`) while checked Morph/*.img
@@ -351,11 +301,11 @@ namespace HaCreator.MapSimulator.Character
                 // `shoot*` plus authored archer roots for that surface.
                 ["strikeDual"] = new[] { "shoot2", "swingT2", "stabO1", "alert", "shoot1", "shootF", "windshot", "swingT1", "swingT3", "stabO2", "proneStab" },
                 // Support-family client raw actions like `smokeshell`, `holyshield`, and
-                // `resurrection` still come from WZ skill rows, but the checked morph
-                // templates only publish the alert-family surface rather than those verbatim
-                // support roots.
-                ["smokeshell"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
-                ["holyshield"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                // `resurrection` still come from WZ skill rows. Character/00002000.img
+                // keeps `smokeshell -> swingOF, alert`, `holyshield -> stabO1`, and
+                // `resurrection -> alert` as ordinary body redirects.
+                ["smokeshell"] = new[] { "swingOF", "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["holyshield"] = new[] { "stabO1", "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["resurrection"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 // Beginner, event, and thief concealment/support rows still publish raw
                 // `float`, `pyramid`, `bamboo`, and `darksight` requests on the skill
@@ -364,23 +314,23 @@ namespace HaCreator.MapSimulator.Character
                 // verbatim support roots for any of them.
                 ["float"] = ClientPublishedAlertMorphFallbackAliases,
                 ["pyramid"] = new[] { "alert", "swingPF", "swingOF", "swingP2", "swingTF" },
-                ["bamboo"] = ClientPublishedAlertMorphFallbackAliases,
+                ["bamboo"] = new[] { "alert", "swingPF", "swingP2", "swingOF", "swingT2", "swingTF", "swingO1", "swingO3", "swingO2", "stabO1" },
                 ["darksight"] = ClientPublishedAlertMorphFallbackAliases,
                 // Spell support/buff/debuff rows are also present as skill-side raw
-                // requests in the current WZ export, but Morph/*.img publishes no
-                // verbatim support roots for them.
-                ["elementalReset"] = ClientPublishedAlertMorphFallbackAliases,
-                ["magicRegistance"] = ClientPublishedAlertMorphFallbackAliases,
-                ["magicBooster"] = ClientPublishedAlertMorphFallbackAliases,
-                ["magicShield"] = ClientPublishedAlertMorphFallbackAliases,
-                ["recoveryAura"] = ClientPublishedAlertMorphFallbackAliases,
-                ["OnixBlessing"] = ClientPublishedAlertMorphFallbackAliases,
-                ["soulStone"] = ClientPublishedAlertMorphFallbackAliases,
-                ["ghostLettering"] = ClientPublishedAlertMorphFallbackAliases,
-                ["slow"] = ClientPublishedAlertMorphFallbackAliases,
+                // requests in the current WZ export. Keep the checked
+                // Character/00002000.img redirect order before the broad alert family.
+                ["elementalReset"] = new[] { "stand1", "alert", "swingO2", "stand", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["magicRegistance"] = new[] { "stand1", "alert", "swingO2", "swingO1", "stand", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["magicBooster"] = new[] { "stand1", "alert", "swingO2", "stand", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["magicShield"] = new[] { "stand1", "alert", "stand", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["recoveryAura"] = new[] { "alert", "jump", "swingO3", "swingO2", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["OnixBlessing"] = new[] { "stand1", "alert", "stand", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["soulStone"] = new[] { "alert", "swingO1", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["ghostLettering"] = new[] { "alert", "swingO1", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["slow"] = new[] { "alert", "swingO2", "swingO1", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["mapleHero"] = ClientPublishedAlertMorphFallbackAliases,
-                ["OnixProtection"] = ClientPublishedAlertMorphFallbackAliases,
-                ["OnixWill"] = ClientPublishedAlertMorphFallbackAliases,
+                ["OnixProtection"] = new[] { "stand1", "alert", "swingO2", "swingO1", "stand", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["OnixWill"] = new[] { "stand1", "alert", "swingO1", "swingO2", "stand", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["Awakening"] = ClientPublishedAlertMorphFallbackAliases,
                 // Later Demon / Mercedes support roots still resolve through the same
                 // alert-family body surface in Character/00002000.img.

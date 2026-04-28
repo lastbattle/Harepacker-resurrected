@@ -243,6 +243,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ClientKeyDownEndCancelRequestSkillIds.Contains(skillId);
         }
 
+        public static bool ShouldShowLocalPreparedSkillHud(int skillId, bool resolvedAsKeydownSkill)
+        {
+            if (!ResolveProfile(skillId).Visible)
+            {
+                return false;
+            }
+
+            return resolvedAsKeydownSkill
+                || NonKeyDownPreparedReleaseSkillIds.Contains(skillId);
+        }
+
         public static bool TryResolveClientKeyDownEndSkillEffectRequestId(int skillId, out int effectSkillId)
         {
             effectSkillId = skillId switch

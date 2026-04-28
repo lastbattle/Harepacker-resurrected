@@ -10632,6 +10632,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             int durationMs = ResolvePreparedSkillStartupDuration(skill, levelData);
             PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(skill?.SkillId ?? 0);
             bool usesReleaseTriggeredKeydown = UsesReleaseTriggeredKeydownExecution(skill);
+            bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(
+                skill.SkillId,
+                skill.IsKeydownSkill || usesReleaseTriggeredKeydown);
             RecordPreparedSkillExclusiveRequest(currentTime);
 
             _preparedSkill = new PreparedSkill
@@ -10646,14 +10649,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 HudGaugeDurationMs = ResolvePreparedSkillHudGaugeDuration(skill, durationMs, hudProfile.GaugeDurationMs),
                 HudSkinKey = hudProfile.SkinKey,
                 HudTextVariant = ResolvePreparedSkillHudTextVariant(skill),
-                ShowHudBar = hudProfile.Visible,
+                ShowHudBar = PreparedSkillHudRules.ShouldShowLocalPreparedSkillHud(
+                    skill.SkillId,
+                    resolvedIsKeydownSkill),
                 ShowHudText = hudProfile.ShowText,
                 HudSurface = hudProfile.Surface,
                 SkillData = skill,
                 LevelData = levelData,
-                IsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(
-                    skill.SkillId,
-                    skill.IsKeydownSkill || usesReleaseTriggeredKeydown)
+                IsKeydownSkill = resolvedIsKeydownSkill
             };
 
             if (!_preparedSkill.IsKeydownSkill && _preparedSkill.Duration > 0)
@@ -30418,9 +30421,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            _ = hasSwallowState;
-            _ = hasPendingSwallowAbsorb;
-            return swallowFamilyOutcome;
+            return swallowFamilyOutcome
+                   && !hasSwallowState
+                   && !hasPendingSwallowAbsorb;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

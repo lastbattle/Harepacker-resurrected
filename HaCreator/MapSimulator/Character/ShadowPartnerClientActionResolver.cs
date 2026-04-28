@@ -1335,6 +1335,11 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 0, 300),
                     ("alert", 1, 60),
                     ("alert", 2, 420)),
+                // Raw action 208 (`swingRes`) is still walked by CActionMan::Init
+                // and mounted Character/00002000 publishes it as a direct single
+                // frame linked to `swingO2/2` with delay 350.
+                ["swingRes"] = CreateIndexedPieces(
+                    ("swingO2", 2, 350)),
                 ["finishAttack"] = new[]
                 {
                     CreateIndexedPiece(0, "stabO1", 0, -90),
@@ -3520,7 +3525,9 @@ namespace HaCreator.MapSimulator.Character
                 return targetOffset;
             }
 
-            int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
+            int elapsedTime = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(
+                currentTime,
+                transitionStartTime);
             float progress = MathHelper.Clamp(elapsedTime / (float)transitionDurationMs, 0f, 1f);
             return new Point(
                 (int)Math.Round(MathHelper.Lerp(startOffset.X, targetOffset.X, progress)),
@@ -3530,6 +3537,12 @@ namespace HaCreator.MapSimulator.Character
         public static bool ShouldRenderClientShadowPartner(int? skillId, int? rawActionCode)
         {
             if (skillId == SkillData.MirrorImageSkillId)
+            {
+                return false;
+            }
+
+            if (rawActionCode.HasValue
+                && ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode.Value))
             {
                 return false;
             }

@@ -81,9 +81,11 @@ namespace HaCreator.MapSimulator.Character
             int currentTime,
             ActiveEffectItemMotionBlurDefinition definition)
         {
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(
+                currentTime,
+                snapshotTime);
             return definition.IsValid
-                   && currentTime >= snapshotTime
-                   && currentTime - snapshotTime < definition.DelayMs;
+                   && elapsedMs < definition.DelayMs;
         }
 
         private static WzSubProperty LoadEffectProperty(int itemId)

@@ -933,6 +933,86 @@ namespace HaCreator.MapSimulator.Character.Skills
                 out chargeElement);
         }
 
+        internal static bool TryResolveChargeElementByAdjacentSkillElementPairConsensusFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int minimumPairs,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int) * 2
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
+                || minimumPairs <= 1)
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - (sizeof(int) * 2))
+            {
+                return false;
+            }
+
+            int icePairs = 0;
+            int firePairs = 0;
+            int lightningPairs = 0;
+            int holyPairs = 0;
+            for (int offset = alignedStartOffset; offset <= payload.Length - (sizeof(int) * 2); offset += sizeof(int))
+            {
+                int firstValue = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                int secondOffset = offset + sizeof(int);
+                int secondValue = payload[secondOffset]
+                    | (payload[secondOffset + 1] << 8)
+                    | (payload[secondOffset + 2] << 16)
+                    | (payload[secondOffset + 3] << 24);
+
+                int pairElement = ResolveAdjacentSkillElementPair(firstValue, secondValue);
+                switch (pairElement)
+                {
+                    case 1:
+                        icePairs++;
+                        break;
+                    case 2:
+                        firePairs++;
+                        break;
+                    case 3:
+                        lightningPairs++;
+                        break;
+                    case 5:
+                        holyPairs++;
+                        break;
+                }
+            }
+
+            return TryResolveChargeElementFromConsensusCounts(
+                icePairs,
+                firePairs,
+                lightningPairs,
+                holyPairs,
+                preferredSkillId,
+                minimumPairs,
+                out chargeElement);
+        }
+
+        private static int ResolveAdjacentSkillElementPair(int candidateSkillId, int candidateElement)
+        {
+            return IsKnownChargeElement(candidateElement)
+                && TryGetChargeElement(candidateSkillId, out int skillElement)
+                && skillElement == candidateElement
+                ? candidateElement
+                : 0;
+        }
+
         private static bool TryResolveChargeElementFromConsensusCounts(
             int iceMatches,
             int fireMatches,
