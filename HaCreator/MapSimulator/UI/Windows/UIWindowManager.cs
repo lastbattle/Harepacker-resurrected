@@ -534,6 +534,12 @@ namespace HaCreator.MapSimulator.UI
             return windowsByName.TryGetValue(windowName, out var window) ? window : null;
         }
 
+        public UIWindowBase GetOrRegisterWindow(string windowName)
+        {
+            EnsureWindowRegistered(windowName);
+            return GetWindow(windowName);
+        }
+
         private bool EnsureWindowRegistered(string windowName)
         {
             if (string.IsNullOrWhiteSpace(windowName))

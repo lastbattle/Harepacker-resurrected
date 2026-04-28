@@ -1506,6 +1506,13 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (ClientOwnedVehicleSkillClassifier.IsWzOnlyClientOwnedVehicleOneTimeActionName(
+                    tamingMobPart.ItemId,
+                    actionName))
+            {
+                return false;
+            }
+
             if (tamingMobPart.TamingMobActionFrameOwner?.SupportsAction(tamingMobPart, actionName) == true)
             {
                 return true;
@@ -1847,6 +1854,13 @@ namespace HaCreator.MapSimulator.Character
 
                 if (part.ItemId == MechanicTamingMobItemId
                     && ClientOwnedVehicleSkillClassifier.IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(actionName))
+                {
+                    return null;
+                }
+
+                if (ClientOwnedVehicleSkillClassifier.IsWzOnlyClientOwnedVehicleOneTimeActionName(
+                        part.ItemId,
+                        actionName))
                 {
                     return null;
                 }

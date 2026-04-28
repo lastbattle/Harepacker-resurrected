@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -18,6 +18,16 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "table", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(_messengerOfficialSessionBridge.DescribeRecoveredPacketTable());
+            }
+
+            if (string.Equals(args[0], "verify", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(_messengerOfficialSessionBridge.DescribeRecoveredParityVerification());
+            }
+
+            if (string.Equals(args[0], "clearverify", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_messengerOfficialSessionBridge.ClearRecoveredParityVerification());
             }
 
             if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))

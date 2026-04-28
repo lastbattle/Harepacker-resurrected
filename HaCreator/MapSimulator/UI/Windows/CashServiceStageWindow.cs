@@ -360,6 +360,7 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<byte> CashOneADayTrailingPayloadBytes => _cashOneADayTrailingPayloadBytes;
         public bool CashOneADayHasPacketRewardSessionByte => _cashOneADayHasPacketRewardSessionByte;
         public int CashOneADayPacketRewardSessionByte => _cashOneADayPacketRewardSessionByte;
+        public int CashOneADayRewardSessionByteOffset { get; private set; } = -1;
         public int CashItemMutationCount => _cashItemMutationCount;
         public int CashLockerItemCount => _cashLockerItemCount;
         public int CashLockerSlotLimit => _cashLockerSlotLimit;
@@ -540,6 +541,7 @@ namespace HaCreator.MapSimulator.UI
             _cashOneADayTrailingPayloadBytes = Array.Empty<byte>();
             _cashOneADayHasPacketRewardSessionByte = false;
             _cashOneADayPacketRewardSessionByte = 0;
+            CashOneADayRewardSessionByteOffset = -1;
             _cashOneADayHistoryEntries.Clear();
             _itcNormalItemSubtype = -1;
             _itcNormalItemPage = 0;
@@ -1285,6 +1287,23 @@ namespace HaCreator.MapSimulator.UI
             _cashItemPrice = _cashPacketCatalogEntries.FirstOrDefault()?.Price ?? 0;
             if (IsPacketDecodeFailureSummary(summary))
             {
+                string recoveredSummary = AppendTrailingCashItemInfoFromPayload(
+                    packetPayload,
+                    startOffset: 1,
+                    maxCount: ResolveTrailingCashItemInfoDecodeCount(
+                        packetPayload,
+                        startOffset: 1,
+                        preferredCount: 4),
+                    paneLabel: "Packet decode failures",
+                    browseModeLabel: "Decode",
+                    titlePrefix: $"{subtypeLabel} recovered body",
+                    seller: "CCashShop",
+                    stateLabel: "Recovered body");
+                if (!string.IsNullOrWhiteSpace(recoveredSummary))
+                {
+                    summary += $" {recoveredSummary}";
+                }
+
                 AppendCashDecodeFailurePacketEntry(subtypeLabel, packetPayload, summary);
             }
 
@@ -3973,6 +3992,7 @@ namespace HaCreator.MapSimulator.UI
                 _cashOneADayTrailingPayloadBytes = Array.Empty<byte>();
                 _cashOneADayHasPacketRewardSessionByte = false;
                 _cashOneADayPacketRewardSessionByte = 0;
+                CashOneADayRewardSessionByteOffset = -1;
                 _cashOneADayHistoryEntries.Clear();
                 _noticeState = "One-a-day owner received an empty packet payload.";
                 return "CCashShop::OnOneADay cleared the current item and previous history from an empty payload.";
@@ -3991,6 +4011,7 @@ namespace HaCreator.MapSimulator.UI
             _cashOneADayTrailingPayloadBytes = state.TrailingPayloadBytes?.ToArray() ?? Array.Empty<byte>();
             _cashOneADayHasPacketRewardSessionByte = state.HasPacketRewardSessionByte;
             _cashOneADayPacketRewardSessionByte = Math.Max(0, state.PacketRewardSessionByte);
+            CashOneADayRewardSessionByteOffset = state.RewardSessionByteOffset;
             _cashOneADayHistoryEntries.Clear();
             _cashOneADayHistoryEntries.AddRange(state.HistoryEntries);
 

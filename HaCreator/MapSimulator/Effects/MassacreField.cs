@@ -391,6 +391,12 @@ namespace HaCreator.MapSimulator.Effects
 
             byte rankCode = payload[0];
             int score = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
+            if (score < 0)
+            {
+                errorMessage = "Massacre result packet score must be non-negative.";
+                return false;
+            }
+
             ShowPacketOwnedResultPresentation(currentTimeMs, score, MapClientResultRank(rankCode));
             return true;
         }

@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.UI
         private LogoutGiftOwnerSnapshot _snapshot = new();
         private bool _hasAuthoredFrameTexture;
         private LogoutGiftButtonSkin _buttonSkin;
+        private Texture2D _fallbackFrameTexture;
         private int _pendingSelectionIndex;
         private int _hoveredEntryIndex = -1;
 
@@ -56,10 +57,10 @@ namespace HaCreator.MapSimulator.UI
         internal void ConfigureVisualAssets(Texture2D frameTexture, LogoutGiftButtonSkin buttonSkin)
         {
             _hasAuthoredFrameTexture = frameTexture != null;
-            Frame = frameTexture == null
-                ? null
-                : new DXObject(0, 0, frameTexture, 0);
             _buttonSkin = buttonSkin;
+            Frame = frameTexture == null
+                ? new DXObject(0, 0, ResolveFallbackFrameTexture(), 0)
+                : new DXObject(0, 0, frameTexture, 0);
         }
 
         internal void SetSnapshotProvider(Func<LogoutGiftOwnerSnapshot> snapshotProvider)
@@ -452,6 +453,23 @@ namespace HaCreator.MapSimulator.UI
                 buttonSize.Y > 0 ? buttonSize.Y : ClientSelectButtonHeight);
         }
 
+        internal static Point ResolveFallbackFrameSize(Point buttonSize)
+        {
+            int buttonWidth = buttonSize.X > 0 ? buttonSize.X : ClientSelectButtonWidth;
+            int buttonHeight = buttonSize.Y > 0 ? buttonSize.Y : ClientSelectButtonHeight;
+            int rightPadding = 16;
+            int bottomPadding = 10;
+            int requiredWidth = ClientSelectButtonLeft
+                + ((ClientSelectButtonCount - 1) * ClientColumnStride)
+                + buttonWidth
+                + rightPadding;
+            int requiredHeight = ClientSelectButtonTop + buttonHeight + bottomPadding;
+
+            return new Point(
+                Math.Max(DefaultWidth, requiredWidth),
+                Math.Max(DefaultHeight, requiredHeight));
+        }
+
         internal static Point GetClientSelectButtonAnchor(int index)
         {
             return new Point(
@@ -557,8 +575,30 @@ namespace HaCreator.MapSimulator.UI
 
         private static Texture2D CreateFrameTexture(GraphicsDevice device)
         {
-            Texture2D texture = new(device ?? throw new ArgumentNullException(nameof(device)), DefaultWidth, DefaultHeight);
-            Color[] pixels = new Color[DefaultWidth * DefaultHeight];
+            return CreateFrameTexture(device, new Point(DefaultWidth, DefaultHeight));
+        }
+
+        private Texture2D ResolveFallbackFrameTexture()
+        {
+            Point frameSize = ResolveFallbackFrameSize(LogoutGiftButtonSkin.ResolveFrameSize(_buttonSkin));
+            if (_fallbackFrameTexture != null
+                && _fallbackFrameTexture.Width == frameSize.X
+                && _fallbackFrameTexture.Height == frameSize.Y)
+            {
+                return _fallbackFrameTexture;
+            }
+
+            _fallbackFrameTexture = CreateFrameTexture(_pixel.GraphicsDevice, frameSize);
+            return _fallbackFrameTexture;
+        }
+
+        private static Texture2D CreateFrameTexture(GraphicsDevice device, Point frameSize)
+        {
+            Texture2D texture = new(
+                device ?? throw new ArgumentNullException(nameof(device)),
+                Math.Max(1, frameSize.X),
+                Math.Max(1, frameSize.Y));
+            Color[] pixels = new Color[texture.Width * texture.Height];
             texture.SetData(pixels);
             return texture;
         }

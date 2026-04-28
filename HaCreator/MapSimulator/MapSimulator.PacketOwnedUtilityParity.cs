@@ -2783,6 +2783,8 @@ namespace HaCreator.MapSimulator
                 {
                     authKey = extractedAuthKey;
                 }
+
+                navigateUrl = HydrateClassCompetitionNavigateUrlWithAuthKey(navigateUrl, authKey);
                 if (string.IsNullOrWhiteSpace(authKey)
                     && string.IsNullOrWhiteSpace(navigateUrl)
                     && string.IsNullOrWhiteSpace(source)
@@ -3059,6 +3061,12 @@ namespace HaCreator.MapSimulator
 
             if (element.ValueKind != JsonValueKind.Array)
             {
+                if (element.ValueKind == JsonValueKind.Object
+                    && TryFormatClassCompetitionRemoteObjectLine(element, out string objectLine))
+                {
+                    return new[] { objectLine };
+                }
+
                 return null;
             }
 
@@ -3073,9 +3081,102 @@ namespace HaCreator.MapSimulator
                         lines.AddRange(SplitClassCompetitionRemoteTextLines(value));
                     }
                 }
+                else if (item.ValueKind == JsonValueKind.Object
+                    && TryFormatClassCompetitionRemoteObjectLine(item, out string objectLine))
+                {
+                    lines.Add(objectLine);
+                }
             }
 
             return lines;
+        }
+
+        private static bool TryFormatClassCompetitionRemoteObjectLine(JsonElement element, out string line)
+        {
+            line = string.Empty;
+            string text = TryGetClassCompetitionRemoteObjectString(element, "line")
+                ?? TryGetClassCompetitionRemoteObjectString(element, "text")
+                ?? TryGetClassCompetitionRemoteObjectString(element, "title")
+                ?? TryGetClassCompetitionRemoteObjectString(element, "html")
+                ?? TryGetClassCompetitionRemoteObjectString(element, "body");
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                line = string.Join(" ", SplitClassCompetitionRemoteTextLines(text));
+                return !string.IsNullOrWhiteSpace(line);
+            }
+
+            string rank = TryGetClassCompetitionRemoteObjectScalar(element, "rank")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "ranking")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "place")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "no");
+            string name = TryGetClassCompetitionRemoteObjectScalar(element, "name")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "character")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "characterName")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "char_name");
+            string level = TryGetClassCompetitionRemoteObjectScalar(element, "level")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "lv");
+            string job = TryGetClassCompetitionRemoteObjectScalar(element, "job")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "class");
+            string score = TryGetClassCompetitionRemoteObjectScalar(element, "score")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "point")
+                ?? TryGetClassCompetitionRemoteObjectScalar(element, "points");
+
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(rank))
+            {
+                parts.Add(rank.StartsWith("#", StringComparison.Ordinal) ? rank : $"#{rank}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                parts.Add(name);
+            }
+
+            if (!string.IsNullOrWhiteSpace(level))
+            {
+                parts.Add($"Lv.{level}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(job))
+            {
+                parts.Add(job);
+            }
+
+            if (!string.IsNullOrWhiteSpace(score))
+            {
+                parts.Add($"{score} pts");
+            }
+
+            line = string.Join(" ", parts);
+            return !string.IsNullOrWhiteSpace(line);
+        }
+
+        private static string TryGetClassCompetitionRemoteObjectString(JsonElement element, string propertyName)
+        {
+            if (!TryGetClassCompetitionRemoteProperty(element, propertyName, out JsonElement value)
+                || value.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return value.GetString()?.Trim();
+        }
+
+        private static string TryGetClassCompetitionRemoteObjectScalar(JsonElement element, string propertyName)
+        {
+            if (!TryGetClassCompetitionRemoteProperty(element, propertyName, out JsonElement value))
+            {
+                return null;
+            }
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.String => value.GetString()?.Trim(),
+                JsonValueKind.Number => value.TryGetInt64(out long longValue)
+                    ? longValue.ToString(CultureInfo.InvariantCulture)
+                    : value.GetRawText().Trim(),
+                _ => null
+            };
         }
 
         private static bool TryGetClassCompetitionRemoteProperty(JsonElement root, string propertyName, out JsonElement element)
@@ -5353,6 +5454,7 @@ namespace HaCreator.MapSimulator
                         sourceLayerCode: (int)layer,
                         sourceLayerCaptureOrder: i,
                         simulatedLayerHandleId: ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
+                        simulatedLayerHandleRefCount: ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCount(layer, layerHandleIds),
                         simulatedSnapshotLayerHandleId: NextPacketOwnedActiveEffectMotionBlurLayerHandleId(),
                         simulatedRepeatAnimationStateId: NextPacketOwnedActiveEffectMotionBlurStateId());
                     frames.Add(layerFrame);
@@ -5504,6 +5606,15 @@ namespace HaCreator.MapSimulator
             }
 
             return 0;
+        }
+
+        private static int ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCount(
+            AvatarRenderLayer layer,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            return ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds) > 0
+                ? 2
+                : 0;
         }
 
         private static IReadOnlyDictionary<AvatarRenderLayer, int> CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds()
@@ -5722,14 +5833,14 @@ namespace HaCreator.MapSimulator
             bool autoSeparated = true,
             bool tightLine = false)
         {
+            string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
+            if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
+            {
+                TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow)
             {
-                string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
-                if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
-                {
-                    TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
-                }
-
                 noticeWindow.Configure(string.Empty, body, autoSeparated, tightLine);
                 if (GraphicsDevice != null)
                 {
@@ -5744,19 +5855,19 @@ namespace HaCreator.MapSimulator
 
         private bool ShowPacketOwnedRandomMesoBagWindow(PacketOwnedRandomMesoBagPresentation presentation)
         {
+            if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor))
+            {
+                TryPlayPacketOwnedWzSound(
+                    presentation.SoundDescriptor,
+                    "Item.img",
+                    out _,
+                    out _,
+                    strictClientSoundFamily: true,
+                    defaultVolume: PacketOwnedRewardResultRuntime.ResolveClientSoundVolumeScale(presentation.SoundVolume));
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RandomMesoBag) is RandomMesoBagWindow randomMesoBagWindow)
             {
-                if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor))
-                {
-                    TryPlayPacketOwnedWzSound(
-                        presentation.SoundDescriptor,
-                        "Item.img",
-                        out _,
-                        out _,
-                        strictClientSoundFamily: true,
-                        defaultVolume: PacketOwnedRewardResultRuntime.ResolveClientSoundVolumeScale(presentation.SoundVolume));
-                }
-
                 randomMesoBagWindow.Configure(presentation);
                 if (GraphicsDevice != null)
                 {
@@ -9438,6 +9549,15 @@ namespace HaCreator.MapSimulator
             int runtimeCharacterId = Math.Max(0, _playerManager?.Player?.Build?.Id ?? 0);
             string mutationSource = $"packet-owned-revive-premium-safety-charm:{packetType}:{(string.IsNullOrWhiteSpace(source) ? "local-utility" : source)}";
             bool mutationFromOfficialSession = IsPacketOwnedRevivePremiumSafetyCharmContextOfficialSessionSource(source);
+            if (!ShouldAllowPacketOwnedRevivePremiumSafetyCharmContextMutationSource(
+                    _localUtilityOfficialSessionBridge.HasConnectedSession,
+                    mutationFromOfficialSession))
+            {
+                message =
+                    $"Ignored packet-owned CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}] revive premium safety charm mutation from {mutationSource} because a live official-session bridge is attached and context mutations must come from official-session packet history.";
+                return false;
+            }
+
             if (!ShouldApplyPacketOwnedRevivePremiumSafetyCharmContextMutationWithOfficialHistory(
                     _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved,
                     mutationFromOfficialSession))
@@ -9679,18 +9799,21 @@ namespace HaCreator.MapSimulator
 
                 bool rawBufferLoaded = TryLoadPacketOwnedRadioClientRawBuffer(
                     trackResolution.AudioProperty,
+                    out int rawBufferLength,
                     out string rawBufferFailureReason);
+                int startTick = Environment.TickCount;
                 PacketOwnedRadioMmsPlayPlan mmsPlayPlan = ResolvePacketOwnedRadioMmsPlayPlan(
                     trackPropertyLoaded: true,
                     soundObjectLoaded: trackResolution.AudioProperty != null,
                     rawBufferLoaded: rawBufferLoaded,
                     msLength: clientTrackDurationMs,
                     requestedPositionMs: startOffsetMs,
-                    currentTick: Environment.TickCount,
+                    currentTick: startTick,
                     rawBufferFailureReason: rawBufferFailureReason);
                 _lastPacketOwnedRadioClientTrackPropertyLoaded = mmsPlayPlan.TrackPropertyLoaded;
                 _lastPacketOwnedRadioClientSoundObjectLoaded = mmsPlayPlan.SoundObjectLoaded;
                 _lastPacketOwnedRadioClientRawBufferLoaded = mmsPlayPlan.RawBufferLoaded;
+                _lastPacketOwnedRadioClientRawBufferLength = rawBufferLength;
                 _lastPacketOwnedRadioClientMmsPlaySucceeded = mmsPlayPlan.Started;
                 _lastPacketOwnedRadioClientMmsPlayFailureReason = mmsPlayPlan.FailureReason;
                 _lastPacketOwnedRadioClientHandleStatus = mmsPlayPlan.HandleStatus;
@@ -9738,7 +9861,6 @@ namespace HaCreator.MapSimulator
                     return rejectedMessage;
                 }
 
-                int startTick = Environment.TickCount;
                 _lastPacketOwnedRadioTrackDescriptor = normalizedTrackDescriptor;
                 _lastPacketOwnedRadioResolvedTrackDescriptor = trackResolution.ResolvedTrackDescriptor;
                 _lastPacketOwnedRadioResolvedDescriptor = trackResolution.ResolvedAudioDescriptor;
@@ -9748,20 +9870,18 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioStartOffsetMs = authoritativeStartOffsetMs;
                 _lastPacketOwnedRadioTrackDurationMs = authoritativeTrackDurationMs;
                 _lastPacketOwnedRadioAvailableDurationMs = authoritativeRemainingDurationMs;
-                _lastPacketOwnedRadioClientTrackDurationMs = clientTrackDurationMs;
+                _lastPacketOwnedRadioClientTrackDurationMs = mmsPlayPlan.MsLength;
                 _lastPacketOwnedRadioClientPlaybackSeedMs = hasClientTrackDuration
-                    ? authoritativeStartOffsetMs
+                    ? mmsPlayPlan.MsPosition
                     : 0;
                 _lastPacketOwnedRadioClientPlaybackPositionMs = _lastPacketOwnedRadioClientPlaybackSeedMs;
-                _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusAfterPlay(
-                    _lastPacketOwnedRadioClientPlaybackSeedMs,
-                    _lastPacketOwnedRadioClientTrackDurationMs);
+                _lastPacketOwnedRadioClientHandleStatus = mmsPlayPlan.HandleStatus;
+                _lastPacketOwnedRadioMmsStopPlan = default;
                 _lastPacketOwnedRadioStartTick = startTick;
                 CapturePacketOwnedRadioCreateLayerSessionState();
-                _lastPacketOwnedRadioExpectedStopTick = ResolvePacketOwnedRadioMmsLastUpdateTick(
-                    startTick,
-                    _lastPacketOwnedRadioStartOffsetMs,
-                    _lastPacketOwnedRadioTrackDurationMs);
+                _lastPacketOwnedRadioExpectedStopTick = mmsPlayPlan.LastUpdateTick != int.MinValue
+                    ? mmsPlayPlan.LastUpdateTick
+                    : ResolvePacketOwnedRadioExpectedStopTick(startTick, _lastPacketOwnedRadioAvailableDurationMs);
                 _lastPacketOwnedRadioLastPollTick = ResolvePacketOwnedRadioInitialUpdateTick(
                     startTick,
                     _lastPacketOwnedRadioAvailableDurationMs);
@@ -9979,6 +10099,33 @@ namespace HaCreator.MapSimulator
                 : PacketOwnedRadioClientHandleStatus.Unloaded;
         }
 
+        internal static PacketOwnedRadioMmsStopPlan ResolvePacketOwnedRadioMmsStopPlan(
+            bool trackPropertyLoaded,
+            bool soundObjectLoaded,
+            bool rawBufferLoaded,
+            PacketOwnedRadioClientHandleStatus currentStatus)
+        {
+            bool enteredStop = trackPropertyLoaded
+                || soundObjectLoaded
+                || rawBufferLoaded
+                || currentStatus != PacketOwnedRadioClientHandleStatus.None;
+            bool hasAilHandle = rawBufferLoaded
+                && currentStatus != PacketOwnedRadioClientHandleStatus.None
+                && currentStatus != PacketOwnedRadioClientHandleStatus.Unloaded;
+            bool shouldHaltHandle = hasAilHandle
+                && currentStatus == PacketOwnedRadioClientHandleStatus.Playing;
+            bool shouldUnloadHandle = hasAilHandle;
+
+            return new PacketOwnedRadioMmsStopPlan(
+                EnteredStop: enteredStop,
+                HaltedHandle: shouldHaltHandle,
+                UnloadedHandle: shouldUnloadHandle,
+                ClearedHandle: shouldUnloadHandle,
+                ReleasedSoundObject: soundObjectLoaded,
+                ReleasedTrackProperty: trackPropertyLoaded,
+                HandleStatus: ResolvePacketOwnedRadioClientHandleStatusAfterStop(currentStatus));
+        }
+
         internal static PacketOwnedRadioMmsPlayPlan ResolvePacketOwnedRadioMmsPlayPlan(
             bool trackPropertyLoaded,
             bool soundObjectLoaded,
@@ -10067,8 +10214,9 @@ namespace HaCreator.MapSimulator
                 FailureReason: string.Empty);
         }
 
-        private static bool TryLoadPacketOwnedRadioClientRawBuffer(WzBinaryProperty audioProperty, out string failureReason)
+        private static bool TryLoadPacketOwnedRadioClientRawBuffer(WzBinaryProperty audioProperty, out int rawBufferLength, out string failureReason)
         {
+            rawBufferLength = 0;
             failureReason = string.Empty;
             if (audioProperty == null)
             {
@@ -10085,6 +10233,7 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                rawBufferLength = rawBuffer.Length;
                 return true;
             }
             catch (Exception ex)
@@ -10527,6 +10676,13 @@ namespace HaCreator.MapSimulator
             bool mutationFromOfficialSession)
         {
             return !officialMutationHistoryObserved || mutationFromOfficialSession;
+        }
+
+        internal static bool ShouldAllowPacketOwnedRevivePremiumSafetyCharmContextMutationSource(
+            bool officialSessionConnected,
+            bool mutationFromOfficialSession)
+        {
+            return !officialSessionConnected || mutationFromOfficialSession;
         }
 
         internal static bool ShouldRequireExactPacketOwnedRadioSchedulePayload(int packetType)
@@ -21508,7 +21664,10 @@ namespace HaCreator.MapSimulator
             return $"{datePrefix}{statusPrefix}{title}";
         }
 
-        private static void AppendPacketOwnedEventCalendarJsonEntries(JsonElement element, ICollection<EventEntrySnapshot> destination)
+        private static void AppendPacketOwnedEventCalendarJsonEntries(
+            JsonElement element,
+            ICollection<EventEntrySnapshot> destination,
+            JsonElement? inheritedFallbackElement = null)
         {
             if (destination == null || element.ValueKind != JsonValueKind.Array)
             {
@@ -21523,7 +21682,11 @@ namespace HaCreator.MapSimulator
                     string stringTitle = item.GetString()?.Trim();
                     if (!string.IsNullOrWhiteSpace(stringTitle))
                     {
-                        destination.Add(CreatePacketOwnedEventCalendarEntry(DateTime.Today, stringTitle, string.Empty, EventEntryStatus.Upcoming, "Will", int.MinValue, int.MinValue, index++));
+                        DateTime scheduledAt = inheritedFallbackElement.HasValue
+                                                && TryResolvePacketOwnedEventDate(inheritedFallbackElement.Value, inheritedFallbackElement.Value, out DateTime inheritedDate)
+                            ? inheritedDate
+                            : DateTime.Today;
+                        destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, stringTitle, string.Empty, EventEntryStatus.Upcoming, "Will", int.MinValue, int.MinValue, index++));
                     }
 
                     continue;
@@ -21552,7 +21715,7 @@ namespace HaCreator.MapSimulator
                         new[] { "entry", "row", "event", "schedule", "attendance", "calendar", "day" },
                         new[] { "entries", "rows", "events", "attendanceEntries", "calendarEntries", "schedules", "days" }))
                 {
-                    AppendPacketOwnedEventCalendarJsonEntries(nestedEntries, destination);
+                    AppendPacketOwnedEventCalendarJsonEntries(nestedEntries, destination, item);
                     index = destination.Count;
                     continue;
                 }
@@ -21572,9 +21735,10 @@ namespace HaCreator.MapSimulator
                     eventItem = nestedEventItem;
                 }
 
+                JsonElement fallbackElement = inheritedFallbackElement ?? item;
                 string title = ResolvePacketOwnedJsonText(
                     eventItem,
-                    item,
+                    fallbackElement,
                     "title",
                     "name",
                     "label",
@@ -21585,12 +21749,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                DateTime scheduledAt = TryResolvePacketOwnedEventDate(eventItem, item, out DateTime parsedScheduledAt)
+                DateTime itemScheduledAt = TryResolvePacketOwnedEventDate(eventItem, fallbackElement, out DateTime parsedScheduledAt)
                     ? parsedScheduledAt
                     : DateTime.Today;
                 string detail = ResolvePacketOwnedJsonText(
                     eventItem,
-                    item,
+                    fallbackElement,
                     "detail",
                     "description",
                     "desc",
@@ -21599,7 +21763,7 @@ namespace HaCreator.MapSimulator
 
                 EventEntryStatus status = ResolvePacketOwnedJsonText(
                         eventItem,
-                        item,
+                        fallbackElement,
                         "status",
                         "state",
                         "progress",
@@ -21610,14 +21774,14 @@ namespace HaCreator.MapSimulator
                     : EventEntryStatus.Upcoming;
                 string statusText = ResolvePacketOwnedJsonText(
                     eventItem,
-                    item,
+                    fallbackElement,
                     "statusText",
                     "statusLabel",
                     "stateLabel",
                     "progressLabel");
                 string alarmText = ResolvePacketOwnedJsonText(
                     eventItem,
-                    item,
+                    fallbackElement,
                     "alarmText",
                     "ctText",
                     "m_aCT",
@@ -21625,15 +21789,15 @@ namespace HaCreator.MapSimulator
                     "alarmLine",
                     "eventAlarmText");
                 int sourceTick = TryGetJsonInt32Property(eventItem, out int parsedSourceTick, "sourceTick", "tick")
-                    || TryGetJsonInt32Property(item, out parsedSourceTick, "sourceTick", "tick")
+                    || TryGetJsonInt32Property(fallbackElement, out parsedSourceTick, "sourceTick", "tick")
                     ? parsedSourceTick
                     : int.MinValue;
                 int sortPriority = TryGetJsonInt32Property(eventItem, out int parsedSortPriority, "sortPriority", "priority")
-                    || TryGetJsonInt32Property(item, out parsedSortPriority, "sortPriority", "priority")
+                    || TryGetJsonInt32Property(fallbackElement, out parsedSortPriority, "sortPriority", "priority")
                     ? parsedSortPriority
                     : ResolvePacketOwnedEventEntrySortPriority(status);
                 int sortOrder = TryGetJsonInt32Property(eventItem, out int parsedSortOrder, "sortOrder", "index", "order")
-                    || TryGetJsonInt32Property(item, out parsedSortOrder, "sortOrder", "index", "order")
+                    || TryGetJsonInt32Property(fallbackElement, out parsedSortOrder, "sortOrder", "index", "order")
                     ? parsedSortOrder
                     : index;
                 bool parsedIncludeInCalendar = false;
@@ -21641,13 +21805,13 @@ namespace HaCreator.MapSimulator
                                            || TryGetJsonBoolean(eventItem, "showInCalendar", out parsedIncludeInCalendar)
                                            || TryGetJsonBoolean(eventItem, "showOnCalendar", out parsedIncludeInCalendar)
                                            || TryGetJsonBoolean(eventItem, "calendarVisible", out parsedIncludeInCalendar)
-                                           || TryGetJsonBoolean(item, "includeInCalendar", out parsedIncludeInCalendar)
-                                           || TryGetJsonBoolean(item, "showInCalendar", out parsedIncludeInCalendar)
-                                           || TryGetJsonBoolean(item, "showOnCalendar", out parsedIncludeInCalendar)
-                                           || TryGetJsonBoolean(item, "calendarVisible", out parsedIncludeInCalendar))
+                                           || TryGetJsonBoolean(fallbackElement, "includeInCalendar", out parsedIncludeInCalendar)
+                                           || TryGetJsonBoolean(fallbackElement, "showInCalendar", out parsedIncludeInCalendar)
+                                           || TryGetJsonBoolean(fallbackElement, "showOnCalendar", out parsedIncludeInCalendar)
+                                           || TryGetJsonBoolean(fallbackElement, "calendarVisible", out parsedIncludeInCalendar))
                     || parsedIncludeInCalendar;
-                EventEntryRowLayoutSnapshot rowLayout = ResolvePacketOwnedEventRowLayoutSnapshot(eventItem, item);
-                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder, alarmText, includeInCalendar, rowLayout));
+                EventEntryRowLayoutSnapshot rowLayout = ResolvePacketOwnedEventRowLayoutSnapshot(eventItem, fallbackElement);
+                destination.Add(CreatePacketOwnedEventCalendarEntry(itemScheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder, alarmText, includeInCalendar, rowLayout));
                 index++;
             }
         }

@@ -2548,6 +2548,7 @@ namespace HaCreator.MapSimulator.UI
             tooltipPart = slot?.TooltipPart;
             if (tooltipPart != null)
             {
+                slot.ApplyTooltipInstanceFields(tooltipPart);
                 return true;
             }
 
@@ -2569,6 +2570,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            slot.ApplyTooltipInstanceFields(tooltipPart);
             slot.TooltipPart = tooltipPart;
             return true;
         }
@@ -4309,6 +4311,17 @@ namespace HaCreator.MapSimulator.UI
         public string ItemTypeName { get; set; }
         public string Description { get; set; }
         public CharacterPart TooltipPart { get; set; }
+        public DateTime? ExpirationDateUtc { get; set; }
+        public int? TotalUpgradeSlotCount { get; set; }
+        public int? RemainingUpgradeSlotCount { get; set; }
+        public int? EnhancementStarCount { get; set; }
+        public string PotentialTierText { get; set; }
+        public List<string> PotentialLines { get; set; }
+        public List<int> ItemOptionIds { get; set; }
+        public bool? HasGrowthInfo { get; set; }
+        public int? GrowthLevel { get; set; }
+        public int? GrowthMaxLevel { get; set; }
+        public int? GrowthExpPercent { get; set; }
         public int? OwnerAccountId { get; set; }
         public int? OwnerCharacterId { get; set; }
         public int? ClientItemToken { get; set; }
@@ -4333,6 +4346,17 @@ namespace HaCreator.MapSimulator.UI
                 ItemTypeName = ItemTypeName,
                 Description = Description,
                 TooltipPart = TooltipPart?.Clone(),
+                ExpirationDateUtc = ExpirationDateUtc,
+                TotalUpgradeSlotCount = TotalUpgradeSlotCount,
+                RemainingUpgradeSlotCount = RemainingUpgradeSlotCount,
+                EnhancementStarCount = EnhancementStarCount,
+                PotentialTierText = PotentialTierText,
+                PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : null,
+                ItemOptionIds = ItemOptionIds != null ? new List<int>(ItemOptionIds) : null,
+                HasGrowthInfo = HasGrowthInfo,
+                GrowthLevel = GrowthLevel,
+                GrowthMaxLevel = GrowthMaxLevel,
+                GrowthExpPercent = GrowthExpPercent,
                 OwnerAccountId = OwnerAccountId,
                 OwnerCharacterId = OwnerCharacterId,
                 ClientItemToken = ClientItemToken,
@@ -4340,6 +4364,93 @@ namespace HaCreator.MapSimulator.UI
                 CashItemSerialNumber = CashItemSerialNumber,
                 PendingRequestId = PendingRequestId
             };
+        }
+
+        public void ApplyTooltipInstanceFields(CharacterPart part)
+        {
+            if (part == null)
+            {
+                return;
+            }
+
+            if (ExpirationDateUtc.HasValue)
+            {
+                part.ExpirationDateUtc = ExpirationDateUtc;
+            }
+
+            if (TotalUpgradeSlotCount.HasValue)
+            {
+                part.TotalUpgradeSlotCount = Math.Max(0, TotalUpgradeSlotCount.Value);
+            }
+
+            if (RemainingUpgradeSlotCount.HasValue)
+            {
+                part.RemainingUpgradeSlotCount = Math.Max(0, RemainingUpgradeSlotCount.Value);
+            }
+
+            if (EnhancementStarCount.HasValue)
+            {
+                part.EnhancementStarCount = Math.Max(0, EnhancementStarCount.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(PotentialTierText))
+            {
+                part.PotentialTierText = PotentialTierText;
+            }
+
+            if (PotentialLines != null)
+            {
+                part.PotentialLines = new List<string>(PotentialLines);
+            }
+
+            if (ItemOptionIds != null)
+            {
+                part.ItemOptionIds = new List<int>(ItemOptionIds);
+            }
+
+            if (HasGrowthInfo.HasValue)
+            {
+                part.HasGrowthInfo = HasGrowthInfo.Value;
+            }
+
+            if (GrowthLevel.HasValue)
+            {
+                part.GrowthLevel = Math.Max(0, GrowthLevel.Value);
+            }
+
+            if (GrowthMaxLevel.HasValue)
+            {
+                part.GrowthMaxLevel = Math.Max(0, GrowthMaxLevel.Value);
+                if (part.GrowthMaxLevel > 0)
+                {
+                    part.HasGrowthInfo = true;
+                }
+            }
+
+            if (GrowthExpPercent.HasValue)
+            {
+                part.GrowthExpPercent = Math.Clamp(GrowthExpPercent.Value, 0, 100);
+            }
+
+            if (OwnerAccountId.HasValue)
+            {
+                part.OwnerAccountId = OwnerAccountId;
+            }
+
+            if (OwnerCharacterId.HasValue)
+            {
+                part.OwnerCharacterId = OwnerCharacterId;
+            }
+
+            if (ClientItemToken.HasValue)
+            {
+                part.ClientItemToken = ClientItemToken;
+            }
+
+            if (IsCashOwnershipLocked)
+            {
+                part.IsCashOwnershipLocked = true;
+            }
         }
     }
 

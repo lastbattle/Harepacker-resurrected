@@ -359,7 +359,10 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            int syncedRegisteredMobId = ResolveMonsterBookRegisteredMobIdFromSyncValue(sync.RegisteredMobId, sync.CardCountsByMob);
+            int syncedRegisteredMobId = ResolveMonsterBookRegisteredMobIdFromSyncValue(
+                sync.RegisteredMobId,
+                sync.CardCountsByMob,
+                _monsterBookManager.TryResolveMobIdByCardItemId);
             MonsterBookSnapshot snapshot = _monsterBookManager.ApplyOwnershipSync(
                 targetBuild,
                 resolvedCharacterId,
@@ -469,9 +472,12 @@ namespace HaCreator.MapSimulator
             return fallbackBuild ?? activeBuild ?? _loginCharacterRoster.SelectedEntry?.Build;
         }
 
-        private int ResolveMonsterBookRegisteredMobIdFromSyncValue(
+        private delegate bool TryResolveMonsterBookCardItemMobId(int cardItemId, out int mobId);
+
+        private static int ResolveMonsterBookRegisteredMobIdFromSyncValue(
             int? syncRegisteredValue,
-            IReadOnlyDictionary<int, int> syncCardCountsByMob)
+            IReadOnlyDictionary<int, int> syncCardCountsByMob,
+            TryResolveMonsterBookCardItemMobId tryResolveMobIdByCardItemId)
         {
             int rawRegisteredValue = syncRegisteredValue.GetValueOrDefault();
             if (rawRegisteredValue <= 0)
@@ -479,14 +485,20 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
+            // WZ Item/Consume/0238.img card entries are keyed by card item id and carry
+            // info/mob, so packet-owned cover values may arrive as either item id or mob id.
+            if (tryResolveMobIdByCardItemId != null
+                && tryResolveMobIdByCardItemId(rawRegisteredValue, out int resolvedMobId))
+            {
+                return resolvedMobId;
+            }
+
             if (syncCardCountsByMob != null && syncCardCountsByMob.ContainsKey(rawRegisteredValue))
             {
                 return rawRegisteredValue;
             }
 
-            return _monsterBookManager.TryResolveMobIdByCardItemId(rawRegisteredValue, out int resolvedMobId)
-                ? resolvedMobId
-                : rawRegisteredValue;
+            return rawRegisteredValue;
         }
 
         internal static bool TryDecodeMonsterBookRegistrationResultPayloadForTests(
@@ -503,6 +515,21 @@ namespace HaCreator.MapSimulator
             out string detail)
         {
             return TryDecodeMonsterBookOwnershipSyncPayload(payload, out result, out detail);
+        }
+
+        internal static int ResolveMonsterBookRegisteredMobIdFromSyncValueForTests(
+            int? syncRegisteredValue,
+            IReadOnlyDictionary<int, int> syncCardCountsByMob,
+            Func<int, int?> resolveMobIdByCardItemId)
+        {
+            bool TryResolve(int cardItemId, out int mobId)
+            {
+                int? resolved = resolveMobIdByCardItemId?.Invoke(cardItemId);
+                mobId = resolved.GetValueOrDefault();
+                return mobId > 0;
+            }
+
+            return ResolveMonsterBookRegisteredMobIdFromSyncValue(syncRegisteredValue, syncCardCountsByMob, TryResolve);
         }
 
         private int ReserveMonsterBookRegistrationRequestId()
@@ -1572,6 +1599,7 @@ namespace HaCreator.MapSimulator
                         }
 
                         int? mobId = ReadInt(entry, "mobId", "mob", "id", "mob_id", "monsterId", "monster_id", "nMobID", "nMobId", "mobID");
+                        mobId ??= ReadInt(entry, "itemId", "item_id", "cardItemId", "card_item_id", "nItemID", "nItemId", "itemID", "cardId", "card_id");
                         int? count = ReadInt(entry, "count", "copies", "ownedCopies", "value", "owned_copies", "cardCount", "card_count", "nCount", "cnt");
                         if (mobId.GetValueOrDefault() <= 0 || count.GetValueOrDefault() <= 0)
                         {

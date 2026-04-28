@@ -456,7 +456,15 @@ namespace HaCreator.MapSimulator.Character
                 // rather than unique morph roots.
                 ["demonSlasher"] = new[] { "stand1", "swingO2" },
                 ["bluntSmash"] = new[] { "alert", "swingO3", "swingOF" },
+                // Skill/3110.img publishes the Soul Eater prepare/key-down/end owners
+                // as skill-only action strings, while Character/00002000.img and
+                // Morph/*.img keep no direct `soulEater*` branches. Keep them near the
+                // checked bluntSmash surface used by the same skill row.
+                ["soulEater_prep"] = new[] { "alert", "swingO3", "swingOF" },
+                ["soulEater"] = new[] { "swingO3", "swingOF", "alert" },
+                ["soulEater_end"] = new[] { "alert", "swingOF", "swingO3" },
                 ["demonTrace"] = new[] { "swingOF" },
+                ["demonTracePrep"] = new[] { "swingOF", "alert" },
                 ["elfrush"] = new[] { "alert", "swingO1" },
                 // Character/00002000.img keeps `elfrush2` on an explicit body redirect
                 // chain (`swingO1`, then `swingP2`, `swingP1`, and `alert`) rather than
@@ -476,6 +484,13 @@ namespace HaCreator.MapSimulator.Character
                 ["darkSpin"] = new[] { "alert", "swingT1" },
                 ["darkThrust"] = new[] { "alert", "stabT1", "swingT1" },
                 ["healingAttack"] = new[] { "alert", "stabO1" },
+                // Skill/3111.img/skill/31111005 publishes Demonic Breath as nested
+                // prepare/key-down/end owners. The checked body and morph images keep no
+                // verbatim roots, so route through stable alert/stab/swing morph surfaces
+                // before generic authored-combat fallback.
+                ["demonicBreathe_prep"] = new[] { "alert", "stabO1", "swingO2" },
+                ["demonicBreathe"] = new[] { "stabO1", "swingO2", "alert" },
+                ["demonicBreathe_end"] = new[] { "alert", "swingO2", "stabO1" },
                 // These later client raw-action requests stay outside Morph/*.img
                 // verbatim roots; Character/00002000.img backs them with ordinary
                 // body-action families instead.
@@ -663,6 +678,9 @@ namespace HaCreator.MapSimulator.Character
                 // still redirects that branch through `walk1`, while checked Morph/*.img
                 // keeps no verbatim `dash` root.
                 ["dash"] = new[] { "walk", "move", "stand" },
+                // Skill/3001.img publishes `demonFly` on Demon beginner flight rows, but
+                // the checked body and morph images keep no verbatim `demonFly` branch.
+                ["demonFly"] = new[] { "fly", "jump", "stand" },
                 // Character/00002000.img still publishes the `ghost*` raw movement
                 // family (`ghostwalk`, `ghostjump`, `ghostladder`, `ghostrope`,
                 // `ghostfly`) while Morph/*.img publishes only generic locomotion roots.
@@ -804,6 +822,14 @@ namespace HaCreator.MapSimulator.Character
                 "demonJump",
                 "demonJumpUpward",
                 "demonJumpFoward",
+                "demonFly",
+                "soulEater_prep",
+                "soulEater",
+                "soulEater_end",
+                "demonTracePrep",
+                "demonicBreathe_prep",
+                "demonicBreathe",
+                "demonicBreathe_end",
                 "HTswiftPhantom",
                 "swiftPhantom",
                 "HTdoublePiercing",

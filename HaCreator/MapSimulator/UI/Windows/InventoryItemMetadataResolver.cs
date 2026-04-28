@@ -335,8 +335,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool HasPetPickupRestriction(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
-            return GetIntValue(specProperty?["notPickupByPet"]) == 1
-                || GetIntValue(specExProperty?["notPickupByPet"]) == 1;
+            return IsEnabledFlag(specProperty?["notPickupByPet"])
+                || IsEnabledFlag(specExProperty?["notPickupByPet"]);
         }
 
         public static bool TryResolveSkillBookUseMetadata(int itemId, out SkillBookUseMetadata metadata)
@@ -532,25 +532,25 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool IsConsumedOnPickup(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
-            return GetIntValue(specProperty?["consumeOnPickup"]) == 1
-                   || GetIntValue(specExProperty?["consumeOnPickup"]) == 1;
+            return IsEnabledFlag(specProperty?["consumeOnPickup"])
+                   || IsEnabledFlag(specExProperty?["consumeOnPickup"]);
         }
 
         internal static bool IsRunOnPickup(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
-            return GetIntValue(specProperty?["runOnPickup"]) == 1
-                   || GetIntValue(specExProperty?["runOnPickup"]) == 1;
+            return IsEnabledFlag(specProperty?["runOnPickup"])
+                   || IsEnabledFlag(specExProperty?["runOnPickup"]);
         }
 
         internal static bool IsOnlyPickup(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
-            return GetIntValue(specProperty?["onlyPickup"]) == 1
-                   || GetIntValue(specExProperty?["onlyPickup"]) == 1;
+            return IsEnabledFlag(specProperty?["onlyPickup"])
+                   || IsEnabledFlag(specExProperty?["onlyPickup"]);
         }
 
         internal static bool IsDeathMarkCureSpec(WzSubProperty specProperty)
         {
-            return GetIntValue(specProperty?["deathmark"]) == 1;
+            return IsEnabledFlag(specProperty?["deathmark"]);
         }
 
         public static bool IsPetFoodItem(int itemId)
@@ -1433,6 +1433,11 @@ namespace HaCreator.MapSimulator.UI
         public static bool IsConsumedOnPickupForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
             return IsConsumedOnPickup(specProperty, specExProperty);
+        }
+
+        public static bool HasPetPickupRestrictionForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return HasPetPickupRestriction(specProperty, specExProperty);
         }
 
         public static bool IsRunOnPickupForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
@@ -2319,7 +2324,7 @@ namespace HaCreator.MapSimulator.UI
                 effectLines.Add($"Uses script: {scriptName}");
             }
 
-            if (!addedPickupTriggerLine && GetIntValue(specProperty["runOnPickup"]) == 1)
+            if (!addedPickupTriggerLine && IsEnabledFlag(specProperty["runOnPickup"]))
             {
                 effectLines.Add("Runs immediately on pickup");
                 addedPickupTriggerLine = true;
@@ -2331,21 +2336,18 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty specProperty,
             WzSubProperty specExProperty)
         {
-            bool consumedOnPickup = GetIntValue(specProperty?["consumeOnPickup"]) == 1
-                                    || GetIntValue(specExProperty?["consumeOnPickup"]) == 1;
+            bool consumedOnPickup = IsConsumedOnPickup(specProperty, specExProperty);
             if (consumedOnPickup)
             {
                 effectLines.Add("Consumed on pickup");
             }
 
-            if (GetIntValue(specProperty?["onlyPickup"]) == 1
-                || GetIntValue(specExProperty?["onlyPickup"]) == 1)
+            if (IsOnlyPickup(specProperty, specExProperty))
             {
                 effectLines.Add("Can only be used when picked up");
             }
 
-            if (GetIntValue(specProperty?["notPickupByPet"]) == 1
-                || GetIntValue(specExProperty?["notPickupByPet"]) == 1)
+            if (HasPetPickupRestriction(specProperty, specExProperty))
             {
                 effectLines.Add("Cannot be picked up by pets");
             }
@@ -5248,6 +5250,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return GetIntValue(property);
+        }
+
+        private static bool IsEnabledFlag(WzImageProperty property)
+        {
+            return GetIntOrStringValue(property) == 1;
         }
 
         private static List<WzSubProperty> GetNumericNamedChildren(WzSubProperty property)

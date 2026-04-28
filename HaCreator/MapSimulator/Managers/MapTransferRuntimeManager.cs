@@ -441,11 +441,21 @@ namespace HaCreator.MapSimulator.Managers
 
                     fieldList.Add(reader.ReadInt32());
                 }
+
+                if (stream.Position != stream.Length)
+                {
+                    return null;
+                }
             }
             else if (packetResultCode is MapTransferRuntimePacketResultCode.OfficialFailure6 or MapTransferRuntimePacketResultCode.OfficialFailure7 &&
                      stream.Position < stream.Length)
             {
                 string targetUserName = ReadOptionalMapleString(reader, stream);
+                if (stream.Position != stream.Length)
+                {
+                    return null;
+                }
+
                 return new MapTransferRuntimeResponse
                 {
                     Applied = false,
@@ -456,6 +466,10 @@ namespace HaCreator.MapSimulator.Managers
                     CanTransferContinent = canTransferContinent,
                     FieldList = fieldList
                 };
+            }
+            else if (stream.Position != stream.Length)
+            {
+                return null;
             }
 
             return new MapTransferRuntimeResponse

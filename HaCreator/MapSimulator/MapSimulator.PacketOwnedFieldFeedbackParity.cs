@@ -165,7 +165,7 @@ namespace HaCreator.MapSimulator
         private void UpdatePacketOwnedFieldFeedbackState(int currentTickCount)
         {
             _packetFieldFeedbackRuntime.Initialize(GraphicsDevice);
-            _packetFieldFeedbackRuntime.Update(currentTickCount);
+            _packetFieldFeedbackRuntime.Update(currentTickCount, BuildPacketFieldFeedbackCallbacks());
             UpdatePacketOwnedBossTimerClockState(currentTickCount);
             UpdatePacketOwnedFieldClockState(currentTickCount);
             UpdatePacketOwnedFieldFeedbackUiAnimations(currentTickCount);
@@ -240,7 +240,8 @@ namespace HaCreator.MapSimulator
                 ShowFieldClock = ShowPacketOwnedFieldClock,
                 ClearFieldClock = ClearPacketOwnedFieldClock,
                 RestoreFieldPropertyClock = RestorePacketOwnedFieldPropertyClock,
-                InvalidateWhisperUserListWindow = InvalidatePacketOwnedWhisperUserListWindow
+                InvalidateWhisperUserListWindow = InvalidatePacketOwnedWhisperUserListWindow,
+                ConsumeTransferFieldRequestFailure = ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle
             };
         }
 

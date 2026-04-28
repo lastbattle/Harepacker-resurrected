@@ -819,10 +819,19 @@ namespace HaCreator.MapSimulator.Managers
 
         private bool ShouldQueueObservedOutboundForOwner(int opcode, string source)
         {
-            return string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase)
-                && opcode == PacketOwnedSocialUtilityPacketTable.MapleTvOutboundConsumeCashItemOpcode
-                && !string.IsNullOrWhiteSpace(source)
-                && source.StartsWith("official-session-client:", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(source)
+                || !source.StartsWith("official-session-client:", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                return opcode == PacketOwnedSocialUtilityPacketTable.MapleTvOutboundConsumeCashItemOpcode;
+            }
+
+            return string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
+                && opcode == PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode;
         }
 
         private bool TryBuildRawPacket(int opcode, IReadOnlyList<byte> payload, out byte[] rawPacket, out string status)

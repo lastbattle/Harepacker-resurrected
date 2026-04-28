@@ -751,6 +751,7 @@ namespace HaCreator.MapSimulator
         private int _lastCollisionCustomImpactMovePathAttribute = -1;
         private byte[] _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
         private int _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
+        private bool _hasPortalOwnedMovePathFlushAdmission;
         private readonly List<MovePathElement> _portalOwnedMovePathPostFlushCarry = new();
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
@@ -5023,6 +5024,11 @@ namespace HaCreator.MapSimulator
         {
             context = NormalizeCharacterInfoActionContext(context);
             _bookCollectionActionContext = context;
+            if (uiWindowManager?.GetOrRegisterWindow(MapSimulatorWindowNames.BookCollection) is BookCollectionWindow bookCollectionWindow)
+            {
+                WireBookCollectionWindowData(bookCollectionWindow, useCollectionLayout: true);
+            }
+
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
             return context.IsRemoteTarget
                 ? $"Collection book opened for inspected target {context.CharacterName}."
@@ -5349,6 +5355,26 @@ namespace HaCreator.MapSimulator
                 measureTextWidth);
         }
 
+        private void WireBookCollectionWindowData(BookCollectionWindow bookCollectionWindow, bool useCollectionLayout)
+        {
+            if (bookCollectionWindow == null)
+            {
+                return;
+            }
+
+            bookCollectionWindow.CharacterBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
+            bookCollectionWindow.SetFont(_fontDebugValues);
+            bookCollectionWindow.SetCollectionSnapshotProvider(useCollectionLayout ? BuildActiveCollectionBookSnapshot : null);
+            bookCollectionWindow.SetMonsterBookSnapshotProvider(BuildActiveMonsterBookSnapshot);
+            bookCollectionWindow.SetMonsterBookRegistrationHandler(ApplyActiveMonsterBookRegistration);
+            bookCollectionWindow.ClientCloseRequested = HandleBookCollectionCloseRequested;
+            bookCollectionWindow.OpenRequested = HandleBookCollectionOpened;
+            bookCollectionWindow.ClosingRequested = HandleBookCollectionClosing;
+            bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
+            bookCollectionWindow.OnImeCandidateSelected = TrySelectBookCollectionImeCandidate;
+            bookCollectionWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
+        }
+
         private void HandleBookCollectionOpened()
         {
             _soundManager?.PlaySound(BookDialogLifecycleSoundKey);
@@ -5376,6 +5402,10 @@ namespace HaCreator.MapSimulator
         private void HandleBookCollectionClosed()
         {
             _bookCollectionActionContext = null;
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.BookCollection) is BookCollectionWindow bookCollectionWindow)
+            {
+                bookCollectionWindow.SetCollectionSnapshotProvider(null);
+            }
         }
 
         private bool TryShowRemoteCharacterInfoWindow(string characterSelector)
@@ -21393,14 +21423,40 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int activeSummons = 0;
-            for (int i = 0; i < summonInfo.MobIds.Count; i++)
-            {
-                activeSummons += _mobPool.GetMobsByType(summonInfo.MobIds[i]).Count();
-            }
+            int activeSummons = CountActiveMobSummonsForSkill(summonInfo);
 
             int summonLimit = summonInfo.Limit > 0 ? summonInfo.Limit : ResolveMobSummonCastCount(summonInfo);
             return activeSummons < summonLimit;
+        }
+
+        private int CountActiveMobSummonsForSkill(MobSummonSkillInfo summonInfo)
+        {
+            if (summonInfo == null || _mobPool == null)
+            {
+                return 0;
+            }
+
+            int activeSummons = 0;
+            foreach (string mobId in EnumerateDistinctMobSummonTemplateIds(summonInfo))
+            {
+                activeSummons += _mobPool.GetMobsByType(mobId).Count();
+            }
+
+            return activeSummons;
+        }
+
+        internal static int CountDistinctMobSummonTemplateIdsForTesting(MobSummonSkillInfo summonInfo)
+        {
+            return EnumerateDistinctMobSummonTemplateIds(summonInfo).Count();
+        }
+
+        private static IEnumerable<string> EnumerateDistinctMobSummonTemplateIds(MobSummonSkillInfo summonInfo)
+        {
+            return summonInfo?.MobIds == null
+                ? Enumerable.Empty<string>()
+                : summonInfo.MobIds
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Distinct(StringComparer.OrdinalIgnoreCase);
         }
 
         internal static bool IsMobSummonSkillHpGateOpenForTesting(float sourceHpPercent, MobSummonSkillInfo summonInfo)
@@ -21708,12 +21764,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-
-            int activeSummons = 0;
-            for (int i = 0; i < summonInfo.MobIds.Count; i++)
+            if (!IsMobSummonSkillHpGateOpen(mobItem?.AI?.HpPercent ?? 0f, summonInfo))
             {
-                activeSummons += _mobPool.GetMobsByType(summonInfo.MobIds[i]).Count();
+                return;
             }
+
+            int activeSummons = CountActiveMobSummonsForSkill(summonInfo);
 
 
             int remainingCapacity = summonInfo.Limit > 0
@@ -21770,7 +21826,8 @@ namespace HaCreator.MapSimulator
 
         private MobSpawnPoint CreateSummonedMobSpawnPoint(MobItem sourceMob, MobSummonSkillInfo summonInfo, string mobId, int spawnIndex)
         {
-            Point relativeOffset = ResolveSummonSpawnOffset(summonInfo, spawnIndex);
+            bool sourceFacesLeft = sourceMob?.MovementInfo?.FlipX == true;
+            Point relativeOffset = ResolveSummonSpawnOffset(summonInfo, spawnIndex, sourceFacesLeft);
             float spawnX = sourceMob.CurrentX + relativeOffset.X;
             float spawnY = sourceMob.CurrentY + relativeOffset.Y;
 
@@ -21787,16 +21844,19 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private Point ResolveSummonSpawnOffset(MobSummonSkillInfo summonInfo, int spawnIndex)
+        private Point ResolveSummonSpawnOffset(MobSummonSkillInfo summonInfo, int spawnIndex, bool sourceFacesLeft)
         {
             if (summonInfo?.Lt is Point lt && summonInfo.Rb is Point rb)
             {
-                int left = Math.Min(lt.X, rb.X);
-                int right = Math.Max(lt.X, rb.X);
-                int top = Math.Min(lt.Y, rb.Y);
-                int bottom = Math.Max(lt.Y, rb.Y);
-                int x = _mobSkillRandom.Next(left, right + 1);
-                int y = _mobSkillRandom.Next(top, bottom + 1);
+                Rectangle spawnArea = CreateMobSummonSpawnArea(summonInfo, sourceFacesLeft);
+                int rightInclusive = spawnArea.Right <= spawnArea.Left
+                    ? spawnArea.Left
+                    : spawnArea.Right;
+                int bottomInclusive = spawnArea.Bottom <= spawnArea.Top
+                    ? spawnArea.Top
+                    : spawnArea.Bottom;
+                int x = _mobSkillRandom.Next(spawnArea.Left, rightInclusive + 1);
+                int y = _mobSkillRandom.Next(spawnArea.Top, bottomInclusive + 1);
                 return new Point(x, y);
             }
 
@@ -21804,6 +21864,30 @@ namespace HaCreator.MapSimulator
             int direction = spawnIndex % 2 == 0 ? 1 : -1;
             int distance = 35 + (spawnIndex / 2) * 40;
             return new Point(direction * distance, 0);
+        }
+
+        internal static Rectangle CreateMobSummonSpawnAreaForTesting(MobSummonSkillInfo summonInfo, bool sourceFacesLeft)
+        {
+            return CreateMobSummonSpawnArea(summonInfo, sourceFacesLeft);
+        }
+
+        private static Rectangle CreateMobSummonSpawnArea(MobSummonSkillInfo summonInfo, bool sourceFacesLeft)
+        {
+            if (summonInfo?.Lt is not Point lt || summonInfo.Rb is not Point rb)
+            {
+                return Rectangle.Empty;
+            }
+
+            int left = Math.Min(lt.X, rb.X);
+            int right = Math.Max(lt.X, rb.X);
+            if (sourceFacesLeft)
+            {
+                (left, right) = (-right, -left);
+            }
+
+            int top = Math.Min(lt.Y, rb.Y);
+            int bottom = Math.Max(lt.Y, rb.Y);
+            return new Rectangle(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
         }
 
 
@@ -32973,7 +33057,8 @@ namespace HaCreator.MapSimulator
                 isTimeForFlush,
                 currentTime,
                 _lastPortalOwnedMovePathFlushAdmissionTick,
-                thresholdMs);
+                thresholdMs,
+                _hasPortalOwnedMovePathFlushAdmission);
             IReadOnlyList<MovePathElement> cadenceShapedPath =
                 CMovePathClientPacketCodec.ShapePortalOwnedMovePathForEncode(
                     path,
@@ -33003,6 +33088,7 @@ namespace HaCreator.MapSimulator
             if (flushAdmitted)
             {
                 _lastPortalOwnedMovePathFlushAdmissionTick = currentTime;
+                _hasPortalOwnedMovePathFlushAdmission = true;
                 _portalOwnedMovePathPostFlushCarry.Clear();
                 IReadOnlyList<MovePathElement> carryPath =
                     CMovePathClientPacketCodec.CapturePortalOwnedPostFlushCarryHint(cadenceShapedPath);
@@ -33027,12 +33113,27 @@ namespace HaCreator.MapSimulator
             int lastFlushAdmissionTick,
             int thresholdMs)
         {
+            return ShouldAdmitPortalOwnedMovePathFlushCadence(
+                isTimeForFlush,
+                currentTime,
+                lastFlushAdmissionTick,
+                thresholdMs,
+                lastFlushAdmissionTick != int.MinValue);
+        }
+
+        internal static bool ShouldAdmitPortalOwnedMovePathFlushCadence(
+            bool isTimeForFlush,
+            int currentTime,
+            int lastFlushAdmissionTick,
+            int thresholdMs,
+            bool hasLastFlushAdmission)
+        {
             if (!isTimeForFlush)
             {
                 return false;
             }
 
-            if (lastFlushAdmissionTick == int.MinValue)
+            if (!hasLastFlushAdmission)
             {
                 return true;
             }
@@ -35854,7 +35955,8 @@ namespace HaCreator.MapSimulator
                 CoconutBasicActionOwned = _specialFieldRuntime?.Minigames?.Coconut?.IsLocalBasicActionOwnerActive == true,
                 SnowBallBasicActionOwned = snowBall?.IsLocalBasicActionOwnerActive == true,
                 GuildBossBasicActionOwned = IsGuildBossBasicActionOwnerActive(),
-                HasLocalDragonActor = ResolveLocalDragonActorAvailability()
+                HasLocalDragonActor = ResolveLocalDragonActorAvailability(),
+                ClientFieldMineSkillBlocked = _mapBoard?.MapInfo?.town == true
             };
         }
 
@@ -38567,11 +38669,11 @@ namespace HaCreator.MapSimulator
                 }
 
 
-                if (TryResolvePortalPosition(mapImage, PortalType.TownPortalPoint, PortalType.TownPortalPoint.ToCode(), out portalX, out portalY) ||
-                    TryResolvePortalPosition(mapImage, PortalType.StartPoint, null, out portalX, out portalY))
-                {
-                    return true;
-                }
+                return mapImage["portal"] is WzSubProperty portalParent
+                       && TemporaryPortalField.TrySelectRemoteTownPortalTownDestinationFallbackPosition(
+                           portalParent,
+                           out portalX,
+                           out portalY);
             }
             finally
             {
@@ -38608,77 +38710,6 @@ namespace HaCreator.MapSimulator
             string folderNum = mapIdKey[0].ToString();
             return Program.DataSource.GetImageByPath($"Map/Map/Map{folderNum}/{mapIdKey}.img")
                    ?? Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{mapIdKey}.img");
-        }
-
-
-        private static bool TryResolvePortalPosition(
-            WzImage mapImage,
-            PortalType preferredPortalType,
-            string preferredPortalName,
-            out float portalX,
-            out float portalY)
-        {
-            portalX = 0f;
-            portalY = 0f;
-
-
-            if (mapImage?["portal"] is not WzSubProperty portalParent)
-            {
-                return false;
-            }
-
-
-            WzSubProperty fallbackPortal = null;
-            foreach (WzImageProperty property in portalParent.WzProperties)
-            {
-                if (property is not WzSubProperty portal)
-                {
-                    continue;
-                }
-
-
-                int? portalTypeId = InfoTool.GetOptionalInt(portal["pt"]);
-                PortalType? portalType = null;
-                if (portalTypeId.HasValue &&
-                    Program.InfoManager?.PortalEditor_TypeById != null &&
-                    portalTypeId.Value >= 0 &&
-                    portalTypeId.Value < Program.InfoManager.PortalEditor_TypeById.Count)
-                {
-                    portalType = Program.InfoManager.PortalEditor_TypeById[portalTypeId.Value];
-                }
-
-
-                string portalName = InfoTool.GetOptionalString(portal["pn"]);
-                bool matchesType = portalType == preferredPortalType;
-                bool matchesName = !string.IsNullOrWhiteSpace(preferredPortalName) &&
-                                   string.Equals(portalName, preferredPortalName, StringComparison.OrdinalIgnoreCase);
-                if (!matchesType && !matchesName)
-                {
-                    continue;
-                }
-
-
-                portalX = InfoTool.GetInt(portal["x"]);
-                portalY = InfoTool.GetInt(portal["y"]);
-                return true;
-            }
-
-
-            if (preferredPortalType == PortalType.StartPoint)
-            {
-                fallbackPortal = portalParent.WzProperties.OfType<WzSubProperty>().FirstOrDefault();
-            }
-
-
-            if (fallbackPortal == null)
-            {
-                return false;
-            }
-
-
-            portalX = InfoTool.GetInt(fallbackPortal["x"]);
-            portalY = InfoTool.GetInt(fallbackPortal["y"]);
-            return true;
         }
 
 
@@ -39480,7 +39511,7 @@ namespace HaCreator.MapSimulator
             bool hasShortcutSkill = false;
             for (int slotIndex = 0; slotIndex < SkillManager.PRIMARY_SLOT_COUNT; slotIndex++)
             {
-                if (_playerManager.Skills.GetPrimaryHotkey(slotIndex) > 0)
+                if (_playerManager.Skills.GetStatusBarShortcutCooldownSkillIdForClientParity(slotIndex) > 0)
                 {
                     hasShortcutSkill = true;
                     break;
@@ -39499,7 +39530,7 @@ namespace HaCreator.MapSimulator
             int renderIndex = 0;
             for (int slotIndex = 0; slotIndex < SkillManager.PRIMARY_SLOT_COUNT; slotIndex++)
             {
-                int skillId = _playerManager.Skills.GetPrimaryHotkey(slotIndex);
+                int skillId = _playerManager.Skills.GetStatusBarShortcutCooldownSkillIdForClientParity(slotIndex);
                 if (skillId <= 0)
                 {
                     continue;

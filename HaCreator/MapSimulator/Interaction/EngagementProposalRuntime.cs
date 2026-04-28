@@ -348,6 +348,38 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryDismiss(out EngagementProposalResponse response, out string message)
+        {
+            if (!_isOpen)
+            {
+                response = default;
+                message = "No engagement proposal is active.";
+                return false;
+            }
+
+            if (_mode == EngagementProposalDialogMode.IncomingProposal)
+            {
+                _lastPrimaryActionSent = false;
+                _isOpen = false;
+                response = new EngagementProposalResponse(AcceptPacketType, BuildIncomingDecisionPayload(false, _proposerName, _ringItemId));
+                _lastResponsePacketType = response.PacketType;
+                _lastResponsePayload = (byte[])response.Payload.Clone();
+                _acceptedProposal = null;
+                _statusMessage = $"Declined the engagement request from {_proposerName}. Sent client packet {AcceptPacketType} [02 00] with requester {_proposerName} and ring {_ringItemId}.";
+                message = _statusMessage;
+                return true;
+            }
+
+            _isOpen = false;
+            _lastPrimaryActionSent = false;
+            response = default;
+            _lastResponsePacketType = -1;
+            _lastResponsePayload = Array.Empty<byte>();
+            _statusMessage = "Dismissed the requester-side engagement dialog without sending the client SetRet withdraw packet.";
+            message = _statusMessage;
+            return true;
+        }
+
         internal bool TryApplyLocalWithdrawPayload(
             IReadOnlyList<byte> payload,
             out string message)

@@ -952,9 +952,24 @@ namespace HaCreator.MapSimulator.AI
         /// Apply damage to this mob (simple version without attacker info)
         /// </summary>
         /// <returns>True if mob died from this damage</returns>
-        public bool TakeDamage(int damage, int currentTick, bool isCritical = false, MobDamageType damageType = MobDamageType.Physical)
+        public bool TakeDamage(
+            int damage,
+            int currentTick,
+            bool isCritical = false,
+            MobDamageType damageType = MobDamageType.Physical,
+            int ignoreDefensePercent = 0)
         {
-            return TakeDamage(damage, currentTick, isCritical, null, null, damageType);
+            return TakeDamage(
+                damage,
+                currentTick,
+                isCritical,
+                null,
+                null,
+                damageType,
+                ignoreDefensePercent,
+                attackerId: 0,
+                attackerTargetType: MobTargetType.Player,
+                attackerExternalTargetSource: MobExternalTargetSource.None);
         }
 
         /// <summary>
@@ -975,6 +990,7 @@ namespace HaCreator.MapSimulator.AI
                 attackerX,
                 attackerY,
                 damageType,
+                ignoreDefensePercent: 0,
                 attackerId: 0,
                 attackerTargetType: MobTargetType.Player,
                 attackerExternalTargetSource: MobExternalTargetSource.None);
@@ -987,6 +1003,7 @@ namespace HaCreator.MapSimulator.AI
             float? attackerX,
             float? attackerY,
             MobDamageType damageType,
+            int ignoreDefensePercent,
             int attackerId,
             MobTargetType attackerTargetType,
             MobExternalTargetSource attackerExternalTargetSource)
@@ -994,7 +1011,7 @@ namespace HaCreator.MapSimulator.AI
             if (IsDead)
                 return false;
 
-            damage = CalculateIncomingDamage(damage, damageType);
+            damage = CalculateIncomingDamage(damage, damageType, ignoreDefensePercent);
             LastDamageTaken = damage;
             _currentHp -= damage;
 
@@ -1291,9 +1308,10 @@ namespace HaCreator.MapSimulator.AI
             return ApplyPercentModifier(damage, percentBonus);
         }
 
-        public int CalculateIncomingDamage(int baseDamage, MobDamageType damageType)
+        public int CalculateIncomingDamage(int baseDamage, MobDamageType damageType, int ignoreDefensePercent = 0)
         {
             int damage = Math.Max(1, baseDamage);
+            ignoreDefensePercent = Math.Clamp(ignoreDefensePercent, 0, 100);
 
             if (damageType == MobDamageType.Magical)
             {
@@ -1302,9 +1320,11 @@ namespace HaCreator.MapSimulator.AI
                     return 1;
                 }
 
-                int reductionPercent = GetStatusPercent(MobStatusEffect.MDamage) +
-                                       GetStatusPercent(MobStatusEffect.MGuardUp) +
-                                       GetStatusPercent(MobStatusEffect.HardSkin);
+                int reductionPercent = ApplyIgnoreDefenseToReduction(
+                    GetStatusPercent(MobStatusEffect.MDamage) +
+                    GetStatusPercent(MobStatusEffect.MGuardUp) +
+                    GetStatusPercent(MobStatusEffect.HardSkin),
+                    ignoreDefensePercent);
                 int bonusPercent = GetStatusPercent(MobStatusEffect.Ambush) +
                                    GetStatusPercent(MobStatusEffect.Neutralise) +
                                    GetStatusPercent(MobStatusEffect.Weakness);
@@ -1317,15 +1337,27 @@ namespace HaCreator.MapSimulator.AI
                     return 1;
                 }
 
-                int reductionPercent = GetStatusPercent(MobStatusEffect.PDamage) +
-                                       GetStatusPercent(MobStatusEffect.PGuardUp) +
-                                       GetStatusPercent(MobStatusEffect.HardSkin);
+                int reductionPercent = ApplyIgnoreDefenseToReduction(
+                    GetStatusPercent(MobStatusEffect.PDamage) +
+                    GetStatusPercent(MobStatusEffect.PGuardUp) +
+                    GetStatusPercent(MobStatusEffect.HardSkin),
+                    ignoreDefensePercent);
                 int bonusPercent = GetStatusPercent(MobStatusEffect.Ambush) +
                                    GetStatusPercent(MobStatusEffect.Weakness);
                 damage = ApplyPercentModifier(damage, bonusPercent - reductionPercent);
             }
 
             return Math.Max(1, damage);
+        }
+
+        private static int ApplyIgnoreDefenseToReduction(int reductionPercent, int ignoreDefensePercent)
+        {
+            if (reductionPercent <= 0 || ignoreDefensePercent <= 0)
+            {
+                return Math.Max(0, reductionPercent);
+            }
+
+            return Math.Max(0, reductionPercent * (100 - ignoreDefensePercent) / 100);
         }
 
         private void AddDamageDisplay(int damage, int currentTick, bool isCritical)

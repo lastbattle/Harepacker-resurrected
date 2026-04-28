@@ -173,7 +173,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _mode = mode == WeddingWishListDialogMode.None ? WeddingWishListDialogMode.Receive : mode;
-            _hasPendingTransferRequest = false;
             ClearTransientActionState();
             _activePane = _mode switch
             {
@@ -200,7 +199,6 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedInventoryIndex = 0;
             _paneStartIndices[(WeddingWishListSelectionPane.GiftList, _selectedTabIndex)] = 0;
             _paneStartIndices[(WeddingWishListSelectionPane.Inventory, _selectedTabIndex)] = 0;
-            _hasPendingTransferRequest = false;
             ClearTransientActionState();
             ClampSelections();
             NormalizeViewportState();
@@ -652,6 +650,26 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
+        internal bool TryApplyTransferResultPacket(IReadOnlyList<byte> payload, out string message)
+        {
+            message = string.Empty;
+            byte subtype = payload?.Count > 0 ? payload[0] : (byte)0;
+            if (subtype != SendGetItemRequestSubtype && subtype != SendPutItemRequestSubtype)
+            {
+                message = $"Wedding wish-list transfer result subtype {subtype} is not a Get/Put completion.";
+                return false;
+            }
+
+            if (!_hasPendingTransferRequest)
+            {
+                message = "Wedding wish-list transfer result arrived, but no Get/Put request is pending.";
+                return false;
+            }
+
+            message = CompletePendingTransferRequest();
+            return true;
+        }
+
         internal string Clear()
         {
             _giftListByTab.Clear();
@@ -711,6 +729,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsPutQuantityPromptOpen = _isPutQuantityPromptOpen,
                 IsPutConfirmationArmed = _isPutConfirmationArmed,
                 IsInputConfirmationArmed = _inputConfirmationArmed,
+                HasPendingTransferRequest = _hasPendingTransferRequest,
                 CanGetSelectedItem = CanGetSelectedItem(),
                 CanPutSelectedItem = CanPutSelectedItem(),
                 CanEnterSelectedWish = CanEnterSelectedWish(),
@@ -1438,7 +1457,7 @@ namespace HaCreator.MapSimulator.Interaction
                 WritePacketString(writer, ResolveItemLabel(entry));
             }
 
-            StageOutboundPacket(EngagementPacketOpcode, stream.ToArray(), $"SendWishListInput staged {_wishListEntries.Count} item(s).");
+            StageOutboundPacket(WishListTransferPacketOpcode, stream.ToArray(), $"SendWishListInput staged {_wishListEntries.Count} item(s).");
         }
 
         private void StageGetItemRequestPacket(InventorySlotData item, InventoryType type, int sourceSlotIndex)
@@ -1605,6 +1624,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsPutQuantityPromptOpen { get; init; }
         public bool IsPutConfirmationArmed { get; init; }
         public bool IsInputConfirmationArmed { get; init; }
+        public bool HasPendingTransferRequest { get; init; }
         public bool CanGetSelectedItem { get; init; }
         public bool CanPutSelectedItem { get; init; }
         public bool CanEnterSelectedWish { get; init; }

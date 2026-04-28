@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly EngagementProposalRuntime _runtime = new();
 
         internal Action<IReadOnlyList<string>, int> SocialMessagesObserved { get; set; }
+        internal Func<EngagementProposalResponse, string, string> ClientPacketDispatcher { get; set; }
 
         internal void UpdateLocalContext(CharacterBuild build)
         {
@@ -144,6 +145,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string message = _runtime.OpenOutgoingRequest(proposerName, partnerName, ringItemId, requestMessage);
+            message = AppendClientPacketDispatch(
+                message,
+                BuildLastRequestResponse(),
+                "CWvsContext::SendEngagementRequest");
             ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
             PublishObservedSocialMessages();
             opened = true;
@@ -152,11 +157,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string PerformPrimaryAction(UIWindowManager windowManager)
         {
-            if (!_runtime.TryInvokePrimaryAction(out _, out string message))
+            if (!_runtime.TryInvokePrimaryAction(out EngagementProposalResponse response, out string message))
             {
                 return message;
             }
 
+            message = AppendClientPacketDispatch(message, response, "CEngageDlg::SetRet primary action");
             PublishObservedSocialMessages();
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
@@ -164,11 +170,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string Accept(UIWindowManager windowManager)
         {
-            if (!_runtime.TryAccept(out _, out string message))
+            if (!_runtime.TryAccept(out EngagementProposalResponse response, out string message))
             {
                 return message;
             }
 
+            message = AppendClientPacketDispatch(message, response, "CEngageDlg::SetRet accept branch");
             PublishObservedSocialMessages();
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
@@ -176,11 +183,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string Withdraw(UIWindowManager windowManager)
         {
-            if (!_runtime.TryWithdrawOutgoingRequest(out _, out string message))
+            if (!_runtime.TryWithdrawOutgoingRequest(out EngagementProposalResponse response, out string message))
             {
                 return message;
             }
 
+            message = AppendClientPacketDispatch(message, response, "CEngageDlg::SetRet withdraw branch");
             PublishObservedSocialMessages();
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
@@ -219,9 +227,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string Dismiss(UIWindowManager windowManager)
         {
-            string message = _runtime.Dismiss();
+            _runtime.TryDismiss(out EngagementProposalResponse response, out string message);
             if (!string.Equals(message, "No engagement proposal is active.", StringComparison.Ordinal))
             {
+                message = AppendClientPacketDispatch(message, response, "CEngageDlg::SetRet dismiss branch");
                 PublishObservedSocialMessages();
             }
 
@@ -344,6 +353,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SocialMessagesObserved?.Invoke(messages, Environment.TickCount);
+        }
+
+        private EngagementProposalResponse BuildLastRequestResponse()
+        {
+            EngagementProposalSnapshot snapshot = _runtime.BuildSnapshot();
+            if (snapshot.LastRequestPacketType < 0 || snapshot.LastRequestPayload == null || snapshot.LastRequestPayload.Count == 0)
+            {
+                return default;
+            }
+
+            byte[] payload = new byte[snapshot.LastRequestPayload.Count];
+            for (int i = 0; i < snapshot.LastRequestPayload.Count; i++)
+            {
+                payload[i] = snapshot.LastRequestPayload[i];
+            }
+
+            return new EngagementProposalResponse(snapshot.LastRequestPacketType, payload);
+        }
+
+        private string AppendClientPacketDispatch(
+            string message,
+            EngagementProposalResponse response,
+            string source)
+        {
+            if (response.PacketType <= 0 || response.Payload == null || response.Payload.Length == 0 || ClientPacketDispatcher == null)
+            {
+                return message;
+            }
+
+            string dispatchStatus = ClientPacketDispatcher.Invoke(response, source);
+            return string.IsNullOrWhiteSpace(dispatchStatus)
+                ? message
+                : $"{message} {dispatchStatus}";
         }
     }
 }

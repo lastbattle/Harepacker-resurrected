@@ -416,6 +416,7 @@ namespace HaCreator.MapSimulator.UI
             tooltipPart = slot?.TooltipPart;
             if (tooltipPart != null)
             {
+                slot.ApplyTooltipInstanceFields(tooltipPart);
                 return true;
             }
 
@@ -430,6 +431,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            slot.ApplyTooltipInstanceFields(tooltipPart);
             slot.TooltipPart = tooltipPart.Clone();
             return true;
         }

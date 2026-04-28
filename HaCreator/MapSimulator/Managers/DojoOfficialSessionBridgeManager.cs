@@ -1310,10 +1310,10 @@ namespace HaCreator.MapSimulator.Managers
             writer.Write((ushort)opcode);
             if (payload != null)
             {
-                payload.CopyTo(rawPacket, sizeof(short));
+                writer.WriteBytes(payload);
             }
 
-            return rawPacket;
+            return writer.ToArray();
         }
 
         private void RecordRecentPacket(int opcode, byte[] rawPacket, int? mappedPacketType, string detail = null)

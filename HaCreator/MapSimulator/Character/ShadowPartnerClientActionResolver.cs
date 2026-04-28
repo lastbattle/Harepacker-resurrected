@@ -3948,8 +3948,15 @@ namespace HaCreator.MapSimulator.Character
         {
             return IsAttackAction(actionName)
                    || IsGenericHelperSurfaceActionName(actionName)
+                   || IsClientInitializedBuiltInPieceActionName(actionName)
                    || (!string.IsNullOrWhiteSpace(actionName)
                        && ClientInitializedFallbackOnlyActionNames.Contains(actionName));
+        }
+
+        private static bool IsClientInitializedBuiltInPieceActionName(string actionName)
+        {
+            return IsPiecedShadowPartnerActionName(actionName)
+                   && IsClientInitializedShadowPartnerRawActionName(actionName);
         }
 
         public static bool ShouldUseAttackIdentityForObservation(string observedPlayerActionName, PlayerState state)
@@ -4677,4 +4684,3 @@ namespace HaCreator.MapSimulator.Character
         }
     }
 }
-

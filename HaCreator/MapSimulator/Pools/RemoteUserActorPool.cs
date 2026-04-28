@@ -580,6 +580,7 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemotePacketOwnedEmotionActionOwnerName = "aux.remote.packetOwnedEmotion.persistent";
         private const string RemoteEffectByItemActionOwnerName = "aux.remote.effectByItem.oneTime";
         private const string RemoteCarryItemEffectActionOwnerName = "aux.remote.carryItemEffect.persistent";
+        private const string RemoteCompletedSetItemEffectActionOwnerName = "aux.remote.completedSetItemEffect.persistent";
         private const string RemoteQuestDeliveryActionOwnerName = "aux.remote.questDelivery.persistent";
         private const string RemoteActiveEffectMotionBlurActionOwnerName = "aux.remote.activeEffectMotionBlur.persistent";
         private const string RemoteActiveEffectItemEffectActionOwnerName = "aux.remote.activeEffectItemEffect.persistent";
@@ -2115,7 +2116,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ApplyCarryItemEffectStateForParity(actor, packet.CarryItemEffect, currentTime);
-            actor.CompletedSetItemId = Math.Max(0, packet.CompletedSetItemId);
+            ApplyCompletedSetItemEffectStateForParity(actor, packet.CompletedSetItemId, currentTime);
             return TryApplyActiveEffectItem(
                 new RemoteUserActiveEffectItemPacket(packet.CharacterId, packet.ActiveEffectItemId),
                 currentTime,
@@ -2167,6 +2168,53 @@ namespace HaCreator.MapSimulator.Pools
                 ownerFacingRight,
                 out int restoredAnimationElapsedMs);
             actor.CarryItemEffectAppliedTime = hasRestoredAnimationElapsed
+                ? unchecked(currentTime - restoredAnimationElapsedMs)
+                : currentTime;
+        }
+
+        private void ApplyCompletedSetItemEffectStateForParity(RemoteUserActor actor, int completedSetItemId, int currentTime)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            int normalizedSetItemId = Math.Max(0, completedSetItemId);
+            if (actor.CompletedSetItemId == normalizedSetItemId)
+            {
+                return;
+            }
+
+            string ownerActionName = ResolveRemoteTemporaryStatAvatarEffectActionName(actor);
+            bool ownerFacingRight = actor.FacingRight;
+            if (actor.CompletedSetItemId > 0
+                && actor.CompletedSetItemEffectAppliedTime != int.MinValue)
+            {
+                StoreRemoteAuxiliaryLayerOwnerCounter(
+                    actor.CharacterId,
+                    RemoteCompletedSetItemEffectActionOwnerName,
+                    actor.CompletedSetItemId,
+                    ownerActionName,
+                    ownerFacingRight,
+                    ResolveRemoteTemporaryStatTickElapsedMs(currentTime, actor.CompletedSetItemEffectAppliedTime),
+                    currentTime);
+            }
+
+            actor.CompletedSetItemId = normalizedSetItemId;
+            if (normalizedSetItemId <= 0)
+            {
+                actor.CompletedSetItemEffectAppliedTime = int.MinValue;
+                return;
+            }
+
+            bool hasRestoredAnimationElapsed = TryRestoreRemoteAuxiliaryLayerOwnerCounter(
+                actor.CharacterId,
+                RemoteCompletedSetItemEffectActionOwnerName,
+                normalizedSetItemId,
+                ownerActionName,
+                ownerFacingRight,
+                out int restoredAnimationElapsedMs);
+            actor.CompletedSetItemEffectAppliedTime = hasRestoredAnimationElapsed
                 ? unchecked(currentTime - restoredAnimationElapsedMs)
                 : currentTime;
         }
@@ -2361,7 +2409,7 @@ namespace HaCreator.MapSimulator.Pools
                 ApplyCarryItemEffectStateForParity(actor, packet.CarryItemEffect, currentTime);
             }
 
-            actor.CompletedSetItemId = packet.CompletedSetItemId;
+            ApplyCompletedSetItemEffectStateForParity(actor, packet.CompletedSetItemId, currentTime);
 
             if (!applyRelationshipRecords)
             {
@@ -2500,24 +2548,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int ownerCharacterId = normalizedRecord.CharacterId ?? 0;
-            if (ownerCharacterId <= 0
-                || recordTable == null
-                || !recordTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord existingRecord)
-                || !existingRecord.IsActive)
+            if (ownerCharacterId <= 0 || recordTable == null)
             {
                 message = $"{packet.RelationshipType} pair-item lookup add requires an active owner record with item serial state.";
                 return false;
             }
 
-            long? ownerItemSerial = existingRecord.ItemSerial;
-            if (!ownerItemSerial.HasValue && packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial)
-            {
-                ownerItemSerial = packet.DispatchKey.Serial;
-            }
-
-            long? fallbackOwnerItemSerial = packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial
-                ? packet.DispatchKey.Serial
-                : null;
             long? pairLookupSerial = packet.PairLookupSerial;
             if (!pairLookupSerial.HasValue
                 || !TryResolvePairLookupMatchedOwnerCharacterId(
@@ -2537,6 +2573,16 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            bool hasExistingOwnerRecord = recordTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord existingRecord)
+                && existingRecord.IsActive;
+            long? ownerItemSerial = hasExistingOwnerRecord
+                ? existingRecord.ItemSerial
+                : null;
+            if (!ownerItemSerial.HasValue && packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial)
+            {
+                ownerItemSerial = packet.DispatchKey.Serial;
+            }
+
             long? matchedItemSerial = matchedRecord.ItemSerial;
             if (!ownerItemSerial.HasValue || !matchedItemSerial.HasValue)
             {
@@ -2544,21 +2590,53 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            bool ownerIsLowerCharacterId = ownerCharacterId <= matchedOwnerCharacterId;
-            int entryOwnerCharacterId = ownerIsLowerCharacterId ? ownerCharacterId : matchedOwnerCharacterId;
-            int entryPairCharacterId = ownerIsLowerCharacterId ? matchedOwnerCharacterId : ownerCharacterId;
-            long entryOwnerItemSerial = ownerIsLowerCharacterId ? ownerItemSerial.Value : matchedItemSerial.Value;
-            long entryPairItemSerial = ownerIsLowerCharacterId ? matchedItemSerial.Value : ownerItemSerial.Value;
+            bool packetOwnerIsCanonicalOwner = IsPairLookupPacketOwnerCanonicalOwner(
+                ownerCharacterId,
+                matchedOwnerCharacterId,
+                matchedRecord);
+            int entryOwnerCharacterId = packetOwnerIsCanonicalOwner ? ownerCharacterId : matchedOwnerCharacterId;
+            int entryPairCharacterId = packetOwnerIsCanonicalOwner ? matchedOwnerCharacterId : ownerCharacterId;
+            long entryOwnerItemSerial = packetOwnerIsCanonicalOwner ? ownerItemSerial.Value : matchedItemSerial.Value;
+            long entryPairItemSerial = packetOwnerIsCanonicalOwner ? matchedItemSerial.Value : ownerItemSerial.Value;
 
             normalizedRecord = normalizedRecord with
             {
-                ItemId = normalizedRecord.ItemId > 0 ? normalizedRecord.ItemId : existingRecord.ItemId,
+                ItemId = normalizedRecord.ItemId > 0
+                    ? normalizedRecord.ItemId
+                    : hasExistingOwnerRecord
+                        ? existingRecord.ItemId
+                        : matchedRecord.ItemId,
                 ItemSerial = entryOwnerItemSerial,
                 PairItemSerial = entryPairItemSerial,
                 CharacterId = entryOwnerCharacterId,
                 PairCharacterId = entryPairCharacterId
             };
             return true;
+        }
+
+        private static bool IsPairLookupPacketOwnerCanonicalOwner(
+            int packetOwnerCharacterId,
+            int matchedOwnerCharacterId,
+            RemoteUserRelationshipRecord matchedRecord)
+        {
+            int recoveredOwnerCharacterId = matchedRecord.CharacterId.GetValueOrDefault();
+            int recoveredPairCharacterId = matchedRecord.PairCharacterId.GetValueOrDefault();
+            if (recoveredOwnerCharacterId > 0 || recoveredPairCharacterId > 0)
+            {
+                if (recoveredOwnerCharacterId == packetOwnerCharacterId
+                    || recoveredPairCharacterId == matchedOwnerCharacterId)
+                {
+                    return true;
+                }
+
+                if (recoveredOwnerCharacterId == matchedOwnerCharacterId
+                    || recoveredPairCharacterId == packetOwnerCharacterId)
+                {
+                    return false;
+                }
+            }
+
+            return packetOwnerCharacterId <= matchedOwnerCharacterId;
         }
 
         private static bool TryResolvePairLookupMatchedOwnerCharacterId(
@@ -7189,7 +7267,10 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, currentTime);
+                int animationTime = actor.CompletedSetItemEffectAppliedTime != int.MinValue
+                    ? ResolveRemoteTemporaryStatTickElapsedMs(currentTime, actor.CompletedSetItemEffectAppliedTime)
+                    : currentTime;
+                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, animationTime);
                 PlayerCharacter.DrawPortableChairLayerFrame(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -8346,7 +8427,7 @@ namespace HaCreator.MapSimulator.Pools
                         FacingRight = ownerSample.FacingRight,
                         SampleTime = state.NextSampleTime,
                         SimulatedOverlayLayerHandleId = state.SimulatedOverlayLayerHandleId,
-                        SimulatedOverlayLayerHandleRefCount = state.SimulatedOverlayLayerHandleRefCount
+                        SimulatedOverlayLayerHandleRefCount = ResolveRemoteActiveEffectMotionBlurCopiedOverlayLayerHandleRefCount(state)
                     });
                 }
 
@@ -8561,10 +8642,19 @@ namespace HaCreator.MapSimulator.Pools
             if (layerHandleRefCounts != null
                 && layerHandleRefCounts.TryGetValue(layer, out int refCount))
             {
-                return Math.Max(0, refCount);
+                return refCount > 0 ? refCount + 1 : 0;
             }
 
-            return 1;
+            return 2;
+        }
+
+        private static int ResolveRemoteActiveEffectMotionBlurCopiedOverlayLayerHandleRefCount(
+            RemoteActiveEffectMotionBlurState state)
+        {
+            return state?.SimulatedOverlayLayerHandleId > 0
+                && state.SimulatedOverlayLayerHandleRefCount > 0
+                ? state.SimulatedOverlayLayerHandleRefCount + 1
+                : 0;
         }
 
         private static IReadOnlyDictionary<AvatarRenderLayer, int> CreateRemoteActiveEffectMotionBlurLayerHandleIds()
@@ -11070,6 +11160,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static string ResolveRemoteCarryItemEffectOwnerNameForTesting()
         {
             return RemoteCarryItemEffectActionOwnerName;
+        }
+
+        internal static string ResolveRemoteCompletedSetItemEffectOwnerNameForTesting()
+        {
+            return RemoteCompletedSetItemEffectActionOwnerName;
         }
 
         internal static string ResolveRemoteQuestDeliveryOwnerNameForTesting()
@@ -13615,13 +13710,32 @@ namespace HaCreator.MapSimulator.Pools
             int sharedInsertionIndex = PlayerCharacter.ResolveMirrorImageOverlayInsertionIndex(
                 insertionIndices,
                 parts.Count);
-            if (sharedInsertionIndex >= 0
-                && sharedInsertionIndex < parts.Count)
+            if (HasUsableAvatarRenderLayerMetadata(parts)
+                && sharedInsertionIndex >= 0
+                && sharedInsertionIndex <= parts.Count)
             {
                 return sharedInsertionIndex;
             }
 
             return ResolveLegacyUnderFaceInsertionIndex(parts);
+        }
+
+        private static bool HasUsableAvatarRenderLayerMetadata(IReadOnlyList<AssembledPart> parts)
+        {
+            if (parts == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (parts[i]?.RenderLayer != AvatarRenderLayer.OverCharacter)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static int ResolveLegacyUnderFaceInsertionIndex(IReadOnlyList<AssembledPart> parts)
@@ -15960,6 +16074,7 @@ namespace HaCreator.MapSimulator.Pools
         public int? CarryItemEffectId { get; set; }
         public int CarryItemEffectAppliedTime { get; set; } = int.MinValue;
         public int CompletedSetItemId { get; set; }
+        public int CompletedSetItemEffectAppliedTime { get; set; } = int.MinValue;
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
         public float? BattlefieldOriginalSpeed { get; set; }
         public int? BattlefieldAppliedTeamId { get; set; }

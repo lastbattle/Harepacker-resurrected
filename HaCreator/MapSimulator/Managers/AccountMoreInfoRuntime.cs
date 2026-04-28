@@ -187,7 +187,7 @@ namespace HaCreator.MapSimulator.Managers
             _savePending = true;
             _isFirstEntry = false;
             _statusText = "Queued an account-more-info save request and disabled further saves until server subtype 4 returns.";
-            return payload;
+            return writer.ToArray();
         }
 
         internal bool CanBuildSaveRequestPayload()
@@ -409,6 +409,13 @@ namespace HaCreator.MapSimulator.Managers
         internal static string FormatComboNumericValue(int value)
         {
             return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        internal static uint BuildClientAreaCodeForSave(int areaGroup, int areaDetail)
+        {
+            // OnLoadAccountMoreInfoResult recovers the selected area values from
+            // the low two bytes of this dword; keep outbound save encoding byte-owned too.
+            return (uint)((areaGroup & 0xFF) | ((areaDetail & 0xFF) << 8));
         }
 
         internal static uint MaskClientPlayStyleBits(uint value)

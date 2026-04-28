@@ -95,6 +95,10 @@ namespace HaCreator.MapSimulator.Fields
         public const int ChoiceButtonSpacing = 41;
         public const int ChoiceButtonY = 104;
         private const int ChoiceCount = 3;
+        private const int ChoiceButtonFallbackWidth = 33;
+        private const int ChoiceButtonFallbackHeight = 33;
+        private const int NpcChoiceX = 203;
+        private const int NpcChoiceY = 103;
         private const int ChoiceSwitchCadenceMs = 120;
         private const int RoundLimitMs = 30000;
         private const int ResultFadeDelayMs = 1000;
@@ -102,6 +106,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private readonly Texture2D[] _choiceTextures = new Texture2D[ChoiceCount];
         private readonly Texture2D[] _choiceFlashTextures = new Texture2D[ChoiceCount];
+        private readonly Texture2D[] _choiceButtonTextures = new Texture2D[ChoiceCount];
         private readonly Rectangle[] _choiceButtonRects = new Rectangle[ChoiceCount];
         private readonly Queue<RockPaperScissorsClientPacket> _pendingClientPackets = new();
         private GraphicsDevice _graphicsDevice;
@@ -147,6 +152,11 @@ namespace HaCreator.MapSimulator.Fields
         private string _lastMinigameSound = string.Empty;
         private bool _tipLayoutDirty = true;
         private int _lastTimerSoundSecond = int.MinValue;
+
+        public RockPaperScissorsField()
+        {
+            ApplyFallbackControlGeometry();
+        }
 
         public bool IsVisible => _isVisible;
         public bool ChoiceButtonsEnabled => _choiceButtonsEnabled;
@@ -294,9 +304,9 @@ namespace HaCreator.MapSimulator.Fields
                     spriteBatch.Draw(pixelTexture, Inflate(rect, 2), new Color(238, 208, 97, 160));
                 }
 
-                if (_choiceTextures[i] != null)
+                if (_choiceButtonTextures[i] != null)
                 {
-                    spriteBatch.Draw(_choiceTextures[i], rect, tint);
+                    spriteBatch.Draw(_choiceButtonTextures[i], rect, tint);
                 }
                 else
                 {
@@ -312,7 +322,7 @@ namespace HaCreator.MapSimulator.Fields
             Texture2D npcTexture = ResolveNpcDisplayTexture();
             if (npcTexture != null)
             {
-                Rectangle npcRect = new Rectangle(panelX + 203, panelY + 103, npcTexture.Width, npcTexture.Height);
+                Rectangle npcRect = new Rectangle(panelX + NpcChoiceX, panelY + NpcChoiceY, npcTexture.Width, npcTexture.Height);
                 spriteBatch.Draw(npcTexture, npcRect, Color.White);
             }
 
@@ -695,6 +705,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastMinigameSound = string.Empty;
             _tipLayoutDirty = true;
             _lastTimerSoundSecond = int.MinValue;
+            ApplyFallbackControlGeometry();
         }
 
         private bool TryApplyOpenPacket(byte[] payload, int currentTimeMs, out string errorMessage)
@@ -954,12 +965,15 @@ namespace HaCreator.MapSimulator.Fields
             _choiceFlashTextures[0] = LoadCanvasTexture(rpsProperty["Frock"] as WzCanvasProperty);
             _choiceFlashTextures[1] = LoadCanvasTexture(rpsProperty["Fpaper"] as WzCanvasProperty);
             _choiceFlashTextures[2] = LoadCanvasTexture(rpsProperty["Fscissor"] as WzCanvasProperty);
+            _choiceButtonTextures[0] = LoadButtonTexture(rpsProperty, "BtRock");
+            _choiceButtonTextures[1] = LoadButtonTexture(rpsProperty, "BtPaper");
+            _choiceButtonTextures[2] = LoadButtonTexture(rpsProperty, "BtScissor");
 
             for (int i = 0; i < ChoiceCount; i++)
             {
-                Texture2D texture = _choiceTextures[i];
-                int width = texture?.Width ?? 87;
-                int height = texture?.Height ?? 77;
+                Texture2D texture = _choiceButtonTextures[i];
+                int width = texture?.Width ?? ChoiceButtonFallbackWidth;
+                int height = texture?.Height ?? ChoiceButtonFallbackHeight;
                 _choiceButtonRects[i] = new Rectangle(ChoiceButtonBaseX + (ChoiceButtonSpacing * i), ChoiceButtonY, width, height);
             }
 
@@ -967,6 +981,21 @@ namespace HaCreator.MapSimulator.Fields
             _mainButtonRect = new Rectangle(MainButtonX, MainButtonY, mainTexture?.Width ?? 101, mainTexture?.Height ?? 35);
             _exitButtonRect = new Rectangle(ExitButtonX, ExitButtonY, _exitTexture?.Width ?? 59, _exitTexture?.Height ?? 17);
             _assetsLoaded = true;
+        }
+
+        private void ApplyFallbackControlGeometry()
+        {
+            for (int i = 0; i < ChoiceCount; i++)
+            {
+                _choiceButtonRects[i] = new Rectangle(
+                    ChoiceButtonBaseX + (ChoiceButtonSpacing * i),
+                    ChoiceButtonY,
+                    ChoiceButtonFallbackWidth,
+                    ChoiceButtonFallbackHeight);
+            }
+
+            _mainButtonRect = new Rectangle(MainButtonX, MainButtonY, 101, 35);
+            _exitButtonRect = new Rectangle(ExitButtonX, ExitButtonY, 59, 17);
         }
 
         private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)

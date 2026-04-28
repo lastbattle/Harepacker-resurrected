@@ -2311,13 +2311,25 @@ namespace HaCreator.MapSimulator.UI
 
             string[] parts = payload.Split(new[] { ':' }, 3);
             if (parts.Length < 2 ||
-                !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int targetId) ||
+                !TryParseQuestInlineReferenceTarget(parts[1], out int targetId, out QuestDetailInlineReferenceSource source) ||
                 targetId <= 0)
             {
                 return false;
             }
 
-            QuestDetailInlineReferenceKind kind = parts[0].Trim().ToLowerInvariant() switch
+            string kindToken = parts[0].Trim();
+            int sourceSeparatorIndex = kindToken.IndexOf('@');
+            if (sourceSeparatorIndex >= 0)
+            {
+                string sourceToken = kindToken[(sourceSeparatorIndex + 1)..];
+                kindToken = kindToken[..sourceSeparatorIndex];
+                if (TryParseQuestInlineReferenceSource(sourceToken, out QuestDetailInlineReferenceSource kindSource))
+                {
+                    source = kindSource;
+                }
+            }
+
+            QuestDetailInlineReferenceKind kind = kindToken.Trim().ToLowerInvariant() switch
             {
                 "npc" => QuestDetailInlineReferenceKind.Npc,
                 "map" => QuestDetailInlineReferenceKind.Map,
@@ -2332,8 +2344,52 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string label = parts.Length >= 3 ? parts[2].Trim() : string.Empty;
-            reference = new QuestDetailInlineReference(kind, targetId, label);
+            reference = new QuestDetailInlineReference(kind, targetId, label, source);
             return true;
+        }
+
+        private static bool TryParseQuestInlineReferenceTarget(
+            string token,
+            out int targetId,
+            out QuestDetailInlineReferenceSource source)
+        {
+            targetId = 0;
+            source = QuestDetailInlineReferenceSource.Unknown;
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string targetToken = token.Trim();
+            int sourceSeparatorIndex = targetToken.IndexOf('@');
+            if (sourceSeparatorIndex >= 0)
+            {
+                string sourceToken = targetToken[(sourceSeparatorIndex + 1)..];
+                targetToken = targetToken[..sourceSeparatorIndex];
+                TryParseQuestInlineReferenceSource(sourceToken, out source);
+            }
+
+            return int.TryParse(targetToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out targetId);
+        }
+
+        private static bool TryParseQuestInlineReferenceSource(
+            string token,
+            out QuestDetailInlineReferenceSource source)
+        {
+            source = token?.Trim().Replace("-", string.Empty).Replace("_", string.Empty).ToLowerInvariant() switch
+            {
+                "requirementtext" or "demandtext" => QuestDetailInlineReferenceSource.RequirementText,
+                "requirementline" or "demandline" or "demandrect" => QuestDetailInlineReferenceSource.RequirementLine,
+                "rewardtext" => QuestDetailInlineReferenceSource.RewardText,
+                "rewardline" => QuestDetailInlineReferenceSource.RewardLine,
+                "hinttext" or "hint" => QuestDetailInlineReferenceSource.HintText,
+                "summarytext" or "summary" => QuestDetailInlineReferenceSource.SummaryText,
+                "deliveryinset" or "delivery" => QuestDetailInlineReferenceSource.DeliveryInset,
+                _ => QuestDetailInlineReferenceSource.Unknown
+            };
+
+            return source != QuestDetailInlineReferenceSource.Unknown;
         }
 
         private static RichTextStyleState ApplyQuestDetailStyle(

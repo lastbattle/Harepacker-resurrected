@@ -40,6 +40,17 @@ namespace HaCreator.MapSimulator.Managers
             public string ItemName { get; set; }
             public string ItemTypeName { get; set; }
             public string Description { get; set; }
+            public DateTime? ExpirationDateUtc { get; set; }
+            public int? TotalUpgradeSlotCount { get; set; }
+            public int? RemainingUpgradeSlotCount { get; set; }
+            public int? EnhancementStarCount { get; set; }
+            public string PotentialTierText { get; set; }
+            public List<string> PotentialLines { get; set; }
+            public List<int> ItemOptionIds { get; set; }
+            public bool? HasGrowthInfo { get; set; }
+            public int? GrowthLevel { get; set; }
+            public int? GrowthMaxLevel { get; set; }
+            public int? GrowthExpPercent { get; set; }
             public PersistedTooltipPartRecord TooltipPart { get; set; }
         }
 
@@ -84,6 +95,7 @@ namespace HaCreator.MapSimulator.Managers
             public bool IsTimeLimited { get; set; }
             public string PotentialTierText { get; set; }
             public List<string> PotentialLines { get; set; } = new();
+            public List<int> ItemOptionIds { get; set; } = new();
             public bool HasGrowthInfo { get; set; }
             public int GrowthLevel { get; set; }
             public int GrowthMaxLevel { get; set; }
@@ -181,6 +193,17 @@ namespace HaCreator.MapSimulator.Managers
                         ItemName = record.ItemName,
                         ItemTypeName = record.ItemTypeName,
                         Description = record.Description,
+                        ExpirationDateUtc = record.ExpirationDateUtc,
+                        TotalUpgradeSlotCount = record.TotalUpgradeSlotCount,
+                        RemainingUpgradeSlotCount = record.RemainingUpgradeSlotCount,
+                        EnhancementStarCount = record.EnhancementStarCount,
+                        PotentialTierText = record.PotentialTierText,
+                        PotentialLines = record.PotentialLines != null ? new List<string>(record.PotentialLines) : null,
+                        ItemOptionIds = record.ItemOptionIds != null ? new List<int>(record.ItemOptionIds) : null,
+                        HasGrowthInfo = record.HasGrowthInfo,
+                        GrowthLevel = record.GrowthLevel,
+                        GrowthMaxLevel = record.GrowthMaxLevel,
+                        GrowthExpPercent = record.GrowthExpPercent,
                         TooltipPart = RestoreTooltipPart(record.ItemId, record.TooltipPart)
                     });
                 }
@@ -353,6 +376,17 @@ namespace HaCreator.MapSimulator.Managers
                         ItemName = slot.ItemName,
                         ItemTypeName = slot.ItemTypeName,
                         Description = slot.Description,
+                        ExpirationDateUtc = slot.ExpirationDateUtc,
+                        TotalUpgradeSlotCount = slot.TotalUpgradeSlotCount,
+                        RemainingUpgradeSlotCount = slot.RemainingUpgradeSlotCount,
+                        EnhancementStarCount = slot.EnhancementStarCount,
+                        PotentialTierText = slot.PotentialTierText,
+                        PotentialLines = slot.PotentialLines != null ? new List<string>(slot.PotentialLines) : null,
+                        ItemOptionIds = slot.ItemOptionIds != null ? new List<int>(slot.ItemOptionIds) : null,
+                        HasGrowthInfo = slot.HasGrowthInfo,
+                        GrowthLevel = slot.GrowthLevel,
+                        GrowthMaxLevel = slot.GrowthMaxLevel,
+                        GrowthExpPercent = slot.GrowthExpPercent,
                         TooltipPart = CaptureTooltipPart(slot.TooltipPart)
                     });
                 }
@@ -411,6 +445,7 @@ namespace HaCreator.MapSimulator.Managers
                 IsTimeLimited = tooltipPart.IsTimeLimited,
                 PotentialTierText = tooltipPart.PotentialTierText,
                 PotentialLines = tooltipPart.PotentialLines != null ? new List<string>(tooltipPart.PotentialLines) : new List<string>(),
+                ItemOptionIds = tooltipPart.ItemOptionIds != null ? new List<int>(tooltipPart.ItemOptionIds) : new List<int>(),
                 HasGrowthInfo = tooltipPart.HasGrowthInfo,
                 GrowthLevel = tooltipPart.GrowthLevel,
                 GrowthMaxLevel = tooltipPart.GrowthMaxLevel,
@@ -467,6 +502,7 @@ namespace HaCreator.MapSimulator.Managers
             tooltipPart.IsTimeLimited = persisted.IsTimeLimited;
             tooltipPart.PotentialTierText = persisted.PotentialTierText;
             tooltipPart.PotentialLines = persisted.PotentialLines != null ? new List<string>(persisted.PotentialLines) : new List<string>();
+            tooltipPart.ItemOptionIds = persisted.ItemOptionIds != null ? new List<int>(persisted.ItemOptionIds) : new List<int>();
             tooltipPart.HasGrowthInfo = persisted.HasGrowthInfo;
             tooltipPart.GrowthLevel = persisted.GrowthLevel;
             tooltipPart.GrowthMaxLevel = persisted.GrowthMaxLevel;

@@ -429,12 +429,6 @@ namespace HaCreator.MapSimulator.Effects
             }
 
 
-            _pulleyPacketSequence++;
-            _pendingPulleyPacketRequest = new PulleyPacketRequest(currentTimeMs, _pulleyPacketSequence);
-            _pulleyRequestInFlightSequence = _pulleyPacketSequence;
-            _pulleyRequestInFlightUntil = unchecked(currentTimeMs + PulleyTransportRequestTimeoutMs);
-
-
             if (allowLocalPreview)
             {
                 ApplyPulleyStateChange(1, currentTimeMs, GuildBossPacketSource.LocalPreview);
@@ -452,6 +446,10 @@ namespace HaCreator.MapSimulator.Effects
             }
             else
             {
+                _pulleyPacketSequence++;
+                _pendingPulleyPacketRequest = new PulleyPacketRequest(currentTimeMs, _pulleyPacketSequence);
+                _pulleyRequestInFlightSequence = _pulleyPacketSequence;
+                _pulleyRequestInFlightUntil = unchecked(currentTimeMs + PulleyTransportRequestTimeoutMs);
                 SetStatusCue("Pulley request sent", currentTimeMs);
                 message = "Guild boss pulley request sent.";
             }

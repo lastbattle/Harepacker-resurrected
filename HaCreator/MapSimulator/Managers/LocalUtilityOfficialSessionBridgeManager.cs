@@ -514,10 +514,17 @@ namespace HaCreator.MapSimulator.Managers
             writer.Write(opcode);
             if (payload is byte[] bytes)
             {
-                raw[sizeof(ushort) + i] = payload[i];
+                writer.WriteBytes(bytes);
+            }
+            else if (payload != null)
+            {
+                for (int i = 0; i < payload.Count; i++)
+                {
+                    writer.WriteByte(payload[i]);
+                }
             }
 
-            return raw;
+            return writer.ToArray();
         }
 
         internal static bool ShouldMirrorInboundPacketType(int packetType)

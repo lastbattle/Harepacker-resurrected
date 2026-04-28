@@ -87,6 +87,19 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (!TryResolveInboundResultPacketLength(rawPacket, 0, out int packetLength, out errorMessage))
+            {
+                payload = Array.Empty<byte>();
+                return false;
+            }
+
+            if (packetLength != rawPacket.Length)
+            {
+                payload = Array.Empty<byte>();
+                errorMessage = $"Map transfer result packet contains {rawPacket.Length - packetLength} trailing byte(s); use clientrawseq for opcode-framed packet streams.";
+                return false;
+            }
+
             payload = rawPacket.Length == sizeof(ushort)
                 ? Array.Empty<byte>()
                 : rawPacket[sizeof(ushort)..];

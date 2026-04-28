@@ -2892,11 +2892,6 @@ namespace HaCreator.MapSimulator.UI
                     ScrollUp();
                 else
                     ScrollDown();
-
-                if (_selectedSkillIndex >= 0)
-                {
-                    EnsureSkillVisible(_selectedSkillIndex);
-                }
             }
 
             KeyboardState keyboardState = Keyboard.GetState();

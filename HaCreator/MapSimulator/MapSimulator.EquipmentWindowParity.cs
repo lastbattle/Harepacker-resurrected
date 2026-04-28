@@ -1937,6 +1937,7 @@ namespace HaCreator.MapSimulator
 
             return reason.StartsWith("Inventory-operation swap did not ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Inventory-operation add entry did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation remove did not ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Mechanic equip-in inventory-operation ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Mechanic drag-back-out inventory-operation ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Only mechanic equip-in or drag-back-out requests ", StringComparison.OrdinalIgnoreCase)

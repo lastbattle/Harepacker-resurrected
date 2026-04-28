@@ -41,6 +41,11 @@ namespace HaCreator.MapSimulator.UI
                 return ParcelDialogKeyboardAction.None;
             }
 
+            if (hasArmedItemPicker)
+            {
+                return ParcelDialogKeyboardAction.None;
+            }
+
             return activeTab switch
             {
                 global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Receive => ParcelDialogKeyboardAction.ClaimReceiveAttachment,

@@ -1050,18 +1050,7 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.BookCollection) is BookCollectionWindow bookCollectionWindow)
             {
-                bookCollectionWindow.CharacterBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
-                bookCollectionWindow.SetFont(_fontDebugValues);
-                bookCollectionWindow.SetCollectionSnapshotProvider(null);
-                bookCollectionWindow.SetMonsterBookSnapshotProvider(BuildActiveMonsterBookSnapshot);
-                bookCollectionWindow.SetMonsterBookRegistrationHandler(ApplyActiveMonsterBookRegistration);
-                bookCollectionWindow.ClientCloseRequested = HandleBookCollectionCloseRequested;
-                bookCollectionWindow.OpenRequested = HandleBookCollectionOpened;
-                bookCollectionWindow.ClosingRequested = HandleBookCollectionClosing;
-                bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
-                bookCollectionWindow.OnImeCandidateSelected = TrySelectBookCollectionImeCandidate;
-                bookCollectionWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
-
+                WireBookCollectionWindowData(bookCollectionWindow, useCollectionLayout: false);
             }
 
             if (uiWindowManager?.EquipWindow != null && _playerManager?.Player?.Build != null)
@@ -1420,6 +1409,7 @@ namespace HaCreator.MapSimulator
                 _lastCollisionCustomImpactMovePathAttribute = -1;
                 _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
                 _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
+                _hasPortalOwnedMovePathFlushAdmission = false;
                 _portalOwnedMovePathPostFlushCarry.Clear();
                 _pendingMapSpawnTarget = null;
             }

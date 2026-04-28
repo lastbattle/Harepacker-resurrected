@@ -238,7 +238,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string DescribeMapleTvRecoveredPacketTable()
         {
             string inboundSet = string.Join("/", MapleTvInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
-            return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket (405: OnSetMessage, 406: OnClearMessage, 407: OnSendMessageResult); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem.";
+            return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket (405: OnSetMessage, 406: OnClearMessage, 407: OnSendMessageResult); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem expects the authoritative set/result response family 405/407.";
         }
 
         internal static string DescribeMerchantRecoveredPacketTable()
@@ -272,8 +272,8 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                expectedInboundOpcodes = new[] { (int)MapleTvInboundSendResultOpcode };
-                expectationSummary = "expect CMapleTVMan::OnSendMessageResult (opcode 407)";
+                expectedInboundOpcodes = new[] { (int)MapleTvInboundSetMessageOpcode, (int)MapleTvInboundSendResultOpcode };
+                expectationSummary = "expect CMapleTVMan::OnSetMessage or OnSendMessageResult (opcodes 405/407)";
                 return true;
             }
 

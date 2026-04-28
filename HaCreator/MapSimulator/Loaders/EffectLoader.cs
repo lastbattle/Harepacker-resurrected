@@ -118,13 +118,13 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            if (resolvedProperty is WzCanvasProperty || HasDirectNumericFrames(resolvedProperty))
+            if (IsLoadFramesRenderableSource(resolvedProperty))
             {
                 return resolvedProperty;
             }
 
             WzImageProperty nestedDefaultFrames = WzInfoTools.GetRealProperty(resolvedProperty["0"]);
-            if (nestedDefaultFrames is WzCanvasProperty || HasDirectNumericFrames(nestedDefaultFrames))
+            if (IsLoadFramesRenderableSource(nestedDefaultFrames))
             {
                 return resolvedProperty;
             }
@@ -191,7 +191,7 @@ namespace HaCreator.MapSimulator.Loaders
             if (resolvedStateProperty == null)
                 return new List<IDXObject>();
 
-            if (HasDirectNumericFrames(resolvedStateProperty))
+            if (IsLoadFramesRenderableSource(resolvedStateProperty))
             {
                 return MapSimulatorLoader.LoadFrames(texturePool, resolvedStateProperty, x, y, device, usedProps);
             }
@@ -457,13 +457,13 @@ namespace HaCreator.MapSimulator.Loaders
                 return new List<IDXObject>();
             }
 
-            if (resolvedProperty is WzCanvasProperty || HasDirectNumericFrames(resolvedProperty))
+            if (IsLoadFramesRenderableSource(resolvedProperty))
             {
                 return MapSimulatorLoader.LoadFrames(texturePool, resolvedProperty, x, y, device, usedProps);
             }
 
             WzImageProperty nestedDefaultFrames = WzInfoTools.GetRealProperty(resolvedProperty["0"]);
-            if (nestedDefaultFrames is WzCanvasProperty || HasDirectNumericFrames(nestedDefaultFrames))
+            if (IsLoadFramesRenderableSource(nestedDefaultFrames))
             {
                 return MapSimulatorLoader.LoadFrames(texturePool, nestedDefaultFrames, x, y, device, usedProps);
             }
@@ -507,13 +507,23 @@ namespace HaCreator.MapSimulator.Loaders
                 usedProps);
         }
 
-        private static bool HasDirectNumericFrames(WzImageProperty stateProperty)
+        private static bool IsLoadFramesRenderableSource(WzImageProperty property)
         {
-            if (stateProperty is not WzSubProperty subProperty)
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            if (resolvedProperty is WzCanvasProperty)
+            {
+                return true;
+            }
+
+            if (resolvedProperty is not WzSubProperty subProperty)
                 return false;
 
-            return subProperty.WzProperties
-                .Any(prop => int.TryParse(prop.Name, out _) && IsReactorFrameLikeProperty(prop));
+            if (subProperty.WzProperties.Count == 1)
+            {
+                return IsLoadFramesRenderableSource(subProperty.WzProperties[0]);
+            }
+
+            return IsReactorFrameLikeProperty(WzInfoTools.GetRealProperty(subProperty["0"]));
         }
 
         private static bool IsReactorFrameLikeProperty(WzImageProperty property)
@@ -529,8 +539,12 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            return subProperty.WzProperties
-                .Any(child => int.TryParse(child.Name, out _) && WzInfoTools.GetRealProperty(child) is WzCanvasProperty);
+            if (subProperty.WzProperties.Count == 1)
+            {
+                return IsReactorFrameLikeProperty(subProperty.WzProperties[0]);
+            }
+
+            return IsLoadFramesRenderableSource(WzInfoTools.GetRealProperty(subProperty["0"]));
         }
         #endregion
 

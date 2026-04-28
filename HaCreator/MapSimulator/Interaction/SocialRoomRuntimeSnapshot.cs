@@ -223,5 +223,6 @@ namespace HaCreator.MapSimulator.Interaction
         public byte BalloonByte0 { get; set; }
         public byte BalloonByte1 { get; set; }
         public byte BalloonByte2 { get; set; }
+        public bool HasBalloonByte2 { get; set; }
     }
 }

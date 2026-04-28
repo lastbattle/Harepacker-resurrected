@@ -1032,7 +1032,8 @@ namespace HaCreator.MapSimulator
             int? encodedSlotPosition = null;
             if (!TryReadResultFirstHeader(payload, ref headerOffset, out operationCode, out encodedSlotPosition))
             {
-                error = "Result-first repair-result payload has trailing bytes after the echoed opcode/slot.";
+                // A plain [result + reason] body is handled by the generic result/reason parser.
+                // Only this branch owns the optional result-first echoed opcode/slot header.
                 return false;
             }
 

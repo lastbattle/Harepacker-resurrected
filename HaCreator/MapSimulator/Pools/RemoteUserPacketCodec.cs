@@ -3436,6 +3436,12 @@ namespace HaCreator.MapSimulator.Pools
                 for (int j = defaultHelperSegmentIndex + 1; j < segments.Length; j++)
                 {
                     string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
+                    if (IsNumericHelperMarkerPathSegment(candidate)
+                        && TryResolveDefaultHelperChildIndexMarkerName(candidate, out string indexedMarkerName))
+                    {
+                        return indexedMarkerName;
+                    }
+
                     if (TryResolveDefaultHelperCompositeMarkerName(segments, j, out string compositeMarkerName)
                         && IsKnownDefaultHelperNormalizedMarkerName(compositeMarkerName))
                     {
@@ -3477,6 +3483,12 @@ namespace HaCreator.MapSimulator.Pools
                 for (int j = defaultHelperSegmentIndex + 1; j < segments.Length; j++)
                 {
                     string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
+                    if (IsNumericHelperMarkerPathSegment(candidate)
+                        && TryResolveDefaultHelperChildIndexMarkerName(candidate, out string indexedMarkerName))
+                    {
+                        return indexedMarkerName;
+                    }
+
                     if (candidate.Length == 0 || IsNumericHelperMarkerPathSegment(candidate))
                     {
                         continue;
@@ -3623,6 +3635,46 @@ namespace HaCreator.MapSimulator.Pools
         {
             return KnownHelperMarkerNames.Contains(markerName)
                 || KnownDefaultHelperAncillaryMarkerNames.Contains(markerName);
+        }
+
+        private static bool TryResolveDefaultHelperChildIndexMarkerName(
+            string segment,
+            out string markerName)
+        {
+            markerName = null;
+            if (!int.TryParse(segment, out int childIndex))
+            {
+                return false;
+            }
+
+            markerName = childIndex switch
+            {
+                0 => "user",
+                1 => "another",
+                2 => "friend",
+                3 => "guild",
+                4 => "guildmaster",
+                5 => "match",
+                6 => "party",
+                7 => "partymaster",
+                8 => "npc",
+                9 => "startnpc",
+                10 => "endnpc",
+                11 => "portal",
+                12 => "usertrader",
+                13 => "anothertrader",
+                14 => "arrowup",
+                15 => "arrowdown",
+                16 => "arrowright",
+                17 => "arrowleft",
+                18 => "arrowupright",
+                19 => "arrowupleft",
+                20 => "arrowdownright",
+                21 => "arrowdownleft",
+                _ => null
+            };
+
+            return markerName != null;
         }
 
         private static bool TryResolveDefaultHelperCompositeMarkerName(

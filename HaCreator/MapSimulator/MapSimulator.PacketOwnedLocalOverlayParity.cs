@@ -3948,23 +3948,8 @@ namespace HaCreator.MapSimulator
                 case LocalOverlayPacketInboxManager.FieldFadeOutForceClientPacketType:
                     return TryApplyPacketOwnedFieldFadeOutForcePayload(payload, out message);
 
-                case LocalOverlayPacketInboxManager.NotifyHpDecByFieldPacketType:
-                    return TryApplyPacketOwnedFieldHazardPayload(payload, out message);
-
                 case LocalOverlayPacketInboxManager.BalloonMsgClientPacketType:
                     return TryApplyPacketOwnedBalloonPayload(payload, out message);
-
-                case LocalOverlayPacketInboxManager.DamageMeterPacketType:
-                    return TryApplyPacketOwnedDamageMeterPayload(payload, out message);
-
-                case LocalOverlayPacketInboxManager.PetConsumeResultPacketType:
-                    if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
-                    {
-                        return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
-                    }
-
-                    message = "Pet-consume result 1026 is only owned by the local overlay seam while a field-hazard pet consume request is pending.";
-                    return false;
 
                 default:
                     message = $"Unsupported local overlay packet type {packetType}.";
@@ -4323,29 +4308,28 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryDecodePacketOwnedFieldFadeOutForcePayload(
             byte[] payload,
-            out int fadeOutDurationMs,
+            out int layerZ,
             out string message)
         {
             return TryDecodeSingleInt32LocalUtilityPayload(
                 payload,
                 "Field-fade-out-force",
-                "fade-out duration",
-                out fadeOutDurationMs,
+                "fade layer",
+                out layerZ,
                 out message);
         }
 
         private bool TryApplyPacketOwnedFieldFadeOutForcePayload(byte[] payload, out string message)
         {
-            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int fadeOutDurationMs, out message))
+            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int layerZ, out message))
             {
                 return false;
             }
 
-            int forcedCount = _packetOwnedFieldFadeOverlay.ForceFadeOutPending(fadeOutDurationMs, currTickCount);
-            int normalizedDuration = Math.Max(0, fadeOutDurationMs);
-            message = forcedCount > 0
-                ? $"Forced fade-out on {forcedCount} packet-authored field fade entr{(forcedCount == 1 ? "y" : "ies")} over {normalizedDuration}ms."
-                : "No packet-authored field fade entries were eligible for force fade-out.";
+            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(layerZ);
+            message = removedCount > 0
+                ? $"Removed {removedCount} packet-authored field fade entr{(removedCount == 1 ? "y" : "ies")} from layer {layerZ}."
+                : $"No packet-authored field fade entries matched layer {layerZ}.";
             return true;
         }
 
@@ -4375,8 +4359,8 @@ namespace HaCreator.MapSimulator
                 using var stream = new MemoryStream(payload, writable: false);
                 using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
                 text = ReadPacketOwnedMapleString(reader);
-                width = reader.ReadUInt16();
-                lifetimeMs = reader.ReadUInt16() * 1000;
+                width = reader.ReadInt32();
+                lifetimeMs = reader.ReadInt32();
                 attachToAvatar = reader.ReadByte() != 0;
                 if (!attachToAvatar)
                 {

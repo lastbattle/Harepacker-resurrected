@@ -259,7 +259,7 @@ public static class ClientShootAmmoResolver
             if (usesClientSpecialPelletSkill)
             {
                 bool queuedElementalPellet = IsElementalPelletItem(queuedSelection.UseItemId);
-                refreshedRequiredSkillAmmoItemId = queuedElementalPellet ? requiredSkillAmmoItemId : 0;
+                refreshedRequiredSkillAmmoItemId = queuedElementalPellet ? normalizedRequiredSkillAmmoItemId : 0;
                 excludeElementalPellets = !queuedElementalPellet;
             }
 

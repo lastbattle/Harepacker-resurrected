@@ -175,6 +175,7 @@ namespace HaCreator.MapSimulator.Pools
 
     internal readonly record struct PacketEnterAuthoredReactorCandidate(
         int Index,
+        int AuthoredOrder,
         bool IsPacketNamePresent,
         bool IsLocallyTouched,
         bool ContainsCurrentLocalUserPosition,
@@ -2880,6 +2881,7 @@ namespace HaCreator.MapSimulator.Pools
                 bool matchesPacketNameWhenPresent = !hasPacketName || hasExactNameMatch;
                 candidates.Add(new PacketEnterAuthoredReactorCandidate(
                     i,
+                    ResolveAuthoredReactorOrderForPacketEnterCandidate(i),
                     hasPacketName,
                     IsLocallyTouchedReactor(index: i, data),
                     IsImmediateLocalUserTouchCandidate(reactor, data, currentTick, localPlayerX, localPlayerY),
@@ -2889,6 +2891,20 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return TrySelectAuthoredReactorCandidateForPacketEnter(candidates, initialState, out index, out selectionReason);
+        }
+
+        private int ResolveAuthoredReactorOrderForPacketEnterCandidate(int index)
+        {
+            if (index >= 0 && index < _spawnPoints.Count)
+            {
+                int spawnId = _spawnPoints[index]?.SpawnId ?? -1;
+                if (spawnId >= 0)
+                {
+                    return spawnId;
+                }
+            }
+
+            return index;
         }
 
         internal static bool CanAdoptPacketEnterOntoAuthoredReactor(ReactorRuntimeData data)
@@ -3117,7 +3133,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             index = candidates
-                .OrderBy(static candidate => candidate.Index)
+                .OrderBy(static candidate => candidate.AuthoredOrder)
+                .ThenBy(static candidate => candidate.Index)
                 .Select(static candidate => candidate.Index)
                 .FirstOrDefault();
             return index >= 0;
@@ -3259,7 +3276,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             index = strongestCandidates
-                .OrderBy(static candidate => candidate.Index)
+                .OrderBy(static candidate => candidate.AuthoredOrder)
+                .ThenBy(static candidate => candidate.Index)
                 .Select(static candidate => candidate.Index)
                 .FirstOrDefault();
             return index >= 0;

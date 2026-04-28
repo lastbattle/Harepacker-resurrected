@@ -170,8 +170,9 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                bool preservePendingForPassiveHandoff = _passiveEstablishedSession.HasValue && _pendingOutboundRequests.Count > 0;
-                StopInternal(clearPending: !preservePendingForPassiveHandoff);
+                SessionDiscoveryCandidate? passiveSessionToPreserve = ResolvePassiveSessionToPreserve(resolvedRemoteHost, remotePort);
+                bool preservePassiveHandoff = passiveSessionToPreserve.HasValue;
+                StopInternal(clearPending: !preservePassiveHandoff);
 
                 try
                 {
@@ -180,7 +181,12 @@ namespace HaCreator.MapSimulator.Managers
                     ListenPort = requestedListenPort;
                     if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
                     {
-                        StopInternal(clearPending: true);
+                        StopInternal(clearPending: !preservePassiveHandoff);
+                        if (preservePassiveHandoff)
+                        {
+                            _passiveEstablishedSession = passiveSessionToPreserve;
+                        }
+
                         LastStatus = proxyStatus;
                         status = LastStatus;
                         return false;
@@ -194,7 +200,12 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 catch (Exception ex)
                 {
-                    StopInternal(clearPending: true);
+                    StopInternal(clearPending: !preservePassiveHandoff);
+                    if (preservePassiveHandoff)
+                    {
+                        _passiveEstablishedSession = passiveSessionToPreserve;
+                    }
+
                     LastStatus = $"Monster Carnival official-session bridge failed to start: {ex.Message}";
                     status = LastStatus;
                     return false;
@@ -686,6 +697,28 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
         }
+
+        private SessionDiscoveryCandidate? ResolvePassiveSessionToPreserve(string remoteHost, int remotePort)
+        {
+            if (!_passiveEstablishedSession.HasValue)
+            {
+                return null;
+            }
+
+            SessionDiscoveryCandidate candidate = _passiveEstablishedSession.Value;
+            if (candidate.RemoteEndpoint == null
+                || candidate.RemoteEndpoint.Port != remotePort
+                || !string.Equals(
+                    NormalizeRemoteHost(candidate.RemoteEndpoint.Address.ToString()),
+                    NormalizeRemoteHost(remoteHost),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return candidate;
+        }
+
         private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
             if (e == null)

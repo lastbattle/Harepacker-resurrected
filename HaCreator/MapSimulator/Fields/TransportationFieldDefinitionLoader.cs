@@ -11,7 +11,7 @@ namespace HaCreator.MapSimulator.Fields
 {
     public sealed class TransportationFieldDefinition
     {
-        public TransportationFieldDefinition(int dockX, int dockY, int awayX, int flip, int moveDurationSeconds, int shipKind, int routeLayerZ, string shipObjectPath)
+        public TransportationFieldDefinition(int dockX, int dockY, int awayX, int flip, int moveDurationSeconds, int shipKind, int routeLayerZ, string shipObjectPath, string sourceDescription = null)
         {
             DockX = dockX;
             DockY = dockY;
@@ -21,6 +21,9 @@ namespace HaCreator.MapSimulator.Fields
             ShipKind = shipKind;
             RouteLayerZ = routeLayerZ;
             ShipObjectPath = shipObjectPath ?? string.Empty;
+            SourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
+                ? "WZ shipObj"
+                : sourceDescription.Trim();
         }
 
         public TransportationFieldDefinition(int dockX, int dockY, int awayX, int flip, int moveDurationSeconds, int shipKind, int routeLayerZ)
@@ -41,6 +44,7 @@ namespace HaCreator.MapSimulator.Fields
         public int ShipKind { get; }
         public int RouteLayerZ { get; }
         public string ShipObjectPath { get; }
+        public string SourceDescription { get; }
     }
 
     public static class TransportationFieldDefinitionLoader
@@ -53,7 +57,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (!TryResolveShipObject(mapInfo, out WzSubProperty shipObject))
+            if (!TryResolveShipObject(mapInfo, out WzSubProperty shipObject, out string sourceDescription))
             {
                 return false;
             }
@@ -87,7 +91,8 @@ namespace HaCreator.MapSimulator.Fields
                 moveDurationSeconds,
                 shipKind,
                 routeLayerZ,
-                shipPath);
+                shipPath,
+                sourceDescription);
             return true;
         }
 
@@ -133,26 +138,44 @@ namespace HaCreator.MapSimulator.Fields
             return property == null ? defaultValue : InfoTool.GetInt(property);
         }
 
-        private static bool TryResolveShipObject(MapInfo mapInfo, out WzSubProperty shipObject)
+        private static bool TryResolveShipObject(MapInfo mapInfo, out WzSubProperty shipObject, out string sourceDescription)
         {
-            shipObject = TryResolveShipObjectFromAdditionalNonInfoProps(mapInfo)
-                ?? TryResolveShipObjectFromMapImage(mapInfo?.Image)
-                ?? TryResolveShipObjectFromLinkedMapImage(mapInfo);
+            if (TryResolveShipObjectFromAdditionalNonInfoProps(mapInfo, out shipObject))
+            {
+                sourceDescription = "MapInfo.additionalNonInfoProps/shipObj";
+                return true;
+            }
+
+            if (TryResolveShipObjectFromMapImage(mapInfo?.Image, out shipObject))
+            {
+                sourceDescription = "MapInfo.Image/shipObj";
+                return true;
+            }
+
+            if (TryResolveShipObjectFromLinkedMapImage(mapInfo, out shipObject, out int linkedMapId))
+            {
+                sourceDescription = $"linked map {linkedMapId:D9}/shipObj via info/link";
+                return true;
+            }
+
+            sourceDescription = string.Empty;
             return shipObject != null;
         }
 
-        private static WzSubProperty TryResolveShipObjectFromAdditionalNonInfoProps(MapInfo mapInfo)
+        private static bool TryResolveShipObjectFromAdditionalNonInfoProps(MapInfo mapInfo, out WzSubProperty shipObject)
         {
-            return mapInfo?.additionalNonInfoProps?
+            shipObject = mapInfo?.additionalNonInfoProps?
                 .OfType<WzSubProperty>()
                 .FirstOrDefault(prop => string.Equals(prop.Name, "shipObj", StringComparison.OrdinalIgnoreCase));
+            return shipObject != null;
         }
 
-        private static WzSubProperty TryResolveShipObjectFromMapImage(WzImage mapImage)
+        private static bool TryResolveShipObjectFromMapImage(WzImage mapImage, out WzSubProperty shipObject)
         {
+            shipObject = null;
             if (mapImage == null)
             {
-                return null;
+                return false;
             }
 
             if (!mapImage.Parsed)
@@ -160,21 +183,23 @@ namespace HaCreator.MapSimulator.Fields
                 mapImage.ParseImage();
             }
 
-            return mapImage.WzProperties
+            shipObject = mapImage.WzProperties
                 .OfType<WzSubProperty>()
                 .FirstOrDefault(prop => string.Equals(prop.Name, "shipObj", StringComparison.OrdinalIgnoreCase));
+            return shipObject != null;
         }
 
-        private static WzSubProperty TryResolveShipObjectFromLinkedMapImage(MapInfo mapInfo)
+        private static bool TryResolveShipObjectFromLinkedMapImage(MapInfo mapInfo, out WzSubProperty shipObject, out int linkedMapId)
         {
-            int linkedMapId = TryResolveLinkedMapId(mapInfo?.Image);
+            shipObject = null;
+            linkedMapId = TryResolveLinkedMapId(mapInfo?.Image);
             if (linkedMapId <= 0)
             {
-                return null;
+                return false;
             }
 
             WzImage linkedMapImage = TryResolveLinkedMapImage(mapInfo, linkedMapId);
-            return TryResolveShipObjectFromMapImage(linkedMapImage);
+            return TryResolveShipObjectFromMapImage(linkedMapImage, out shipObject);
         }
 
         private static int TryResolveLinkedMapId(WzImage mapImage)

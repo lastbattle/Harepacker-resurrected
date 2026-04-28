@@ -1,6 +1,8 @@
 using HaCreator.MapSimulator.Pools;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -12,12 +14,18 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public int TotalAddCount { get; private set; }
         public int TotalRemoveCount { get; private set; }
+        public ushort LastObservedOpcode { get; private set; }
         public string LastDispatchSummary { get; private set; } = "Packet-owned portable-chair record runtime idle.";
+        private readonly Dictionary<ushort, int> _observedAddCountByOpcode = new();
+        private readonly Dictionary<ushort, int> _observedRemoveCountByOpcode = new();
 
         public void Clear()
         {
             TotalAddCount = 0;
             TotalRemoveCount = 0;
+            LastObservedOpcode = 0;
+            _observedAddCountByOpcode.Clear();
+            _observedRemoveCountByOpcode.Clear();
             LastDispatchSummary = "Packet-owned portable-chair record runtime idle.";
         }
 
@@ -52,6 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             payload ??= Array.Empty<byte>();
             string normalizedSource = string.IsNullOrWhiteSpace(source) ? "remote-user-packet" : source.Trim();
+            ushort observedOpcode = ResolveObservedOpcodeForParity(normalizedSource);
 
             switch ((RemoteUserPacketType)packetType)
             {
@@ -70,8 +79,10 @@ namespace HaCreator.MapSimulator.Interaction
                     if (addApplied)
                     {
                         TotalAddCount++;
+                        RememberObservedOpcode(_observedAddCountByOpcode, observedOpcode);
                     }
 
+                    LastObservedOpcode = observedOpcode;
                     message = addDetail;
                     LastDispatchSummary = BuildDispatchSummary(
                         normalizedSource,
@@ -96,8 +107,10 @@ namespace HaCreator.MapSimulator.Interaction
                     if (removeApplied)
                     {
                         TotalRemoveCount++;
+                        RememberObservedOpcode(_observedRemoveCountByOpcode, observedOpcode);
                     }
 
+                    LastObservedOpcode = observedOpcode;
                     message = removeDetail;
                     LastDispatchSummary = BuildDispatchSummary(
                         normalizedSource,
@@ -121,7 +134,30 @@ namespace HaCreator.MapSimulator.Interaction
                 "Packet-owned portable-chair record runtime: adds={0}, removes={1}. {2}",
                 TotalAddCount,
                 TotalRemoveCount,
-                LastDispatchSummary);
+                TotalRemoveCount,
+                $"{DescribeObservedOpcodes()} {LastDispatchSummary}");
+        }
+
+        internal static ushort ResolveObservedOpcodeForParity(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return 0;
+            }
+
+            const string opcodeToken = "opcode=";
+            string[] segments = source.Split(new[] { ' ', ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                string segment = segments[i].Trim();
+                if (segment.StartsWith(opcodeToken, StringComparison.OrdinalIgnoreCase)
+                    && ushort.TryParse(segment.Substring(opcodeToken.Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort opcode))
+                {
+                    return opcode;
+                }
+            }
+
+            return 0;
         }
 
         private static string DescribePacketKind(int packetType)
@@ -145,6 +181,41 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(detail)
                 ? $"{outcome} portable-chair record {operation} from {source}{ownerText}."
                 : $"{outcome} portable-chair record {operation} from {source}{ownerText}: {detail}";
+        }
+
+        private static void RememberObservedOpcode(Dictionary<ushort, int> countsByOpcode, ushort opcode)
+        {
+            if (opcode == 0)
+            {
+                return;
+            }
+
+            countsByOpcode.TryGetValue(opcode, out int count);
+            countsByOpcode[opcode] = count + 1;
+        }
+
+        private string DescribeObservedOpcodes()
+        {
+            string addOpcodes = DescribeObservedOpcodeCounts(_observedAddCountByOpcode);
+            string removeOpcodes = DescribeObservedOpcodeCounts(_observedRemoveCountByOpcode);
+            string lastOpcode = LastObservedOpcode == 0
+                ? "none"
+                : LastObservedOpcode.ToString(CultureInfo.InvariantCulture);
+            return $"Observed live opcodes: last={lastOpcode}, add={addOpcodes}, remove={removeOpcodes}.";
+        }
+
+        private static string DescribeObservedOpcodeCounts(Dictionary<ushort, int> countsByOpcode)
+        {
+            if (countsByOpcode.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                "|",
+                countsByOpcode
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => $"{entry.Key.ToString(CultureInfo.InvariantCulture)}:{entry.Value.ToString(CultureInfo.InvariantCulture)}"));
         }
     }
 }

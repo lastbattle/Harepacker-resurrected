@@ -253,6 +253,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return noActionBranch;
                 }
+
+                return ResolveClientSummonedActionBranch(skill, normalizedAction);
             }
 
             string indexedBranch = ResolvePacketIndexedSkillBranch(skill, normalizedAction);

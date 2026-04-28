@@ -24,8 +24,8 @@ namespace HaCreator.MapSimulator
         private const int ItemUpgradeOwnerResultAckPayloadLength = sizeof(int) * 2;
         private const int ItemUpgradeResultReasonPayloadLength = sizeof(byte) + sizeof(int);
         private const int ItemUpgradeResultOutcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
-        private const int ItemUpgradeViciousHammerStartSoundStringPoolId = 5076;
-        private const string ItemUpgradeViciousHammerStartSoundFallback = "Sound/UI.img/Enchant";
+        private const int ItemUpgradeViciousHammerStartSoundStringPoolId = 0x13D3;
+        private const string ItemUpgradeViciousHammerStartSoundFallback = "Sound/UI.img/ViciousHammer";
         private const string ItemUpgradeViciousHammerStartSoundOwnerImage = "UI.img";
         private const byte ItemUpgradePacketResultCodeFail = 0;
         private const byte ItemUpgradePacketResultCodeSuccess = 1;
@@ -991,8 +991,7 @@ namespace HaCreator.MapSimulator
         {
             string normalized = NormalizePacketOwnedClientSoundDescriptor(stringPoolText);
             if (string.IsNullOrWhiteSpace(normalized) ||
-                normalized.EndsWith(".img", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Contains(".img/", StringComparison.OrdinalIgnoreCase))
+                normalized.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
             {
                 return NormalizePacketOwnedClientSoundDescriptor(ItemUpgradeViciousHammerStartSoundFallback);
             }

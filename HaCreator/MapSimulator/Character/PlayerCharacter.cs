@@ -7873,13 +7873,120 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(sourcePart.ClientItemToken);
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.Animations));
             signature.Add(sourcePart.Animations?.Count ?? 0);
+            AddMirrorImageStringSetIdentity(ref signature, sourcePart.Animations?.Keys);
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.AvailableAnimations));
             signature.Add(sourcePart.AvailableAnimations?.Count ?? 0);
+            AddMirrorImageStringSetIdentity(ref signature, sourcePart.AvailableAnimations);
             signature.Add(sourcePart.ItemCategory, StringComparer.Ordinal);
             signature.Add(sourcePart.ExpirationDateUtc?.Ticks ?? 0L);
             signature.Add(sourcePart.Durability ?? int.MinValue);
             signature.Add(sourcePart.MaxDurability ?? int.MinValue);
+            signature.Add(sourcePart.SellPrice);
+            signature.Add(sourcePart.IsEpic);
+            signature.Add(sourcePart.RequiredJobMask);
+            signature.Add(sourcePart.RequiredFame);
+            signature.Add(sourcePart.RequiredLevel);
+            signature.Add(sourcePart.RequiredSTR);
+            signature.Add(sourcePart.RequiredDEX);
+            signature.Add(sourcePart.RequiredINT);
+            signature.Add(sourcePart.RequiredLUK);
+            signature.Add(sourcePart.BonusSTR);
+            signature.Add(sourcePart.BonusDEX);
+            signature.Add(sourcePart.BonusINT);
+            signature.Add(sourcePart.BonusLUK);
+            signature.Add(sourcePart.BonusHP);
+            signature.Add(sourcePart.BonusMP);
+            signature.Add(sourcePart.BonusHPPercent);
+            signature.Add(sourcePart.BonusMPPercent);
+            signature.Add(sourcePart.BonusWeaponAttack);
+            signature.Add(sourcePart.BonusMagicAttack);
+            signature.Add(sourcePart.BonusWeaponDefense);
+            signature.Add(sourcePart.BonusMagicDefense);
+            signature.Add(sourcePart.BonusAccuracy);
+            signature.Add(sourcePart.BonusAvoidability);
+            signature.Add(sourcePart.BonusHands);
+            signature.Add(sourcePart.BonusSpeed);
+            signature.Add(sourcePart.BonusJump);
+            signature.Add(sourcePart.UpgradeSlots);
+            signature.Add(sourcePart.TotalUpgradeSlotCount ?? int.MinValue);
+            signature.Add(sourcePart.RemainingUpgradeSlotCount ?? int.MinValue);
+            signature.Add(sourcePart.EnhancementStarCount);
+            signature.Add(sourcePart.IsSuperManMorph);
+            signature.Add(sourcePart.KnockbackRate);
+            signature.Add(sourcePart.TradeAvailable);
+            signature.Add(sourcePart.IsTradeBlocked);
+            signature.Add(sourcePart.IsEquipTradeBlocked);
+            signature.Add(sourcePart.IsOneOfAKind);
+            signature.Add(sourcePart.IsUniqueEquipItem);
+            signature.Add(sourcePart.IsNotForSale);
+            signature.Add(sourcePart.IsAccountSharable);
+            signature.Add(sourcePart.HasAccountShareTag);
+            signature.Add(sourcePart.IsNoMoveToLocker);
             signature.Add(sourcePart.OwnerAccountId ?? int.MinValue);
+            signature.Add(sourcePart.OwnerCharacterId ?? int.MinValue);
+            signature.Add(sourcePart.IsCashOwnershipLocked);
+            signature.Add(sourcePart.IsTimeLimited);
+            signature.Add(sourcePart.PotentialTierText, StringComparer.Ordinal);
+            AddMirrorImageStringListIdentity(ref signature, sourcePart.PotentialLines);
+            AddMirrorImageIntListIdentity(ref signature, sourcePart.ItemOptionIds);
+            signature.Add(sourcePart.HasGrowthInfo);
+            signature.Add(sourcePart.GrowthLevel);
+            signature.Add(sourcePart.GrowthMaxLevel);
+            signature.Add(sourcePart.GrowthExpPercent);
+            AddMirrorImageSourceTextureIdentity(ref signature, sourcePart.Icon);
+            AddMirrorImageSourceTextureIdentity(ref signature, sourcePart.IconRaw);
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.AnimationResolver));
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.TamingMobActionOverlayResolver));
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.TamingMobActionFrameOwner));
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart.MorphActionFrameOwner));
+        }
+
+        private static void AddMirrorImageStringSetIdentity(ref HashCode signature, IEnumerable<string> values)
+        {
+            if (values == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            int valueCount = 0;
+            foreach (string value in values.OrderBy(static value => value, StringComparer.Ordinal))
+            {
+                signature.Add(value, StringComparer.Ordinal);
+                valueCount++;
+            }
+
+            signature.Add(valueCount);
+        }
+
+        private static void AddMirrorImageStringListIdentity(ref HashCode signature, IReadOnlyList<string> values)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(values));
+            signature.Add(values?.Count ?? 0);
+            if (values == null)
+            {
+                return;
+            }
+
+            for (int valueIndex = 0; valueIndex < values.Count; valueIndex++)
+            {
+                signature.Add(values[valueIndex], StringComparer.Ordinal);
+            }
+        }
+
+        private static void AddMirrorImageIntListIdentity(ref HashCode signature, IReadOnlyList<int> values)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(values));
+            signature.Add(values?.Count ?? 0);
+            if (values == null)
+            {
+                return;
+            }
+
+            for (int valueIndex = 0; valueIndex < values.Count; valueIndex++)
+            {
+                signature.Add(values[valueIndex]);
+            }
         }
 
         internal static Point ResolveMirrorImageSourceLayerOrigin(Rectangle bounds)

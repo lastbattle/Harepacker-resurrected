@@ -4,6 +4,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed partial class SocialListRuntime
     {
+        internal Func<SocialListPacketOwnedRequest, string> PacketOwnedRequestDispatcher { get; set; }
+
         private bool IsPacketOwned(SocialListTab tab)
         {
             return _packetOwnedRosterByTab.TryGetValue(tab, out bool packetOwned) && packetOwned;
@@ -101,9 +103,26 @@ namespace HaCreator.MapSimulator.Interaction
 
             string normalizedRequest = string.IsNullOrWhiteSpace(requestKind) ? "Roster update" : requestKind.Trim();
             _lastPendingRequestByTab[tab] = normalizedRequest;
+            SocialEntryState selectedEntry = GetSelectedEntry(tab);
+            string dispatchMessage = PacketOwnedRequestDispatcher?.Invoke(new SocialListPacketOwnedRequest(
+                tab,
+                normalizedRequest,
+                selectedEntry?.Name,
+                selectedEntry?.MemberId));
             requestMessage =
                 $"{normalizedRequest} is staged locally, and {tab} currently follows packet-owned roster authority until a matching client result resolves it.";
+            if (!string.IsNullOrWhiteSpace(dispatchMessage))
+            {
+                requestMessage += $" {dispatchMessage.Trim()}";
+            }
+
             return true;
         }
     }
+
+    internal readonly record struct SocialListPacketOwnedRequest(
+        SocialListTab Tab,
+        string RequestKind,
+        string SelectedName,
+        int? SelectedMemberId);
 }

@@ -146,12 +146,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            if (!TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage))
-            {
-                error = $"Context-owned stage-period validation could not load {stageKeywordPath}, so the simulator cannot mirror CStageSystem::IterateStageSystemClient acceptance yet.";
-                return null;
-            }
-
+            TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage);
             WzImage stageAffectedMapImage = null;
             TryLoadImage(stageAffectedMapPath, out stageAffectedMapImage);
             return BuildCore(
@@ -160,7 +155,7 @@ namespace HaCreator.MapSimulator.Interaction
                 stageKeywordPath,
                 stageKeywordImage,
                 stageAffectedMapImage,
-                requireStageKeywordImage: true,
+                requireStageKeywordImage: false,
                 out error);
         }
 

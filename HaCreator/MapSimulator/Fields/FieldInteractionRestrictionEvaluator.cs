@@ -236,6 +236,13 @@ namespace HaCreator.MapSimulator.Fields
             return GetLandingRestrictionMessage(mapInfo) == null;
         }
 
+        public static string GetActiveSkillCancelRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "noCancelSkill")
+                ? "Active skill cancellation is disabled in this field."
+                : null;
+        }
+
         internal static string GetExpeditionPartyBossChangeRestrictionMessage(
             long fieldLimit,
             ExpeditionIntermediaryOutboundRequestKind requestKind)
@@ -710,6 +717,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetActiveSkillCancelRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFollowCharacterRestrictionMessage(mapInfo));
             if (GetPetRuntimeRestrictionMessage(fieldLimit) == null)
             {

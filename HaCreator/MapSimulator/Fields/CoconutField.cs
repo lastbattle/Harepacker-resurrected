@@ -1452,6 +1452,7 @@ namespace HaCreator.MapSimulator.Fields
         private void LoadBitmapFont(WzImageProperty source, Dictionary<char, IDXObject> target, string characters)
         {
             target.Clear();
+            source = WzInfoTools.GetRealProperty(source);
             if (source == null)
             {
                 return;

@@ -35,10 +35,10 @@ namespace HaCreator.MapSimulator.Managers
             writer.WriteByte((byte)packet.RequestType);
             if (packet.Payload != null)
             {
-                Buffer.BlockCopy(packet.Payload, 0, payload, sizeof(byte), payloadLength);
+                writer.WriteBytes(packet.Payload);
             }
 
-            return payload;
+            return writer.ToArray();
         }
     }
 }

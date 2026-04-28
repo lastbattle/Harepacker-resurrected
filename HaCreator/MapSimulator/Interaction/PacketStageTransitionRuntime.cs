@@ -2891,12 +2891,14 @@ namespace HaCreator.MapSimulator.Interaction
                 if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
                 {
                     long sectionStart = reader.BaseStream.Position;
-                    IReadOnlyDictionary<int, string> questRecords = ReadCharacterDataQuestStringRecords(
+                    IReadOnlyList<PacketCharacterDataUInt16StringRecord> questRecordEntries = ReadCharacterDataQuestStringRecords(
                         reader,
+                        out IReadOnlyDictionary<int, string> questRecords,
                         out int questRecordCountByteCount,
                         out int questRecordRecordByteCount);
                     decoratedSnapshot = decoratedSnapshot with
                     {
+                        QuestRecordEntries = questRecordEntries,
                         QuestRecordCount = questRecords.Count,
                         QuestRecordCountByteCount = questRecordCountByteCount,
                         QuestRecordRecordByteCount = questRecordRecordByteCount,
@@ -2910,12 +2912,14 @@ namespace HaCreator.MapSimulator.Interaction
                 if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0)
                 {
                     long sectionStart = reader.BaseStream.Position;
-                    IReadOnlyDictionary<int, long> shortFileTimeRecords = ReadCharacterDataShortFileTimeRecords(
+                    IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> shortFileTimeRecordEntries = ReadCharacterDataShortFileTimeRecords(
                         reader,
+                        out IReadOnlyDictionary<int, long> shortFileTimeRecords,
                         out int shortFileTimeRecordCountByteCount,
                         out int shortFileTimeRecordByteCount);
                     decoratedSnapshot = decoratedSnapshot with
                     {
+                        ShortFileTimeRecordEntries = shortFileTimeRecordEntries,
                         ShortFileTimeRecordCount = shortFileTimeRecords.Count,
                         ShortFileTimeRecordCountByteCount = shortFileTimeRecordCountByteCount,
                         ShortFileTimeRecordByteCount = shortFileTimeRecordByteCount,
@@ -2974,13 +2978,15 @@ namespace HaCreator.MapSimulator.Interaction
                 if ((characterDataFlags & CharacterDataQuestExRecordFlag) != 0)
                 {
                     long sectionStart = reader.BaseStream.Position;
-                    IReadOnlyDictionary<int, string> questExRecords = ReadCharacterDataQuestStringRecords(
+                    IReadOnlyList<PacketCharacterDataUInt16StringRecord> questExRecordEntries = ReadCharacterDataQuestStringRecords(
                         reader,
+                        out IReadOnlyDictionary<int, string> questExRecords,
                         out int questExRecordCountByteCount,
                         out int questExRecordByteCount);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
+                        QuestExRecordEntries = questExRecordEntries,
                         QuestExRecordCount = questExRecords.Count,
                         QuestExRecordCountByteCount = questExRecordCountByteCount,
                         QuestExRecordByteCount = questExRecordByteCount,
@@ -3018,13 +3024,15 @@ namespace HaCreator.MapSimulator.Interaction
                 if ((characterDataFlags & CharacterDataQuestCompleteRecordFlag) != 0)
                 {
                     long sectionStart = reader.BaseStream.Position;
-                    IReadOnlyDictionary<int, long> questCompleteRecords = ReadCharacterDataQuestCompleteRecords(
+                    IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> questCompleteRecordEntries = ReadCharacterDataQuestCompleteRecords(
                         reader,
+                        out IReadOnlyDictionary<int, long> questCompleteRecords,
                         out int questCompleteRecordCountByteCount,
                         out int questCompleteRecordByteCount);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
+                        QuestCompleteRecordEntries = questCompleteRecordEntries,
                         QuestCompleteRecordCount = questCompleteRecords.Count,
                         QuestCompleteRecordCountByteCount = questCompleteRecordCountByteCount,
                         QuestCompleteRecordByteCount = questCompleteRecordByteCount,
@@ -3038,13 +3046,15 @@ namespace HaCreator.MapSimulator.Interaction
                 if ((characterDataFlags & CharacterDataVisitorQuestRecordFlag) != 0)
                 {
                     long sectionStart = reader.BaseStream.Position;
-                    IReadOnlyDictionary<int, int> visitorQuestRecords = ReadCharacterDataUInt16ValueRecords(
+                    IReadOnlyList<PacketCharacterDataUInt16ValueRecord> visitorQuestRecordEntries = ReadCharacterDataUInt16ValueRecords(
                         reader,
+                        out IReadOnlyDictionary<int, int> visitorQuestRecords,
                         out int visitorQuestRecordCountByteCount,
                         out int visitorQuestRecordByteCount);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
+                        VisitorQuestRecordEntries = visitorQuestRecordEntries,
                         VisitorQuestRecordCount = visitorQuestRecords.Count,
                         VisitorQuestRecordCountByteCount = visitorQuestRecordCountByteCount,
                         VisitorQuestRecordByteCount = visitorQuestRecordByteCount,
@@ -3440,96 +3450,137 @@ namespace HaCreator.MapSimulator.Interaction
             return entries;
         }
 
-        private static IReadOnlyDictionary<int, string> ReadCharacterDataQuestStringRecords(
+        private static IReadOnlyList<PacketCharacterDataUInt16StringRecord> ReadCharacterDataQuestStringRecords(
             BinaryReader reader,
+            out IReadOnlyDictionary<int, string> records,
             out int countByteCount,
             out int recordByteCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             countByteCount = sizeof(ushort);
-            Dictionary<int, string> records = new(count);
+            List<PacketCharacterDataUInt16StringRecord> entries = new(count);
+            Dictionary<int, string> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
             {
-                int key = reader.ReadUInt16();
-                string value = ReadMapleString(reader);
+                long recordStart = reader.BaseStream.Position;
+                Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+                int key = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16StringRecord.Key), static fieldReader => fieldReader.ReadUInt16());
+                string value = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16StringRecord.Value), ReadMapleString);
                 if (key > 0)
                 {
-                    records[key] = value ?? string.Empty;
+                    value ??= string.Empty;
+                    entries.Add(new PacketCharacterDataUInt16StringRecord(
+                        key,
+                        value,
+                        checked((int)(reader.BaseStream.Position - recordStart)),
+                        fieldByteCounts));
+                    recordsByKey[key] = value;
                 }
             }
 
             recordByteCount = checked((int)(reader.BaseStream.Position - sectionStart) - countByteCount);
-            return records;
+            records = recordsByKey;
+            return entries;
         }
 
-        private static IReadOnlyDictionary<int, long> ReadCharacterDataShortFileTimeRecords(
+        private static IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> ReadCharacterDataShortFileTimeRecords(
             BinaryReader reader,
+            out IReadOnlyDictionary<int, long> records,
             out int countByteCount,
             out int recordByteCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             countByteCount = sizeof(ushort);
-            Dictionary<int, long> records = new(count);
+            List<PacketCharacterDataUInt16FileTimeRecord> entries = new(count);
+            Dictionary<int, long> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
             {
-                int key = reader.ReadUInt16();
-                long value = reader.ReadInt64();
+                long recordStart = reader.BaseStream.Position;
+                Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+                int key = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16FileTimeRecord.Key), static fieldReader => fieldReader.ReadUInt16());
+                long value = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16FileTimeRecord.FileTime), static fieldReader => fieldReader.ReadInt64());
                 if (key > 0)
                 {
-                    records[key] = value;
+                    entries.Add(new PacketCharacterDataUInt16FileTimeRecord(
+                        key,
+                        value,
+                        checked((int)(reader.BaseStream.Position - recordStart)),
+                        fieldByteCounts));
+                    recordsByKey[key] = value;
                 }
             }
 
             recordByteCount = checked((int)(reader.BaseStream.Position - sectionStart) - countByteCount);
-            return records;
+            records = recordsByKey;
+            return entries;
         }
 
-        private static IReadOnlyDictionary<int, long> ReadCharacterDataQuestCompleteRecords(
+        private static IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> ReadCharacterDataQuestCompleteRecords(
             BinaryReader reader,
+            out IReadOnlyDictionary<int, long> records,
             out int countByteCount,
             out int recordByteCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             countByteCount = sizeof(ushort);
-            Dictionary<int, long> records = new(count);
+            List<PacketCharacterDataUInt16FileTimeRecord> entries = new(count);
+            Dictionary<int, long> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
             {
-                int key = reader.ReadUInt16();
-                long value = reader.ReadInt64();
+                long recordStart = reader.BaseStream.Position;
+                Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+                int key = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16FileTimeRecord.Key), static fieldReader => fieldReader.ReadUInt16());
+                long value = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16FileTimeRecord.FileTime), static fieldReader => fieldReader.ReadInt64());
                 if (key > 0)
                 {
-                    records[key] = value;
+                    entries.Add(new PacketCharacterDataUInt16FileTimeRecord(
+                        key,
+                        value,
+                        checked((int)(reader.BaseStream.Position - recordStart)),
+                        fieldByteCounts));
+                    recordsByKey[key] = value;
                 }
             }
 
             recordByteCount = checked((int)(reader.BaseStream.Position - sectionStart) - countByteCount);
-            return records;
+            records = recordsByKey;
+            return entries;
         }
 
-        private static IReadOnlyDictionary<int, int> ReadCharacterDataUInt16ValueRecords(
+        private static IReadOnlyList<PacketCharacterDataUInt16ValueRecord> ReadCharacterDataUInt16ValueRecords(
             BinaryReader reader,
+            out IReadOnlyDictionary<int, int> records,
             out int countByteCount,
             out int recordByteCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             countByteCount = sizeof(ushort);
-            Dictionary<int, int> records = new(count);
+            List<PacketCharacterDataUInt16ValueRecord> entries = new(count);
+            Dictionary<int, int> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
             {
-                int key = reader.ReadUInt16();
-                int value = reader.ReadUInt16();
+                long recordStart = reader.BaseStream.Position;
+                Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+                int key = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16ValueRecord.Key), static fieldReader => fieldReader.ReadUInt16());
+                int value = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataUInt16ValueRecord.Value), static fieldReader => fieldReader.ReadUInt16());
                 if (key > 0)
                 {
-                    records[key] = value;
+                    entries.Add(new PacketCharacterDataUInt16ValueRecord(
+                        key,
+                        value,
+                        checked((int)(reader.BaseStream.Position - recordStart)),
+                        fieldByteCounts));
+                    recordsByKey[key] = value;
                 }
             }
 
             recordByteCount = checked((int)(reader.BaseStream.Position - sectionStart) - countByteCount);
-            return records;
+            records = recordsByKey;
+            return entries;
         }
 
         private static PacketCharacterDataWildHunterInfo ReadCharacterDataWildHunterInfo(
@@ -3913,18 +3964,22 @@ namespace HaCreator.MapSimulator.Interaction
             List<PacketCharacterDataNewYearCardRecord> records = new(count);
             for (int i = 0; i < count; i++)
             {
+                long recordStart = reader.BaseStream.Position;
+                Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
                 records.Add(new PacketCharacterDataNewYearCardRecord(
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    TruncateClientAnsiBufferString(ReadMapleString(reader), 13),
-                    reader.ReadByte() != 0,
-                    reader.ReadInt64(),
-                    reader.ReadInt32(),
-                    TruncateClientAnsiBufferString(ReadMapleString(reader), 13),
-                    reader.ReadByte() != 0,
-                    reader.ReadByte() != 0,
-                    reader.ReadInt64(),
-                    TruncateClientAnsiBufferString(ReadMapleString(reader), 121)));
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.SerialNumber), static fieldReader => fieldReader.ReadInt32()),
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.SenderCharacterId), static fieldReader => fieldReader.ReadInt32()),
+                    TruncateClientAnsiBufferString(ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.SenderName), ReadMapleString), 13),
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.SenderDiscarded), static fieldReader => fieldReader.ReadByte()) != 0,
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.SentFileTime), static fieldReader => fieldReader.ReadInt64()),
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.ReceiverCharacterId), static fieldReader => fieldReader.ReadInt32()),
+                    TruncateClientAnsiBufferString(ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.ReceiverName), ReadMapleString), 13),
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.ReceiverDiscarded), static fieldReader => fieldReader.ReadByte()) != 0,
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.ReceiverReceived), static fieldReader => fieldReader.ReadByte()) != 0,
+                    ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.ReceivedFileTime), static fieldReader => fieldReader.ReadInt64()),
+                    TruncateClientAnsiBufferString(ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.Content), ReadMapleString), 121),
+                    checked((int)(reader.BaseStream.Position - recordStart)),
+                    fieldByteCounts));
             }
 
             recordByteCount = checked((int)(reader.BaseStream.Position - sectionStart) - countByteCount);
@@ -4245,6 +4300,24 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null);
 
+    internal readonly record struct PacketCharacterDataUInt16StringRecord(
+        int Key,
+        string Value,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null);
+
+    internal readonly record struct PacketCharacterDataUInt16FileTimeRecord(
+        int Key,
+        long FileTime,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null);
+
+    internal readonly record struct PacketCharacterDataUInt16ValueRecord(
+        int Key,
+        int Value,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null);
+
     internal readonly record struct PacketCharacterDataFixedClientRecord(
         string ClientOwner,
         int ClientByteLength,
@@ -4269,7 +4342,9 @@ namespace HaCreator.MapSimulator.Interaction
         bool ReceiverDiscarded,
         bool ReceiverReceived,
         long ReceivedFileTime,
-        string Content)
+        string Content,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null)
     {
         internal const string ClientDiscardStateKept = "X";
         internal const string ClientDiscardStateDiscarded = "O";
@@ -4458,10 +4533,12 @@ namespace HaCreator.MapSimulator.Interaction
         int QuestRecordCount = 0,
         int QuestRecordCountByteCount = 0,
         int QuestRecordRecordByteCount = 0,
+        IReadOnlyList<PacketCharacterDataUInt16StringRecord> QuestRecordEntries = null,
         IReadOnlyDictionary<int, string> QuestRecordValues = null,
         int ShortFileTimeRecordCount = 0,
         int ShortFileTimeRecordCountByteCount = 0,
         int ShortFileTimeRecordByteCount = 0,
+        IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> ShortFileTimeRecordEntries = null,
         IReadOnlyDictionary<int, long> ShortFileTimeRecords = null,
         ulong OpaquePreMapTransferFlags = 0,
         int OpaquePreMapTransferSectionByteCount = 0,
@@ -4506,6 +4583,7 @@ namespace HaCreator.MapSimulator.Interaction
         int QuestExRecordCount = 0,
         int QuestExRecordCountByteCount = 0,
         int QuestExRecordByteCount = 0,
+        IReadOnlyList<PacketCharacterDataUInt16StringRecord> QuestExRecordEntries = null,
         IReadOnlyDictionary<int, string> QuestExRecordValues = null,
         bool HasWildHunterInfo = false,
         int WildHunterInfoByteCount = 0,
@@ -4516,10 +4594,12 @@ namespace HaCreator.MapSimulator.Interaction
         int QuestCompleteRecordCount = 0,
         int QuestCompleteRecordCountByteCount = 0,
         int QuestCompleteRecordByteCount = 0,
+        IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> QuestCompleteRecordEntries = null,
         IReadOnlyDictionary<int, long> QuestCompleteRecords = null,
         int VisitorQuestRecordCount = 0,
         int VisitorQuestRecordCountByteCount = 0,
         int VisitorQuestRecordByteCount = 0,
+        IReadOnlyList<PacketCharacterDataUInt16ValueRecord> VisitorQuestRecordEntries = null,
         IReadOnlyDictionary<int, int> VisitorQuestRecords = null,
         ulong DecodedSectionFlags = 0,
         IReadOnlyDictionary<ulong, int> DecodedSectionByteCounts = null,

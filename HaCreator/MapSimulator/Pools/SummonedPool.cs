@@ -112,6 +112,7 @@ namespace HaCreator.MapSimulator.Pools
         int WishMobId = 0,
         int TemplateId = 0,
         bool IsDamagedByMob = false,
+        bool IsEscortMob = false,
         bool IsOurTeam = false,
         bool IsSamePhase = true,
         bool IsDazzled = false);
@@ -3865,8 +3866,10 @@ namespace HaCreator.MapSimulator.Pools
                     mob.GetClientBodyHitbox(currentTime),
                     sourceOrder++,
                     bodyHitboxes,
+                    InView: IsMobInPacketOwnedExpiryView(mob),
                     TemplateId: mob.MobId,
                     IsDamagedByMob: mob.MobData?.DamagedByMob == true,
+                    IsEscortMob: IsPacketOwnedExpiryEscortMob(mob),
                     IsDazzled: mob.AI?.IsDazzled == true));
             }
 
@@ -4324,6 +4327,18 @@ namespace HaCreator.MapSimulator.Pools
                    && !isDazzled;
         }
 
+        private static bool IsMobInPacketOwnedExpiryView(MobItem mob)
+        {
+            return mob?.IsVisible == true
+                   && mob.MobInstance?.Hide != true;
+        }
+
+        private static bool IsPacketOwnedExpiryEscortMob(MobItem mob)
+        {
+            return mob?.AI?.IsEscortMob == true
+                   || (mob?.MobData?.Escort ?? 0) > 0;
+        }
+
         internal static bool IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
             PacketOwnedExpiryTargetCandidate candidate,
             int wishMobId = 0,
@@ -4337,6 +4352,7 @@ namespace HaCreator.MapSimulator.Pools
                    && (wishMobId <= 0 || candidate.WishMobId == wishMobId || candidate.MobObjectId == wishMobId)
                    && (wishTemplateId <= 0 || candidate.TemplateId == wishTemplateId)
                    && (!candidate.IsDamagedByMob || includeEscortMob)
+                   && (!candidate.IsEscortMob || includeEscortMob)
                    && !candidate.IsOurTeam
                    && candidate.IsSamePhase
                    && (includeDazzledMob || !candidate.IsDazzled);

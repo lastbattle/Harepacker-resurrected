@@ -757,7 +757,6 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _autoTrackEnabled = autoRegisterEnabled;
-            _isMinimized = minimized || _trackedQuestIds.Count == 0;
 
             if (replaceRegistrations)
             {
@@ -765,6 +764,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
+            _isMinimized = ResolvePacketRegistrationSyncMinimizedState(minimized, refreshedSnapshot);
             if (replaceRegistrations && previousVisibleQuestIds != null && previousVisibleQuestIds.Count > 0)
             {
                 for (int i = 0; i < refreshedSnapshot.Entries.Count; i++)
@@ -799,6 +799,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _trackedQuestIds.Count;
+        }
+
+        internal static bool ResolvePacketRegistrationSyncMinimizedStateForTesting(
+            bool requestedMinimized,
+            int visibleEntryCount)
+        {
+            return ResolvePacketRegistrationSyncMinimizedState(
+                requestedMinimized,
+                new QuestAlarmSnapshot
+                {
+                    Entries = Enumerable
+                        .Range(0, Math.Max(0, visibleEntryCount))
+                        .Select(index => new QuestAlarmEntrySnapshot { QuestId = index + 1 })
+                        .ToArray()
+                });
+        }
+
+        private static bool ResolvePacketRegistrationSyncMinimizedState(
+            bool requestedMinimized,
+            QuestAlarmSnapshot refreshedSnapshot)
+        {
+            return requestedMinimized || refreshedSnapshot?.Entries == null || refreshedSnapshot.Entries.Count == 0;
         }
 
         private void HandleTitleMouseDown(int questId, ref QuestAlarmSnapshot snapshot)

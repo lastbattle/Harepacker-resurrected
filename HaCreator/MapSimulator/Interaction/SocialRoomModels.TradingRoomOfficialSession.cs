@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 using BinaryWriter = MapleLib.PacketLib.PacketWriter;
 namespace HaCreator.MapSimulator.Interaction
@@ -34,6 +36,65 @@ namespace HaCreator.MapSimulator.Interaction
 
             rawPacket = stream.ToArray();
             message = $"Built trading-room subtype {TradingRoomTradePacketType} trade request with {entries.Count} checksum entr{(entries.Count == 1 ? "y" : "ies")} for outbound opcode 144, matching CTradingRoomDlg::Trade after the client locks the local trade button.";
+            return true;
+        }
+
+        public bool TryBuildTradingRoomPutMoneyRawPacket(int offeredMeso, out byte[] rawPacket, out string message)
+        {
+            rawPacket = Array.Empty<byte>();
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Only trading-room runtimes can build subtype-16 put-money request packets.";
+                return false;
+            }
+
+            if (offeredMeso < 0)
+            {
+                message = "Trading-room put-money requests require a non-negative meso amount.";
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream();
+            using BinaryWriter writer = new BinaryWriter(stream);
+            writer.Write((ushort)144);
+            writer.Write((byte)TradingRoomPutMoneyPacketType);
+            writer.Write((byte)0);
+            writer.Write(offeredMeso);
+
+            rawPacket = stream.ToArray();
+            message = $"Built trading-room subtype {TradingRoomPutMoneyPacketType} put-money request for {offeredMeso:N0} meso on outbound opcode 144, matching the local CTradingRoomDlg money-offer branch before the server echo.";
+            return true;
+        }
+
+        public bool TryBuildTradingRoomPutItemRawPacket(int slotIndex, int itemId, int quantity, out byte[] rawPacket, out string message)
+        {
+            rawPacket = Array.Empty<byte>();
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Only trading-room runtimes can build subtype-15 put-item request packets.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "Trading-room put-item requests require a valid item id and quantity.";
+                return false;
+            }
+
+            int clientSlotIndex = NormalizeTradingRoomClientSlot(slotIndex);
+            using MemoryStream stream = new MemoryStream();
+            using BinaryWriter writer = new BinaryWriter(stream);
+            writer.Write((ushort)144);
+            writer.Write((byte)TradingRoomPutItemPacketType);
+            writer.Write((byte)0);
+            writer.Write((byte)clientSlotIndex);
+            WriteSyntheticTradingRoomItemSlot(writer, inventoryType, itemId, quantity);
+
+            rawPacket = stream.ToArray();
+            message = $"Built trading-room subtype {TradingRoomPutItemPacketType} put-item request for item {itemId} x{quantity} in one-based client slot {clientSlotIndex} on outbound opcode 144, matching CTradingRoomDlg::OnPutItem before the server echo.";
             return true;
         }
 

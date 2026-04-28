@@ -1936,9 +1936,7 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                int entryWidth = encoding == HiddenRecipeEntryEncoding.Pair
-                    ? sizeof(int) * 2
-                    : sizeof(int);
+                int entryWidth = GetHiddenRecipeEntryWidth(encoding);
                 long requiredBytes = (long)entryWidth * count;
                 if (reader.BaseStream.Length - reader.BaseStream.Position < requiredBytes)
                 {
@@ -1949,18 +1947,7 @@ namespace HaCreator.MapSimulator.Managers
                 entries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    int bucketKey;
-                    int outputItemId;
-                    if (encoding == HiddenRecipeEntryEncoding.Pair)
-                    {
-                        bucketKey = reader.ReadInt32();
-                        outputItemId = reader.ReadInt32();
-                    }
-                    else
-                    {
-                        bucketKey = -1;
-                        outputItemId = reader.ReadInt32();
-                    }
+                    ReadHiddenRecipeEntry(reader, encoding, out int bucketKey, out int outputItemId);
 
                     if (requirePositiveOutputItemId && outputItemId <= 0)
                     {
@@ -2012,9 +1999,7 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                int entryWidth = encoding == HiddenRecipeEntryEncoding.Pair
-                    ? sizeof(int) * 2
-                    : sizeof(int);
+                int entryWidth = GetHiddenRecipeEntryWidth(encoding);
                 long requiredBytes = (long)entryWidth * count;
                 if (reader.BaseStream.Length - reader.BaseStream.Position < requiredBytes)
                 {
@@ -2025,18 +2010,7 @@ namespace HaCreator.MapSimulator.Managers
                 entries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    int bucketKey;
-                    int outputItemId;
-                    if (encoding == HiddenRecipeEntryEncoding.Pair)
-                    {
-                        bucketKey = reader.ReadInt32();
-                        outputItemId = reader.ReadInt32();
-                    }
-                    else
-                    {
-                        bucketKey = -1;
-                        outputItemId = reader.ReadInt32();
-                    }
+                    ReadHiddenRecipeEntry(reader, encoding, out int bucketKey, out int outputItemId);
 
                     if (requirePositiveOutputItemId && outputItemId <= 0)
                     {
@@ -2063,6 +2037,47 @@ namespace HaCreator.MapSimulator.Managers
             {
                 reader.BaseStream.Position = startPosition;
                 return false;
+            }
+        }
+
+        private static int GetHiddenRecipeEntryWidth(HiddenRecipeEntryEncoding encoding)
+        {
+            return encoding switch
+            {
+                HiddenRecipeEntryEncoding.Pair => sizeof(int) * 2,
+                HiddenRecipeEntryEncoding.CompactBucketUInt16 => sizeof(ushort) + sizeof(int),
+                HiddenRecipeEntryEncoding.CompactBucketByte => sizeof(byte) + sizeof(int),
+                _ => sizeof(int)
+            };
+        }
+
+        private static void ReadHiddenRecipeEntry(
+            BinaryReader reader,
+            HiddenRecipeEntryEncoding encoding,
+            out int bucketKey,
+            out int outputItemId)
+        {
+            switch (encoding)
+            {
+                case HiddenRecipeEntryEncoding.Pair:
+                    bucketKey = reader.ReadInt32();
+                    outputItemId = reader.ReadInt32();
+                    break;
+
+                case HiddenRecipeEntryEncoding.CompactBucketUInt16:
+                    bucketKey = reader.ReadUInt16();
+                    outputItemId = reader.ReadInt32();
+                    break;
+
+                case HiddenRecipeEntryEncoding.CompactBucketByte:
+                    bucketKey = reader.ReadByte();
+                    outputItemId = reader.ReadInt32();
+                    break;
+
+                default:
+                    bucketKey = -1;
+                    outputItemId = reader.ReadInt32();
+                    break;
             }
         }
 

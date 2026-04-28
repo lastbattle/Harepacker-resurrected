@@ -101,6 +101,64 @@ namespace HaCreator.MapSimulator.Physics
             return normalized;
         }
 
+        internal static IReadOnlyList<byte> NormalizePassiveKeyPadStatesForClientMakeMovePath(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<byte> passiveKeyPadStates)
+        {
+            if (path == null || path.Count == 0 || passiveKeyPadStates == null || passiveKeyPadStates.Count == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            List<MovePathElement> normalized = new(path.Count);
+            List<byte> normalizedKeyPadStates = new(Math.Min(path.Count, passiveKeyPadStates.Count));
+            for (int i = 0; i < path.Count; i++)
+            {
+                MovePathElement current = NormalizePortalOwnedClientMakeMovePathElement(path[i]);
+                byte currentKeyPadState = i < passiveKeyPadStates.Count
+                    ? (byte)(passiveKeyPadStates[i] & 0x0F)
+                    : (byte)0;
+
+                if (normalized.Count == 0)
+                {
+                    normalized.Add(current);
+                    normalizedKeyPadStates.Add(currentKeyPadState);
+                    continue;
+                }
+
+                int tailIndex = normalized.Count - 1;
+                MovePathElement tail = normalized[tailIndex];
+                if (CanCoalesceClientMakeMovePathTail(tail, current))
+                {
+                    tail.Duration = ClampDurationToShort(tail.Duration + Math.Max(0, (int)current.Duration));
+                    tail.X = current.X;
+                    tail.Y = current.Y;
+                    tail.VelocityX = current.VelocityX;
+                    tail.VelocityY = current.VelocityY;
+                    tail.FallStartFootholdId = current.FallStartFootholdId;
+                    tail.XOffset = current.XOffset;
+                    tail.YOffset = current.YOffset;
+                    tail.RandomCount = current.RandomCount;
+                    tail.ActualRandomCount = current.ActualRandomCount;
+                    normalized[tailIndex] = tail;
+                    normalizedKeyPadStates[tailIndex] = currentKeyPadState;
+                    continue;
+                }
+
+                if (CanReplacePlaceholderTailWithCurrent(tail))
+                {
+                    normalized[tailIndex] = current;
+                    normalizedKeyPadStates[tailIndex] = currentKeyPadState;
+                    continue;
+                }
+
+                normalized.Add(current);
+                normalizedKeyPadStates.Add(currentKeyPadState);
+            }
+
+            return normalizedKeyPadStates;
+        }
+
         private static MovePathElement NormalizePortalOwnedClientMakeMovePathElement(MovePathElement element)
         {
             if (!IsPortalOwnedImpactAttribute(element.MovePathAttribute))

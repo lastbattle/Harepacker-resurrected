@@ -62,6 +62,59 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Open raise owner quest #{Math.Max(0, state?.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, state?.OwnerItemId ?? 0)} session #{Math.Max(0, state?.ManagerSessionId ?? 0)} with client create-window visibility signal");
         }
 
+        internal static bool TryDecodeClientOpenOwnerPayload(
+            byte[] payload,
+            out int ownerItemId,
+            out bool isVisible,
+            out string error)
+        {
+            ownerItemId = 0;
+            isVisible = true;
+            error = null;
+
+            if (payload == null)
+            {
+                error = "Raise create-window payload is missing.";
+                return false;
+            }
+
+            if (payload.Length < sizeof(int))
+            {
+                error = "Raise create-window payload must contain an owner item id.";
+                return false;
+            }
+
+            if (payload.Length > sizeof(int) + sizeof(byte))
+            {
+                error = $"Raise create-window payload has {payload.Length - sizeof(int) - sizeof(byte)} trailing byte(s).";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                ownerItemId = Math.Max(0, reader.ReadInt32());
+                if (stream.Position < stream.Length)
+                {
+                    isVisible = reader.ReadByte() != 0;
+                }
+
+                if (ownerItemId <= 0)
+                {
+                    error = "Raise create-window payload owner item id must be positive.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Raise create-window payload ended unexpectedly.";
+                return false;
+            }
+        }
+
         internal static QuestRewardRaiseOutboundRequest CreatePutItemAdd(QuestRewardRaiseState state, QuestRewardRaisePlacedPiece piece)
         {
             byte[] payload = BuildPayload(

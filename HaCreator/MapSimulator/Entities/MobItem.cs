@@ -289,7 +289,8 @@ namespace HaCreator.MapSimulator.Entities
             MobDamageType damageType = MobDamageType.Physical,
             int attackerId = 0,
             MobTargetType attackerTargetType = MobTargetType.Player,
-            MobExternalTargetSource attackerExternalTargetSource = MobExternalTargetSource.None)
+            MobExternalTargetSource attackerExternalTargetSource = MobExternalTargetSource.None,
+            int ignoreDefensePercent = 0)
         {
             if (AI == null)
                 return false;
@@ -304,6 +305,7 @@ namespace HaCreator.MapSimulator.Entities
                 attackerX,
                 attackerY,
                 damageType,
+                ignoreDefensePercent,
                 attackerId,
                 attackerTargetType,
                 attackerExternalTargetSource);

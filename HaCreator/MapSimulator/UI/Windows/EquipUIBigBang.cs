@@ -3003,12 +3003,21 @@ namespace HaCreator.MapSimulator.UI
 
         private CharacterPart ResolveInventoryTooltipPart(InventorySlotData slotData)
         {
-            if (slotData?.TooltipPart != null)
+            if (slotData == null)
             {
-                return slotData.TooltipPart.Clone();
+                return null;
             }
 
-            return _characterLoader?.LoadEquipment(slotData?.ItemId ?? 0) ?? CreateInventoryEquipmentPart(slotData);
+            if (slotData.TooltipPart != null)
+            {
+                CharacterPart clonedPart = slotData.TooltipPart.Clone();
+                slotData.ApplyTooltipInstanceFields(clonedPart);
+                return clonedPart;
+            }
+
+            CharacterPart part = _characterLoader?.LoadEquipment(slotData.ItemId) ?? CreateInventoryEquipmentPart(slotData);
+            slotData.ApplyTooltipInstanceFields(part);
+            return part;
         }
 
         private static IReadOnlyList<TooltipSection> BuildPetTooltipSections(CompanionEquipItem item, string petContextLine)
@@ -4925,6 +4934,7 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.AndroidHeart => CharacterEquipSlot.AndroidHeart,
                 EquipSlot.Totem1 => CharacterEquipSlot.TamingMob,
                 EquipSlot.Totem2 => CharacterEquipSlot.Saddle,
+                EquipSlot.Totem3 => CharacterEquipSlot.TamingMobAccessory,
                 _ => null
             };
         }
@@ -5082,6 +5092,8 @@ namespace HaCreator.MapSimulator.UI
                 167 => CharacterEquipSlot.AndroidHeart,
                 >= 130 and < 170 => CharacterEquipSlot.Weapon,
                 180 => CharacterEquipSlot.TamingMob,
+                191 => CharacterEquipSlot.Saddle,
+                192 => CharacterEquipSlot.TamingMobAccessory,
                 >= 190 and < 200 => CharacterEquipSlot.TamingMob,
                 _ => CharacterEquipSlot.None
             };

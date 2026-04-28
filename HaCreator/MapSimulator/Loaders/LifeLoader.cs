@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Loaders
             public List<int> FrameDelays { get; init; }
             public List<MobAnimationSet.FrameMetadata> FrameMetadata { get; init; }
             public List<CachedMobFrameOverlay> FrameOverlays { get; init; }
+            public MobAnimationSet.ActionSpeakMetadata ActionSpeakMetadata { get; init; }
         }
 
         private sealed class CachedMobFrameOverlay
@@ -588,6 +589,7 @@ namespace HaCreator.MapSimulator.Loaders
                 List<MobAnimationSet.FrameMetadata> frameMetadata = BuildMobActionFrameMetadata(mobStateProperty);
                 List<int> frameDelays = BuildMobActionFrameDelays(frameCanvases);
                 List<CachedMobFrameOverlay> frameOverlays = BuildMobActionFrameOverlays(mobStateProperty);
+                MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata = BuildMobActionSpeakMetadata(mobStateProperty["speak"]);
                 if (frameMetadata.Count != frameCanvases.Count)
                 {
                     frameMetadata = AlignFrameMetadataToFrames(frameCanvases.Count, frameMetadata);
@@ -613,7 +615,8 @@ namespace HaCreator.MapSimulator.Loaders
                         FrameCanvases = frameCanvases,
                         FrameDelays = frameDelays,
                         FrameMetadata = frameMetadata,
-                        FrameOverlays = frameOverlays
+                        FrameOverlays = frameOverlays,
+                        ActionSpeakMetadata = actionSpeakMetadata
                     };
 
                     if (!cached.ActionEntriesByClientSlot.TryGetValue(clientActionSlot, out CachedMobActionEntry existingEntry)
@@ -634,7 +637,8 @@ namespace HaCreator.MapSimulator.Loaders
                             FrameCanvases = frameCanvases,
                             FrameDelays = frameDelays,
                             FrameMetadata = frameMetadata,
-                            FrameOverlays = frameOverlays
+                            FrameOverlays = frameOverlays,
+                            ActionSpeakMetadata = actionSpeakMetadata
                         };
                     }
 
@@ -648,7 +652,8 @@ namespace HaCreator.MapSimulator.Loaders
                     FrameCanvases = frameCanvases,
                     FrameDelays = frameDelays,
                     FrameMetadata = frameMetadata,
-                    FrameOverlays = frameOverlays
+                    FrameOverlays = frameOverlays,
+                    ActionSpeakMetadata = actionSpeakMetadata
                 };
             }
 
@@ -867,6 +872,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
                 ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
+                ApplyCachedMobActionSpeakMetadata(animationSet, actionName, actionEntry);
 
                 appliedActions.Add(actionName);
             }
@@ -900,7 +906,23 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
                 ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
+                ApplyCachedMobActionSpeakMetadata(animationSet, actionName, actionEntry);
             }
+        }
+
+        private static void ApplyCachedMobActionSpeakMetadata(
+            MobAnimationSet animationSet,
+            string actionName,
+            CachedMobActionEntry actionEntry)
+        {
+            if (animationSet == null ||
+                string.IsNullOrWhiteSpace(actionName) ||
+                actionEntry?.ActionSpeakMetadata == null)
+            {
+                return;
+            }
+
+            animationSet.SetActionSpeakMetadata(actionName, actionEntry.ActionSpeakMetadata);
         }
 
         private static void ApplyCachedMobFrameOverlays(
@@ -1786,6 +1808,56 @@ namespace HaCreator.MapSimulator.Loaders
         internal static string ResolveMobOverlayLayerZForTests(WzCanvasProperty canvasProperty)
         {
             return ResolveMobOverlayLayerZ(canvasProperty);
+        }
+
+        internal static MobAnimationSet.ActionSpeakMetadata BuildMobActionSpeakMetadataForTests(WzImageProperty speakProperty)
+        {
+            return BuildMobActionSpeakMetadata(speakProperty);
+        }
+
+        private static MobAnimationSet.ActionSpeakMetadata BuildMobActionSpeakMetadata(WzImageProperty speakProperty)
+        {
+            if (WzInfoTools.GetRealProperty(speakProperty) is not WzSubProperty speakNode)
+            {
+                return null;
+            }
+
+            List<string> messages = ReadMobSpeakMessages(speakNode);
+            if (messages.Count == 0)
+            {
+                return null;
+            }
+
+            return new MobAnimationSet.ActionSpeakMetadata
+            {
+                Probability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100),
+                ChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, 0, "chataBalloon", "chatBalloon")),
+                HpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp")),
+                Messages = messages
+            };
+        }
+
+        private static List<string> ReadMobSpeakMessages(WzSubProperty speakNode)
+        {
+            var messages = new List<string>();
+            if (speakNode?.WzProperties == null)
+            {
+                return messages;
+            }
+
+            foreach (WzImageProperty childProperty in speakNode.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(childProperty);
+                if (resolvedProperty is WzStringProperty stringProperty &&
+                    !string.IsNullOrWhiteSpace(stringProperty.Value))
+                {
+                    messages.Add(stringProperty.Value);
+                }
+            }
+
+            return messages;
         }
 
         private static string ResolveMobOverlayLayerZ(WzCanvasProperty canvasProperty)

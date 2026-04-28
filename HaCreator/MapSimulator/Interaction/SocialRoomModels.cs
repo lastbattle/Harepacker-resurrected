@@ -7594,24 +7594,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void IncreaseTradeOffer()
         {
+            TryIncreaseTradeOffer(out _);
+        }
+
+        public bool TryIncreaseTradeOffer(out string message)
+        {
+            message = null;
             if (Kind != SocialRoomKind.TradingRoom)
             {
-                return;
+                message = "Trade meso escrow only applies to the trading-room shell.";
+                return false;
             }
 
             if (TryOfferTradeMeso(50000, out string mesoMessage))
             {
-                StatusMessage = mesoMessage;
-                return;
+                message = mesoMessage;
+                return true;
             }
 
-            MesoAmount += 50000;
-            _tradeLocalOfferMeso += 50000;
-            ClearTradeHandshake();
-            RefreshTradeOccupantsAndRows();
-
-            StatusMessage = $"Raised the offered mesos to {MesoAmount:N0}.";
+            StatusMessage = mesoMessage;
             PersistState();
+            message = StatusMessage;
+            return false;
         }
 
         public bool TryOfferTradeMeso(int mesoAmount, out string message)
@@ -7684,38 +7688,6 @@ namespace HaCreator.MapSimulator.Interaction
             message = $"{message} Local command escrowed {slotData.ItemName} x{quantity} through the packet-owned subtype {TradingRoomPutItemPacketType} path.";
             StatusMessage = message;
             PersistState();
-            return true;
-        }
-
-        public bool TryOfferTradeItemDirect(int itemId, int quantity, out string message)
-        {
-            message = null;
-            if (Kind != SocialRoomKind.TradingRoom)
-            {
-                message = "Trade item escrow only applies to the trading-room shell.";
-                return false;
-            }
-
-            if (!TryConsumeInventoryItem(itemId, quantity, out InventoryType inventoryType, out InventorySlotData slotData, out message))
-            {
-                return false;
-            }
-
-            if (!_inventoryBackedRows)
-            {
-                _items.RemoveAll(item => string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase));
-                _inventoryBackedRows = true;
-            }
-
-            ClearTradeHandshake();
-            SocialRoomItemEntry entry = new SocialRoomItemEntry(OwnerName, slotData.ItemName, quantity, 0, "Owner offer | Inventory escrowed");
-            _items.Insert(Math.Min(2, _items.Count), entry);
-            _inventoryEscrow.Add(new InventoryEscrowEntry(entry, inventoryType, slotData, returnOnReset: true, returnOnClose: true));
-            RoomState = "Negotiating";
-            RefreshTradeOccupantsAndRows();
-            StatusMessage = $"Added {slotData.ItemName} x{quantity} to the local trade escrow.";
-            PersistState();
-            message = StatusMessage;
             return true;
         }
 

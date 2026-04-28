@@ -178,7 +178,13 @@ namespace HaCreator.MapSimulator.Effects
 
         internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);
         internal readonly record struct PreparedDigitDrawInfo(int Digit, bool UseLargeDigitSet, int DrawOffsetX, int DrawOffsetY);
-        internal readonly record struct PreparedSpriteDrawInfo(string SpriteName, int DrawOffsetX, int DrawOffsetY);
+        internal readonly record struct PreparedSpriteDrawInfo(
+            string SpriteName,
+            int DrawOffsetX,
+            int DrawOffsetY,
+            Point SourceOrigin,
+            int SourceWidth,
+            int SourceHeight);
         internal readonly record struct PreparedDamageNumberCompositionInsertCommand(
             string SourceSetName,
             string SpriteName,
@@ -737,7 +743,10 @@ namespace HaCreator.MapSimulator.Effects
                     -(largeDigitSet.CriticalEffectOrigin.X - composedWidth / 2),
                     DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y
                     + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y
-                    - largeDigitSet.CriticalEffectOrigin.Y);
+                    - largeDigitSet.CriticalEffectOrigin.Y,
+                    largeDigitSet.CriticalEffectOrigin,
+                    largeDigitSet.CriticalEffectWidth,
+                    largeDigitSet.CriticalEffectHeight);
             }
 
             return new PreparedDamageNumberVisual(
@@ -777,7 +786,10 @@ namespace HaCreator.MapSimulator.Effects
                 missSprite = new PreparedSpriteDrawInfo(
                     damageString,
                     canvasOffsetX,
-                    DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y - missOrigin.Y);
+                    DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y - missOrigin.Y,
+                    missOrigin,
+                    ResolveSpecialTextWidth(authoredSpecialTextDigitSet, damageString),
+                    ResolveSpecialTextHeight(authoredSpecialTextDigitSet, damageString));
             }
 
             return new PreparedDamageNumberVisual(
@@ -1152,6 +1164,15 @@ namespace HaCreator.MapSimulator.Effects
             string overlaySpriteName = overlaySprite.HasValue
                 ? overlaySprite.Value.SpriteName
                 : null;
+            Point overlaySourceOrigin = overlaySprite.HasValue
+                ? overlaySprite.Value.SourceOrigin
+                : Point.Zero;
+            int overlaySourceWidth = overlaySprite.HasValue
+                ? overlaySprite.Value.SourceWidth
+                : 0;
+            int overlaySourceHeight = overlaySprite.HasValue
+                ? overlaySprite.Value.SourceHeight
+                : 0;
             bool keepsOverlayOnSeparateLayer = compositionTrace.KeepsCriticalBannerOnSeparateLayer
                 && overlaySprite.HasValue;
             int overlayLayerPositionOffsetY = keepsOverlayOnSeparateLayer
@@ -1168,6 +1189,9 @@ namespace HaCreator.MapSimulator.Effects
                 keepsOverlayOnSeparateLayer ? compositionTrace.CriticalBannerLayerCanvasPath : null,
                 keepsOverlayOnSeparateLayer ? overlaySpriteName : null,
                 keepsOverlayOnSeparateLayer ? overlayOffset : Point.Zero,
+                keepsOverlayOnSeparateLayer ? overlaySourceOrigin : Point.Zero,
+                keepsOverlayOnSeparateLayer ? overlaySourceWidth : 0,
+                keepsOverlayOnSeparateLayer ? overlaySourceHeight : 0,
                 overlayLayerPositionOffsetY);
         }
 

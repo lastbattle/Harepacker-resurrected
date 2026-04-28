@@ -1121,6 +1121,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastShipmentPromptText = string.Empty;
         private bool _hasAcceptedGetAllRequestInFlight;
         private int _ownerRowRevision;
+        private byte[] _lastOpenPayloadTrailingBytes = Array.Empty<byte>();
 
         internal bool IsOpen { get; private set; }
         internal int NpcTemplateId => _npcTemplateId;
@@ -1292,7 +1293,8 @@ namespace HaCreator.MapSimulator.Interaction
                     : "No get-all confirmation modal is currently staged.",
                 HasShipmentPrompt
                     ? BuildShipmentPromptSummary()
-                    : "No shipment prompt is currently staged."
+                    : "No shipment prompt is currently staged.",
+                BuildOpenPayloadTrailingSummary()
             };
 
             lines.AddRange(BuildDecodedItemPreviewLines());
@@ -1806,6 +1808,7 @@ namespace HaCreator.MapSimulator.Interaction
             _decodedCountsByType.Clear();
             _retainedCountsByType.Clear();
             _decodedItems.Clear();
+            _lastOpenPayloadTrailingBytes = Array.Empty<byte>();
             if (payload == null
                 || startOffset < 0
                 || payload.Length - startOffset < sizeof(int) + sizeof(byte) + sizeof(long))
@@ -1879,6 +1882,10 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            _lastOpenPayloadTrailingBytes = CopyBytesFromStream(
+                stream,
+                stream.Position,
+                checked((int)(stream.Length - stream.Position)));
             return true;
         }
 
@@ -2095,6 +2102,14 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Stored items will be delivered through {channelName} mailbox slot {_lastPromptTokenValue % 100}.",
                 channelName,
                 _lastPromptTokenValue % 100);
+        }
+
+        private string BuildOpenPayloadTrailingSummary()
+        {
+            string preview = FormatHexPreview(_lastOpenPayloadTrailingBytes, 32);
+            return string.IsNullOrWhiteSpace(preview)
+                ? "SetStoreBankDlg trailing bytes: none."
+                : $"SetStoreBankDlg trailing bytes preserved: {preview}.";
         }
 
         private static string ResolveShipmentChannelName(int channelId)
@@ -3738,6 +3753,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyBattleDamageInfo(int damage, bool isCritical, bool isSummon, int? attrRate)
         {
+            return ApplyBattleDamageInfo(damage, isCritical, isSummon, attrRate, currentTickCount: null);
+        }
+
+        internal string ApplyBattleDamageInfo(int damage, bool isCritical, bool isSummon, int? attrRate, int? currentTickCount)
+        {
             if (!(OnCalc && ServerOnCalc && (!isSummon || SummonTrackingEnabled)))
             {
                 StatusMessage = $"CBattleRecordMan::SetBattleDamageInfo ignored nDamage={damage.ToString(CultureInfo.InvariantCulture)} (critical={isCritical}, summon={isSummon}) because m_bOnCalc/m_bServerOnCalc were not both armed or summon include was disabled.";
@@ -3774,7 +3794,8 @@ namespace HaCreator.MapSimulator.Interaction
                 attrRateCountDelta: attrRate.HasValue ? 1 : 0,
                 damagePerSecondSeed: damage,
                 isDot: false,
-                isSummon: isSummon);
+                isSummon: isSummon,
+                currentTickCount);
             CheckTotalDamageOverflow();
 
             StatusMessage = $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
@@ -4046,7 +4067,8 @@ namespace HaCreator.MapSimulator.Interaction
                 attrRateCountDelta: attrRate.HasValue ? Math.Max(0, hitCount) : 0,
                 damagePerSecondSeed: dotDamage,
                 isDot: true,
-                isSummon: false);
+                isSummon: false,
+                currentTickCount: null);
             if (attrRate.HasValue)
             {
                 LastAttrRate = attrRate;
@@ -4221,7 +4243,8 @@ namespace HaCreator.MapSimulator.Interaction
             int attrRateCountDelta,
             int damagePerSecondSeed,
             bool isDot,
-            bool isSummon)
+            bool isSummon,
+            int? currentTickCount)
         {
             _damageTotalAttackCount += Math.Max(0, attackCountDelta);
             _damageTotalDamage += damageDelta;
@@ -4237,7 +4260,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? (int)(_damageTotalAttrRate / _damageTotalAttackCount)
                 : 0;
 
-            uint nowTick = unchecked((uint)Environment.TickCount);
+            uint nowTick = unchecked((uint)(currentTickCount ?? Environment.TickCount));
             if (_lastAttackTick == 0)
             {
                 _lastAttackTick = nowTick;

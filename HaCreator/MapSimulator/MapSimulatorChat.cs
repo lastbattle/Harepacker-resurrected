@@ -432,6 +432,12 @@ namespace HaCreator.MapSimulator
             }
 
             if (!IsWhisperTargetPickerModalFooterFocused()
+                && TryForwardClientEditKeyUpToParent(newKeyboardState, oldKeyboardState))
+            {
+                return false;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
                 && ShouldForwardClientEditStageKey(newKeyboardState, oldKeyboardState))
             {
                 return false;
@@ -3203,6 +3209,13 @@ namespace HaCreator.MapSimulator
             return key >= Keys.F1 && key <= Keys.F12;
         }
 
+        internal static bool ShouldForwardClientEditKeyUpToParent(Keys key)
+        {
+            // CCtrlEdit::OnKey forwards key-up (negative lParam) directly to the parent owner.
+            _ = key;
+            return true;
+        }
+
         internal static bool ShouldForwardClientEditCaretMoveKeyToParent(
             Keys key,
             bool footerLaneFocused,
@@ -3274,8 +3287,29 @@ namespace HaCreator.MapSimulator
         {
             foreach (Keys key in newKeyboardState.GetPressedKeys())
             {
-                if (oldKeyboardState.IsKeyUp(key) && ShouldForwardClientEditStageKey(key))
+                if (ShouldForwardClientEditStageKey(key))
                 {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryForwardClientEditKeyUpToParent(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState)
+        {
+            foreach (Keys key in oldKeyboardState.GetPressedKeys())
+            {
+                if (newKeyboardState.IsKeyUp(key)
+                    && ShouldForwardClientEditKeyUpToParent(key))
+                {
+                    if (_lastHeldKey == key)
+                    {
+                        ResetKeyRepeat();
+                    }
+
                     return true;
                 }
             }

@@ -76,7 +76,20 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload);
-                packet = new FamilyResultPacket(reader.ReadInt(), reader.ReadInt());
+                // CWvsContext::OnFamilyResult is a compact client result-code seam.
+                // Keep the older int/int simulator command payload accepted for tests
+                // and manual injection, but prefer byte retcodes for live packets.
+                if (payload.Length >= sizeof(int) * 2 && payload[1] == 0 && payload[2] == 0 && payload[3] == 0)
+                {
+                    packet = new FamilyResultPacket(reader.ReadInt(), reader.ReadInt());
+                    return true;
+                }
+
+                int type = reader.ReadByte();
+                int value = reader.Remaining >= sizeof(int)
+                    ? reader.ReadInt()
+                    : 0;
+                packet = new FamilyResultPacket(type, value);
                 return true;
             }
             catch (EndOfStreamException)
@@ -234,7 +247,7 @@ namespace HaCreator.MapSimulator.Interaction
             writer.WriteInt(privilegeIndex);
             if (!includeTargetName)
             {
-                return payload.ToArray();
+                return writer.ToArray();
             }
 
             string normalizedTargetName = string.IsNullOrWhiteSpace(targetName)
@@ -245,10 +258,10 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write(byteLength);
             if (byteLength > 0)
             {
-                payload.AddRange(targetNameBytes.AsSpan(0, byteLength).ToArray());
+                writer.Write(targetNameBytes, 0, byteLength);
             }
 
-            return payload.ToArray();
+            return writer.ToArray();
         }
 
         internal static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int opcode, out byte[] payload, out string error)
@@ -409,6 +422,8 @@ namespace HaCreator.MapSimulator.Interaction
                 EnsureAvailable(sizeof(byte));
                 return _payload[_offset++];
             }
+
+            public int Remaining => _payload.Length - _offset;
 
             public long ReadLong()
             {

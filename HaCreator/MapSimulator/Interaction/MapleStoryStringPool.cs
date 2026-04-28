@@ -72,6 +72,11 @@ namespace HaCreator.MapSimulator.Interaction
             // logout-gift owner frame and completion text ids explicitly.
             [0x16AA] = "UI/UIWindow.img/LogoutGift/backgrnd",
             [0x16AB] = "Congratulations! Please come back in 3 days. Thank you!",
+            // Recovered from MapleStory.exe v95 `CUIMiniMap::OnMouseMove`.
+            // Portal hover first probes the authored current-field portal tooltip
+            // table, then falls back to a destination-map string key.
+            [0x06EC] = "streetName",
+            [0x0EE3] = "String/ToolTipHelp.img/PortalTooltip/%d",
             // Recovered from MapleStory.exe v95 `CAvatarMegaphone::OnCreate`.
             // The owner chooses id 0x0FB0 or 0x0FB1 from measured sender-name width
             // before resolving the name-tag canvas through the resource manager.
@@ -86,6 +91,9 @@ namespace HaCreator.MapSimulator.Interaction
             [0x032E] = "You have received %d mesos.",
             [0x032F] = "You have failed to use the meso bag.",
             [0x03D0] = "UI/UIWindow2.img/UtilDlgEx/notice",
+            // Recovered from MapleStory.exe v95 `CAnimationDisplayer::Effect_ViciousHammer`
+            // and backed by Sound/UI.img/ViciousHammer in the active WZ data source.
+            [0x13D3] = "ViciousHammer",
             // Recovered from MapleStory.exe v95 `CUtilDlg::SetUtilDlg`. When callers do not
             // pass an explicit sound name, the client resolves string-pool id 1272 before
             // playing the notice-owner UI sound.

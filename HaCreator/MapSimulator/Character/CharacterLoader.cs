@@ -759,6 +759,18 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            return CanResolveRequestedMorphActions(availableActionNames, requestedActionNames);
+        }
+
+        private static bool CanResolveRequestedMorphActions(
+            IReadOnlyCollection<string> availableActionNames,
+            IReadOnlyList<string> requestedActionNames)
+        {
+            if (availableActionNames == null || availableActionNames.Count == 0)
+            {
+                return false;
+            }
+
             var morphPart = new CharacterPart
             {
                 Type = CharacterPartType.Morph,
@@ -766,6 +778,7 @@ namespace HaCreator.MapSimulator.Character
                 AvailableAnimations = new HashSet<string>(availableActionNames, StringComparer.OrdinalIgnoreCase)
             };
 
+            bool checkedRequestedAction = false;
             foreach (string requestedActionName in requestedActionNames)
             {
                 if (string.IsNullOrWhiteSpace(requestedActionName))
@@ -773,16 +786,33 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                checkedRequestedAction = true;
+                bool canResolveRequestedAction = false;
                 foreach (string candidateActionName in MorphClientActionResolver.EnumerateClientActionAliases(morphPart, requestedActionName))
                 {
                     if (availableActionNames.Contains(candidateActionName))
                     {
-                        return true;
+                        canResolveRequestedAction = true;
+                        break;
                     }
+                }
+
+                if (!canResolveRequestedAction)
+                {
+                    return false;
                 }
             }
 
-            return false;
+            return checkedRequestedAction;
+        }
+
+        internal static bool CanResolveRequestedMorphActionsForTesting(
+            IEnumerable<string> availableActionNames,
+            IEnumerable<string> requestedActionNames)
+        {
+            return CanResolveRequestedMorphActions(
+                new HashSet<string>(availableActionNames ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase),
+                (requestedActionNames ?? Array.Empty<string>()).ToArray());
         }
 
         private void PopulateMorphAnimations(CharacterPart morphPart, int morphTemplateId, WzImage exactMorphImage)

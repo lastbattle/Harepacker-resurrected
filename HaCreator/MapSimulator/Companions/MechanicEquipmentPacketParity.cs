@@ -163,6 +163,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            string lastRemoveMismatchReason = null;
             try
             {
                 byte[] buffer = payload as byte[] ?? new List<byte>(payload).ToArray();
@@ -180,6 +181,7 @@ namespace HaCreator.MapSimulator.Companions
                 bool requiresSecondaryStatChangedPointTrailer = false;
                 bool sawMatchingSwap = false;
                 bool sawMatchingAddEntry = false;
+                bool sawMatchingRemoveEntry = false;
                 for (int i = 0; i < operationCount; i++)
                 {
                     if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
@@ -227,6 +229,15 @@ namespace HaCreator.MapSimulator.Companions
                             requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
                                 || ShouldRequireSecondaryStatChangedPointTrailerForRemove(inventoryType, fromPosition);
                             operationContext = ObserveMechanicRemoveEntry(request, operationContext, inventoryType, fromPosition);
+                            if (TryMatchesMechanicInventoryOperationRemove(request, inventoryType, fromPosition, out rejectReason))
+                            {
+                                sawMatchingRemoveEntry = true;
+                            }
+                            else if (!string.IsNullOrWhiteSpace(rejectReason))
+                            {
+                                lastRemoveMismatchReason = rejectReason;
+                            }
+
                             break;
                         case 4:
                             if (stream.Length - stream.Position < sizeof(int))
@@ -288,7 +299,7 @@ namespace HaCreator.MapSimulator.Companions
                         out rejectReason))
                 {
                     if (!IsRecoverableInventoryOperationTrailerReason(rejectReason)
-                        || (!sawMatchingSwap && !sawMatchingAddEntry))
+                        || (!sawMatchingSwap && !sawMatchingAddEntry && !sawMatchingRemoveEntry))
                     {
                         return false;
                     }
@@ -300,7 +311,7 @@ namespace HaCreator.MapSimulator.Companions
                     return true;
                 }
 
-                if (sawMatchingSwap || sawMatchingAddEntry)
+                if (sawMatchingSwap || sawMatchingAddEntry || sawMatchingRemoveEntry)
                 {
                     return true;
                 }
@@ -311,7 +322,9 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            rejectReason = "Inventory-operation payload did not include a mechanic add-or-swap entry matching the active request.";
+            rejectReason = string.IsNullOrWhiteSpace(lastRemoveMismatchReason)
+                ? "Inventory-operation payload did not include a mechanic add, remove, or swap entry matching the active request."
+                : lastRemoveMismatchReason;
             return false;
         }
 
@@ -1446,6 +1459,42 @@ namespace HaCreator.MapSimulator.Companions
 
             rejectReason = "Unsupported mechanic request kind for inventory-operation add matching.";
             return false;
+        }
+
+        private static bool TryMatchesMechanicInventoryOperationRemove(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            short sourcePosition,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request?.Kind != EquipmentChangeRequestKind.CompanionToInventory)
+            {
+                return false;
+            }
+
+            if (request.SourceCompanionKind != EquipmentChangeCompanionKind.Mechanic
+                || !request.SourceMechanicSlot.HasValue)
+            {
+                rejectReason = "Mechanic drag-back-out request is missing source mechanic slot metadata.";
+                return false;
+            }
+
+            if (inventoryType != ClientEquipInventoryType)
+            {
+                rejectReason = "Mechanic drag-back-out inventory-operation remove did not target the equip inventory.";
+                return false;
+            }
+
+            short expectedSourcePosition =
+                unchecked((short)-MechanicEquipmentSlotMap.GetBodyPart(request.SourceMechanicSlot.Value));
+            if (sourcePosition != expectedSourcePosition)
+            {
+                rejectReason = "Inventory-operation remove did not originate from the requested mechanic source slot.";
+                return false;
+            }
+
+            return true;
         }
 
         private static MechanicInventoryOperationContext ObserveMechanicRemoveEntry(

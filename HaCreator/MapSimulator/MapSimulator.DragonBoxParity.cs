@@ -305,7 +305,7 @@ namespace HaCreator.MapSimulator
                 writer.WriteInt(NormalizePacketOwnedDragonBoxOrbMask(orbMask));
             }
 
-            return payload;
+            return writer.ToArray();
         }
     }
 

@@ -74,6 +74,12 @@ namespace HaCreator.MapSimulator.UI
             return TryGetClientForwardedPrimarySlotIndex(key, out _);
         }
 
+        internal static bool IsClientForwardedCtrlHotkeySlot(int hotkeySlot)
+        {
+            return hotkeySlot >= SkillManager.CTRL_SLOT_OFFSET
+                && hotkeySlot < SkillManager.CTRL_SLOT_OFFSET + ClientForwardedCtrlSlotKeyCount;
+        }
+
         internal static bool IsClientForwardedModifierPhysicalKey(Keys key)
         {
             return key == Keys.LeftControl

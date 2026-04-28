@@ -1745,12 +1745,26 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="currentTime">Current game tick</param>
         /// <param name="petPickupRange">Override pickup range (default: PET_PICKUP_RANGE)</param>
         /// <returns>The picked up drop, or null if nothing picked up</returns>
-        public DropItem TryPickUpDropByPet(int petId, float petX, float petY, int playerId, int currentTime, float petPickupRange = 0)
+        public DropItem TryPickUpDropByPet(
+            int petId,
+            float petX,
+            float petY,
+            int playerId,
+            int currentTime,
+            float petPickupRange = 0,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
         {
-            return TryPickUpDropByPetDetailed(petId, petX, petY, playerId, currentTime, petPickupRange).Drop;
+            return TryPickUpDropByPetDetailed(petId, petX, petY, playerId, currentTime, petPickupRange, pickupValidator).Drop;
         }
 
-        public DropPickupAttemptResult TryPickUpDropByPetDetailed(int petId, float petX, float petY, int playerId, int currentTime, float petPickupRange = 0)
+        public DropPickupAttemptResult TryPickUpDropByPetDetailed(
+            int petId,
+            float petX,
+            float petY,
+            int playerId,
+            int currentTime,
+            float petPickupRange = 0,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
         {
             if (petPickupRange <= 0)
                 petPickupRange = PET_PICKUP_RANGE;
@@ -1812,7 +1826,8 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
 
                 DropPickupFailureReason validatorReason =
-                    _petPickupAvailabilityEvaluator?.Invoke(drop)
+                    pickupValidator?.Invoke(drop)
+                    ?? _petPickupAvailabilityEvaluator?.Invoke(drop)
                     ?? _pickupAvailabilityEvaluator?.Invoke(drop)
                     ?? DropPickupFailureReason.None;
                 if (validatorReason != DropPickupFailureReason.None)
@@ -1964,8 +1979,16 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="currentTime">Current game tick</param>
         /// <param name="deltaTime">Time since last update</param>
         /// <returns>The target drop the pet should chase, or null if none</returns>
-        public PetDropTarget UpdateChasingDropForPet(int petId, float petX, float petY, int playerId,
-            float playerX, float playerY, int currentTime, float deltaTime)
+        public PetDropTarget UpdateChasingDropForPet(
+            int petId,
+            float petX,
+            float petY,
+            int playerId,
+            float playerX,
+            float playerY,
+            int currentTime,
+            float deltaTime,
+            Func<DropItem, DropPickupFailureReason> pickupValidator = null)
         {
             // Check if pet already has a target
             if (_petTargets.TryGetValue(petId, out var existingTarget))
@@ -2019,6 +2042,14 @@ namespace HaCreator.MapSimulator.Pools
 
                 // Check exception list
                 if (IsInExceptionList(drop))
+                    continue;
+
+                DropPickupFailureReason validatorReason =
+                    pickupValidator?.Invoke(drop)
+                    ?? _petPickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? _pickupAvailabilityEvaluator?.Invoke(drop)
+                    ?? DropPickupFailureReason.None;
+                if (validatorReason != DropPickupFailureReason.None)
                     continue;
 
                 // Check if another pet is already targeting this drop

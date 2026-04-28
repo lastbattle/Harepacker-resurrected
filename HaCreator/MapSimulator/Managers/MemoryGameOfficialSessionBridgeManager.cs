@@ -140,7 +140,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 bool autoSelectListenPort = listenPort <= 0;
-                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasConnectedSession)
                 {
@@ -180,6 +180,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     _passiveEstablishedSession = null;
+                    ListenPort = _roleSessionProxy.ListenPort;
                     LastStatus = proxyStatus;
                     status = LastStatus;
                     return true;
@@ -218,7 +219,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             bool autoSelectListenPort = listenPort <= 0;
-            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+            int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
             if (HasConnectedSession)
             {
                 if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
@@ -362,7 +363,18 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                StopInternal(clearPending: true);
+                if (_passiveEstablishedSession.HasValue
+                    && IsSameEstablishedSession(_passiveEstablishedSession.Value, candidate))
+                {
+                    LastStatus =
+                        $"Memory Game official-session bridge is already observing established Match Cards Maple socket pair {DescribeEstablishedSession(candidate)}; keeping passive ownership and {PendingOutboundRequestCount} queued opcode {OutboundMiniRoomOpcode} request(s). " +
+                        $"Reconnect through the localhost proxy for live MiniRoom packet ownership.";
+                    status = LastStatus;
+                    return true;
+                }
+
+                bool preservePendingForPassiveHandoff = _pendingOutboundRequests.Count > 0;
+                StopInternal(clearPending: !preservePendingForPassiveHandoff);
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
@@ -388,16 +400,49 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
+
             lock (_sync)
             {
                 if (_roleSessionProxy.HasAttachedClient)
                 {
+                    if (MatchesDiscoveredTargetConfiguration(
+                            ListenPort,
+                            RemoteHost,
+                            RemotePort,
+                            requestedListenPort,
+                            candidate.RemoteEndpoint,
+                            autoSelectListenPort))
+                    {
+                        status = $"Memory Game official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                        LastStatus = status;
+                        return true;
+                    }
+
                     status = $"Memory Game official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
                     LastStatus = status;
                     return false;
                 }
 
-                StopInternal(clearPending: true);
+                if (IsRunning
+                    && MatchesDiscoveredTargetConfiguration(
+                        ListenPort,
+                        RemoteHost,
+                        RemotePort,
+                        requestedListenPort,
+                        candidate.RemoteEndpoint,
+                        autoSelectListenPort))
+                {
+                    _passiveEstablishedSession = candidate;
+                    status =
+                        $"Memory Game official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                bool preservePendingForReconnectHandoff = _pendingOutboundRequests.Count > 0;
+                StopInternal(clearPending: !preservePendingForReconnectHandoff);
                 _passiveEstablishedSession = candidate;
 
                 if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
@@ -462,7 +507,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (!IsRunning)
+            if (!IsRunning && !HasPassiveEstablishedSocketPair)
             {
                 status = "Memory Game official-session bridge is not armed for deferred live-session injection.";
                 LastStatus = status;
@@ -471,7 +516,9 @@ namespace HaCreator.MapSimulator.Managers
 
             _pendingOutboundRequests.Enqueue(new PendingClientMiniRoomRequest((byte[])payload.Clone(), BuildClientMiniRoomRequestPacket(payload)));
             QueuedClientMiniRoomCount++;
-            status = $"Queued Memory Game opcode {OutboundMiniRoomOpcode} subtype {subtype} for deferred live-session injection.";
+            status = HasPassiveEstablishedSocketPair && !IsRunning
+                ? $"Queued Memory Game opcode {OutboundMiniRoomOpcode} subtype {subtype} for deferred live-session injection; proxy reconnect required."
+                : $"Queued Memory Game opcode {OutboundMiniRoomOpcode} subtype {subtype} for deferred live-session injection.";
             LastStatus = status;
             return true;
         }
@@ -943,6 +990,14 @@ namespace HaCreator.MapSimulator.Managers
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"passive established session {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
+        }
+
+        private static bool IsSameEstablishedSession(SessionDiscoveryCandidate left, SessionDiscoveryCandidate right)
+        {
+            return left.ProcessId == right.ProcessId
+                && string.Equals(left.ProcessName, right.ProcessName, StringComparison.OrdinalIgnoreCase)
+                && Equals(left.LocalEndpoint, right.LocalEndpoint)
+                && Equals(left.RemoteEndpoint, right.RemoteEndpoint);
         }
 
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)

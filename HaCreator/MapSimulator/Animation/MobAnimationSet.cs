@@ -79,6 +79,14 @@ namespace HaCreator.MapSimulator.Animation
             public IReadOnlyList<IDXObject> Frames { get; init; }
         }
 
+        public sealed class ActionSpeakMetadata
+        {
+            public int Probability { get; init; }
+            public int ChatBalloon { get; init; }
+            public int HpThreshold { get; init; }
+            public IReadOnlyList<string> Messages { get; init; }
+        }
+
         public sealed class AttackInfoMetadata
         {
             public int AttackType { get; set; } = -1;
@@ -297,6 +305,7 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Dictionary<string, AttackInfoMetadata> _attackMetadata = new();
         private readonly Dictionary<string, List<FrameMetadata>> _frameMetadata = new();
         private readonly Dictionary<string, List<FrameOverlay>> _frameOverlays = new();
+        private readonly Dictionary<string, ActionSpeakMetadata> _actionSpeakMetadata = new();
         private readonly Dictionary<int, List<IDXObject>> _angerGaugeAnimations = new();
         private List<IDXObject> _angerGaugeEffect;
         private string _angerGaugeEffectPath;
@@ -358,6 +367,26 @@ namespace HaCreator.MapSimulator.Animation
             string key = action?.ToLowerInvariant() ?? string.Empty;
             return _frameOverlays.TryGetValue(key, out List<FrameOverlay> overlays)
                 ? overlays
+                : null;
+        }
+
+        public void SetActionSpeakMetadata(string action, ActionSpeakMetadata metadata)
+        {
+            if (string.IsNullOrWhiteSpace(action) ||
+                metadata?.Messages == null ||
+                metadata.Messages.Count == 0)
+            {
+                return;
+            }
+
+            _actionSpeakMetadata[action.ToLowerInvariant()] = metadata;
+        }
+
+        public ActionSpeakMetadata GetActionSpeakMetadata(string action)
+        {
+            string key = action?.ToLowerInvariant() ?? string.Empty;
+            return _actionSpeakMetadata.TryGetValue(key, out ActionSpeakMetadata metadata)
+                ? metadata
                 : null;
         }
 

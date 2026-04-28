@@ -71,6 +71,12 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Critical effect origin</summary>
         public Point CriticalEffectOrigin { get; set; }
 
+        /// <summary>Critical effect width</summary>
+        public int CriticalEffectWidth { get; set; }
+
+        /// <summary>Critical effect height</summary>
+        public int CriticalEffectHeight { get; set; }
+
         /// <summary>Whether this digit set is valid and loaded</summary>
         public bool IsLoaded { get; set; }
 
@@ -288,6 +294,8 @@ namespace HaCreator.MapSimulator.Loaders
                         var bitmap = effectCanvas.GetLinkedWzCanvasBitmap();
                         if (bitmap != null)
                         {
+                            digitSet.CriticalEffectWidth = bitmap.Width;
+                            digitSet.CriticalEffectHeight = bitmap.Height;
                             digitSet.CriticalEffectTexture = bitmap.ToTexture2DAndDispose(device);
 
                             var originProp = effectCanvas["origin"] as WzVectorProperty;

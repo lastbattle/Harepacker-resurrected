@@ -772,6 +772,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     if (!resolvedFromBuildScopedTutorMapping
+                        && trustV95LocalOwnerTable
                         && !IsOfficialLocalUserOpcodeCoveredByV95OwnerTable(opcode))
                     {
                         LastStatus = $"Ignored unmapped remote-user opcode {opcode}: it is outside the recovered CUserPool::OnPacket local-user tutor owner range. {OfficialRemoteOwnerEvidence}";

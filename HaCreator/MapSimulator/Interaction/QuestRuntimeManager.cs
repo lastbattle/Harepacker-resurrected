@@ -352,6 +352,7 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<QuestMonsterBookCardRequirement> EndMonsterBookCardRequirements { get; init; } =
                 Array.Empty<QuestMonsterBookCardRequirement>();
             public string EndTimeKeepFieldSet { get; init; } = string.Empty;
+            public int? EndTimeKeepFieldSetKeepTime { get; init; }
             public int? EndPvpGradeRequirement { get; init; }
             public int? EndInfoNumber { get; init; }
             public int? EndFakeQuestId { get; init; }
@@ -1067,6 +1068,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (HasUnmetCompletionTimeKeepFieldSetDemand(
                     definition.EndTimeKeepFieldSet,
+                    definition.EndTimeKeepFieldSetKeepTime,
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId)))
             {
                 issues.Add("Time-keep field-set demand is still unmet.");
@@ -1357,10 +1359,26 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool HasUnmetCompletionTimeKeepFieldSetDemand(
             string fieldSet,
+            int? requiredKeepTime,
             string questExKeptValue)
         {
-            return !string.IsNullOrWhiteSpace(fieldSet)
-                   && string.IsNullOrWhiteSpace(questExKeptValue);
+            if (string.IsNullOrWhiteSpace(fieldSet))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(questExKeptValue))
+            {
+                return true;
+            }
+
+            if (!requiredKeepTime.HasValue || requiredKeepTime.Value <= 0)
+            {
+                return false;
+            }
+
+            return !int.TryParse(questExKeptValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int keptValue)
+                   || keptValue < requiredKeepTime.Value;
         }
 
         internal static bool HasUnresolvedCompletionPvpGradeDemand(int? requiredPvpGrade)
@@ -5129,6 +5147,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetTimeKeepFieldSetRequirement = state == QuestStateType.Started &&
                 HasUnmetCompletionTimeKeepFieldSetDemand(
                     definition.EndTimeKeepFieldSet,
+                    definition.EndTimeKeepFieldSetKeepTime,
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId));
             bool hasUnresolvedPvpGradeRequirement = state == QuestStateType.Started &&
                 HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement);
@@ -5260,8 +5279,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return questPages;
             }
 
-            if (state == QuestStateType.Not_Started &&
-                hasUnmetJobRequirement &&
+            if (hasUnmetJobRequirement &&
                 TryGetStopPagesByAliases(
                     stopPages,
                     out IReadOnlyList<NpcInteractionPage> jobPages,
@@ -5284,8 +5302,15 @@ namespace HaCreator.MapSimulator.Interaction
                     stopPages,
                     out IReadOnlyList<NpcInteractionPage> blockedInfoPages,
                     "info",
+                    "infoNumber",
+                    "infoNo",
+                    "infoex",
+                    "infoEx",
+                    "fakeQuestID",
+                    "fakeQuestId",
                     "record",
-                    "questrecord"))
+                    "questrecord",
+                    "questRecord"))
             {
                 return blockedInfoPages;
             }
@@ -6651,6 +6676,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (HasUnmetCompletionTimeKeepFieldSetDemand(
                     definition.EndTimeKeepFieldSet,
+                    definition.EndTimeKeepFieldSetKeepTime,
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId)))
             {
                 issues.Add("Time-keep field-set demand is still unmet.");
@@ -9093,6 +9119,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndMonsterBookMaxCardTypes = ParseInt(endCheck?["mbmax"]),
                 EndMonsterBookCardRequirements = ParseMonsterBookCardRequirements(endCheck?["mbcard"]),
                 EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
+                EndTimeKeepFieldSetKeepTime = ParseInt(endCheck?["fieldsetkeeptime"] ?? endCheck?["fieldSetKeepTime"]),
                 EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndFakeQuestId = ParsePositiveInt(endCheck?["fakeQuestID"]),

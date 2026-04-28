@@ -886,10 +886,13 @@ namespace HaCreator.MapSimulator
             }
             else if (payload != null)
             {
-                rawPacket[sizeof(ushort) + i] = payload[i];
+                for (int i = 0; i < payload.Count; i++)
+                {
+                    writer.WriteByte(payload[i]);
+                }
             }
 
-            return rawPacket;
+            return writer.ToArray();
         }
 
         internal static string DescribePacketOwnedFootholdSnapshotEntries(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)

@@ -185,9 +185,7 @@ namespace HaCreator.MapSimulator.Fields
                 return null;
             }
 
-            return HasNoCancelSkillFlag(mapInfo)
-                ? "Active skill cancellation is disabled in this field."
-                : null;
+            return FieldInteractionRestrictionEvaluator.GetActiveSkillCancelRestrictionMessage(mapInfo);
         }
 
         public static bool CanUseSkill(long fieldLimit, SkillData skill)
@@ -401,12 +399,6 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
-        }
-
-        private static bool HasNoCancelSkillFlag(MapInfo mapInfo)
-        {
-            WzImageProperty property = FindInfoFieldProperty(mapInfo, "noCancelSkill");
-            return TryReadInt(property, out int value) && value != 0;
         }
 
         private static bool HasMobMassacreDisableSkillFlag(MapInfo mapInfo)

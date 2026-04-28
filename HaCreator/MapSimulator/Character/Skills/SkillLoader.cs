@@ -1250,6 +1250,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     skill.ClientCharacterLevelTileUolPaths,
                     skill.ClientLevelTileUolPaths);
                 skill.ZoneAnimation = skill.ZoneEffect?.Animation;
+                PopulateClientTileUolFallbackFromZoneEffect(skill);
             }
 
             // Load projectile/ball
@@ -1355,6 +1356,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                     {
+                        MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
+                        if (TryResolveMeleeAfterImageCatalogAction(
+                                skillCatalog,
+                                skill?.SkillId ?? 0,
+                                actionName,
+                                out afterImageAction,
+                                out matchedActionName))
+                        {
+                            return true;
+                        }
+
                         MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
                         if (TryResolveMeleeAfterImageCatalogAction(
                                 chargeCatalog,
@@ -1670,6 +1682,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                 {
+                    MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
+                    if (skillCatalog?.Actions?.Count > 0)
+                    {
+                        yield return skillCatalog;
+                    }
+
                     MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
                     if (chargeCatalog?.Actions?.Count > 0)
                     {
@@ -5907,6 +5925,68 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveClientSkillAssetUolPathResolution(skillNode, infoNode, ClientTileUolPropertyNames);
         }
 
+        internal static void PopulateClientTileUolFallbackFromZoneEffectForTest(SkillData skill)
+        {
+            PopulateClientTileUolFallbackFromZoneEffect(skill);
+        }
+
+        private static void PopulateClientTileUolFallbackFromZoneEffect(SkillData skill)
+        {
+            ZoneEffectData zoneEffect = skill?.ZoneEffect;
+            if (zoneEffect == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(skill.ClientTileUolPath)
+                && IsClientTileUolFallbackPath(zoneEffect.TileUolPath))
+            {
+                skill.ClientTileUolPath = zoneEffect.TileUolPath;
+            }
+
+            CopyClientTileUolFallbackPaths(
+                zoneEffect.CharacterLevelTileUolPaths,
+                skill.ClientCharacterLevelTileUolPaths);
+            CopyClientTileUolFallbackPaths(
+                zoneEffect.LevelTileUolPaths,
+                skill.ClientLevelTileUolPaths);
+        }
+
+        private static void CopyClientTileUolFallbackPaths(
+            IReadOnlyDictionary<int, string> source,
+            IDictionary<int, string> target)
+        {
+            if (source == null || target == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, string> entry in source)
+            {
+                if (entry.Key <= 0
+                    || target.ContainsKey(entry.Key)
+                    || !IsClientTileUolFallbackPath(entry.Value))
+                {
+                    continue;
+                }
+
+                target[entry.Key] = entry.Value;
+            }
+        }
+
+        private static bool IsClientTileUolFallbackPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            string normalizedPath = path.Replace('\\', '/').Trim();
+            return normalizedPath.Contains("/tile/", StringComparison.OrdinalIgnoreCase)
+                   || normalizedPath.EndsWith("/tile", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(normalizedPath, "tile", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string ResolveClientBallUolPath(WzImageProperty skillNode, WzImageProperty infoNode, bool flip)
         {
             return ResolveClientBallUolPathResolution(skillNode, infoNode, flip).RootPath;
@@ -6587,6 +6667,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                     skillId = parsedSkillId;
                     return true;
                 }
+
+                foreach (int linkedSkillId in ParseLinkedSkillIds(value))
+                {
+                    if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                    {
+                        skillId = linkedSkillId;
+                        return true;
+                    }
+                }
+
+                foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(value, contextSkillId: 0))
+                {
+                    if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                    {
+                        skillId = fallbackSkillId;
+                        return true;
+                    }
+                }
             }
 
             return false;
@@ -6602,11 +6700,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
             return normalizedName.Equals("skillid", StringComparison.Ordinal)
                    || normalizedName.Equals("nskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("currentskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("sourceskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("summonedskillid", StringComparison.Ordinal)
                    || normalizedName.Equals("skill", StringComparison.Ordinal)
                    || normalizedName.Equals("nskill", StringComparison.Ordinal)
                    || normalizedName.Equals("id", StringComparison.Ordinal)
                    || normalizedName.Equals("key", StringComparison.Ordinal)
                    || normalizedName.Equals("owner", StringComparison.Ordinal)
+                   || normalizedName.Equals("ownerskill", StringComparison.Ordinal)
+                   || normalizedName.Equals("ownerid", StringComparison.Ordinal)
                    || normalizedName.Equals("summonskillid", StringComparison.Ordinal)
                    || normalizedName.Equals("ownerskillid", StringComparison.Ordinal);
         }
@@ -6646,6 +6749,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             return name.Equals("0", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("path", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uol", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("uolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("tilePath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("tileUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("tileUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("ballPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("ballUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("ballUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("flipBallPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("flipBallUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("flipBallUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summonPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summonedPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summonedUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summonedUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summoned", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("target", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("targetPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("value", StringComparison.OrdinalIgnoreCase)
                    || ClientSummonedUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
                    || ClientTileUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
@@ -8558,27 +8678,58 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string contextLeaf = contextPathParts[^1]?.Trim() ?? string.Empty;
-            if (ClientTileUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            if (HasClientSkillAssetContext(contextPathParts, ClientTileUolPropertyNames, "tilePath", "tileUolPath"))
             {
                 return string.Equals(branchToken, "tile", StringComparison.OrdinalIgnoreCase);
             }
 
-            if (ClientBallUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            if (HasClientSkillAssetContext(contextPathParts, ClientBallUolPropertyNames, "ballPath", "ballUolPath"))
             {
                 return string.Equals(branchToken, "ball", StringComparison.OrdinalIgnoreCase);
             }
 
-            if (ClientFlipBallUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            if (HasClientSkillAssetContext(contextPathParts, ClientFlipBallUolPropertyNames, "flipBallPath", "flipBallUolPath"))
             {
                 return string.Equals(branchToken, "flipBall", StringComparison.OrdinalIgnoreCase)
                        || string.Equals(branchToken, "ball", StringComparison.OrdinalIgnoreCase);
             }
 
-            if (ClientSummonedUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            if (HasClientSkillAssetContext(contextPathParts, ClientSummonedUolPropertyNames, "summonPath", "summonedPath", "summonedUolPath"))
             {
                 return string.Equals(branchToken, "summon", StringComparison.OrdinalIgnoreCase)
                        || string.Equals(branchToken, "summoned", StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
+        }
+
+        private static bool HasClientSkillAssetContext(
+            IReadOnlyList<string> contextPathParts,
+            IReadOnlyList<string> propertyNames,
+            params string[] valueLeafNames)
+        {
+            if (contextPathParts == null || contextPathParts.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = contextPathParts.Count - 1; i >= 0; i--)
+            {
+                string segment = contextPathParts[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(segment))
+                {
+                    continue;
+                }
+
+                if (propertyNames?.Contains(segment, StringComparer.OrdinalIgnoreCase) == true)
+                {
+                    return true;
+                }
+
+                if (valueLeafNames?.Contains(segment, StringComparer.OrdinalIgnoreCase) == true)
+                {
+                    return true;
+                }
             }
 
             return false;
@@ -11161,7 +11312,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "avoidability");
             foreach ((string placeholderToken, int aliasValue) in placeholders)
             {
-                levelData.Speed = ApplyDescriptionBackedAliasValue(
+                levelData.Speed = ApplyDescriptionBackedPositivePlayerAliasValue(
                     levelData.Speed,
                     aliasValue,
                     PlaceholderMatchesMovementSpeedHint(normalizedSurface, placeholderToken));
@@ -11249,6 +11400,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return PreferPrimaryStat(target, aliasValue);
+        }
+
+        private static int ApplyDescriptionBackedPositivePlayerAliasValue(int target, int aliasValue, bool shouldApply)
+        {
+            if (!shouldApply || aliasValue <= 0)
+            {
+                return target;
+            }
+
+            return target <= 0 ? aliasValue : target;
         }
 
         private static int ApplyDescriptionBackedLabelAliases(

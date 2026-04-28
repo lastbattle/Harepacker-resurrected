@@ -37,8 +37,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 public string ActionKey { get; init; } = string.Empty;
                 public int ControlId { get; init; }
+                public int NativeButtonId { get; init; }
                 public int StringPoolUolId { get; init; }
                 public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int MouseOverWidth { get; init; }
+                public int MouseOverHeight { get; init; }
             }
 
             public int EquipCount { get; init; }
@@ -744,7 +749,7 @@ namespace HaCreator.MapSimulator.UI
                 string buttonSummary = string.Join(
                     " ",
                     state.ButtonControls.Select(button =>
-                        $"{button.ActionKey}:{button.ControlId.ToString(CultureInfo.InvariantCulture)}/0x{button.StringPoolUolId:X}"));
+                        $"{button.ActionKey}:{button.ControlId.ToString(CultureInfo.InvariantCulture)}/0x{button.StringPoolUolId:X}/btn0x{button.NativeButtonId:X}"));
                 sprite.DrawString(_font, TrimToLength(buttonSummary, 58), new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
                 lineY += _font.LineSpacing;
             }

@@ -51,7 +51,7 @@ namespace HaCreator.MapSimulator.Managers
             @"(?:byte[\s_\-]*index|byte[\s_\-]*offset|offset|index)?[\s_\-]*(?<index>\d+)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchFieldPairRegex = new(
-            @"(?<field>(?:raw[\s_\-]*)?move[\s_\-]*action(?:[\s_\-]*(?:byte|flag|low[\s_\-]*bit))?|vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))?|vec[\s_\-]*owner)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
+            @"(?<field>(?:(?:m[\s_\-]*)?n[\s_\-]*)?(?:raw[\s_\-]*)?move[\s_\-]*action(?:[\s_\-]*(?:byte|flag|low[\s_\-]*bit))?|m[\s_\-]*n[\s_\-]*move[\s_\-]*action|vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*|vec[\s_\-]*owner|m[\s_\-]*(?:p[\s_\-]*)?vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchPairValueRegex = new(
             @"(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
@@ -1866,18 +1866,36 @@ namespace HaCreator.MapSimulator.Managers
                     byteIndices = new[] { 13, 14 };
                     return true;
                 case "moveaction":
+                case "nmoveaction":
+                case "mnmoveaction":
+                case "nmoveactionbyte":
+                case "mnmoveactionbyte":
                 case "move":
                 case "moveactionbyte":
                 case "moveactionflag":
+                case "nmoveactionflag":
+                case "mnmoveactionflag":
                 case "rawmoveaction":
+                case "rawnmoveaction":
+                case "rawmnmoveaction":
                 case "rawmove":
                 case "movebyte":
                 case "moveactionlowbit":
+                case "nmoveactionlowbit":
+                case "mnmoveactionlowbit":
                 case "rawmoveactionbyte":
+                case "rawnmoveactionbyte":
+                case "rawmnmoveactionbyte":
                 case "rawmovebyte":
                 case "moveactionmismatch":
+                case "nmoveactionmismatch":
+                case "mnmoveactionmismatch":
                 case "moveactiondiff":
+                case "nmoveactiondiff":
+                case "mnmoveactiondiff":
                 case "moveactionparity":
+                case "nmoveactionparity":
+                case "mnmoveactionparity":
                 case "rawmoveactionmismatch":
                 case "rawmoveactiondiff":
                 case "rawmoveactionparity":
@@ -1887,21 +1905,49 @@ namespace HaCreator.MapSimulator.Managers
                     byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
                     return true;
                 case "vecctrl":
+                case "pvecctrl":
+                case "mpvecctrl":
                 case "vecctrlbyte":
+                case "pvecctrlbyte":
+                case "mpvecctrlbyte":
                 case "vecctrlowner":
+                case "pvecctrlowner":
+                case "mpvecctrlowner":
                 case "vecctrlstate":
+                case "pvecctrlstate":
+                case "mpvecctrlstate":
                 case "vectorctrl":
+                case "pvectorctrl":
+                case "mpvectorctrl":
                 case "vectorcontrol":
+                case "pvectorcontrol":
+                case "mpvectorcontrol":
                 case "vectorcontrolowner":
+                case "pvectorcontrolowner":
+                case "mpvectorcontrolowner":
                 case "vectorcontrolstate":
+                case "pvectorcontrolstate":
+                case "mpvectorcontrolstate":
                 case "vectorcontrolbyte":
+                case "pvectorcontrolbyte":
+                case "mpvectorcontrolbyte":
                 case "vec":
                 case "vecowner":
                 case "vecctrlflag":
+                case "pvecctrlflag":
+                case "mpvecctrlflag":
                 case "vecctrlownerbyte":
+                case "pvecctrlownerbyte":
+                case "mpvecctrlownerbyte":
                 case "vecctrlmismatch":
+                case "pvecctrlmismatch":
+                case "mpvecctrlmismatch":
                 case "vecctrldiff":
+                case "pvecctrldiff":
+                case "mpvecctrldiff":
                 case "vecctrlparity":
+                case "pvecctrlparity":
+                case "mpvecctrlparity":
                 case "vecctrlbytemismatch":
                 case "vecctrlbyteparity":
                 case "vecctrlbytediff":
@@ -2591,25 +2637,52 @@ namespace HaCreator.MapSimulator.Managers
                     normalizedName = "field";
                     return true;
                 case "observed":
+                case "observedvalue":
                 case "observedbyte":
                 case "actual":
+                case "actualvalue":
+                case "actualbyte":
                 case "raw":
+                case "rawvalue":
+                case "rawbyte":
                 case "captured":
+                case "capturedvalue":
+                case "capturedbyte":
                 case "official":
+                case "officialvalue":
+                case "officialbyte":
                 case "client":
+                case "clientvalue":
+                case "clientbyte":
+                case "original":
+                case "originalvalue":
+                case "originalbyte":
                 case "from":
                 case "before":
                 case "left":
                     normalizedName = "observed";
                     return true;
                 case "rebuilt":
+                case "rebuiltvalue":
                 case "rebuiltbyte":
                 case "expected":
+                case "expectedvalue":
+                case "expectedbyte":
                 case "replay":
+                case "replayvalue":
+                case "replaybyte":
                 case "replayed":
+                case "replayedvalue":
+                case "replayedbyte":
                 case "simulator":
+                case "simulatorvalue":
+                case "simulatorbyte":
                 case "simulated":
+                case "simulatedvalue":
+                case "simulatedbyte":
                 case "generated":
+                case "generatedvalue":
+                case "generatedbyte":
                 case "to":
                 case "after":
                 case "right":
@@ -2650,7 +2723,13 @@ namespace HaCreator.MapSimulator.Managers
                 or "bytedeltas"
                 or "bytedelta"
                 or "bytediffs"
-                or "bytediff";
+                or "bytediff"
+                or "bytecomparisons"
+                or "bytecomparison"
+                or "comparisons"
+                or "comparison"
+                or "compares"
+                or "compare";
         }
 
         private static bool TryParseSg88MismatchPairPropertyByteIndex(string propertyName, out int byteIndex)

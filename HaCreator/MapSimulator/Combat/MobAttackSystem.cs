@@ -129,6 +129,16 @@ namespace HaCreator.MapSimulator.Combat
             public bool Flip { get; set; }
         }
 
+        private sealed class ScheduledMobAttachedVisualEffect
+        {
+            public List<IDXObject> Frames { get; set; }
+            public Func<Vector2> GetPosition { get; set; }
+            public Func<bool> GetFlip { get; set; }
+            public Vector2 FallbackPosition { get; set; }
+            public bool FallbackFlip { get; set; }
+            public int TriggerTime { get; set; }
+        }
+
         private sealed class ScheduledMobFallingEffect
         {
             public List<IDXObject> Frames { get; set; }
@@ -145,6 +155,7 @@ namespace HaCreator.MapSimulator.Combat
         private readonly List<ActiveMobGroundAttack> _activeMobGroundAttacks = new List<ActiveMobGroundAttack>();
         private readonly List<ActiveMobDirectAttack> _activeMobDirectAttacks = new List<ActiveMobDirectAttack>();
         private readonly List<ScheduledMobVisualEffect> _scheduledMobVisualEffects = new List<ScheduledMobVisualEffect>();
+        private readonly List<ScheduledMobAttachedVisualEffect> _scheduledMobAttachedVisualEffects = new List<ScheduledMobAttachedVisualEffect>();
         private readonly List<ScheduledMobFallingEffect> _scheduledMobFallingEffects = new List<ScheduledMobFallingEffect>();
         private readonly Dictionary<long, int> _scheduledMobActions = new Dictionary<long, int>();
         private readonly Dictionary<int, PendingAttackPacketOverrides> _pendingAttackPacketOverrides = new Dictionary<int, PendingAttackPacketOverrides>();
@@ -161,6 +172,7 @@ namespace HaCreator.MapSimulator.Combat
         private Func<Rectangle> _playerHitboxAccessor;
         private Action<PuppetInfo, MobItem, MobAttackEntry, int> _onPuppetHit;
         private Action<AnimationDisplayerProjectileRegistrationRequest> _onAnimationDisplayerProjectileRegistration;
+        private int _currentUpdateTime;
 
         public void SetGroundResolver(Func<float, float, float?> groundResolver)
         {
@@ -272,6 +284,7 @@ namespace HaCreator.MapSimulator.Combat
             _activeMobGroundAttacks.Clear();
             _activeMobDirectAttacks.Clear();
             _scheduledMobVisualEffects.Clear();
+            _scheduledMobAttachedVisualEffects.Clear();
             _scheduledMobFallingEffects.Clear();
             _scheduledMobActions.Clear();
             _pendingAttackPacketOverrides.Clear();
@@ -337,8 +350,10 @@ namespace HaCreator.MapSimulator.Combat
 
         public void Update(int currentTime, float deltaSeconds, PlayerManager playerManager, AnimationEffects animationEffects, Action<int> onBossGroundImpact)
         {
+            _currentUpdateTime = currentTime;
             UpdateScheduledMobFallingEffects(currentTime, animationEffects);
             UpdateScheduledMobVisualEffects(currentTime, animationEffects);
+            UpdateScheduledMobAttachedVisualEffects(currentTime, animationEffects);
             UpdateMobProjectiles(currentTime, deltaSeconds, playerManager, animationEffects);
             UpdateMobGroundAttacks(currentTime, playerManager, animationEffects, onBossGroundImpact);
             UpdateMobDirectAttacks(currentTime, playerManager, animationEffects, onBossGroundImpact);
@@ -629,6 +644,28 @@ namespace HaCreator.MapSimulator.Combat
 
                 animationEffects?.AddOneTime(effect.Frames, effect.Position.X, effect.Position.Y, effect.Flip, currentTime);
                 _scheduledMobVisualEffects.RemoveAt(i);
+            }
+        }
+
+        private void UpdateScheduledMobAttachedVisualEffects(int currentTime, AnimationEffects animationEffects)
+        {
+            for (int i = _scheduledMobAttachedVisualEffects.Count - 1; i >= 0; i--)
+            {
+                ScheduledMobAttachedVisualEffect effect = _scheduledMobAttachedVisualEffects[i];
+                if (currentTime < effect.TriggerTime)
+                {
+                    continue;
+                }
+
+                animationEffects?.AddOneTimeAttached(
+                    effect.Frames,
+                    effect.GetPosition,
+                    effect.GetFlip,
+                    effect.FallbackPosition.X,
+                    effect.FallbackPosition.Y,
+                    effect.FallbackFlip,
+                    currentTime);
+                _scheduledMobAttachedVisualEffects.RemoveAt(i);
             }
         }
 
@@ -958,6 +995,7 @@ namespace HaCreator.MapSimulator.Combat
             if (hitEntry?.Frames != null && hitEntry.Frames.Count > 0)
             {
                 MobAnimationSet.AttackInfoMetadata attackInfo = mobItem.GetAttackInfo(attack.AnimationName);
+                int hitEffectTriggerTime = ResolveMobAttackHitEffectTriggerTime(currentTime, attackInfo);
                 bool attachHitEffect = ShouldAttachMobHitEffect(attackInfo, hitEntry.SourceFrameIndex);
                 bool facingAttach = attackInfo?.ResolveFacingAttachForHitAnimationFrame(hitEntry.SourceFrameIndex) == true;
                 Func<Vector2> getPosition = null;
@@ -975,19 +1013,26 @@ namespace HaCreator.MapSimulator.Combat
 
                 if (attached)
                 {
-                    animationEffects?.AddOneTimeAttached(
+                    ScheduleMobHitEffect(
                         hitEntry.Frames,
                         getPosition,
                         getFlip,
-                        fallbackPosition.X,
-                        fallbackPosition.Y,
+                        fallbackPosition,
                         fallbackFlip,
+                        hitEffectTriggerTime,
+                        animationEffects,
                         currentTime);
                 }
                 else
                 {
                     bool hitFlip = facingAttach ? effectFlip : false;
-                    animationEffects?.AddOneTime(hitEntry.Frames, position.X, position.Y, hitFlip, currentTime);
+                    ScheduleMobHitEffect(
+                        hitEntry.Frames,
+                        position,
+                        hitFlip,
+                        hitEffectTriggerTime,
+                        animationEffects,
+                        currentTime);
                 }
             }
 
@@ -2930,9 +2975,81 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
+        private void ScheduleMobHitEffect(
+            List<IDXObject> frames,
+            Vector2 position,
+            bool flip,
+            int triggerTime,
+            AnimationEffects animationEffects,
+            int currentTime)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            if (triggerTime <= currentTime)
+            {
+                animationEffects?.AddOneTime(frames, position.X, position.Y, flip, currentTime);
+                return;
+            }
+
+            _scheduledMobVisualEffects.Add(new ScheduledMobVisualEffect
+            {
+                Frames = frames,
+                Position = position,
+                TriggerTime = triggerTime,
+                Flip = flip
+            });
+        }
+
+        private void ScheduleMobHitEffect(
+            List<IDXObject> frames,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int triggerTime,
+            AnimationEffects animationEffects,
+            int currentTime)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            if (triggerTime <= currentTime)
+            {
+                animationEffects?.AddOneTimeAttached(
+                    frames,
+                    getPosition,
+                    getFlip,
+                    fallbackPosition.X,
+                    fallbackPosition.Y,
+                    fallbackFlip,
+                    currentTime);
+                return;
+            }
+
+            _scheduledMobAttachedVisualEffects.Add(new ScheduledMobAttachedVisualEffect
+            {
+                Frames = frames,
+                GetPosition = getPosition,
+                GetFlip = getFlip,
+                FallbackPosition = fallbackPosition,
+                FallbackFlip = fallbackFlip,
+                TriggerTime = triggerTime
+            });
+        }
+
         internal static bool ShouldAttachMobHitEffect(MobAnimationSet.AttackInfoMetadata attackInfo, int sourceFrameIndex)
         {
             return attackInfo?.ResolveHitAttachForHitAnimationFrame(sourceFrameIndex) == true;
+        }
+
+        internal static int ResolveMobAttackHitEffectTriggerTime(int currentTime, MobAnimationSet.AttackInfoMetadata attackInfo)
+        {
+            return unchecked(currentTime + Math.Max(0, attackInfo?.HitAfterMs ?? 0));
         }
 
         private bool TryResolveAttachedHitEffectTarget(
@@ -3010,8 +3127,9 @@ namespace HaCreator.MapSimulator.Combat
             getPosition = () =>
             {
                 MobItem liveMob = _mobAccessor?.Invoke(targetInfo.TargetId);
+                int liveTime = _currentUpdateTime > 0 ? _currentUpdateTime : currentTime;
                 Rectangle liveHitbox = liveMob?.AI != null && !liveMob.AI.IsDead
-                    ? liveMob.GetBodyHitbox(currentTime)
+                    ? liveMob.GetBodyHitbox(liveTime)
                     : Rectangle.Empty;
                 return liveHitbox.IsEmpty ? resolvedMobFallbackPosition : GetHitboxCenter(liveHitbox);
             };

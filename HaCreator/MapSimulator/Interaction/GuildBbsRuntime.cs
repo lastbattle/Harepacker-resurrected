@@ -157,6 +157,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool IsWriteMode { get; private set; }
         public Action<string, int> SocialChatObserved { get; set; }
+        public Action<GuildBbsClientRequestSnapshot> ClientRequestRecorded { get; set; }
 
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
@@ -1724,19 +1725,26 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void RecordClientRequest(string kind, byte[] payload)
         {
-            _clientRequestHistory.Add(new GuildBbsClientRequestSnapshot
+            byte[] resolvedPayload = payload == null
+                ? Array.Empty<byte>()
+                : (byte[])payload.Clone();
+            var snapshot = new GuildBbsClientRequestSnapshot
             {
                 Sequence = _nextClientRequestSequence++,
                 Kind = kind ?? string.Empty,
                 Opcode = ClientGuildBbsRequestOpcode,
-                PayloadHex = Convert.ToHexString(payload ?? Array.Empty<byte>()),
+                Payload = resolvedPayload,
+                PayloadHex = Convert.ToHexString(resolvedPayload),
                 CreatedAt = DateTimeOffset.Now
-            });
+            };
+            _clientRequestHistory.Add(snapshot);
 
             if (_clientRequestHistory.Count > ClientRequestHistoryLimit)
             {
                 _clientRequestHistory.RemoveRange(0, _clientRequestHistory.Count - ClientRequestHistoryLimit);
             }
+
+            ClientRequestRecorded?.Invoke(snapshot);
         }
 
         private void RecordClientRequests(params (string Kind, byte[] Payload)[] requests)
@@ -2715,6 +2723,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int Sequence { get; init; }
         public string Kind { get; init; } = string.Empty;
         public int Opcode { get; init; }
+        public byte[] Payload { get; init; } = Array.Empty<byte>();
         public string PayloadHex { get; init; } = string.Empty;
         public DateTimeOffset CreatedAt { get; init; }
     }

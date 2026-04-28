@@ -1310,10 +1310,10 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            return LoadTexture(canvas);
+            return LoadTexture(canvas, useCanvasOrigin: false);
         }
 
-        private IDXObject LoadTexture(WzCanvasProperty canvas, int defaultDelay = 100)
+        private IDXObject LoadTexture(WzCanvasProperty canvas, int defaultDelay = 100, bool useCanvasOrigin = true)
         {
             if (canvas?.PngProperty == null)
             {
@@ -1334,8 +1334,11 @@ namespace HaCreator.MapSimulator.Companions
                     return null;
                 }
 
+                Point drawOffset = useCanvasOrigin
+                    ? ResolveCanvasDrawOffset(canvas)
+                    : Point.Empty;
                 int delay = GetIntValue(canvas["delay"]) ?? Math.Max(1, defaultDelay);
-                return new DXObject(0, 0, texture, delay)
+                return new DXObject(drawOffset.X, drawOffset.Y, texture, delay)
                 {
                     Tag = canvas
                 };
@@ -1703,6 +1706,17 @@ namespace HaCreator.MapSimulator.Companions
         {
             System.Drawing.PointF canvasOrigin = canvas?.GetCanvasOriginPosition() ?? default;
             return new Point((int)Math.Round(canvasOrigin.X), (int)Math.Round(canvasOrigin.Y));
+        }
+
+        private static Point ResolveCanvasDrawOffset(WzCanvasProperty canvas)
+        {
+            Point origin = ResolveCanvasOrigin(canvas);
+            return new Point(-origin.X, -origin.Y);
+        }
+
+        internal static Point ResolveCanvasDrawOffsetForTesting(Point origin)
+        {
+            return new Point(-origin.X, -origin.Y);
         }
 
         private static bool TryResolveVector(WzImageProperty property, out Point vector)

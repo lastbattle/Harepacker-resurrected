@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action ClearFieldClock { get; init; }
         internal Func<bool> RestoreFieldPropertyClock { get; init; }
         internal Action InvalidateWhisperUserListWindow { get; init; }
+        internal Action ConsumeTransferFieldRequestFailure { get; init; }
     }
 
     internal sealed record PacketFieldSwindleWarningEntry(
@@ -276,7 +277,7 @@ namespace HaCreator.MapSimulator.Interaction
             _nextSwindleWarningTick = 0;
         }
 
-        internal void Update(int currentTick)
+        internal void Update(int currentTick, PacketFieldFeedbackCallbacks callbacks = null)
         {
             if (_bossHpState != null && currentTick >= _bossHpState.ExpiresAtTick)
             {
@@ -293,7 +294,11 @@ namespace HaCreator.MapSimulator.Interaction
                 && _clockVisualState.Kind == PacketFieldClockVisualKind.Countdown
                 && GetFieldClockRemainingSeconds(_clockVisualState, currentTick) <= 0)
             {
-                ClearFieldClock(callbacks: null);
+                ClearFieldClock(callbacks);
+                bool restoredFieldPropertyClock = callbacks?.RestoreFieldPropertyClock?.Invoke() == true;
+                _statusMessage = restoredFieldPropertyClock
+                    ? "Cleared expired packet-owned countdown clock and restored the map-authored field clock."
+                    : "Cleared expired packet-owned countdown clock.";
             }
         }
 
@@ -1254,6 +1259,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => $"Field transfer request was ignored with reason {reason}."
             };
             _lastTransferFailureMessage = text;
+            callbacks?.ConsumeTransferFieldRequestFailure?.Invoke();
             if (reason is 4 or 8)
             {
                 callbacks?.ShowModalWarning?.Invoke(text);

@@ -1435,6 +1435,7 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.AndroidHeart => CharacterEquipSlot.AndroidHeart,
                 EquipSlot.Totem1 => CharacterEquipSlot.TamingMob,
                 EquipSlot.Totem2 => CharacterEquipSlot.Saddle,
+                EquipSlot.Totem3 => CharacterEquipSlot.TamingMobAccessory,
                 _ => null
             };
         }
