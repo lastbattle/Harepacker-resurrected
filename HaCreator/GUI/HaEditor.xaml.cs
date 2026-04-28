@@ -237,7 +237,7 @@ namespace HaCreator.GUI
                 ? string.Empty
                 : $"Saved to: {Path.GetFileName(logFilePath)}";
             mapLoadErrorsOpenLogButton.IsEnabled = !string.IsNullOrEmpty(logFilePath) && File.Exists(logFilePath);
-            toolWindowsTabControl.SelectedItem = mapLoadErrorsTabItem;
+            //toolWindowsTabControl.SelectedItem = mapLoadErrorsTabItem;
         }
 
         private void MapLoadErrorsClearButton_Click(object sender, RoutedEventArgs e)
