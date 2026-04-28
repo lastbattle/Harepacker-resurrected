@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MapleLib.PacketLib;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -1007,11 +1008,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static byte[] CreateEmotionChangePayload(int emotionId, bool byItemOption, int durationMs)
         {
-            byte[] payload = new byte[9];
-            Buffer.BlockCopy(BitConverter.GetBytes(emotionId), 0, payload, 0, sizeof(int));
-            Buffer.BlockCopy(BitConverter.GetBytes(durationMs), 0, payload, 4, sizeof(int));
-            payload[8] = byItemOption ? (byte)1 : (byte)0;
-            return payload;
+            using PacketWriter writer = new((sizeof(int) * 2) + sizeof(byte));
+            writer.WriteInt(emotionId);
+            writer.WriteInt(durationMs);
+            writer.WriteByte(byItemOption ? 1 : 0);
+            return writer.ToArray();
         }
 
         public static PacketOwnedLocalUtilityOutboundRequest CreatePetItemUseRequest(
@@ -1045,13 +1046,13 @@ namespace HaCreator.MapSimulator.Interaction
             int requestIndex,
             int updateTime)
         {
-            var payload = new byte[19];
-            Buffer.BlockCopy(BitConverter.GetBytes(petSerial), 0, payload, 0, sizeof(ulong));
-            payload[8] = buffSkill ? (byte)1 : (byte)0;
-            Buffer.BlockCopy(BitConverter.GetBytes(updateTime), 0, payload, 9, sizeof(int));
-            Buffer.BlockCopy(BitConverter.GetBytes(slot), 0, payload, 13, sizeof(ushort));
-            Buffer.BlockCopy(BitConverter.GetBytes(itemId), 0, payload, 15, sizeof(int));
-            return payload;
+            using PacketWriter writer = new(sizeof(ulong) + sizeof(byte) + sizeof(int) + sizeof(ushort) + sizeof(int));
+            writer.Write(petSerial);
+            writer.WriteByte(buffSkill ? 1 : 0);
+            writer.WriteInt(updateTime);
+            writer.Write(slot);
+            writer.WriteInt(itemId);
+            return writer.ToArray();
         }
     }
 }

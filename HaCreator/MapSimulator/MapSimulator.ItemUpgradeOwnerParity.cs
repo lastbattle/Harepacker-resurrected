@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Character;
 using System;
 using System.Buffers.Binary;
 using System.Globalization;
+using MapleLib.PacketLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator
@@ -831,11 +832,11 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildItemUpgradeRequestPayload(int itemToken, int slotPosition, int updateTick)
         {
-            byte[] payload = new byte[ItemUpgradeOwnerRequestPayloadLength];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), itemToken);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)), Math.Max(0, slotPosition));
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 2, sizeof(int)), updateTick);
-            return payload;
+            using PacketWriter writer = new(ItemUpgradeOwnerRequestPayloadLength);
+            writer.WriteInt(itemToken);
+            writer.WriteInt(Math.Max(0, slotPosition));
+            writer.WriteInt(updateTick);
+            return writer.ToArray();
         }
 
         private static byte[] BuildItemUpgradeConsumeCashRequestPayload(
@@ -845,24 +846,14 @@ namespace HaCreator.MapSimulator
             int itemToken,
             int updateTick)
         {
-            byte[] payload = new byte[ItemUpgradeOwnerConsumeCashRequestPayloadLength];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), useRequestTick);
-            BinaryPrimitives.WriteInt16LittleEndian(
-                payload.AsSpan(sizeof(int), sizeof(short)),
-                (short)Math.Clamp(consumableSlotPosition, short.MinValue, short.MaxValue));
-            BinaryPrimitives.WriteInt32LittleEndian(
-                payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)),
-                consumableItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(
-                payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength, sizeof(int)),
-                itemToken);
-            BinaryPrimitives.WriteInt32LittleEndian(
-                payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + sizeof(int), sizeof(int)),
-                Math.Max(0, consumableSlotPosition));
-            BinaryPrimitives.WriteInt32LittleEndian(
-                payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + (sizeof(int) * 2), sizeof(int)),
-                updateTick);
-            return payload;
+            using PacketWriter writer = new(ItemUpgradeOwnerConsumeCashRequestPayloadLength);
+            writer.WriteInt(useRequestTick);
+            writer.Write((short)Math.Clamp(consumableSlotPosition, short.MinValue, short.MaxValue));
+            writer.WriteInt(consumableItemId);
+            writer.WriteInt(itemToken);
+            writer.WriteInt(Math.Max(0, consumableSlotPosition));
+            writer.WriteInt(updateTick);
+            return writer.ToArray();
         }
 
         private string BuildItemUpgradeOutboundRequestDispatchLabel(
@@ -1024,10 +1015,10 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildItemUpgradeResultAckPayload(int returnResultCode, int resultValue)
         {
-            byte[] payload = new byte[ItemUpgradeOwnerResultAckPayloadLength];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), returnResultCode);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)), resultValue);
-            return payload;
+            using PacketWriter writer = new(ItemUpgradeOwnerResultAckPayloadLength);
+            writer.WriteInt(returnResultCode);
+            writer.WriteInt(resultValue);
+            return writer.ToArray();
         }
 
         private static bool TryDecodeItemUpgradeResultAckPayload(

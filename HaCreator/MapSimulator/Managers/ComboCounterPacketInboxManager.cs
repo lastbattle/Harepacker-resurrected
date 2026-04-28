@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Globalization;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -61,7 +62,9 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildComboCountPayload(int comboCount)
         {
-            return BitConverter.GetBytes(comboCount);
+            using PacketWriter writer = new(sizeof(int));
+            writer.WriteInt(comboCount);
+            return writer.ToArray();
         }
 
         public void Dispose()

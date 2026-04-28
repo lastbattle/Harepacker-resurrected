@@ -1,5 +1,6 @@
 using HaSharedLibrary.Render.DX;
 using MapleLib.Helpers;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -901,10 +902,10 @@ namespace HaCreator.MapSimulator.Effects
                     TryApplyPacket((int)GuildBossPacketType.PulleyStateChange, stackalloc byte[] { 0 }, currentTimeMs, GuildBossPacketSource.LocalPreview, out _);
                     if (_healerEnabled && _healerFall > 0)
                     {
-                        Span<byte> payload = stackalloc byte[2];
                         short healerY = checked((short)ClampHealerY((int)MathF.Round(_healerTargetY) + _healerFall));
-                        BinaryPrimitives.WriteInt16LittleEndian(payload, healerY);
-                        TryApplyPacket((int)GuildBossPacketType.HealerMove, payload, currentTimeMs, GuildBossPacketSource.LocalPreview, out _);
+                        using PacketWriter writer = new(sizeof(short));
+                        writer.Write(healerY);
+                        TryApplyPacket((int)GuildBossPacketType.HealerMove, writer.ToArray(), currentTimeMs, GuildBossPacketSource.LocalPreview, out _);
                     }
 
 

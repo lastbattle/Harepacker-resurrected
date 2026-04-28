@@ -265,11 +265,11 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static byte[] BuildTouchRequestPacket(int objectId, bool isTouching)
         {
-            byte[] packet = new byte[7];
-            BitConverter.GetBytes(OutboundTouchReactorOpcode).CopyTo(packet, 0);
-            BitConverter.GetBytes(objectId).CopyTo(packet, 2);
-            packet[6] = isTouching ? (byte)1 : (byte)0;
-            return packet;
+            using PacketWriter writer = new(sizeof(ushort) + sizeof(int) + sizeof(byte));
+            writer.Write(OutboundTouchReactorOpcode);
+            writer.WriteInt(objectId);
+            writer.WriteByte(isTouching ? 1 : 0);
+            return writer.ToArray();
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)

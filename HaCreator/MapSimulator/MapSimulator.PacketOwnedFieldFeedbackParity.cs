@@ -6,6 +6,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
@@ -2968,7 +2969,11 @@ namespace HaCreator.MapSimulator
                 && int.TryParse(args[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out int transferX)
                 && int.TryParse(args[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out int transferY))
             {
-                payload = payload.Concat(BitConverter.GetBytes(transferX)).Concat(BitConverter.GetBytes(transferY)).ToArray();
+                using PacketWriter writer = new(payload.Length + (sizeof(int) * 2));
+                writer.WriteBytes(payload);
+                writer.WriteInt(transferX);
+                writer.WriteInt(transferY);
+                payload = writer.ToArray();
                 _packetOwnedWhisperChaseTransferArmed = true;
             }
 

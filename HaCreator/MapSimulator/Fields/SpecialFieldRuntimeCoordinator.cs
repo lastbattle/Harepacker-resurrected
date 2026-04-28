@@ -6,6 +6,7 @@ using HaCreator.MapEditor;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.PacketLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib.WzStructure;
@@ -337,14 +338,10 @@ namespace HaCreator.MapSimulator.Fields
         {
             payload ??= Array.Empty<byte>();
 
-            byte[] relayPayload = new byte[sizeof(ushort) + payload.Length];
-            BinaryPrimitives.WriteUInt16LittleEndian(relayPayload.AsSpan(0, sizeof(ushort)), (ushort)packetType);
-            if (payload.Length > 0)
-            {
-                Buffer.BlockCopy(payload, 0, relayPayload, sizeof(ushort), payload.Length);
-            }
-
-            return relayPayload;
+            using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            writer.Write((ushort)packetType);
+            writer.WriteBytes(payload);
+            return writer.ToArray();
         }
 
         public static void NormalizeCurrentWrapperRelayPacket(ref int packetType, ref byte[] payload)

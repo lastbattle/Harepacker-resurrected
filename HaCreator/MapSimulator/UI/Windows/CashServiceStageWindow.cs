@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.PacketLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -5443,18 +5444,19 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.BuyerCharacterId,
                 snapshot.BuyerCharacterIdRawHex,
                 Math.Max(1, snapshot.BuyerCharacterIdByteLength));
-            List<byte> bytes = new(CashItemInfoPacketByteLength);
-            bytes.AddRange(BitConverter.GetBytes(snapshot.SerialNumber));
-            bytes.AddRange(BitConverter.GetBytes(snapshot.AccountId));
-            bytes.AddRange(BitConverter.GetBytes(snapshot.CharacterId));
-            bytes.AddRange(BitConverter.GetBytes(snapshot.ItemId));
-            bytes.AddRange(BitConverter.GetBytes(snapshot.CommodityId));
-            bytes.AddRange(BitConverter.GetBytes((short)Math.Clamp(snapshot.Quantity, 1, short.MaxValue)));
-            bytes.AddRange(buyerCharacterIdBytes);
-            bytes.AddRange(BitConverter.GetBytes(snapshot.RawExpireFileTime));
-            bytes.AddRange(BitConverter.GetBytes(snapshot.PaybackRate));
-            bytes.AddRange(BitConverter.GetBytes(snapshot.DiscountRate));
-            return $"GW_CashItemInfo raw[{bytes.Count.ToString(CultureInfo.InvariantCulture)}]={Convert.ToHexString(bytes.ToArray())}";
+            using PacketWriter writer = new(CashItemInfoPacketByteLength);
+            writer.WriteLong(snapshot.SerialNumber);
+            writer.WriteInt(snapshot.AccountId);
+            writer.WriteInt(snapshot.CharacterId);
+            writer.WriteInt(snapshot.ItemId);
+            writer.WriteInt(snapshot.CommodityId);
+            writer.Write((short)Math.Clamp(snapshot.Quantity, 1, short.MaxValue));
+            writer.WriteBytes(buyerCharacterIdBytes);
+            writer.WriteLong(snapshot.RawExpireFileTime);
+            writer.WriteInt(snapshot.PaybackRate);
+            writer.WriteInt(snapshot.DiscountRate);
+            byte[] bytes = writer.ToArray();
+            return $"GW_CashItemInfo raw[{bytes.Length.ToString(CultureInfo.InvariantCulture)}]={Convert.ToHexString(bytes)}";
         }
 
         private static byte[] BuildFixedPacketStringBytes(string value, string rawHex, int byteLength)

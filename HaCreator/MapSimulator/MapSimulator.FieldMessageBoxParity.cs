@@ -1,6 +1,7 @@
 ﻿using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
+using MapleLib.PacketLib;
 using System;
 using System.Linq;
 using System.Net;
@@ -304,9 +305,10 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /messagebox session send <opcode> [payloadhex=..|payloadb64=..]");
                 }
 
-                byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
-                BitConverter.GetBytes((ushort)opcode).CopyTo(rawPacket, 0);
-                Buffer.BlockCopy(payload, 0, rawPacket, sizeof(ushort), payload.Length);
+                using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+                writer.Write((ushort)opcode);
+                writer.WriteBytes(payload);
+                byte[] rawPacket = writer.ToArray();
                 return _fieldMessageBoxOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendStatus)
                     ? ChatCommandHandler.CommandResult.Ok(sendStatus)
                     : ChatCommandHandler.CommandResult.Error(sendStatus);

@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using MapleLib.PacketLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Buffers.Binary;
@@ -289,14 +290,13 @@ namespace HaCreator.MapSimulator
             string normalizedTargetName = targetName ?? string.Empty;
             byte[] encodedTargetName = Encoding.Default.GetBytes(normalizedTargetName);
             int targetLength = Math.Min(encodedTargetName.Length, ushort.MaxValue);
-            byte[] payload = new byte[sizeof(int) + sizeof(short) + sizeof(int) + sizeof(short) + targetLength];
-            Span<byte> span = payload;
-            BinaryPrimitives.WriteInt32LittleEndian(span, currentTick);
-            BinaryPrimitives.WriteInt16LittleEndian(span.Slice(sizeof(int), sizeof(short)), (short)Math.Clamp(inventoryPosition, 0, short.MaxValue));
-            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(sizeof(int) + sizeof(short), sizeof(int)), itemId);
-            BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(sizeof(int) + sizeof(short) + sizeof(int), sizeof(short)), (ushort)targetLength);
-            encodedTargetName.AsSpan(0, targetLength).CopyTo(span.Slice(sizeof(int) + sizeof(short) + sizeof(int) + sizeof(short)));
-            return payload;
+            using PacketWriter writer = new(sizeof(int) + sizeof(short) + sizeof(int) + sizeof(ushort) + targetLength);
+            writer.WriteInt(currentTick);
+            writer.Write((short)Math.Clamp(inventoryPosition, 0, short.MaxValue));
+            writer.WriteInt(itemId);
+            writer.Write((ushort)targetLength);
+            writer.Write(encodedTargetName, 0, targetLength);
+            return writer.ToArray();
         }
 
         private string DispatchRandomMorphRequest(RandomMorphDialogRequest request, byte[] payload)

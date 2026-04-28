@@ -336,11 +336,11 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
         {
-            byte[] payload = new byte[FollowCharacterRequestPayloadLength];
-            BitConverter.GetBytes(driverId).CopyTo(payload, 0);
-            payload[sizeof(int)] = autoRequest ? (byte)1 : (byte)0;
-            payload[sizeof(int) + sizeof(byte)] = keyInput ? (byte)1 : (byte)0;
-            return payload;
+            using PacketWriter writer = new(FollowCharacterRequestPayloadLength);
+            writer.WriteInt(driverId);
+            writer.WriteByte(autoRequest ? 1 : 0);
+            writer.WriteByte(keyInput ? 1 : 0);
+            return writer.ToArray();
         }
 
         internal static byte[] BuildFollowCharacterWithdrawPayload()
@@ -510,10 +510,9 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)
         {
-            int payloadLength = payload?.Count ?? 0;
-            byte[] raw = new byte[sizeof(ushort) + payloadLength];
-            BitConverter.GetBytes(opcode).CopyTo(raw, 0);
-            for (int i = 0; i < payloadLength; i++)
+            using PacketWriter writer = new(sizeof(ushort) + (payload?.Count ?? 0));
+            writer.Write(opcode);
+            if (payload is byte[] bytes)
             {
                 raw[sizeof(ushort) + i] = payload[i];
             }

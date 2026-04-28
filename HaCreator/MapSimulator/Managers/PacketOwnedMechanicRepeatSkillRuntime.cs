@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using MapleLib.PacketLib;
 
 using BinaryReader = MapleLib.PacketLib.PacketReader;
 namespace HaCreator.MapSimulator.Managers
@@ -105,10 +106,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            payload = new byte[sizeof(int) + 2];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), skillId);
-            payload[sizeof(int)] = (byte)skillLevel;
-            payload[sizeof(int) + 1] = sendLocal ? (byte)1 : (byte)0;
+            using PacketWriter writer = new(sizeof(int) + 2);
+            writer.WriteInt(skillId);
+            writer.WriteByte(skillLevel);
+            writer.WriteByte(sendLocal ? 1 : 0);
+            payload = writer.ToArray();
             error = null;
             return true;
         }
@@ -157,19 +159,15 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            payload = new byte[(sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2];
-            int offset = 0;
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(offset, sizeof(int)), requestTime);
-            offset += sizeof(int);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(offset, sizeof(int)), Sg88SkillId);
-            offset += sizeof(int);
-            payload[offset++] = (byte)skillLevel;
-            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(offset, sizeof(short)), x);
-            offset += sizeof(short);
-            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(offset, sizeof(short)), y);
-            offset += sizeof(short);
-            payload[offset++] = (byte)(moveActionLowBit & 1);
-            payload[offset] = vecCtrlState;
+            using PacketWriter writer = new((sizeof(int) * 2) + sizeof(byte) + (sizeof(short) * 2) + 2);
+            writer.WriteInt(requestTime);
+            writer.WriteInt(Sg88SkillId);
+            writer.WriteByte(skillLevel);
+            writer.Write(x);
+            writer.Write(y);
+            writer.WriteByte(moveActionLowBit & 1);
+            writer.WriteByte(vecCtrlState);
+            payload = writer.ToArray();
             error = null;
             return true;
         }
@@ -198,9 +196,10 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
-            BinaryPrimitives.WriteUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)), Sg88FirstUseSummonOpcode);
-            payload.CopyTo(rawPacket, sizeof(ushort));
+            using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            writer.Write((ushort)Sg88FirstUseSummonOpcode);
+            writer.WriteBytes(payload);
+            byte[] rawPacket = writer.ToArray();
             request = new PacketOwnedSg88FirstUseRequest(
                 Sg88FirstUseSummonOpcode,
                 Sg88SkillId,
@@ -379,9 +378,10 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
-                BinaryPrimitives.WriteUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)), Sg88FirstUseSummonOpcode);
-                payload.CopyTo(rawPacket, sizeof(ushort));
+                using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+                writer.Write((ushort)Sg88FirstUseSummonOpcode);
+                writer.WriteBytes(payload);
+                byte[] rawPacket = writer.ToArray();
                 request = new PacketOwnedSg88FirstUseRequest(
                     Sg88FirstUseSummonOpcode,
                     skillId,

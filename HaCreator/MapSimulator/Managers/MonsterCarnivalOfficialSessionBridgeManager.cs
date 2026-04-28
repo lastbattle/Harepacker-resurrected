@@ -923,11 +923,11 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRequestPacket(MonsterCarnivalTab tab, int entryIndex)
         {
-            byte[] rawPacket = new byte[sizeof(short) + sizeof(byte) + sizeof(int)];
-            BitConverter.GetBytes((short)OutboundRequestOpcode).CopyTo(rawPacket, 0);
-            rawPacket[sizeof(short)] = (byte)tab;
-            BitConverter.GetBytes(entryIndex).CopyTo(rawPacket, sizeof(short) + sizeof(byte));
-            return rawPacket;
+            using PacketWriter writer = new(sizeof(ushort) + sizeof(byte) + sizeof(int));
+            writer.Write((ushort)OutboundRequestOpcode);
+            writer.WriteByte((byte)tab);
+            writer.WriteInt(entryIndex);
+            return writer.ToArray();
         }
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
         {

@@ -67,25 +67,25 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildMerchantOutboundPacket(byte requestSubtype, ReadOnlySpan<byte> requestBody = default)
         {
-            byte[] packet = new byte[sizeof(ushort) + 1 + requestBody.Length];
-            BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, sizeof(ushort)), OutboundMiniRoomOpcode);
-            packet[sizeof(ushort)] = requestSubtype;
+            using PacketWriter writer = new(sizeof(ushort) + sizeof(byte) + requestBody.Length);
+            writer.Write(OutboundMiniRoomOpcode);
+            writer.WriteByte(requestSubtype);
             if (!requestBody.IsEmpty)
             {
-                requestBody.CopyTo(packet.AsSpan(sizeof(ushort) + 1));
+                writer.WriteBytes(requestBody.ToArray());
             }
 
-            return packet;
+            return writer.ToArray();
         }
 
         public static byte[] BuildPersonalShopBuyOutboundPacket(bool buyFromEntrustedShop, byte itemIndex, short bundleCount, uint itemCrc)
         {
             byte requestSubtype = buyFromEntrustedShop ? RequestSubtypeEntrustedShopBuy : RequestSubtypePersonalShopBuy;
-            byte[] requestBody = new byte[1 + sizeof(short) + sizeof(uint)];
-            requestBody[0] = itemIndex;
-            BinaryPrimitives.WriteInt16LittleEndian(requestBody.AsSpan(1, sizeof(short)), Math.Max((short)1, bundleCount));
-            BinaryPrimitives.WriteUInt32LittleEndian(requestBody.AsSpan(3, sizeof(uint)), itemCrc);
-            return BuildMerchantOutboundPacket(requestSubtype, requestBody);
+            using PacketWriter writer = new(sizeof(byte) + sizeof(short) + sizeof(uint));
+            writer.WriteByte(itemIndex);
+            writer.Write(Math.Max((short)1, bundleCount));
+            writer.Write(itemCrc);
+            return BuildMerchantOutboundPacket(requestSubtype, writer.ToArray());
         }
 
         public static byte[] BuildEntrustedShopVisitListOutboundPacket()

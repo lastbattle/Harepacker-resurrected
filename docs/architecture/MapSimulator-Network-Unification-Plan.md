@@ -272,6 +272,9 @@ Adapt (do not copy directly) missing lifecycle/buffering patterns from:
     - `dotnet test UnitTest_MapSimulator/UnitTest_MapSimulator.csproj -c Debug --no-restore -m:1` passed: 54 tests.
     - `dotnet test MapleLib.Tests/MapleLib.Tests.csproj -c Debug --no-restore -m:1` passed: 106 tests.
   - Live parity preflight found no running `MapleStory`/`HaCreator` process and no checked parity ports listening or established (`8484`, `8585`, `8586`, `8600`, `8601`, `18484`, `18486`, `18507`, `18508`), so the login/channel/cash/mts manual pass still requires a live v95 client/server session.
+- April 28, 2026 packet construction follow-up:
+  - MapSimulator packet and payload construction paths that were manually assembling little-endian byte arrays now use `MapleLib.PacketLib.PacketWriter`, including the local-utility follow-character request payload, raw opcode framing helpers, and related packet-owned parity payload builders.
+  - Remaining `BitConverter.GetBytes`/`BinaryPrimitives.Write*LittleEndian` uses under `HaCreator/MapSimulator` are limited to non-packet construction cases such as endpoint address decoding, checksum/search scratch buffers, or in-place mutation of already-decoded payload buffers.
 - April 26, 2026 IDA v95 client evidence (`D:\Installations\MapleStoryGlobal v95\MapleStory.exe`, md5 `600b1c2dda171684007f080aed6947eb`):
   - `CLogin::OnSelectCharacterResult` (`0x5dea80`) and `CLogin::OnSelectCharacterByVACResult` (`0x5de670`) decode the channel endpoint from the login packet and call `CWvsContext::IssueConnect`.
   - `CClientSocket::OnMigrateCommand` (`0x4add50`) decodes the next endpoint and calls `CWvsContext::IssueConnect`.

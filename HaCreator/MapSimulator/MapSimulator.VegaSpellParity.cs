@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
+using MapleLib.PacketLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Buffers.Binary;
@@ -585,17 +586,17 @@ namespace HaCreator.MapSimulator
             bool useWhiteScroll,
             int updateTick)
         {
-            byte[] payload = new byte[VegaOwnerRequestPayloadLength];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
-            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)), (short)Math.Max(0, modifierSlotPosition));
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)), modifierItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 2) + sizeof(short), sizeof(int)), equipItemToken);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 3) + sizeof(short), sizeof(int)), equipSlotPosition);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 4) + sizeof(short), sizeof(int)), scrollItemToken);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 5) + sizeof(short), sizeof(int)), scrollSlotPosition);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 6) + sizeof(short), sizeof(int)), useWhiteScroll ? 1 : 0);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 7) + sizeof(short), sizeof(int)), updateTick);
-            return payload;
+            using PacketWriter writer = new(VegaOwnerRequestPayloadLength);
+            writer.WriteInt(updateTick);
+            writer.Write((short)Math.Max(0, modifierSlotPosition));
+            writer.WriteInt(modifierItemId);
+            writer.WriteInt(equipItemToken);
+            writer.WriteInt(equipSlotPosition);
+            writer.WriteInt(scrollItemToken);
+            writer.WriteInt(scrollSlotPosition);
+            writer.WriteInt(useWhiteScroll ? 1 : 0);
+            writer.WriteInt(updateTick);
+            return writer.ToArray();
         }
 
         private static byte[] BuildVegaConsumeCashLaunchPayload(
@@ -606,14 +607,14 @@ namespace HaCreator.MapSimulator
             int slotIndex,
             int modifierItemToken)
         {
-            byte[] payload = new byte[VegaConsumeCashLaunchPayloadLength];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
-            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)), (short)Math.Max(0, modifierSlotPosition));
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)), modifierItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(VegaConsumeCashLaunchPayloadPrefixLength, sizeof(int)), (int)inventoryType);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(VegaConsumeCashLaunchPayloadPrefixLength + sizeof(int), sizeof(int)), slotIndex);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 2), sizeof(int)), modifierItemToken);
-            return payload;
+            using PacketWriter writer = new(VegaConsumeCashLaunchPayloadLength);
+            writer.WriteInt(updateTick);
+            writer.Write((short)Math.Max(0, modifierSlotPosition));
+            writer.WriteInt(modifierItemId);
+            writer.WriteInt((int)inventoryType);
+            writer.WriteInt(slotIndex);
+            writer.WriteInt(modifierItemToken);
+            return writer.ToArray();
         }
 
         private bool HasActiveVegaExclusiveRequestBlock(int currentTick)

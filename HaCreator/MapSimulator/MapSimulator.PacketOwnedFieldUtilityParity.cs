@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 
@@ -877,10 +878,13 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildPacketOwnedLocalUtilityRawPacket(int opcode, IReadOnlyList<byte> payload)
         {
-            int payloadLength = payload?.Count ?? 0;
-            byte[] rawPacket = new byte[sizeof(ushort) + payloadLength];
-            BitConverter.GetBytes((ushort)opcode).CopyTo(rawPacket, 0);
-            for (int i = 0; i < payloadLength; i++)
+            using PacketWriter writer = new(sizeof(ushort) + (payload?.Count ?? 0));
+            writer.Write((ushort)opcode);
+            if (payload is byte[] bytes)
+            {
+                writer.WriteBytes(bytes);
+            }
+            else if (payload != null)
             {
                 rawPacket[sizeof(ushort) + i] = payload[i];
             }

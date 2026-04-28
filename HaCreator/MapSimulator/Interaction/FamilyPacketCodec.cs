@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -229,8 +230,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static byte[] BuildUsePrivilegeRequestPayload(int privilegeIndex, bool includeTargetName, string targetName)
         {
-            List<byte> payload = new(sizeof(int) + sizeof(ushort) + Math.Max(0, targetName?.Length ?? 0));
-            payload.AddRange(BitConverter.GetBytes(privilegeIndex));
+            using PacketWriter writer = new(sizeof(int) + sizeof(ushort) + Math.Max(0, targetName?.Length ?? 0));
+            writer.WriteInt(privilegeIndex);
             if (!includeTargetName)
             {
                 return payload.ToArray();
@@ -241,7 +242,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : targetName.Trim();
             byte[] targetNameBytes = Encoding.ASCII.GetBytes(normalizedTargetName);
             ushort byteLength = (ushort)Math.Min(targetNameBytes.Length, ushort.MaxValue);
-            payload.AddRange(BitConverter.GetBytes(byteLength));
+            writer.Write(byteLength);
             if (byteLength > 0)
             {
                 payload.AddRange(targetNameBytes.AsSpan(0, byteLength).ToArray());

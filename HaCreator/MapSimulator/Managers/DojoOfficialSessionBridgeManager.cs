@@ -1306,9 +1306,9 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRawPacket(int opcode, byte[] payload)
         {
-            byte[] rawPacket = new byte[sizeof(short) + (payload?.Length ?? 0)];
-            BinaryPrimitives.WriteUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(short)), (ushort)opcode);
-            if (payload != null && payload.Length > 0)
+            using PacketWriter writer = new(sizeof(ushort) + (payload?.Length ?? 0));
+            writer.Write((ushort)opcode);
+            if (payload != null)
             {
                 payload.CopyTo(rawPacket, sizeof(short));
             }

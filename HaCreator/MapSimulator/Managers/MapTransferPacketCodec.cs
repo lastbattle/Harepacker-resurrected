@@ -35,10 +35,10 @@ namespace HaCreator.MapSimulator.Managers
         public static byte[] BuildRawRequestPacket(MapTransferRuntimeRequest request)
         {
             byte[] payload = BuildRequestPayload(request);
-            byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
-            BitConverter.GetBytes(OutboundRequestOpcode).CopyTo(rawPacket, 0);
-            payload.CopyTo(rawPacket, sizeof(ushort));
-            return rawPacket;
+            using BinaryWriter writer = new(sizeof(ushort) + payload.Length);
+            writer.Write(OutboundRequestOpcode);
+            writer.Write(payload);
+            return writer.ToArray();
         }
 
         public static byte[] BuildSyntheticResultPayload(

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapSimulator.Interaction;
@@ -177,12 +178,12 @@ namespace HaCreator.MapSimulator.Managers
                 return null;
             }
 
-            byte[] payload = new byte[17];
-            payload[0] = 3;
-            BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(1, 4), (uint)(_areaGroup | (_areaDetail << 8)));
-            BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(5, 4), (uint)(_birthYear * 10000 + (_birthMonth * 100) + _birthDay));
-            BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(9, 4), _playStyleMask);
-            BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(13, 4), _activityMask);
+            using PacketWriter writer = new(sizeof(byte) + (sizeof(uint) * 4));
+            writer.WriteByte(3);
+            writer.Write(BuildClientAreaCodeForSave(_areaGroup, _areaDetail));
+            writer.Write((uint)(_birthYear * 10000 + (_birthMonth * 100) + _birthDay));
+            writer.Write(_playStyleMask);
+            writer.Write(_activityMask);
             _savePending = true;
             _isFirstEntry = false;
             _statusText = "Queued an account-more-info save request and disabled further saves until server subtype 4 returns.";

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Fields;
+using MapleLib.PacketLib;
 using System;
 
 namespace HaCreator.MapSimulator.Managers
@@ -17,14 +18,10 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] payload = BuildClientPayload(packet);
-            byte[] raw = new byte[sizeof(ushort) + payload.Length];
-            BitConverter.GetBytes((ushort)packet.Opcode).CopyTo(raw, 0);
-            if (payload.Length > 0)
-            {
-                Buffer.BlockCopy(payload, 0, raw, sizeof(ushort), payload.Length);
-            }
-
-            return raw;
+            using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            writer.Write((ushort)packet.Opcode);
+            writer.WriteBytes(payload);
+            return writer.ToArray();
         }
 
         public static byte[] BuildClientPayload(RockPaperScissorsClientPacket packet)
@@ -34,10 +31,9 @@ namespace HaCreator.MapSimulator.Managers
                 return Array.Empty<byte>();
             }
 
-            int payloadLength = packet.Payload?.Length ?? 0;
-            byte[] payload = new byte[sizeof(byte) + payloadLength];
-            payload[0] = (byte)packet.RequestType;
-            if (payloadLength > 0)
+            using PacketWriter writer = new(sizeof(byte) + (packet.Payload?.Length ?? 0));
+            writer.WriteByte((byte)packet.RequestType);
+            if (packet.Payload != null)
             {
                 Buffer.BlockCopy(packet.Payload, 0, payload, sizeof(byte), payloadLength);
             }

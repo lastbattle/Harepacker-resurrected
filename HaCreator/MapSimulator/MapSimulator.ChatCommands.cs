@@ -21,6 +21,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
@@ -3544,12 +3545,17 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        byte[] payload = packetType switch
+                        byte[] payload = null;
+                        if (packetType == 344)
                         {
-                            344 => BitConverter.GetBytes(checked((short)packetValue)),
-                            345 => new[] { unchecked((byte)packetValue) },
-                            _ => null
-                        };
+                            using PacketWriter writer = new(sizeof(short));
+                            writer.Write(checked((short)packetValue));
+                            payload = writer.ToArray();
+                        }
+                        else if (packetType == 345)
+                        {
+                            payload = new[] { unchecked((byte)packetValue) };
+                        }
 
 
                         if (payload == null)
@@ -8596,11 +8602,10 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        byte[] recvPacket = new byte[sizeof(ushort) + recvPayload.Length];
-
-                        BitConverter.GetBytes(recvOpcode).CopyTo(recvPacket, 0);
-
-                        recvPayload.CopyTo(recvPacket, sizeof(ushort));
+                        using PacketWriter writer = new(sizeof(ushort) + recvPayload.Length);
+                        writer.Write(recvOpcode);
+                        writer.WriteBytes(recvPayload);
+                        byte[] recvPacket = writer.ToArray();
 
                         if ((kind == SocialRoomKind.PersonalShop || kind == SocialRoomKind.EntrustedShop)
                             && (recvOpcode == SocialRoomEmployeeOfficialSessionBridgeManager.EmployeeEnterFieldOpcode

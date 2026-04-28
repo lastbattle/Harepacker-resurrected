@@ -1,6 +1,7 @@
 ﻿using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using MapleLib.PacketLib;
 using Microsoft.Xna.Framework;
 using System;
 using System.Globalization;
@@ -49,7 +50,9 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error("Usage: /rps open [entryValue]");
                             }
 
-                            byte[] payload = BitConverter.GetBytes(entryValue);
+                            using PacketWriter writer = new(sizeof(uint));
+                            writer.Write(entryValue);
+                            byte[] payload = writer.ToArray();
                             return TryApplyRockPaperScissorsPacket(8, payload, currTickCount, out string openMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(field.DescribeStatus())
                                 : ChatCommandHandler.CommandResult.Error(openMessage);
@@ -104,7 +107,9 @@ namespace HaCreator.MapSimulator
                                         return ChatCommandHandler.CommandResult.Error("Usage: /rps packet open [entryValue]");
                                     }
 
-                                    payload = BitConverter.GetBytes(entryValue);
+                                    using PacketWriter writer = new(sizeof(uint));
+                                    writer.Write(entryValue);
+                                    payload = writer.ToArray();
                                     break;
                                 }
 

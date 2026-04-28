@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -171,10 +172,9 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)
         {
-            int payloadLength = payload?.Count ?? 0;
-            byte[] raw = new byte[sizeof(ushort) + payloadLength];
-            BitConverter.GetBytes(opcode).CopyTo(raw, 0);
-            for (int i = 0; i < payloadLength; i++)
+            using PacketWriter writer = new(sizeof(ushort) + (payload?.Count ?? 0));
+            writer.Write(opcode);
+            if (payload is byte[] bytes)
             {
                 raw[sizeof(ushort) + i] = payload[i];
             }

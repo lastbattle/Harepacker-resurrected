@@ -13,6 +13,7 @@ using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Render.DX;
 using HaCreator.MapEditor.Instance.Shapes;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
@@ -1826,11 +1827,11 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildPacketOwnedQuestDeliveryTalkToNpcPayload(int npcTemplateId, int localX, int localY)
         {
-            byte[] payload = new byte[sizeof(int) + sizeof(short) + sizeof(short)];
-            Buffer.BlockCopy(BitConverter.GetBytes(npcTemplateId), 0, payload, 0, sizeof(int));
-            Buffer.BlockCopy(BitConverter.GetBytes(ClampPacketOwnedQuestDeliveryTalkCoordinate(localX)), 0, payload, sizeof(int), sizeof(short));
-            Buffer.BlockCopy(BitConverter.GetBytes(ClampPacketOwnedQuestDeliveryTalkCoordinate(localY)), 0, payload, sizeof(int) + sizeof(short), sizeof(short));
-            return payload;
+            using PacketWriter writer = new(sizeof(int) + (sizeof(short) * 2));
+            writer.WriteInt(npcTemplateId);
+            writer.Write(ClampPacketOwnedQuestDeliveryTalkCoordinate(localX));
+            writer.Write(ClampPacketOwnedQuestDeliveryTalkCoordinate(localY));
+            return writer.ToArray();
         }
 
         private static short ClampPacketOwnedQuestDeliveryTalkCoordinate(int coordinate)

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.UI;
+using MapleLib.PacketLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
@@ -117,10 +118,10 @@ namespace HaCreator.MapSimulator.Fields
 
         public static byte[] BuildClientMesoDropRequestPayload(int currentTimeMs, int amount)
         {
-            byte[] payload = new byte[sizeof(int) * 2];
-            BitConverter.GetBytes(currentTimeMs).CopyTo(payload, 0);
-            BitConverter.GetBytes(amount).CopyTo(payload, sizeof(int));
-            return payload;
+            using PacketWriter writer = new(sizeof(int) * 2);
+            writer.WriteInt(currentTimeMs);
+            writer.WriteInt(amount);
+            return writer.ToArray();
         }
 
         public static byte[] BuildClientItemDropRequestPayload(
@@ -129,13 +130,13 @@ namespace HaCreator.MapSimulator.Fields
             int sourceSlotPosition,
             int dropCount)
         {
-            byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(short) * 3];
-            BitConverter.GetBytes(currentTimeMs).CopyTo(payload, 0);
-            payload[sizeof(int)] = (byte)inventoryType;
-            BitConverter.GetBytes((short)sourceSlotPosition).CopyTo(payload, sizeof(int) + sizeof(byte));
-            BitConverter.GetBytes((short)0).CopyTo(payload, sizeof(int) + sizeof(byte) + sizeof(short));
-            BitConverter.GetBytes((short)dropCount).CopyTo(payload, sizeof(int) + sizeof(byte) + sizeof(short) * 2);
-            return payload;
+            using PacketWriter writer = new(sizeof(int) + sizeof(byte) + (sizeof(short) * 3));
+            writer.WriteInt(currentTimeMs);
+            writer.WriteByte((byte)inventoryType);
+            writer.Write((short)sourceSlotPosition);
+            writer.Write((short)0);
+            writer.Write((short)dropCount);
+            return writer.ToArray();
         }
 
         public static LocalItemDropInventoryOperationResultKind ResolveClientItemDropInventoryOperationResult(

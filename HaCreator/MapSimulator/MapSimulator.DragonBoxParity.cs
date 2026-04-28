@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using MapleLib.PacketLib;
 using Microsoft.Xna.Framework;
 using System;
 using System.Globalization;
@@ -294,14 +295,14 @@ namespace HaCreator.MapSimulator
             bool canSummon,
             int orbMask)
         {
-            byte[] payload = new byte[closeRequested ? 7 : 11];
-            Buffer.BlockCopy(BitConverter.GetBytes(Math.Max(0, remainingTimeMs)), 0, payload, 0, sizeof(int));
-            payload[4] = showRequested ? (byte)1 : (byte)0;
-            payload[5] = closeRequested ? (byte)1 : (byte)0;
-            payload[6] = canSummon ? (byte)1 : (byte)0;
+            using PacketWriter writer = new(sizeof(int) + (sizeof(byte) * 3) + (closeRequested ? 0 : sizeof(int)));
+            writer.WriteInt(Math.Max(0, remainingTimeMs));
+            writer.WriteByte(showRequested ? 1 : 0);
+            writer.WriteByte(closeRequested ? 1 : 0);
+            writer.WriteByte(canSummon ? 1 : 0);
             if (!closeRequested)
             {
-                Buffer.BlockCopy(BitConverter.GetBytes(NormalizePacketOwnedDragonBoxOrbMask(orbMask)), 0, payload, 7, sizeof(int));
+                writer.WriteInt(NormalizePacketOwnedDragonBoxOrbMask(orbMask));
             }
 
             return payload;

@@ -6,6 +6,7 @@ using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -1094,9 +1095,9 @@ namespace HaCreator.MapSimulator
 
         internal static byte[] BuildPacketOwnedLogoutGiftSelectionPayload(int index)
         {
-            byte[] payload = new byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(payload, index);
-            return payload;
+            using PacketWriter writer = new(sizeof(int));
+            writer.WriteInt(index);
+            return writer.ToArray();
         }
 
         internal static bool TryBuildPacketOwnedLogoutGiftSelectionPayload(int buttonId, out byte[] payload, out int slotIndex)

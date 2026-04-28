@@ -2,6 +2,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using HaCreator.MapSimulator.Interaction;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzProperties;
@@ -10008,13 +10009,12 @@ namespace HaCreator.MapSimulator.UI
             selectedPaymentOption = ResolveCashShopIncTrunkCountSelectedPaymentOption(availablePaymentOptions);
             bool mapPointOnly = selectedPaymentOption == 2;
             confirmPromptSummary = BuildCashShopIncTrunkCountConfirmPrompt();
-            byte[] payload =
-            [
-                (byte)CashShopIncTrunkCountMode,
-                (byte)(mapPointOnly ? 1 : 0),
-                .. BitConverter.GetBytes(selectedPaymentOption),
-                0
-            ];
+            using PacketWriter writer = new(sizeof(byte) + sizeof(byte) + sizeof(int) + sizeof(byte));
+            writer.WriteByte(CashShopIncTrunkCountMode);
+            writer.WriteByte(mapPointOnly ? 1 : 0);
+            writer.WriteInt(selectedPaymentOption);
+            writer.WriteByte(0);
+            byte[] payload = writer.ToArray();
 
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 CashShopOutboundOpcode,
@@ -10161,13 +10161,11 @@ namespace HaCreator.MapSimulator.UI
         {
             bool hasIntPayload = mode == PacketOwnedAdminShopResultMode
                 || mode == PacketOwnedAdminShopWishlistRegisterMode;
-            List<byte> payload = new(1 + (hasIntPayload ? sizeof(int) : 0))
-            {
-                (byte)mode
-            };
+            using PacketWriter writer = new(sizeof(byte) + (hasIntPayload ? sizeof(int) : 0));
+            writer.WriteByte(mode);
             if (hasIntPayload)
             {
-                payload.AddRange(BitConverter.GetBytes(value));
+                writer.WriteInt(value);
             }
 
             return new PacketOwnedNpcUtilityOutboundRequest(
@@ -10193,13 +10191,12 @@ namespace HaCreator.MapSimulator.UI
 
             int normalizedCount = Math.Clamp(requestCount, 1, ushort.MaxValue);
             int normalizedPosition = Math.Clamp(position, 0, ushort.MaxValue);
-            byte[] payload =
-            [
-                (byte)PacketOwnedAdminShopTradeRequestMode,
-                .. BitConverter.GetBytes(commoditySerialNumber),
-                .. BitConverter.GetBytes((ushort)normalizedCount),
-                .. BitConverter.GetBytes((ushort)normalizedPosition)
-            ];
+            using PacketWriter writer = new(sizeof(byte) + sizeof(int) + (sizeof(ushort) * 2));
+            writer.WriteByte(PacketOwnedAdminShopTradeRequestMode);
+            writer.WriteInt(commoditySerialNumber);
+            writer.Write((ushort)normalizedCount);
+            writer.Write((ushort)normalizedPosition);
+            byte[] payload = writer.ToArray();
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 74,
                 payload,

@@ -9,6 +9,7 @@ using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
+using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using Microsoft.Xna.Framework;
 
@@ -580,9 +581,9 @@ namespace HaCreator.MapSimulator
                 throw new ArgumentOutOfRangeException(nameof(operationCode), operationCode, "Repair durability only supports opcodes 130 and 131.");
             }
 
-            byte[] payload = new byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(payload, encodedPosition);
-            return payload;
+            using PacketWriter writer = new(sizeof(int));
+            writer.WriteInt(encodedPosition);
+            return writer.ToArray();
         }
 
         internal static int CalculateRepairDurabilityPay(

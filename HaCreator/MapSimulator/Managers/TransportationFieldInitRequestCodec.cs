@@ -41,10 +41,10 @@ namespace HaCreator.MapSimulator.Managers
         public static byte[] BuildRawFieldInitPacket(int fieldId, int shipKind)
         {
             byte[] payload = BuildFieldInitPayload(fieldId, shipKind);
-            byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
-            BitConverter.GetBytes(OutboundFieldInitOpcode).CopyTo(rawPacket, 0);
-            payload.CopyTo(rawPacket, sizeof(ushort));
-            return rawPacket;
+            using BinaryWriter writer = new(sizeof(ushort) + payload.Length);
+            writer.Write(OutboundFieldInitOpcode);
+            writer.Write(payload);
+            return writer.ToArray();
         }
 
         public static bool TryDecodeFieldInitPayload(byte[] payload, out int fieldId, out int shipKind)
