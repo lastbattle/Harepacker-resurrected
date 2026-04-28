@@ -125,6 +125,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaisePutItemConfirmResultPacketType = 1039;
         public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1040;
         public const int QuestRewardRaiseQuestRecordMessagePacketType = 1041;
+        public const int QuestRewardRaiseClientOpenOwnerPacketType = QuestRewardRaiseOutboundRequest.ClientOpenOwnerOpcode;
         public const int QuestRewardRaiseClientPutItemReleasePacketType = QuestRewardRaiseOutboundRequest.ClientPutItemReleaseOpcode;
         public const int QuestRewardRaiseClientPutItemAddOrConfirmPacketType = QuestRewardRaiseOutboundRequest.ClientPutItemOpcode;
         public const int RandomMorphResultClientPacketType = 123;
@@ -957,6 +958,15 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("raiseopen", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisecreatewindow", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseclient284", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseowner284", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseClientOpenOwnerPacketType;
+                return true;
+            }
+
             if (token.Equals("raiseputitemadd", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("raiseaddresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("raisepieceadd", StringComparison.OrdinalIgnoreCase))
@@ -1227,6 +1237,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestRewardRaisePutItemConfirmResultPacketType
                 || packetType == QuestRewardRaiseOwnerDestroyResultPacketType
                 || packetType == QuestRewardRaiseQuestRecordMessagePacketType
+                || packetType == QuestRewardRaiseClientOpenOwnerPacketType
                 || packetType == QuestRewardRaiseClientPutItemReleasePacketType
                 || packetType == QuestRewardRaiseClientPutItemAddOrConfirmPacketType
                 || packetType == RandomMorphResultClientPacketType
@@ -1446,6 +1457,7 @@ namespace HaCreator.MapSimulator.Managers
                 QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1039)",
                 QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1040)",
                 QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
+                QuestRewardRaiseClientOpenOwnerPacketType => "RaiseCreateWindow(284)",
                 QuestRewardRaiseClientPutItemReleasePacketType => "RaisePutItemReleaseResult(285)",
                 QuestRewardRaiseClientPutItemAddOrConfirmPacketType => "RaisePutItemAddOrConfirmResult(286)",
                 RandomMorphResultClientPacketType => "OnRandomMorphRes(123)",

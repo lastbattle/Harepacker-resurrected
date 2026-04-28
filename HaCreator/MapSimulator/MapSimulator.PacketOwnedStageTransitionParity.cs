@@ -403,7 +403,9 @@ namespace HaCreator.MapSimulator
                     objInst.Z,
                     objInst.PlatformNumber,
                     objInst.flow == true,
-                    ResolvePacketOwnedNamedObjectStateSfx(objectInfo));
+                    ResolvePacketOwnedNamedObjectStateSfx(objectInfo),
+                    ResolvePacketOwnedNamedObjectAuthoredStateSfxByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateIndexes(objectInfo?.ParentObject as WzImageProperty));
             }
         }
 
@@ -415,6 +417,68 @@ namespace HaCreator.MapSimulator
             }
 
             return (objectProperty["sfx"] as WzStringProperty)?.Value?.Trim() ?? string.Empty;
+        }
+
+        internal static IReadOnlyDictionary<int, string> ResolvePacketOwnedNamedObjectAuthoredStateSfxByIndex(WzImageProperty objectProperty)
+        {
+            Dictionary<int, string> stateSfxByIndex = new();
+            if (objectProperty == null)
+            {
+                return stateSfxByIndex;
+            }
+
+            foreach (WzImageProperty child in objectProperty.WzProperties)
+            {
+                if (!TryResolvePacketOwnedNamedObjectAuthoredStateIndex(child?.Name, out int stateIndex))
+                {
+                    continue;
+                }
+
+                string stateSfx = (child["sfx"] as WzStringProperty)?.Value?.Trim();
+                if (!string.IsNullOrWhiteSpace(stateSfx))
+                {
+                    stateSfxByIndex[stateIndex] = stateSfx;
+                }
+            }
+
+            return stateSfxByIndex;
+        }
+
+        internal static IReadOnlySet<int> ResolvePacketOwnedNamedObjectAuthoredStateIndexes(WzImageProperty objectProperty)
+        {
+            HashSet<int> stateIndexes = new();
+            if (objectProperty == null)
+            {
+                return stateIndexes;
+            }
+
+            foreach (WzImageProperty child in objectProperty.WzProperties)
+            {
+                if (TryResolvePacketOwnedNamedObjectAuthoredStateIndex(child?.Name, out int stateIndex))
+                {
+                    stateIndexes.Add(stateIndex);
+                }
+            }
+
+            return stateIndexes;
+        }
+
+        internal static bool TryResolvePacketOwnedNamedObjectAuthoredStateIndex(string branchName, out int stateIndex)
+        {
+            stateIndex = 0;
+            if (string.IsNullOrWhiteSpace(branchName) ||
+                branchName.Length < 2 ||
+                branchName[0] != 's')
+            {
+                return false;
+            }
+
+            return int.TryParse(
+                branchName.Substring(1),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out stateIndex) &&
+                stateIndex >= 0;
         }
 
         private void BindPacketOwnedStageTransitionMapState()

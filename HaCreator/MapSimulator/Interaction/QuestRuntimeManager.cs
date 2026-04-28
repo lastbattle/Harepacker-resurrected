@@ -342,6 +342,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndFameRequirement { get; init; }
             public int? EndQuestCompleteCount { get; init; }
             public int? EndPartyQuestRankS { get; init; }
+            public int? EndUserInteractDemand { get; init; }
             public int? EndMinLevel { get; init; }
             public int? EndLevelRequirement { get; init; }
             public int EndMorphTemplateId { get; init; }
@@ -952,6 +953,13 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Complete quest-record requirements are still unmet.");
             }
 
+            if (HasUnmetCompletionUserInteractDemand(
+                    definition.EndUserInteractDemand,
+                    TryResolveCompletionUserInteractDemandRecordValue(definition)))
+            {
+                issues.Add("Completion user-interaction demand is still unmet.");
+            }
+
             QuestProgress progress = GetOrCreateProgress(definition.QuestId);
             for (int i = 0; i < definition.EndMobRequirements.Count; i++)
             {
@@ -1180,6 +1188,42 @@ namespace HaCreator.MapSimulator.Interaction
                        || !isSuccessDailyPlayQuestProvider(Math.Max(0, questId)));
         }
 
+        internal static bool HasUnmetCompletionUserInteractDemand(
+            int? requiredUserInteract,
+            string questRecordValue)
+        {
+            if (!requiredUserInteract.HasValue || requiredUserInteract.Value <= 0)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(questRecordValue))
+            {
+                return true;
+            }
+
+            string trimmedRecordValue = questRecordValue.Trim();
+            if (string.Equals(trimmedRecordValue, "Done", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (TryResolveQuestDetailRecordTokenValue(trimmedRecordValue, "Done", out string doneValue) &&
+                !string.IsNullOrWhiteSpace(doneValue) &&
+                !string.Equals(doneValue, "0", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(doneValue, "false", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (TryResolveCompletionUserInteractCount(trimmedRecordValue, out int userInteractCount))
+            {
+                return userInteractCount < requiredUserInteract.Value;
+            }
+
+            return true;
+        }
+
         internal static bool HasUnmetCompletionFameDemand(int? requiredFame, int currentFame)
         {
             return requiredFame.HasValue
@@ -1355,6 +1399,58 @@ namespace HaCreator.MapSimulator.Interaction
                    TryResolveQuestDetailRecordTokenValue(recordValue, "kept", out string keptValue)
                 ? keptValue
                 : string.Empty;
+        }
+
+        private string TryResolveCompletionUserInteractDemandRecordValue(QuestDefinition definition)
+        {
+            if (definition == null || !definition.EndUserInteractDemand.HasValue)
+            {
+                return string.Empty;
+            }
+
+            int recordQuestId = ResolveQuestRecordRequirementQuestId(
+                definition.QuestId,
+                definition.EndInfoNumber,
+                definition.EndFakeQuestId);
+            return TryGetQuestRecordValue(recordQuestId, out string recordValue)
+                ? recordValue
+                : string.Empty;
+        }
+
+        private static bool TryResolveCompletionUserInteractCount(string recordValue, out int count)
+        {
+            count = 0;
+            if (string.IsNullOrWhiteSpace(recordValue))
+            {
+                return false;
+            }
+
+            string[] candidateTokens =
+            {
+                "userInteract",
+                "userInteraction",
+                "interact",
+                "interaction",
+                "count"
+            };
+
+            for (int i = 0; i < candidateTokens.Length; i++)
+            {
+                if (TryResolveQuestDetailRecordTokenValue(recordValue, candidateTokens[i], out string tokenValue) &&
+                    int.TryParse(tokenValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out count))
+                {
+                    count = Math.Max(0, count);
+                    return true;
+                }
+            }
+
+            if (int.TryParse(recordValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out count))
+            {
+                count = Math.Max(0, count);
+                return true;
+            }
+
+            return false;
         }
 
         internal static bool HasUnmetCompletionTimeKeepFieldSetDemand(
@@ -4677,6 +4773,7 @@ namespace HaCreator.MapSimulator.Interaction
                    GetConversationVariantMetadataProperty(property, "state", "questState", "quest_state") != null ||
                    GetConversationVariantMetadataProperty(property, "subJob", "subjob") != null ||
                    GetConversationVariantMetadataProperty(property, "subJobFlags", "subJobFlag", "subjobflags", "subjobflag") != null ||
+                   GetConversationVariantMetadataProperty(property, "jobEx", "jobExFlag", "jobExFlags", "jobExBitfield") != null ||
                    GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin", "minPop") != null ||
                    GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax", "maxPop") != null ||
                    GetConversationVariantMetadataProperty(property, "lvmin", "minLv", "minLevel", "levelMin") != null ||
@@ -4725,6 +4822,14 @@ namespace HaCreator.MapSimulator.Interaction
                 GetConversationVariantMetadataProperty(property, "subJobFlags", "subJobFlag", "subjobflags", "subjobflag"))
                 .GetValueOrDefault();
             if (requiredSubJobFlags > 0 && !MatchesQuestSubJobFlags(currentJob, currentSubJob, requiredSubJobFlags))
+            {
+                return false;
+            }
+
+            int requiredJobExFlags = ParseConversationMetadataInt(
+                GetConversationVariantMetadataProperty(property, "jobEx", "jobExFlag", "jobExFlags", "jobExBitfield"))
+                .GetValueOrDefault();
+            if (requiredJobExFlags > 0 && !MatchesQuestSubJobFlags(currentJob, currentSubJob, requiredJobExFlags))
             {
                 return false;
             }
@@ -12264,6 +12369,10 @@ namespace HaCreator.MapSimulator.Interaction
                    normalized == "subjob" ||
                    normalized == "subjobflag" ||
                    normalized == "subjobflags" ||
+                   normalized == "jobex" ||
+                   normalized == "jobexflag" ||
+                   normalized == "jobexflags" ||
+                   normalized == "jobexbitfield" ||
                    normalized == "pop" ||
                    normalized == "fame" ||
                    normalized == "famemin" ||

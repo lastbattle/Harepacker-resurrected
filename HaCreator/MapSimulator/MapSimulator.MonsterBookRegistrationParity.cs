@@ -1571,19 +1571,49 @@ namespace HaCreator.MapSimulator
                 {
                     foreach (JsonProperty property in element.EnumerateObject())
                     {
-                        if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int mobId)
-                            || mobId <= 0)
+                        int? ownershipKey = int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedKey)
+                            ? NormalizePositiveInt(parsedKey)
+                            : null;
+                        if (property.Value.ValueKind == JsonValueKind.Object)
+                        {
+                            ownershipKey ??= NormalizePositiveInt(ReadInt(
+                                property.Value,
+                                "mobId",
+                                "mob",
+                                "id",
+                                "mob_id",
+                                "monsterId",
+                                "monster_id",
+                                "nMobID",
+                                "nMobId",
+                                "mobID",
+                                "itemId",
+                                "item_id",
+                                "cardItemId",
+                                "card_item_id",
+                                "nItemID",
+                                "nItemId",
+                                "itemID",
+                                "cardId",
+                                "card_id",
+                                "nCardID",
+                                "nCardId",
+                                "coverCardId",
+                                "cover_card_id"));
+                        }
+
+                        if (ownershipKey.GetValueOrDefault() <= 0)
                         {
                             continue;
                         }
 
-                        int? count = TryReadJsonInt(property.Value);
+                        int? count = TryReadMonsterBookCardCountValue(property.Value);
                         if (count.GetValueOrDefault() <= 0)
                         {
                             continue;
                         }
 
-                        counts[mobId] = Math.Clamp(count.Value, 0, 5);
+                        counts[ownershipKey.Value] = Math.Clamp(count.Value, 0, 5);
                     }
 
                     return true;
@@ -1599,7 +1629,7 @@ namespace HaCreator.MapSimulator
                         }
 
                         int? mobId = ReadInt(entry, "mobId", "mob", "id", "mob_id", "monsterId", "monster_id", "nMobID", "nMobId", "mobID");
-                        mobId ??= ReadInt(entry, "itemId", "item_id", "cardItemId", "card_item_id", "nItemID", "nItemId", "itemID", "cardId", "card_id");
+                        mobId ??= ReadInt(entry, "itemId", "item_id", "cardItemId", "card_item_id", "nItemID", "nItemId", "itemID", "cardId", "card_id", "nCardID", "nCardId", "coverCardId", "cover_card_id");
                         int? count = ReadInt(entry, "count", "copies", "ownedCopies", "value", "owned_copies", "cardCount", "card_count", "nCount", "cnt");
                         if (mobId.GetValueOrDefault() <= 0 || count.GetValueOrDefault() <= 0)
                         {
@@ -1614,6 +1644,36 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static int? TryReadMonsterBookCardCountValue(JsonElement value)
+        {
+            int? scalar = TryReadJsonInt(value);
+            if (scalar.HasValue)
+            {
+                return scalar;
+            }
+
+            if (value.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            return ReadInt(
+                value,
+                "count",
+                "copies",
+                "ownedCopies",
+                "value",
+                "owned_copies",
+                "cardCount",
+                "card_count",
+                "nCount",
+                "nCardCount",
+                "nCardCnt",
+                "cnt",
+                "quantity",
+                "qty");
         }
 
         private static int? TryReadJsonInt(JsonElement value)

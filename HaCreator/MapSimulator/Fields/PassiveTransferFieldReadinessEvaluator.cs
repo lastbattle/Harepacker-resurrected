@@ -255,9 +255,9 @@ namespace HaCreator.MapSimulator.Fields
             return !hasAttachedPacketOwnedDriver;
         }
 
-        public static bool ShouldStopSkillMacroForFreshUpKeyDown(bool canHandleFreshUpKeyDown)
+        public static bool ShouldStopSkillMacroForFreshUpKeyDown(bool isFreshUpKeyDown)
         {
-            return canHandleFreshUpKeyDown;
+            return isFreshUpKeyDown;
         }
 
         public static bool CanQueuePassiveTransferFieldRequest(

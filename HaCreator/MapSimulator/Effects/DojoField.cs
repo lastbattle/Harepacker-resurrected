@@ -86,6 +86,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int EnergyGaugeOffsetX = 4;
         private const int EnergyGaugeOffsetY = 6;
         private static readonly Point EnergyFullTopLeft = new(9, 80);
+        private const int ResultPresentationTransferDelayMs = 2400;
         private const int EnergyMax = 10000;
         private bool _isActive;
         private int _mapId;
@@ -625,7 +626,7 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTimeOverFieldSound = false;
             _activeClearTransferMapId = resolvedClearTransferMapId;
             _activeClearTransferPortalName = resolvedClearTransferPortalName;
-            SchedulePresentationTransfer(resolvedClearTransferMapId, resolvedClearTransferPortalName, _clearFrames, currentTimeMs);
+            SchedulePresentationTransfer(resolvedClearTransferMapId, resolvedClearTransferPortalName, _clearFrames, currentTimeMs, ResultPresentationTransferDelayMs);
         }
         public void ShowClearResultForNextFloor(int currentTimeMs)
         {
@@ -640,7 +641,7 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTimeOverFieldSound = queueExpirySound;
             _activeClearTransferMapId = -1;
             _activeClearTransferPortalName = string.Empty;
-            SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), null, _timeOverFrames, currentTimeMs);
+            SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), null, _timeOverFrames, currentTimeMs, ResultPresentationTransferDelayMs);
         }
         public void Update(int currentTimeMs, float deltaSeconds)
         {
@@ -1669,21 +1670,21 @@ namespace HaCreator.MapSimulator.Effects
                 _ => packetType.ToString(CultureInfo.InvariantCulture)
             };
         }
-        private void SchedulePresentationTransfer(int targetMapId, string targetPortalName, IReadOnlyList<DojoFrame> frames, int currentTimeMs)
+        private void SchedulePresentationTransfer(int targetMapId, string targetPortalName, IReadOnlyList<DojoFrame> frames, int currentTimeMs, int fallbackDurationMs)
         {
             _pendingTransferMapId = NormalizeTransferMapId(targetMapId);
             _pendingTransferPortalName = _pendingTransferMapId > 0 && !string.IsNullOrWhiteSpace(targetPortalName)
                 ? targetPortalName
                 : string.Empty;
             _pendingTransferAtTick = _pendingTransferMapId > 0
-                ? currentTimeMs + GetAnimationDurationMs(frames)
+                ? currentTimeMs + GetAnimationDurationMs(frames, fallbackDurationMs)
                 : int.MinValue;
         }
-        private static int GetAnimationDurationMs(IReadOnlyList<DojoFrame> frames)
+        private static int GetAnimationDurationMs(IReadOnlyList<DojoFrame> frames, int fallbackDurationMs = 0)
         {
             if (frames == null || frames.Count == 0)
             {
-                return 0;
+                return Math.Max(0, fallbackDurationMs);
             }
             int totalDuration = 0;
             for (int i = 0; i < frames.Count; i++)

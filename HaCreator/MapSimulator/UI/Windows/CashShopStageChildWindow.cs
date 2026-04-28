@@ -370,6 +370,7 @@ namespace HaCreator.MapSimulator.UI
         private int _oneADayRewardSessionRevision;
         private int _oneADayNumberCanvasReadyMask;
         private bool _oneADayRewardSessionPacketOwned;
+        private int _oneADayLastPacketRewardSessionByte = -1;
         private readonly OneADaySelectorRuntimeState _oneADaySelectorObject = new();
         private readonly OneADayCounterRuntimeState _oneADayCounterObject = new();
         private readonly OneADayRewardSessionRuntimeState _oneADayRewardSessionObject = new();
@@ -2551,15 +2552,18 @@ namespace HaCreator.MapSimulator.UI
 
             int nextRemainingSeconds = Math.Max(0, (state.Hour * 3600) + (state.Minute * 60) + state.Second);
             string nextPacketStateSignature = state.PacketStateSignature ?? string.Empty;
-            bool packetOwnedPending = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 1) != 0;
+            int packetRewardSessionByte = state.PacketRewardSessionByte & 0xFF;
+            bool packetOwnedPending = state.HasPacketRewardSessionByte && (packetRewardSessionByte & 1) != 0;
             bool effectivePending = state.IsPending || packetOwnedPending;
             bool pendingChanged = !_oneADayRuntimeSeeded || effectivePending != _oneADayPending;
             bool countdownRestarted = _oneADayRuntimeSeeded
                 && effectivePending
                 && nextRemainingSeconds > 0
                 && (nextRemainingSeconds > (_oneADayRemainingSeconds + 1) || _oneADayCountdownDeadlineTick == int.MinValue);
-            bool selectorReseedRequested = force || !_oneADayRuntimeSeeded;
             bool packetStateChanged = !string.Equals(_oneADayPacketStateSignature, nextPacketStateSignature, StringComparison.Ordinal);
+            bool packetSeedChanged = state.HasPacketRewardSessionByte
+                && (!_oneADayRuntimeSeeded || _oneADayLastPacketRewardSessionByte != packetRewardSessionByte);
+            bool selectorReseedRequested = force || !_oneADayRuntimeSeeded || packetSeedChanged;
 
             if (!pendingChanged && !countdownRestarted && !selectorReseedRequested && !packetStateChanged)
             {
@@ -2568,32 +2572,21 @@ namespace HaCreator.MapSimulator.UI
 
             _oneADayPending = effectivePending;
             _oneADayPacketStateSignature = nextPacketStateSignature;
+            _oneADayLastPacketRewardSessionByte = state.HasPacketRewardSessionByte ? packetRewardSessionByte : -1;
             if (selectorReseedRequested)
             {
-                int packetOwnedSelectorIndex = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 2) != 0 ? 1 : 0;
+                int packetOwnedSelectorIndex = state.HasPacketRewardSessionByte && (packetRewardSessionByte & 2) != 0 ? 1 : 0;
                 _oneADaySelectorIndex = Math.Clamp(
                     state.HasPacketRewardSessionByte ? packetOwnedSelectorIndex : state.SelectorIndex,
                     0,
                     Math.Max(0, state.SelectorCount - 1));
-                _oneADayShortcutHelpActive = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 4) != 0;
-            }
-            else if (packetStateChanged && state.HasPacketRewardSessionByte)
-            {
-                _oneADaySelectorIndex = Math.Clamp(
-                    (state.PacketRewardSessionByte & 2) != 0 ? 1 : 0,
-                    0,
-                    Math.Max(0, state.SelectorCount - 1));
-                _oneADayShortcutHelpActive = (state.PacketRewardSessionByte & 4) != 0;
-            }
-            else if (packetStateChanged)
-            {
-                _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));
-                _oneADayShortcutHelpActive = false;
+                _oneADayShortcutHelpActive = state.HasPacketRewardSessionByte && (packetRewardSessionByte & 4) != 0;
             }
 
             if (!HasOneADayPreviousLane(state))
             {
                 _oneADaySelectorIndex = 0;
+                _oneADayShortcutHelpActive = false;
             }
 
             int activeOfferCount = _oneADaySelectorIndex == 1 ? state.PreviousOfferCount : state.PlateCount;

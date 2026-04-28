@@ -210,6 +210,17 @@ namespace HaCreator.MapSimulator.Character
                 ["cannon"] = new[] { "alert", "doublefire" },
                 ["torpedo"] = new[] { "alert", "doublefire" },
                 ["octopus"] = new[] { "alert", "swingPF", "stabT2", "swingT2", "swingP2", "swingOF", "doublefire" },
+                // Jett rows under Skill/570.img, Skill/571.img, and Skill/572.img
+                // publish these skill-only action names, while Character/00002000.img
+                // and checked Morph/*.img keep no verbatim branches. Keep gun requests
+                // on the same shoot/pirate morph surface used by adjacent pirate gun
+                // rows, and keep fistEnrage on the authored pirate melee surface first.
+                ["doubleSpiral"] = new[] { "screw", "backspin", "straight", "fist", "doublefire" },
+                ["bulletSmash2"] = new[] { "shoot2", "stabO1", "doublefire", "shoot1", "shootF" },
+                ["doubleBarrel"] = new[] { "shoot2", "doublefire", "shoot1", "shootF" },
+                ["fistEnrage"] = new[] { "fist", "straight", "somersault", "doublefire" },
+                ["headShot"] = new[] { "shoot2", "stabO1", "doublefire", "shoot1", "shootF" },
+                ["fusillade"] = new[] { "stabO1", "doublefire", "shoot2", "shoot1", "shootF" },
                 // Character/00002000.img cannon-family body rows keep a narrower ordered
                 // redirect surface than a direct authored-morph gun collapse:
                 // flamesplash -> shootF, stabO1, alert
@@ -830,6 +841,12 @@ namespace HaCreator.MapSimulator.Character
                 "demonicBreathe_prep",
                 "demonicBreathe",
                 "demonicBreathe_end",
+                "doubleSpiral",
+                "bulletSmash2",
+                "doubleBarrel",
+                "fistEnrage",
+                "headShot",
+                "fusillade",
                 "HTswiftPhantom",
                 "swiftPhantom",
                 "HTdoublePiercing",

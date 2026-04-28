@@ -106,8 +106,13 @@ namespace HaCreator.MapSimulator
 
             if (!_packetStageTransitionNamedObjects.TryGetValue(objectName.Trim(), out List<BaseDXDrawableItem> objects) ||
                 objects == null ||
-                objects.Count == 0 ||
-                stateIndex >= objects.Count)
+                objects.Count == 0)
+            {
+                return false;
+            }
+
+            if (stateIndex >= objects.Count &&
+                !CanApplyAuthoredSingleObjectStateBranch(objects, stateIndex))
             {
                 return false;
             }
@@ -121,7 +126,9 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool selected = i == stateIndex;
+                bool selected = stateIndex < objects.Count
+                    ? i == stateIndex
+                    : objects.Count == 1;
                 _packetStageTransitionObjectVisibility[mapObject] = selected;
                 if (selected)
                 {
@@ -135,6 +142,15 @@ namespace HaCreator.MapSimulator
             return applied;
         }
 
+        private bool CanApplyAuthoredSingleObjectStateBranch(IReadOnlyList<BaseDXDrawableItem> objects, int stateIndex)
+        {
+            return objects != null &&
+                objects.Count == 1 &&
+                objects[0] != null &&
+                _packetStageTransitionNamedObjectMetadata.TryGetValue(objects[0], out PacketOwnedNamedObjectStateMetadata metadata) &&
+                metadata.HasAuthoredStateBranch(stateIndex);
+        }
+
         private void ApplyPacketOwnedNamedObjectSelectedStateLifecycle(BaseDXDrawableItem mapObject, int stateIndex)
         {
             if (mapObject == null ||
@@ -143,10 +159,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(metadata.StateSfx))
+            string stateSfx = metadata.ResolveStateSfx(stateIndex);
+            if (!string.IsNullOrWhiteSpace(stateSfx))
             {
                 _ = TryPlayPacketOwnedWzSound(
-                    metadata.StateSfx,
+                    stateSfx,
                     defaultImageName: "Field.img",
                     out _,
                     out _);
@@ -216,9 +233,29 @@ namespace HaCreator.MapSimulator
             int Z,
             int PlatformNumber,
             bool Flow,
-            string StateSfx)
+            string StateSfx,
+            IReadOnlyDictionary<int, string> AuthoredStateSfxByIndex,
+            IReadOnlySet<int> AuthoredStateIndexes)
         {
             public string ObjectPath => $"Map/Obj/{ObjectSet}.img/{Layer0}/{Layer1}/{Layer2}";
+
+            public bool HasAuthoredStateBranch(int stateIndex)
+            {
+                return stateIndex >= 0 && AuthoredStateIndexes?.Contains(stateIndex) == true;
+            }
+
+            public string ResolveStateSfx(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateSfxByIndex != null &&
+                    AuthoredStateSfxByIndex.TryGetValue(stateIndex, out string stateSfx) &&
+                    !string.IsNullOrWhiteSpace(stateSfx))
+                {
+                    return stateSfx;
+                }
+
+                return StateSfx;
+            }
 
             public string LifecycleDebugSuffix
             {
@@ -228,6 +265,11 @@ namespace HaCreator.MapSimulator
                     if (!string.IsNullOrWhiteSpace(StateSfx))
                     {
                         parts.Add($"sfx={StateSfx}");
+                    }
+
+                    if (AuthoredStateIndexes?.Count > 0)
+                    {
+                        parts.Add($"authoredStates={string.Join("/", AuthoredStateIndexes.OrderBy(static state => state))}");
                     }
 
                     if (Flow)

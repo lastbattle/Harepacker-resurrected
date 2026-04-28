@@ -1548,6 +1548,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 if (_participantActors.TryGetValue(packet.CharacterId, out WeddingRemoteParticipant participantWithoutLook))
                 {
+                    packet = NormalizeRemoteAvatarModifiedStateForParticipant(participantWithoutLook, packet);
                     StoreAvatarModifiedState(participantWithoutLook, packet);
                     ApplyAvatarModifiedStateToBuild(participantWithoutLook.Build, packet);
                     return true;
@@ -1555,6 +1556,7 @@ namespace HaCreator.MapSimulator.Effects
 
                 if (TryGetAudienceActorById(packet.CharacterId, out WeddingRemoteParticipant audienceWithoutLook))
                 {
+                    packet = NormalizeRemoteAvatarModifiedStateForParticipant(audienceWithoutLook, packet);
                     StoreAvatarModifiedState(audienceWithoutLook, packet);
                     ApplyAvatarModifiedStateToBuild(audienceWithoutLook.Build, packet);
                     return true;
@@ -1585,6 +1587,7 @@ namespace HaCreator.MapSimulator.Effects
                 }
 
                 CopyPersistentBuildMetadata(build, participantSnapshot.Build);
+                packet = NormalizeRemoteAvatarModifiedStateForParticipant(packet.CharacterId, packet);
                 ApplyAvatarModifiedStateToBuild(build, packet);
                 bool configured = TryConfigureParticipantActor(packet.CharacterId, position, build, facingRight, actionName, out errorMessage);
                 if (configured && _participantActors.TryGetValue(packet.CharacterId, out WeddingRemoteParticipant participant))
@@ -1608,6 +1611,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             CopyPersistentBuildMetadata(audienceBuild, audienceSnapshot.Build);
+            packet = NormalizeRemoteAvatarModifiedStateForParticipant(packet.CharacterId, packet);
             ApplyAvatarModifiedStateToBuild(audienceBuild, packet);
             UpsertAudienceParticipant(audienceBuild, audienceSnapshot.Position, audienceSnapshot.FacingRight, audienceSnapshot.ActionName, packet.CharacterId);
             if (TryGetAudienceActorById(packet.CharacterId, out WeddingRemoteParticipant audienceParticipant))
@@ -1617,6 +1621,139 @@ namespace HaCreator.MapSimulator.Effects
 
             ApplyParticipantPortableChairState(packet.CharacterId, audienceSnapshot.PortableChairItemId ?? 0, audienceSnapshot.PortableChairPairCharacterId);
             return true;
+        }
+
+        private RemoteUserAvatarModifiedPacket NormalizeRemoteAvatarModifiedStateForParticipant(
+            int characterId,
+            RemoteUserAvatarModifiedPacket packet)
+        {
+            TryResolveParticipantForTemporaryStats(characterId, out WeddingRemoteParticipant participant, out _);
+            return NormalizeRemoteAvatarModifiedStateForParticipant(participant, packet);
+        }
+
+        private RemoteUserAvatarModifiedPacket NormalizeRemoteAvatarModifiedStateForParticipant(
+            WeddingRemoteParticipant participant,
+            RemoteUserAvatarModifiedPacket packet)
+        {
+            if (participant == null)
+            {
+                return packet;
+            }
+
+            RemoteUserRelationshipRecord coupleRecord = NormalizeRemoteAvatarModifiedRingRelationshipRecord(
+                RemoteRelationshipOverlayType.Couple,
+                packet.CoupleRecord,
+                participant);
+            RemoteUserRelationshipRecord friendshipRecord = NormalizeRemoteAvatarModifiedRingRelationshipRecord(
+                RemoteRelationshipOverlayType.Friendship,
+                packet.FriendshipRecord,
+                participant);
+
+            return packet with
+            {
+                CoupleRecord = coupleRecord,
+                FriendshipRecord = friendshipRecord
+            };
+        }
+
+        private RemoteUserRelationshipRecord NormalizeRemoteAvatarModifiedRingRelationshipRecord(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord packetRecord,
+            WeddingRemoteParticipant packetParticipant)
+        {
+            if (relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !packetRecord.IsActive
+                || packetParticipant == null)
+            {
+                return packetRecord;
+            }
+
+            if (!TryFindWeddingRelationshipRecordBySerialPair(
+                    relationshipType,
+                    packetParticipant.CharacterId,
+                    packetRecord.ItemSerial,
+                    packetRecord.PairItemSerial,
+                    out RemoteUserRelationshipRecord matchedRecord))
+            {
+                return packetRecord;
+            }
+
+            return packetRecord with
+            {
+                ItemId = packetRecord.ItemId > 0 ? packetRecord.ItemId : matchedRecord.ItemId,
+                ItemSerial = matchedRecord.ItemSerial,
+                PairItemSerial = matchedRecord.PairItemSerial,
+                CharacterId = matchedRecord.CharacterId,
+                PairCharacterId = matchedRecord.PairCharacterId
+            };
+        }
+
+        private bool TryFindWeddingRelationshipRecordBySerialPair(
+            RemoteRelationshipOverlayType relationshipType,
+            int packetCharacterId,
+            long? packetItemSerial,
+            long? packetPairItemSerial,
+            out RemoteUserRelationshipRecord relationshipRecord)
+        {
+            relationshipRecord = default;
+            if (!packetItemSerial.HasValue && !packetPairItemSerial.HasValue)
+            {
+                return false;
+            }
+
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                if (participant == null || !participant.AvatarModifiedState.HasValue)
+                {
+                    continue;
+                }
+
+                RemoteUserRelationshipRecord candidate = GetRelationshipRecord(
+                    participant.AvatarModifiedState.Value,
+                    relationshipType);
+                if (!candidate.IsActive
+                    || candidate.CharacterId.GetValueOrDefault() <= 0
+                    || !DoWeddingRelationshipSerialsMatch(packetItemSerial, packetPairItemSerial, candidate))
+                {
+                    continue;
+                }
+
+                if (participant.CharacterId == packetCharacterId
+                    || candidate.CharacterId.GetValueOrDefault() == packetCharacterId
+                    || candidate.PairCharacterId.GetValueOrDefault() == packetCharacterId)
+                {
+                    relationshipRecord = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool DoWeddingRelationshipSerialsMatch(
+            long? packetItemSerial,
+            long? packetPairItemSerial,
+            RemoteUserRelationshipRecord candidate)
+        {
+            if (!candidate.ItemSerial.HasValue && !candidate.PairItemSerial.HasValue)
+            {
+                return false;
+            }
+
+            bool itemMatchesItem = !packetItemSerial.HasValue
+                || (candidate.ItemSerial.HasValue && candidate.ItemSerial.Value == packetItemSerial.Value);
+            bool pairMatchesPair = !packetPairItemSerial.HasValue
+                || (candidate.PairItemSerial.HasValue && candidate.PairItemSerial.Value == packetPairItemSerial.Value);
+            if (itemMatchesItem && pairMatchesPair)
+            {
+                return true;
+            }
+
+            bool itemMatchesPair = !packetItemSerial.HasValue
+                || (candidate.PairItemSerial.HasValue && candidate.PairItemSerial.Value == packetItemSerial.Value);
+            bool pairMatchesItem = !packetPairItemSerial.HasValue
+                || (candidate.ItemSerial.HasValue && candidate.ItemSerial.Value == packetPairItemSerial.Value);
+            return itemMatchesPair && pairMatchesItem;
         }
 
         private bool TryApplyRemoteTemporaryStatSetPacket(byte[] payload, out string errorMessage)

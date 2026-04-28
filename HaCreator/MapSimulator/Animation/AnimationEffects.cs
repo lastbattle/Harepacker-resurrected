@@ -105,6 +105,7 @@ namespace HaCreator.MapSimulator.Animation
             public int SourceClientEquipIndex { get; init; } = -1;
             public int SourceCandidateIdentity { get; init; }
             public int SourceVariantCount { get; init; }
+            public IReadOnlyList<int> SourceVariantIndices { get; init; }
         }
 
         internal sealed class SecondaryMotionBlurAnimationState
@@ -338,6 +339,28 @@ namespace HaCreator.MapSimulator.Animation
                 fallbackY,
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedItemUnrelease,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedCombatFeedback(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedCombatFeedback,
                 zOrder,
                 initialElapsedMs);
         }
@@ -2796,7 +2819,8 @@ namespace HaCreator.MapSimulator.Animation
         FullChargedAngerGauge = 1,
         PacketOwnedMonsterBookCardGet = 2,
         PacketOwnedBuffItemUse = 3,
-        PacketOwnedItemUnrelease = 4
+        PacketOwnedItemUnrelease = 4,
+        PacketOwnedCombatFeedback = 5
     }
 
     internal enum AnimationOneTimePlaybackMode
@@ -2867,6 +2891,7 @@ namespace HaCreator.MapSimulator.Animation
         int ClientEquipIndex,
         int CandidateIdentity,
         int EffectVariantCount,
+        IReadOnlyList<int> EffectVariantIndices,
         int ReferenceCountAfterOperation);
 
     internal readonly record struct FollowItemEffectRecoveredNativeOwnerState(
@@ -2874,6 +2899,7 @@ namespace HaCreator.MapSimulator.Animation
         int ClientEquipIndex,
         int CandidateIdentity,
         int EffectVariantCount,
+        IReadOnlyList<int> EffectVariantIndices,
         int ItemEffectReferenceCountAfterAllocate,
         int ItemEffectReferenceCountAfterManagerRetain,
         int ItemEffectReferenceCountAfterOwnerRelease,
@@ -3152,6 +3178,19 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredCanvasSettings CanvasSettings);
 
     /// <summary>
+    /// Per-operation managed snapshot of the recovered Effect_HP COM lifetime sequence.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeOperationState(
+        CanvasLayerRecoveredNativeOperation Operation,
+        int OperationIndex,
+        int SimulatedLayerHandleId,
+        int LayerReferenceCountAfterOperation,
+        int SimulatedTemporaryCanvasHandleId,
+        int TemporaryCanvasReferenceCountAfterOperation,
+        bool RegisterOneTimeAnimationHasRun,
+        bool TemporaryCanvasReleasedAfterRegistration);
+
+    /// <summary>
     /// Snapshot of the recovered layer state after the native Effect_HP call sequence has run.
     /// This is the managed analogue for the IWzGr2DLayer writes the simulator does not instantiate.
     /// </summary>
@@ -3256,6 +3295,8 @@ namespace HaCreator.MapSimulator.Animation
         internal CanvasLayerRecoveredOwnerTrace? RecoveredOwnerTrace { get; private set; }
         internal IReadOnlyList<CanvasLayerRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
             = Array.Empty<CanvasLayerRecoveredNativeOperation>();
+        internal IReadOnlyList<CanvasLayerRecoveredNativeOperationState> RecoveredNativeExecutionStateTrace { get; private set; }
+            = Array.Empty<CanvasLayerRecoveredNativeOperationState>();
         internal CanvasLayerRecoveredNativeLayerState RecoveredNativeLayerState { get; private set; }
         internal CanvasLayerRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
 
@@ -3381,6 +3422,10 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(
                 RecoveredRegistrationTrace,
                 recoveredOwnerTrace);
+            RecoveredNativeExecutionStateTrace = BuildRecoveredNativeExecutionStateTrace(
+                RecoveredNativeExecutionTrace,
+                simulatedLayerHandleId,
+                simulatedTemporaryCanvasHandleId);
             RecoveredNativeLayerState = BuildRecoveredNativeLayerState(
                 RecoveredRegistrationTrace,
                 recoveredOwnerTrace);
@@ -3443,6 +3488,7 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredRegistrationTrace = default;
             RecoveredOwnerTrace = null;
             RecoveredNativeExecutionTrace = Array.Empty<CanvasLayerRecoveredNativeOperation>();
+            RecoveredNativeExecutionStateTrace = Array.Empty<CanvasLayerRecoveredNativeOperationState>();
             RecoveredNativeLayerState = default;
             RecoveredNativeLifetimeState = default;
         }
@@ -3540,6 +3586,82 @@ namespace HaCreator.MapSimulator.Animation
                 temporaryCanvasReferenceCountAfterOwnerRelease,
                 registersOneTimeAnimation,
                 temporaryCanvasReleasedAfterRegistration);
+        }
+
+        internal static CanvasLayerRecoveredNativeOperationState[] BuildRecoveredNativeExecutionStateTrace(
+            IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace,
+            int simulatedLayerHandleId = 1,
+            int simulatedTemporaryCanvasHandleId = 1)
+        {
+            if (executionTrace == null || executionTrace.Count == 0)
+            {
+                return Array.Empty<CanvasLayerRecoveredNativeOperationState>();
+            }
+
+            simulatedLayerHandleId = Math.Max(0, simulatedLayerHandleId);
+            simulatedTemporaryCanvasHandleId = Math.Max(0, simulatedTemporaryCanvasHandleId);
+            int layerRefCount = 0;
+            int temporaryCanvasRefCount = 0;
+            bool sawLayer = false;
+            bool sawTemporaryCanvas = false;
+            bool sawRegisterOneTimeAnimation = false;
+            bool temporaryCanvasReleasedAfterRegistration = false;
+            var states = new CanvasLayerRecoveredNativeOperationState[executionTrace.Count];
+
+            for (int i = 0; i < executionTrace.Count; i++)
+            {
+                CanvasLayerRecoveredNativeOperation operation = executionTrace[i];
+                switch (operation.Kind)
+                {
+                    case CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas:
+                        sawTemporaryCanvas = true;
+                        temporaryCanvasRefCount = 1;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.CreateLayer:
+                        sawLayer = true;
+                        layerRefCount = 1;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration:
+                        if (sawLayer)
+                        {
+                            layerRefCount++;
+                        }
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation:
+                        sawRegisterOneTimeAnimation = true;
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration:
+                        if (sawLayer)
+                        {
+                            layerRefCount = Math.Max(0, layerRefCount - 1);
+                        }
+                        break;
+
+                    case CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration:
+                        if (sawTemporaryCanvas)
+                        {
+                            temporaryCanvasRefCount = Math.Max(0, temporaryCanvasRefCount - 1);
+                            temporaryCanvasReleasedAfterRegistration = sawRegisterOneTimeAnimation;
+                        }
+                        break;
+                }
+
+                states[i] = new CanvasLayerRecoveredNativeOperationState(
+                    operation,
+                    i,
+                    sawLayer ? simulatedLayerHandleId : 0,
+                    layerRefCount,
+                    sawTemporaryCanvas ? simulatedTemporaryCanvasHandleId : 0,
+                    temporaryCanvasRefCount,
+                    sawRegisterOneTimeAnimation,
+                    temporaryCanvasReleasedAfterRegistration);
+            }
+
+            return states;
         }
 
         internal static CanvasLayerRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
@@ -4821,6 +4943,7 @@ namespace HaCreator.MapSimulator.Animation
                 options?.SourceClientEquipIndex ?? -1,
                 options?.SourceCandidateIdentity ?? 0,
                 options?.SourceVariantCount ?? 0,
+                options?.SourceVariantIndices,
                 released: false);
             RecoveredNativeItemEffectTrace = BuildRecoveredNativeItemEffectTrace(RecoveredNativeItemEffectOwnerState);
         }
@@ -4838,6 +4961,7 @@ namespace HaCreator.MapSimulator.Animation
                 RecoveredNativeItemEffectOwnerState.ClientEquipIndex,
                 RecoveredNativeItemEffectOwnerState.CandidateIdentity,
                 RecoveredNativeItemEffectOwnerState.EffectVariantCount,
+                RecoveredNativeItemEffectOwnerState.EffectVariantIndices,
                 released: true);
             RecoveredNativeItemEffectTrace = BuildRecoveredNativeItemEffectTrace(RecoveredNativeItemEffectOwnerState);
         }
@@ -4847,6 +4971,7 @@ namespace HaCreator.MapSimulator.Animation
             int clientEquipIndex,
             int candidateIdentity,
             int effectVariantCount,
+            IReadOnlyList<int> effectVariantIndices,
             bool released)
         {
             if (itemId <= 0 || clientEquipIndex < 0)
@@ -4855,11 +4980,14 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             int normalizedVariantCount = Math.Max(1, effectVariantCount);
+            IReadOnlyList<int> normalizedVariantIndices =
+                NormalizeRecoveredNativeItemEffectVariantIndices(effectVariantIndices, normalizedVariantCount);
             return new FollowItemEffectRecoveredNativeOwnerState(
                 itemId,
                 clientEquipIndex,
                 candidateIdentity,
                 normalizedVariantCount,
+                normalizedVariantIndices,
                 ItemEffectReferenceCountAfterAllocate: 1,
                 ItemEffectReferenceCountAfterManagerRetain: 2,
                 ItemEffectReferenceCountAfterOwnerRelease: 1,
@@ -4922,7 +5050,38 @@ namespace HaCreator.MapSimulator.Animation
                 ownerState.ClientEquipIndex,
                 ownerState.CandidateIdentity,
                 ownerState.EffectVariantCount,
+                ownerState.EffectVariantIndices,
                 Math.Max(0, referenceCountAfterOperation));
+        }
+
+        private static IReadOnlyList<int> NormalizeRecoveredNativeItemEffectVariantIndices(
+            IReadOnlyList<int> effectVariantIndices,
+            int effectVariantCount)
+        {
+            if (effectVariantCount <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (effectVariantIndices != null && effectVariantIndices.Count > 0)
+            {
+                int count = Math.Min(effectVariantIndices.Count, effectVariantCount);
+                var normalized = new int[count];
+                for (int i = 0; i < count; i++)
+                {
+                    normalized[i] = effectVariantIndices[i];
+                }
+
+                return normalized;
+            }
+
+            var fallback = new int[effectVariantCount];
+            for (int i = 0; i < fallback.Length; i++)
+            {
+                fallback[i] = i;
+            }
+
+            return fallback;
         }
 
         public bool Update(AnimationEffects effects, int currentTimeMs, Random random)

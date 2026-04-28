@@ -136,6 +136,8 @@ namespace HaCreator.MapSimulator.Interaction
         private GuildBbsPermissionLevel _permissionLevel = GuildBbsPermissionLevel.Master;
         private GuildBbsPermissionMask _rolePermissionMask = SupportedPermissionMask;
         private GuildBbsPermissionMask? _packetPermissionMask;
+        private GuildBbsPermissionMask? _linkedPermissionMask;
+        private string _linkedPermissionSourceLabel;
         private bool _hasPacketCashOwnershipOverride;
         private int _selectedThreadId;
         private int _threadPageIndex;
@@ -169,7 +171,14 @@ namespace HaCreator.MapSimulator.Interaction
             NormalizeDraftState();
         }
 
-        public void UpdateLocalContext(string playerName, string guildName, string locationSummary, string guildRoleLabel, IEnumerable<int> ownedCashEmoticonItemIds)
+        public void UpdateLocalContext(
+            string playerName,
+            string guildName,
+            string locationSummary,
+            string guildRoleLabel,
+            IEnumerable<int> ownedCashEmoticonItemIds,
+            GuildBbsPermissionMask? linkedPermissionMask = null,
+            string linkedPermissionSourceLabel = null)
         {
             _localPlayerName = string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName.Trim();
             _guildName = string.IsNullOrWhiteSpace(guildName) ? "Maple Guild" : guildName.Trim();
@@ -177,6 +186,12 @@ namespace HaCreator.MapSimulator.Interaction
             _guildRoleLabel = string.IsNullOrWhiteSpace(guildRoleLabel) ? "Member" : guildRoleLabel.Trim();
             _permissionLevel = ResolvePermissionLevel(_guildRoleLabel);
             _rolePermissionMask = ResolvePermissionMask(_permissionLevel);
+            _linkedPermissionMask = linkedPermissionMask.HasValue
+                ? NormalizePermissionMask(linkedPermissionMask.Value)
+                : null;
+            _linkedPermissionSourceLabel = linkedPermissionMask.HasValue && !string.IsNullOrWhiteSpace(linkedPermissionSourceLabel)
+                ? linkedPermissionSourceLabel.Trim()
+                : null;
 
             _inventoryOwnedCashEmoticonIds.Clear();
             if (ownedCashEmoticonItemIds != null)
@@ -1979,14 +1994,18 @@ namespace HaCreator.MapSimulator.Interaction
             return GuildBbsPermissionLevel.Member;
         }
 
-        private GuildBbsPermissionMask EffectivePermissionMask => NormalizePermissionMask(_packetPermissionMask ?? _rolePermissionMask);
+        private GuildBbsPermissionMask EffectivePermissionMask => NormalizePermissionMask(_packetPermissionMask ?? _linkedPermissionMask ?? _rolePermissionMask);
 
         private IReadOnlyCollection<int> EffectiveOwnedCashEmoticonIds =>
             _hasPacketCashOwnershipOverride
                 ? _packetOwnedCashEmoticonIds
                 : _inventoryOwnedCashEmoticonIds;
         private int OwnedCashEmoticonCount => EffectiveOwnedCashEmoticonIds.Count;
-        private string AuthoritySourceLabel => _packetPermissionMask.HasValue ? "Packet" : "Guild role";
+        private string AuthoritySourceLabel => _packetPermissionMask.HasValue
+            ? "Packet"
+            : _linkedPermissionMask.HasValue
+                ? string.IsNullOrWhiteSpace(_linkedPermissionSourceLabel) ? "Linked packet guild authority" : _linkedPermissionSourceLabel
+                : "Guild role";
         private string CashOwnershipSourceLabel => _hasPacketCashOwnershipOverride ? "Packet" : "Inventory";
         private static GuildBbsPermissionMask ResolvePermissionMask(GuildBbsPermissionLevel permissionLevel)
         {

@@ -110,6 +110,7 @@ namespace HaCreator.MapSimulator.Fields
             // Visual
             public List<IDXObject> Frames;
             public Dictionary<int, List<IDXObject>> StateFrames;
+            public Dictionary<int, int> StateFrameRepeatModes;
             public int FrameIndex;
             public int LastFrameTime;
             public float Rotation;
@@ -145,7 +146,26 @@ namespace HaCreator.MapSimulator.Fields
                     int delay = Frames[FrameIndex].Delay > 0 ? Frames[FrameIndex].Delay : 100;
                     if (tickCount - LastFrameTime > delay)
                     {
-                        FrameIndex = (FrameIndex + 1) % Frames.Count;
+                        if (StateFrameRepeatModes != null
+                            && StateFrameRepeatModes.TryGetValue((int)State, out int repeatMode)
+                            && repeatMode == -1
+                            && FrameIndex >= Frames.Count - 1)
+                        {
+                            LastFrameTime = tickCount;
+                            return;
+                        }
+
+                        int nextFrameIndex = FrameIndex + 1;
+                        if (nextFrameIndex >= Frames.Count)
+                        {
+                            nextFrameIndex = StateFrameRepeatModes != null
+                                && StateFrameRepeatModes.TryGetValue((int)State, out repeatMode)
+                                && repeatMode == -1
+                                    ? Frames.Count - 1
+                                    : 0;
+                        }
+
+                        FrameIndex = nextFrameIndex;
                         LastFrameTime = tickCount;
                     }
                 }
@@ -369,7 +389,8 @@ namespace HaCreator.MapSimulator.Fields
                     Velocity = Vector2.Zero,
                     Team = -1,
                     IsActive = true,
-                    StateFrames = CreateStateFramesForObject(instance)
+                    StateFrames = CreateStateFramesForObject(instance, out Dictionary<int, int> stateFrameRepeatModes),
+                    StateFrameRepeatModes = stateFrameRepeatModes
                 });
                 _coconuts[i].Frames = ResolveFramesForState(_coconuts[i], (int)CoconutState.OnTree);
             }
@@ -1980,37 +2001,46 @@ namespace HaCreator.MapSimulator.Fields
 
             return WzInfoTools.GetRealProperty(current);
         }
-        private Dictionary<int, List<IDXObject>> CreateStateFramesForObject(ObjectInstance instance)
+        private Dictionary<int, List<IDXObject>> CreateStateFramesForObject(
+            ObjectInstance instance,
+            out Dictionary<int, int> stateFrameRepeatModes)
         {
+            stateFrameRepeatModes = null;
             if (_graphicsDevice == null || instance?.BaseInfo is not ObjectInfo objectInfo)
             {
                 return null;
             }
 
             Dictionary<int, List<IDXObject>> stateFrames = new();
+            Dictionary<int, int> repeatModes = new();
             WzImage objectSet = global::HaCreator.Program.InfoManager?.GetObjectSet(objectInfo.oS);
             WzImageProperty objectRoot = objectSet?[objectInfo.l0]?[objectInfo.l1]?[objectInfo.l2];
             if (objectRoot != null)
             {
-                if (TryLoadObjectStateFrames(objectInfo, WzInfoTools.GetRealProperty(objectRoot["0"]), $"{objectInfo.oS}/{objectInfo.l0}/{objectInfo.l1}/{objectInfo.l2}/0", out List<IDXObject> defaultFrames))
+                WzImageProperty defaultState = WzInfoTools.GetRealProperty(objectRoot["0"]);
+                if (TryLoadObjectStateFrames(objectInfo, defaultState, $"{objectInfo.oS}/{objectInfo.l0}/{objectInfo.l1}/{objectInfo.l2}/0", out List<IDXObject> defaultFrames))
                 {
                     stateFrames[0] = defaultFrames;
+                    TryAddRepeatMode(defaultState, 0, repeatModes);
                 }
 
                 for (int stateId = 1; stateId <= 8; stateId++)
                 {
                     string branchName = $"s{stateId}";
-                    if (!TryLoadObjectStateFrames(objectInfo, WzInfoTools.GetRealProperty(objectRoot[branchName]), $"{objectInfo.oS}/{objectInfo.l0}/{objectInfo.l1}/{objectInfo.l2}/{branchName}", out List<IDXObject> branchFrames))
+                    WzImageProperty branchState = WzInfoTools.GetRealProperty(objectRoot[branchName]);
+                    if (!TryLoadObjectStateFrames(objectInfo, branchState, $"{objectInfo.oS}/{objectInfo.l0}/{objectInfo.l1}/{objectInfo.l2}/{branchName}", out List<IDXObject> branchFrames))
                     {
                         continue;
                     }
 
                     stateFrames[stateId] = branchFrames;
+                    TryAddRepeatMode(branchState, stateId, repeatModes);
                 }
             }
 
             if (stateFrames.Count > 0)
             {
+                stateFrameRepeatModes = repeatModes.Count > 0 ? repeatModes : null;
                 return stateFrames;
             }
 
@@ -2028,6 +2058,15 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return new Dictionary<int, List<IDXObject>> { [0] = fallbackFrames };
+        }
+
+        private static void TryAddRepeatMode(WzImageProperty stateProperty, int stateId, Dictionary<int, int> repeatModes)
+        {
+            int? repeatMode = InfoTool.GetOptionalInt(stateProperty?["repeat"], null);
+            if (repeatMode.HasValue)
+            {
+                repeatModes[stateId] = repeatMode.Value;
+            }
         }
 
         private bool TryLoadObjectStateFrames(ObjectInfo objectInfo, WzImageProperty stateProperty, string cacheKey, out List<IDXObject> frames)

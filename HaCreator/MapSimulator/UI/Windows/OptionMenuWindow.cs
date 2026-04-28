@@ -221,6 +221,7 @@ namespace HaCreator.MapSimulator.UI
             Default = 1,
             Ok = 2,
             Cancel = 3,
+            Close = 4,
         }
 
         private sealed class JoypadSessionSnapshot
@@ -2677,6 +2678,7 @@ namespace HaCreator.MapSimulator.UI
                 JoypadActionButtonKind.Default,
                 JoypadActionButtonKind.Ok,
                 JoypadActionButtonKind.Cancel,
+                JoypadActionButtonKind.Close,
             };
             JoypadActionButtonKind[] confirmOrder =
             {
@@ -2721,6 +2723,13 @@ namespace HaCreator.MapSimulator.UI
                 case JoypadActionButtonKind.Cancel:
                     DiscardAndHide();
                     return;
+                case JoypadActionButtonKind.Close:
+                    if (_pendingJoypadConfirmAction == JoypadPendingConfirmAction.None)
+                    {
+                        OnCloseButtonClicked(closeButton);
+                    }
+
+                    return;
                 default:
                     return;
             }
@@ -2739,12 +2748,26 @@ namespace HaCreator.MapSimulator.UI
                 JoypadActionButtonKind.Cancel => _pendingJoypadConfirmAction == JoypadPendingConfirmAction.None
                     ? "Button 2 / BtCancle selected. Press A or Space to discard the staged joypad profile and close the owner."
                     : "Button 2 / BtCancle selected. Press A or Space to cancel the pending joypad branch and keep editing.",
+                JoypadActionButtonKind.Close => _pendingJoypadConfirmAction == JoypadPendingConfirmAction.None
+                    ? $"Button {JoypadClientCloseButtonId} / BtClose selected. Press A or Space to close through the same staged discard branch as the client close button."
+                    : "BtClose is locked while a joypad confirm branch is pending. Use Left/Right to pick BtOK or BtCancle.",
                 _ => string.Empty,
             };
         }
 
         private Rectangle GetJoypadActionButtonBounds(JoypadActionButtonKind buttonKind)
         {
+            if (buttonKind == JoypadActionButtonKind.Close)
+            {
+                return closeButton == null
+                    ? Rectangle.Empty
+                    : new Rectangle(
+                        Position.X + closeButton.X,
+                        Position.Y + closeButton.Y,
+                        Math.Max(1, closeButton.CanvasSnapshotWidth),
+                        Math.Max(1, closeButton.CanvasSnapshotHeight));
+            }
+
             int x = buttonKind switch
             {
                 JoypadActionButtonKind.Default => Position.X + JoypadClientDefaultButtonLeft,

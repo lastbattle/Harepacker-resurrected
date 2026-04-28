@@ -586,16 +586,17 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                bool isTouchingNow = false;
-                if (CanPollLocalUserTouchOwnershipCandidate(data, SupportsActivationType(data, ReactorActivationType.Touch)))
+                if (!ShouldIncludeClientTouchOwnershipPollResult(data, SupportsActivationType(data, ReactorActivationType.Touch)))
                 {
-                    Rectangle bounds = reactor.GetCurrentBounds(resolvedTick);
-                    isTouchingNow = ResolveClientTouchOwnershipPollContainment(
-                        bounds,
-                        playerX,
-                        playerY,
-                        _reactorsOnLocalUser.ContainsKey(objectId));
+                    continue;
                 }
+
+                Rectangle bounds = reactor.GetCurrentBounds(resolvedTick);
+                bool isTouchingNow = ResolveClientTouchOwnershipPollContainment(
+                    bounds,
+                    playerX,
+                    playerY,
+                    _reactorsOnLocalUser.ContainsKey(objectId));
 
                 pollResults.Add(new LocalTouchOwnershipPollResult(i, objectId, isTouchingNow));
             }
@@ -3489,6 +3490,11 @@ namespace HaCreator.MapSimulator.Pools
         {
             return supportsTouchActivation
                 && CanPollLocalUserTouchReactor(data);
+        }
+
+        internal static bool ShouldIncludeClientTouchOwnershipPollResult(ReactorRuntimeData data, bool supportsTouchActivation)
+        {
+            return CanPollLocalUserTouchOwnershipCandidate(data, supportsTouchActivation);
         }
 
         private void AddReactorNameLookup(string name, int index)

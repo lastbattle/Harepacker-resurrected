@@ -69,7 +69,8 @@ namespace HaCreator.MapSimulator.Managers
             string Summary,
             int[] ExpectedInboundOpcodes,
             byte[] ExpectedInboundSubtypes,
-            string ExpectationSummary);
+            string ExpectationSummary,
+            int[] MatchedInboundOpcodes);
 
         public readonly record struct OutboundPacketTrace(
             int Opcode,
@@ -260,7 +261,9 @@ namespace HaCreator.MapSimulator.Managers
                         ? "observed subtypes=none"
                         : $"observed subtypes={string.Join("/", _observedMessengerInboundSubtypes.OrderBy(code => code))}");
                 string passiveEvidence = DescribePassiveInboundEvidence();
-                return $"{_ownerName} recovered-table verification: observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; passive {passiveEvidence}.";
+                string outboundSamples = DescribeObservedOutboundSamples();
+                string inboundSamples = DescribeObservedInboundSamples();
+                return $"{_ownerName} recovered-table verification: observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; outbound samples {outboundSamples}; inbound samples {inboundSamples}; passive {passiveEvidence}.";
             }
         }
 
@@ -729,7 +732,20 @@ namespace HaCreator.MapSimulator.Managers
                 out byte inboundSubtype,
                 out byte resultCode,
                 out string branchSummary);
-            byte traceType = hasKnownBranch && inboundSubtype != byte.MaxValue ? inboundSubtype : subtype;
+            byte traceType = subtype;
+            if (hasKnownBranch)
+            {
+                if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase)
+                    && resultCode != byte.MaxValue)
+                {
+                    traceType = resultCode;
+                }
+                else if (inboundSubtype != byte.MaxValue)
+                {
+                    traceType = inboundSubtype;
+                }
+            }
+
             lock (_sync)
             {
                 _observedInboundOpcodes.Add((ushort)opcode);
@@ -789,7 +805,8 @@ namespace HaCreator.MapSimulator.Managers
                         Convert.ToHexString(payload),
                         expectedInboundOpcodes,
                         expectedInboundSubtypes,
-                        expectationSummary));
+                        expectationSummary,
+                        Array.Empty<int>()));
                     summary = $"{summary}; {expectationSummary}";
                 }
 
@@ -998,6 +1015,12 @@ namespace HaCreator.MapSimulator.Managers
             if (matchIndex >= 0)
             {
                 PendingResultExpectation expectation = _pendingResultExpectations[matchIndex];
+                if (TryRecordMultiOpcodeExpectationMatch(expectation, opcode, out PendingResultExpectation updatedExpectation, out string partialSummary))
+                {
+                    _pendingResultExpectations[matchIndex] = updatedExpectation;
+                    return $"{branchText}; {partialSummary}";
+                }
+
                 _pendingResultExpectations.RemoveAt(matchIndex);
                 _expectedResultMatchCount++;
                 return $"{branchText}; matched {expectation.ExpectationSummary} from {expectation.Source}";
@@ -1014,6 +1037,49 @@ namespace HaCreator.MapSimulator.Managers
 
             _expectedResultUnexpectedCount++;
             return $"{branchText}; no pending recovered-table request expectation";
+        }
+
+        private static bool TryRecordMultiOpcodeExpectationMatch(
+            PendingResultExpectation expectation,
+            int inboundOpcode,
+            out PendingResultExpectation updatedExpectation,
+            out string summary)
+        {
+            updatedExpectation = expectation;
+            summary = string.Empty;
+
+            int[] expectedOpcodes = expectation.ExpectedInboundOpcodes?
+                .Where(opcode => opcode > 0)
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray()
+                ?? Array.Empty<int>();
+            if (expectedOpcodes.Length <= 1 || (expectation.ExpectedInboundSubtypes?.Length ?? 0) > 0)
+            {
+                return false;
+            }
+
+            int[] matchedOpcodes = expectation.MatchedInboundOpcodes?
+                .Where(opcode => opcode > 0)
+                .Distinct()
+                .ToArray()
+                ?? Array.Empty<int>();
+            if (!matchedOpcodes.Contains(inboundOpcode))
+            {
+                matchedOpcodes = matchedOpcodes.Concat(new[] { inboundOpcode }).Distinct().ToArray();
+            }
+
+            int[] remainingOpcodes = expectedOpcodes
+                .Where(opcode => !matchedOpcodes.Contains(opcode))
+                .ToArray();
+            if (remainingOpcodes.Length == 0)
+            {
+                return false;
+            }
+
+            updatedExpectation = expectation with { MatchedInboundOpcodes = matchedOpcodes };
+            summary = $"observed partial {expectation.ExpectationSummary} from {expectation.Source}; still waiting for opcode(s) {string.Join("/", remainingOpcodes)}";
+            return true;
         }
 
         private string DescribePassiveInboundEvidence()
@@ -1047,6 +1113,46 @@ namespace HaCreator.MapSimulator.Managers
                             ? $", sample={rawHex}"
                             : string.Empty;
                         return $"opcode {entry.Key} hits={entry.Value} {branchEvidence}{sample}";
+                    }));
+        }
+
+        private string DescribeObservedOutboundSamples()
+        {
+            if (_recentOutboundPackets.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                "; ",
+                _recentOutboundPackets
+                    .Reverse()
+                    .GroupBy(entry => new { entry.Opcode, entry.RequestType })
+                    .Take(6)
+                    .Select(group =>
+                    {
+                        OutboundPacketTrace entry = group.First();
+                        return $"opcode {entry.Opcode} type {entry.RequestType} payload={entry.PayloadHex} raw={entry.RawPacketHex}";
+                    }));
+        }
+
+        private string DescribeObservedInboundSamples()
+        {
+            if (_recentInboundPackets.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                "; ",
+                _recentInboundPackets
+                    .Reverse()
+                    .GroupBy(entry => new { entry.Opcode, entry.ResultType })
+                    .Take(6)
+                    .Select(group =>
+                    {
+                        InboundPacketTrace entry = group.First();
+                        return $"opcode {entry.Opcode} type {entry.ResultType} payload={entry.PayloadHex} raw={entry.RawPacketHex}";
                     }));
         }
 

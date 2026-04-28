@@ -643,6 +643,28 @@ namespace HaCreator.MapSimulator.UI
             return _trackedQuestIds.Contains(questId) || _trackedQuestIds.Count < MaxVisibleEntries;
         }
 
+        internal string ResolveRegistrationFailureNotice(int questId)
+        {
+            EnsurePersistedStateLoaded();
+            QuestAlarmSnapshot sourceSnapshot = _snapshotProvider?.Invoke() ?? new QuestAlarmSnapshot();
+            if (!TryGetQuestAlarmEntry(sourceSnapshot, questId, out QuestAlarmEntrySnapshot entry) || entry == null)
+            {
+                return "This quest cannot be registered in the quest alarm.";
+            }
+
+            if (_trackedQuestIds.Contains(questId))
+            {
+                return "Tracking quest in the quest alarm window.";
+            }
+
+            if (_trackedQuestIds.Count >= MaxVisibleEntries && entry.IsRegistrationCandidate)
+            {
+                return _registrationLimitMessage;
+            }
+
+            return QuestAlarmOwnerStringPoolText.FormatNotRegisteredNotice(entry.Title);
+        }
+
         internal bool RemoveQuestFromPacketAlarmList(int questId)
         {
             if (questId <= 0)

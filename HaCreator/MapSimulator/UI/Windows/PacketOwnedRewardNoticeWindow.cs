@@ -29,6 +29,8 @@ namespace HaCreator.MapSimulator.UI
         private const int SeparatorTopFromBottom = 64;
         private const int CloseButtonRightMargin = 8;
         private const int CloseButtonTopMargin = 8;
+        private const int ClientChromeCloseButtonWidth = 12;
+        private const int ClientChromeCloseButtonHeight = 12;
 
         private string _title = string.Empty;
         private string _body = string.Empty;
@@ -497,8 +499,8 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem closeButtonDrawable = closeButton.GetBaseDXDrawableItemByState();
             int frameWidth = CurrentFrame?.Width ?? DefaultFrameWidth;
             int frameHeight = CurrentFrame?.Height ?? DefaultFrameHeight;
-            int closeButtonWidth = closeButtonDrawable?.Frame0?.Width ?? 16;
-            int closeButtonHeight = closeButtonDrawable?.Frame0?.Height ?? 16;
+            int closeButtonWidth = closeButtonDrawable?.Frame0?.Width ?? ClientChromeCloseButtonWidth;
+            int closeButtonHeight = closeButtonDrawable?.Frame0?.Height ?? ClientChromeCloseButtonHeight;
             Point closeButtonPosition = ResolveCloseButtonPosition(
                 frameWidth,
                 frameHeight,

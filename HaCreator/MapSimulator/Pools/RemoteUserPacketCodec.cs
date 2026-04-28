@@ -461,7 +461,9 @@ namespace HaCreator.MapSimulator.Pools
         PetProfiles = 1 << 18,
         RideIdentity = 1 << 19,
         CollectionCounts = 1 << 20,
-        MakerProgression = 1 << 21
+        MakerProgression = 1 << 21,
+        PreviousWorldRank = 1 << 22,
+        PreviousJobRank = 1 << 23
     }
 
     public readonly record struct RemoteUserProfilePacket(
@@ -497,12 +499,14 @@ namespace HaCreator.MapSimulator.Pools
         int? MakerShoeLevel = null,
         int? MakerToyLevel = null,
         int? MakerGenericProgress = null,
-        int? MakerGloveProgress = null,
-        int? MakerShoeProgress = null,
-        int? MakerToyProgress = null,
-        int? MakerSuccessfulCrafts = null,
-        int? MakerDiscoveredRecipeCount = null,
-        int? MakerUnlockedHiddenRecipeCount = null);
+          int? MakerGloveProgress = null,
+          int? MakerShoeProgress = null,
+          int? MakerToyProgress = null,
+          int? MakerSuccessfulCrafts = null,
+          int? MakerDiscoveredRecipeCount = null,
+          int? MakerUnlockedHiddenRecipeCount = null,
+          int? PreviousWorldRank = null,
+          int? PreviousJobRank = null);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
     public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
@@ -2331,6 +2335,8 @@ namespace HaCreator.MapSimulator.Pools
                 int? fame = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Fame) ? reader.ReadInt32() : null;
                 int? worldRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.WorldRank) ? reader.ReadInt32() : null;
                 int? jobRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.JobRank) ? reader.ReadInt32() : null;
+                int? previousWorldRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PreviousWorldRank) ? reader.ReadInt32() : null;
+                int? previousJobRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PreviousJobRank) ? reader.ReadInt32() : null;
                 bool? hasRide = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Ride) ? reader.ReadByte() != 0 : null;
                 bool? hasPendantSlot = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PendantSlot) ? reader.ReadByte() != 0 : null;
                 bool? hasPocketSlot = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PocketSlot) ? reader.ReadByte() != 0 : null;
@@ -2443,7 +2449,9 @@ namespace HaCreator.MapSimulator.Pools
                     makerToyProgress,
                     makerSuccessfulCrafts,
                     makerDiscoveredRecipeCount,
-                    makerUnlockedHiddenRecipeCount);
+                    makerUnlockedHiddenRecipeCount,
+                    previousWorldRank,
+                    previousJobRank);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -3403,7 +3411,7 @@ namespace HaCreator.MapSimulator.Pools
                 return string.Empty;
             }
 
-            string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string[] segments = SplitHelperMarkerNameSegments(normalized);
             if (segments.Length == 0)
             {
                 return string.Empty;
@@ -3585,12 +3593,16 @@ namespace HaCreator.MapSimulator.Pools
 
             directionMarkerName = (firstSegment, secondSegment) switch
             {
+                ("north", "west") => "nw",
                 ("up", "left") => "nw",
                 ("left", "up") => "nw",
+                ("north", "east") => "ne",
                 ("up", "right") => "ne",
                 ("right", "up") => "ne",
+                ("south", "west") => "sw",
                 ("down", "left") => "sw",
                 ("left", "down") => "sw",
+                ("south", "east") => "se",
                 ("down", "right") => "se",
                 ("right", "down") => "se",
                 _ => null
@@ -3775,6 +3787,13 @@ namespace HaCreator.MapSimulator.Pools
 
             npcMarkerName = "iconnpc";
             return true;
+        }
+
+        private static string[] SplitHelperMarkerNameSegments(string markerName)
+        {
+            return markerName.Split(
+                new[] { '/', '.' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
         private static string NormalizeHelperMarkerNameSegment(string segment)

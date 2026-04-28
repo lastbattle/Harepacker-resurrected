@@ -110,6 +110,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|destroyed\s+(?:in|at)\s+(?:a\s+)?)\s*(\d+)\s*%\s*(?:[-\s]*chance|rate)?|(\d+)\s*%\s*(?:[-\s]*chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*?(?:completely\s+destroyed|destroyed\s+completely)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex CashEquipmentBlockedRegex = new Regex(@"not\s+available\s+on\s+cash\s+items?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Weapon\s+ATT|Physical\s+ATT|W\.?\s*(?:Attack|ATT)|Attack\s+Power|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|Magic\s+ATT|Magical\s+ATT|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?\.?|Weapon\s+DEF\.?|Physical\s+DEF\.?|PDD|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -3041,6 +3042,12 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (selectedPart.IsCash && consumable.Definition.BlocksCashEquipment)
+            {
+                reason = $"{consumable.Name} is not available on Cash Items.";
+                return false;
+            }
+
             bool matchesRequiredItem = IsConsumableCompatibleWithItem(consumable.Definition, selectedPart.ItemId);
             bool matchesTargetSlot = !TryGetScrollTargetSlots(consumable.Definition.ItemId, out IReadOnlyCollection<EquipSlot> targetSlots) ||
                                      targetSlots.Count == 0 ||
@@ -3432,7 +3439,8 @@ namespace HaCreator.MapSimulator.UI
                 0f,
                 0,
                 HammerBehavior.None,
-                profile.StatDeltaProfile);
+                profile.StatDeltaProfile,
+                ResolveCashEquipmentBlockFromDescription(description));
             return true;
         }
 
@@ -3642,6 +3650,7 @@ namespace HaCreator.MapSimulator.UI
             int success = Math.Max(0, (info["success"] as WzIntProperty)?.Value ?? 100);
             int cursed = Math.Max(0, (info["cursed"] as WzIntProperty)?.Value ?? 0);
             int recover = Math.Max(1, (info["recover"] as WzIntProperty)?.Value ?? 1);
+            string description = ResolveCachedItemDescription(itemId);
             definition = new EnhancementConsumableDefinition(
                 itemId,
                 ResolveCachedItemNameOrFallback(itemId),
@@ -3652,7 +3661,8 @@ namespace HaCreator.MapSimulator.UI
                 InventoryType.USE,
                 effectType,
                 PotentialTier.Rare,
-                MathHelper.Clamp(cursed / 100f, 0f, 1.0f));
+                MathHelper.Clamp(cursed / 100f, 0f, 1.0f),
+                blocksCashEquipment: ResolveCashEquipmentBlockFromDescription(description));
             return true;
         }
 
@@ -3724,6 +3734,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return 100;
+        }
+
+        private static bool ResolveCashEquipmentBlockFromDescription(string description)
+        {
+            return !string.IsNullOrWhiteSpace(description) &&
+                   CashEquipmentBlockedRegex.IsMatch(NormalizeAuthoredScrollText(description));
         }
 
         private sealed class UpgradeState
@@ -3824,7 +3840,8 @@ namespace HaCreator.MapSimulator.UI
                 float modifiedSuccessRate = 0f,
                 int rewardItemId = 0,
                 HammerBehavior hammerBehavior = HammerBehavior.None,
-                AuthoredStatDeltaProfile statDeltaProfile = default)
+                AuthoredStatDeltaProfile statDeltaProfile = default,
+                bool blocksCashEquipment = false)
             {
                 ItemId = itemId;
                 Name = name;
@@ -3842,6 +3859,7 @@ namespace HaCreator.MapSimulator.UI
                 RewardItemId = rewardItemId;
                 HammerBehavior = hammerBehavior;
                 StatDeltaProfile = statDeltaProfile;
+                BlocksCashEquipment = blocksCashEquipment;
             }
 
             public int ItemId { get; }
@@ -3860,6 +3878,7 @@ namespace HaCreator.MapSimulator.UI
             public int RewardItemId { get; }
             public HammerBehavior HammerBehavior { get; }
             public AuthoredStatDeltaProfile StatDeltaProfile { get; }
+            public bool BlocksCashEquipment { get; }
         }
 
         private sealed class EnhancementConsumable
@@ -4488,6 +4507,11 @@ namespace HaCreator.MapSimulator.UI
         internal static bool IsGenericEquipmentRandomStatScrollForTesting(string itemName, string description)
         {
             return IsGenericEquipmentRandomStatScrollText(itemName, description);
+        }
+
+        internal static bool ResolveCashEquipmentBlockFromDescriptionForTesting(string description)
+        {
+            return ResolveCashEquipmentBlockFromDescription(description);
         }
 
         internal static int ResolveHammerSuccessRateFromDescriptionForTesting(string description)

@@ -654,6 +654,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawButtons(sprite);
+            DrawExpandedComboBoxOptions(sprite);
         }
 
         private void DrawButtons(SpriteBatch sprite)
@@ -761,16 +762,24 @@ namespace HaCreator.MapSimulator.UI
                 Color.Black);
 
             cursor.Y += Math.Max(ComboBoxHeight, _comboBounds.Height);
-            _comboOptionBounds.Clear();
-            if (!_comboExpanded)
+            RebuildComboBoxOptionBounds();
+        }
+
+        private void DrawExpandedComboBoxOptions(SpriteBatch sprite)
+        {
+            if (!_showComboBox || !_comboExpanded)
             {
                 return;
             }
 
+            RebuildComboBoxOptionBounds();
             for (int i = 0; i < _comboItems.Count; i++)
             {
-                Rectangle optionBounds = new(_comboBounds.X, _comboBounds.Bottom + (i * ComboBoxOptionHeight), _comboBounds.Width, ComboBoxOptionHeight);
-                _comboOptionBounds[i] = optionBounds;
+                if (!_comboOptionBounds.TryGetValue(i, out Rectangle optionBounds))
+                {
+                    continue;
+                }
+
                 sprite.Draw(_pixelTexture, optionBounds, i == _selectedComboIndex ? _comboBoxFocusedBackColor : _comboBoxBackColor);
                 DrawBorder(sprite, optionBounds, _comboBoxBorderColor);
                 SelectorWindowDrawing.DrawShadowedText(
@@ -779,6 +788,24 @@ namespace HaCreator.MapSimulator.UI
                     _comboItems[i].Label,
                     new Vector2(optionBounds.X + 4, optionBounds.Y + 1),
                     Color.Black);
+            }
+        }
+
+        private void RebuildComboBoxOptionBounds()
+        {
+            _comboOptionBounds.Clear();
+            if (!_showComboBox || _comboBounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _comboItems.Count; i++)
+            {
+                _comboOptionBounds[i] = new Rectangle(
+                    _comboBounds.X,
+                    _comboBounds.Bottom + (i * ComboBoxOptionHeight),
+                    _comboBounds.Width,
+                    ComboBoxOptionHeight);
             }
         }
 

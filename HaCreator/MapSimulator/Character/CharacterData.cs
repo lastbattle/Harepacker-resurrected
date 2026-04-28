@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render.DX;
@@ -818,6 +819,10 @@ namespace HaCreator.MapSimulator.Character
         public int BonusDEX { get; set; }
         public int BonusINT { get; set; }
         public int BonusLUK { get; set; }
+        public int BonusSTRPercent { get; set; }
+        public int BonusDEXPercent { get; set; }
+        public int BonusINTPercent { get; set; }
+        public int BonusLUKPercent { get; set; }
         public int BonusHP { get; set; }
         public int BonusMP { get; set; }
         public int BonusHPPercent { get; set; }
@@ -826,10 +831,17 @@ namespace HaCreator.MapSimulator.Character
         public int BonusMagicAttack { get; set; }
         public int BonusWeaponDefense { get; set; }
         public int BonusMagicDefense { get; set; }
+        public int BonusWeaponAttackPercent { get; set; }
+        public int BonusMagicAttackPercent { get; set; }
+        public int BonusWeaponDefensePercent { get; set; }
+        public int BonusMagicDefensePercent { get; set; }
         public int BonusAccuracy { get; set; }
         public int BonusAvoidability { get; set; }
+        public int BonusAccuracyPercent { get; set; }
+        public int BonusAvoidabilityPercent { get; set; }
         public int BonusHands { get; set; }
         public int BonusSpeed { get; set; }
+        public int BonusSpeedPercent { get; set; }
         public int BonusJump { get; set; }
         public int UpgradeSlots { get; set; }
         public int? TotalUpgradeSlotCount { get; set; }
@@ -898,6 +910,10 @@ namespace HaCreator.MapSimulator.Character
                 BonusDEX = BonusDEX,
                 BonusINT = BonusINT,
                 BonusLUK = BonusLUK,
+                BonusSTRPercent = BonusSTRPercent,
+                BonusDEXPercent = BonusDEXPercent,
+                BonusINTPercent = BonusINTPercent,
+                BonusLUKPercent = BonusLUKPercent,
                 BonusHP = BonusHP,
                 BonusMP = BonusMP,
                 BonusHPPercent = BonusHPPercent,
@@ -906,10 +922,17 @@ namespace HaCreator.MapSimulator.Character
                 BonusMagicAttack = BonusMagicAttack,
                 BonusWeaponDefense = BonusWeaponDefense,
                 BonusMagicDefense = BonusMagicDefense,
+                BonusWeaponAttackPercent = BonusWeaponAttackPercent,
+                BonusMagicAttackPercent = BonusMagicAttackPercent,
+                BonusWeaponDefensePercent = BonusWeaponDefensePercent,
+                BonusMagicDefensePercent = BonusMagicDefensePercent,
                 BonusAccuracy = BonusAccuracy,
                 BonusAvoidability = BonusAvoidability,
+                BonusAccuracyPercent = BonusAccuracyPercent,
+                BonusAvoidabilityPercent = BonusAvoidabilityPercent,
                 BonusHands = BonusHands,
                 BonusSpeed = BonusSpeed,
+                BonusSpeedPercent = BonusSpeedPercent,
                 BonusJump = BonusJump,
                 UpgradeSlots = UpgradeSlots,
                 TotalUpgradeSlotCount = TotalUpgradeSlotCount,
@@ -1742,6 +1765,10 @@ namespace HaCreator.MapSimulator.Character
                 BonusDEX = BonusDEX,
                 BonusINT = BonusINT,
                 BonusLUK = BonusLUK,
+                BonusSTRPercent = BonusSTRPercent,
+                BonusDEXPercent = BonusDEXPercent,
+                BonusINTPercent = BonusINTPercent,
+                BonusLUKPercent = BonusLUKPercent,
                 BonusHP = BonusHP,
                 BonusMP = BonusMP,
                 BonusHPPercent = BonusHPPercent,
@@ -1750,10 +1777,17 @@ namespace HaCreator.MapSimulator.Character
                 BonusMagicAttack = BonusMagicAttack,
                 BonusWeaponDefense = BonusWeaponDefense,
                 BonusMagicDefense = BonusMagicDefense,
+                BonusWeaponAttackPercent = BonusWeaponAttackPercent,
+                BonusMagicAttackPercent = BonusMagicAttackPercent,
+                BonusWeaponDefensePercent = BonusWeaponDefensePercent,
+                BonusMagicDefensePercent = BonusMagicDefensePercent,
                 BonusAccuracy = BonusAccuracy,
                 BonusAvoidability = BonusAvoidability,
+                BonusAccuracyPercent = BonusAccuracyPercent,
+                BonusAvoidabilityPercent = BonusAvoidabilityPercent,
                 BonusHands = BonusHands,
                 BonusSpeed = BonusSpeed,
+                BonusSpeedPercent = BonusSpeedPercent,
                 BonusJump = BonusJump,
                 UpgradeSlots = UpgradeSlots,
                 TotalUpgradeSlotCount = TotalUpgradeSlotCount,
@@ -1887,6 +1921,35 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterBuild
     {
+        private readonly record struct ItemOptionStatBonus(
+            int STR,
+            int DEX,
+            int INT,
+            int LUK,
+            int STRPercent,
+            int DEXPercent,
+            int INTPercent,
+            int LUKPercent,
+            int MaxHP,
+            int MaxMP,
+            int MaxHPPercent,
+            int MaxMPPercent,
+            int WeaponAttack,
+            int MagicAttack,
+            int WeaponDefense,
+            int MagicDefense,
+            int WeaponAttackPercent,
+            int MagicAttackPercent,
+            int WeaponDefensePercent,
+            int MagicDefensePercent,
+            int Accuracy,
+            int Avoidability,
+            int AccuracyPercent,
+            int AvoidabilityPercent,
+            int Speed,
+            int SpeedPercent,
+            int Jump);
+
         private readonly record struct AttackFormulaProfile(
             bool UsesMagicFormula,
             float WeaponMultiplier,
@@ -1935,6 +1998,8 @@ namespace HaCreator.MapSimulator.Character
         private const float DefaultSpeedValue = 100f;
         private const float DefaultJumpValue = 100f;
         private const float DefaultMaxSpeedValue = 140f;
+        private static readonly object ItemOptionCacheLock = new();
+        private static readonly Dictionary<(int OptionId, int EquipLevel), ItemOptionStatBonus> ItemOptionStatBonusCache = new();
 
         public int Id { get; set; }
         public string Name { get; set; }
@@ -1981,6 +2046,8 @@ namespace HaCreator.MapSimulator.Character
         public bool HasAuthoritativeProfileFame { get; set; } = true;
         public bool HasAuthoritativeProfileWorldRank { get; set; } = true;
         public bool HasAuthoritativeProfileJobRank { get; set; } = true;
+        public int? ProfilePreviousWorldRank { get; set; }
+        public int? ProfilePreviousJobRank { get; set; }
         public bool HasAuthoritativeProfileRide { get; set; } = true;
         public bool? IsProfileRidingInField { get; set; }
         public int ProfileRideVehicleItemId { get; set; }
@@ -2177,33 +2244,57 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        public int TotalSTR => STR + SumEquipmentBonus(part => part.BonusSTR) + GetSkillStatBonus(BuffStatType.Strength);
-        public int TotalDEX => DEX + SumEquipmentBonus(part => part.BonusDEX) + GetSkillStatBonus(BuffStatType.Dexterity);
-        public int TotalINT => INT + SumEquipmentBonus(part => part.BonusINT) + GetSkillStatBonus(BuffStatType.Intelligence);
-        public int TotalLUK => LUK + SumEquipmentBonus(part => part.BonusLUK) + GetSkillStatBonus(BuffStatType.Luck);
+        public int TotalSTR => ComputeTotalPrimaryStat(
+            STR,
+            BuffStatType.Strength,
+            static part => part.BonusSTR,
+            static part => part.BonusSTRPercent,
+            static bonus => bonus.STR,
+            static bonus => bonus.STRPercent);
+        public int TotalDEX => ComputeTotalPrimaryStat(
+            DEX,
+            BuffStatType.Dexterity,
+            static part => part.BonusDEX,
+            static part => part.BonusDEXPercent,
+            static bonus => bonus.DEX,
+            static bonus => bonus.DEXPercent);
+        public int TotalINT => ComputeTotalPrimaryStat(
+            INT,
+            BuffStatType.Intelligence,
+            static part => part.BonusINT,
+            static part => part.BonusINTPercent,
+            static bonus => bonus.INT,
+            static bonus => bonus.INTPercent);
+        public int TotalLUK => ComputeTotalPrimaryStat(
+            LUK,
+            BuffStatType.Luck,
+            static part => part.BonusLUK,
+            static part => part.BonusLUKPercent,
+            static bonus => bonus.LUK,
+            static bonus => bonus.LUKPercent);
         public int TotalMaxHP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxHP(), GetTotalMaxHpPercentBonus()), 1, MaxHpMpStat);
         public int TotalMaxMP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxMP(), GetTotalMaxMpPercentBonus()), 0, MaxHpMpStat);
         public int TotalHP => Math.Clamp(HP + GetTotalMaxHpDelta(), 0, TotalMaxHP);
         public int TotalMP => Math.Clamp(MP + GetTotalMaxMpDelta(), 0, TotalMaxMP);
         public int TotalMastery => Math.Clamp(SkillMasteryProvider?.Invoke() ?? MinimumMasteryPercent, MinimumMasteryPercent, 100);
-        public int TotalWeaponAttackStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Attack - DefaultAttackValue) + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack), GetSkillStatBonus(BuffStatType.AttackPercent)));
-        public int TotalWeaponDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Defense - DefaultDefenseValue) + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense), GetSkillStatBonus(BuffStatType.DefensePercent)));
-        public int TotalMagicAttackStat => Math.Max(0, ApplyRateBonus(Math.Max(0, MagicAttack - DefaultMagicAttackValue) + SumEquipmentBonus(part => part.BonusMagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack), GetSkillStatBonus(BuffStatType.MagicAttackPercent)));
-        public int TotalMagicDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, MagicDefense - DefaultMagicDefenseValue) + SumEquipmentBonus(part => part.BonusMagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense), GetSkillStatBonus(BuffStatType.MagicDefensePercent)));
+        public int TotalWeaponAttackStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Attack - DefaultAttackValue) + SumEquipmentBonus(part => part.BonusWeaponAttack) + SumEquipmentItemOptionBonus(static bonus => bonus.WeaponAttack) + GetSkillStatBonus(BuffStatType.Attack), SumEquipmentBonus(part => part.BonusWeaponAttackPercent) + SumEquipmentItemOptionBonus(static bonus => bonus.WeaponAttackPercent) + GetSkillStatBonus(BuffStatType.AttackPercent)));
+        public int TotalWeaponDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Defense - DefaultDefenseValue) + SumEquipmentBonus(part => part.BonusWeaponDefense) + SumEquipmentItemOptionBonus(static bonus => bonus.WeaponDefense) + GetSkillStatBonus(BuffStatType.Defense), SumEquipmentBonus(part => part.BonusWeaponDefensePercent) + SumEquipmentItemOptionBonus(static bonus => bonus.WeaponDefensePercent) + GetSkillStatBonus(BuffStatType.DefensePercent)));
+        public int TotalMagicAttackStat => Math.Max(0, ApplyRateBonus(Math.Max(0, MagicAttack - DefaultMagicAttackValue) + SumEquipmentBonus(part => part.BonusMagicAttack) + SumEquipmentItemOptionBonus(static bonus => bonus.MagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack), SumEquipmentBonus(part => part.BonusMagicAttackPercent) + SumEquipmentItemOptionBonus(static bonus => bonus.MagicAttackPercent) + GetSkillStatBonus(BuffStatType.MagicAttackPercent)));
+        public int TotalMagicDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, MagicDefense - DefaultMagicDefenseValue) + SumEquipmentBonus(part => part.BonusMagicDefense) + SumEquipmentItemOptionBonus(static bonus => bonus.MagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense), SumEquipmentBonus(part => part.BonusMagicDefensePercent) + SumEquipmentItemOptionBonus(static bonus => bonus.MagicDefensePercent) + GetSkillStatBonus(BuffStatType.MagicDefensePercent)));
         public int TotalAttack => ComputeDisplayedPhysicalAttack();
         public int TotalDefense => ComputeDisplayedPhysicalDefense();
         public int TotalMagicAttack => ComputeDisplayedMagicAttack();
         public int TotalMagicDefense => ComputeDisplayedMagicDefense();
 
-        public int TotalAccuracy => Math.Max(0, ApplyRateBonus(GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy) + GetSkillStatBonus(BuffStatType.Accuracy), GetSkillStatBonus(BuffStatType.AccuracyPercent)));
-        public int TotalAvoidability => Math.Max(0, ApplyRateBonus(GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability), GetSkillStatBonus(BuffStatType.AvoidabilityPercent)));
+        public int TotalAccuracy => Math.Max(0, ApplyRateBonus(GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy) + SumEquipmentItemOptionBonus(static bonus => bonus.Accuracy) + GetSkillStatBonus(BuffStatType.Accuracy), SumEquipmentBonus(part => part.BonusAccuracyPercent) + SumEquipmentItemOptionBonus(static bonus => bonus.AccuracyPercent) + GetSkillStatBonus(BuffStatType.AccuracyPercent)));
+        public int TotalAvoidability => Math.Max(0, ApplyRateBonus(GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + SumEquipmentItemOptionBonus(static bonus => bonus.Avoidability) + GetSkillStatBonus(BuffStatType.Avoidability), SumEquipmentBonus(part => part.BonusAvoidabilityPercent) + SumEquipmentItemOptionBonus(static bonus => bonus.AvoidabilityPercent) + GetSkillStatBonus(BuffStatType.AvoidabilityPercent)));
         public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK + SumEquipmentBonus(part => part.BonusHands) + GetSkillStatBonus(BuffStatType.Craft));
         public int TotalCriticalRate => Math.Max(0, CriticalRate + GetSkillStatBonus(BuffStatType.CriticalRate));
         public float TotalSpeed => Math.Clamp(
-            ApplyRateBonus(Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed), GetSkillStatBonus(BuffStatType.SpeedPercent)),
+            ApplyRateBonus(Speed + SumEquipmentBonus(part => part.BonusSpeed) + SumEquipmentItemOptionBonus(static bonus => bonus.Speed) + GetSkillStatBonus(BuffStatType.Speed), SumEquipmentBonus(part => part.BonusSpeedPercent) + SumEquipmentItemOptionBonus(static bonus => bonus.SpeedPercent) + GetSkillStatBonus(BuffStatType.SpeedPercent)),
             0f,
             GetTotalSpeedCap());
-        public float TotalJumpPower => Math.Max(0f, JumpPower + SumEquipmentBonus(part => part.BonusJump) + GetSkillStatBonus(BuffStatType.Jump));
+        public float TotalJumpPower => Math.Max(0f, JumpPower + SumEquipmentBonus(part => part.BonusJump) + SumEquipmentItemOptionBonus(static bonus => bonus.Jump) + GetSkillStatBonus(BuffStatType.Jump));
 
         public bool CanIncreaseMaxHp()
         {
@@ -2471,6 +2562,10 @@ namespace HaCreator.MapSimulator.Character
                 hash = (hash * 31) + part.BonusDEX;
                 hash = (hash * 31) + part.BonusINT;
                 hash = (hash * 31) + part.BonusLUK;
+                hash = (hash * 31) + part.BonusSTRPercent;
+                hash = (hash * 31) + part.BonusDEXPercent;
+                hash = (hash * 31) + part.BonusINTPercent;
+                hash = (hash * 31) + part.BonusLUKPercent;
                 hash = (hash * 31) + part.BonusHP;
                 hash = (hash * 31) + part.BonusMP;
                 hash = (hash * 31) + part.BonusHPPercent;
@@ -2479,10 +2574,17 @@ namespace HaCreator.MapSimulator.Character
                 hash = (hash * 31) + part.BonusMagicAttack;
                 hash = (hash * 31) + part.BonusWeaponDefense;
                 hash = (hash * 31) + part.BonusMagicDefense;
+                hash = (hash * 31) + part.BonusWeaponAttackPercent;
+                hash = (hash * 31) + part.BonusMagicAttackPercent;
+                hash = (hash * 31) + part.BonusWeaponDefensePercent;
+                hash = (hash * 31) + part.BonusMagicDefensePercent;
                 hash = (hash * 31) + part.BonusAccuracy;
                 hash = (hash * 31) + part.BonusAvoidability;
+                hash = (hash * 31) + part.BonusAccuracyPercent;
+                hash = (hash * 31) + part.BonusAvoidabilityPercent;
                 hash = (hash * 31) + part.BonusHands;
                 hash = (hash * 31) + part.BonusSpeed;
+                hash = (hash * 31) + part.BonusSpeedPercent;
                 hash = (hash * 31) + part.BonusJump;
                 hash = (hash * 31) + part.UpgradeSlots;
                 hash = (hash * 31) + (part.RemainingUpgradeSlotCount ?? int.MinValue);
@@ -2866,12 +2968,12 @@ namespace HaCreator.MapSimulator.Character
 
         private int GetUnscaledTotalMaxHP()
         {
-            return MaxHP + SumEquipmentBonus(part => part.BonusHP) + GetSkillStatBonus(BuffStatType.MaxHP);
+            return MaxHP + SumEquipmentBonus(part => part.BonusHP) + SumEquipmentItemOptionBonus(static bonus => bonus.MaxHP) + GetSkillStatBonus(BuffStatType.MaxHP);
         }
 
         private int GetUnscaledTotalMaxMP()
         {
-            return MaxMP + SumEquipmentBonus(part => part.BonusMP) + GetSkillStatBonus(BuffStatType.MaxMP);
+            return MaxMP + SumEquipmentBonus(part => part.BonusMP) + SumEquipmentItemOptionBonus(static bonus => bonus.MaxMP) + GetSkillStatBonus(BuffStatType.MaxMP);
         }
 
         private int GetTotalMaxHpDelta()
@@ -2890,17 +2992,31 @@ namespace HaCreator.MapSimulator.Character
 
         private int GetTotalMaxHpPercentBonus()
         {
-            return SumEquipmentBonus(part => part.BonusHPPercent) + GetSkillStatBonus(BuffStatType.MaxHPPercent);
+            return SumEquipmentBonus(part => part.BonusHPPercent) + SumEquipmentItemOptionBonus(static bonus => bonus.MaxHPPercent) + GetSkillStatBonus(BuffStatType.MaxHPPercent);
         }
 
         private int GetTotalMaxMpPercentBonus()
         {
-            return SumEquipmentBonus(part => part.BonusMPPercent) + GetSkillStatBonus(BuffStatType.MaxMPPercent);
+            return SumEquipmentBonus(part => part.BonusMPPercent) + SumEquipmentItemOptionBonus(static bonus => bonus.MaxMPPercent) + GetSkillStatBonus(BuffStatType.MaxMPPercent);
         }
 
         private static int GetRateBonusDelta(int value, int percent)
         {
             return ApplyRateBonus(value, percent) - value;
+        }
+
+        private int ComputeTotalPrimaryStat(
+            int baseValue,
+            BuffStatType skillStat,
+            Func<CharacterPart, int> equipmentFlatSelector,
+            Func<CharacterPart, int> equipmentRateSelector,
+            Func<ItemOptionStatBonus, int> optionFlatSelector,
+            Func<ItemOptionStatBonus, int> optionRateSelector)
+        {
+            int equipmentAdjusted = ApplyRateBonus(
+                baseValue + SumEquipmentBonus(equipmentFlatSelector) + SumEquipmentItemOptionBonus(optionFlatSelector),
+                SumEquipmentBonus(equipmentRateSelector) + SumEquipmentItemOptionBonus(optionRateSelector));
+            return Math.Max(0, equipmentAdjusted + GetSkillStatBonus(skillStat));
         }
 
         private int SumEquipmentBonus(Func<CharacterPart, int> selector)
@@ -2924,6 +3040,177 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return total;
+        }
+
+        private int SumEquipmentItemOptionBonus(Func<ItemOptionStatBonus, int> selector)
+        {
+            int total = 0;
+
+            foreach (CharacterPart part in Equipment.Values)
+            {
+                total += SumPartItemOptionBonus(part, selector);
+            }
+
+            foreach (CharacterPart part in HiddenEquipment.Values)
+            {
+                total += SumPartItemOptionBonus(part, selector);
+            }
+
+            return total;
+        }
+
+        private static int SumPartItemOptionBonus(CharacterPart part, Func<ItemOptionStatBonus, int> selector)
+        {
+            if (part?.ItemOptionIds == null || part.ItemOptionIds.Count == 0 || selector == null)
+            {
+                return 0;
+            }
+
+            int total = 0;
+            int equipLevel = ResolveItemOptionEquipLevel(part.RequiredLevel);
+            foreach (int itemOptionId in part.ItemOptionIds)
+            {
+                if (TryResolveItemOptionStatBonus(itemOptionId, equipLevel, out ItemOptionStatBonus bonus))
+                {
+                    total += selector(bonus);
+                }
+            }
+
+            return total;
+        }
+
+        internal static int ResolveItemOptionEquipLevel(int requiredLevel)
+        {
+            return requiredLevel <= 0
+                ? 1
+                : Math.Clamp((requiredLevel - 1) / 10, 1, 20);
+        }
+
+        private static bool TryResolveItemOptionStatBonus(int itemOptionId, int equipLevel, out ItemOptionStatBonus bonus)
+        {
+            bonus = default;
+            if (itemOptionId <= 0 || equipLevel <= 0)
+            {
+                return false;
+            }
+
+            (int OptionId, int EquipLevel) cacheKey = (itemOptionId, Math.Clamp(equipLevel, 1, 20));
+            lock (ItemOptionCacheLock)
+            {
+                if (ItemOptionStatBonusCache.TryGetValue(cacheKey, out bonus))
+                {
+                    return !bonus.Equals(default(ItemOptionStatBonus));
+                }
+            }
+
+            bonus = LoadItemOptionStatBonus(cacheKey.OptionId, cacheKey.EquipLevel);
+            if (!bonus.Equals(default(ItemOptionStatBonus)) || Program.DataSource?.GetImage("Item", "ItemOption.img") != null)
+            {
+                lock (ItemOptionCacheLock)
+                {
+                    ItemOptionStatBonusCache[cacheKey] = bonus;
+                }
+            }
+
+            return !bonus.Equals(default(ItemOptionStatBonus));
+        }
+
+        private static ItemOptionStatBonus LoadItemOptionStatBonus(int itemOptionId, int equipLevel)
+        {
+            if (TryLoadWzItemOptionStatBonus(itemOptionId, equipLevel, out ItemOptionStatBonus bonus))
+            {
+                return bonus;
+            }
+
+            return CreateFallbackItemOptionStatBonus(itemOptionId, equipLevel);
+        }
+
+        private static bool TryLoadWzItemOptionStatBonus(int itemOptionId, int equipLevel, out ItemOptionStatBonus bonus)
+        {
+            bonus = default;
+            WzImage itemOptionImage = Program.DataSource?.GetImage("Item", "ItemOption.img");
+            if (itemOptionImage == null)
+            {
+                return false;
+            }
+
+            itemOptionImage.ParseImage();
+            WzImageProperty levelEntry = itemOptionImage.GetFromPath($"{itemOptionId:D6}/level/{equipLevel.ToString(CultureInfo.InvariantCulture)}");
+            if (levelEntry == null)
+            {
+                return false;
+            }
+
+            bonus = ReadItemOptionStatBonus(levelEntry);
+            return !bonus.Equals(default(ItemOptionStatBonus));
+        }
+
+        private static ItemOptionStatBonus ReadItemOptionStatBonus(WzImageProperty levelEntry)
+        {
+            return new ItemOptionStatBonus(
+                STR: GetWzInt(levelEntry, "incSTR"),
+                DEX: GetWzInt(levelEntry, "incDEX"),
+                INT: GetWzInt(levelEntry, "incINT"),
+                LUK: GetWzInt(levelEntry, "incLUK"),
+                STRPercent: GetWzInt(levelEntry, "incSTRr"),
+                DEXPercent: GetWzInt(levelEntry, "incDEXr"),
+                INTPercent: GetWzInt(levelEntry, "incINTr"),
+                LUKPercent: GetWzInt(levelEntry, "incLUKr"),
+                MaxHP: GetWzInt(levelEntry, "incMHP"),
+                MaxMP: GetWzInt(levelEntry, "incMMP"),
+                MaxHPPercent: GetWzInt(levelEntry, "incMHPr"),
+                MaxMPPercent: GetWzInt(levelEntry, "incMMPr"),
+                WeaponAttack: GetWzInt(levelEntry, "incPAD"),
+                MagicAttack: GetWzInt(levelEntry, "incMAD"),
+                WeaponDefense: GetWzInt(levelEntry, "incPDD"),
+                MagicDefense: GetWzInt(levelEntry, "incMDD"),
+                WeaponAttackPercent: GetWzInt(levelEntry, "incPADr"),
+                MagicAttackPercent: GetWzInt(levelEntry, "incMADr"),
+                WeaponDefensePercent: GetWzInt(levelEntry, "incPDDr"),
+                MagicDefensePercent: GetWzInt(levelEntry, "incMDDr"),
+                Accuracy: GetWzInt(levelEntry, "incACC"),
+                Avoidability: GetWzInt(levelEntry, "incEVA"),
+                AccuracyPercent: GetWzInt(levelEntry, "incACCr"),
+                AvoidabilityPercent: GetWzInt(levelEntry, "incEVAr"),
+                Speed: GetWzInt(levelEntry, "incSpeed"),
+                SpeedPercent: GetWzInt(levelEntry, "incSpeedr"),
+                Jump: GetWzInt(levelEntry, "incJump"));
+        }
+
+        private static int GetWzInt(WzImageProperty parent, string name)
+        {
+            return (parent?[name] as WzIntProperty)?.Value ?? 0;
+        }
+
+        private static ItemOptionStatBonus CreateFallbackItemOptionStatBonus(int itemOptionId, int equipLevel)
+        {
+            int rate = ResolveFallbackCommonPotentialRate(equipLevel);
+            return itemOptionId switch
+            {
+                10041 => new ItemOptionStatBonus(0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10042 => new ItemOptionStatBonus(0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10043 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10044 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10045 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10046 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10047 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0),
+                10048 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0),
+                10051 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10052 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                10053 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0),
+                10054 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0),
+                _ => default
+            };
+        }
+
+        private static int ResolveFallbackCommonPotentialRate(int equipLevel)
+        {
+            return Math.Clamp(equipLevel, 1, 20) switch
+            {
+                <= 3 => 1,
+                <= 7 => 2,
+                _ => 3
+            };
         }
 
         private int GetBaseAccuracy()
@@ -3334,6 +3621,8 @@ namespace HaCreator.MapSimulator.Character
                 HasAuthoritativeProfileFame = HasAuthoritativeProfileFame,
                 HasAuthoritativeProfileWorldRank = HasAuthoritativeProfileWorldRank,
                 HasAuthoritativeProfileJobRank = HasAuthoritativeProfileJobRank,
+                ProfilePreviousWorldRank = ProfilePreviousWorldRank,
+                ProfilePreviousJobRank = ProfilePreviousJobRank,
                 HasAuthoritativeProfileRide = HasAuthoritativeProfileRide,
                 IsProfileRidingInField = IsProfileRidingInField,
                 ProfileRideVehicleItemId = ProfileRideVehicleItemId,

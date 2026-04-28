@@ -240,6 +240,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Initial-quiz MapleString ended before the declared byte length.");
+            }
+
             return DecodeClientMapleString(bytes);
         }
 

@@ -311,6 +311,12 @@ namespace HaCreator.MapSimulator.Companions
                     return true;
                 }
 
+                if (sawMatchingAddEntry
+                    && !TryValidateMechanicAddEntrySourceEvidence(request, operationContext, out rejectReason))
+                {
+                    return false;
+                }
+
                 if (sawMatchingSwap || sawMatchingAddEntry || sawMatchingRemoveEntry)
                 {
                     return true;

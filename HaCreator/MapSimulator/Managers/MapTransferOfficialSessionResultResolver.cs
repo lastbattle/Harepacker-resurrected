@@ -155,6 +155,47 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        internal static MapTransferRuntimeRequest CompleteRequestFromAuthoritativeDelta(
+            MapTransferRuntimeRequest request,
+            MapTransferRuntimeResponse authoritativeResponse,
+            IReadOnlyList<int> previousFieldList)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            MapTransferRuntimeRequest inferredRequest = InferRequestFromAuthoritativeDelta(
+                authoritativeResponse,
+                previousFieldList);
+            if (inferredRequest == null ||
+                inferredRequest.Type != request.Type ||
+                inferredRequest.Book != request.Book)
+            {
+                return request;
+            }
+
+            int resolvedMapId = request.MapId > 0
+                ? request.MapId
+                : inferredRequest.MapId;
+            int resolvedSlotIndex = request.SlotIndex >= 0
+                ? request.SlotIndex
+                : inferredRequest.SlotIndex;
+            if (resolvedMapId == request.MapId &&
+                resolvedSlotIndex == request.SlotIndex)
+            {
+                return request;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = resolvedMapId,
+                SlotIndex = resolvedSlotIndex
+            };
+        }
+
         internal static MapTransferRuntimeRequestType? InferRequestType(MapTransferRuntimeResponse authoritativeResponse)
         {
             if (authoritativeResponse == null)

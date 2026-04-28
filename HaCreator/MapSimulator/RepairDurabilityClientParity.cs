@@ -789,6 +789,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodeOpcodeResultEchoedSlotPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
             if (TryDecodeSlotListResultPayload(payload, out result, out error))
             {
                 return true;
@@ -913,6 +923,48 @@ namespace HaCreator.MapSimulator
             }
 
             return TryDecodeSyntheticResultPayload(body, out result, out error);
+        }
+
+        private static bool TryDecodeOpcodeResultEchoedSlotPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < 1 + 1 + sizeof(int))
+            {
+                return false;
+            }
+
+            int offset = 0;
+            if (!TryReadRepairOpcode(payload, ref offset, out short? operationCode) || !operationCode.HasValue)
+            {
+                return false;
+            }
+
+            byte resultByte = payload[offset];
+            if (resultByte is not (byte)0 and not (byte)1)
+            {
+                return false;
+            }
+
+            offset++;
+            if (!TryReadIntEncodedSlotPosition(payload, ref offset, out int? encodedSlotPosition)
+                || !encodedSlotPosition.HasValue)
+            {
+                return false;
+            }
+
+            if (!TryDecodeReasonAndStatusTail(payload, offset, out int? reasonCode, out string statusText, out error))
+            {
+                return false;
+            }
+
+            result = new ResultPayload(
+                success: resultByte == 0,
+                reasonCode,
+                operationCode,
+                encodedSlotPosition,
+                statusText);
+            return true;
         }
 
         private static bool TryDecodeSlotListResultPayload(byte[] payload, out ResultPayload result, out string error)
@@ -1144,6 +1196,25 @@ namespace HaCreator.MapSimulator
             return success && remainingAfterSlot == 0;
         }
 
+        private static bool TryReadIntEncodedSlotPosition(byte[] payload, ref int offset, out int? encodedSlotPosition)
+        {
+            encodedSlotPosition = null;
+            if (payload == null || payload.Length - offset < sizeof(int))
+            {
+                return false;
+            }
+
+            int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            if (!LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition))
+            {
+                return false;
+            }
+
+            encodedSlotPosition = candidateEncodedSlotPosition;
+            offset += sizeof(int);
+            return true;
+        }
+
         private static bool TryReadEncodedSlotPosition(byte[] payload, ref int offset, out int? encodedSlotPosition)
         {
             encodedSlotPosition = null;
@@ -1349,10 +1420,22 @@ namespace HaCreator.MapSimulator
                 }
 
                 JsonElement body = root;
-                if (root.TryGetProperty("result", out JsonElement nestedResult)
-                    && nestedResult.ValueKind == JsonValueKind.Object)
+                foreach (string nestedBodyName in new[]
+                         {
+                             "result",
+                             "repairDurabilityResult",
+                             "repairResult",
+                             "payload",
+                             "body",
+                             "data"
+                         })
                 {
-                    body = nestedResult;
+                    if (root.TryGetProperty(nestedBodyName, out JsonElement nestedResult)
+                        && nestedResult.ValueKind == JsonValueKind.Object)
+                    {
+                        body = nestedResult;
+                        break;
+                    }
                 }
 
                 bool success = ReadBooleanWithFallback(body, root, true, "success", "succeeded", "ok", "accepted")

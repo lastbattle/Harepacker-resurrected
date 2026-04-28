@@ -778,15 +778,18 @@ namespace HaCreator.MapSimulator.Character
                 AvailableAnimations = new HashSet<string>(availableActionNames, StringComparer.OrdinalIgnoreCase)
             };
 
-            bool checkedRequestedAction = false;
-            foreach (string requestedActionName in requestedActionNames)
+            string[] normalizedRequestedActionNames = requestedActionNames
+                .Where(static actionName => !string.IsNullOrWhiteSpace(actionName))
+                .Select(static actionName => actionName.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (normalizedRequestedActionNames.Length == 0)
             {
-                if (string.IsNullOrWhiteSpace(requestedActionName))
-                {
-                    continue;
-                }
+                return false;
+            }
 
-                checkedRequestedAction = true;
+            foreach (string requestedActionName in normalizedRequestedActionNames)
+            {
                 bool canResolveRequestedAction = false;
                 foreach (string candidateActionName in MorphClientActionResolver.EnumerateClientActionAliases(morphPart, requestedActionName))
                 {
@@ -803,7 +806,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            return checkedRequestedAction;
+            return true;
         }
 
         internal static bool CanResolveRequestedMorphActionsForTesting(
@@ -2890,6 +2893,10 @@ namespace HaCreator.MapSimulator.Character
             part.BonusDEX = GetIntValue(info["incDEX"]) ?? 0;
             part.BonusINT = GetIntValue(info["incINT"]) ?? 0;
             part.BonusLUK = GetIntValue(info["incLUK"]) ?? 0;
+            part.BonusSTRPercent = GetIntValue(info["incSTRr"]) ?? 0;
+            part.BonusDEXPercent = GetIntValue(info["incDEXr"]) ?? 0;
+            part.BonusINTPercent = GetIntValue(info["incINTr"]) ?? 0;
+            part.BonusLUKPercent = GetIntValue(info["incLUKr"]) ?? 0;
             part.BonusHP = GetIntValue(info["incMHP"]) ?? 0;
             part.BonusMP = GetIntValue(info["incMMP"]) ?? 0;
             part.BonusHPPercent = GetIntValue(info["incMHPr"]) ?? 0;
@@ -2898,10 +2905,17 @@ namespace HaCreator.MapSimulator.Character
             part.BonusMagicAttack = GetIntValue(info["incMAD"]) ?? 0;
             part.BonusWeaponDefense = GetIntValue(info["incPDD"]) ?? 0;
             part.BonusMagicDefense = GetIntValue(info["incMDD"]) ?? 0;
+            part.BonusWeaponAttackPercent = GetIntValue(info["incPADr"]) ?? 0;
+            part.BonusMagicAttackPercent = GetIntValue(info["incMADr"]) ?? 0;
+            part.BonusWeaponDefensePercent = GetIntValue(info["incPDDr"]) ?? 0;
+            part.BonusMagicDefensePercent = GetIntValue(info["incMDDr"]) ?? 0;
             part.BonusAccuracy = GetIntValue(info["incACC"]) ?? 0;
             part.BonusAvoidability = GetIntValue(info["incEVA"]) ?? 0;
+            part.BonusAccuracyPercent = GetIntValue(info["incACCr"]) ?? 0;
+            part.BonusAvoidabilityPercent = GetIntValue(info["incEVAr"]) ?? 0;
             part.BonusHands = GetIntValue(info["incCraft"]) ?? 0;
             part.BonusSpeed = GetIntValue(info["incSpeed"]) ?? 0;
+            part.BonusSpeedPercent = GetIntValue(info["incSpeedr"]) ?? 0;
             part.BonusJump = GetIntValue(info["incJump"]) ?? 0;
             part.UpgradeSlots = GetIntValue(info["tuc"]) ?? 0;
             part.KnockbackRate = GetIntValue(info["knockback"]) ?? 0;

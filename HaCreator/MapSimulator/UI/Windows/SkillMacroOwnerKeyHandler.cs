@@ -112,6 +112,11 @@ namespace HaCreator.MapSimulator.UI
                 Keys.Back or Keys.Delete or Keys.Insert => true,
                 Keys.D0 or Keys.D1 or Keys.D2 or Keys.D3 or Keys.D4 or Keys.D5 or Keys.D6 or Keys.D7 or Keys.D8 or Keys.D9 => true,
                 Keys.NumPad0 or Keys.NumPad1 or Keys.NumPad2 or Keys.NumPad3 or Keys.NumPad4 or Keys.NumPad5 or Keys.NumPad6 or Keys.NumPad7 or Keys.NumPad8 or Keys.NumPad9 => true,
+                Keys.A or Keys.B or Keys.C or Keys.D or Keys.E or Keys.F or Keys.G or Keys.H or Keys.I or Keys.J or Keys.K or Keys.L or Keys.M => true,
+                Keys.N or Keys.O or Keys.P or Keys.Q or Keys.R or Keys.S or Keys.T or Keys.U or Keys.V or Keys.W or Keys.X or Keys.Y or Keys.Z => true,
+                Keys.Multiply or Keys.Add or Keys.Subtract or Keys.Decimal or Keys.Divide => true,
+                Keys.OemSemicolon or Keys.OemPlus or Keys.OemComma or Keys.OemMinus or Keys.OemPeriod or Keys.OemQuestion => true,
+                Keys.OemTilde or Keys.OemOpenBrackets or Keys.OemPipe or Keys.OemCloseBrackets or Keys.OemQuotes or Keys.OemBackslash => true,
                 _ => false
             };
         }

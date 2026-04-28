@@ -388,6 +388,7 @@ namespace HaCreator.MapSimulator
             EnsureGuildBbsOfficialSessionBridgeState(shouldRun: true);
             RefreshGuildBbsOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
+            DrainAdminShopOfficialSessionBridge();
             DrainAdminShopPacketInbox();
             DrainCashServicePacketInbox();
             DrainLocalUtilityOfficialSessionBridge();

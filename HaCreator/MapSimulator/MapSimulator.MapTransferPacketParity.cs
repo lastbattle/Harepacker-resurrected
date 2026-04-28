@@ -146,6 +146,13 @@ namespace HaCreator.MapSimulator
                     request = MapTransferOfficialSessionResultResolver.InferRequestFromAuthoritativeDelta(response, preApplyFieldList);
                     request ??= InferRequestFromAuthoritativeContext(response, responseBook, preApplyFieldList);
                 }
+                else
+                {
+                    request = MapTransferOfficialSessionResultResolver.CompleteRequestFromAuthoritativeDelta(
+                        request,
+                        response,
+                        preApplyFieldList);
+                }
 
                 response = MapTransferOfficialSessionResultResolver.Resolve(
                     predictedResponse,

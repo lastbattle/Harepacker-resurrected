@@ -284,6 +284,11 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (RemoveSuppressedLocalRankEntry())
+            {
+                changed = true;
+            }
+
             if (changed)
             {
                 _entries.Sort(static (left, right) =>
@@ -533,6 +538,22 @@ namespace HaCreator.MapSimulator.Fields
             return !string.IsNullOrWhiteSpace(_localPlayerName)
                 && string.Equals(normalizedName, _localPlayerName, StringComparison.OrdinalIgnoreCase)
                 && IsHiddenAriantArenaJob(_localPlayerJob);
+        }
+        private bool RemoveSuppressedLocalRankEntry()
+        {
+            if (string.IsNullOrWhiteSpace(_localPlayerName) || !IsHiddenAriantArenaJob(_localPlayerJob))
+            {
+                return false;
+            }
+
+            int existingIndex = _entries.FindIndex(entry => string.Equals(entry.Name, _localPlayerName, StringComparison.OrdinalIgnoreCase));
+            if (existingIndex < 0)
+            {
+                return false;
+            }
+
+            _entries.RemoveAt(existingIndex);
+            return true;
         }
         private static bool IsHiddenAriantArenaJob(int jobId)
         {

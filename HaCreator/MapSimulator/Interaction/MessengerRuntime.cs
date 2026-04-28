@@ -17,7 +17,6 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BlinkPulseIntervalMs = 180;
         private const int DeleteRequestGraceDelayMs = 550;
         private const int ClaimRequestStageLifetimeMs = 30000;
-        private const int SessionOwnedLeaveAckTimeoutMs = 4000;
         private const byte MessengerChatClaimType = 3;
         private const string MessengerChatClaimContext = "Messenger";
         private static readonly MessengerContactDefinition[] ContactDefinitions =
@@ -779,7 +778,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool queuedOnly)
         {
             MessengerLogEntryState[] claimableEntries = GetClaimableLogEntries();
-            if (claimableEntries.Length == 0)
+            int appliedLineCount = Math.Min(chatLineCount, claimableEntries.Length);
+            if (claimableEntries.Length == 0 && chatLineCount <= 0)
             {
                 return "No Messenger chat lines are available for claim submission.";
             }
@@ -790,7 +790,11 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.IsClaimed = true;
             }
 
-            int appliedLineCount = Math.Min(chatLineCount, claimableEntries.Length);
+            if (appliedLineCount <= 0)
+            {
+                appliedLineCount = chatLineCount;
+            }
+
             string modeLabel = queuedOnly ? "Queued live" : "Submitted live";
             _lastActionSummary =
                 $"{modeLabel} Messenger claim #{claimId} for {appliedLineCount} line(s) targeting {targetCharacterName}; waiting for the server-owned claim lifecycle.";
@@ -1561,7 +1565,6 @@ namespace HaCreator.MapSimulator.Interaction
         private void Tick(int tickCount)
         {
             TryCompleteDeferredDelete(tickCount);
-            TryExpireSessionOwnedLeaveRequestWait(tickCount);
 
             if (_incomingInvite != null
                 && _incomingInvite.PromptExpireTick != int.MinValue
@@ -2196,25 +2199,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             TryResolveDeleteGateAfterStateChange(
                 "Messenger close gate passed after the server-owned room state cleared.",
-                allowImmediateDestroy: true);
-        }
-
-        private void TryExpireSessionOwnedLeaveRequestWait(int tickCount)
-        {
-            if (!_sessionOwnedLeaveRequestInFlight
-                || _sessionOwnedLeaveRequestTick == int.MinValue
-                || unchecked(tickCount - _sessionOwnedLeaveRequestTick) < SessionOwnedLeaveAckTimeoutMs)
-            {
-                return;
-            }
-
-            ClearSessionOwnedLeaveRequestInFlight();
-            string summary = "Timed out waiting for a Messenger leave acknowledgement; keeping local room-state deferral until packet-owned slots clear.";
-            _lastActionSummary = summary;
-            AddSystemLog(summary);
-            RecordPacketSummary($"Timed out waiting for CUIMessenger::OnDestroy leave acknowledgement after {SessionOwnedLeaveAckTimeoutMs} ms.");
-            TryResolveDeleteGateAfterStateChange(
-                "Messenger close gate passed after leave-ack timeout and local room state collapse.",
                 allowImmediateDestroy: true);
         }
 

@@ -312,7 +312,7 @@ namespace HaCreator.MapSimulator.Effects
             if (!_fadeActive)
                 return;
 
-            int elapsed = currentTimeMs - _fadeStartTime;
+            int elapsed = CalculateElapsedMilliseconds(currentTimeMs, _fadeStartTime);
 
             if (elapsed >= _fadeDuration)
             {
@@ -335,7 +335,7 @@ namespace HaCreator.MapSimulator.Effects
 
         private void StartStageTransitionToneFade(byte targetTone, int durationMs, int currentTimeMs, Action onComplete)
         {
-            if (targetTone == byte.MaxValue && _stageTransitionFadeInEndTime > currentTimeMs)
+            if (targetTone == byte.MaxValue && IsTickBefore(currentTimeMs, _stageTransitionFadeInEndTime))
             {
                 _stageTransitionRedTone = 0;
                 _stageTransitionGreenTone = 0;
@@ -453,6 +453,20 @@ namespace HaCreator.MapSimulator.Effects
         {
             float value = MathHelper.Lerp(start, target, progress);
             return (byte)Math.Clamp((int)Math.Round(value, MidpointRounding.AwayFromZero), 0, 255);
+        }
+
+        internal static int CalculateElapsedMilliseconds(int currentTimeMs, int startTimeMs)
+        {
+            uint elapsed = unchecked((uint)currentTimeMs - (uint)startTimeMs);
+            return elapsed > int.MaxValue
+                ? int.MaxValue
+                : (int)elapsed;
+        }
+
+        internal static bool IsTickBefore(int currentTimeMs, int endTimeMs)
+        {
+            return unchecked((uint)endTimeMs - (uint)currentTimeMs) < 0x80000000u
+                && currentTimeMs != endTimeMs;
         }
 
         #endregion

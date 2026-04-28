@@ -493,6 +493,21 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void RefreshSecurityStatus(string statusMessage)
+        {
+            CancelMesoEntry();
+            if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                _statusMessage = statusMessage;
+            }
+            else
+            {
+                UpdateAccessStatusMessage();
+            }
+
+            UpdateButtonStates();
+        }
+
         public void SetStorageMeso(long meso)
         {
             if (_storageRuntime != null)

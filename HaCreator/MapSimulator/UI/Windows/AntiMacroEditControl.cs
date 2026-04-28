@@ -493,14 +493,18 @@ namespace HaCreator.MapSimulator.UI
             if (Pressed(keyboardState, previousKeyboardState, Keys.Left))
             {
                 ClearCompositionText();
-                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: false), extendSelection: false);
+                MoveCaret(
+                    ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: false, extendSelection: shiftHeld),
+                    extendSelection: shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.Right))
             {
                 ClearCompositionText();
-                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: true), extendSelection: false);
+                MoveCaret(
+                    ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: true, extendSelection: shiftHeld),
+                    extendSelection: shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
 
@@ -509,7 +513,7 @@ namespace HaCreator.MapSimulator.UI
                 if (ShouldMoveCaretToBoundary(ctrlHeld))
                 {
                     ClearCompositionText();
-                    MoveCaret(0, extendSelection: false);
+                    MoveCaret(0, extendSelection: shiftHeld);
                     _caretBlinkTick = Environment.TickCount;
                 }
             }
@@ -519,7 +523,7 @@ namespace HaCreator.MapSimulator.UI
                 if (ShouldMoveCaretToBoundary(ctrlHeld))
                 {
                     ClearCompositionText();
-                    MoveCaret(_inputText.Length, extendSelection: false);
+                    MoveCaret(_inputText.Length, extendSelection: shiftHeld);
                     _caretBlinkTick = Environment.TickCount;
                 }
             }
@@ -1302,14 +1306,26 @@ namespace HaCreator.MapSimulator.UI
 
         internal static int ResolveArrowCaretIndex(string text, int caretIndex, int selectionAnchorIndex, bool moveRight)
         {
+            return ResolveArrowCaretIndex(text, caretIndex, selectionAnchorIndex, moveRight, extendSelection: false);
+        }
+
+        internal static int ResolveArrowCaretIndex(string text, int caretIndex, int selectionAnchorIndex, bool moveRight, bool extendSelection)
+        {
             string resolvedText = text ?? string.Empty;
             int resolvedCaretIndex = Math.Clamp(caretIndex, 0, resolvedText.Length);
             int resolvedSelectionAnchor = selectionAnchorIndex < 0
                 ? -1
                 : Math.Clamp(selectionAnchorIndex, 0, resolvedText.Length);
 
-            // `CCtrlEdit::OnKey` does not keep a Shift-extend selection branch for
-            // left/right arrows, so collapse any active selection first.
+            // Shift keeps selection extension inside `CCtrlEdit::OnKey`; plain
+            // arrows collapse an active selection before moving the caret.
+            if (extendSelection)
+            {
+                return moveRight
+                    ? GetNextCaretStop(resolvedText, resolvedCaretIndex)
+                    : GetPreviousCaretStop(resolvedText, resolvedCaretIndex);
+            }
+
             if (resolvedSelectionAnchor >= 0 && resolvedSelectionAnchor != resolvedCaretIndex)
             {
                 return moveRight

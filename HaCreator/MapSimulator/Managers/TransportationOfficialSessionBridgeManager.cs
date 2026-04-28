@@ -236,7 +236,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 bool autoSelectListenPort = listenPort <= 0;
-                int resolvedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                int resolvedListenPort = autoSelectListenPort ? 0 : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
@@ -297,7 +297,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             bool autoSelectListenPort = listenPort <= 0;
-            int resolvedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+            int resolvedListenPort = autoSelectListenPort ? 0 : listenPort;
             if (HasAttachedClient)
             {
                 if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
@@ -424,7 +424,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             bool autoSelectListenPort = listenPort <= 0;
-            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+            int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
             string resolvedRemoteHost = candidate.RemoteEndpoint.Address.ToString();
             int resolvedRemotePort = candidate.RemoteEndpoint.Port;
 
@@ -912,13 +912,12 @@ namespace HaCreator.MapSimulator.Managers
 
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
         {
-            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            int resolvedListenPort = listenPort <= 0 ? 0 : listenPort;
             try
             {
-                ListenPort = resolvedListenPort;
                 RemoteHost = NormalizeRemoteHost(remoteHost);
                 RemotePort = remotePort;
-                if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
+                if (!_roleSessionProxy.Start(resolvedListenPort, RemoteHost, RemotePort, out string proxyStatus))
                 {
                     StopInternal(clearPending: false);
                     status = proxyStatus;
@@ -926,6 +925,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                ListenPort = _roleSessionProxy.ListenPort;
                 status = $"Transport official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                 LastStatus = status;
                 return true;

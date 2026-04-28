@@ -53,6 +53,9 @@ namespace HaCreator.MapSimulator.Interaction
         RewardLine,
         HintText,
         SummaryText,
+        DemandRect,
+        DeliveryAcceptRect,
+        DeliveryCompleteRect,
         DeliveryInset
     }
 
@@ -91,10 +94,13 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<QuestLogLineSnapshot> Lines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
         public QuestDetailCtEntryPalette Palette { get; init; }
         public QuestDetailInlineReferenceSource Source { get; init; }
+        public bool HasAuthoredXOffset { get; init; }
         public int XOffset { get; init; }
         public int YOffset { get; init; }
         public int Width { get; init; }
         public int Height { get; init; }
+        public int CanvasOriginX { get; init; }
+        public int CanvasOriginY { get; init; }
         public int VerticalGapAfter { get; init; }
         public int? RowIndex { get; init; }
         public int RowHeight { get; init; }

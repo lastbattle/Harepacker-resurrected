@@ -1676,6 +1676,27 @@ namespace HaCreator.MapSimulator.Pools
                 projected.AvoidabilityPercent = Math.Max(projected.AvoidabilityPercent, authoredLevelData.Z);
             }
 
+            if (authoredLevelData?.X > 0)
+            {
+                if (projected.ExperienceRate <= 0
+                    && ContainsToken(combinedText, "exp bonus", "additional exp", "exp earned", "exp while hunting"))
+                {
+                    projected.ExperienceRate = Math.Max(projected.ExperienceRate, authoredLevelData.X);
+                }
+
+                if (projected.DropRate <= 0
+                    && ContainsToken(combinedText, "item drop", "item drop rate", "drop rate", "items you earn"))
+                {
+                    projected.DropRate = Math.Max(projected.DropRate, authoredLevelData.X);
+                }
+
+                if (projected.MesoRate <= 0
+                    && ContainsToken(combinedText, "meso increase", "meso up", "more mesos", "mesos than usual", "meso rate"))
+                {
+                    projected.MesoRate = Math.Max(projected.MesoRate, authoredLevelData.X);
+                }
+            }
+
             int damageToMpRedirectRate = ResolveDerivedProjectedDamageToMpRedirectRate(skill, authoredLevelData);
             if (damageToMpRedirectRate > 0)
             {

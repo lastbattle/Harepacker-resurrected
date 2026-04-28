@@ -1574,8 +1574,10 @@ namespace HaCreator.MapSimulator
             IEnumerable<WzCanvasProperty> canvases = preferred?.WzProperties.OfType<WzCanvasProperty>()
                 ?? fallback?.WzProperties.OfType<WzCanvasProperty>()
                 ?? Enumerable.Empty<WzCanvasProperty>();
-            foreach (WzCanvasProperty canvas in canvases.OrderBy(static canvas => canvas.Name, StringComparer.Ordinal))
+            Dictionary<string, WzCanvasProperty> canvasByName = canvases.ToDictionary(static canvas => canvas.Name, StringComparer.Ordinal);
+            foreach (string frameName in ResolveInitialQuizOwnerAnimationFrameNames(canvasByName.Keys))
             {
+                WzCanvasProperty canvas = canvasByName[frameName];
                 Texture2D texture = LoadUiCanvasTexture(canvas);
                 if (texture == null)
                 {
@@ -1587,6 +1589,14 @@ namespace HaCreator.MapSimulator
             }
 
             return frames.ToArray();
+        }
+
+        internal static string[] ResolveInitialQuizOwnerAnimationFrameNames(IEnumerable<string> frameNames)
+        {
+            return (frameNames ?? Enumerable.Empty<string>())
+                .OrderBy(static frameName => int.TryParse(frameName, out int frameIndex) ? frameIndex : int.MaxValue)
+                .ThenBy(static frameName => frameName, StringComparer.Ordinal)
+                .ToArray();
         }
 
         private InitialQuizButtonFrame LoadInitialQuizOwnerButtonFrame(WzSubProperty buttonProperty, string stateName)

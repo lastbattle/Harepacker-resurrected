@@ -1402,19 +1402,20 @@ namespace HaCreator.MapSimulator.Interaction
             EmployeeImageEntry employeeImgEntry = ResolveEmployeeImgEntry(templateId);
             WzImageProperty templateRoot = employeeImgEntry?.TemplateRoot;
             WzCanvasProperty signboardCanvas = ResolveMiniRoomBoardCanvas(templateRoot?["skin"]);
+            EmployeeMiniRoomBoardEffectFrame[] effectFrames = LoadMiniRoomBoardEffectFrames(templateRoot?["effect"], device);
+            byte slotMax = ResolveTemplateSlotMax(templateRoot);
             Texture2D signboardTexture = LoadUiCanvasTexture(signboardCanvas, device);
-            if (signboardTexture == null)
+            if (signboardTexture == null && effectFrames.Length == 0 && slotMax == 0)
             {
                 _cashEmployeeMiniRoomBoardMissingTemplates.Add(templateId);
                 return null;
             }
 
-            EmployeeMiniRoomBoardEffectFrame[] effectFrames = LoadMiniRoomBoardEffectFrames(templateRoot?["effect"], device);
             EmployeeMiniRoomBoardAssets loadedAssets = new()
             {
                 Signboard = signboardTexture,
                 SignboardOrigin = GetAuthoredCanvasOriginVector(signboardCanvas),
-                SlotMax = ResolveTemplateSlotMax(templateRoot),
+                SlotMax = slotMax,
                 EffectFrames = effectFrames,
                 TotalEffectDurationMs = effectFrames.Sum(frame => Math.Max(1, frame.DelayMs))
             };
@@ -2011,6 +2012,15 @@ namespace HaCreator.MapSimulator.Interaction
         internal static byte ResolveMiniRoomMaxUsersForTesting(SocialRoomFieldActorSnapshot snapshot)
         {
             return ResolveMiniRoomMaxUsers(snapshot);
+        }
+
+        internal static byte ResolveMiniRoomMaxUsersForTesting(SocialRoomFieldActorSnapshot snapshot, byte templateSlotMax)
+        {
+            return ResolveMiniRoomMaxUsers(
+                snapshot,
+                templateSlotMax > 0
+                    ? new EmployeeMiniRoomBoardAssets { SlotMax = templateSlotMax }
+                    : null);
         }
 
         private static void DrawMiniRoomBalloonCount(SpriteBatch spriteBatch, IReadOnlyList<Texture2D> digits, byte value, int x, int y)

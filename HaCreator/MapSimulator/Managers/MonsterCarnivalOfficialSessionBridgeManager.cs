@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly ConcurrentQueue<MonsterCarnivalPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingRequest> _pendingOutboundRequests = new();
+        private readonly ConcurrentQueue<ObservedOutboundRequest> _observedOutboundRequests = new();
         private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
         private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
@@ -40,6 +41,11 @@ namespace HaCreator.MapSimulator.Managers
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         private sealed record PendingRequest(MonsterCarnivalTab Tab, int EntryIndex, byte[] RawPacket);
+
+        public readonly record struct ObservedOutboundRequest(
+            MonsterCarnivalTab Tab,
+            int EntryIndex,
+            string Source);
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -54,6 +60,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int PendingPacketCount => _pendingOutboundRequests.Count;
+        public int ObservedOutboundRequestCount => _observedOutboundRequests.Count;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
@@ -521,6 +528,11 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TryDequeueObservedOutboundRequest(out ObservedOutboundRequest request)
+        {
+            return _observedOutboundRequests.TryDequeue(out request);
+        }
+
         public bool TrySendRequest(MonsterCarnivalTab tab, int entryIndex, out string status)
         {
             if (entryIndex < 0)
@@ -660,6 +672,10 @@ namespace HaCreator.MapSimulator.Managers
             {
             }
 
+            while (_observedOutboundRequests.TryDequeue(out _))
+            {
+            }
+
             _recentPackets.Clear();
             ReceivedCount = 0;
             SentCount = 0;
@@ -758,7 +774,14 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOutboundRequestPacket(e.RawPacket, out int tab, out int entryIndex))
             {
                 RecordRecentPacket(OutboundRequestOpcode, e.RawPacket, OutboundRequestOpcode, $"outbound-request tab={tab} index={entryIndex}");
-                LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint}.";
+                if (TryNormalizeObservedRequestTab(tab, out MonsterCarnivalTab requestTab) && entryIndex >= 0)
+                {
+                    _observedOutboundRequests.Enqueue(new ObservedOutboundRequest(requestTab, entryIndex, e.SourceEndpoint));
+                    LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint} and queued it as a pending local ownership token.";
+                    return;
+                }
+
+                LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint}; tab/index could not be used as a pending local ownership token.";
                 return;
             }
 
@@ -923,6 +946,19 @@ namespace HaCreator.MapSimulator.Managers
             tab = rawPacket[sizeof(ushort)];
             entryIndex = BitConverter.ToInt32(rawPacket, sizeof(ushort) + sizeof(byte));
             return true;
+        }
+
+        private static bool TryNormalizeObservedRequestTab(int rawTab, out MonsterCarnivalTab tab)
+        {
+            tab = rawTab switch
+            {
+                0 => MonsterCarnivalTab.Mob,
+                1 => MonsterCarnivalTab.Skill,
+                2 => MonsterCarnivalTab.Guardian,
+                _ => MonsterCarnivalTab.Mob
+            };
+
+            return rawTab is >= 0 and <= 2;
         }
 
         private static string DescribePacketType(int packetType)

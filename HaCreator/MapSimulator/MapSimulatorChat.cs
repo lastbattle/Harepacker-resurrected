@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.UI;
 
 namespace HaCreator.MapSimulator
 {
@@ -449,6 +450,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && ShouldForwardClientEditPageKeyToParent(newKeyboardState))
+            {
+                return false;
+            }
+
             // Handle Up arrow - browse history (older)
             if (newKeyboardState.IsKeyDown(Keys.Up))
             {
@@ -610,28 +617,14 @@ namespace HaCreator.MapSimulator
 
                 if (oldKeyboardState.IsKeyUp(Keys.Left))
                 {
-                    if (_cursorPosition > 0)
-                    {
-                        MoveInputCaret(_cursorPosition - 1, shiftHeld);
-                    }
-                    else
-                    {
-                        MoveInputCaret(_cursorPosition, shiftHeld);
-                    }
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: false, shiftHeld), shiftHeld);
                     _lastHeldKey = Keys.Left;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
                 }
                 else if (ShouldRepeatKey(Keys.Left, tickCount))
                 {
-                    if (_cursorPosition > 0)
-                    {
-                        MoveInputCaret(_cursorPosition - 1, shiftHeld);
-                    }
-                    else
-                    {
-                        MoveInputCaret(_cursorPosition, shiftHeld);
-                    }
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: false, shiftHeld), shiftHeld);
                     _lastKeyRepeatTime = tickCount;
                 }
                 return !forwardEditCaretMoveToParent;
@@ -668,28 +661,14 @@ namespace HaCreator.MapSimulator
 
                 if (oldKeyboardState.IsKeyUp(Keys.Right))
                 {
-                    if (_cursorPosition < _inputText.Length)
-                    {
-                        MoveInputCaret(_cursorPosition + 1, shiftHeld);
-                    }
-                    else
-                    {
-                        MoveInputCaret(_cursorPosition, shiftHeld);
-                    }
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: true, shiftHeld), shiftHeld);
                     _lastHeldKey = Keys.Right;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
                 }
                 else if (ShouldRepeatKey(Keys.Right, tickCount))
                 {
-                    if (_cursorPosition < _inputText.Length)
-                    {
-                        MoveInputCaret(_cursorPosition + 1, shiftHeld);
-                    }
-                    else
-                    {
-                        MoveInputCaret(_cursorPosition, shiftHeld);
-                    }
+                    MoveInputCaret(ResolveClientEditHorizontalCaretTarget(moveRight: true, shiftHeld), shiftHeld);
                     _lastKeyRepeatTime = tickCount;
                 }
                 return !forwardEditCaretMoveToParent;
@@ -1081,6 +1060,12 @@ namespace HaCreator.MapSimulator
 
             return _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
                 && IsWhisperTargetPickerModalComboFocused();
+        }
+
+        private bool ShouldForwardClientEditPageKeyToParent(KeyboardState newKeyboardState)
+        {
+            return (newKeyboardState.IsKeyDown(Keys.PageUp) || newKeyboardState.IsKeyDown(Keys.PageDown))
+                && ShouldForwardClientEditPageKeyToParent();
         }
 
         /// <summary>
@@ -3119,6 +3104,29 @@ namespace HaCreator.MapSimulator
             _cursorPosition = clampedTargetPosition;
         }
 
+        private int ResolveClientEditHorizontalCaretTarget(bool moveRight, bool extendSelection)
+        {
+            if (!extendSelection)
+            {
+                int collapsedCaret = ClientEditSelectionHelper.ResolveNavigationCaret(
+                    _inputText.Length,
+                    _selectionAnchor,
+                    _cursorPosition,
+                    moveRight);
+                if (collapsedCaret != _cursorPosition)
+                {
+                    return collapsedCaret;
+                }
+            }
+
+            if (moveRight)
+            {
+                return _cursorPosition < _inputText.Length ? _cursorPosition + 1 : _cursorPosition;
+            }
+
+            return _cursorPosition > 0 ? _cursorPosition - 1 : _cursorPosition;
+        }
+
         private bool TryDeleteInputSelection()
         {
             if (_selectionAnchor < 0)
@@ -3325,8 +3333,7 @@ namespace HaCreator.MapSimulator
         {
             foreach (Keys key in newKeyboardState.GetPressedKeys())
             {
-                if (oldKeyboardState.IsKeyUp(key)
-                    && ShouldForwardClientEditParentOnlyKey(key, controlHeld, shiftHeld))
+                if (ShouldForwardClientEditParentOnlyKey(key, controlHeld, shiftHeld))
                 {
                     return true;
                 }

@@ -2314,13 +2314,10 @@ namespace HaCreator.MapSimulator.Fields
                 && Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap)
                 && cachedMap?.Item5 != null)
             {
-                int configuredReturnMap = cachedMap.Item5.returnMap;
-                if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
-                {
-                    configuredReturnMap = cachedMap.Item5.forcedReturn;
-                }
-
-                if (configuredReturnMap > 0 && configuredReturnMap != MapConstants.MaxMap)
+                int configuredReturnMap = NormalizeRemoteTownPortalConfiguredReturnMap(
+                    cachedMap.Item5.returnMap,
+                    cachedMap.Item5.forcedReturn);
+                if (configuredReturnMap > 0)
                 {
                     townMapId = configuredReturnMap;
                     return true;
@@ -2346,13 +2343,10 @@ namespace HaCreator.MapSimulator.Fields
                     return false;
                 }
 
-                int configuredReturnMap = (infoProperty["returnMap"] as WzIntProperty)?.GetInt() ?? 0;
-                if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
-                {
-                    configuredReturnMap = (infoProperty["forcedReturn"] as WzIntProperty)?.GetInt() ?? 0;
-                }
-
-                if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
+                int configuredReturnMap = NormalizeRemoteTownPortalConfiguredReturnMap(
+                    (infoProperty["returnMap"] as WzIntProperty)?.GetInt() ?? 0,
+                    (infoProperty["forcedReturn"] as WzIntProperty)?.GetInt() ?? 0);
+                if (configuredReturnMap <= 0)
                 {
                     return false;
                 }
@@ -4207,6 +4201,13 @@ namespace HaCreator.MapSimulator.Fields
                 currentMapReturnTownMapId,
                 returnTownDestinationX,
                 returnTownDestinationY);
+        }
+
+        internal static int NormalizeRemoteTownPortalConfiguredReturnMapForTesting(
+            int returnMapId,
+            int forcedReturnMapId)
+        {
+            return NormalizeRemoteTownPortalConfiguredReturnMap(returnMapId, forcedReturnMapId);
         }
 
         internal static bool CanRememberRemoteTownPortalPacketCastMetadataFromResolvedFallbackForTesting(

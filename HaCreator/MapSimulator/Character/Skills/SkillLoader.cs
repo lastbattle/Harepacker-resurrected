@@ -1241,7 +1241,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var tileNode = skillNode["tile"];
-            if (tileNode != null || !string.IsNullOrWhiteSpace(skill.ClientTileUolPath))
+            if (tileNode != null
+                || !string.IsNullOrWhiteSpace(skill.ClientTileUolPath)
+                || HasClientSkillAssetUolVariantPaths(skill.ClientCharacterLevelTileUolPaths)
+                || HasClientSkillAssetUolVariantPaths(skill.ClientLevelTileUolPaths)
+                || HasSkillZoneTileVariantNodes(skillNode))
             {
                 skill.ZoneEffect = LoadZoneEffect(
                     tileNode,
@@ -1350,7 +1354,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            foreach (string actionName in EnumerateDistinctActionNames(actionNames))
+            foreach (string actionName in EnumerateDistinctMeleeAfterImageActionNames(skill?.SkillId ?? 0, actionNames))
             {
                 if (chargeElement > 0)
                 {
@@ -1425,6 +1429,47 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static IEnumerable<string> EnumerateDistinctMeleeAfterImageActionNames(
+            int skillId,
+            IEnumerable<string> actionNames)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string actionName in actionNames ?? Array.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    continue;
+                }
+
+                string trimmedActionName = actionName.Trim();
+                if (yielded.Add(trimmedActionName))
+                {
+                    yield return trimmedActionName;
+                }
+
+                if (!CharacterPart.TryGetClientRawActionCode(trimmedActionName, out int rawActionCode))
+                {
+                    continue;
+                }
+
+                foreach (string rangeLookupActionName in ClientMeleeAfterimageRangeResolver.EnumerateRangeLookupActionNames(
+                             skillId,
+                             rawActionCode))
+                {
+                    if (string.IsNullOrWhiteSpace(rangeLookupActionName))
+                    {
+                        continue;
+                    }
+
+                    string trimmedRangeLookupActionName = rangeLookupActionName.Trim();
+                    if (yielded.Add(trimmedRangeLookupActionName))
+                    {
+                        yield return trimmedRangeLookupActionName;
+                    }
+                }
+            }
+        }
+
         public MeleeAfterImageAction ApplyClientMeleeRangeOverride(
             MeleeAfterImageAction action,
             int skillId,
@@ -1458,7 +1503,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                foreach (string requestedActionName in EnumerateDistinctActionNames(actionNames ?? Array.Empty<string>()))
+                foreach (string requestedActionName in EnumerateDistinctMeleeAfterImageActionNames(skill?.SkillId ?? 0, actionNames ?? Array.Empty<string>()))
                 {
                     foreach (string candidate in EnumerateMeleeAfterImageActionCandidates(skill?.SkillId ?? 0, requestedActionName))
                     {
@@ -1569,7 +1614,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool matchedOnly)
         {
             var collectedActionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string[] distinctActionNames = EnumerateDistinctActionNames(actionNames ?? Array.Empty<string>()).ToArray();
+            string[] distinctActionNames = EnumerateDistinctMeleeAfterImageActionNames(skill?.SkillId ?? 0, actionNames ?? Array.Empty<string>()).ToArray();
 
             foreach (MeleeAfterImageCatalog catalog in EnumerateRelevantMeleeAfterImageCatalogs(
                          skill,
@@ -3542,7 +3587,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             IReadOnlyDictionary<int, string> explicitCharacterLevelTileUolPaths = null,
             IReadOnlyDictionary<int, string> explicitLevelTileUolPaths = null)
         {
-            if (tileNode == null && string.IsNullOrWhiteSpace(explicitTileUolPath))
+            bool hasExplicitTileVariantPaths = HasClientSkillAssetUolVariantPaths(explicitCharacterLevelTileUolPaths)
+                || HasClientSkillAssetUolVariantPaths(explicitLevelTileUolPaths);
+            bool hasVisibleTileVariantNodes = HasSkillZoneTileVariantNodes(skillNode);
+            if (tileNode == null
+                && string.IsNullOrWhiteSpace(explicitTileUolPath)
+                && !hasExplicitTileVariantPaths
+                && !hasVisibleTileVariantNodes)
             {
                 return null;
             }
@@ -3612,6 +3663,48 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasClientPathFallback = !string.IsNullOrWhiteSpace(zoneEffect.TileUolPath)
                 || !string.IsNullOrWhiteSpace(zoneEffect.AnimationPath);
             return hasRenderableAnimation || hasClientPathFallback ? zoneEffect : null;
+        }
+
+        private static bool HasClientSkillAssetUolVariantPaths(IReadOnlyDictionary<int, string> paths)
+        {
+            if (paths == null || paths.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<int, string> entry in paths)
+            {
+                if (entry.Key > 0 && !string.IsNullOrWhiteSpace(entry.Value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasSkillZoneTileVariantNodes(WzImageProperty skillNode)
+        {
+            return HasZoneTileVariantBranchNodes(skillNode?["CharLevel"])
+                   || HasZoneTileVariantBranchNodes(skillNode?["level"]);
+        }
+
+        private static bool HasZoneTileVariantBranchNodes(WzImageProperty variantRootNode)
+        {
+            if (variantRootNode?.WzProperties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in variantRootNode.WzProperties)
+            {
+                if (child?["tile"] != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal ZoneEffectData LoadZoneEffectForTest(
@@ -6579,6 +6672,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (LooksLikeClientSummonedUolTableRowContainer(child)
+                    && TryReadNestedClientSummonedUolTableOwnerSkillId(
+                        child,
+                        out ownerSkillId,
+                        depthRemaining: ClientSummonedUolTableOwnerFieldTraversalDepth))
+                {
+                    if (ownerSkillId == skillId)
+                    {
+                        yield return child;
+                    }
+
+                    continue;
+                }
+
                 foreach (WzImageProperty nestedEntry in EnumerateClientSummonedUolTableOwnerFieldEntryNodes(
                              child,
                              skillId,
@@ -6690,6 +6797,86 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
+        private static bool TryReadNestedClientSummonedUolTableOwnerSkillId(
+            WzImageProperty rowNode,
+            out int skillId,
+            int depthRemaining)
+        {
+            skillId = 0;
+            if (rowNode?.WzProperties == null || depthRemaining <= 0)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in rowNode.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (IsClientSummonedUolTableOwnerFieldName(child.Name))
+                {
+                    string value = GetClientSummonedUolCandidateValue(child);
+                    if (!string.IsNullOrWhiteSpace(value)
+                        && int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSkillId)
+                        && parsedSkillId > 0)
+                    {
+                        skillId = parsedSkillId;
+                        return true;
+                    }
+
+                    foreach (int linkedSkillId in ParseLinkedSkillIds(value))
+                    {
+                        if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                        {
+                            skillId = linkedSkillId;
+                            return true;
+                        }
+                    }
+
+                    foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(value, contextSkillId: 0))
+                    {
+                        if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                        {
+                            skillId = fallbackSkillId;
+                            return true;
+                        }
+                    }
+                }
+
+                if (child.WzProperties == null)
+                {
+                    continue;
+                }
+
+                if (TryReadNestedClientSummonedUolTableOwnerSkillId(child, out skillId, depthRemaining - 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool LooksLikeClientSummonedUolTableRowContainer(WzImageProperty rowNode)
+        {
+            if (rowNode == null || string.IsNullOrWhiteSpace(rowNode.Name))
+            {
+                return false;
+            }
+
+            if (int.TryParse(rowNode.Name.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return true;
+            }
+
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(rowNode.Name);
+            return normalizedName.StartsWith("row", StringComparison.Ordinal)
+                   || normalizedName.StartsWith("entry", StringComparison.Ordinal)
+                   || normalizedName.StartsWith("record", StringComparison.Ordinal);
+        }
+
         private static bool IsClientSummonedUolTableOwnerFieldName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -6759,13 +6946,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || name.Equals("flipBallPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("flipBallUolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("flipBallUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summon", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("summonPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summonUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summonUOLPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("summonedPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("summonedUolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("summonedUOLPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("summoned", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("summonedValue", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("target", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("sourcePath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("srcPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("asset", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("assetPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("clientPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("uolValue", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("uolTarget", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("value", StringComparison.OrdinalIgnoreCase)
                    || ClientSummonedUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
                    || ClientTileUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
@@ -8614,6 +8812,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string[] tokenParts = normalizedToken
                 .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            tokenParts = TrimClientSkillAssetRelativeBranchPrefixes(tokenParts);
             if (tokenParts.Length == 0 || !IsClientSkillAssetBranchTokenAllowedForContext(tokenParts[0], resolvedPathParts))
             {
                 return null;
@@ -8648,6 +8847,31 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return normalizedCombinedPath;
+        }
+
+        private static string[] TrimClientSkillAssetRelativeBranchPrefixes(string[] tokenParts)
+        {
+            if (tokenParts == null || tokenParts.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            int startIndex = 0;
+            while (startIndex < tokenParts.Length
+                   && (string.Equals(tokenParts[startIndex], ".", StringComparison.Ordinal)
+                       || string.Equals(tokenParts[startIndex], "..", StringComparison.Ordinal)))
+            {
+                startIndex++;
+            }
+
+            if (startIndex <= 0)
+            {
+                return tokenParts;
+            }
+
+            return startIndex >= tokenParts.Length
+                ? Array.Empty<string>()
+                : tokenParts.Skip(startIndex).ToArray();
         }
 
         private static int FindClientSummonedUolSkillIdSegmentIndex(IReadOnlyList<string> pathParts)

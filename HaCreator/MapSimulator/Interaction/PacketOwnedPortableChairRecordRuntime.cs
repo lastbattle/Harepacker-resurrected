@@ -134,7 +134,6 @@ namespace HaCreator.MapSimulator.Interaction
                 "Packet-owned portable-chair record runtime: adds={0}, removes={1}. {2}",
                 TotalAddCount,
                 TotalRemoveCount,
-                TotalRemoveCount,
                 $"{DescribeObservedOpcodes()} {LastDispatchSummary}");
         }
 
@@ -151,13 +150,30 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 string segment = segments[i].Trim();
                 if (segment.StartsWith(opcodeToken, StringComparison.OrdinalIgnoreCase)
-                    && ushort.TryParse(segment.Substring(opcodeToken.Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort opcode))
+                    && TryParseOpcode(segment.Substring(opcodeToken.Length), out ushort opcode))
                 {
                     return opcode;
                 }
             }
 
             return 0;
+        }
+
+        private static bool TryParseOpcode(string text, out ushort opcode)
+        {
+            opcode = 0;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return ushort.TryParse(trimmed.Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out opcode);
+            }
+
+            return ushort.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out opcode);
         }
 
         private static string DescribePacketKind(int packetType)

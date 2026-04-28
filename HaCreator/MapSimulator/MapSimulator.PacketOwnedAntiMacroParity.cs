@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Util;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
@@ -1596,6 +1597,24 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSummary = responseCode == 2
                 ? "Dismissed anti-macro notice with Cancel."
                 : "Dismissed anti-macro notice with OK.";
+        }
+
+        private void HandlePacketOwnedAntiMacroClientOutboundPacketObserved(
+            object sender,
+            LocalUtilityOutboundPacketObservedEventArgs e)
+        {
+            if (e == null || e.Opcode != PacketOwnedAntiMacroAnswerSubmitOpcode)
+            {
+                return;
+            }
+
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = e.RawPacket?.ToArray() ?? Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge?.SentCount ?? -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge?.ReceivedCount ?? -1;
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
+            _lastPacketOwnedAntiMacroSummary =
+                $"Observed live client anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} from {ResolvePacketOwnedAntiMacroResultSource(e.Source)}.";
         }
 
         private string AppendPacketOwnedAntiMacroResultSourceSummary(

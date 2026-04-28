@@ -1025,8 +1025,27 @@ namespace HaCreator.MapSimulator
         {
             if (variant == ReviveOwnerVariant.SoulStoneChoice)
             {
-                // WZ evidence: String/Skill.img/22181003/h -> "revives with #x% HP"
-                return "Soul Stone buff branch";
+                if (TryResolveReviveOwnerSkillText(
+                        ReviveOwnerSoulStoneSkillId,
+                        out string skillName,
+                        out string skillDescription,
+                        out string skillHint))
+                {
+                    return BuildReviveOwnerSkillDetailPrefix(
+                        ReviveOwnerSoulStoneSkillId,
+                        ownerLabel,
+                        skillName,
+                        skillDescription,
+                        skillHint);
+                }
+
+                // WZ evidence: String/Skill.img/22181003/h -> "revives with #x% HP".
+                return BuildReviveOwnerSkillDetailPrefix(
+                    ReviveOwnerSoulStoneSkillId,
+                    ownerLabel,
+                    "Soul Stone",
+                    string.Empty,
+                    "revives with #x% HP");
             }
 
             int cashItemId = ReviveOwnerRuntime.GetConsumableCashItemId(variant);
@@ -1056,11 +1075,91 @@ namespace HaCreator.MapSimulator
             return $"{ownerLabel} ({cashItemId})";
         }
 
+        internal static string BuildReviveOwnerSkillDetailPrefix(
+            int skillId,
+            string fallbackLabel,
+            string skillName,
+            string skillDescription,
+            string skillHint)
+        {
+            string resolvedName = !string.IsNullOrWhiteSpace(skillName)
+                ? skillName.Trim()
+                : !string.IsNullOrWhiteSpace(fallbackLabel)
+                    ? fallbackLabel.Trim()
+                    : "Soul Stone";
+            string recoveryText = SelectReviveOwnerRecoverySentence(skillDescription)
+                ?? SelectReviveOwnerRecoverySentence(skillHint)
+                ?? NormalizeReviveOwnerDescription(skillDescription)
+                ?? NormalizeReviveOwnerDescription(skillHint);
+
+            return !string.IsNullOrWhiteSpace(recoveryText)
+                ? $"{resolvedName} ({skillId}): {recoveryText}"
+                : $"{resolvedName} ({skillId})";
+        }
+
+        private static bool TryResolveReviveOwnerSkillText(
+            int skillId,
+            out string skillName,
+            out string skillDescription,
+            out string skillHint)
+        {
+            skillName = string.Empty;
+            skillDescription = string.Empty;
+            skillHint = string.Empty;
+
+            WzImage skillStringImage = Program.FindImage("String", "Skill.img");
+            if (skillStringImage == null)
+            {
+                return false;
+            }
+
+            skillStringImage.ParseImage();
+            if (skillStringImage[skillId.ToString(CultureInfo.InvariantCulture)] is not WzSubProperty skillStringProperty)
+            {
+                return false;
+            }
+
+            skillName = (FindReviveOwnerChildProperty(skillStringProperty, "name") as WzStringProperty)?.Value ?? string.Empty;
+            skillDescription = (FindReviveOwnerChildProperty(skillStringProperty, "desc") as WzStringProperty)?.Value ?? string.Empty;
+            skillHint = (FindReviveOwnerChildProperty(skillStringProperty, "h") as WzStringProperty)?.Value ?? string.Empty;
+            return !string.IsNullOrWhiteSpace(skillName)
+                || !string.IsNullOrWhiteSpace(skillDescription)
+                || !string.IsNullOrWhiteSpace(skillHint);
+        }
+
+        private static string SelectReviveOwnerRecoverySentence(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                return null;
+            }
+
+            string normalizedDescription = description
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal);
+            foreach (string rawSentence in normalizedDescription.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string sentence = NormalizeReviveOwnerDescription(rawSentence);
+                if (string.IsNullOrWhiteSpace(sentence))
+                {
+                    continue;
+                }
+
+                if (sentence.Contains("revive", StringComparison.OrdinalIgnoreCase)
+                    || sentence.Contains("resurrect", StringComparison.OrdinalIgnoreCase))
+                {
+                    return sentence.EndsWith(".", StringComparison.Ordinal) ? sentence : $"{sentence}.";
+                }
+            }
+
+            return null;
+        }
+
         private static string NormalizeReviveOwnerDescription(string description)
         {
             if (string.IsNullOrWhiteSpace(description))
             {
-                return string.Empty;
+                return null;
             }
 
             string normalized = description

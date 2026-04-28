@@ -255,6 +255,7 @@ namespace HaCreator.MapSimulator
         private bool _packetOwnedMiniMapOnOffVisible = true;
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
         private readonly AdminShopPacketInboxManager _adminShopPacketInbox = new();
+        private readonly AdminShopOfficialSessionBridgeManager _adminShopOfficialSessionBridge;
         private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge;
         private readonly MessengerOfficialSessionBridgeManager _messengerOfficialSessionBridge;
         private readonly MessengerOfficialSessionBridgeManager _mapleTvOfficialSessionBridge;
@@ -3673,6 +3674,11 @@ namespace HaCreator.MapSimulator
 
                 bool applied = TryApplyPacketOwnedAdminShopPacket(message.PacketType, message.Payload, out string detail, message.Source);
                 _adminShopPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (message.Source?.StartsWith("official-session:admin-shop:", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _adminShopOfficialSessionBridge.RecordDispatchResult(message, applied, detail);
+                }
+
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
                     if (applied)
@@ -3684,6 +3690,19 @@ namespace HaCreator.MapSimulator
                         _chat?.AddErrorMessage(detail, currTickCount);
                     }
                 }
+            }
+        }
+
+        private void DrainAdminShopOfficialSessionBridge()
+        {
+            while (_adminShopOfficialSessionBridge.TryDequeue(out AdminShopPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                _adminShopPacketInbox.EnqueueProxy(message.PacketType, message.Payload, message.Source);
             }
         }
 
@@ -3724,7 +3743,7 @@ namespace HaCreator.MapSimulator
 
         private string DescribeAdminShopPacketInboxStatus()
         {
-            return "Admin-shop packet inbox adapter-only, listener-fallback retired.";
+            return $"Admin-shop packet inbox adapter-only, dedicated official-session bridge active, listener-fallback retired. {_adminShopOfficialSessionBridge.DescribeStatus()}";
         }
 
         private string DescribeLocalUtilityOfficialSessionBridgeStatus()
@@ -4678,23 +4697,60 @@ namespace HaCreator.MapSimulator
             }
 
             StampPacketOwnedUtilityRequestState();
-            ShowPacketOwnedWindow(MapSimulatorWindowNames.CharacterInfo, "Character Info");
 
-            if (!_remoteUserPool.TryGetActor(profilePacket.CharacterId, out _))
-            {
-                _pendingRemoteUserProfilesByCharacterId[profilePacket.CharacterId] = profilePacket;
-                message = $"Queued packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} until the remote actor or UserInfo inspection owner is available.";
-                return true;
-            }
-
-            if (!_remoteUserPool.TryApplyProfileMetadata(profilePacket, out string profileMessage))
+            bool hasRemoteActor = _remoteUserPool.TryGetActor(profilePacket.CharacterId, out RemoteUserActor actor);
+            if (hasRemoteActor && !_remoteUserPool.TryApplyProfileMetadata(profilePacket, out string profileMessage))
             {
                 message = profileMessage;
                 return false;
             }
 
-            _pendingRemoteUserProfilesByCharacterId.Remove(profilePacket.CharacterId);
-            message = $"Applied packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} through the shared remote-user profile metadata seam.";
+            if (!hasRemoteActor)
+            {
+                _pendingRemoteUserProfilesByCharacterId[profilePacket.CharacterId] = profilePacket;
+            }
+            else
+            {
+                _pendingRemoteUserProfilesByCharacterId.Remove(profilePacket.CharacterId);
+            }
+
+            CharacterBuild inspectionBuild = hasRemoteActor
+                ? actor.Build?.Clone()
+                : TryCreateRemoteCharacterInfoInspectionBuildFromPendingProfile(
+                    profilePacket.CharacterId,
+                    null,
+                    out CharacterBuild pendingProfileBuild)
+                    ? pendingProfileBuild
+                    : null;
+            if (inspectionBuild != null)
+            {
+                TryResolveCharacterInfoPresence(
+                    profilePacket.CharacterId,
+                    inspectionBuild.Name,
+                    hasRemoteActor ? actor : null,
+                    "Packet-owned profile payload",
+                    0,
+                    out string locationSummary,
+                    out int channel);
+                ShowCharacterInfoWindow(
+                    inspectionTarget: new UserInfoUI.UserInfoInspectionTarget
+                    {
+                        Build = inspectionBuild,
+                        CharacterId = profilePacket.CharacterId,
+                        Name = inspectionBuild.Name,
+                        LocationSummary = locationSummary,
+                        Channel = channel,
+                        IsLiveRemoteTarget = actor?.IsVisibleInWorld == true
+                    });
+            }
+            else
+            {
+                ShowPacketOwnedWindow(MapSimulatorWindowNames.CharacterInfo, "Character Info");
+            }
+
+            message = hasRemoteActor
+                ? $"Applied packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} through the shared remote-user profile metadata seam and refreshed the inspected UserInfo owner."
+                : $"Applied packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} to the active UserInfo inspection owner while queuing it for the future remote actor.";
             return true;
         }
 
@@ -10391,6 +10447,11 @@ namespace HaCreator.MapSimulator
         private string StopPacketOwnedRadioSchedule(bool completed, bool emitChatNotice)
         {
             string displayName = _lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor ?? "radio track";
+            _lastPacketOwnedRadioMmsStopPlan = ResolvePacketOwnedRadioMmsStopPlan(
+                _lastPacketOwnedRadioClientTrackPropertyLoaded,
+                _lastPacketOwnedRadioClientSoundObjectLoaded,
+                _lastPacketOwnedRadioClientRawBufferLoaded,
+                _lastPacketOwnedRadioClientHandleStatus);
             _packetOwnedRadioAudio?.Stop();
             _packetOwnedRadioAudio?.Dispose();
             _packetOwnedRadioAudio = null;
@@ -10406,8 +10467,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioClientTrackDurationMs = 0;
             _lastPacketOwnedRadioClientPlaybackSeedMs = 0;
             _lastPacketOwnedRadioClientPlaybackPositionMs = 0;
-            _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusAfterStop(
-                _lastPacketOwnedRadioClientHandleStatus);
+            _lastPacketOwnedRadioClientHandleStatus = _lastPacketOwnedRadioMmsStopPlan.HandleStatus;
             _lastPacketOwnedRadioClientTrackPropertyLoaded = false;
             _lastPacketOwnedRadioClientSoundObjectLoaded = false;
             _lastPacketOwnedRadioClientRawBufferLoaded = false;
@@ -10779,6 +10839,7 @@ namespace HaCreator.MapSimulator
             return
                 $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / play; " +
                 $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, failure={failure}; " +
+                $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }
 
@@ -14325,17 +14386,18 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForHorizontalOnKeyDown(
+            PassiveTransferFieldHorizontalOnKeyDownDecision horizontalDecision =
+                PassiveTransferFieldReadinessEvaluator.EvaluateHorizontalOnKeyDown(
+                    _passiveTransferRequestPending,
                     leftKeyPressed: releaseKeyPressed,
-                    rightKeyPressed: false))
+                    rightKeyPressed: false);
+
+            if (horizontalDecision.ShouldStopSkillMacro)
             {
                 StopSkillMacroForHandleUpKeyDown();
             }
 
-            if (PassiveTransferFieldReadinessEvaluator.ShouldCancelQueuedRetryOnHorizontalKeyDown(
-                    _passiveTransferRequestPending,
-                    leftKeyPressed: releaseKeyPressed,
-                    rightKeyPressed: false))
+            if (horizontalDecision.ShouldClearQueuedRetry)
             {
                 ClearPassiveTransferRequest();
             }
@@ -19649,7 +19711,7 @@ namespace HaCreator.MapSimulator
 
             if (subtype == EngagementProposalRuntime.RequestPayloadValue)
             {
-                string proposerName = ResolvePacketOwnedEngagementSourceName(source);
+                string proposerName = ResolvePacketOwnedEngagementSourceName(source, _lastPacketOwnedMateName);
                 string partnerName = ResolvePacketOwnedEngagementLocalName();
                 if (!_engagementProposalController.TryOpenIncomingProposalFromRequestPayload(
                         proposerName,
@@ -19689,10 +19751,16 @@ namespace HaCreator.MapSimulator
 
         internal static string ResolvePacketOwnedEngagementSourceName(string source)
         {
+            return ResolvePacketOwnedEngagementSourceName(source, string.Empty);
+        }
+
+        internal static string ResolvePacketOwnedEngagementSourceName(string source, string packetOwnedMateName)
+        {
             string normalized = source?.Trim();
+            string mateName = packetOwnedMateName?.Trim();
             if (string.IsNullOrWhiteSpace(normalized))
             {
-                return "Requester";
+                return string.IsNullOrWhiteSpace(mateName) ? "Requester" : mateName;
             }
 
             Match match = Regex.Match(normalized, @"(?:^|[;,\s])(?:from|proposer|requester|name)[:=](?<name>[^;,\s]+)", RegexOptions.IgnoreCase);
@@ -19703,12 +19771,12 @@ namespace HaCreator.MapSimulator
 
             if (normalized.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase))
             {
-                return "Requester";
+                return string.IsNullOrWhiteSpace(mateName) ? "Requester" : mateName;
             }
 
             return normalized.Length <= 12 && normalized.All(ch => char.IsLetterOrDigit(ch) || ch == '_')
                 ? normalized
-                : "Requester";
+                : string.IsNullOrWhiteSpace(mateName) ? "Requester" : mateName;
         }
 
         private string ResolvePacketOwnedEngagementLocalName()

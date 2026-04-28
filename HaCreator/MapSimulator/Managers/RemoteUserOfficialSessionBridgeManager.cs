@@ -767,7 +767,7 @@ namespace HaCreator.MapSimulator.Managers
                     if (!resolvedFromBuildScopedTutorMapping
                         && IsOfficialRemoteOpcodeCoveredByV95OwnerTable(opcode))
                     {
-                        LastStatus = $"Ignored remote-user opcode {opcode}: {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Ignored native non-local CUser opcode {opcode}: recovered v95 CUserPool::OnUserRemotePacket owner range has no CTutor/CSummoned tutor branch, so tutor-shaped payloads are not promoted from remote-user opcodes. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 

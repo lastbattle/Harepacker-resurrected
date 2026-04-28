@@ -3126,7 +3126,7 @@ namespace HaCreator.MapSimulator
                     liveSourcePart,
                     request.SourceEquipSlot.Value,
                     request.TargetEquipSlot.Value,
-                    GetBattlefieldEquipRestrictionMessage,
+                    GetCharacterEquipmentTakeOffRestrictionMessage,
                     out string moveRejectReason))
             {
                 return EquipmentChangeResult.Reject(moveRejectReason);
@@ -3203,7 +3203,7 @@ namespace HaCreator.MapSimulator
 
             if (EquipmentChangeRequestValidator.TryGetCharacterUnequipRejectReason(
                     liveSourcePart,
-                    GetBattlefieldEquipRestrictionMessage,
+                    GetCharacterEquipmentTakeOffRestrictionMessage,
                     out string unequipRejectReason))
             {
                 return EquipmentChangeResult.Reject(unequipRejectReason);

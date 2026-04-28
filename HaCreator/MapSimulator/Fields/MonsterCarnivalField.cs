@@ -1408,6 +1408,7 @@ namespace HaCreator.MapSimulator.Fields
         public MonsterCarnivalTeamState Team0 => _team0;
         public MonsterCarnivalTeamState Team1 => _team1;
         public IReadOnlyDictionary<int, int> MobSpellCounts => _mobSpellCounts;
+        public IReadOnlyDictionary<int, int> SkillUseCounts => _skillUseCounts;
         public IReadOnlyList<MonsterCarnivalSummonedMobState> SummonedMobs => _summonedMobs;
         public IReadOnlyDictionary<int, MonsterCarnivalGuardianPlacement> GuardianPlacements => _guardianPlacements;
         public IReadOnlyList<int> LastClientOwnerStringPoolIds => _lastClientOwnerStringPoolIds;
@@ -1816,6 +1817,44 @@ namespace HaCreator.MapSimulator.Fields
             OnRequestResult((byte)_activeTab, entry.Index, requestMessage, tickCount);
             message = DescribeStatus();
             return true;
+        }
+
+        public bool TryApplyNuffSkillPickup(int nuffSkillId, int tickCount, out string message)
+        {
+            message = null;
+            if (!_isVisible || !_enteredField || nuffSkillId <= 0)
+            {
+                return false;
+            }
+
+            MonsterCarnivalEntry entry = _definition?.SkillEntries?.FirstOrDefault(candidate => candidate.Id == nuffSkillId);
+            if (entry == null)
+            {
+                message = $"Monster Carnival nuffSkill {nuffSkillId.ToString(CultureInfo.InvariantCulture)} is not authored in the active field.";
+                return false;
+            }
+
+            ApplySuccessfulRequest(entry, _localTeam, spendLocalCp: false, ownerTeamKnown: true);
+            message = BuildRequestSuccessMessage(entry, _localCharacterName);
+            ShowStatus(message, tickCount);
+            _uiWindowState.MarkRequestCooldownReset(
+                tickCount,
+                _definition?.ClientOwnerLabel,
+                "pickup",
+                (int)MonsterCarnivalTab.Skill,
+                entry.Index);
+            SetVariantSessionPhase(
+                MonsterCarnivalVariantSessionPhase.Request,
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} applied WZ consumeOnPickup nuffSkill {nuffSkillId.ToString(CultureInfo.InvariantCulture)} through the skill request owner.");
+            return true;
+        }
+
+        public bool CanApplyNuffSkillPickup(int nuffSkillId)
+        {
+            return _isVisible
+                   && _enteredField
+                   && nuffSkillId > 0
+                   && _definition?.SkillEntries?.Any(candidate => candidate.Id == nuffSkillId) == true;
         }
 
         public void OnRequestResult(byte tabCode, int entryIndex, string characterName, int tickCount)

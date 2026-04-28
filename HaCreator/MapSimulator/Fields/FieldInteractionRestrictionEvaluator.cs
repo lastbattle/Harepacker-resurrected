@@ -243,6 +243,27 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetTakeOffItemRestrictionMessage(MapInfo mapInfo, int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            int? blockedItemId = GetInfoInt(mapInfo, "blockTakeOffItem");
+            return blockedItemId == itemId
+                ? $"Item {itemId} cannot be unequipped in this field."
+                : null;
+        }
+
+        public static string GetTakeOffItemEntryRestrictionMessage(MapInfo mapInfo)
+        {
+            int? blockedItemId = GetInfoInt(mapInfo, "blockTakeOffItem");
+            return blockedItemId is > 0
+                ? $"Field equipment lock active: item {blockedItemId.Value} cannot be unequipped here."
+                : null;
+        }
+
         internal static string GetExpeditionPartyBossChangeRestrictionMessage(
             long fieldLimit,
             ExpeditionIntermediaryOutboundRequestKind requestKind)
@@ -323,6 +344,19 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetFallingDamageRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetFallingDamageRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return mapInfo?.damageCheckFree == true
+                ? "Local damage checks are disabled in this map."
+                : null;
+        }
+
         internal static string GetWindowRestrictionMessage(long fieldLimit, string windowName)
         {
             if (string.Equals(windowName, MapSimulatorWindowNames.QuestTimer, StringComparison.Ordinal) ||
@@ -398,6 +432,11 @@ namespace HaCreator.MapSimulator.Fields
         public static bool CanTakeFallingDamage(long fieldLimit)
         {
             return !FieldLimitType.No_Damage_On_Falling.Check(fieldLimit);
+        }
+
+        public static bool CanTakeFallingDamage(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetFallingDamageRestrictionMessage(fieldLimit, mapInfo) == null;
         }
 
         public static bool ShouldAutoExpandMinimap(long fieldLimit)
@@ -712,12 +751,13 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetExpDecreaseRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetItemOptionLimitMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetJumpDownRestrictionMessage(fieldLimit));
-            AddFieldEntryMessage(messages, GetFallingDamageRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetFallingDamageRestrictionMessage(fieldLimit, mapInfo));
             AddFieldEntryMessage(messages, GetShopOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetActiveSkillCancelRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetTakeOffItemEntryRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFollowCharacterRestrictionMessage(mapInfo));
             if (GetPetRuntimeRestrictionMessage(fieldLimit) == null)
             {
@@ -1062,6 +1102,27 @@ namespace HaCreator.MapSimulator.Fields
                 ?? FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName);
 
             return property ?? mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+        }
+
+        private static int? GetInfoInt(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            if (property == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return property.GetInt();
+            }
+            catch
+            {
+                return property is WzStringProperty stringProperty
+                       && int.TryParse(stringProperty.Value, out int value)
+                    ? value
+                    : null;
+            }
         }
 
         private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)

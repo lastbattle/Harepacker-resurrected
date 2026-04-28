@@ -237,8 +237,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             "swingT2",
             "alert2",
             "shot",
-            "ride2",
-            "getoff2",
             "ladder2",
             "rope2"
         };
@@ -521,7 +519,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsExplicitMechanicVehiclePresentationActionName(string actionName)
         {
-            return ContainsActionName(ExplicitMechanicVehiclePresentationActionNames, actionName);
+            return !IsWzOnlyMechanicVehicleOneTimeActionName(actionName)
+                   && ContainsActionName(ExplicitMechanicVehiclePresentationActionNames, actionName);
         }
 
         internal static bool IsWzOnlyMechanicVehicleOneTimeActionName(string actionName)

@@ -480,7 +480,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (hasSupportMinionCue)
             {
-                return HasAuthoredSupportOwnedPacketSkillBranch(skill, PacketSkillActionHealingRobotHeal)
+                return HasAuthoredSupportOwnedNoActionPacketSkillBranch(skill)
                     ? SummonAssistType.Support
                     : currentAssistType;
             }
@@ -539,9 +539,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                             || HasExplicitSupportOwnedPacketSkillBranch(
                                 skill,
                                 PacketSkillActionHealingRobotHeal))
-                           && HasAuthoredSupportOwnedPacketSkillBranch(
-                               skill,
-                               PacketSkillActionHealingRobotHeal);
+                           && HasAuthoredSupportOwnedNoActionPacketSkillBranch(skill);
                 }
 
                 if (normalizedAction == PacketSkillActionHealingRobotHeal)
@@ -629,6 +627,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "subsummon"));
         }
 
+        private static bool HasAuthoredSupportOwnedNoActionPacketSkillBranch(SkillData skill)
+        {
+            return !string.IsNullOrWhiteSpace(
+                ResolveNamedSummonBranch(skill, "heal", "support", "skill1", "skill2", "stand"));
+        }
+
         private static bool HasAuthoredSupportOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
         {
             if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
@@ -714,7 +718,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (hasSupportMinionCue)
             {
-                return HasAuthoredSupportOwnedPacketSkillBranch(skill, PacketSkillActionHealingRobotHeal)
+                return HasAuthoredSupportOwnedNoActionPacketSkillBranch(skill)
                     ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.Support)
                     : null;
             }

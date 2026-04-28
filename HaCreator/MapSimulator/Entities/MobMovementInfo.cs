@@ -48,7 +48,15 @@ namespace HaCreator.MapSimulator.Entities
         Fly,
         Hit1,
         Die1,
-        Attack1
+        Attack1,
+        Attack2,
+        Attack3,
+        Attack4,
+        Attack5,
+        Attack6,
+        Attack7,
+        Attack8,
+        Attack9
     }
 
     public readonly record struct MobPacketMoveInterruptSnapshot(
@@ -818,12 +826,20 @@ namespace HaCreator.MapSimulator.Entities
             CurrentAction = MobAction.Stand;
         }
 
-        private static MobAction ResolvePacketOwnedMoveAction(int moveAction, MobAction fallback)
+        internal static MobAction ResolvePacketOwnedMoveAction(int moveAction, MobAction fallback)
         {
             return moveAction switch
             {
                 // Attack move-action lane (13-21) feeds CMob::DoAttack.
-                >= 13 and <= 21 => MobAction.Attack1,
+                13 => MobAction.Attack1,
+                14 => MobAction.Attack2,
+                15 => MobAction.Attack3,
+                16 => MobAction.Attack4,
+                17 => MobAction.Attack5,
+                18 => MobAction.Attack6,
+                19 => MobAction.Attack7,
+                20 => MobAction.Attack8,
+                21 => MobAction.Attack9,
                 0 => MobAction.Stand,
                 1 => MobAction.Move,
                 2 or 3 => MobAction.Jump,

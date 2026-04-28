@@ -1573,6 +1573,9 @@ namespace HaCreator.MapSimulator.UI
                     matchedByHeader = true;
                 }
 
+                long itemBodyStart = reader.BaseStream?.CanSeek == true
+                    ? reader.BaseStream.Position
+                    : -1;
                 switch (slotType)
                 {
                     case ItemSlotTypeEquip:
@@ -1599,6 +1602,11 @@ namespace HaCreator.MapSimulator.UI
                     default:
                         rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
                         return false;
+                }
+
+                if (itemBodyStart >= 0)
+                {
+                    reader.BaseStream.Position = itemBodyStart;
                 }
 
                 if (ShouldKeepModeZeroOwnershipOnHeaderFallback(

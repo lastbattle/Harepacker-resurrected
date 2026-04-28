@@ -574,7 +574,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return moveAction switch
             {
-                >= 13 and <= 21 => MobAction.Attack1,
+                >= 13 and <= 21 => MobMovementInfo.ResolvePacketOwnedMoveAction(moveAction, MobAction.Attack1),
                 0 => MobAction.Stand,
                 1 => MobAction.Move,
                 2 or 3 => MobAction.Jump,

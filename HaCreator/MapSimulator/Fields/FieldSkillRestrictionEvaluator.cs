@@ -500,7 +500,12 @@ namespace HaCreator.MapSimulator.Fields
 
             for (int i = 0; i < children.Count; i++)
             {
-                WzImageProperty current = FindDirectChildByName(children, i.ToString());
+                WzImageProperty current = children[i];
+                if (!int.TryParse(current?.Name, out _))
+                {
+                    continue;
+                }
+
                 if (TryReadInt(current, out int value))
                 {
                     yield return value;
@@ -511,26 +516,6 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
         }
-
-        private static WzImageProperty FindDirectChildByName(WzPropertyCollection children, string name)
-        {
-            if (children == null)
-            {
-                return null;
-            }
-
-            for (int i = 0; i < children.Count; i++)
-            {
-                WzImageProperty child = children[i];
-                if (string.Equals(child?.Name, name, StringComparison.OrdinalIgnoreCase))
-                {
-                    return child;
-                }
-            }
-
-            return null;
-        }
-
         private static IEnumerable<WzImageProperty> EnumerateNamedChildren(WzImageProperty root, string propertyName)
         {
             if (root == null || string.IsNullOrWhiteSpace(propertyName))

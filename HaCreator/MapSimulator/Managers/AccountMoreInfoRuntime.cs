@@ -264,7 +264,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal void AdjustField(AccountMoreInfoEditableField field, int delta)
         {
-            if (!_isOpen || delta == 0)
+            if (!CanEditDraft() || delta == 0)
             {
                 return;
             }
@@ -300,7 +300,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal void TogglePlayStyle(int index)
         {
-            if (!_isOpen || index < 0 || index >= PlayStyleLabels.Length)
+            if (!CanEditDraft() || index < 0 || index >= PlayStyleLabels.Length)
             {
                 return;
             }
@@ -311,7 +311,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal void ToggleActivity(int index)
         {
-            if (!_isOpen || index < 0 || index >= ActivityLabels.Length)
+            if (!CanEditDraft() || index < 0 || index >= ActivityLabels.Length)
             {
                 return;
             }
@@ -577,6 +577,11 @@ namespace HaCreator.MapSimulator.Managers
             _birthDay = 1;
             _playStyleMask = 0;
             _activityMask = 0;
+        }
+
+        private bool CanEditDraft()
+        {
+            return _isOpen && !_loadPending && !_savePending;
         }
 
         private static void EnsureCountryNameCatalogLoaded()

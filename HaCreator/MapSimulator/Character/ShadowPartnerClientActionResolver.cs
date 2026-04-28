@@ -2953,7 +2953,7 @@ namespace HaCreator.MapSimulator.Character
                    && !ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode);
         }
 
-        private static bool IsClientActionManInitSkippedActionName(string actionName)
+        internal static bool IsClientActionManInitSkippedActionName(string actionName)
         {
             return !string.IsNullOrWhiteSpace(actionName)
                    && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
@@ -3075,6 +3075,7 @@ namespace HaCreator.MapSimulator.Character
             if (actionAnimations == null
                 || actionAnimations.Count == 0
                 || string.IsNullOrWhiteSpace(actionName)
+                || IsClientActionManInitSkippedActionName(actionName)
                 || (requireSupportedRawActionName && !IsSupportedRawActionName(actionName, supportedRawActionNames)))
             {
                 return null;
@@ -3542,14 +3543,16 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (rawActionCode.HasValue
-                && ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode.Value))
+                && (rawActionCode.Value >= ClientInitializedShadowPartnerActionCodeLimitExclusive
+                    || ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode.Value)))
             {
                 return false;
             }
 
-            // CUser::PrepareShadowPartnerActionLayer keeps raw action 47 on the
-            // helper path and loads it through CActionMan::LoadShadowPartnerAction;
-            // in v95 this is Character/00002000.img/arrowEruption.
+            // CActionMan::Init seeds helper rows only for raw actions 0..272
+            // (skipping 55). CUser::PrepareShadowPartnerActionLayer still keeps
+            // raw action 47 on the helper path; in v95 this resolves through
+            // Character/00002000.img/arrowEruption.
             return true;
         }
 

@@ -2787,27 +2787,33 @@ namespace HaCreator.MapSimulator.UI
             string failureMessage = reason >= 0
                 ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
                 : $"{ownerName} failed before a reason byte could be decoded.";
+            ResolveCashFailureCatalogTarget(
+                ownerName,
+                out string paneLabel,
+                out string browseModeLabel,
+                out string seller,
+                out string stateLabel);
             string trailingSummary = AppendTrailingCashItemInfoFromPayload(
                 payload,
                 startOffset: 2,
                 maxCount: 4,
-                paneLabel: "Packet failures",
-                browseModeLabel: "Fail",
+                paneLabel: paneLabel,
+                browseModeLabel: browseModeLabel,
                 titlePrefix: "Failure packet body",
-                seller: "CCashShop",
+                seller: seller,
                 stateLabel: "Failed body");
             if (!string.IsNullOrWhiteSpace(trailingSummary))
             {
                 failureMessage += $" {trailingSummary}";
             }
 
-            AppendCashPacketCatalogEntry("Packet failures", "Fail", new PacketCatalogEntry
+            AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, new PacketCatalogEntry
             {
                 Title = ownerName,
                 Detail = failureMessage,
-                Seller = "CCashShop",
+                Seller = seller,
                 PriceLabel = reason >= 0 ? $"Reason {reason.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = "Failed",
+                StateLabel = stateLabel,
                 PacketSource = ownerName,
                 PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: true),
                 PacketRawByteLength = payload?.Length ?? 0,
@@ -2815,25 +2821,171 @@ namespace HaCreator.MapSimulator.UI
             });
 
             _noticeState = failureMessage;
+            ApplyCashFailureSummaryToOwner(ownerName, failureMessage);
 
-            if (ownerName.Contains("Coupon", StringComparison.Ordinal))
+            return failureMessage;
+        }
+
+        private static void ResolveCashFailureCatalogTarget(
+            string ownerName,
+            out string paneLabel,
+            out string browseModeLabel,
+            out string seller,
+            out string stateLabel)
+        {
+            string owner = ownerName ?? string.Empty;
+            paneLabel = "Packet failures";
+            browseModeLabel = "Fail";
+            seller = "CCashShop";
+            stateLabel = "Failed";
+
+            if (owner.Contains("LoadLocker", StringComparison.Ordinal)
+                || owner.Contains("IncTrunkCount", StringComparison.Ordinal)
+                || owner.Contains("Rebate", StringComparison.Ordinal)
+                || owner.Contains("MoveStoL", StringComparison.Ordinal)
+                || owner.Contains("Destroy", StringComparison.Ordinal)
+                || owner.Contains("Expire", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet locker";
+                browseModeLabel = "Locker";
+                seller = "CCSWnd_Locker";
+                return;
+            }
+
+            if (owner.Contains("LoadGift", StringComparison.Ordinal)
+                || owner.Contains("GiftFailed", StringComparison.Ordinal)
+                || owner.Contains("GiftPackage", StringComparison.Ordinal)
+                || owner.Contains("Couple", StringComparison.Ordinal)
+                || owner.Contains("FriendShip", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet gifts";
+                browseModeLabel = "Gift";
+                seller = "CCashShop gift owner";
+                return;
+            }
+
+            if (owner.Contains("Coupon", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet coupons";
+                browseModeLabel = "Coupon";
+                seller = "CCSWnd_Status";
+                return;
+            }
+
+            if (owner.Contains("BuyPackage", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet package";
+                browseModeLabel = "Package";
+                seller = "CCSWnd_Locker";
+                return;
+            }
+
+            if (owner.Contains("BuyNormal", StringComparison.Ordinal)
+                || owner.Contains("IncSlotCount", StringComparison.Ordinal)
+                || owner.Contains("MoveLtoS", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet inventory";
+                browseModeLabel = "Inventory";
+                seller = "CCSWnd_Inventory";
+                return;
+            }
+
+            if (owner.Contains("LoadWish", StringComparison.Ordinal)
+                || owner.Contains("SetWish", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet wishlist";
+                browseModeLabel = "Wish";
+                seller = "CCSWnd_List";
+                return;
+            }
+
+            if (owner.Contains("PurchaseRecord", StringComparison.Ordinal)
+                || owner.Contains("BuyFailed", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet purchase";
+                browseModeLabel = "Buy";
+                seller = "CCSWnd_List";
+                return;
+            }
+
+            if (owner.Contains("NameChange", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet rename";
+                browseModeLabel = "Name";
+                seller = "CCashShop";
+                return;
+            }
+
+            if (owner.Contains("TransferWorld", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet transfer";
+                browseModeLabel = "Transfer";
+                seller = "CCashShop";
+                return;
+            }
+
+            if (owner.Contains("Gachapon", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet gachapon";
+                browseModeLabel = "Gachapon";
+                seller = "CCashShop gachapon";
+                return;
+            }
+
+            if (owner.Contains("ChangeMaplePoint", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet maple-point";
+                browseModeLabel = "Point";
+                seller = "CCSWnd_Status";
+                return;
+            }
+
+            if (owner.Contains("IncCharacterSlotCount", StringComparison.Ordinal)
+                || owner.Contains("IncBuyCharacterCount", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet counter";
+                browseModeLabel = "Character";
+                seller = "CCSWnd_Char";
+                return;
+            }
+
+            if (owner.Contains("EnableEquipSlotExt", StringComparison.Ordinal))
+            {
+                paneLabel = "Packet equip-slot-ext";
+                browseModeLabel = "Equip";
+                seller = "CCSWnd_Char";
+            }
+        }
+
+        private void ApplyCashFailureSummaryToOwner(string ownerName, string failureMessage)
+        {
+            string owner = ownerName ?? string.Empty;
+            if (owner.Contains("Gift", StringComparison.Ordinal)
+                || owner.Contains("Couple", StringComparison.Ordinal)
+                || owner.Contains("FriendShip", StringComparison.Ordinal))
+            {
+                _cashGiftLastSummary = failureMessage;
+            }
+            else if (owner.Contains("Coupon", StringComparison.Ordinal))
             {
                 _cashCouponLastSummary = failureMessage;
             }
-            else if (ownerName.Contains("NameChange", StringComparison.Ordinal))
+            else if (owner.Contains("PurchaseRecord", StringComparison.Ordinal))
+            {
+                _cashPurchaseRecordSummary = failureMessage;
+            }
+            else if (owner.Contains("NameChange", StringComparison.Ordinal))
             {
                 _cashNameChangeLastSummary = failureMessage;
             }
-            else if (ownerName.Contains("TransferWorld", StringComparison.Ordinal))
+            else if (owner.Contains("TransferWorld", StringComparison.Ordinal))
             {
                 _cashTransferWorldLastSummary = failureMessage;
             }
-            else if (ownerName.Contains("Gachapon", StringComparison.Ordinal))
+            else if (owner.Contains("Gachapon", StringComparison.Ordinal))
             {
                 _cashGachaponLastSummary = failureMessage;
             }
-
-            return failureMessage;
         }
 
         private string BuildCashTransferAwareFailureMessage(

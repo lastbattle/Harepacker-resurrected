@@ -382,10 +382,8 @@ namespace HaCreator.MapSimulator.UI
                         sprite,
                         bounds,
                         13,
-                        selectedResult.HasLiveCatalogBinding
-                            ? "Live catalog binding resolved."
-                            : "No live catalog binding; BtRegist stays disabled.",
-                        selectedResult.HasLiveCatalogBinding ? new Color(198, 208, 224) : new Color(255, 233, 160));
+                        BuildPacketBindingDetail(selectedResult),
+                        ResolvePacketBindingDetailColor(selectedResult));
                 }
             }
             else if (GetResultCount() > 0)
@@ -970,12 +968,47 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string sessionLabel = BuildPacketSessionLabel(result);
-            if (!result.HasLiveCatalogBinding)
+            if (!result.HasLiveCatalogBinding && result.RewardItemId <= 0)
             {
-                return $"Packet-authored row session {sessionLabel} has no live NPC catalog binding; BtRegist stays disabled.";
+                return $"Packet-authored row session {sessionLabel} has no live NPC catalog binding or registerable item id; BtRegist stays disabled.";
             }
 
             return $"Packet-authored row session {sessionLabel} is no longer active in the current admin-shop search session.";
+        }
+
+        private static string BuildPacketBindingDetail(AdminShopDialogUI.WishlistSearchResult result)
+        {
+            if (result == null)
+            {
+                return string.Empty;
+            }
+
+            if (result.HasLiveCatalogBinding)
+            {
+                return "Live catalog binding resolved.";
+            }
+
+            if (result.RewardItemId > 0 && result.CanRegister && !result.AlreadyWishlisted)
+            {
+                return "Packet row has no live catalog binding; BtRegist sends the packet item id.";
+            }
+
+            if (result.RewardItemId > 0 && result.AlreadyWishlisted)
+            {
+                return "Packet row has no live catalog binding; item is already in the wish list.";
+            }
+
+            return "No live catalog binding or registerable item id; BtRegist stays disabled.";
+        }
+
+        private static Color ResolvePacketBindingDetailColor(AdminShopDialogUI.WishlistSearchResult result)
+        {
+            if (result?.HasLiveCatalogBinding == true || result?.CanRegister == true)
+            {
+                return new Color(198, 208, 224);
+            }
+
+            return new Color(255, 233, 160);
         }
 
         private static string TrimToWidth(string text, float maxWidth)

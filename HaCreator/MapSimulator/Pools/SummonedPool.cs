@@ -117,6 +117,11 @@ namespace HaCreator.MapSimulator.Pools
         bool IsSamePhase = true,
         bool IsDazzled = false);
 
+    internal readonly record struct PacketOwnedExpiryCandidateClientState(
+        bool IsSuspended = false,
+        bool IsOurTeam = false,
+        bool IsSamePhase = true);
+
     internal readonly record struct PacketOwnedMobAttackFeedbackPresentation(
         MobAnimationSet.AttackInfoMetadata AttackInfo,
         MobAnimationSet.AttackHitEffectEntry HitEffectEntry,
@@ -300,6 +305,7 @@ namespace HaCreator.MapSimulator.Pools
         private Func<PlayerCharacter> _localPlayerAccessor;
         private Func<int, int> _localSkillLevelAccessor;
         private Func<int, int, int> _localCancelFamilyRemainingDurationAccessor;
+        private Func<int, MobItem, PacketOwnedExpiryCandidateClientState> _packetOwnedExpiryCandidateClientStateResolver;
         private SoundManager _soundManager;
         private CombatEffects _combatEffects;
         private AnimationEffects _animationEffects;
@@ -337,6 +343,12 @@ namespace HaCreator.MapSimulator.Pools
             _combatEffects = combatEffects;
             _animationEffects = animationEffects;
             _cancelSkillCatalog = null;
+        }
+
+        internal void SetPacketOwnedExpiryCandidateClientStateResolver(
+            Func<int, MobItem, PacketOwnedExpiryCandidateClientState> resolver)
+        {
+            _packetOwnedExpiryCandidateClientStateResolver = resolver;
         }
 
         public void Clear()
@@ -3861,15 +3873,24 @@ namespace HaCreator.MapSimulator.Pools
 
                 candidatesById[mob.PoolId] = mob;
                 IReadOnlyList<Rectangle> bodyHitboxes = mob.GetClientMultiBodyHitboxes(currentTime);
+                PacketOwnedExpiryCandidateClientState clientState =
+                    _packetOwnedExpiryCandidateClientStateResolver?.Invoke(state.OwnerCharacterId, mob)
+                    ?? ResolvePacketOwnedExpiryCandidateClientStateForParity(
+                        mob.MobInstance?.Team,
+                        ownerTeam: null,
+                        hasTeamContext: false);
                 orderedCandidates.Add(new PacketOwnedExpiryTargetCandidate(
                     mob.PoolId,
                     mob.GetClientBodyHitbox(currentTime),
                     sourceOrder++,
                     bodyHitboxes,
                     InView: IsMobInPacketOwnedExpiryView(mob),
+                    IsSuspended: clientState.IsSuspended,
                     TemplateId: mob.MobId,
                     IsDamagedByMob: mob.MobData?.DamagedByMob == true,
                     IsEscortMob: IsPacketOwnedExpiryEscortMob(mob),
+                    IsOurTeam: clientState.IsOurTeam,
+                    IsSamePhase: clientState.IsSamePhase,
                     IsDazzled: mob.AI?.IsDazzled == true));
             }
 
@@ -4337,6 +4358,30 @@ namespace HaCreator.MapSimulator.Pools
         {
             return mob?.AI?.IsEscortMob == true
                    || (mob?.MobData?.Escort ?? 0) > 0;
+        }
+
+        internal static PacketOwnedExpiryCandidateClientState ResolvePacketOwnedExpiryCandidateClientStateForParity(
+            int? mobTeam,
+            int? ownerTeam,
+            bool hasTeamContext,
+            bool isSuspended = false,
+            int? mobPhase = null,
+            int? ownerPhase = null,
+            bool hasPhaseContext = false)
+        {
+            bool isOurTeam = hasTeamContext
+                             && mobTeam.HasValue
+                             && ownerTeam.HasValue
+                             && mobTeam.Value == ownerTeam.Value;
+            bool isSamePhase = !hasPhaseContext
+                               || !mobPhase.HasValue
+                               || !ownerPhase.HasValue
+                               || mobPhase.Value == ownerPhase.Value;
+
+            return new PacketOwnedExpiryCandidateClientState(
+                IsSuspended: isSuspended,
+                IsOurTeam: isOurTeam,
+                IsSamePhase: isSamePhase);
         }
 
         internal static bool IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(

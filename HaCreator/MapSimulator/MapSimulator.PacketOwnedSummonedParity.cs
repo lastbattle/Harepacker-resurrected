@@ -1,6 +1,7 @@
 ﻿using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Entities;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
@@ -22,6 +23,66 @@ namespace HaCreator.MapSimulator
         private int? _summonedOfficialSessionBridgeConfiguredLocalPort;
         private const int SummonedOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextSummonedOfficialSessionBridgeDiscoveryRefreshAt;
+
+        private PacketOwnedExpiryCandidateClientState ResolvePacketOwnedExpiryCandidateClientState(
+            int ownerCharacterId,
+            MobItem mob)
+        {
+            int? mobTeam = mob?.MobInstance?.Team;
+            bool hasOwnerTeam = TryResolvePacketOwnedExpiryOwnerTeam(ownerCharacterId, out int ownerTeam);
+            return SummonedPool.ResolvePacketOwnedExpiryCandidateClientStateForParity(
+                mobTeam,
+                hasOwnerTeam ? ownerTeam : null,
+                hasOwnerTeam);
+        }
+
+        private bool TryResolvePacketOwnedExpiryOwnerTeam(int ownerCharacterId, out int ownerTeam)
+        {
+            ownerTeam = default;
+            if (ownerCharacterId <= 0)
+            {
+                return false;
+            }
+
+            int localPlayerId = _playerManager?.Player?.Build?.Id ?? 0;
+
+            Effects.BattlefieldField battlefield = _specialFieldRuntime?.SpecialEffects?.Battlefield;
+            if (battlefield?.IsActive == true && battlefield.LocalTeamId.HasValue)
+            {
+                if (ownerCharacterId == localPlayerId)
+                {
+                    ownerTeam = battlefield.LocalTeamId.Value;
+                    return true;
+                }
+
+                int? remoteBattlefieldTeamId = ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId(ownerCharacterId);
+                if (remoteBattlefieldTeamId.HasValue)
+                {
+                    ownerTeam = remoteBattlefieldTeamId.Value;
+                    return true;
+                }
+            }
+
+            Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            if (carnival?.IsVisible == true)
+            {
+                if (ownerCharacterId == localPlayerId)
+                {
+                    ownerTeam = (int)carnival.LocalTeam;
+                    return true;
+                }
+
+                string ownerName = ResolveRemoteAffectedAreaOwnerName(ownerCharacterId);
+                if (!string.IsNullOrWhiteSpace(ownerName)
+                    && carnival.TryResolveCharacterTeam(ownerName, out Fields.MonsterCarnivalTeam carnivalTeam))
+                {
+                    ownerTeam = (int)carnivalTeam;
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private void RegisterSummonedPacketChatCommand()
         {

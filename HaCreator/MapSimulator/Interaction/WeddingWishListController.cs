@@ -192,6 +192,17 @@ namespace HaCreator.MapSimulator.Interaction
             return message;
         }
 
+        internal bool TryApplyTransferResultPacket(IReadOnlyList<byte> payload, UIWindowManager windowManager, out string message)
+        {
+            bool applied = _runtime.TryApplyTransferResultPacket(payload, out message);
+            if (applied)
+            {
+                KeepWindowVisible(windowManager);
+            }
+
+            return applied;
+        }
+
         private void ShowWindow(
             UIWindowManager windowManager,
             CharacterBuild build,

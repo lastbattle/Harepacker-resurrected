@@ -320,7 +320,30 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            string statText = ResolveNamedPlaceholderStatText(normalizedToken, context);
+            if (!string.IsNullOrWhiteSpace(statText))
+            {
+                return statText;
+            }
+
             return normalizedToken;
+        }
+
+        private static string ResolveNamedPlaceholderStatText(string token, PacketOwnedBalloonTextFormattingContext context)
+        {
+            string normalizedToken = token?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return null;
+            }
+
+            return normalizedToken switch
+            {
+                "level" or "lv" => ResolveContextText(context?.ResolveCurrentLevelText),
+                "pop" or "fame" => ResolveContextText(context?.ResolveCurrentFameText),
+                "money" or "meso" or "mesos" => ResolveContextText(context?.ResolveCurrentMesoText),
+                _ => null
+            };
         }
 
         private static bool IsReservedControlPlaceholder(string token)

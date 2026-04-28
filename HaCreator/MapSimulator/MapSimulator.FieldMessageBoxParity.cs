@@ -1,5 +1,6 @@
 ﻿using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Character;
 using Microsoft.Xna.Framework;
 using MapleLib.PacketLib;
 using System;
@@ -422,6 +423,8 @@ namespace HaCreator.MapSimulator
             bool queueOnly,
             out string message)
         {
+            bool registeredPendingRequest = false;
+            string pendingRequestNote = string.Empty;
             string bridgeSyncNote = string.Empty;
             if (!_fieldMessageBoxOfficialSessionBridgeEnabled)
             {
@@ -442,6 +445,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryResolveFieldMessageBoxRequestHostPosition(out Point hostPosition, out string hostStatus))
+            {
+                _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+                registeredPendingRequest = _fieldMessageBoxRuntime.TryRegisterPendingConsumeCashItemUseRequest(
+                    payload,
+                    hostPosition,
+                    currTickCount,
+                    out string pendingStatus);
+                pendingRequestNote = registeredPendingRequest
+                    ? $" {pendingStatus}"
+                    : $" Pending request registration failed: {pendingStatus}";
+            }
+            else
+            {
+                pendingRequestNote = $" Pending request registration skipped: {hostStatus}";
+            }
+
             string payloadHex = Convert.ToHexString(payload);
             if (queueOnly)
             {
@@ -450,7 +470,7 @@ namespace HaCreator.MapSimulator
                         payload,
                         out string queueStatus))
                 {
-                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred live delivery. {queueStatus}{bridgeSyncNote}";
+                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred live delivery. {queueStatus}{pendingRequestNote}{bridgeSyncNote}";
                     return true;
                 }
 
@@ -459,11 +479,11 @@ namespace HaCreator.MapSimulator
                         payload,
                         out string outboxQueueStatus))
                 {
-                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after live queueing was unavailable. Bridge queue: {queueStatus} Deferred outbox: {outboxQueueStatus}{bridgeSyncNote}";
+                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after live queueing was unavailable. Bridge queue: {queueStatus} Deferred outbox: {outboxQueueStatus}{pendingRequestNote}{bridgeSyncNote}";
                     return true;
                 }
 
-                message = $"Message-box consume request queueing failed for opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}]. Bridge queue: {queueStatus} Outbox queue: {outboxQueueStatus}{bridgeSyncNote}";
+                message = $"Message-box consume request queueing failed for opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}]. Bridge queue: {queueStatus} Outbox queue: {outboxQueueStatus}{pendingRequestNote}{bridgeSyncNote}";
                 return false;
             }
 
@@ -473,7 +493,7 @@ namespace HaCreator.MapSimulator
                     payload,
                     out dispatchStatus))
             {
-                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}{bridgeSyncNote}";
+                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}{pendingRequestNote}{bridgeSyncNote}";
                 return true;
             }
 
@@ -483,7 +503,7 @@ namespace HaCreator.MapSimulator
                     payload,
                     out outboxStatus))
             {
-                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}{bridgeSyncNote}";
+                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}{pendingRequestNote}{bridgeSyncNote}";
                 return true;
             }
 
@@ -494,7 +514,7 @@ namespace HaCreator.MapSimulator
                     payload,
                     out deferredBridgeStatus))
             {
-                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred official-session bridge delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}{bridgeSyncNote}";
+                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred official-session bridge delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}{pendingRequestNote}{bridgeSyncNote}";
                 return true;
             }
 
@@ -503,12 +523,33 @@ namespace HaCreator.MapSimulator
                     payload,
                     out string deferredOutboxStatus))
             {
-                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{bridgeSyncNote}";
+                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{pendingRequestNote}{bridgeSyncNote}";
                 return true;
             }
 
-            message = $"Message-box consume request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] remained simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{bridgeSyncNote}";
+            if (registeredPendingRequest)
+            {
+                message = $"Staged CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] locally while waiting for packet 326/325 completion because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{pendingRequestNote}{bridgeSyncNote}";
+                return true;
+            }
+
+            message = $"Message-box consume request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] could not be staged because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{pendingRequestNote}{bridgeSyncNote}";
             return false;
+        }
+
+        private bool TryResolveFieldMessageBoxRequestHostPosition(out Point hostPosition, out string status)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                hostPosition = Point.Zero;
+                status = "a loaded local player host is required.";
+                return false;
+            }
+
+            hostPosition = new Point((int)Math.Round(player.X), (int)Math.Round(player.Y));
+            status = "resolved local player host position.";
+            return true;
         }
     }
 }

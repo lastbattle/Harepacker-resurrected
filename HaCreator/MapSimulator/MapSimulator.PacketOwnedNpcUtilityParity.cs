@@ -274,6 +274,9 @@ namespace HaCreator.MapSimulator
                 case "inbox":
                     return HandlePacketOwnedAdminShopInboxCommand(args.Skip(1).ToArray());
 
+                case "session":
+                    return HandlePacketOwnedAdminShopSessionCommand(args.Skip(1).ToArray());
+
                 case "packet":
                 case "packetraw":
                     return HandlePacketOwnedAdminShopPacketCommand(args);
@@ -292,8 +295,111 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Packet-owned admin-shop owner is unavailable.");
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop [status|show|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop [status|show|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|recent|clearrecent|stop]|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
             }
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopSessionCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(_adminShopOfficialSessionBridge.DescribeStatus());
+            }
+
+            switch (args[0].ToLowerInvariant())
+            {
+                case "start":
+                    if (args.Length < 4
+                        || !TryParseAdminShopProxyListenPort(args[1], out int listenPort)
+                        || !TryParseAdminShopRemotePort(args[3], out int remotePort))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /adminshop session start <listenPort|0> <serverHost> <serverPort>");
+                    }
+
+                    return _adminShopOfficialSessionBridge.TryStart(listenPort, args[2], remotePort, out string startStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                        : ChatCommandHandler.CommandResult.Error(startStatus);
+
+                case "startauto":
+                    if (args.Length < 3
+                        || !TryParseAdminShopProxyListenPort(args[1], out int autoListenPort)
+                        || !TryParseAdminShopRemotePort(args[2], out int autoRemotePort))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /adminshop session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    int? autoLocalPort = null;
+                    if (args.Length >= 5)
+                    {
+                        if (!TryParseAdminShopLocalPortFilter(args[4], out int parsedLocalPort))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /adminshop session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                        }
+
+                        autoLocalPort = parsedLocalPort;
+                    }
+
+                    string autoProcessSelector = args.Length >= 4 ? args[3] : null;
+                    return _adminShopOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, autoProcessSelector, autoLocalPort, out string autoStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(autoStatus)
+                        : ChatCommandHandler.CommandResult.Error(autoStatus);
+
+                case "discover":
+                    if (args.Length < 2 || !TryParseAdminShopRemotePort(args[1], out int discoverRemotePort))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /adminshop session discover <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    int? discoverLocalPort = null;
+                    if (args.Length >= 4)
+                    {
+                        if (!TryParseAdminShopLocalPortFilter(args[3], out int parsedDiscoverLocalPort))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /adminshop session discover <remotePort> [processName|pid] [localPort]");
+                        }
+
+                        discoverLocalPort = parsedDiscoverLocalPort;
+                    }
+
+                    string discoverProcessSelector = args.Length >= 3 ? args[2] : null;
+                    return ChatCommandHandler.CommandResult.Info(
+                        _adminShopOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, discoverProcessSelector, discoverLocalPort));
+
+                case "recent":
+                    return ChatCommandHandler.CommandResult.Info(_adminShopOfficialSessionBridge.DescribeRecentPackets());
+
+                case "clearrecent":
+                    _adminShopOfficialSessionBridge.ClearRecentPackets();
+                    return ChatCommandHandler.CommandResult.Ok(_adminShopOfficialSessionBridge.LastStatus);
+
+                case "stop":
+                    _adminShopOfficialSessionBridge.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(_adminShopOfficialSessionBridge.LastStatus);
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|recent|clearrecent|stop]");
+            }
+        }
+
+        private static bool TryParseAdminShopProxyListenPort(string value, out int listenPort)
+        {
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out listenPort)
+                && listenPort >= 0
+                && listenPort <= ushort.MaxValue;
+        }
+
+        private static bool TryParseAdminShopRemotePort(string value, out int remotePort)
+        {
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out remotePort)
+                && remotePort > 0
+                && remotePort <= ushort.MaxValue;
+        }
+
+        private static bool TryParseAdminShopLocalPortFilter(string value, out int localPort)
+        {
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out localPort)
+                && localPort > 0
+                && localPort <= ushort.MaxValue;
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopInboxCommand(string[] args)

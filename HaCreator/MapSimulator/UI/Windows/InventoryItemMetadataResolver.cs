@@ -3733,10 +3733,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int rate = GetIntOrStringValue(infoProperty["rate"]);
-            if (rate > 0)
+            double rate = GetPositiveNumericValue(infoProperty["ratef"]);
+            if (rate <= 0d)
             {
-                metadataLines.Add($"Cash Rate: {rate.ToString(CultureInfo.InvariantCulture)}x");
+                rate = GetPositiveNumericValue(infoProperty["rate"]);
+            }
+
+            if (rate > 0d)
+            {
+                metadataLines.Add($"Cash Rate: {rate.ToString("0.##", CultureInfo.InvariantCulture)}x");
             }
 
             AppendAuthoredScheduleMetadataLines(metadataLines, infoProperty["time"] as WzSubProperty);
@@ -4200,6 +4205,11 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["partyExpOn"]) == 1)
             {
                 metadataLines.Add("Party EXP: Enabled");
+            }
+
+            if (GetIntValue(infoProperty["ignoreTendencyStatLimit"]) == 1)
+            {
+                metadataLines.Add("Ignores personality daily limit");
             }
 
             int maxExp = GetIntOrStringValue(infoProperty["maxExp"]);
@@ -5198,6 +5208,26 @@ namespace HaCreator.MapSimulator.UI
             };
 
             return value > 0d ? value : null;
+        }
+
+        private static double GetPositiveNumericValue(WzImageProperty property)
+        {
+            if (property is WzStringProperty stringProperty
+                && double.TryParse(stringProperty.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+            {
+                return parsed > 0d ? parsed : 0d;
+            }
+
+            double value = property switch
+            {
+                WzDoubleProperty doubleProperty => doubleProperty.Value,
+                WzFloatProperty floatProperty => floatProperty.Value,
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                _ => 0d
+            };
+
+            return value > 0d ? value : 0d;
         }
 
         private static bool TryGetSignedInt(WzImageProperty property, out int value)

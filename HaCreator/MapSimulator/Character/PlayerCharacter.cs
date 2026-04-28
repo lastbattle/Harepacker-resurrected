@@ -7866,6 +7866,7 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(sourcePart.VSlot, StringComparer.Ordinal);
             signature.Add(sourcePart.ISlot, StringComparer.Ordinal);
             signature.Add(sourcePart.Sfx, StringComparer.Ordinal);
+            signature.Add(sourcePart.Description, StringComparer.Ordinal);
             signature.Add(sourcePart.IsCash);
             signature.Add(sourcePart.HasWeeklyVariant);
             signature.Add(sourcePart.UsesWeeklyVariantOverride);
@@ -7874,6 +7875,7 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.Animations));
             signature.Add(sourcePart.Animations?.Count ?? 0);
             AddMirrorImageStringSetIdentity(ref signature, sourcePart.Animations?.Keys);
+            AddMirrorImageAnimationMapIdentity(ref signature, sourcePart.Animations);
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.AvailableAnimations));
             signature.Add(sourcePart.AvailableAnimations?.Count ?? 0);
             AddMirrorImageStringSetIdentity(ref signature, sourcePart.AvailableAnimations);
@@ -7939,6 +7941,159 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.TamingMobActionOverlayResolver));
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.TamingMobActionFrameOwner));
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.MorphActionFrameOwner));
+            AddMirrorImageDerivedSourcePartIdentity(ref signature, sourcePart);
+        }
+
+        private static void AddMirrorImageDerivedSourcePartIdentity(ref HashCode signature, CharacterPart sourcePart)
+        {
+            switch (sourcePart)
+            {
+                case BodyPart bodyPart:
+                    signature.Add((int)bodyPart.SkinColor);
+                    signature.Add(bodyPart.IsHead);
+                    break;
+                case FacePart facePart:
+                    signature.Add(RuntimeHelpers.GetHashCode(facePart.Expressions));
+                    signature.Add(facePart.Expressions?.Count ?? 0);
+                    AddMirrorImageAnimationMapIdentity(ref signature, facePart.Expressions);
+                    break;
+                case HairPart hairPart:
+                    signature.Add(hairPart.HairColor.PackedValue);
+                    signature.Add(hairPart.HasBackHair);
+                    signature.Add(RuntimeHelpers.GetHashCode(hairPart.BackHairAnimations));
+                    signature.Add(hairPart.BackHairAnimations?.Count ?? 0);
+                    AddMirrorImageAnimationMapIdentity(ref signature, hairPart.BackHairAnimations);
+                    break;
+                case WeaponPart weaponPart:
+                    signature.Add(weaponPart.AttackSpeed);
+                    signature.Add(weaponPart.Attack);
+                    signature.Add(weaponPart.WeaponType, StringComparer.Ordinal);
+                    signature.Add(weaponPart.AfterImageType, StringComparer.Ordinal);
+                    signature.Add(weaponPart.WalkFrameCount);
+                    signature.Add(weaponPart.StandFrameCount);
+                    signature.Add(weaponPart.AttackFrameCount);
+                    signature.Add(weaponPart.Range);
+                    signature.Add(weaponPart.IsTwoHanded);
+                    break;
+                default:
+                    signature.Add(0);
+                    break;
+            }
+        }
+
+        private static void AddMirrorImageAnimationMapIdentity(
+            ref HashCode signature,
+            IReadOnlyDictionary<string, CharacterAnimation> animations)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(animations));
+            signature.Add(animations?.Count ?? 0);
+            if (animations == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, CharacterAnimation> entry in animations.OrderBy(static entry => entry.Key, StringComparer.Ordinal))
+            {
+                signature.Add(entry.Key, StringComparer.Ordinal);
+                AddMirrorImageAnimationIdentity(ref signature, entry.Value);
+            }
+        }
+
+        private static void AddMirrorImageAnimationIdentity(ref HashCode signature, CharacterAnimation animation)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(animation));
+            if (animation == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add((int)animation.Action);
+            signature.Add(animation.ActionName, StringComparer.Ordinal);
+            signature.Add(animation.TotalDuration);
+            signature.Add(animation.AuthoredDuration ?? int.MinValue);
+            signature.Add(animation.Loop);
+            signature.Add(RuntimeHelpers.GetHashCode(animation.Frames));
+            signature.Add(animation.Frames?.Count ?? 0);
+            if (animation.Frames == null)
+            {
+                return;
+            }
+
+            for (int frameIndex = 0; frameIndex < animation.Frames.Count; frameIndex++)
+            {
+                AddMirrorImageCharacterFrameIdentity(ref signature, animation.Frames[frameIndex]);
+            }
+        }
+
+        private static void AddMirrorImageCharacterFrameIdentity(ref HashCode signature, CharacterFrame frame)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(frame));
+            if (frame == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            AddMirrorImageSourceTextureIdentity(ref signature, frame.Texture);
+            signature.Add(frame.Origin.X);
+            signature.Add(frame.Origin.Y);
+            signature.Add(frame.Delay);
+            signature.Add(frame.Z, StringComparer.Ordinal);
+            signature.Add(frame.Flip);
+            signature.Add(frame.Bounds.X);
+            signature.Add(frame.Bounds.Y);
+            signature.Add(frame.Bounds.Width);
+            signature.Add(frame.Bounds.Height);
+            signature.Add(frame.FrameUol, StringComparer.Ordinal);
+            AddMirrorImagePointMapIdentity(ref signature, frame.Map);
+            signature.Add(RuntimeHelpers.GetHashCode(frame.SubParts));
+            signature.Add(frame.SubParts?.Count ?? 0);
+            if (frame.SubParts == null)
+            {
+                return;
+            }
+
+            for (int partIndex = 0; partIndex < frame.SubParts.Count; partIndex++)
+            {
+                AddMirrorImageCharacterSubPartIdentity(ref signature, frame.SubParts[partIndex]);
+            }
+        }
+
+        private static void AddMirrorImageCharacterSubPartIdentity(ref HashCode signature, CharacterSubPart subPart)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(subPart));
+            if (subPart == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add(subPart.Name, StringComparer.Ordinal);
+            AddMirrorImageSourceTextureIdentity(ref signature, subPart.Texture);
+            signature.Add(subPart.Origin.X);
+            signature.Add(subPart.Origin.Y);
+            signature.Add(subPart.Z, StringComparer.Ordinal);
+            signature.Add(subPart.NavelOffset.X);
+            signature.Add(subPart.NavelOffset.Y);
+            AddMirrorImagePointMapIdentity(ref signature, subPart.Map);
+        }
+
+        private static void AddMirrorImagePointMapIdentity(ref HashCode signature, IReadOnlyDictionary<string, Point> points)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(points));
+            signature.Add(points?.Count ?? 0);
+            if (points == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, Point> entry in points.OrderBy(static entry => entry.Key, StringComparer.Ordinal))
+            {
+                signature.Add(entry.Key, StringComparer.Ordinal);
+                signature.Add(entry.Value.X);
+                signature.Add(entry.Value.Y);
+            }
         }
 
         private static void AddMirrorImageStringSetIdentity(ref HashCode signature, IEnumerable<string> values)

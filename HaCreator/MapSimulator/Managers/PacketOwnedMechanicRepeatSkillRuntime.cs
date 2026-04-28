@@ -2451,6 +2451,13 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                     }
                 }
+                else if (IsSg88MismatchPairJsonValueContainerLabel(property.Name))
+                {
+                    TryCollectSg88MismatchPairJsonObservedRebuiltValues(
+                        property.Value,
+                        ref observed,
+                        ref rebuilt);
+                }
 
                 if (byteIndex < 0
                     && TryParseSg88MismatchPairPropertyByteIndex(property.Name, out int byteIndexFromName)
@@ -2515,6 +2522,14 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (!TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName))
                 {
+                    if (IsSg88MismatchPairJsonValueContainerLabel(property.Name))
+                    {
+                        TryCollectSg88MismatchPairJsonObservedRebuiltValues(
+                            property.Value,
+                            ref observed,
+                            ref rebuilt);
+                    }
+
                     continue;
                 }
 
@@ -2732,6 +2747,108 @@ namespace HaCreator.MapSimulator.Managers
                 or "compare";
         }
 
+        private static bool IsSg88MismatchPairJsonValueContainerLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is "value"
+                or "values"
+                or "bytes"
+                or "bytevalues"
+                or "capturevalues"
+                or "capturedvalues"
+                or "diffvalues"
+                or "comparisonvalues"
+                or "replayvalues"
+                or "packetvalues";
+        }
+
+        private static bool IsSg88MismatchPairJsonScalarValueLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is "value"
+                or "byte"
+                or "raw"
+                or "rawvalue"
+                or "rawbyte"
+                or "hex"
+                or "hexvalue"
+                or "hexbyte"
+                or "decimal"
+                or "decimalvalue"
+                or "decimalbyte"
+                or "number"
+                or "numeric"
+                or "numericvalue"
+                or "int"
+                or "integer";
+        }
+
+        private static void TryCollectSg88MismatchPairJsonObservedRebuiltValues(
+            JsonElement value,
+            ref byte? observed,
+            ref byte? rebuilt)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (JsonProperty property in value.EnumerateObject())
+                    {
+                        if (TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName))
+                        {
+                            switch (normalizedName)
+                            {
+                                case "observed":
+                                    if (TryParseSg88MismatchPairJsonByteValue(property.Value, out byte observedByte))
+                                    {
+                                        observed = observedByte;
+                                    }
+                                    break;
+                                case "rebuilt":
+                                    if (TryParseSg88MismatchPairJsonByteValue(property.Value, out byte rebuiltByte))
+                                    {
+                                        rebuilt = rebuiltByte;
+                                    }
+                                    break;
+                            }
+                        }
+                        else if (IsSg88MismatchPairJsonValueContainerLabel(property.Name))
+                        {
+                            TryCollectSg88MismatchPairJsonObservedRebuiltValues(
+                                property.Value,
+                                ref observed,
+                                ref rebuilt);
+                        }
+                    }
+
+                    break;
+                case JsonValueKind.Array:
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        TryCollectSg88MismatchPairJsonObservedRebuiltValues(item, ref observed, ref rebuilt);
+                    }
+
+                    break;
+            }
+        }
+
         private static bool TryParseSg88MismatchPairPropertyByteIndex(string propertyName, out int byteIndex)
         {
             byteIndex = -1;
@@ -2810,6 +2927,29 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 case JsonValueKind.String:
                     return TryParseSg88MismatchPairByteValue(value.GetString(), out byteValue);
+                case JsonValueKind.Object:
+                    foreach (JsonProperty property in value.EnumerateObject())
+                    {
+                        if (!IsSg88MismatchPairJsonScalarValueLabel(property.Name)
+                            || !TryParseSg88MismatchPairJsonByteValue(property.Value, out byteValue))
+                        {
+                            continue;
+                        }
+
+                        return true;
+                    }
+
+                    return false;
+                case JsonValueKind.Array:
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        if (TryParseSg88MismatchPairJsonByteValue(item, out byteValue))
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
                 default:
                     return false;
             }

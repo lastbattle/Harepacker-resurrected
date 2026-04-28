@@ -704,15 +704,17 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser remove <characterId>");
             }
 
+            _remoteUserPool.TryGetActor(characterId, out RemoteUserActor removingActor);
             return _remoteUserPool.TryRemove(characterId, out string message)
-                ? HandleRemoteUserRemovalCommandResult(characterId)
+                ? HandleRemoteUserRemovalCommandResult(characterId, removingActor)
                 : ChatCommandHandler.CommandResult.Error(message);
         }
 
-        private ChatCommandHandler.CommandResult HandleRemoteUserRemovalCommandResult(int characterId)
+        private ChatCommandHandler.CommandResult HandleRemoteUserRemovalCommandResult(int characterId, RemoteUserActor removedActor = null)
         {
             ClearAnimationDisplayerRemotePresentationOwners(characterId);
             ForgetObservedDropPacketActorState(characterId);
+            RememberPredictedRemotePetPickupActorPositionsForOwnerState(removedActor);
             return ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} removed.");
         }
 
@@ -1704,6 +1706,7 @@ namespace HaCreator.MapSimulator
                         _summonedPool.RemoveOwnerSummons(leavePacket.CharacterId, currentTime);
                         ClearAnimationDisplayerRemotePresentationOwners(leavePacket.CharacterId);
                         ForgetObservedDropPacketActorState(leavePacket.CharacterId);
+                        RememberPredictedRemotePetPickupActorPositionsForOwnerState(leavingActor);
 
                         if (leavePosition.HasValue)
                         {

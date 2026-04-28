@@ -547,7 +547,11 @@ namespace HaCreator.MapSimulator.Fields
                         continue;
                     }
 
-                    if (!TryParseObjectLiteralMember(objectMember, out string memberKey, out string memberValue))
+                    if (!TryParseObjectLiteralMember(
+                            objectMember,
+                            localAliasMap,
+                            out string memberKey,
+                            out string memberValue))
                     {
                         continue;
                     }
@@ -1312,7 +1316,11 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach (string objectMember in SplitTopLevelByComma(normalizedLiteral[1..^1]))
             {
-                if (!TryParseObjectLiteralMember(objectMember, out string memberKey, out string memberValue))
+                if (!TryParseObjectLiteralMember(
+                        objectMember,
+                        localAliasMap,
+                        out string memberKey,
+                        out string memberValue))
                 {
                     continue;
                 }
@@ -2609,7 +2617,11 @@ namespace HaCreator.MapSimulator.Fields
             return tokens;
         }
 
-        private static bool TryParseObjectLiteralMember(string member, out string key, out string value)
+        private static bool TryParseObjectLiteralMember(
+            string member,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            out string key,
+            out string value)
         {
             key = string.Empty;
             value = string.Empty;
@@ -2621,7 +2633,15 @@ namespace HaCreator.MapSimulator.Fields
             int separatorIndex = FindTopLevelCharacter(member, ':');
             if (separatorIndex <= 0 || separatorIndex >= member.Length - 1)
             {
-                return false;
+                string shorthandMember = StripOuterBalancedParentheses(member.Trim());
+                if (!IsPotentialFunctionAliasName(shorthandMember))
+                {
+                    return false;
+                }
+
+                key = NormalizeFunctionAliasArgument(shorthandMember).TrimEnd(';');
+                value = key;
+                return !string.IsNullOrWhiteSpace(key);
             }
 
             string rawKey = member[..separatorIndex].Trim();
@@ -2631,7 +2651,14 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (TryReadQuotedLiteral(rawKey, out string quotedKey))
+            if (rawKey.Length >= 2
+                && rawKey[0] == '['
+                && rawKey[^1] == ']'
+                && TryResolveBracketIndexKey(rawKey[1..^1], localAliasMap, out string computedKey))
+            {
+                key = NormalizeFunctionAliasArgument(computedKey).TrimEnd(';');
+            }
+            else if (TryReadQuotedLiteral(rawKey, out string quotedKey))
             {
                 key = NormalizeFunctionAliasArgument(quotedKey);
             }

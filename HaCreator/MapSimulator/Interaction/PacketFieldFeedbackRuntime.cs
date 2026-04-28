@@ -902,15 +902,16 @@ namespace HaCreator.MapSimulator.Interaction
                             && result == 1
                             && IsWhisperHiddenField(value, callbacks);
                         TryBuildWhisperFindMessage(subtype, target, result, value, callbacks, out string resolved);
-                        bool chaseTransferArmed = subtype == 9
-                            && callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
-                        bool queuedTransfer = false;
-                        if (subtype == 9
+                        bool canRequestChaseTransfer = subtype == 9
                             && result == 1
                             && !hiddenFieldResult
-                            && chaseTransferArmed
                             && HasWhisperTransferTarget(value, callbacks)
-                            && hasTransferPosition)
+                            && hasTransferPosition;
+                        bool chaseTransferArmed = canRequestChaseTransfer
+                            && callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
+                        bool queuedTransfer = false;
+                        if (canRequestChaseTransfer
+                            && chaseTransferArmed)
                         {
                             queuedTransfer = callbacks?.QueueMapTransfer?.Invoke(value, transferX, transferY) == true;
                         }

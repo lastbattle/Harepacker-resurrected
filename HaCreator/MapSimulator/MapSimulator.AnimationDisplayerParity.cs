@@ -163,6 +163,13 @@ namespace HaCreator.MapSimulator
             FireCracker = 2
         }
 
+        internal enum AnimationDisplayerReservedType5SoundOwnerKind
+        {
+            None = 0,
+            BgmOverride = 1,
+            SoundEffect = 2
+        }
+
         private sealed class AnimationDisplayerSkillUseAvatarEffectVariant
         {
             public SkillAnimation OverlayAnimation { get; init; }
@@ -338,6 +345,7 @@ namespace HaCreator.MapSimulator
             public int ZOrder { get; init; }
             public EquipSlot SourceEquipSlot { get; init; }
             public int ClientEquipIndex { get; init; }
+            public IReadOnlyList<int> EffectVariantIndices { get; init; }
         }
 
         private sealed class AnimationDisplayerFollowRegistrationEntry
@@ -1115,7 +1123,7 @@ namespace HaCreator.MapSimulator
 
             TryRegisterAnimationDisplayerCombatFeedback(
                 resolvedSpecialTextName,
-                ownerCharacterId: 1,
+                _playerManager?.Player?.Build?.Id ?? 1,
                 () => new Vector2(x, y),
                 currentTime,
                 colorType,
@@ -1162,14 +1170,24 @@ namespace HaCreator.MapSimulator
             }
 
             Vector2 fallbackPosition = getPosition();
-            _animationEffects.AddOneTimeAttached(
+            string ownerActionName = ResolveAnimationDisplayerLocalPacketOwnedActionName(ownerCharacterId);
+            bool ownerFacingRight = ResolveAnimationDisplayerLocalPacketOwnedFacingRight(ownerCharacterId);
+            int initialElapsedMs = ResolveAnimationDisplayerLocalPacketOwnedBasicOneTimeInitialElapsed(
+                ownerCharacterId,
+                BuildAnimationDisplayerLocalPacketOwnedCombatFeedbackOwnerSlotKey(effectUol),
+                effectUol,
+                ownerActionName,
+                ownerFacingRight,
+                currentTime,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+            _animationEffects.AddPacketOwnedCombatFeedback(
                 frames,
+                effectUol,
                 getPosition,
-                getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
-                fallbackFlip: false,
-                currentTime);
+                currentTime,
+                initialElapsedMs: initialElapsedMs);
             message = $"Registered combat-feedback animation-displayer layer from {effectUol}.";
             return true;
         }
@@ -3187,7 +3205,8 @@ namespace HaCreator.MapSimulator
                     SourceItemId = followDefinition?.ItemId ?? 0,
                     SourceClientEquipIndex = followDefinition?.ClientEquipIndex ?? -1,
                     SourceCandidateIdentity = candidateIdentity,
-                    SourceVariantCount = followFrameVariants?.Count ?? 0
+                    SourceVariantCount = followFrameVariants?.Count ?? 0,
+                    SourceVariantIndices = followDefinition?.EffectVariantIndices
                 });
 
             return followId >= 0;
@@ -3950,12 +3969,21 @@ namespace HaCreator.MapSimulator
             {
                 consumed = true;
                 // Client evidence (`RESERVEDINFO::Update`, case 5):
-                // BGM handoff is local-user owned.
+                // sound/BGM handoff is local-user owned. WZ direction rows use
+                // Effect/*.img sound descriptors here, while Bgm* descriptors remain BGM overrides.
                 if (ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(
                         presentation.CharacterId,
                         localCharacterId))
                 {
-                    _ = TryApplyAnimationDisplayerReservedBgmOwnerEffect(metadata.SoundEffectDescriptor);
+                    switch (ResolveAnimationDisplayerReservedType5SoundOwnerKind(metadata.Type, metadata.SoundEffectDescriptor))
+                    {
+                        case AnimationDisplayerReservedType5SoundOwnerKind.BgmOverride:
+                            _ = TryApplyAnimationDisplayerReservedBgmOwnerEffect(metadata.SoundEffectDescriptor);
+                            break;
+                        case AnimationDisplayerReservedType5SoundOwnerKind.SoundEffect:
+                            _ = TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor);
+                            break;
+                    }
                 }
             }
 
@@ -4287,6 +4315,20 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(propertyPath)
                 ? imageBaseName
                 : $"{imageBaseName}/{propertyPath}";
+        }
+
+        internal static AnimationDisplayerReservedType5SoundOwnerKind ResolveAnimationDisplayerReservedType5SoundOwnerKind(
+            int metadataType,
+            string descriptor)
+        {
+            if (metadataType != 5 || string.IsNullOrWhiteSpace(descriptor))
+            {
+                return AnimationDisplayerReservedType5SoundOwnerKind.None;
+            }
+
+            return string.IsNullOrWhiteSpace(ResolveAnimationDisplayerReservedBgmOverrideName(descriptor))
+                ? AnimationDisplayerReservedType5SoundOwnerKind.SoundEffect
+                : AnimationDisplayerReservedType5SoundOwnerKind.BgmOverride;
         }
 
         private bool TryApplyAnimationDisplayerReservedLocalUtilityEquipOwnerEffect(
@@ -5516,6 +5558,13 @@ namespace HaCreator.MapSimulator
                 effectUol);
         }
 
+        private static string BuildAnimationDisplayerLocalPacketOwnedCombatFeedbackOwnerSlotKey(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
+                "combatFeedback",
+                effectUol);
+        }
+
         private static string BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
             string ownerFamily,
             string effectUol)
@@ -6099,6 +6148,11 @@ namespace HaCreator.MapSimulator
         internal static string BuildAnimationDisplayerLocalPacketOwnedItemUnreleaseOwnerSlotKeyForTesting(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedItemUnreleaseOwnerSlotKey(effectUol);
+        }
+
+        internal static string BuildAnimationDisplayerLocalPacketOwnedCombatFeedbackOwnerSlotKeyForTesting(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedCombatFeedbackOwnerSlotKey(effectUol);
         }
 
         internal static int ResolveAnimationDisplayerLocalPacketOwnedBasicOneTimeRestoreElapsedForTesting(
@@ -8053,6 +8107,7 @@ namespace HaCreator.MapSimulator
             string effectUol = BuildAnimationDisplayerFollowEquipmentEffectUol(effectPath);
             IReadOnlyList<List<IDXObject>> effectFrameVariants = LoadAnimationDisplayerFollowEquipmentFrameVariants(
                 effectPath,
+                out IReadOnlyList<int> effectVariantIndices,
                 out bool hasIndexedNumericVariantBranches);
             bool shouldAttemptRootEffectFallback = !hasIndexedNumericVariantBranches;
             if (!Animation.AnimationEffects.HasFrameVariants(effectFrameVariants)
@@ -8082,6 +8137,7 @@ namespace HaCreator.MapSimulator
                     : ResolveAnimationDisplayerFollowClientEquipIndex(sourceEquipSlot),
                 EffectUol = effectUol,
                 EffectFrameVariants = effectFrameVariants,
+                EffectVariantIndices = effectVariantIndices,
                 GenerationPoints = generationPoints,
                 EmissionArea = emissionArea,
                 UpdateIntervalMs = updateIntervalMs,
@@ -8181,8 +8237,10 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowEquipmentFrameVariants(
             string effectPath,
+            out IReadOnlyList<int> loadedVariantIndices,
             out bool hasIndexedNumericVariantBranches)
         {
+            loadedVariantIndices = null;
             string[] variantUols = EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(
                 effectPath,
                 ResolveAnimationDisplayerPropertyStatic(effectPath),
@@ -8193,16 +8251,30 @@ namespace HaCreator.MapSimulator
             }
 
             var variants = new List<List<IDXObject>>(variantUols.Length);
+            var variantIndices = new List<int>(variantUols.Length);
             for (int i = 0; i < variantUols.Length; i++)
             {
                 List<IDXObject> frames = LoadAnimationDisplayerFrames(variantUols[i]);
                 if (Animation.AnimationEffects.HasFrames(frames))
                 {
                     variants.Add(frames);
+                    string segment = variantUols[i].Split('/')[^1];
+                    if (TryParseAnimationDisplayerNonNegativeIndexSegment(segment, out int variantIndex))
+                    {
+                        variantIndices.Add(variantIndex);
+                    }
                 }
             }
 
-            return variants.Count > 0 ? variants : null;
+            if (variants.Count <= 0)
+            {
+                return null;
+            }
+
+            loadedVariantIndices = variantIndices.Count == variants.Count
+                ? variantIndices
+                : null;
+            return variants;
         }
 
         internal static string[] EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(

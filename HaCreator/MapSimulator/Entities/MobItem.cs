@@ -48,6 +48,10 @@ namespace HaCreator.MapSimulator.Entities
         private string _lastObservedAttackAction;
         private int _lastObservedAttackFrameIndex;
         private int _lastObservedAttackFrameTime = int.MinValue;
+        private readonly Random _actionSpeakRandom = new();
+        private string _activeActionSpeechText;
+        private int _activeActionSpeechExpiresAt;
+        private int _activeActionSpeechChatBalloon;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -103,6 +107,14 @@ namespace HaCreator.MapSimulator.Entities
         public string CurrentAction => _animationController?.CurrentAction ?? "stand";
 
         public int CurrentFrameIndex => _animationController?.CurrentFrameIndex ?? 0;
+
+        public bool HasActiveActionSpeech => !string.IsNullOrWhiteSpace(_activeActionSpeechText);
+
+        public string ActiveActionSpeechText => _activeActionSpeechText;
+
+        public int ActiveActionSpeechExpiresAt => _activeActionSpeechExpiresAt;
+
+        public int ActiveActionSpeechChatBalloon => _activeActionSpeechChatBalloon;
 
         /// <summary>
         /// Whether the death animation has completed (all frames played)
@@ -586,6 +598,11 @@ namespace HaCreator.MapSimulator.Entities
         public MobAnimationSet.AttackInfoMetadata GetAttackInfo(string attackAction)
         {
             return _animationSet?.GetAttackInfoMetadata(attackAction);
+        }
+
+        public MobAnimationSet.ActionSpeakMetadata GetActionSpeakMetadata(string action)
+        {
+            return _animationSet?.GetActionSpeakMetadata(action);
         }
 
         public MobAttackData GetAttackData(string attackAction)
@@ -1299,7 +1316,10 @@ namespace HaCreator.MapSimulator.Entities
             if (isOneShot)
             {
                 _isPlayingOneShot = true;
-                _animationController.PlayOnce(action);
+                if (!_animationController.PlayOnce(action))
+                {
+                    return;
+                }
 
                 // Play attack sounds when attack animation starts
                 if (action == "attack1")
@@ -1318,8 +1338,123 @@ namespace HaCreator.MapSimulator.Entities
             else
             {
                 _isPlayingOneShot = false;
-                _animationController.SetAction(action);
+                if (!_animationController.SetAction(action))
+                {
+                    return;
+                }
             }
+
+            TryStartActionSpeech(action, Environment.TickCount);
+        }
+
+        internal void TryStartActionSpeech(string action, int currentTick)
+        {
+            MobAnimationSet.ActionSpeakMetadata metadata = _animationSet?.GetActionSpeakMetadata(action);
+            if (metadata == null)
+            {
+                return;
+            }
+
+            int probabilityRoll = _actionSpeakRandom.Next(100);
+            if (!ShouldTriggerActionSpeak(metadata, AI?.CurrentHp ?? 0, AI?.MaxHp ?? 0, probabilityRoll))
+            {
+                return;
+            }
+
+            string message = SelectActionSpeakMessage(metadata, _actionSpeakRandom.Next(metadata.Messages.Count));
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            _activeActionSpeechText = SanitizeActionSpeakMessage(message);
+            _activeActionSpeechChatBalloon = metadata.ChatBalloon;
+            _activeActionSpeechExpiresAt = currentTick + GetActionSpeakDurationMs(_activeActionSpeechText);
+        }
+
+        public bool IsActionSpeechActive(int currentTick)
+        {
+            if (string.IsNullOrWhiteSpace(_activeActionSpeechText))
+            {
+                return false;
+            }
+
+            if (currentTick < _activeActionSpeechExpiresAt)
+            {
+                return true;
+            }
+
+            ClearActionSpeech();
+            return false;
+        }
+
+        public void ClearActionSpeech()
+        {
+            _activeActionSpeechText = null;
+            _activeActionSpeechExpiresAt = 0;
+            _activeActionSpeechChatBalloon = 0;
+        }
+
+        internal static bool ShouldTriggerActionSpeak(
+            MobAnimationSet.ActionSpeakMetadata metadata,
+            int currentHp,
+            int maxHp,
+            int probabilityRoll)
+        {
+            if (metadata?.Messages == null || metadata.Messages.Count == 0)
+            {
+                return false;
+            }
+
+            if (metadata.HpThreshold > 0)
+            {
+                int effectiveHp = maxHp > 0 ? Math.Clamp(currentHp, 0, maxHp) : currentHp;
+                if (effectiveHp > metadata.HpThreshold)
+                {
+                    return false;
+                }
+            }
+
+            int probability = Math.Clamp(metadata.Probability, 0, 100);
+            return probability > 0 && Math.Clamp(probabilityRoll, 0, 99) < probability;
+        }
+
+        internal static string SelectActionSpeakMessage(MobAnimationSet.ActionSpeakMetadata metadata, int messageRoll)
+        {
+            if (metadata?.Messages == null || metadata.Messages.Count == 0)
+            {
+                return null;
+            }
+
+            int index = Math.Abs(messageRoll % metadata.Messages.Count);
+            return SanitizeActionSpeakMessage(metadata.Messages[index]);
+        }
+
+        internal static int GetActionSpeakDurationMs(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return 0;
+            }
+
+            return Math.Clamp(2400 + (text.Trim().Length * 45), 2400, 5200);
+        }
+
+        private static string SanitizeActionSpeakMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return null;
+            }
+
+            string trimmed = message.Trim();
+            int newlineIndex = trimmed.IndexOf('\n');
+            if (newlineIndex >= 0)
+            {
+                trimmed = trimmed[..newlineIndex].Trim();
+            }
+
+            return trimmed;
         }
 
         public bool TryGetRecentAttackFrameIndex(string attackAction, int currentTime, int retentionWindowMs, out int frameIndex)
@@ -1628,11 +1763,21 @@ namespace HaCreator.MapSimulator.Entities
                 switch (MovementInfo.MoveType)
                 {
                     case MobMoveType.Fly:
-                        targetAction = "fly";
+                        targetAction = ResolveMovementActionAnimationName(MovementInfo.CurrentAction);
+                        if (targetAction == null)
+                        {
+                            targetAction = "fly";
+                        }
                         break;
 
                     case MobMoveType.Jump:
                         // Use current action from movement info (jump when in air, move/stand on ground)
+                        targetAction = ResolveMovementActionAnimationName(MovementInfo.CurrentAction);
+                        if (targetAction != null)
+                        {
+                            break;
+                        }
+
                         if (MovementInfo.CurrentAction == MobAction.Jump)
                         {
                             targetAction = _animationSet.HasAnimation("jump") ? "jump" : "stand";
@@ -1650,6 +1795,12 @@ namespace HaCreator.MapSimulator.Entities
 
                     case MobMoveType.Move:
                         // Check if mob is currently moving or standing
+                        targetAction = ResolveMovementActionAnimationName(MovementInfo.CurrentAction);
+                        if (targetAction != null)
+                        {
+                            break;
+                        }
+
                         if (MovementInfo.CurrentAction == MobAction.Move)
                         {
                             // Use "move" or "walk" whichever is available
@@ -1670,6 +1821,27 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             SetAction(targetAction);
+        }
+
+        private string ResolveMovementActionAnimationName(MobAction action)
+        {
+            string actionName = action switch
+            {
+                MobAction.Attack1 => "attack1",
+                MobAction.Attack2 => "attack2",
+                MobAction.Attack3 => "attack3",
+                MobAction.Attack4 => "attack4",
+                MobAction.Attack5 => "attack5",
+                MobAction.Attack6 => "attack6",
+                MobAction.Attack7 => "attack7",
+                MobAction.Attack8 => "attack8",
+                MobAction.Attack9 => "attack9",
+                _ => null
+            };
+
+            return actionName != null && _animationSet?.HasAnimation(actionName) == true
+                ? actionName
+                : null;
         }
 
         /// <summary>

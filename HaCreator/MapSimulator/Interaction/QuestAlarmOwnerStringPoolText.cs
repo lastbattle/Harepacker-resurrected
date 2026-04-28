@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal const int TitleFormatStringPoolId = 0xE4C;
         internal const int DeleteNoticeStringPoolId = 0x106F;
+        internal const int NotRegisteredNoticeStringPoolId = 0x1070;
         internal const int AutoRegisterEnabledNoticeStringPoolId = 0x107A;
         internal const int AutoRegisterDisabledNoticeStringPoolId = 0x107B;
         internal const int AutoRegisterEnabledTooltipStringPoolId = 0x107C;
@@ -16,6 +17,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private const string TitleFormatFallback = "Quest Helper ({0}/5)";
         private const string DeleteNoticeFallback = "[{0}] It has been excluded from the auto alarm and it will not be automatically reigstered until you re log-on";
+        private const string NotRegisteredNoticeFallback = "[{0}] The quest is in progress but it has not been registered in the alarm.";
         private const string AutoRegisterEnabledNoticeFallback = "Auto Alarm on";
         private const string AutoRegisterDisabledNoticeFallback = "Auto Alarm off";
         private const string AutoRegisterEnabledTooltipFallback = "When you click it, quests in progress will register automatically and if it is not in progress for 10 minutes, it will disappear.";
@@ -35,6 +37,15 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "Unknown Quest"
                 : questTitle.Trim();
             string format = ResolveDeleteNoticeFormat(appendFallbackSuffix);
+            return string.Format(format, safeQuestTitle);
+        }
+
+        public static string FormatNotRegisteredNotice(string questTitle, bool appendFallbackSuffix = false)
+        {
+            string safeQuestTitle = string.IsNullOrWhiteSpace(questTitle)
+                ? "Unknown Quest"
+                : questTitle.Trim();
+            string format = ResolveNotRegisteredNoticeFormat(appendFallbackSuffix);
             return string.Format(format, safeQuestTitle);
         }
 
@@ -103,6 +114,16 @@ namespace HaCreator.MapSimulator.Interaction
                 && !text.Contains('\\', System.StringComparison.Ordinal);
         }
 
+        internal static bool IsPlausibleNotRegisteredNoticeFormat(string text)
+        {
+            return IsPlausibleQuestAlarmText(text)
+                && ContainsPrintfPlaceholder(text)
+                && text.Contains("quest", System.StringComparison.OrdinalIgnoreCase)
+                && text.Contains("alarm", System.StringComparison.OrdinalIgnoreCase)
+                && !text.Contains('/', System.StringComparison.Ordinal)
+                && !text.Contains('\\', System.StringComparison.Ordinal);
+        }
+
         internal static bool IsPlausibleEmptyMaximizeNotice(string text)
         {
             if (!IsPlausibleQuestAlarmText(text))
@@ -151,6 +172,18 @@ namespace HaCreator.MapSimulator.Interaction
             return appendFallbackSuffix
                 ? $"{DeleteNoticeFallback} ({MapleStoryStringPool.FormatFallbackLabel(DeleteNoticeStringPoolId)} fallback)"
                 : DeleteNoticeFallback;
+        }
+
+        private static string ResolveNotRegisteredNoticeFormat(bool appendFallbackSuffix)
+        {
+            if (TryResolve(NotRegisteredNoticeStringPoolId, out string resolvedFormat) && IsPlausibleNotRegisteredNoticeFormat(resolvedFormat))
+            {
+                return NormalizeQuestAlarmText(MapleStoryStringPool.GetCompositeFormatOrFallback(NotRegisteredNoticeStringPoolId, NotRegisteredNoticeFallback, 1, out _));
+            }
+
+            return appendFallbackSuffix
+                ? $"{NotRegisteredNoticeFallback} ({MapleStoryStringPool.FormatFallbackLabel(NotRegisteredNoticeStringPoolId)} fallback)"
+                : NotRegisteredNoticeFallback;
         }
 
         private static bool TryResolveEmptyMaximizeNotice(out string text)

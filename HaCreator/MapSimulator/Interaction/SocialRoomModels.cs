@@ -512,6 +512,7 @@ namespace HaCreator.MapSimulator.Interaction
         private EntrustedShopNoticeSnapshot _entrustedBlacklistNotice;
         private string _miniRoomOmokDialogStatus = string.Empty;
         private string _entrustedChildDialogStatus = string.Empty;
+        private string _entrustedBlacklistLastOutboundPacketSummary = string.Empty;
         private int _employeeTemplateId;
         private bool _employeeUseOwnerAnchor = true;
         private int _employeeAnchorOffsetX;
@@ -682,6 +683,8 @@ namespace HaCreator.MapSimulator.Interaction
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
         public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
         public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
+        public Func<byte[], string, bool> EntrustedBlacklistOutboundPacketRequested { get; set; }
+        public string EntrustedBlacklistLastOutboundPacketSummary => _entrustedBlacklistLastOutboundPacketSummary;
 
         public void BindInventory(IInventoryRuntime inventoryRuntime)
         {

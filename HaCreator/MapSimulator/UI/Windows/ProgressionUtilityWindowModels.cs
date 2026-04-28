@@ -173,6 +173,12 @@ namespace HaCreator.MapSimulator.UI
         public CollectionBookTextAlignment Alignment { get; init; }
         public bool UsesResolvedAnalyzerOffset { get; init; }
         public int AnalyzerLineWidth { get; init; }
+        public int ClientAnalyzerLaneLeft { get; init; }
+        public int ClientAnalyzerLaneTop { get; init; }
+        public int ClientAnalyzerLaneWidth { get; init; }
+        public int ClientAnalyzerMargin { get; init; }
+        public int ClientTextDrawBaseX { get; init; }
+        public int ClientTextDrawBaseY { get; init; }
     }
 
     internal static class CollectionBookClientResources
@@ -224,6 +230,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionDetailPairLeftLaneWidth = ClientCollectionLabelLaneWidth;
         private const int ClientCollectionDetailPairRightLaneLeft = ClientCollectionValueLaneLeft;
         private const int ClientCollectionDetailPairRightLaneWidth = ClientCollectionValueLaneWidth;
+        private const int ClientCollectionTextDrawBaseX = 35;
+        private const int ClientCollectionTextDrawBaseY = 30;
         private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
         private const int BookFontStyleStringPoolId = 0x5B0;
@@ -559,7 +567,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            AddFooterRecords(records, page?.Footer);
+            AddFooterRecords(records, page?.Footer, measureTextWidth);
             return records;
         }
 
@@ -583,11 +591,11 @@ namespace HaCreator.MapSimulator.UI
                 currentTop = AddOverviewMetricEntryRecords(records, entries[row + 2], currentTop, measureTextWidth);
             }
 
-            AddFooterRecords(records, page?.Footer);
+            AddFooterRecords(records, page?.Footer, measureTextWidth);
             return records;
         }
 
-        private static void AddFooterRecords(List<CollectionBookRecordSnapshot> records, string footer)
+        private static void AddFooterRecords(List<CollectionBookRecordSnapshot> records, string footer, Func<string, int, float> measureTextWidth = null)
         {
             if (records == null)
             {
@@ -595,7 +603,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             records.Add(CreateClientRuleRecord(ClientCollectionFooterRuleTop));
-            AddCenteredTextRecords(records, footer, ClientCollectionFooterTextTop, 11, CollectionBookRecordRole.Footer);
+            AddCenteredTextRecords(records, footer, ClientCollectionFooterTextTop, 11, CollectionBookRecordRole.Footer, measureTextWidth);
         }
 
         private static void AddCenteredTextRecords(
@@ -1092,7 +1100,13 @@ namespace HaCreator.MapSimulator.UI
                     analyzerLineWidth: analyzerLineWidth,
                     clientSourceText: clientSourceText,
                     clientTextBlockIndex: clientBlockIndex,
-                    clientTextLineIndex: i));
+                    clientTextLineIndex: i,
+                    clientAnalyzerLaneLeft: left,
+                    clientAnalyzerLaneTop: top,
+                    clientAnalyzerLaneWidth: width,
+                    clientAnalyzerMargin: ClientCollectionTextAnalyzerMargin,
+                    clientTextDrawBaseX: ClientCollectionTextDrawBaseX,
+                    clientTextDrawBaseY: ClientCollectionTextDrawBaseY));
             }
         }
 
@@ -1400,7 +1414,13 @@ namespace HaCreator.MapSimulator.UI
             int analyzerLineWidth = 0,
             string clientSourceText = null,
             int clientTextBlockIndex = -1,
-            int clientTextLineIndex = -1)
+            int clientTextLineIndex = -1,
+            int clientAnalyzerLaneLeft = 0,
+            int clientAnalyzerLaneTop = 0,
+            int clientAnalyzerLaneWidth = 0,
+            int clientAnalyzerMargin = 0,
+            int clientTextDrawBaseX = 0,
+            int clientTextDrawBaseY = 0)
         {
             return new CollectionBookRecordSnapshot
             {
@@ -1417,7 +1437,13 @@ namespace HaCreator.MapSimulator.UI
                 StyleIndex = styleIndex,
                 Alignment = alignment,
                 UsesResolvedAnalyzerOffset = usesResolvedAnalyzerOffset,
-                AnalyzerLineWidth = Math.Max(0, analyzerLineWidth)
+                AnalyzerLineWidth = Math.Max(0, analyzerLineWidth),
+                ClientAnalyzerLaneLeft = clientAnalyzerLaneLeft,
+                ClientAnalyzerLaneTop = clientAnalyzerLaneTop,
+                ClientAnalyzerLaneWidth = Math.Max(0, clientAnalyzerLaneWidth),
+                ClientAnalyzerMargin = Math.Max(0, clientAnalyzerMargin),
+                ClientTextDrawBaseX = clientTextDrawBaseX,
+                ClientTextDrawBaseY = clientTextDrawBaseY
             };
         }
 

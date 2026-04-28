@@ -254,11 +254,14 @@ public static class ClientShootAmmoResolver
         {
             int normalizedRequiredSkillAmmoItemId = NormalizeClientSpecialPelletRequiredAmmoItemId(requiredSkillAmmoItemId);
             bool usesClientSpecialPelletSkill = IsClientSpecialPelletSkillAmmoItem(normalizedRequiredSkillAmmoItemId);
+            int queuedUseItemId = NormalizeQueuedUseItemIdForClientSpecialPelletSkill(
+                queuedSelection.UseItemId,
+                normalizedRequiredSkillAmmoItemId);
             int refreshedRequiredSkillAmmoItemId = normalizedRequiredSkillAmmoItemId;
             bool excludeElementalPellets = false;
             if (usesClientSpecialPelletSkill)
             {
-                bool queuedElementalPellet = IsElementalPelletItem(queuedSelection.UseItemId);
+                bool queuedElementalPellet = IsElementalPelletItem(queuedUseItemId);
                 refreshedRequiredSkillAmmoItemId = queuedElementalPellet ? normalizedRequiredSkillAmmoItemId : 0;
                 excludeElementalPellets = !queuedElementalPellet;
             }
@@ -267,7 +270,7 @@ public static class ClientShootAmmoResolver
                     useSlots,
                     weaponCode,
                     weaponItemId,
-                    queuedSelection.UseItemId,
+                    queuedUseItemId,
                     normalizedRequiredAmmoCount,
                     refreshedRequiredSkillAmmoItemId,
                     queuedSelection.QueuedUseSlotIndex,
@@ -277,7 +280,7 @@ public static class ClientShootAmmoResolver
                 refreshedSelection = new ShootAmmoSelection
                 {
                     UseSlotIndex = -1,
-                    UseItemId = queuedSelection.UseItemId,
+                    UseItemId = queuedUseItemId,
                     CashSlotIndex = refreshedSelection?.CashSlotIndex ?? -1,
                     CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId,
                     QueuedUseSlotIndex = refreshedSelection?.QueuedUseSlotIndex ?? queuedSelection.QueuedUseSlotIndex,
@@ -289,7 +292,7 @@ public static class ClientShootAmmoResolver
             refreshedSelection = new ShootAmmoSelection
             {
                 UseSlotIndex = refreshedUseSlotIndex,
-                UseItemId = queuedSelection.UseItemId,
+                UseItemId = queuedUseItemId,
                 CashSlotIndex = refreshedSelection?.CashSlotIndex ?? -1,
                 CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId,
                 QueuedUseSlotIndex = refreshedSelection?.QueuedUseSlotIndex ?? queuedSelection.QueuedUseSlotIndex,
@@ -604,6 +607,22 @@ public static class ClientShootAmmoResolver
         // Ice Capsule's skill row points at the missing 2331001 item, while the
         // client pellet classifier routes the ice branch through the 2332 family.
         return requiredSkillAmmoItemId == 2331001 ? 2332000 : requiredSkillAmmoItemId;
+    }
+
+    internal static int NormalizeQueuedUseItemIdForClientSpecialPelletSkill(
+        int queuedUseItemId,
+        int normalizedRequiredSkillAmmoItemId)
+    {
+        if (queuedUseItemId <= 0
+            || !IsClientSpecialPelletSkillAmmoItem(normalizedRequiredSkillAmmoItemId))
+        {
+            return queuedUseItemId;
+        }
+
+        return queuedUseItemId == 2331001
+               && normalizedRequiredSkillAmmoItemId / 1000 == IcePelletItemFamily
+            ? normalizedRequiredSkillAmmoItemId
+            : queuedUseItemId;
     }
 
     private static bool IsCompatibleBulletItem(int weaponCode, int weaponItemId, int itemId)

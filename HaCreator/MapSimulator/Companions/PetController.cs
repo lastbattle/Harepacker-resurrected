@@ -349,6 +349,7 @@ namespace HaCreator.MapSimulator.Companions
             {
                 if (pickupAllowed && AutoLootEnabled && owner.State != PlayerState.Ladder && owner.State != PlayerState.Rope)
                 {
+                    Func<DropItem, DropPickupFailureReason> pickupValidator = ValidateAutoLootDropForPetSkillMask;
                     PetDropTarget target = dropPool.UpdateChasingDropForPet(
                         RuntimeId,
                         X,
@@ -357,7 +358,8 @@ namespace HaCreator.MapSimulator.Companions
                         owner.X,
                         owner.Y,
                         currentTime,
-                        deltaTime);
+                        deltaTime,
+                        pickupValidator);
 
                     if (target != null)
                     {
@@ -365,7 +367,7 @@ namespace HaCreator.MapSimulator.Companions
                         moveSpeed = ResolveQuestAdjustedMoveSpeed(target.ChaseSpeed);
                         chasingDrop = target.IsChasing;
 
-                        dropPool.TryPickUpDropByPet(RuntimeId, X, Y, ownerId, currentTime);
+                        dropPool.TryPickUpDropByPet(RuntimeId, X, Y, ownerId, currentTime, pickupValidator: pickupValidator);
                     }
                 }
                 else
@@ -381,6 +383,20 @@ namespace HaCreator.MapSimulator.Companions
             UpdateAutoSpeech(currentTime);
             UpdateAction(owner, chasingDrop, desiredTarget, idleEligible, activePetCount);
             _animation.UpdateFrame(currentTime);
+        }
+
+        private DropPickupFailureReason ValidateAutoLootDropForPetSkillMask(DropItem drop)
+        {
+            return ShouldAutoLootDropForPetSkillMask(drop?.Type ?? DropType.Item, SkillMask)
+                ? DropPickupFailureReason.None
+                : DropPickupFailureReason.NoDropInRange;
+        }
+
+        internal static bool ShouldAutoLootDropForPetSkillMask(DropType dropType, int skillMask)
+        {
+            return dropType == DropType.Meso
+                || PetSkillFlag.PickupItem.Check(skillMask)
+                || PetSkillFlag.PickupAll.Check(skillMask);
         }
 
         public bool TryExecuteCommand(string message, int currentTime)

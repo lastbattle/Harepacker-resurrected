@@ -990,10 +990,11 @@ namespace HaCreator.MapSimulator.UI
                     {
                         int width = entry.Width > 0 ? entry.Width : canvasTexture.Width;
                         int height = entry.Height > 0 ? entry.Height : canvasTexture.Height;
+                        Point destination = ResolveCtEntryCanvasDestination(entry, x, y);
                         DrawTextureClipped(
                             sprite,
                             canvasTexture,
-                            new Rectangle((int)x, (int)y, width, height),
+                            new Rectangle(destination.X, destination.Y, width, height),
                             clipRect,
                             Color.White);
                         y += height;
@@ -1113,6 +1114,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return bottom;
+        }
+
+        private static Point ResolveCtEntryCanvasDestination(QuestDetailCtEntry entry, float x, float y)
+        {
+            if (entry == null)
+            {
+                return new Point((int)Math.Round(x), (int)Math.Round(y));
+            }
+
+            return new Point(
+                (int)Math.Round(x - entry.CanvasOriginX),
+                (int)Math.Round(y - entry.CanvasOriginY));
         }
 
         private bool IsCtRowWithinClientClip(float rowY, float rowHeight, Rectangle clipRect)
@@ -1255,6 +1268,16 @@ namespace HaCreator.MapSimulator.UI
         internal static bool UsesClientCtVerbatimLineLayoutForTesting(QuestDetailCtEntry entry)
         {
             return UsesClientCtVerbatimLineLayout(entry);
+        }
+
+        internal static float ResolveCtEntryRelativeXForTesting(QuestDetailCtEntry entry)
+        {
+            return ResolveCtEntryRelativeX(entry);
+        }
+
+        internal static Point ResolveCtEntryCanvasDestinationForTesting(QuestDetailCtEntry entry, float x, float y)
+        {
+            return ResolveCtEntryCanvasDestination(entry, x, y);
         }
 
         private static float ResolveCtRowAdvanceForTesting(CtEntryRow row)
@@ -1420,19 +1443,24 @@ namespace HaCreator.MapSimulator.UI
 
         private float ResolveCtEntryX(QuestDetailCtEntry entry)
         {
+            return Position.X + ResolveCtEntryRelativeX(entry);
+        }
+
+        private static float ResolveCtEntryRelativeX(QuestDetailCtEntry entry)
+        {
             if (entry == null)
             {
-                return Position.X + ClientTextArrayX;
+                return ClientTextArrayX;
             }
 
-            if (entry.XOffset != 0)
+            if (entry.HasAuthoredXOffset || entry.XOffset != 0)
             {
-                return Position.X + entry.XOffset;
+                return entry.XOffset;
             }
 
             return entry.Kind == QuestDetailCtEntryKind.Progress
-                ? Position.X + ClientContentX
-                : Position.X + ClientTextArrayX;
+                ? ClientContentX
+                : ClientTextArrayX;
         }
 
         private IReadOnlyList<QuestDetailCtEntry> GetLogCtEntries()

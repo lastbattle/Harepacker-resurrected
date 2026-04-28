@@ -31,6 +31,11 @@ namespace HaCreator.MapSimulator.Interaction
         int SecondaryValue = 0,
         string GroupName = null);
 
+    internal readonly record struct SocialListPacketOwnedRequestDraft(
+        SocialListTab Tab,
+        string RequestKind,
+        SocialListOutboundRequestDraft OutboundRequest);
+
     internal readonly record struct SocialListOutboundRequest(
         SocialListOutboundRequestKind Kind,
         ushort Opcode,

@@ -384,6 +384,9 @@ namespace HaCreator.MapSimulator.Pools
             public int SourceLayerCaptureOrder { get; init; }
             public int SimulatedLayerHandleId { get; init; }
             public int SimulatedLayerHandleRefCount { get; init; }
+            public int SimulatedSnapshotLayerHandleId { get; init; }
+            public int SimulatedSnapshotLayerHandleRefCount { get; init; }
+            public int SimulatedRepeatAnimationStateId { get; init; }
             public IReadOnlyList<AssembledPart> Parts { get; init; } = Array.Empty<AssembledPart>();
         }
 
@@ -1025,6 +1028,16 @@ namespace HaCreator.MapSimulator.Pools
             {
                 build.JobRank = Math.Max(0, packet.JobRank.Value);
                 build.HasAuthoritativeProfileJobRank = true;
+            }
+
+            if (packet.PreviousWorldRank.HasValue)
+            {
+                build.ProfilePreviousWorldRank = Math.Max(0, packet.PreviousWorldRank.Value);
+            }
+
+            if (packet.PreviousJobRank.HasValue)
+            {
+                build.ProfilePreviousJobRank = Math.Max(0, packet.PreviousJobRank.Value);
             }
 
             if (packet.HasRide.HasValue)
@@ -7318,7 +7331,7 @@ namespace HaCreator.MapSimulator.Pools
                     frame,
                     drawScreenX,
                     drawScreenY,
-                    state.OwnerFacingRight);
+                    ResolveRemoteActiveEffectItemEffectFacingForParity(state, actor.FacingRight));
             }
         }
 
@@ -8310,6 +8323,18 @@ namespace HaCreator.MapSimulator.Pools
             return state.WorldOrigin;
         }
 
+        internal static bool ResolveRemoteActiveEffectItemEffectFacingForParity(
+            RemoteActiveEffectItemEffectState state,
+            bool ownerFacingRight)
+        {
+            if (state == null || state.FollowOwner)
+            {
+                return ownerFacingRight;
+            }
+
+            return state.OwnerFacingRight;
+        }
+
         internal static bool ShouldDrawRemoteActiveEffectItemEffectForParity(
             RemoteActiveEffectItemEffectState state,
             bool hiddenLikeClient,
@@ -8607,6 +8632,9 @@ namespace HaCreator.MapSimulator.Pools
                     SourceLayerCaptureOrder = i,
                     SimulatedLayerHandleId = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
                     SimulatedLayerHandleRefCount = ResolveRemoteActiveEffectMotionBlurLayerHandleRefCount(layer, layerHandleIds, layerHandleRefCounts),
+                    SimulatedSnapshotLayerHandleId = NextRemoteActiveEffectMotionBlurLayerHandleId(),
+                    SimulatedSnapshotLayerHandleRefCount = 1,
+                    SimulatedRepeatAnimationStateId = NextRemoteActiveEffectMotionBlurStateId(),
                     Parts = capturedParts
                 });
             }
@@ -11405,6 +11433,11 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            if (ClientOwnedVehicleSkillClassifier.IsWzOnlyMechanicVehicleOneTimeActionName(normalized))
+            {
+                return false;
+            }
+
             if (ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(normalized, includeTransformStates: true))
             {
                 actionName = normalized;
@@ -11884,9 +11917,17 @@ namespace HaCreator.MapSimulator.Pools
             int? resolvedChargeSkillId = null)
         {
             int decodedWeaponChargeValue = weaponChargeValue.GetValueOrDefault();
-            return hasWeaponChargeMaskBit
-                   && !IsKnownNonEnergyRemoteWeaponChargeSkillId(resolvedChargeSkillId.GetValueOrDefault())
-                   && decodedWeaponChargeValue > 0
+            if (!hasWeaponChargeMaskBit || decodedWeaponChargeValue <= 0)
+            {
+                return false;
+            }
+
+            if (IsKnownRemoteEnergyChargeSkillId(decodedWeaponChargeValue))
+            {
+                return true;
+            }
+
+            return !IsKnownNonEnergyRemoteWeaponChargeSkillId(resolvedChargeSkillId.GetValueOrDefault())
                    && !IsKnownNonEnergyRemoteWeaponChargeSkillId(decodedWeaponChargeValue);
         }
 
@@ -11906,6 +11947,19 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return true;
+        }
+
+        private static bool IsKnownRemoteEnergyChargeSkillId(int skillId)
+        {
+            for (int i = 0; i < RemoteEnergyChargeSkillIds.Length; i++)
+            {
+                if (RemoteEnergyChargeSkillIds[i] == skillId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static int ResolveRemoteEnergyChargeMinimumFullChargeValue(int skillId, SkillData skill)

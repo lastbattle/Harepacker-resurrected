@@ -974,6 +974,7 @@ namespace HaCreator.MapSimulator.Managers
                 List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals = null;
                 List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions = null;
                 List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = null;
+                bool clearsHiddenRecipes = false;
 
                 if (useCompactCountWidth)
                 {
@@ -984,6 +985,7 @@ namespace HaCreator.MapSimulator.Managers
                             out disassemblyTargetRemovals,
                             out hiddenRecipeAdditions,
                             out hiddenRecipeRemovals,
+                            out clearsHiddenRecipes,
                             out string compactDecodeError))
                     {
                         error = compactDecodeError ?? "Maker-session delta payload could not be decoded with compact count/list encodings.";
@@ -1000,6 +1002,7 @@ namespace HaCreator.MapSimulator.Managers
                             out disassemblyTargetRemovals,
                             out hiddenRecipeAdditions,
                             out hiddenRecipeRemovals,
+                            out clearsHiddenRecipes,
                             out string wideDecodeError))
                     {
                         error = wideDecodeError ?? "Maker-session delta payload could not be decoded with Int32 count/list encodings.";
@@ -1013,6 +1016,21 @@ namespace HaCreator.MapSimulator.Managers
                     error = $"Maker-session payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
                     reader.BaseStream.Position = startPosition;
                     return false;
+                }
+
+                if (clearsHiddenRecipes)
+                {
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearHiddenRecipeEntries;
+                }
+
+                if (hiddenRecipeAdditions?.Count > 0)
+                {
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions;
+                }
+
+                if (hiddenRecipeRemovals?.Count > 0)
+                {
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals;
                 }
 
                 result = new PacketOwnedItemMakerSession
@@ -1041,12 +1059,14 @@ namespace HaCreator.MapSimulator.Managers
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
+            out bool clearsHiddenRecipes,
             out string error)
         {
             disassemblyTargetAdditions = null;
             disassemblyTargetRemovals = null;
             hiddenRecipeAdditions = null;
             hiddenRecipeRemovals = null;
+            clearsHiddenRecipes = false;
             error = null;
 
             if (reader == null)
@@ -1116,7 +1136,8 @@ namespace HaCreator.MapSimulator.Managers
                                     out disassemblyTargetAdditions,
                                     out disassemblyTargetRemovals,
                                     out hiddenRecipeAdditions,
-                                    out hiddenRecipeRemovals))
+                                    out hiddenRecipeRemovals,
+                                    out clearsHiddenRecipes))
                             {
                                 return true;
                             }
@@ -1141,12 +1162,14 @@ namespace HaCreator.MapSimulator.Managers
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
-            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals)
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
+            out bool clearsHiddenRecipes)
         {
             disassemblyTargetAdditions = null;
             disassemblyTargetRemovals = null;
             hiddenRecipeAdditions = null;
             hiddenRecipeRemovals = null;
+            clearsHiddenRecipes = false;
 
             reader.BaseStream.Position = payloadStart;
             if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions)
@@ -1193,7 +1216,25 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            return reader.BaseStream.Position == reader.BaseStream.Length;
+            if (reader.BaseStream.Position == reader.BaseStream.Length)
+            {
+                return true;
+            }
+
+            byte[] hiddenTailPayload = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+            if (!TryDecodeCompactHiddenTail(
+                    hiddenTailPayload,
+                    out List<PacketOwnedItemMakerSessionHiddenEntry> tailAdditions,
+                    out List<PacketOwnedItemMakerSessionHiddenEntry> tailRemovals,
+                    out clearsHiddenRecipes,
+                    out _))
+            {
+                return false;
+            }
+
+            hiddenRecipeAdditions = MergeHiddenRecipeDeltaEntries(hiddenRecipeAdditions, tailAdditions);
+            hiddenRecipeRemovals = MergeHiddenRecipeDeltaEntries(hiddenRecipeRemovals, tailRemovals);
+            return true;
         }
 
         private static bool TryReadCompactDeltaLists(
@@ -1203,12 +1244,14 @@ namespace HaCreator.MapSimulator.Managers
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
+            out bool clearsHiddenRecipes,
             out string error)
         {
             disassemblyTargetAdditions = null;
             disassemblyTargetRemovals = null;
             hiddenRecipeAdditions = null;
             hiddenRecipeRemovals = null;
+            clearsHiddenRecipes = false;
             error = null;
 
             if (reader == null)
@@ -1283,7 +1326,8 @@ namespace HaCreator.MapSimulator.Managers
                                         out disassemblyTargetAdditions,
                                         out disassemblyTargetRemovals,
                                         out hiddenRecipeAdditions,
-                                        out hiddenRecipeRemovals))
+                                        out hiddenRecipeRemovals,
+                                        out clearsHiddenRecipes))
                                 {
                                     return true;
                                 }
@@ -1310,12 +1354,14 @@ namespace HaCreator.MapSimulator.Managers
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
-            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals)
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
+            out bool clearsHiddenRecipes)
         {
             disassemblyTargetAdditions = null;
             disassemblyTargetRemovals = null;
             hiddenRecipeAdditions = null;
             hiddenRecipeRemovals = null;
+            clearsHiddenRecipes = false;
 
             reader.BaseStream.Position = payloadStart;
             if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions)
@@ -1366,7 +1412,43 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            return reader.BaseStream.Position == reader.BaseStream.Length;
+            if (reader.BaseStream.Position == reader.BaseStream.Length)
+            {
+                return true;
+            }
+
+            byte[] hiddenTailPayload = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+            if (!TryDecodeCompactHiddenTail(
+                    hiddenTailPayload,
+                    out List<PacketOwnedItemMakerSessionHiddenEntry> tailAdditions,
+                    out List<PacketOwnedItemMakerSessionHiddenEntry> tailRemovals,
+                    out clearsHiddenRecipes,
+                    out _))
+            {
+                return false;
+            }
+
+            hiddenRecipeAdditions = MergeHiddenRecipeDeltaEntries(hiddenRecipeAdditions, tailAdditions);
+            hiddenRecipeRemovals = MergeHiddenRecipeDeltaEntries(hiddenRecipeRemovals, tailRemovals);
+            return true;
+        }
+
+        private static List<PacketOwnedItemMakerSessionHiddenEntry> MergeHiddenRecipeDeltaEntries(
+            List<PacketOwnedItemMakerSessionHiddenEntry> primary,
+            List<PacketOwnedItemMakerSessionHiddenEntry> tail)
+        {
+            if (tail == null || tail.Count == 0)
+            {
+                return primary;
+            }
+
+            if (primary == null || primary.Count == 0)
+            {
+                return tail;
+            }
+
+            primary.AddRange(tail);
+            return primary;
         }
 
         private static bool TryDecodeCompactHiddenTail(

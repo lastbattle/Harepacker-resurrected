@@ -576,6 +576,28 @@ namespace HaCreator.MapSimulator.Effects
             _clearEffectAlpha = 0f;
             _clearEffectStartTime = int.MinValue;
         }
+        public bool TryApplyClock(int clockType, int durationSec, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (clockType != 2)
+            {
+                errorMessage = $"Massacre clock type {clockType} does not own the timerboard.";
+                return false;
+            }
+            if (durationSec < 0)
+            {
+                errorMessage = "Massacre clock duration must be non-negative.";
+                return false;
+            }
+
+            OnClock(clockType, durationSec, currentTimeMs);
+            return true;
+        }
         public bool TryApplyClockPayload(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -592,19 +614,7 @@ namespace HaCreator.MapSimulator.Effects
 
             int clockType = payload[0];
             int durationSec = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, sizeof(int)));
-            if (clockType != 2)
-            {
-                errorMessage = $"Massacre clock type {clockType} does not own the timerboard.";
-                return false;
-            }
-            if (durationSec < 0)
-            {
-                errorMessage = "Massacre clock duration must be non-negative.";
-                return false;
-            }
-
-            OnClock(clockType, durationSec, currentTimeMs);
-            return true;
+            return TryApplyClock(clockType, durationSec, currentTimeMs, out errorMessage);
         }
         /// <summary>
         /// OnMassacreIncGauge - Packet 173
@@ -857,6 +867,23 @@ namespace HaCreator.MapSimulator.Effects
                 _keyAnimationStageStart = currentTimeMs;
             }
         }
+        public bool TryApplyMassacreInfo(int hit, int miss, int cool, int skill, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (hit < 0 || miss < 0 || cool < 0 || skill < 0)
+            {
+                errorMessage = "Massacre info payload values must be non-negative.";
+                return false;
+            }
+
+            SetMassacreInfo(hit, miss, cool, skill, currentTimeMs);
+            return true;
+        }
         public bool TryApplyMassacreInfoPayload(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -876,13 +903,23 @@ namespace HaCreator.MapSimulator.Effects
             int miss = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int)));
             int cool = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int) * 2));
             int skill = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int) * 3));
-            if (hit < 0 || miss < 0 || cool < 0 || skill < 0)
+            return TryApplyMassacreInfo(hit, miss, cool, skill, currentTimeMs, out errorMessage);
+        }
+        public bool TryShowCountEffectPresentation(int stage, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
             {
-                errorMessage = "Massacre info payload values must be non-negative.";
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (stage <= 0)
+            {
+                errorMessage = "Massacre stage payload must be a positive integer.";
                 return false;
             }
 
-            SetMassacreInfo(hit, miss, cool, skill, currentTimeMs);
+            TriggerCountEffectPresentation(stage, currentTimeMs);
             return true;
         }
         public void ShowCountEffectPresentation(int stage, int currentTimeMs)
@@ -1124,6 +1161,41 @@ namespace HaCreator.MapSimulator.Effects
         {
             _bonusPresentationStartTick = currentTimeMs;
         }
+        public bool TryShowBonusPresentation(int bonusValue, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (bonusValue < 0)
+            {
+                errorMessage = "Massacre bonus payload must be non-negative.";
+                return false;
+            }
+
+            ShowBonusPresentation(currentTimeMs);
+            return true;
+        }
+
+        public bool TryApplyIncGauge(int newIncGauge, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (newIncGauge < 0)
+            {
+                errorMessage = "Massacre inc-gauge packet value must be non-negative.";
+                return false;
+            }
+
+            OnMassacreIncGauge(newIncGauge, currentTimeMs);
+            return true;
+        }
 
         private bool TryApplyIncGaugePayload(byte[] payload, int currentTimeMs, out string errorMessage)
         {
@@ -1135,14 +1207,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             int newIncGauge = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
-            if (newIncGauge < 0)
-            {
-                errorMessage = "Massacre inc-gauge packet value must be non-negative.";
-                return false;
-            }
-
-            OnMassacreIncGauge(newIncGauge, currentTimeMs);
-            return true;
+            return TryApplyIncGauge(newIncGauge, currentTimeMs, out errorMessage);
         }
 
         private static bool FailUnsupportedPacket(int packetType, out string errorMessage)

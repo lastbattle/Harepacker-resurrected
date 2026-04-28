@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Interaction;
@@ -90,7 +91,39 @@ namespace HaCreator.MapSimulator.Entities
         public static string ResolveOwnerEffectPath(string mobTemplateId, string loadedEffectPath)
         {
             string ownerPath = MapleStoryStringPool.ResolveMobAngerGaugeBurstPath(mobTemplateId);
-            return !string.IsNullOrWhiteSpace(ownerPath) ? ownerPath : loadedEffectPath;
+            if (!string.IsNullOrWhiteSpace(ownerPath))
+            {
+                return ownerPath;
+            }
+
+            return string.IsNullOrWhiteSpace(loadedEffectPath)
+                ? null
+                : loadedEffectPath.Trim().Replace('\\', '/').TrimStart('/');
+        }
+
+        public static string ResolveLoadedEffectPath(string mobTemplateId, string authoredFullPath)
+        {
+            string normalizedPath = string.IsNullOrWhiteSpace(authoredFullPath)
+                ? null
+                : authoredFullPath.Trim().Replace('\\', '/').TrimStart('/');
+            if (!string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                int imageSuffixIndex = normalizedPath.IndexOf(".img", StringComparison.OrdinalIgnoreCase);
+                if (imageSuffixIndex >= 0)
+                {
+                    int imageNameStart = normalizedPath.LastIndexOf('/', imageSuffixIndex);
+                    string imageAndEffectPath = normalizedPath.Substring(imageNameStart + 1).TrimStart('/');
+                    return imageAndEffectPath.StartsWith("Mob/", StringComparison.OrdinalIgnoreCase)
+                        ? imageAndEffectPath
+                        : "Mob/" + imageAndEffectPath;
+                }
+
+                return normalizedPath;
+            }
+
+            return string.IsNullOrWhiteSpace(mobTemplateId)
+                ? null
+                : $"Mob/{mobTemplateId.Trim()}.img/AngerGaugeEffect";
         }
 
         public static bool CanRegisterOwnerBurst(

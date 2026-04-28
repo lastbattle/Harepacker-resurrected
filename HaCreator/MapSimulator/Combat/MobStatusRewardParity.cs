@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.UI;
@@ -137,6 +138,34 @@ namespace HaCreator.MapSimulator.Combat
             int stableSeed = Math.Max(0, mobId);
             int index = (stableSeed & int.MaxValue) % rewardItemIds.Count;
             return Math.Max(0, rewardItemIds[index]);
+        }
+
+        internal static IReadOnlyList<int> ResolveStableAuthoredRewardItemIds(
+            int identitySeed,
+            IReadOnlyList<int> rewardItemIds,
+            int maxRewardCount)
+        {
+            if (rewardItemIds == null || rewardItemIds.Count == 0 || maxRewardCount <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int stableSeed = Math.Max(0, identitySeed);
+            int startIndex = (stableSeed & int.MaxValue) % rewardItemIds.Count;
+            int rewardCount = Math.Min(maxRewardCount, rewardItemIds.Count);
+            List<int> selectedItemIds = new(rewardCount);
+            for (int offset = 0; offset < rewardItemIds.Count && selectedItemIds.Count < rewardCount; offset++)
+            {
+                int itemId = Math.Max(0, rewardItemIds[(startIndex + offset) % rewardItemIds.Count]);
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                selectedItemIds.Add(itemId);
+            }
+
+            return selectedItemIds;
         }
 
         private static int ResolveShowdownBonusPercent(MobAI mobAI)

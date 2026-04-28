@@ -433,6 +433,10 @@ namespace HaCreator.MapSimulator
             {
                 ApplyPacketOwnedFootholdMovingStateToPlatform(platform, entry.MovingState);
             }
+            else
+            {
+                ClearPacketOwnedFootholdMovingStateForPacketParity(platform);
+            }
         }
 
         internal static void ApplyPacketOwnedFootholdMovingStateToPlatform(
@@ -558,10 +562,69 @@ namespace HaCreator.MapSimulator
                 secondEndpoint
             };
 
-            bool secondEndpointIsRight = movingState.X2 > movingState.X1;
-            bool movingTowardSecondEndpoint = movingState.ReverseHorizontal != secondEndpointIsRight;
-            platform.CurrentWaypointIndex = movingTowardSecondEndpoint ? 0 : 1;
+            platform.CurrentWaypointIndex = ResolvePacketOwnedMovingFootholdWaypointIndexForPacketParity(
+                movingState.X1,
+                movingState.X2,
+                movingState.Y1,
+                movingState.Y2,
+                movingState.CurrentX,
+                movingState.CurrentY,
+                movingState.ReverseVertical,
+                movingState.ReverseHorizontal);
             platform.LoopWaypoints = true;
+        }
+
+        internal static int ResolvePacketOwnedMovingFootholdWaypointIndexForPacketParity(
+            int x1,
+            int x2,
+            int y1,
+            int y2,
+            int currentX,
+            int currentY,
+            bool reverseVertical,
+            bool reverseHorizontal)
+        {
+            bool secondEndpointIsRight = x2 > x1;
+            bool secondEndpointIsBelow = y2 > y1;
+            bool movingRight = ResolvePacketOwnedMovingFootholdMovingRightForPacketParity(x1, x2, reverseHorizontal);
+            bool movingDown = ResolvePacketOwnedMovingFootholdMovingDownForPacketParity(y1, y2, reverseVertical);
+            bool horizontalTowardSecond = movingRight == secondEndpointIsRight;
+            bool verticalTowardSecond = movingDown == secondEndpointIsBelow;
+            if (horizontalTowardSecond == verticalTowardSecond)
+            {
+                return horizontalTowardSecond ? 0 : 1;
+            }
+
+            long firstDistance = SquaredDistance(currentX, currentY, x1, y1);
+            long secondDistance = SquaredDistance(currentX, currentY, x2, y2);
+            return firstDistance <= secondDistance ? 0 : 1;
+        }
+
+        internal static void ClearPacketOwnedFootholdMovingStateForPacketParity(DynamicPlatform platform)
+        {
+            if (platform == null)
+            {
+                return;
+            }
+
+            platform.MovementType = PlatformMovementType.Static;
+            platform.PacketOwnedMovingX1 = null;
+            platform.PacketOwnedMovingX2 = null;
+            platform.PacketOwnedMovingY1 = null;
+            platform.PacketOwnedMovingY2 = null;
+            platform.PacketOwnedReverseVertical = null;
+            platform.PacketOwnedReverseHorizontal = null;
+            platform.Waypoints = null;
+            platform.CurrentWaypointIndex = 0;
+            platform.DeltaX = 0f;
+            platform.DeltaY = 0f;
+        }
+
+        private static long SquaredDistance(int x1, int y1, int x2, int y2)
+        {
+            long dx = x1 - x2;
+            long dy = y1 - y2;
+            return (dx * dx) + (dy * dy);
         }
 
         private void CachePacketOwnedFootholdNames(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)

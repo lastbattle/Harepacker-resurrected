@@ -5692,6 +5692,16 @@ namespace HaCreator.MapSimulator
                 build.HasAuthoritativeProfileJobRank = true;
             }
 
+            if (packet.PreviousWorldRank.HasValue)
+            {
+                build.ProfilePreviousWorldRank = Math.Max(0, packet.PreviousWorldRank.Value);
+            }
+
+            if (packet.PreviousJobRank.HasValue)
+            {
+                build.ProfilePreviousJobRank = Math.Max(0, packet.PreviousJobRank.Value);
+            }
+
             if (packet.HasRide.HasValue)
             {
                 build.HasMonsterRiding = packet.HasRide.Value;
@@ -6360,6 +6370,11 @@ namespace HaCreator.MapSimulator
             if (build == null)
             {
                 return default;
+            }
+
+            if (build.ProfilePreviousWorldRank.HasValue || build.ProfilePreviousJobRank.HasValue)
+            {
+                return new UserInfoUI.RankDeltaSnapshot(build.ProfilePreviousWorldRank, build.ProfilePreviousJobRank);
             }
 
             LoginCharacterRosterEntry rosterEntry = ResolveLoginCharacterRosterEntry(build);
@@ -18846,7 +18861,9 @@ namespace HaCreator.MapSimulator
             _mtsOfficialSessionBridge = new CashServiceOfficialSessionBridgeManager(MapleLib.PacketLib.MapleServerRole.Mts, _officialSessionRoleProxyFactory.CreateMts);
             _reactorPoolOfficialSessionBridge = new ReactorPoolOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _summonedOfficialSessionBridge = new SummonedOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _adminShopOfficialSessionBridge = new AdminShopOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _localUtilityOfficialSessionBridge = new LocalUtilityOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _localUtilityOfficialSessionBridge.ClientOutboundPacketObserved += HandlePacketOwnedAntiMacroClientOutboundPacketObserved;
             _messengerOfficialSessionBridge = new MessengerOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _mapleTvOfficialSessionBridge = new MessengerOfficialSessionBridgeManager(
                 "MapleTV",
@@ -19373,6 +19390,7 @@ namespace HaCreator.MapSimulator
             _localOverlayPacketInbox.Dispose();
             _localUtilityPacketInbox.Dispose();
             _adminShopPacketInbox.Dispose();
+            _adminShopOfficialSessionBridge.Dispose();
             _localUtilityPacketOutbox.Dispose();
             _localUtilityOfficialSessionBridge.Dispose();
             _cashShopOfficialSessionBridge.Dispose();
@@ -22931,6 +22949,8 @@ namespace HaCreator.MapSimulator
             ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
             return effect.HasSupportedRecovery
                    || effect.HasSupportedProgression
+                   || (effect.HasSupportedMonsterCarnivalNuffSkill
+                       && TryCanApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId))
                    || effect.HasSupportedMovement
                    || effect.HasSupportedMorph
                    || effect.HasSupportedTemporaryBuff
@@ -22969,6 +22989,7 @@ namespace HaCreator.MapSimulator
         {
             return effect.HasSupportedRecovery
                    || effect.HasSupportedProgression
+                   || effect.HasSupportedMonsterCarnivalNuffSkill
                    || effect.HasSupportedMovement
                    || effect.HasSupportedMorph
                    || effect.HasSupportedTemporaryBuff
@@ -23030,13 +23051,14 @@ namespace HaCreator.MapSimulator
             ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
             bool supportsRecovery = effect.HasSupportedRecovery;
             bool supportsProgression = effect.HasSupportedProgression;
+            bool supportsMonsterCarnivalNuffSkill = effect.HasSupportedMonsterCarnivalNuffSkill;
             bool supportsMovement = effect.HasSupportedMovement;
             bool supportsMorph = effect.HasSupportedMorph;
             bool supportsTemporaryBuff = effect.HasSupportedTemporaryBuff;
             bool supportsCure = effect.HasSupportedCure;
             bool supportsFieldProtection = effect.HasSupportedFieldProtection;
             bool supportsMobSkill = effect.HasSupportedMobSkill;
-            if (!supportsRecovery && !supportsProgression && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
+            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
             {
                 return false;
             }
@@ -23071,7 +23093,9 @@ namespace HaCreator.MapSimulator
                 && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
             bool canApplyMobSkill = supportsMobSkill && _playerManager != null;
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
+            bool canApplyMonsterCarnivalNuffSkill = supportsMonsterCarnivalNuffSkill
+                                                    && TryCanApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId);
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -23125,6 +23149,11 @@ namespace HaCreator.MapSimulator
             if (canApplyMobSkill)
             {
                 ApplyConsumableMobSkillEffects(effect.MobSkillEffects, currTickCount);
+            }
+
+            if (canApplyMonsterCarnivalNuffSkill)
+            {
+                TryApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId, currTickCount);
             }
 
             PushConsumableScreenMessage(effect, currTickCount);
@@ -25153,6 +25182,7 @@ namespace HaCreator.MapSimulator
             public int CharmExperience { get; init; }
             public int EventPoint { get; init; }
             public int FatigueDelta { get; init; }
+            public int MonsterCarnivalNuffSkillId { get; init; }
             public int MoveToMapId { get; init; }
             public int Booster { get; init; }
             public int Pad { get; init; }
@@ -25225,6 +25255,8 @@ namespace HaCreator.MapSimulator
                 CharmExperience > 0 ||
                 EventPoint > 0 ||
                 FatigueDelta != 0;
+
+            public bool HasSupportedMonsterCarnivalNuffSkill => MonsterCarnivalNuffSkillId > 0;
 
 
 
@@ -25437,6 +25469,7 @@ namespace HaCreator.MapSimulator
 
             bool supportsRecovery = effect.HasSupportedRecovery;
             bool supportsProgression = effect.HasSupportedProgression;
+            bool supportsMonsterCarnivalNuffSkill = effect.HasSupportedMonsterCarnivalNuffSkill;
 
             bool supportsMovement = effect.HasSupportedMovement;
 
@@ -25447,7 +25480,7 @@ namespace HaCreator.MapSimulator
             bool supportsCure = effect.HasSupportedCure;
             bool supportsFieldProtection = effect.HasSupportedFieldProtection;
             bool supportsMobSkill = effect.HasSupportedMobSkill;
-            if (!supportsRecovery && !supportsProgression && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
+            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
             {
                 return false;
             }
@@ -25494,6 +25527,8 @@ namespace HaCreator.MapSimulator
             bool canApplyTemporaryBuff = supportsTemporaryBuff && _playerManager?.Skills != null;
             bool canApplyFieldProtection = supportsFieldProtection;
             bool canApplyMobSkill = supportsMobSkill && _playerManager != null;
+            bool canApplyMonsterCarnivalNuffSkill = supportsMonsterCarnivalNuffSkill
+                                                    && TryCanApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId);
 
 
 
@@ -25508,7 +25543,7 @@ namespace HaCreator.MapSimulator
                 && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
             bool canQueueMovement = TryCanQueueConsumableMapTransfer(targetMapId, showFailureMessage: false);
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -25579,6 +25614,11 @@ namespace HaCreator.MapSimulator
             if (canApplyMobSkill)
             {
                 ApplyConsumableMobSkillEffects(effect.MobSkillEffects, currentTime);
+            }
+
+            if (canApplyMonsterCarnivalNuffSkill)
+            {
+                TryApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId, currentTime);
             }
 
             PushConsumableScreenMessage(effect, currentTime);
@@ -25895,6 +25935,7 @@ namespace HaCreator.MapSimulator
                 CharmExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "charmEXP")),
                 EventPoint = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "eventPoint")),
                 FatigueDelta = ResolveConsumableIntValue(specProperty, specExProperty, "incFatigue"),
+                MonsterCarnivalNuffSkillId = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "nuffSkill")),
                 MoveToMapId = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "moveTo")),
                 Booster = ResolveConsumableIntValue(specProperty, specExProperty, "booster", "indieBooster"),
                 Pad = ResolveConsumableIntValue(specProperty, specExProperty, "pad", "indiePad"),
@@ -26025,6 +26066,23 @@ namespace HaCreator.MapSimulator
             }
 
             return appliedAny;
+        }
+
+        private bool TryCanApplyMonsterCarnivalNuffSkillPickup(int nuffSkillId)
+        {
+            MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            return carnivalField?.CanApplyNuffSkillPickup(nuffSkillId) == true;
+        }
+
+        private bool TryApplyMonsterCarnivalNuffSkillPickup(int nuffSkillId, int currentTime)
+        {
+            if (nuffSkillId <= 0)
+            {
+                return false;
+            }
+
+            MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            return carnivalField?.TryApplyNuffSkillPickup(nuffSkillId, currentTime, out _) == true;
         }
 
         private static ConsumableMobSkillEffect[] ResolveConsumableMobSkillEffects(
@@ -27390,7 +27448,7 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            if (!string.IsNullOrWhiteSpace(portalName))
+            if (ShouldProbeMinimapPortalAuthoredTooltipForTesting(currentMapId, portalName))
             {
                 string authoredTooltip = authoredTooltipResolver?.Invoke(currentMapId, portalName.Trim());
                 if (!string.IsNullOrWhiteSpace(authoredTooltip))
@@ -27447,9 +27505,14 @@ namespace HaCreator.MapSimulator
             return portalType == PortalType.Visible || portalType == PortalType.TownPortalPoint;
         }
 
+        internal static bool ShouldProbeMinimapPortalAuthoredTooltipForTesting(int currentMapId, string portalName)
+        {
+            return currentMapId > 0 && !string.IsNullOrWhiteSpace(portalName);
+        }
+
         private static string TryResolveMinimapPortalTooltipTextFromWz(int currentMapId, string portalName)
         {
-            if (currentMapId <= 0 || string.IsNullOrWhiteSpace(portalName))
+            if (!ShouldProbeMinimapPortalAuthoredTooltipForTesting(currentMapId, portalName))
             {
                 return null;
             }
@@ -29636,7 +29699,7 @@ namespace HaCreator.MapSimulator
 
             foreach (ReactorTouchStateChange change in touchStateChanges)
             {
-                if (!change.UsesPacketObjectId || change.ObjectId <= 0)
+                if (!ShouldDispatchReactorTouchStateChange(change))
                 {
                     continue;
                 }
@@ -29647,7 +29710,7 @@ namespace HaCreator.MapSimulator
 
         private void DispatchReactorTouchStateChange(ReactorTouchStateChange change, int currentTick = int.MinValue)
         {
-            if (!change.UsesPacketObjectId || change.ObjectId <= 0)
+            if (!ShouldDispatchReactorTouchStateChange(change))
             {
                 return;
             }
@@ -29673,6 +29736,11 @@ namespace HaCreator.MapSimulator
             }
 
             _reactorTouchPacketOutbox.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick);
+        }
+
+        internal static bool ShouldDispatchReactorTouchStateChange(ReactorTouchStateChange change)
+        {
+            return change.UsesPacketObjectId && change.ObjectId > 0;
         }
 
         internal static bool ShouldQueueReactorTouchThroughOfficialSessionBridge(
@@ -31819,14 +31887,16 @@ namespace HaCreator.MapSimulator
                 int rewardIdentitySeed = mob?.PoolId > 0
                     ? mob.PoolId
                     : killedMobId;
-                int rewardItemId = MobStatusRewardParity.ResolveStableAuthoredRewardItemId(
+                IReadOnlyList<int> rewardItemIdsToSpawn = MobStatusRewardParity.ResolveStableAuthoredRewardItemIds(
                     rewardIdentitySeed,
-                    rewardItemIds);
-                if (rewardItemId > 0)
+                    rewardItemIds,
+                    maxRewardCount: 2);
+                for (int i = 0; i < rewardItemIdsToSpawn.Count; i++)
                 {
+                    int rewardItemId = rewardItemIdsToSpawn[i];
                     int rewardQuantity = MobStatusRewardParity.ResolveDropItemQuantity(mob, rewardItemId, 1, supportDropRatePercent);
                     _dropPool.SpawnItemDrop(
-                        mobX - 18f,
+                        mobX - 18f - (18f * i),
                         mobY,
                         rewardItemId.ToString(CultureInfo.InvariantCulture),
                         rewardQuantity,
@@ -32290,12 +32360,15 @@ namespace HaCreator.MapSimulator
 
                 return;
 
+            if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForFreshUpKeyDown(interactPressed))
+            {
+                StopSkillMacroForHandleUpKeyDown();
+            }
+
             if (!PassiveTransferFieldReadinessEvaluator.CanHandleFreshUpKeyDown(_localFollowRuntime.HasAttachedDriver))
             {
                 return;
             }
-
-            StopSkillMacroForHandleUpKeyDown();
 
             if (ShouldHandleFreshUpKeyDownAsChairGetUp(_playerManager?.Player))
             {
@@ -35325,6 +35398,8 @@ namespace HaCreator.MapSimulator
                 _animationEffects,
                 _texturePool,
                 _DxDeviceManager.GraphicsDevice);
+            _summonedPool.SetPacketOwnedExpiryCandidateClientStateResolver(
+                ResolvePacketOwnedExpiryCandidateClientState);
             if (_playerManager?.Skills != null)
             {
                 _playerManager.OnRepeatSkillModeEndEffectRequestReady = DispatchRepeatSkillModeEndEffectRequest;
@@ -37163,6 +37238,9 @@ namespace HaCreator.MapSimulator
 
             bool wasTracked = questAlarmWindow.IsQuestTracked(questId);
             bool registered = questAlarmWindow.TrackQuest(questId);
+            string failureNotice = registered || wasTracked
+                ? null
+                : questAlarmWindow.ResolveRegistrationFailureNotice(questId);
 
             questAlarmWindow.Show();
 
@@ -37177,7 +37255,7 @@ namespace HaCreator.MapSimulator
                 {
                     registered || wasTracked
                         ? "Tracking quest in the quest alarm window."
-                        : "This quest cannot be registered in the quest alarm."
+                        : failureNotice
                 }
             };
         }
@@ -38982,6 +39060,14 @@ namespace HaCreator.MapSimulator
         private string GetBattlefieldEquipRestrictionMessage(int itemId)
         {
             return GetBattlefieldItemRestrictionMessage(itemId);
+        }
+
+        private string GetCharacterEquipmentTakeOffRestrictionMessage(int itemId)
+        {
+            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTakeOffItemRestrictionMessage(
+                _mapBoard?.MapInfo,
+                itemId);
+            return fieldRestrictionMessage ?? GetBattlefieldEquipRestrictionMessage(itemId);
         }
 
 
@@ -42388,6 +42474,88 @@ namespace HaCreator.MapSimulator
             }
 
             message = $"{localMessage}{Environment.NewLine}No live trading-room bridge session is attached; built raw packet {Convert.ToHexString(rawPacket)} for /socialroom tradingroom session sendraw.";
+            return true;
+        }
+
+        private bool TrySendTradingRoomPutItemRequest(SocialRoomRuntime runtime, int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (runtime == null)
+            {
+                message = "Trading-room runtime inactive.";
+                return false;
+            }
+
+            string packetOwnerName = runtime.OwnerName;
+            int nextPacketSlot = runtime.Items
+                .Where(entry => string.Equals(entry.OwnerName, packetOwnerName, StringComparison.OrdinalIgnoreCase))
+                .Select(entry => entry.PacketSlotIndex ?? 0)
+                .DefaultIfEmpty(0)
+                .Max() + 1;
+            nextPacketSlot = Math.Clamp(nextPacketSlot, 1, 9);
+
+            if (!runtime.TryBuildTradingRoomPutItemRawPacket(nextPacketSlot, itemId, quantity, out byte[] rawPacket, out string buildMessage))
+            {
+                message = buildMessage;
+                return false;
+            }
+
+            if (_tradingRoomOfficialSessionBridge.HasConnectedSession)
+            {
+                if (_tradingRoomOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string bridgeMessage))
+                {
+                    message = $"{buildMessage}{Environment.NewLine}{bridgeMessage}{Environment.NewLine}Waiting for server opcode {TradingRoomPacketTable.TradingRoomInboundOpcode} subtype 15 to echo CTradingRoomDlg::OnPutItem.";
+                    return true;
+                }
+
+                message = $"{buildMessage}{Environment.NewLine}{_tradingRoomOfficialSessionBridge.DescribeStatus()}";
+                return true;
+            }
+
+            if (!runtime.TryDispatchTradingRoomPacketOwnedItem(0, nextPacketSlot, itemId, quantity, Environment.TickCount, out string previewMessage))
+            {
+                message = $"{buildMessage}{Environment.NewLine}{previewMessage}";
+                return false;
+            }
+
+            message = $"{buildMessage}{Environment.NewLine}No live trading-room bridge session is attached; built raw packet {Convert.ToHexString(rawPacket)} for /socialroom tradingroom session sendraw.{Environment.NewLine}Offline preview applied the matching server-owned subtype 15 echo locally: {previewMessage}";
+            return true;
+        }
+
+        private bool TrySendTradingRoomPutMoneyRequest(SocialRoomRuntime runtime, int offeredMeso, out string message)
+        {
+            message = null;
+            if (runtime == null)
+            {
+                message = "Trading-room runtime inactive.";
+                return false;
+            }
+
+            if (!runtime.TryBuildTradingRoomPutMoneyRawPacket(offeredMeso, out byte[] rawPacket, out string buildMessage))
+            {
+                message = buildMessage;
+                return false;
+            }
+
+            if (_tradingRoomOfficialSessionBridge.HasConnectedSession)
+            {
+                if (_tradingRoomOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string bridgeMessage))
+                {
+                    message = $"{buildMessage}{Environment.NewLine}{bridgeMessage}{Environment.NewLine}Waiting for server opcode {TradingRoomPacketTable.TradingRoomInboundOpcode} subtype 16 to echo CTradingRoomDlg::OnPutMoney.";
+                    return true;
+                }
+
+                message = $"{buildMessage}{Environment.NewLine}{_tradingRoomOfficialSessionBridge.DescribeStatus()}";
+                return true;
+            }
+
+            if (!runtime.TryDispatchTradingRoomPacketOwnedMeso(0, offeredMeso, Environment.TickCount, out string previewMessage))
+            {
+                message = $"{buildMessage}{Environment.NewLine}{previewMessage}";
+                return false;
+            }
+
+            message = $"{buildMessage}{Environment.NewLine}No live trading-room bridge session is attached; built raw packet {Convert.ToHexString(rawPacket)} for /socialroom tradingroom session sendraw.{Environment.NewLine}Offline preview applied the matching server-owned subtype 16 echo locally: {previewMessage}";
             return true;
         }
 

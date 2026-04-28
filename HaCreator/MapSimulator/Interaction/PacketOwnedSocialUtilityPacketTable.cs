@@ -17,6 +17,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort MapleTvInboundClearMessageOpcode = 406;
         internal const ushort MapleTvInboundSendResultOpcode = 407;
         internal const ushort MapleTvOutboundConsumeCashItemOpcode = 85;
+        internal const ushort FamilyLocalChartOpcode = 98;
+        internal const ushort FamilyInfoOpcode = 99;
+        internal const ushort FamilyResultOpcode = 100;
+        internal const ushort FamilyPrivilegeListOpcode = 104;
+        internal const ushort FamilySetPrivilegeOpcode = 107;
+        internal const ushort FamilyUsePrivilegeRequestOpcode = 175;
 
         private static readonly ushort[] MessengerInboundOpcodeSet = { MessengerInboundOpcode };
         private static readonly ushort[] MessengerOutboundOpcodeSet =
@@ -33,6 +39,15 @@ namespace HaCreator.MapSimulator.Interaction
             MapleTvInboundSendResultOpcode
         };
         private static readonly ushort[] MapleTvOutboundOpcodeSet = { MapleTvOutboundConsumeCashItemOpcode };
+        private static readonly ushort[] FamilyInboundOpcodeSet =
+        {
+            FamilyLocalChartOpcode,
+            FamilyInfoOpcode,
+            FamilyResultOpcode,
+            FamilyPrivilegeListOpcode,
+            FamilySetPrivilegeOpcode
+        };
+        private static readonly ushort[] FamilyOutboundOpcodeSet = { FamilyUsePrivilegeRequestOpcode };
 
         private static readonly IReadOnlyDictionary<byte, string> MessengerInboundSubtypeHandlers =
             new Dictionary<byte, string>
@@ -133,6 +148,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return MapleTvInboundOpcodeSet;
             }
 
+            if (string.Equals(ownerName, "Family", StringComparison.OrdinalIgnoreCase))
+            {
+                return FamilyInboundOpcodeSet;
+            }
+
             return MessengerInboundOpcodeSet;
         }
 
@@ -157,6 +177,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
             {
                 return MapleTvOutboundOpcodeSet;
+            }
+
+            if (string.Equals(ownerName, "Family", StringComparison.OrdinalIgnoreCase))
+            {
+                return FamilyOutboundOpcodeSet;
             }
 
             return MessengerOutboundOpcodeSet;
@@ -274,6 +299,18 @@ namespace HaCreator.MapSimulator.Interaction
 
                 expectedInboundOpcodes = new[] { (int)MapleTvInboundSetMessageOpcode, (int)MapleTvInboundSendResultOpcode };
                 expectationSummary = "expect CMapleTVMan::OnSetMessage or OnSendMessageResult (opcodes 405/407)";
+                return true;
+            }
+
+            if (string.Equals(ownerName, "Family", StringComparison.OrdinalIgnoreCase))
+            {
+                if (requestOpcode != FamilyUsePrivilegeRequestOpcode)
+                {
+                    return false;
+                }
+
+                expectedInboundOpcodes = new[] { (int)FamilyResultOpcode, (int)FamilySetPrivilegeOpcode };
+                expectationSummary = "expect CWvsContext::OnFamilyResult or OnFamilySetPrivilege (opcodes 100/107)";
                 return true;
             }
 

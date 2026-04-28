@@ -10366,8 +10366,8 @@ namespace HaCreator.MapSimulator
                 HandlePacketOwnedNpcUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "adminshop",
-                "Inspect or drive the packet-owned CAdminShopDlg owner and inbox",
-                "/adminshop [status|show|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]",
+                "Inspect or drive the packet-owned CAdminShopDlg owner, inbox, and official-session bridge",
+                "/adminshop [status|show|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|recent|clearrecent|stop]|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedAdminShopCommand);
 
             _chat.CommandHandler.RegisterCommand(

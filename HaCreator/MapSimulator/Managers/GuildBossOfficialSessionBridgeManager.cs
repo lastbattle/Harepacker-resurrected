@@ -29,11 +29,19 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeHealerMove = 344;
         private const int PacketTypePulleyStateChange = 345;
         private const int OutboundPulleyRequestOpcode = 259;
+        private const int MaxRecentInboundPackets = 20;
+        private const int MaxRecentOutboundPackets = 20;
 
         private readonly ConcurrentQueue<GuildBossPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingPulleyRequest> _pendingOutboundRequests = new();
+        private readonly List<InboundPacketTrace> _recentInboundPackets = new();
+        private readonly List<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private bool _hasObservedLiveInboundGuildBossPacket;
+        private bool _hasObservedLiveOutboundOpcode259;
+        private InboundPacketTrace? _liveInboundGuildBossPacketEvidence;
+        private OutboundPacketTrace? _liveOutboundOpcode259Evidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -41,6 +49,30 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+        internal readonly record struct InboundPacketTrace(
+            int Opcode,
+            int PacketType,
+            int PayloadLength,
+            string Source,
+            string Summary,
+            string RawPacketHex);
+        internal readonly record struct OutboundPacketTrace(
+            int Opcode,
+            int Sequence,
+            int PayloadLength,
+            string Source,
+            string Summary,
+            string RawPacketHex);
+        public enum LiveOwnershipVerificationState
+        {
+            Idle,
+            ReconnectPending,
+            WaitingForBothDirections,
+            WaitingForOutboundOpcode259,
+            WaitingForInboundGuildBossPacket,
+            Complete
+        }
+
         private sealed record PendingPulleyRequest(GuildBossField.PulleyPacketRequest Request, byte[] RawPacket);
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
@@ -54,6 +86,34 @@ namespace HaCreator.MapSimulator.Managers
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
+        internal bool HasObservedLiveInboundGuildBossPacket => _hasObservedLiveInboundGuildBossPacket;
+        internal bool HasObservedLiveOutboundOpcode259 => _hasObservedLiveOutboundOpcode259;
+        internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
+            HasConnectedSession,
+            HasPassiveEstablishedSocketPair,
+            IsRunning,
+            _hasObservedLiveOutboundOpcode259,
+            _hasObservedLiveInboundGuildBossPacket);
+        public int RecentInboundPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentInboundPackets.Count;
+                }
+            }
+        }
+        public int RecentOutboundPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentOutboundPackets.Count;
+                }
+            }
+        }
         public string LastStatus { get; private set; } = "Guild boss official-session bridge inactive.";
 
         public GuildBossOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -73,7 +133,20 @@ namespace HaCreator.MapSimulator.Managers
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}. {LastStatus}";
+            string inboundHistory = RecentInboundPacketCount == 0
+                ? $"no opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound trace history"
+                : $"{RecentInboundPacketCount} opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound trace(s)";
+            string outboundHistory = RecentOutboundPacketCount == 0
+                ? $"no opcode {OutboundPulleyRequestOpcode} outbound trace history"
+                : $"{RecentOutboundPacketCount} opcode {OutboundPulleyRequestOpcode} outbound trace(s)";
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _hasObservedLiveOutboundOpcode259,
+                _hasObservedLiveInboundGuildBossPacket);
+            string evidence = DescribeLiveOwnershipVerificationEvidence();
+            return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; {inboundHistory}; {outboundHistory}. {verification} {evidence} {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -495,6 +568,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount++;
+                RecordOutboundTrace(BuildOutboundTrace(packet, request.Sequence, "official-session:proxy-inject"));
                 status = $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session.";
                 LastStatus = status;
                 return true;
@@ -617,6 +691,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
+            RecordInboundTrace(BuildInboundTrace(e.RawPacket, opcode, payload.Length, $"official-session:{e.SourceEndpoint}"));
             byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
             _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
@@ -638,6 +713,7 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOpcode(e.RawPacket, out int opcode, out _)
                 && opcode == OutboundPulleyRequestOpcode)
             {
+                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, sequence: 0, $"official-session:{e.SourceEndpoint}"));
                 LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {e.SourceEndpoint}.";
             }
         }
@@ -660,6 +736,12 @@ namespace HaCreator.MapSimulator.Managers
                 ReceivedCount = 0;
                 SentCount = 0;
                 QueuedCount = 0;
+                _recentInboundPackets.Clear();
+                _recentOutboundPackets.Clear();
+                _hasObservedLiveInboundGuildBossPacket = false;
+                _hasObservedLiveOutboundOpcode259 = false;
+                _liveInboundGuildBossPacketEvidence = null;
+                _liveOutboundOpcode259Evidence = null;
             }
         }
         private int FlushQueuedPulleyRequestsViaProxy()
@@ -683,6 +765,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount++;
+                RecordOutboundTrace(BuildOutboundTrace(pending.RawPacket, pending.Request.Sequence, "official-session:proxy-flush"));
                 flushed++;
             }
 
@@ -780,6 +863,185 @@ namespace HaCreator.MapSimulator.Managers
 
             owningProcessName = normalized;
             return true;
+        }
+
+        internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode259,
+            bool hasObservedLiveInboundGuildBossPacket)
+        {
+            if (hasObservedLiveOutboundOpcode259 && hasObservedLiveInboundGuildBossPacket)
+            {
+                return LiveOwnershipVerificationState.Complete;
+            }
+
+            if (hasObservedLiveOutboundOpcode259)
+            {
+                return LiveOwnershipVerificationState.WaitingForInboundGuildBossPacket;
+            }
+
+            if (hasObservedLiveInboundGuildBossPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForOutboundOpcode259;
+            }
+
+            if (hasConnectedSession)
+            {
+                return LiveOwnershipVerificationState.WaitingForBothDirections;
+            }
+
+            if (hasPassiveEstablishedSocketPair || isRunning)
+            {
+                return LiveOwnershipVerificationState.ReconnectPending;
+            }
+
+            return LiveOwnershipVerificationState.Idle;
+        }
+
+        internal static string DescribeLiveOwnershipVerificationStatus(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode259,
+            bool hasObservedLiveInboundGuildBossPacket)
+        {
+            LiveOwnershipVerificationState state = ResolveLiveOwnershipVerificationState(
+                hasConnectedSession,
+                hasPassiveEstablishedSocketPair,
+                isRunning,
+                hasObservedLiveOutboundOpcode259,
+                hasObservedLiveInboundGuildBossPacket);
+            if (state == LiveOwnershipVerificationState.Complete)
+            {
+                return $"Live ownership verification complete: proxied opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound were both captured.";
+            }
+
+            if (state == LiveOwnershipVerificationState.ReconnectPending)
+            {
+                return hasPassiveEstablishedSocketPair
+                    ? $"Live ownership verification pending reconnect: passive attach cannot capture encrypted opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} or inject opcode {OutboundPulleyRequestOpcode} until Maple reconnects through the localhost proxy."
+                    : $"Live ownership verification pending reconnect: bridge is armed, but Maple must reconnect through the localhost proxy before opcode {OutboundPulleyRequestOpcode}/{PacketTypeHealerMove}/{PacketTypePulleyStateChange} capture can start.";
+            }
+
+            if (state == LiveOwnershipVerificationState.WaitingForBothDirections)
+            {
+                return $"Live ownership verification in progress: waiting for proxied opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound.";
+            }
+
+            if (state == LiveOwnershipVerificationState.WaitingForOutboundOpcode259)
+            {
+                return $"Live ownership verification in progress: opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound captured, waiting for proxied opcode {OutboundPulleyRequestOpcode} outbound.";
+            }
+
+            if (state == LiveOwnershipVerificationState.WaitingForInboundGuildBossPacket)
+            {
+                return $"Live ownership verification in progress: opcode {OutboundPulleyRequestOpcode} outbound captured, waiting for proxied opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound.";
+            }
+
+            return $"Live ownership verification idle: start a Guild Boss session bridge and capture opcode {OutboundPulleyRequestOpcode}/{PacketTypeHealerMove}/{PacketTypePulleyStateChange} traffic.";
+        }
+
+        internal string DescribeLiveOwnershipVerificationEvidence()
+        {
+            InboundPacketTrace? inboundEvidence;
+            OutboundPacketTrace? outboundEvidence;
+            lock (_sync)
+            {
+                inboundEvidence = _liveInboundGuildBossPacketEvidence;
+                outboundEvidence = _liveOutboundOpcode259Evidence;
+            }
+
+            if (inboundEvidence.HasValue && outboundEvidence.HasValue)
+            {
+                InboundPacketTrace inbound = inboundEvidence.Value;
+                OutboundPacketTrace outbound = outboundEvidence.Value;
+                return $"Live ownership verification evidence: paired proxied capture outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
+            }
+
+            if (outboundEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = outboundEvidence.Value;
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}], waiting for inbound opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange}.";
+            }
+
+            if (inboundEvidence.HasValue)
+            {
+                InboundPacketTrace inbound = inboundEvidence.Value;
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}], waiting for outbound opcode {OutboundPulleyRequestOpcode}.";
+            }
+
+            return "Live ownership verification evidence: none.";
+        }
+
+        private void RecordInboundTrace(InboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                _recentInboundPackets.Add(trace);
+                while (_recentInboundPackets.Count > MaxRecentInboundPackets)
+                {
+                    _recentInboundPackets.RemoveAt(0);
+                }
+
+                if (IsLiveProxiedSource(trace.Source))
+                {
+                    _hasObservedLiveInboundGuildBossPacket = true;
+                    _liveInboundGuildBossPacketEvidence = trace;
+                }
+            }
+        }
+
+        private void RecordOutboundTrace(OutboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Add(trace);
+                while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.RemoveAt(0);
+                }
+
+                if (IsLiveProxiedSource(trace.Source))
+                {
+                    _hasObservedLiveOutboundOpcode259 = true;
+                    _liveOutboundOpcode259Evidence = trace;
+                }
+            }
+        }
+
+        private static InboundPacketTrace BuildInboundTrace(byte[] rawPacket, int opcode, int payloadLength, string source)
+        {
+            string summary = $"opcode={opcode} payload={payloadLength}";
+            return new InboundPacketTrace(
+                opcode,
+                opcode,
+                payloadLength,
+                string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
+                summary,
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()));
+        }
+
+        private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int sequence, string source)
+        {
+            int payloadLength = rawPacket == null ? 0 : Math.Max(0, rawPacket.Length - sizeof(short));
+            string summary = sequence > 0
+                ? $"opcode={OutboundPulleyRequestOpcode} sequence={sequence}"
+                : $"opcode={OutboundPulleyRequestOpcode}";
+            return new OutboundPacketTrace(
+                OutboundPulleyRequestOpcode,
+                sequence,
+                payloadLength,
+                string.IsNullOrWhiteSpace(source) ? "official-session:unknown-local" : source,
+                summary,
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()));
+        }
+
+        private static bool IsLiveProxiedSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string NormalizeProcessSelector(string selector)

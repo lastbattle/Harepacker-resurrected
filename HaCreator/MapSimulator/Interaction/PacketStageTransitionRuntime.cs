@@ -2939,16 +2939,35 @@ namespace HaCreator.MapSimulator.Interaction
                     long sectionStart = reader.BaseStream.Position;
                     int regularMapTransferRecordByteCount = checked(MapTransferRuntimeManager.RegularCapacity * sizeof(int));
                     int continentMapTransferRecordByteCount = checked(MapTransferRuntimeManager.ContinentCapacity * sizeof(int));
+                    IReadOnlyList<PacketCharacterDataMapTransferRecord> regularMapTransferRecordEntries =
+                        ReadCharacterDataMapTransferRecords(
+                            reader,
+                            PacketCharacterDataMapTransferRecord.RegularGroup,
+                            MapTransferRuntimeManager.RegularCapacity,
+                            out int[] regularMapTransferFields);
+                    IReadOnlyList<PacketCharacterDataMapTransferRecord> continentMapTransferRecordEntries =
+                        ReadCharacterDataMapTransferRecords(
+                            reader,
+                            PacketCharacterDataMapTransferRecord.ContinentGroup,
+                            MapTransferRuntimeManager.ContinentCapacity,
+                            out int[] continentMapTransferFields);
                     decoratedSnapshot = decoratedSnapshot with
                     {
-                        RegularMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.RegularCapacity),
-                        ContinentMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.ContinentCapacity),
+                        RegularMapTransferFields = regularMapTransferFields,
+                        ContinentMapTransferFields = continentMapTransferFields,
+                        RegularMapTransferRecordEntries = regularMapTransferRecordEntries,
+                        ContinentMapTransferRecordEntries = continentMapTransferRecordEntries,
                         RegularMapTransferRecordByteCount = regularMapTransferRecordByteCount,
                         ContinentMapTransferRecordByteCount = continentMapTransferRecordByteCount,
+                        MapTransferRecordCountsByGroup = new Dictionary<string, int>(StringComparer.Ordinal)
+                        {
+                            [PacketCharacterDataMapTransferRecord.RegularGroup] = regularMapTransferRecordEntries.Count,
+                            [PacketCharacterDataMapTransferRecord.ContinentGroup] = continentMapTransferRecordEntries.Count
+                        },
                         MapTransferRecordByteCountsByGroup = new Dictionary<string, int>(StringComparer.Ordinal)
                         {
-                            ["Regular"] = regularMapTransferRecordByteCount,
-                            ["Continent"] = continentMapTransferRecordByteCount
+                            [PacketCharacterDataMapTransferRecord.RegularGroup] = regularMapTransferRecordByteCount,
+                            [PacketCharacterDataMapTransferRecord.ContinentGroup] = continentMapTransferRecordByteCount
                         }
                     };
                     decodedSectionFlags |= CharacterDataMapTransferFlag;
@@ -3880,15 +3899,28 @@ namespace HaCreator.MapSimulator.Interaction
             return byteCounts;
         }
 
-        private static int[] ReadCharacterDataMapTransferFields(BinaryReader reader, int count)
+        private static IReadOnlyList<PacketCharacterDataMapTransferRecord> ReadCharacterDataMapTransferRecords(
+            BinaryReader reader,
+            string group,
+            int count,
+            out int[] fields)
         {
-            int[] fields = new int[count];
+            fields = new int[count];
+            PacketCharacterDataMapTransferRecord[] records = new PacketCharacterDataMapTransferRecord[count];
             for (int i = 0; i < count; i++)
             {
-                fields[i] = reader.ReadInt32();
+                Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+                int fieldId = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataMapTransferRecord.FieldId), static fieldReader => fieldReader.ReadInt32());
+                fields[i] = fieldId;
+                records[i] = new PacketCharacterDataMapTransferRecord(
+                    group,
+                    i,
+                    fieldId,
+                    sizeof(int),
+                    fieldByteCounts);
             }
 
-            return fields;
+            return records;
         }
 
         private static byte[] ReadRemainingBytes(BinaryReader reader)
@@ -3930,7 +3962,15 @@ namespace HaCreator.MapSimulator.Interaction
                     throw new EndOfStreamException("Character-data fixed record ended before all bytes could be consumed.");
                 }
 
-                records[i] = new PacketCharacterDataFixedClientRecord(clientOwner, recordByteLength, bytes);
+                records[i] = new PacketCharacterDataFixedClientRecord(
+                    clientOwner,
+                    recordByteLength,
+                    bytes,
+                    recordByteLength,
+                    new Dictionary<string, int>(StringComparer.Ordinal)
+                    {
+                        [nameof(PacketCharacterDataFixedClientRecord.RawBytes)] = recordByteLength
+                    });
             }
 
             return records;
@@ -4321,7 +4361,9 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct PacketCharacterDataFixedClientRecord(
         string ClientOwner,
         int ClientByteLength,
-        byte[] RawBytes)
+        byte[] RawBytes,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null)
     {
         internal const string MiniGameOwner = "GW_MiniGameRecord::Decode";
         internal const string CoupleOwner = "GW_CoupleRecord::Decode";
@@ -4329,6 +4371,17 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string MarriageOwner = "GW_MarriageRecord::Decode";
 
         internal int RawByteCount => RawBytes?.Length ?? 0;
+    }
+
+    internal readonly record struct PacketCharacterDataMapTransferRecord(
+        string Group,
+        int Index,
+        int FieldId,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null)
+    {
+        internal const string RegularGroup = "Regular";
+        internal const string ContinentGroup = "Continent";
     }
 
     internal readonly record struct PacketCharacterDataNewYearCardRecord(
@@ -4551,8 +4604,11 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<int, int> OpaqueInt16ValueRecords = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,
+        IReadOnlyList<PacketCharacterDataMapTransferRecord> RegularMapTransferRecordEntries = null,
+        IReadOnlyList<PacketCharacterDataMapTransferRecord> ContinentMapTransferRecordEntries = null,
         int RegularMapTransferRecordByteCount = 0,
         int ContinentMapTransferRecordByteCount = 0,
+        IReadOnlyDictionary<string, int> MapTransferRecordCountsByGroup = null,
         IReadOnlyDictionary<string, int> MapTransferRecordByteCountsByGroup = null,
         int MiniGameRecordCount = 0,
         int MiniGameRecordCountByteCount = 0,

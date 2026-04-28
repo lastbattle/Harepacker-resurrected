@@ -390,8 +390,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool ClientReadyButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex != 0;
         public bool ClientStartButtonEnabled => _stage != RoomStage.Playing
             && _localPlayerIndex == 0
-            && HasClientOpponentSeat()
-            && IsClientOpponentReady();
+            && HasClientOpponentSeat();
         public bool ClientBanButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex == 0;
         public bool ClientTieButtonEnabled => _stage == RoomStage.Playing;
         public bool ClientGiveUpButtonEnabled => _stage == RoomStage.Playing;
@@ -2999,12 +2998,6 @@ namespace HaCreator.MapSimulator.Fields
             if (!HasClientOpponentSeat())
             {
                 message = "Start is unavailable until an opponent joins the Match Cards room.";
-                return false;
-            }
-
-            if (!IsClientOpponentReady())
-            {
-                message = "Start is disabled until the seated opponent is ready.";
                 return false;
             }
 

@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.Fields
             QueryViewrangeCanvasDimensions,
             DrawDarkLayerFallback,
             ResolveViewrangeCopyRectangles,
+            PrepareRemoveAlphaViewrangeCopy,
             CopyLocalViewrange,
             EvaluateShareViewRemoteLoop,
             SkipRemoteViewrangeBecauseShareViewDisabled,
@@ -1199,6 +1200,13 @@ namespace HaCreator.MapSimulator.Fields
                     sourceHeight: sourceHeight,
                     usesRemoveAlphaCopy: true));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy,
+                    NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[i]),
+                    i,
+                    sourceWidth: sourceWidth,
+                    sourceHeight: sourceHeight,
+                    usesRemoveAlphaCopy: true));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
                     copyKind,
                     NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[i]),
                     i,
@@ -1406,6 +1414,7 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.ResolveGraphicsCenter:
                     case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles:
+                    case ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy:
                     case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseLocalUserMissing:

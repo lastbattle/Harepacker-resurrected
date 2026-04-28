@@ -1017,6 +1017,59 @@ namespace HaCreator.MapSimulator
             _predictedRemotePetPickupActorPositions[petActorId] = position;
         }
 
+        private void RememberPredictedRemotePetPickupActorPositionsForOwnerState(RemoteUserActor ownerActor)
+        {
+            if (ownerActor == null || ownerActor.CharacterId <= 0)
+            {
+                return;
+            }
+
+            RememberPredictedRemotePetPickupActorPositionsForOwnerState(
+                _predictedRemotePetPickupActorPositions,
+                ownerActor.CharacterId,
+                ownerActor.Position,
+                ownerActor.FacingRight,
+                ownerActor.Build?.RemotePetItemIds);
+        }
+
+        internal static void RememberPredictedRemotePetPickupActorPositionsForOwnerState(
+            IDictionary<int, Vector2> predictedPetActorPositions,
+            int ownerCharacterId,
+            Vector2 ownerPosition,
+            bool ownerFacingRight,
+            IReadOnlyList<int> remotePetItemIds)
+        {
+            if (predictedPetActorPositions == null || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            for (int slotIndex = 0; slotIndex < RemotePetPickupPredictedSlotCount; slotIndex++)
+            {
+                if (!TryResolveRemotePetPickupSlotIndexForPacketParity(
+                        remotePetItemIds,
+                        slotIndex,
+                        out int resolvedSlotIndex)
+                    || resolvedSlotIndex < 0)
+                {
+                    continue;
+                }
+
+                if (!TryResolveRemotePetPickupPositionFromOwnerState(
+                        ownerPosition,
+                        ownerFacingRight,
+                        remotePetItemIds,
+                        resolvedSlotIndex,
+                        out Vector2 predictedPosition))
+                {
+                    continue;
+                }
+
+                int petActorId = BuildRemotePetPickupActorId(ownerCharacterId, resolvedSlotIndex);
+                predictedPetActorPositions[petActorId] = predictedPosition;
+            }
+        }
+
         private Vector2? ResolvePredictedRemotePetPickupActorPosition(int petActorId)
         {
             return petActorId != 0 && _predictedRemotePetPickupActorPositions.TryGetValue(petActorId, out Vector2 position)

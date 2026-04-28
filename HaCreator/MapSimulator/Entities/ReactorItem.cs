@@ -500,10 +500,12 @@ namespace HaCreator.MapSimulator.Entities
 
             int elapsedWithinFrame;
             int frameIndex;
+            IReadOnlyList<int> frameDelays;
             if (_transientFrames != null)
             {
+                frameDelays = ResolveTransientFrameDelays(frames);
                 ResolveLoadLayerFrameTiming(
-                    ResolveTransientFrameDelays(frames),
+                    frameDelays,
                     Math.Max(0, tickCount - _transientStartTick),
                     repeat: false,
                     out frameIndex,
@@ -513,16 +515,10 @@ namespace HaCreator.MapSimulator.Entities
             {
                 GetStateFrame(tickCount, out frameIndex);
                 elapsedWithinFrame = Math.Max(0, tickCount - _lastStateTick);
+                frameDelays = frames.Select(static frame => frame?.Delay ?? 0).ToArray();
             }
 
-            int remainingDuration = Math.Max(0, Math.Max(1, frames[frameIndex].Delay) - elapsedWithinFrame);
-
-            for (int i = frameIndex + 1; i < frames.Length; i++)
-            {
-                remainingDuration += Math.Max(1, frames[i].Delay);
-            }
-
-            return remainingDuration;
+            return ResolveRemainingLoadLayerDuration(frameDelays, frameIndex, elapsedWithinFrame);
         }
 
         public int GetRemainingStoppedAnimationDuration(int tickCount)
@@ -1458,6 +1454,41 @@ namespace HaCreator.MapSimulator.Entities
                 repeat,
                 out frameIndex,
                 out elapsedWithinFrame);
+        }
+
+        internal static int ResolveRemainingLoadLayerDurationForTesting(
+            int[] frameDelays,
+            int frameIndex,
+            int elapsedWithinFrame)
+        {
+            return ResolveRemainingLoadLayerDuration(
+                frameDelays ?? Array.Empty<int>(),
+                frameIndex,
+                elapsedWithinFrame);
+        }
+
+        private static int ResolveRemainingLoadLayerDuration(
+            IReadOnlyList<int> frameDelays,
+            int frameIndex,
+            int elapsedWithinFrame)
+        {
+            if (frameDelays == null || frameDelays.Count == 0)
+            {
+                return 0;
+            }
+
+            int clampedFrameIndex = Math.Clamp(frameIndex, 0, frameDelays.Count - 1);
+            int currentDelay = Math.Max(1, frameDelays[clampedFrameIndex]);
+            int remainingDuration = Math.Max(
+                0,
+                currentDelay - Math.Clamp(elapsedWithinFrame, 0, currentDelay));
+
+            for (int i = clampedFrameIndex + 1; i < frameDelays.Count; i++)
+            {
+                remainingDuration += Math.Max(1, frameDelays[i]);
+            }
+
+            return remainingDuration;
         }
 
         private static bool ResolveLoadLayerFrameTiming(

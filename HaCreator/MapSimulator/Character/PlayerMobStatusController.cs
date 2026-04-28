@@ -235,6 +235,11 @@ namespace HaCreator.MapSimulator.Character
 
         public bool TryApplyMobSkill(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX, int elementAttribute)
         {
+            return TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX, elementAttribute, recastLeadTimeMs: 0);
+        }
+
+        public bool TryApplyMobSkill(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX, int elementAttribute, int recastLeadTimeMs)
+        {
             if (_player == null || runtimeData == null)
             {
                 return false;
@@ -263,26 +268,28 @@ namespace HaCreator.MapSimulator.Character
                         PlayerMobStatusEffect.StopMotion,
                         ResolveSkillStatusDurationMs(skillId, runtimeData),
                         currentTime,
-                        1);
+                        1,
+                        recastLeadTimeMs: recastLeadTimeMs);
                 case 120:
-                    return ApplyStatus(PlayerMobStatusEffect.Seal, runtimeData.DurationMs, currentTime, 1);
+                    return ApplyStatus(PlayerMobStatusEffect.Seal, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 121:
-                    return ApplyStatus(PlayerMobStatusEffect.Darkness, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 20));
+                    return ApplyStatus(PlayerMobStatusEffect.Darkness, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 20), recastLeadTimeMs: recastLeadTimeMs);
                 case 122:
-                    return ApplyStatus(PlayerMobStatusEffect.Weakness, runtimeData.DurationMs, currentTime, 1);
+                    return ApplyStatus(PlayerMobStatusEffect.Weakness, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 123:
-                    return ApplyStatus(PlayerMobStatusEffect.Stun, runtimeData.DurationMs, currentTime, 1);
+                    return ApplyStatus(PlayerMobStatusEffect.Stun, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 124:
-                    return ApplyStatus(PlayerMobStatusEffect.Curse, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 50));
+                    return ApplyStatus(PlayerMobStatusEffect.Curse, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 50), recastLeadTimeMs: recastLeadTimeMs);
                 case 125:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.Poison,
                         runtimeData.DurationMs,
                         currentTime,
                         ResolveValue(runtimeData, 10),
-                        ResolveTickInterval(runtimeData, 1000));
+                        ResolveTickInterval(runtimeData, 1000),
+                        recastLeadTimeMs: recastLeadTimeMs);
                 case 126:
-                    return ApplyStatus(PlayerMobStatusEffect.Slow, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 20));
+                    return ApplyStatus(PlayerMobStatusEffect.Slow, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 20), recastLeadTimeMs: recastLeadTimeMs);
                 case 127:
                     if (_skills?.ActiveBuffs == null || _skills.ActiveBuffs.Count == 0)
                     {
@@ -294,11 +301,11 @@ namespace HaCreator.MapSimulator.Character
                 case 129:
                     bool teleported = _teleportToSpawn != null;
                     _teleportToSpawn?.Invoke();
-                    return ApplyStatus(PlayerMobStatusEffect.Banish, runtimeData.DurationMs, currentTime, 1) || teleported;
+                    return ApplyStatus(PlayerMobStatusEffect.Banish, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs) || teleported;
                 case 128:
-                    return ApplyStatus(PlayerMobStatusEffect.Attract, runtimeData.DurationMs, currentTime, ResolveSeduceDirection(sourceX));
+                    return ApplyStatus(PlayerMobStatusEffect.Attract, runtimeData.DurationMs, currentTime, ResolveSeduceDirection(sourceX), recastLeadTimeMs: recastLeadTimeMs);
                 case 131:
-                    return ApplyStatus(PlayerMobStatusEffect.Freeze, runtimeData.DurationMs, currentTime, 1);
+                    return ApplyStatus(PlayerMobStatusEffect.Freeze, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 132:
                     return HasAuthoredPeriodicDamage(runtimeData)
                         ? ApplyPeriodicDamageStatus(
@@ -307,10 +314,11 @@ namespace HaCreator.MapSimulator.Character
                             currentTime,
                             ResolvePeriodicDamageValue(runtimeData, 1),
                             ResolveTickInterval(runtimeData, 1000),
-                            runtimeData.Count)
-                        : ApplyStatus(PlayerMobStatusEffect.ReverseInput, runtimeData.DurationMs, currentTime, 1);
+                            runtimeData.Count,
+                            recastLeadTimeMs)
+                        : ApplyStatus(PlayerMobStatusEffect.ReverseInput, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 133:
-                    return ApplyStatus(PlayerMobStatusEffect.Undead, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 100));
+                    return ApplyStatus(PlayerMobStatusEffect.Undead, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 100), recastLeadTimeMs: recastLeadTimeMs);
                 case 134:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.PainMark,
@@ -318,13 +326,14 @@ namespace HaCreator.MapSimulator.Character
                         currentTime,
                         ResolveValue(runtimeData, 1),
                         ResolveTickInterval(runtimeData, 1000),
-                        runtimeData.Count);
+                        runtimeData.Count,
+                        recastLeadTimeMs);
                 case 135:
-                    return ApplyStatus(PlayerMobStatusEffect.StopPotion, runtimeData.DurationMs, currentTime, 1);
+                    return ApplyStatus(PlayerMobStatusEffect.StopPotion, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 136:
-                    return ApplyStatus(PlayerMobStatusEffect.StopMotion, runtimeData.DurationMs, currentTime, 1);
+                    return ApplyStatus(PlayerMobStatusEffect.StopMotion, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 137:
-                    return ApplyStatus(PlayerMobStatusEffect.Fear, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 50));
+                    return ApplyStatus(PlayerMobStatusEffect.Fear, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 50), recastLeadTimeMs: recastLeadTimeMs);
                 case 138:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.Burn,
@@ -332,7 +341,8 @@ namespace HaCreator.MapSimulator.Character
                         currentTime,
                         ResolveValue(runtimeData, 1),
                         ResolveTickInterval(runtimeData, 1000),
-                        runtimeData.Count);
+                        runtimeData.Count,
+                        recastLeadTimeMs);
                 case 171:
                     return ApplyPeriodicDamageStatus(
                         PlayerMobStatusEffect.Bomb,
@@ -340,7 +350,8 @@ namespace HaCreator.MapSimulator.Character
                         currentTime,
                         ResolveValue(runtimeData, 1),
                         ResolveBombTickInterval(runtimeData),
-                        runtimeData.Count > 0 ? runtimeData.Count : 1);
+                        runtimeData.Count > 0 ? runtimeData.Count : 1,
+                        recastLeadTimeMs);
                 case 172:
                 case 173:
                     return ApplyPolymorphStatus(runtimeData, currentTime);
@@ -349,7 +360,8 @@ namespace HaCreator.MapSimulator.Character
                         PlayerMobStatusEffect.BattlefieldFlag,
                         runtimeData.DurationMs,
                         currentTime,
-                        ResolveValue(runtimeData, 1));
+                        ResolveValue(runtimeData, 1),
+                        recastLeadTimeMs: recastLeadTimeMs);
                 default:
                     return false;
             }
@@ -783,14 +795,14 @@ namespace HaCreator.MapSimulator.Character
             return Math.Max(1, (int)Math.Ceiling(amount * (experiencePercent / 100d)));
         }
 
-        private bool ApplyStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs = 0)
+        private bool ApplyStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs = 0, int recastLeadTimeMs = 0)
         {
-            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0);
+            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0, recastLeadTimeMs);
         }
 
-        private bool ApplyPeriodicDamageStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs, int count = 0)
+        private bool ApplyPeriodicDamageStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs, int count = 0, int recastLeadTimeMs = 0)
         {
-            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count);
+            return ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, count, recastLeadTimeMs);
         }
 
         private bool ApplyPolymorphStatus(MobSkillRuntimeData runtimeData, int currentTime)
@@ -806,7 +818,7 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
-        private bool ApplyStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs, int remainingCount)
+        private bool ApplyStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs, int remainingCount, int recastLeadTimeMs)
         {
             if (effect == PlayerMobStatusEffect.None || durationMs <= 0)
             {
@@ -815,11 +827,22 @@ namespace HaCreator.MapSimulator.Character
 
             if (_entries.TryGetValue(effect, out PlayerMobStatusEntry existingEntry))
             {
+                int clampedCount = Math.Max(0, remainingCount);
+                bool sameRuntimeState =
+                    existingEntry.Value == value &&
+                    existingEntry.TickIntervalMs == tickIntervalMs &&
+                    existingEntry.AppliedCount == clampedCount;
+                int refreshLeadTimeMs = ResolveStatusRefreshLeadTimeMs(durationMs, recastLeadTimeMs);
+                if (sameRuntimeState
+                    && !ShouldAllowNoOpStatusRefreshRecast(existingEntry.ExpirationTime - currentTime, refreshLeadTimeMs))
+                {
+                    return false;
+                }
+
                 existingEntry.ExpirationTime = currentTime + durationMs;
                 existingEntry.Value = value;
                 existingEntry.TickIntervalMs = tickIntervalMs;
                 existingEntry.NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0;
-                int clampedCount = Math.Max(0, remainingCount);
                 existingEntry.RemainingCount = clampedCount;
                 existingEntry.AppliedCount = clampedCount;
                 return true;

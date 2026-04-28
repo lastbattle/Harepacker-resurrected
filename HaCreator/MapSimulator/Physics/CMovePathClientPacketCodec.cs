@@ -214,6 +214,12 @@ namespace HaCreator.MapSimulator.Physics
                 return Array.Empty<MovePathElement>();
             }
 
+            if (ContainsAllEncodedCarryShapes(path, carryPath))
+            {
+                consumedCarry = true;
+                return path;
+            }
+
             if (path.Count != 1)
             {
                 return path;
@@ -519,6 +525,21 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             return false;
+        }
+
+        private static bool ContainsAllEncodedCarryShapes(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<MovePathElement> carryPath)
+        {
+            for (int i = 0; i < carryPath.Count; i++)
+            {
+                if (!HasEncodedShape(path, carryPath[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

@@ -10,7 +10,8 @@ namespace HaCreator.MapSimulator.UI
         bool OnSale,
         int Count,
         int PeriodDays,
-        int Priority);
+        int Priority,
+        int Gender = 2);
 
     internal static class AdminShopPacketOwnedSellTemplateParity
     {
@@ -159,6 +160,23 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolvePacketOwnedSellTemplateSourceItemQuantity(int metadataCount)
         {
             return Math.Max(1, metadataCount);
+        }
+
+        internal static int NormalizeCommodityGender(int gender)
+        {
+            return gender is 0 or 1 or 2
+                ? gender
+                : 2;
+        }
+
+        internal static string ResolveCommodityGenderLabel(int gender)
+        {
+            return NormalizeCommodityGender(gender) switch
+            {
+                0 => "male",
+                1 => "female",
+                _ => "unisex"
+            };
         }
 
         internal static int FindPacketOwnedCommodityRowIndexForGoToCommoditySerial(

@@ -123,21 +123,25 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal MemoMailboxDraftSnapshot GetDraftSnapshot()
         {
-            bool hasAttachment = _draft.Attachment != null && _draft.Attachment.Kind != MemoAttachmentKind.None;
-            bool isMesoAttachment = _draft.Attachment?.Kind == MemoAttachmentKind.Meso;
+            bool hasItemAttachment = HasItemAttachment(_draft.Attachment);
+            bool hasMesoAttachment = HasMesoAttachment(_draft.Attachment);
+            bool hasAttachment = hasItemAttachment || hasMesoAttachment;
+            bool isMesoAttachment = hasMesoAttachment && !hasItemAttachment;
             return new MemoMailboxDraftSnapshot
             {
                 Recipient = _draft.Recipient,
                 Subject = _draft.Subject,
                 Body = _draft.Body,
                 AttachmentSummary = BuildAttachmentSummary(_draft.Attachment),
-                ItemAttachmentSummary = _draft.Attachment?.Kind == MemoAttachmentKind.Item
+                ItemAttachmentSummary = hasItemAttachment
                     ? BuildAttachmentSummary(_draft.Attachment)
                     : string.Empty,
                 LastActionSummary = _lastActionSummary,
                 HasAttachment = hasAttachment,
+                HasItemAttachment = hasItemAttachment,
+                HasMesoAttachment = hasMesoAttachment,
                 IsMesoAttachment = isMesoAttachment,
-                AttachedMeso = _draft.Attachment?.Kind == MemoAttachmentKind.Meso ? _draft.Attachment.Meso : 0,
+                AttachedMeso = hasMesoAttachment ? _draft.Attachment.Meso : 0,
                 CanSend = CanSendDraft(),
                 CanQuickSend = CanQuickSendDraft(),
                 ActiveMode = _composeMode,
@@ -670,6 +674,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool SetDraftItemAttachment(int itemId, int quantity, out string message)
         {
+            if (_activeTab == ParcelDialogTab.QuickSend)
+            {
+                message = "Quick Send does not allow item packages. Use the parcel-owner meso field instead.";
+                _lastActionSummary = message;
+                return false;
+            }
+
             if (itemId <= 0)
             {
                 message = "Attachment item ID must be positive.";
@@ -685,7 +696,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Kind = MemoAttachmentKind.Item,
                 ItemId = itemId,
-                Quantity = quantity
+                Quantity = quantity,
+                Meso = Math.Max(0, _draft.Attachment?.Meso ?? 0)
             };
             _awaitingItemSelection = false;
 
@@ -822,6 +834,9 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"Your parcel to {recipient} was sent through the simulator delivery owner with {BuildAttachmentSummary(attachment)}.",
                 DateTimeOffset.Now,
                 isRead: false,
+                attachmentItemId: GetAttachmentItemId(attachment),
+                attachmentQuantity: GetAttachmentQuantity(attachment),
+                attachmentMeso: GetAttachmentMeso(attachment),
                 notifySocialText: false);
 
             ResetDraft();
@@ -1014,7 +1029,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (meso <= 0)
             {
-                if (_draft.Attachment?.Kind == MemoAttachmentKind.Meso)
+                if (HasItemAttachment(_draft.Attachment))
+                {
+                    _draft.Attachment = new MemoAttachmentState
+                    {
+                        Kind = MemoAttachmentKind.Item,
+                        ItemId = _draft.Attachment.ItemId,
+                        Quantity = Math.Max(1, _draft.Attachment.Quantity)
+                    };
+                }
+                else if (_draft.Attachment?.Kind == MemoAttachmentKind.Meso)
                 {
                     _draft.Attachment = null;
                 }
@@ -1030,7 +1054,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return !announce && meso == 0;
             }
 
-            _draft.Attachment = new MemoAttachmentState
+            bool preserveSendItem = _activeTab == ParcelDialogTab.Send && HasItemAttachment(_draft.Attachment);
+            _draft.Attachment = preserveSendItem
+                ? new MemoAttachmentState
+                {
+                    Kind = MemoAttachmentKind.Item,
+                    ItemId = _draft.Attachment.ItemId,
+                    Quantity = Math.Max(1, _draft.Attachment.Quantity),
+                    Meso = meso
+                }
+                : new MemoAttachmentState
             {
                 Kind = MemoAttachmentKind.Meso,
                 Meso = meso
@@ -1484,6 +1517,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private MemoDraftAttachmentKind ResolveDraftAttachmentKind()
         {
+            bool hasItem = HasItemAttachment(_draft.Attachment);
+            bool hasMeso = HasMesoAttachment(_draft.Attachment);
+            if (hasItem && hasMeso)
+            {
+                return MemoDraftAttachmentKind.ItemAndMeso;
+            }
+
             return _draft.Attachment?.Kind switch
             {
                 MemoAttachmentKind.Item => MemoDraftAttachmentKind.Item,
@@ -1504,6 +1544,18 @@ namespace HaCreator.MapSimulator.Interaction
             _composeMode = tab == ParcelDialogTab.QuickSend
                 ? ParcelComposeMode.QuickSend
                 : ParcelComposeMode.Send;
+            if (tab == ParcelDialogTab.QuickSend && HasItemAttachment(_draft.Attachment))
+            {
+                int meso = GetAttachmentMeso(_draft.Attachment);
+                _draft.Attachment = meso > 0
+                    ? new MemoAttachmentState
+                    {
+                        Kind = MemoAttachmentKind.Meso,
+                        Meso = meso
+                    }
+                    : null;
+            }
+
             _awaitingItemSelection = false;
             _showTaxInfo = false;
             _lastActionSummary = actionSummary;

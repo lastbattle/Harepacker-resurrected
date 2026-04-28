@@ -154,7 +154,7 @@ namespace HaCreator.MapSimulator
                 landingInfo.FallStartY,
                 landingInfo.LandingY,
                 landingInfo.ImpactVelocityY,
-                !FieldInteractionRestrictionEvaluator.CanTakeFallingDamage(fieldLimit));
+                !FieldInteractionRestrictionEvaluator.CanTakeFallingDamage(fieldLimit, _mapBoard?.MapInfo));
 
             if (!fallDamage.ShouldApply)
             {
