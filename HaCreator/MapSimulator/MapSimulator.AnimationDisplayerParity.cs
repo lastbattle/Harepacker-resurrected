@@ -141,6 +141,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, AnimationDisplayerReservedRemoteUtilityActionOwnerState> _animationDisplayerReservedRemoteUtilityActionOwnerStates = new();
         private readonly Dictionary<int, Dictionary<string, AnimationDisplayerRemoteHookingChainOwnerState>> _animationDisplayerRemoteHookingChainOwnerStates = new();
         private readonly Dictionary<int, Dictionary<string, AnimationDisplayerRemoteSkillUseOwnerState>> _animationDisplayerRemoteSkillUseOwnerStates = new();
+        private readonly Dictionary<int, Dictionary<int, AnimationDisplayerPacketOwnedMonsterBookCardGetOwnerState>> _animationDisplayerPacketOwnedMonsterBookCardGetOwnerStates = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private readonly List<AnimationDisplayerPendingReservedOwnerEffect> _animationDisplayerPendingReservedOwnerEffects = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
@@ -269,6 +270,15 @@ namespace HaCreator.MapSimulator
             public int SkillId { get; init; }
             public string BranchName { get; init; }
             public int VariantIndex { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
+
+        private sealed class AnimationDisplayerPacketOwnedMonsterBookCardGetOwnerState
+        {
+            public int ItemId { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public int AnimationStartTime { get; init; }
@@ -771,6 +781,7 @@ namespace HaCreator.MapSimulator
             _animationDisplayerReservedRemoteUtilityActionOwnerStates.Clear();
             _animationDisplayerRemoteHookingChainOwnerStates.Clear();
             _animationDisplayerRemoteSkillUseOwnerStates.Clear();
+            _animationDisplayerPacketOwnedMonsterBookCardGetOwnerStates.Clear();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             _animationDisplayerPendingReservedOwnerEffects.Clear();
             _animationDisplayerRemoteGrenadeActors.Clear();
@@ -878,6 +889,7 @@ namespace HaCreator.MapSimulator
         private bool TryRegisterAnimationDisplayerMonsterBookCardPickup(
             int ownerCharacterId,
             Func<Vector2> getPosition,
+            int itemId,
             out string message)
         {
             message = null;
@@ -897,6 +909,15 @@ namespace HaCreator.MapSimulator
             }
 
             Vector2 fallbackPosition = getPosition();
+            string ownerActionName = ResolveAnimationDisplayerLocalPacketOwnedActionName(ownerCharacterId);
+            bool ownerFacingRight = ResolveAnimationDisplayerLocalPacketOwnedFacingRight(ownerCharacterId);
+            int initialElapsedMs = ResolveAnimationDisplayerPacketOwnedMonsterBookCardGetInitialElapsed(
+                ownerCharacterId,
+                itemId,
+                ownerActionName,
+                ownerFacingRight,
+                currTickCount,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
             _animationEffects.AddOneTimeAttached(
                 frames,
                 getPosition,
@@ -904,7 +925,8 @@ namespace HaCreator.MapSimulator
                 fallbackPosition.X,
                 fallbackPosition.Y,
                 fallbackFlip: false,
-                currTickCount);
+                currTickCount,
+                initialElapsedMs: initialElapsedMs);
             message = $"Registered Monster Book card-get animation-displayer layer from {AnimationDisplayerMonsterBookCardGetEffectUol}.";
             return true;
         }
@@ -1640,23 +1662,47 @@ namespace HaCreator.MapSimulator
             var entries = new List<AnimationDisplayerReservedEffectMetadata>();
             if (rootProperty is WzSubProperty rootSubProperty)
             {
-                var children = rootSubProperty.WzProperties;
-                if (children != null)
+                if (TryGetAnimationDisplayerReservedNumericRow(rootSubProperty, 0, out WzImageProperty firstNumericRow))
                 {
-                    for (int index = 0; index < children.Count; index++)
+                    int rowIndex = 0;
+                    WzImageProperty numericRow = firstNumericRow;
+                    while (numericRow != null)
                     {
-                        WzImageProperty child = WzInfoTools.GetRealProperty(children[index]);
-                        if (child == null)
+                        if (!TryBuildAnimationDisplayerReservedEffectMetadata(
+                                numericRow,
+                                out AnimationDisplayerReservedEffectMetadata childMetadata))
                         {
-                            continue;
-                        }
-
-                        if (!TryBuildAnimationDisplayerReservedEffectMetadata(child, out AnimationDisplayerReservedEffectMetadata childMetadata))
-                        {
-                            continue;
+                            break;
                         }
 
                         entries.Add(childMetadata);
+                        rowIndex++;
+                        if (!TryGetAnimationDisplayerReservedNumericRow(rootSubProperty, rowIndex, out numericRow))
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    var children = rootSubProperty.WzProperties;
+                    if (children != null)
+                    {
+                        for (int index = 0; index < children.Count; index++)
+                        {
+                            WzImageProperty child = WzInfoTools.GetRealProperty(children[index]);
+                            if (child == null)
+                            {
+                                continue;
+                            }
+
+                            if (!TryBuildAnimationDisplayerReservedEffectMetadata(child, out AnimationDisplayerReservedEffectMetadata childMetadata))
+                            {
+                                continue;
+                            }
+
+                            entries.Add(childMetadata);
+                        }
                     }
                 }
             }
@@ -1669,6 +1715,21 @@ namespace HaCreator.MapSimulator
             return TryBuildAnimationDisplayerReservedEffectMetadata(rootProperty, out AnimationDisplayerReservedEffectMetadata rootMetadata)
                 ? new[] { rootMetadata }
                 : Array.Empty<AnimationDisplayerReservedEffectMetadata>();
+        }
+
+        private static bool TryGetAnimationDisplayerReservedNumericRow(
+            WzSubProperty rootProperty,
+            int rowIndex,
+            out WzImageProperty row)
+        {
+            row = null;
+            if (rootProperty == null || rowIndex < 0)
+            {
+                return false;
+            }
+
+            row = WzInfoTools.GetRealProperty(rootProperty[rowIndex.ToString(CultureInfo.InvariantCulture)]);
+            return row != null;
         }
 
         private static bool TryBuildAnimationDisplayerReservedEffectMetadata(
@@ -3028,6 +3089,10 @@ namespace HaCreator.MapSimulator
             Point spawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission, followDefinition);
             Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
             bool usesEquipmentEmission = followDefinition?.UsesRelativeEmission ?? false;
+            bool spawnUsesEmissionBox = ResolveAnimationDisplayerFollowSpawnUsesEmissionBox(
+                relativeEmission,
+                followDefinition != null,
+                usesEquipmentEmission);
             followId = _animationEffects.AddFollow(
                 frames,
                 getFollowTargetPosition,
@@ -3055,7 +3120,7 @@ namespace HaCreator.MapSimulator
                     SpawnOnlyOnTargetMove = spawnOnlyOnOwnerMove,
                     IsTargetMoveAction = spawnOnlyOnOwnerMove ? getOwnerMoveAction : null,
                     SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
-                    SpawnUsesEmissionBox = !relativeEmission,
+                    SpawnUsesEmissionBox = spawnUsesEmissionBox,
                     SpawnAppliesEmissionBias = followDefinition == null
                         ? relativeEmission
                         : usesEquipmentEmission,
@@ -4676,6 +4741,27 @@ namespace HaCreator.MapSimulator
             return CharacterPart.GetActionString(CharacterAction.Stand1);
         }
 
+        private string ResolveAnimationDisplayerLocalPacketOwnedActionName(int characterId)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (characterId > 0
+                && player?.Build?.Id == characterId
+                && !string.IsNullOrWhiteSpace(player.CurrentActionName))
+            {
+                return player.CurrentActionName;
+            }
+
+            return CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        private bool ResolveAnimationDisplayerLocalPacketOwnedFacingRight(int characterId)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            return characterId > 0 && player?.Build?.Id == characterId
+                ? player.FacingRight
+                : true;
+        }
+
         private int ResolveAnimationDisplayerRemoteGenericUserStateInitialElapsed(
             int characterId,
             string effectUol,
@@ -5075,6 +5161,56 @@ namespace HaCreator.MapSimulator
             return initialElapsedMs;
         }
 
+        private int ResolveAnimationDisplayerPacketOwnedMonsterBookCardGetInitialElapsed(
+            int characterId,
+            int itemId,
+            string ownerActionName,
+            bool ownerFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (characterId <= 0 || itemId <= 0 || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            if (!_animationDisplayerPacketOwnedMonsterBookCardGetOwnerStates.TryGetValue(
+                    characterId,
+                    out Dictionary<int, AnimationDisplayerPacketOwnedMonsterBookCardGetOwnerState> ownerStates)
+                || ownerStates == null)
+            {
+                ownerStates = new Dictionary<int, AnimationDisplayerPacketOwnedMonsterBookCardGetOwnerState>();
+                _animationDisplayerPacketOwnedMonsterBookCardGetOwnerStates[characterId] = ownerStates;
+            }
+
+            int initialElapsedMs = 0;
+            if (ownerStates.TryGetValue(itemId, out AnimationDisplayerPacketOwnedMonsterBookCardGetOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerPacketOwnedMonsterBookCardGetRestoreElapsedCore(
+                    existingState.ItemId,
+                    existingState.OwnerActionName,
+                    existingState.OwnerFacingRight,
+                    existingState.AnimationStartTime,
+                    itemId,
+                    ownerActionName,
+                    ownerFacingRight,
+                    currentTime,
+                    durationMs);
+            }
+
+            ownerStates[itemId] =
+                new AnimationDisplayerPacketOwnedMonsterBookCardGetOwnerState
+                {
+                    ItemId = itemId,
+                    OwnerActionName = ownerActionName,
+                    OwnerFacingRight = ownerFacingRight,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                    DurationMs = durationMs
+                };
+            return initialElapsedMs;
+        }
+
         private int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsed(
             int characterId,
             byte effectType,
@@ -5168,6 +5304,13 @@ namespace HaCreator.MapSimulator
             return skillId <= 0 || string.IsNullOrWhiteSpace(branchName) || variantIndex < 0
                 ? string.Empty
                 : $"{skillId}:{branchName.Trim()}:{variantIndex}";
+        }
+
+        private static string BuildAnimationDisplayerPacketOwnedMonsterBookCardGetOwnerSlotKey(int itemId)
+        {
+            return itemId <= 0
+                ? string.Empty
+                : itemId.ToString(CultureInfo.InvariantCulture);
         }
 
         internal static int ResolveAnimationDisplayerRemoteHookingChainDurationMsForTesting(int attackWindowMs)
@@ -5399,6 +5542,30 @@ namespace HaCreator.MapSimulator
                 || previousSkillId != currentSkillId
                 || previousVariantIndex != currentVariantIndex
                 || !string.Equals(previousBranchName, currentBranchName, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
+                || previousFacingRight != currentFacingRight)
+            {
+                return 0;
+            }
+
+            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
+        private static int ResolveAnimationDisplayerPacketOwnedMonsterBookCardGetRestoreElapsedCore(
+            int previousItemId,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            int currentItemId,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousItemId != currentItemId
                 || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
                 || previousFacingRight != currentFacingRight)
             {
@@ -5646,6 +5813,34 @@ namespace HaCreator.MapSimulator
             int variantIndex)
         {
             return BuildAnimationDisplayerRemoteSkillUseOwnerSlotKey(skillId, branchName, variantIndex);
+        }
+
+        internal static int ResolveAnimationDisplayerPacketOwnedMonsterBookCardGetRestoreElapsedForTesting(
+            int previousItemId,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            int currentItemId,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveAnimationDisplayerPacketOwnedMonsterBookCardGetRestoreElapsedCore(
+                previousItemId,
+                previousActionName,
+                previousFacingRight,
+                previousAnimationStartTime,
+                currentItemId,
+                currentActionName,
+                currentFacingRight,
+                currentTime,
+                durationMs);
+        }
+
+        internal static string BuildAnimationDisplayerPacketOwnedMonsterBookCardGetOwnerSlotKeyForTesting(int itemId)
+        {
+            return BuildAnimationDisplayerPacketOwnedMonsterBookCardGetOwnerSlotKey(itemId);
         }
 
         private bool TryGetAnimationDisplayerFrames(string cacheKey, string effectUol, out List<IDXObject> frames)
@@ -8241,6 +8436,15 @@ namespace HaCreator.MapSimulator
             bool? authoredRelativePosition)
         {
             return commandRelativeEmission && (authoredRelativePosition ?? true);
+        }
+
+        internal static bool ResolveAnimationDisplayerFollowSpawnUsesEmissionBox(
+            bool commandRelativeEmission,
+            bool hasFollowDefinition,
+            bool usesEquipmentEmission)
+        {
+            return !commandRelativeEmission
+                || (hasFollowDefinition && !usesEquipmentEmission);
         }
 
         private static Point BuildAnimationDisplayerFollowSpawnOffsetMax(bool relativeEmission, AnimationDisplayerFollowEquipmentDefinition followDefinition)

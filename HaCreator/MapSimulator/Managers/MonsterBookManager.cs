@@ -48,9 +48,10 @@ namespace HaCreator.MapSimulator.Managers
             public string CardItemName { get; init; } = string.Empty;
             public int MobId { get; init; }
             public bool Only { get; init; }
+            public bool MonsterBook { get; init; }
             public bool ConsumeOnPickup { get; init; }
             public int DropProbabilityPercent { get; init; }
-            public bool IsClientConsumedOnPickupCard => Only && ConsumeOnPickup;
+            public bool IsClientConsumedOnPickupCard => MonsterBook && Only && ConsumeOnPickup;
             public string Name { get; init; } = string.Empty;
             public int Level { get; init; }
             public int MaxHp { get; init; }
@@ -685,6 +686,7 @@ namespace HaCreator.MapSimulator.Managers
                     WzSubProperty infoProperty = cardProperty["info"] as WzSubProperty;
                     WzSubProperty specProperty = cardProperty["spec"] as WzSubProperty;
                     bool only = ReadInt(infoProperty?["only"]) != 0;
+                    bool monsterBook = ReadInt(infoProperty?["monsterBook"]) != 0;
                     bool consumeOnPickup = ReadInt(specProperty?["consumeOnPickup"]) != 0;
                     int dropProbabilityPercent = Math.Clamp(ReadInt(specProperty?["prob"]), 0, 100);
                     int mobId = ReadInt(infoProperty?["mob"]);
@@ -712,6 +714,7 @@ namespace HaCreator.MapSimulator.Managers
                         CardItemName = cardItemName,
                         MobId = mobId,
                         Only = only,
+                        MonsterBook = monsterBook,
                         ConsumeOnPickup = consumeOnPickup,
                         DropProbabilityPercent = dropProbabilityPercent,
                         Name = string.IsNullOrWhiteSpace(mobName) ? $"Mob #{mobId}" : mobName,

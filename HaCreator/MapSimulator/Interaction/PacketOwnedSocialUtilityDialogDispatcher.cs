@@ -810,6 +810,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool IsOpen { get; private set; }
         internal int LastSubtype { get; private set; } = -1;
+        internal int LastGetRequestSnapshotNativeItemType { get; private set; } = -1;
+        internal int LastGetRequestSnapshotNativeRow { get; private set; } = -1;
         internal string StatusMessage { get; private set; } = "CTrunkDlg::OnPacket idle.";
 
         internal bool TryApplyPacket(byte[] payload, out string message)
@@ -822,6 +824,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _requestInFlight = false;
+            LastGetRequestSnapshotNativeItemType = -1;
+            LastGetRequestSnapshotNativeRow = -1;
             LastSubtype = payload[0];
             switch (LastSubtype)
             {
@@ -939,6 +943,8 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildGetItemRequestPayload(itemType, trunkRow),
                 $"Mirrored CTrunkDlg::SendGetItemRequest (opcode 67, mode 4, itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
+            LastGetRequestSnapshotNativeItemType = itemType;
+            LastGetRequestSnapshotNativeRow = trunkRow;
             bool preConfirmShown = ShouldShowTrunkPreConfirmPrompt(slotData);
             string preConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetPreConfirm());
             string costConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetCostConfirm(0));
@@ -948,7 +954,8 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage =
                 $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}). " +
                 $"{preConfirmSummary} " +
-                $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendGetNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendGetCostConfirmStringPoolId)}: {costConfirm}.";
+                $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendGetNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendGetCostConfirmStringPoolId)}: {costConfirm}. " +
+                $"Native post-send branch set m_nSnapshotTI={itemType.ToString(CultureInfo.InvariantCulture)} and called SetPutItems(m_nSnapshotTI, m_aSnapShot) before waiting for the packet refresh.";
             message = StatusMessage;
             return true;
         }

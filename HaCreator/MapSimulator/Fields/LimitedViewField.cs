@@ -81,6 +81,8 @@ namespace HaCreator.MapSimulator.Fields
             QueryViewrangeCanvasDimensions,
             DrawDarkLayerFallback,
             CopyLocalViewrange,
+            EvaluateShareViewRemoteLoop,
+            SkipRemoteViewrangeBecauseShareViewDisabled,
             ResolveRemoteUserPosition,
             CopyRemoteViewrange,
             AppendPreviousMaskHistory
@@ -1023,6 +1025,45 @@ namespace HaCreator.MapSimulator.Fields
 
         internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(
             IReadOnlyList<Vector2> previousMaskTopLefts,
+            Vector2? localMaskTopLeft,
+            IReadOnlyList<Vector2> remoteMaskTopLefts,
+            bool shareView,
+            int viewrangeWidth,
+            int viewrangeHeight)
+        {
+            List<Vector2> currentMaskTopLefts = new();
+            if (localMaskTopLeft.HasValue)
+            {
+                currentMaskTopLefts.Add(localMaskTopLeft.Value);
+            }
+
+            if (shareView && remoteMaskTopLefts != null)
+            {
+                for (int i = 0; i < remoteMaskTopLefts.Count; i++)
+                {
+                    currentMaskTopLefts.Add(remoteMaskTopLefts[i]);
+                }
+            }
+
+            List<ClientOwnedDrawViewrangeOperation> operations = new(BuildClientOwnedDrawViewrangeOperationPlan(
+                previousMaskTopLefts,
+                currentMaskTopLefts,
+                viewrangeWidth,
+                viewrangeHeight));
+
+            if (!shareView && remoteMaskTopLefts != null && remoteMaskTopLefts.Count > 0)
+            {
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled,
+                    Vector2.Zero,
+                    -1));
+            }
+
+            return operations;
+        }
+
+        internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(
+            IReadOnlyList<Vector2> previousMaskTopLefts,
             IReadOnlyList<Vector2> currentMaskTopLefts,
             int viewrangeWidth,
             int viewrangeHeight)
@@ -1101,6 +1142,14 @@ namespace HaCreator.MapSimulator.Fields
                     ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory,
                     NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[i]),
                     i));
+
+                if (i == 0 && currentMaskTopLefts.Count > 1)
+                {
+                    operations.Add(new ClientOwnedDrawViewrangeOperation(
+                        ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop,
+                        Vector2.Zero,
+                        -1));
+                }
             }
 
             return operations;
@@ -1286,6 +1335,8 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.ResolveLocalUserPosition:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveGraphicsCenter:
                     case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions:
+                    case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
+                    case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition:
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch:

@@ -174,15 +174,17 @@ namespace HaCreator.MapSimulator.UI
             string noticeText,
             string outboundSummary,
             string ownerState = null,
-            AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily)
+            AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily,
+            int rejectedNpcTemplateId = 0,
+            int rejectedDecodedItemCount = 0)
         {
             IsActive = false;
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
             OwnerVisibilityState = visibilityState;
-            DecodedItemCount = 0;
-            NpcTemplateId = 0;
+            DecodedItemCount = Math.Max(0, rejectedDecodedItemCount);
+            NpcTemplateId = Math.Max(0, rejectedNpcTemplateId);
             TrailingByteCount = 0;
             ResultTrailingByteCount = 0;
             TrailingPayloadSignature = "none";

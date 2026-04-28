@@ -6,10 +6,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int CreateWorldMapGuestFailureStringPoolId = 0x11A;
 
         private const string CreateWorldMapFailureFallback = "The world map is unavailable for this field.";
+        private const string CreateWorldMapGuestFailureFallback = "The World Map is unavailable to Guest ID players.";
 
         public static string GetCreateWorldMapFailureNotice(bool appendFallbackSuffix = true)
         {
-            return GetResolvedOrFallback(CreateWorldMapFailureStringPoolId, CreateWorldMapFailureFallback, appendFallbackSuffix);
+            return GetCreateWorldMapFailureNotice(isGuestContext: false, appendFallbackSuffix);
+        }
+
+        public static string GetCreateWorldMapFailureNotice(bool isGuestContext, bool appendFallbackSuffix = true)
+        {
+            return isGuestContext
+                ? GetResolvedOrFallback(CreateWorldMapGuestFailureStringPoolId, CreateWorldMapGuestFailureFallback, appendFallbackSuffix)
+                : GetResolvedOrFallback(CreateWorldMapFailureStringPoolId, CreateWorldMapFailureFallback, appendFallbackSuffix);
         }
 
         public static bool TryResolve(int stringPoolId, out string text)

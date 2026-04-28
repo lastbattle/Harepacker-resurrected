@@ -927,6 +927,22 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (mappedKind == MassacrePacketInboxMessageKind.Result)
+            {
+                if (payload == null || payload.Length < sizeof(byte) + sizeof(int))
+                {
+                    return false;
+                }
+
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Packet,
+                    source,
+                    rawText,
+                    packetType: PacketTypeResult,
+                    payload: payload);
+                return true;
+            }
+
             message = new MassacrePacketInboxMessage(
                 mappedKind,
                 source,

@@ -113,6 +113,22 @@ namespace HaCreator.MapSimulator.Physics
             return new[] { path[path.Count - 1] };
         }
 
+        internal static IReadOnlyList<MovePathElement> ShapePortalOwnedMovePathForEncode(
+            IReadOnlyList<MovePathElement> path,
+            bool flushAdmitted,
+            IReadOnlyList<MovePathElement> postFlushCarry,
+            out bool consumedPostFlushCarry)
+        {
+            IReadOnlyList<MovePathElement> cadenceShapedPath =
+                ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
+            cadenceShapedPath = ApplyPortalOwnedPostFlushCarryHint(
+                cadenceShapedPath,
+                !flushAdmitted ? postFlushCarry : Array.Empty<MovePathElement>(),
+                out consumedPostFlushCarry);
+
+            return NormalizeForPortalOwnedClientMakeMovePath(cadenceShapedPath);
+        }
+
         internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedPostFlushCarryHint(
             IReadOnlyList<MovePathElement> path,
             IReadOnlyList<MovePathElement> carryPath,

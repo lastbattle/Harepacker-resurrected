@@ -1831,12 +1831,19 @@ namespace HaCreator.MapSimulator
 
         internal static int ComposePacketOwnedFuncKeyOwnerHotkeySlot(int scanCode)
         {
-            return SkillManager.TOTAL_SLOT_COUNT + Math.Max(0, scanCode);
+            return IsPacketOwnedFuncKeyScanCodeInClientRange(scanCode)
+                ? SkillManager.TOTAL_SLOT_COUNT + scanCode
+                : -1;
         }
 
         internal static int ResolvePacketOwnedFuncKeyOwnerHotkeySlot(int ownerInputToken)
         {
             return ComposePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken & 0xFFFF);
+        }
+
+        internal static bool IsPacketOwnedFuncKeyScanCodeInClientRange(int scanCode)
+        {
+            return scanCode >= 0 && scanCode < PacketOwnedFuncKeyEntryCount;
         }
 
         private bool TryResolvePacketOwnedBindableHotkeySlot(

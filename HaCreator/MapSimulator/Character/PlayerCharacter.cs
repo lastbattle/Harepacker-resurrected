@@ -4437,7 +4437,8 @@ namespace HaCreator.MapSimulator.Character
                 State,
                 FacingRight,
                 initialRawActionCode,
-                HasActiveMorphTransform);
+                HasActiveMorphTransform,
+                HasActiveGhostActionTransform(CurrentActionName));
 
             _activeShadowPartner = new ShadowPartnerState
             {
@@ -9016,7 +9017,8 @@ namespace HaCreator.MapSimulator.Character
                 State,
                 facingRight,
                 rawActionCode,
-                HasActiveMorphTransform);
+                HasActiveMorphTransform,
+                HasActiveGhostActionTransform(_activeShadowPartner.ObservedPlayerActionName));
         }
 
         private void RefreshShadowPartnerClientOffsetTarget(int currentTime, bool facingRight)
@@ -9066,7 +9068,8 @@ namespace HaCreator.MapSimulator.Character
             PlayerState state,
             bool facingRight,
             int? rawActionCode = null,
-            bool hasMorphTransform = false)
+            bool hasMorphTransform = false,
+            bool hasGhostTransform = false)
         {
             return ShadowPartnerClientActionResolver.ResolveClientTargetOffset(
                 observedPlayerActionName,
@@ -9075,7 +9078,14 @@ namespace HaCreator.MapSimulator.Character
                 ShadowPartnerClientSideOffsetPx,
                 ShadowPartnerClientBackActionOffsetYPx,
                 rawActionCode,
-                hasMorphTransform);
+                hasMorphTransform,
+                hasGhostTransform);
+        }
+
+        private bool HasActiveGhostActionTransform(string observedPlayerActionName)
+        {
+            return ShadowPartnerClientActionResolver.IsClientGhostActionName(observedPlayerActionName)
+                   || ShadowPartnerClientActionResolver.IsClientGhostActionName(CurrentActionName);
         }
 
         private static bool IsShadowPartnerBackAction(string observedPlayerActionName, PlayerState state)
@@ -9090,14 +9100,13 @@ namespace HaCreator.MapSimulator.Character
                     _activeMirrorImage?.SkillId == SkillData.MirrorImageSkillId,
                     Build?.ActivePortableChair != null,
                     HasClientOwnedVehicleTamingMobStateActive(),
-                    HasActiveMorphTransform,
                     State))
             {
                 return false;
             }
 
             if (TryGetCurrentClientRawActionCode(out int rawActionCode)
-                && ShouldSuppressMirrorImageForClientAction(rawActionCode, hasMorphTransform: false))
+                && ShouldSuppressMirrorImageForClientAction(rawActionCode, HasActiveMorphTransform))
             {
                 return false;
             }
@@ -9110,14 +9119,12 @@ namespace HaCreator.MapSimulator.Character
             bool isMirrorImageSkill,
             bool hasPortableChair,
             bool hasClientOwnedVehicleTamingMobState,
-            bool hasMorphTransform,
             PlayerState state)
         {
             return !hasActiveMirrorImage
                    || !isMirrorImageSkill
                    || hasPortableChair
                    || hasClientOwnedVehicleTamingMobState
-                   || hasMorphTransform
                    || state is PlayerState.Ladder or PlayerState.Rope or PlayerState.Hit or PlayerState.Dead;
         }
 

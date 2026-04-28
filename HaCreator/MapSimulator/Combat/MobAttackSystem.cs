@@ -110,6 +110,7 @@ namespace HaCreator.MapSimulator.Combat
             public MobTargetInfo LockedTarget { get; set; }
             public List<Point> MultiTargetForBall { get; set; }
             public List<int> RandTimeForAreaAttack { get; set; }
+            public int AreaTargetMask { get; set; }
             public bool? SourceFacesRight { get; set; }
             public int ExpireTime { get; set; }
         }
@@ -208,6 +209,7 @@ namespace HaCreator.MapSimulator.Combat
             IReadOnlyList<Point> multiTargetForBall = null,
             IReadOnlyList<int> randTimeForAreaAttack = null,
             bool? sourceFacesRight = null,
+            int areaTargetMask = 0,
             int lifetimeMs = 5000)
         {
             if (mobPoolId <= 0)
@@ -219,7 +221,8 @@ namespace HaCreator.MapSimulator.Combat
             bool hasMultiTargetOverrides = multiTargetForBall != null && multiTargetForBall.Count > 0;
             bool hasAreaDelayOverrides = randTimeForAreaAttack != null && randTimeForAreaAttack.Count > 0;
             bool hasFacingOverride = sourceFacesRight.HasValue;
-            if (!hasLockedTarget && !hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasFacingOverride)
+            bool hasAreaTargetMask = areaTargetMask > 0;
+            if (!hasLockedTarget && !hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasFacingOverride && !hasAreaTargetMask)
             {
                 _pendingAttackPacketOverrides.Remove(mobPoolId);
                 return;
@@ -231,6 +234,7 @@ namespace HaCreator.MapSimulator.Combat
                 LockedTarget = hasLockedTarget ? lockedTarget.Clone() : null,
                 MultiTargetForBall = hasMultiTargetOverrides ? new List<Point>(multiTargetForBall) : null,
                 RandTimeForAreaAttack = hasAreaDelayOverrides ? new List<int>(randTimeForAreaAttack) : null,
+                AreaTargetMask = hasAreaTargetMask ? areaTargetMask : 0,
                 SourceFacesRight = sourceFacesRight,
                 ExpireTime = lifetimeMs > 0 ? currentTime + lifetimeMs : 0
             };
@@ -532,7 +536,12 @@ namespace HaCreator.MapSimulator.Combat
             int currentTime,
             PendingAttackPacketOverrides packetOverrides = null)
         {
-            List<GroundTargetGroup> targetGroups = BuildGroundTargetGroups(mobItem, attack, targetX, targetY);
+            List<GroundTargetGroup> targetGroups = BuildGroundTargetGroups(
+                mobItem,
+                attack,
+                targetX,
+                targetY,
+                packetOverrides?.AreaTargetMask ?? 0);
             if (targetGroups.Count == 0)
             {
                 return;
@@ -1152,7 +1161,12 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private List<GroundTargetGroup> BuildGroundTargetGroups(MobItem mobItem, MobAttackEntry attack, float? playerX, float? playerY)
+        private List<GroundTargetGroup> BuildGroundTargetGroups(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            float? playerX,
+            float? playerY,
+            int packetAreaTargetMask = 0)
         {
             var targetGroups = new List<GroundTargetGroup>();
             int areaCount = Math.Max(1, attack.AreaCount);
@@ -1166,7 +1180,9 @@ namespace HaCreator.MapSimulator.Combat
                     return targetGroups;
                 }
 
-                List<Vector2> selectedSlots = SelectGroundTargetSlots(slotPositions, attackCount, attack.StartOffset, _random);
+                List<Vector2> selectedSlots = ShouldUsePacketAreaTargetMask(attack, packetAreaTargetMask)
+                    ? SelectGroundTargetSlotsByPacketMask(slotPositions, attackCount, packetAreaTargetMask)
+                    : SelectGroundTargetSlots(slotPositions, attackCount, attack.StartOffset, _random);
                 for (int i = 0; i < selectedSlots.Count; i++)
                 {
                     var group = new GroundTargetGroup();
@@ -1270,6 +1286,37 @@ namespace HaCreator.MapSimulator.Combat
 
             selected.Sort((left, right) => left.X.CompareTo(right.X));
             return selected;
+        }
+
+        internal static List<Vector2> SelectGroundTargetSlotsByPacketMask(
+            IReadOnlyList<Vector2> slotPositions,
+            int attackCount,
+            int areaTargetMask)
+        {
+            var selected = new List<Vector2>();
+            if (slotPositions == null || slotPositions.Count == 0 || attackCount <= 0 || areaTargetMask <= 0)
+            {
+                return selected;
+            }
+
+            int clampedCount = Math.Min(attackCount, slotPositions.Count);
+            uint mask = (uint)areaTargetMask;
+            for (int slotIndex = 0; slotIndex < slotPositions.Count && selected.Count < clampedCount && slotIndex < 31; slotIndex++)
+            {
+                if ((mask & (1u << slotIndex)) == 0)
+                {
+                    continue;
+                }
+
+                selected.Add(slotPositions[slotIndex]);
+            }
+
+            return selected;
+        }
+
+        internal static bool ShouldUsePacketAreaTargetMask(MobAttackEntry attack, int areaTargetMask)
+        {
+            return areaTargetMask > 0 && (attack?.AttackType == 3 || attack?.AttackType == 4);
         }
 
         private List<Vector2> BuildEffectNodePositions(

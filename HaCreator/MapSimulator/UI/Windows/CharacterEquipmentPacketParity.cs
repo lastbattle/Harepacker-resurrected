@@ -175,6 +175,7 @@ namespace HaCreator.MapSimulator.UI
                                     fromPosition,
                                     reader,
                                     isLastOperation: i == operationCount - 1,
+                                    remainingOperationCount: operationCount - i - 1,
                                     reservedTrailerBytes: requiresSecondaryStatChangedPointTrailer ? sizeof(byte) : 0,
                                     out int addedItemId,
                                     out bool matchedByHeader,
@@ -1443,6 +1444,7 @@ namespace HaCreator.MapSimulator.UI
             short targetPosition,
             BinaryReader reader,
             bool isLastOperation,
+            int remainingOperationCount,
             int reservedTrailerBytes,
             out int itemId,
             out bool matchedByHeader,
@@ -1526,6 +1528,7 @@ namespace HaCreator.MapSimulator.UI
                     && TryConsumeHeaderMatchedModeZeroFallbackBody(
                         reader,
                         isLastOperation,
+                        remainingOperationCount,
                         reservedTrailerBytes,
                         out rejectReason))
                 {
@@ -1553,16 +1556,11 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryConsumeHeaderMatchedModeZeroFallbackBody(
             BinaryReader reader,
             bool isLastOperation,
+            int remainingOperationCount,
             int reservedTrailerBytes,
             out string rejectReason)
         {
             rejectReason = null;
-            if (!isLastOperation)
-            {
-                rejectReason = "Inventory-operation add entry body could not be decoded before later operations.";
-                return false;
-            }
-
             Stream stream = reader?.BaseStream;
             if (stream is not { CanSeek: true })
             {
@@ -1577,7 +1575,198 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            stream.Position = bodyEnd;
+            if (isLastOperation || remainingOperationCount <= 0)
+            {
+                stream.Position = bodyEnd;
+                return true;
+            }
+
+            long bodyStart = stream.Position;
+            if (TryPositionAtClientInventoryOperationSuffix(
+                    reader,
+                    bodyStart,
+                    bodyEnd,
+                    remainingOperationCount,
+                    out long suffixStart))
+            {
+                stream.Position = suffixStart;
+                return true;
+            }
+
+            stream.Position = bodyStart;
+            rejectReason = "Inventory-operation add entry body could not be decoded before later operations.";
+            return false;
+        }
+
+        private static bool TryPositionAtClientInventoryOperationSuffix(
+            BinaryReader reader,
+            long searchStart,
+            long searchEnd,
+            int remainingOperationCount,
+            out long suffixStart)
+        {
+            suffixStart = 0;
+            Stream stream = reader?.BaseStream;
+            if (stream is not { CanSeek: true } || remainingOperationCount <= 0)
+            {
+                return false;
+            }
+
+            for (long candidate = searchStart; candidate <= searchEnd; candidate++)
+            {
+                stream.Position = candidate;
+                if (TryConsumeClientInventoryOperationSuffix(reader, remainingOperationCount, searchEnd))
+                {
+                    suffixStart = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryConsumeClientInventoryOperationSuffix(
+            BinaryReader reader,
+            int remainingOperationCount,
+            long expectedEnd)
+        {
+            Stream stream = reader?.BaseStream;
+            if (stream is not { CanSeek: true })
+            {
+                return false;
+            }
+
+            long start = stream.Position;
+            try
+            {
+                for (int i = 0; i < remainingOperationCount; i++)
+                {
+                    if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
+                    {
+                        stream.Position = start;
+                        return false;
+                    }
+
+                    byte operationMode = reader.ReadByte();
+                    _ = reader.ReadByte();
+                    _ = reader.ReadInt16();
+                    switch (operationMode)
+                    {
+                        case 0:
+                            if (!TryConsumeClientInventoryOperationAddSuffixBody(reader))
+                            {
+                                stream.Position = start;
+                                return false;
+                            }
+
+                            break;
+                        case 1:
+                            if (!TrySkipClientInventoryOperationBytes(reader, sizeof(short)))
+                            {
+                                stream.Position = start;
+                                return false;
+                            }
+
+                            break;
+                        case 2:
+                            if (!TrySkipClientInventoryOperationBytes(reader, sizeof(short)))
+                            {
+                                stream.Position = start;
+                                return false;
+                            }
+
+                            break;
+                        case 3:
+                            break;
+                        case 4:
+                            if (!TrySkipClientInventoryOperationBytes(reader, sizeof(int)))
+                            {
+                                stream.Position = start;
+                                return false;
+                            }
+
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+                bool matchedEnd = stream.Position == expectedEnd;
+                stream.Position = start;
+                return matchedEnd;
+            }
+            catch (EndOfStreamException)
+            {
+                stream.Position = start;
+                return false;
+            }
+            catch (IOException)
+            {
+                stream.Position = start;
+                return false;
+            }
+        }
+
+        private static bool TryConsumeClientInventoryOperationAddSuffixBody(BinaryReader reader)
+        {
+            Stream stream = reader?.BaseStream;
+            if (stream is not { CanSeek: true })
+            {
+                return false;
+            }
+
+            long start = stream.Position;
+            if (!TryEnsureRemaining(stream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out _))
+            {
+                stream.Position = start;
+                return false;
+            }
+
+            byte slotType = reader.ReadByte();
+            if (slotType is not ItemSlotTypeEquip and not ItemSlotTypeBundle and not ItemSlotTypePet)
+            {
+                stream.Position = start;
+                return false;
+            }
+
+            int itemId = reader.ReadInt32();
+            bool hasCashSerial = reader.ReadByte() != 0;
+            if (hasCashSerial && !TrySkipClientInventoryOperationBytes(reader, sizeof(long)))
+            {
+                stream.Position = start;
+                return false;
+            }
+
+            if (!TrySkipClientInventoryOperationBytes(reader, sizeof(long)))
+            {
+                stream.Position = start;
+                return false;
+            }
+
+            bool consumed = slotType switch
+            {
+                ItemSlotTypeEquip => TryReadClientEquipAddEntryBody(reader, hasCashSerial, out _),
+                ItemSlotTypeBundle => TryReadClientBundleAddEntryBody(reader, itemId, out _),
+                ItemSlotTypePet => TryReadClientPetAddEntryBody(reader, out _),
+                _ => false
+            };
+            if (!consumed)
+            {
+                stream.Position = start;
+            }
+
+            return consumed;
+        }
+
+        private static bool TrySkipClientInventoryOperationBytes(BinaryReader reader, int byteCount)
+        {
+            Stream stream = reader?.BaseStream;
+            if (!TryEnsureRemaining(stream, byteCount, out _))
+            {
+                return false;
+            }
+
+            stream.Position += byteCount;
             return true;
         }
 

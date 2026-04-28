@@ -42,6 +42,25 @@ namespace HaCreator.MapSimulator.Entities
             return mobData?.DamagedByMob == true || mobData?.Escort > 0;
         }
 
+        public static int NormalizeRemoveAfterSecondsToMilliseconds(int removeAfterSeconds)
+        {
+            return removeAfterSeconds > 0
+                ? checked(removeAfterSeconds * 1000)
+                : -1;
+        }
+
+        public static int NormalizeSelfDestructionRemoveAfterMilliseconds(int removeAfter)
+        {
+            if (removeAfter <= 0)
+            {
+                return -1;
+            }
+
+            return removeAfter >= 1000
+                ? removeAfter
+                : checked(removeAfter * 1000);
+        }
+
         public static int ResolveEncounterTargetPriority(int? sourceTeam, int? targetTeam)
         {
             int? normalizedSourceTeam = NormalizeEncounterTeam(sourceTeam);

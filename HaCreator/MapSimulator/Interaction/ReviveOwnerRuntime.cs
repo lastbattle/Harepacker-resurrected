@@ -236,6 +236,14 @@ namespace HaCreator.MapSimulator.Interaction
             return request.ClientPremiumFlag && GetConsumableCashItemId(request.Variant) > 0;
         }
 
+        public static bool ShouldClearTemporaryStatsOnClientRevive(ReviveOwnerTransferRequest request)
+        {
+            // CUIRevive::Revive always calls CWvsContext::OnRevive after
+            // SendTransferFieldRequest; OnRevive clears SecondaryStat and
+            // CTemporaryStatView before the local field state is usable again.
+            return true;
+        }
+
         public static ReviveOwnerVariant ResolveClientVariant(
             bool hasSoulStone,
             bool hasUpgradeTombChoice,

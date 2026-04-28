@@ -348,6 +348,7 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<QuestMonsterBookCardRequirement> EndMonsterBookCardRequirements { get; init; } =
                 Array.Empty<QuestMonsterBookCardRequirement>();
             public string EndTimeKeepFieldSet { get; init; } = string.Empty;
+            public int? EndPvpGradeRequirement { get; init; }
             public int? EndInfoNumber { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> EndInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> EndInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
@@ -1064,6 +1065,11 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Time-keep field-set demand is still unmet.");
             }
 
+            if (HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement))
+            {
+                issues.Add("Completion PvP-grade demand owner is unavailable.");
+            }
+
             if (build == null &&
                 HasUnresolvedCompletionBuildContextDemand(
                     definition.MinLevel,
@@ -1347,6 +1353,11 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return !string.IsNullOrWhiteSpace(fieldSet)
                    && string.IsNullOrWhiteSpace(questExKeptValue);
+        }
+
+        internal static bool HasUnresolvedCompletionPvpGradeDemand(int? requiredPvpGrade)
+        {
+            return requiredPvpGrade.HasValue && requiredPvpGrade.Value >= 0;
         }
 
         internal static bool HasUnresolvedCompletionBuildContextDemand(
@@ -4995,10 +5006,11 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetStartLevelRequirement(definition, build))
                 || (state == QuestStateType.Started &&
                     build != null &&
-                    (HasUnmetCompletionLevelFloor(
-                         ResolveCompletionLevelFloor(definition.MinLevel, definition.EndMinLevel),
-                         build.Level) ||
-                     HasUnmetCompletionLevelCap(definition.MaxLevel, build.Level)))
+                     (HasUnmetCompletionLevelFloor(
+                          ResolveCompletionLevelFloor(definition.MinLevel, definition.EndMinLevel),
+                          build.Level) ||
+                      HasUnmetCompletionLevelDemand(definition.EndLevelRequirement, build.Level) ||
+                      HasUnmetCompletionLevelCap(definition.MaxLevel, build.Level)))
                 || HasUnmetActionLevelRequirement(actionBundle, build);
             bool hasUnmetFameRequirement = (state == QuestStateType.Not_Started &&
                 HasUnmetStartFameRequirement(definition, build))
@@ -5091,6 +5103,8 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetCompletionTimeKeepFieldSetDemand(
                     definition.EndTimeKeepFieldSet,
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId));
+            bool hasUnresolvedPvpGradeRequirement = state == QuestStateType.Started &&
+                HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement);
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -5117,6 +5131,7 @@ namespace HaCreator.MapSimulator.Interaction
                 hasUnmetExcludedBuffRequirement,
                 hasUnmetMonsterBookRequirement,
                 hasUnmetTimeKeepFieldSetRequirement,
+                hasUnresolvedPvpGradeRequirement,
                 GetMissingItemRequirementIds(itemRequirements),
                 GetMissingMobRequirementIds(definition),
                 GetUnmetQuestRequirementIds(questRequirements),
@@ -5149,6 +5164,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetExcludedBuffRequirement,
             bool hasUnmetMonsterBookRequirement,
             bool hasUnmetTimeKeepFieldSetRequirement,
+            bool hasUnresolvedPvpGradeRequirement,
             IReadOnlyList<int> missingItemStopBranchIds,
             IReadOnlyList<int> missingMobStopBranchIds,
             IReadOnlyList<int> unmetQuestStopBranchIds,
@@ -5429,6 +5445,17 @@ namespace HaCreator.MapSimulator.Interaction
                     "kept"))
             {
                 return timeKeepPages;
+            }
+
+            if (hasUnresolvedPvpGradeRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> pvpGradePages,
+                    "pvp",
+                    "pvpGrade",
+                    "grade"))
+            {
+                return pvpGradePages;
             }
 
             if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
@@ -6569,6 +6596,11 @@ namespace HaCreator.MapSimulator.Interaction
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId)))
             {
                 issues.Add("Time-keep field-set demand is still unmet.");
+            }
+
+            if (HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement))
+            {
+                issues.Add("Completion PvP-grade demand owner is unavailable.");
             }
 
             if (build == null &&
@@ -8998,6 +9030,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndMonsterBookMaxCardTypes = ParseInt(endCheck?["mbmax"]),
                 EndMonsterBookCardRequirements = ParseMonsterBookCardRequirements(endCheck?["mbcard"]),
                 EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
+                EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndInfoRequirements = ParseQuestRecordTextRequirements(endCheck?["info"]),
                 EndInfoExRequirements = ParseQuestRecordValueRequirements(endCheck?["infoex"]),

@@ -186,13 +186,16 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap =
                 BuildObjectMemberAliasMap(scriptName, localAliasMap);
             localAliasMap = BuildLocalAliasMap(scriptName, objectMemberAliasMap);
+            IReadOnlyDictionary<string, IReadOnlyList<string>> localAliasCandidateMap =
+                BuildLocalAliasCandidateMap(scriptName, localAliasMap, objectMemberAliasMap);
             CollectTimerCallbackPublications(
                 scriptName,
                 inheritedDelayMs: 0,
                 publications,
                 seen,
                 localAliasMap,
-                objectMemberAliasMap);
+                objectMemberAliasMap,
+                localAliasCandidateMap);
             return publications.Count == 0
                 ? Array.Empty<ScriptAliasPublication>()
                 : publications;
@@ -335,6 +338,58 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return localAliasMap;
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<string>> BuildLocalAliasCandidateMap(
+            string scriptName,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var localAliasCandidateMap = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match match in LocalAliasAssignmentPattern.Matches(scriptName))
+            {
+                string leftName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value);
+                string rightValue = NormalizeFunctionAliasArgument(match.Groups["rhs"]?.Value);
+                if (!IsPotentialFunctionAliasName(leftName))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<string> resolvedAliases = ResolveAssignmentAliasCandidates(
+                    rightValue,
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (resolvedAliases.Count > 0)
+                {
+                    localAliasCandidateMap[leftName] = resolvedAliases;
+                }
+            }
+
+            foreach (Match match in FunctionDeclarationPattern.Matches(scriptName))
+            {
+                string functionName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value).TrimEnd(';');
+                string functionBody = match.Groups["body"]?.Value;
+                if (!IsPotentialFunctionAliasName(functionName) || string.IsNullOrWhiteSpace(functionBody))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<string> resolvedAliases = ResolveAssignmentAliasCandidates(
+                    "function(){" + functionBody + "}",
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (resolvedAliases.Count > 0)
+                {
+                    localAliasCandidateMap[functionName] = resolvedAliases;
+                }
+            }
+
+            return localAliasCandidateMap;
         }
 
         private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildObjectMemberAliasMap(
@@ -512,6 +567,65 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return objectMemberAliasMap;
+        }
+
+        private static IReadOnlyList<string> ResolveAssignmentAliasCandidates(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+        {
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                return Array.Empty<string>();
+            }
+
+            var aliases = new List<string>();
+            var seenAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void AddAlias(string alias)
+            {
+                string normalizedAlias = NormalizeFunctionAliasArgument(alias).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(normalizedAlias) && seenAliases.Add(normalizedAlias))
+                {
+                    aliases.Add(normalizedAlias);
+                }
+            }
+
+            if (TryTrimCallbackInvokerTargetExpression(normalizedValue, out string callbackTargetExpression)
+                && !string.Equals(callbackTargetExpression, normalizedValue, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string callbackTargetAlias in ResolveAssignmentAliasCandidates(
+                             callbackTargetExpression,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    AddAlias(callbackTargetAlias);
+                }
+            }
+
+            string singleAlias = ResolveAssignmentAliasCandidate(
+                normalizedValue,
+                localAliasMap,
+                objectMemberAliasMap);
+            AddAlias(singleAlias);
+
+            foreach (string memberAlias in EnumerateMemberAliasCandidates(normalizedValue))
+            {
+                AddAlias(memberAlias);
+            }
+
+            foreach (string functionAliasName in EnumerateFunctionAliasNames(normalizedValue))
+            {
+                AddAlias(functionAliasName);
+            }
+
+            IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(normalizedValue);
+            for (int i = 0; i < parsedScriptNames.Count; i++)
+            {
+                AddAlias(parsedScriptNames[i]);
+            }
+
+            return aliases.Count == 0 ? Array.Empty<string>() : aliases;
         }
 
         private static string ResolveAssignmentAliasCandidate(
@@ -1957,7 +2071,8 @@ namespace HaCreator.MapSimulator.Fields
             ICollection<ScriptAliasPublication> publications,
             ISet<(string ScriptName, int DelayMs)> seen,
             IReadOnlyDictionary<string, string> localAliasMap,
-            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyList<string>> localAliasCandidateMap)
         {
             if (string.IsNullOrWhiteSpace(value) || publications == null || seen == null)
             {
@@ -1988,6 +2103,25 @@ namespace HaCreator.MapSimulator.Fields
                         continue;
                     }
 
+                    if (TryResolveNoArgumentFunctionCallAliasCandidates(
+                            argument,
+                            localAliasCandidateMap,
+                            out IReadOnlyList<string> noArgumentCallAliases))
+                    {
+                        for (int aliasIndex = 0; aliasIndex < noArgumentCallAliases.Count; aliasIndex++)
+                        {
+                            AddPublication(
+                                noArgumentCallAliases[aliasIndex],
+                                dueDelayMs,
+                                publications,
+                                seen,
+                                localAliasMap,
+                                objectMemberAliasMap);
+                        }
+
+                        continue;
+                    }
+
                     foreach (string canonicalArgument in EnumerateCanonicalAliasCandidates(
                                  argument,
                                  localAliasMap,
@@ -2011,10 +2145,55 @@ namespace HaCreator.MapSimulator.Fields
                             publications,
                             seen,
                             localAliasMap,
-                            objectMemberAliasMap);
+                            objectMemberAliasMap,
+                            localAliasCandidateMap);
                     }
                 }
             }
+        }
+
+        private static bool TryResolveNoArgumentFunctionCallAliasCandidates(
+            string value,
+            IReadOnlyDictionary<string, IReadOnlyList<string>> localAliasCandidateMap,
+            out IReadOnlyList<string> aliasNames)
+        {
+            aliasNames = Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(value)
+                || localAliasCandidateMap == null
+                || localAliasCandidateMap.Count == 0)
+            {
+                return false;
+            }
+
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue) || !normalizedValue.EndsWith(")", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int openIndex = normalizedValue.IndexOf('(');
+            if (openIndex <= 0 || FindMatchingCloseParenthesis(normalizedValue, openIndex) != normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string argumentText = normalizedValue[(openIndex + 1)..^1];
+            if (!string.IsNullOrWhiteSpace(argumentText))
+            {
+                return false;
+            }
+
+            string functionName = ReadFunctionName(normalizedValue, openIndex);
+            if (string.IsNullOrWhiteSpace(functionName)
+                || !localAliasCandidateMap.TryGetValue(functionName, out IReadOnlyList<string> mappedAliases)
+                || mappedAliases == null
+                || mappedAliases.Count == 0)
+            {
+                return false;
+            }
+
+            aliasNames = mappedAliases;
+            return true;
         }
 
         private static bool TryResolveCallbackCallDelayMs(

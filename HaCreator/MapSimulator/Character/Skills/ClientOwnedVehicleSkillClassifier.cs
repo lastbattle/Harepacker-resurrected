@@ -298,6 +298,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] ClientConfirmedMechanicVehicleRenderableOneTimeActionNames =
             ResolveClientRawActionNames(
                 241, // gatlingshot2
+                235, // tank_rbooster_after
                 248, // drillrush
                 250, // mbooster
                 255, // earthslug

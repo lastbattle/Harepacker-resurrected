@@ -597,6 +597,13 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (string.IsNullOrWhiteSpace(pendingResolutionDetail) && _pendingRequest != null)
+            {
+                GuildSkillPendingRequest pendingRequest = _pendingRequest;
+                _pendingRequest = null;
+                pendingResolutionDetail = $"Pending packet-owned {pendingRequest.ActionLabel.ToLowerInvariant()} for {pendingRequest.SkillName} was cleared by the authoritative OnGuildResult({rawSubtype}) guild-skill snapshot without a visible skill-record change.";
+            }
+
             SaveCurrentGuildState(_activeGuildStateKey);
             EnsureRecommendation();
 

@@ -1480,12 +1480,6 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (WzImageProperty frameProperty in EnumerateMobActionFrameProperties(source))
             {
-                if (frameProperty is WzSubProperty)
-                {
-                    AppendMobActionFrameMetadata(frameProperty, metadata);
-                    continue;
-                }
-
                 if (TryResolveCanvasProperty(frameProperty, out WzCanvasProperty resolvedCanvas))
                 {
                     metadata.Add(BuildMobFrameMetadata(resolvedCanvas));
@@ -1779,12 +1773,6 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (WzImageProperty frameProperty in EnumerateMobActionFrameProperties(source))
             {
-                if (frameProperty is WzSubProperty)
-                {
-                    AppendMobActionFrameCanvases(frameProperty, frameCanvases);
-                    continue;
-                }
-
                 if (TryResolveCanvasProperty(frameProperty, out WzCanvasProperty resolvedCanvas))
                 {
                     frameCanvases.Add(resolvedCanvas);

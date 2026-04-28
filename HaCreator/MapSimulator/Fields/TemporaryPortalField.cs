@@ -561,14 +561,14 @@ namespace HaCreator.MapSimulator.Fields
                 currentMapId,
                 destination,
                 townScopedExistingState);
-            bool resolvedFromWzFallback = false;
-            bool resolvedFromSourceMapReturnFallback = false;
+            RemoteTownPortalDestinationResolutionKind resolutionKind = resolvedDestination.HasValue
+                ? RemoteTownPortalDestinationResolutionKind.OwnerOrCachedObservation
+                : RemoteTownPortalDestinationResolutionKind.None;
             if (!resolvedDestination.HasValue
                 && TryResolveRemoteTownPortalCurrentMapReturnDestination(currentMapId, out RemoteTownPortalResolvedDestination sourceMapFallbackDestination))
             {
                 resolvedDestination = sourceMapFallbackDestination;
-                resolvedFromWzFallback = true;
-                resolvedFromSourceMapReturnFallback = true;
+                resolutionKind = RemoteTownPortalDestinationResolutionKind.SourceMapReturnFallback;
                 RememberRemoteTownPortalObservedFieldMetadata(
                     packet.OwnerCharacterId,
                     currentMapId,
@@ -581,7 +581,7 @@ namespace HaCreator.MapSimulator.Fields
                 && TryResolveRemoteTownPortalWzFallbackDestination(currentMapId, preferredSourceMapId, out RemoteTownPortalResolvedDestination fallbackDestination))
             {
                 resolvedDestination = fallbackDestination;
-                resolvedFromWzFallback = true;
+                resolutionKind = RemoteTownPortalDestinationResolutionKind.WzPreferredOrUniqueFallback;
                 RememberRemoteTownPortalObservedFieldMetadata(
                     packet.OwnerCharacterId,
                     currentMapId,
@@ -593,7 +593,7 @@ namespace HaCreator.MapSimulator.Fields
             if (!destination.HasValue
                 && resolvedDestination.HasValue
                 && ShouldRememberRemoteTownPortalPacketCastMetadataFromResolvedDestination(
-                    resolvedFromSourceMapReturnFallback,
+                    resolutionKind,
                     currentMapId,
                     resolvedDestination.Value))
             {
@@ -609,7 +609,9 @@ namespace HaCreator.MapSimulator.Fields
                     resolvedDestination.Value.MapId);
             }
 
-            if (!destination.HasValue && resolvedDestination.HasValue && !resolvedFromWzFallback)
+            if (!destination.HasValue
+                && resolvedDestination.HasValue
+                && resolutionKind == RemoteTownPortalDestinationResolutionKind.OwnerOrCachedObservation)
             {
                 RemoteTownPortalObservationSource observationSource = ResolveRemoteTownPortalResolvedDestinationObservationSource(
                     packet.OwnerCharacterId,
@@ -1907,12 +1909,12 @@ namespace HaCreator.MapSimulator.Fields
         }
 
         private static bool ShouldRememberRemoteTownPortalPacketCastMetadataFromResolvedDestination(
-            bool resolvedFromSourceMapReturnFallback,
+            RemoteTownPortalDestinationResolutionKind resolutionKind,
             int currentMapId,
             RemoteTownPortalResolvedDestination resolvedDestination)
         {
             return ShouldRememberRemoteTownPortalPacketCastMetadataFromResolvedDestination(
-                resolvedFromSourceMapReturnFallback,
+                resolutionKind == RemoteTownPortalDestinationResolutionKind.SourceMapReturnFallback,
                 currentMapId,
                 resolvedDestination.MapId,
                 HasRemoteTownPortalPointInMap(currentMapId),
@@ -3240,6 +3242,14 @@ namespace HaCreator.MapSimulator.Fields
             WzReturnMapFallback
         }
 
+        internal enum RemoteTownPortalDestinationResolutionKind
+        {
+            None,
+            OwnerOrCachedObservation,
+            SourceMapReturnFallback,
+            WzPreferredOrUniqueFallback
+        }
+
         internal enum RemoteOpenGateVisualPhase
         {
             Opening,
@@ -4135,6 +4145,23 @@ namespace HaCreator.MapSimulator.Fields
         {
             return ShouldRememberRemoteTownPortalPacketCastMetadataFromResolvedDestination(
                 resolvedFromSourceMapReturnFallback,
+                currentMapId,
+                resolvedDestinationMapId,
+                currentMapHasTownPortalPoint,
+                hasCurrentMapReturnTownMap,
+                currentMapReturnTownMapId);
+        }
+
+        internal static bool ShouldRememberRemoteTownPortalPacketCastMetadataForResolutionKindForTesting(
+            RemoteTownPortalDestinationResolutionKind resolutionKind,
+            int currentMapId,
+            int resolvedDestinationMapId,
+            bool currentMapHasTownPortalPoint,
+            bool hasCurrentMapReturnTownMap,
+            int currentMapReturnTownMapId)
+        {
+            return ShouldRememberRemoteTownPortalPacketCastMetadataFromResolvedDestination(
+                resolutionKind == RemoteTownPortalDestinationResolutionKind.SourceMapReturnFallback,
                 currentMapId,
                 resolvedDestinationMapId,
                 currentMapHasTownPortalPoint,

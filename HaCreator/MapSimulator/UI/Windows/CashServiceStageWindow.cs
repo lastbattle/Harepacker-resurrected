@@ -1631,21 +1631,21 @@ namespace HaCreator.MapSimulator.UI
             int itemId = reader.ReadInt32();
             int quantity = Math.Max(1, (int)reader.ReadInt16());
             int prepaidCost = Math.Max(0, reader.ReadInt32());
-            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeTrailingCashItemInfoSnapshots(reader, maxCount: 4);
             // Client evidence (CCashShop::OnCashItemResGiftDone @ 0x497050):
             // payload shape is recipient name + item id + count + prepaid cost, without GW_CashItemInfo rows.
             _cashGiftLastSummary =
                 $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} for {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
-            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
-                embeddedSnapshots,
+            string trailingSummary = AppendTrailingCashItemInfoFromReader(
+                reader,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 4),
                 paneLabel: "Packet gifts",
                 browseModeLabel: "Gift",
                 titlePrefix: "Gift packet body",
                 seller: "CCashShop",
                 stateLabel: "Gift body");
-            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
             {
-                _cashGiftLastSummary += $" {embeddedSummary}";
+                _cashGiftLastSummary += $" {trailingSummary}";
             }
 
             AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
@@ -1921,21 +1921,21 @@ namespace HaCreator.MapSimulator.UI
             int itemCount = Math.Max(0, (int)reader.ReadUInt16());
             int bonusCount = Math.Max(0, (int)reader.ReadUInt16());
             int prepaidCost = Math.Max(0, reader.ReadInt32());
-            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeTrailingCashItemInfoSnapshots(reader, maxCount: 8);
             // Client evidence (CCashShop::OnCashItemResGiftPackageDone @ 0x496dc0):
             // payload shape is recipient name + package id + count + bonus + prepaid cost, without GW_CashItemInfo rows.
             _cashGiftLastSummary =
                 $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s), {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count, and {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
-            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
-                embeddedSnapshots,
+            string trailingSummary = AppendTrailingCashItemInfoFromReader(
+                reader,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 8),
                 paneLabel: "Packet package",
                 browseModeLabel: "Package",
                 titlePrefix: "Gift package body",
                 seller: "CCashShop",
                 stateLabel: "Gift package body");
-            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
             {
-                _cashGiftLastSummary += $" {embeddedSummary}";
+                _cashGiftLastSummary += $" {trailingSummary}";
             }
 
             AppendCashPacketCatalogEntry("Packet package", "Package", new PacketCatalogEntry
@@ -2436,6 +2436,19 @@ namespace HaCreator.MapSimulator.UI
             string itemTitle = ResolveCashStageItemTitle(itemId, snapshot.CommodityId, "Item");
             _cashGiftLastSummary =
                 $"{relationshipLabel} gift sent to {(string.IsNullOrWhiteSpace(recipient) ? "the selected recipient" : recipient)} with {itemTitle} x{quantity.ToString(CultureInfo.InvariantCulture)}; locker row {DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true)}.";
+            string trailingSummary = AppendTrailingCashItemInfoFromReader(
+                reader,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 2),
+                paneLabel: "Packet gifts",
+                browseModeLabel: "Gift",
+                titlePrefix: $"{relationshipLabel} gift packet body",
+                seller: "CCashShop",
+                stateLabel: $"{relationshipLabel} body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _cashGiftLastSummary += $" {trailingSummary}";
+            }
+
             _cashGiftPacketEntries.Insert(0, new PacketCatalogEntry
             {
                 Title = $"{relationshipLabel} gift",

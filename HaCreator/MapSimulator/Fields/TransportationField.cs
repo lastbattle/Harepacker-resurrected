@@ -75,6 +75,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _voyageBalrogDepartureStartTime;
         private bool _voyageBalrogAutoTriggered;
         private string _lastVoyageBalrogEventOwner = "none";
+        private string _lastTransportPacketOwner = "none";
+        private string _lastTransportPacketRoute = "none";
         #endregion
 
         #region Visual Properties
@@ -129,6 +131,8 @@ namespace HaCreator.MapSimulator.Fields
         public int VoyageBalrogAutoDurationMs => _voyageBalrogAutoDurationMs;
         public bool VoyageBalrogAutoTriggered => _voyageBalrogAutoTriggered;
         public string LastVoyageBalrogEventOwner => _lastVoyageBalrogEventOwner;
+        public string LastTransportPacketOwner => _lastTransportPacketOwner;
+        public string LastTransportPacketRoute => _lastTransportPacketRoute;
         public bool HasRouteConfiguration => !string.IsNullOrWhiteSpace(_shipPath) || _x != 0 || _y != 0 || _x0 != 0 || _tMove != 0;
         public int ShipKind => _shipKind;
         public int DockX => _x;
@@ -201,6 +205,8 @@ namespace HaCreator.MapSimulator.Fields
             _voyageBalrogDepartureStartTime = 0;
             _voyageBalrogAutoTriggered = false;
             _lastVoyageBalrogEventOwner = "none";
+            _lastTransportPacketOwner = "none";
+            _lastTransportPacketRoute = "none";
 
             System.Diagnostics.Debug.WriteLine($"[TransportField] Initialized: kind={shipKind}, x={x}, y={y}, x0={x0}, f={f}, tMove={tMove}s");
         }
@@ -582,8 +588,14 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyStartShipMovePacket(int value, out string message)
         {
+            return TryApplyStartShipMovePacket(value, null, out message);
+        }
+
+        public bool TryApplyStartShipMovePacket(int value, string owner, out string message)
+        {
             if (value == 2)
             {
+                RecordTransportPacketOwner(owner, $"OnStartShipMoveField({value})");
                 if (_shipKind != 0)
                 {
                     message = "Handled OnStartShipMoveField value 2 -> LeaveShipMove no-op; CShip gates movement to regular ships.";
@@ -601,8 +613,14 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyEndShipMovePacket(int value, out string message)
         {
+            return TryApplyEndShipMovePacket(value, null, out message);
+        }
+
+        public bool TryApplyEndShipMovePacket(int value, string owner, out string message)
+        {
             if (value == 6)
             {
+                RecordTransportPacketOwner(owner, $"OnEndShipMoveField({value})");
                 if (_shipKind != 0)
                 {
                     message = "Handled OnEndShipMoveField value 6 -> EnterShipMove no-op; CShip gates movement to regular ships.";
@@ -620,9 +638,15 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyMoveFieldPacket(int value, out string message)
         {
+            return TryApplyMoveFieldPacket(value, null, out message);
+        }
+
+        public bool TryApplyMoveFieldPacket(int value, string owner, out string message)
+        {
             switch (value)
             {
                 case 4:
+                    RecordTransportPacketOwner(owner, $"OnMoveField({value})");
                     if (_shipKind != 1)
                     {
                         message = "Handled OnMoveField value 4 -> AppearShip no-op; CShip gates appearance to Balrog-type ships.";
@@ -633,6 +657,7 @@ namespace HaCreator.MapSimulator.Fields
                     message = "Applied OnMoveField value 4 -> AppearShip.";
                     return true;
                 case 5:
+                    RecordTransportPacketOwner(owner, $"OnMoveField({value})");
                     if (_shipKind != 1)
                     {
                         message = "Handled OnMoveField value 5 -> DisappearShip no-op; CShip gates disappearance to Balrog-type ships.";
@@ -656,11 +681,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyContiState(int state, int stateValue, out string message)
         {
+            return TryApplyContiState(state, stateValue, null, out message);
+        }
+
+        public bool TryApplyContiState(int state, int stateValue, string owner, out string message)
+        {
             switch (state)
             {
                 case 0:
                 case 1:
                 case 6:
+                    RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
                     if (_shipKind == 0)
                     {
                         EnterShipMove();
@@ -673,6 +704,7 @@ namespace HaCreator.MapSimulator.Fields
 
                 case 2:
                 case 5:
+                    RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
                     if (_shipKind == 0)
                     {
                         LeaveShipMove();
@@ -685,6 +717,7 @@ namespace HaCreator.MapSimulator.Fields
 
                 case 3:
                 case 4:
+                    RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
                     if (_shipKind == 1 && stateValue == 1)
                     {
                         AppearShip();
@@ -1167,6 +1200,8 @@ namespace HaCreator.MapSimulator.Fields
             _voyageBalrogDepartureStartTime = 0;
             _voyageBalrogAutoTriggered = false;
             _lastVoyageBalrogEventOwner = "none";
+            _lastTransportPacketOwner = "none";
+            _lastTransportPacketRoute = "none";
 
             _bgScrollX = 0f;
             _announcements.Clear();
@@ -1196,6 +1231,8 @@ namespace HaCreator.MapSimulator.Fields
             _voyageBalrogDepartureStartTime = 0;
             _voyageBalrogAutoTriggered = false;
             _lastVoyageBalrogEventOwner = "none";
+            _lastTransportPacketOwner = "none";
+            _lastTransportPacketRoute = "none";
             _bgScrollX = 0;
             _announcements.Clear();
             _currentAnnouncement = null;
@@ -1215,7 +1252,13 @@ namespace HaCreator.MapSimulator.Fields
             string announcement = _currentAnnouncement?.Message ?? "<none>";
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, voyageBalrogSide={DescribeBalrogApproachSide()}, voyageBalrogOwner={_lastVoyageBalrogEventOwner}, voyageBalrogAuto={DescribeVoyageBalrogAutoEventStatus()}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
+                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, transportPacketOwner={_lastTransportPacketOwner}, transportPacketRoute={_lastTransportPacketRoute}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, voyageBalrogSide={DescribeBalrogApproachSide()}, voyageBalrogOwner={_lastVoyageBalrogEventOwner}, voyageBalrogAuto={DescribeVoyageBalrogAutoEventStatus()}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
+        }
+
+        private void RecordTransportPacketOwner(string owner, string route)
+        {
+            _lastTransportPacketOwner = string.IsNullOrWhiteSpace(owner) ? "transport-packet" : owner.Trim();
+            _lastTransportPacketRoute = string.IsNullOrWhiteSpace(route) ? "unknown" : route;
         }
 
         private int ResolveShipFacingDirection()

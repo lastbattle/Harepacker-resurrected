@@ -47,6 +47,9 @@ namespace HaCreator.MapSimulator
         private Texture2D _initialQuizOwnerBackgroundTexture;
         private Texture2D _initialQuizOwnerBackgroundTexture2;
         private Texture2D _initialQuizOwnerBackgroundTexture3;
+        private int _initialQuizOwnerBackgroundZ;
+        private int _initialQuizOwnerBackground2Z;
+        private int _initialQuizOwnerBackground3Z;
         private InitialQuizButtonFrame _initialQuizOwnerOkButtonNormalFrame;
         private InitialQuizButtonFrame _initialQuizOwnerOkButtonHoverFrame;
         private InitialQuizButtonFrame _initialQuizOwnerOkButtonPressedFrame;
@@ -96,11 +99,19 @@ namespace HaCreator.MapSimulator
 
         private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
         private sealed record InitialQuizButtonFrame(Texture2D Texture, Point Origin);
+        internal readonly record struct InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind Layer, int Z);
         internal enum InitialQuizOwnerFocusTarget
         {
             Owner,
             Input,
             OkButton
+        }
+
+        internal enum InitialQuizOwnerLayerKind
+        {
+            Backgrnd,
+            Backgrnd2,
+            Backgrnd3
         }
 
         internal enum InitialQuizOwnerButtonVisualState
@@ -607,9 +618,16 @@ namespace HaCreator.MapSimulator
                 new Color(0, 0, 0, InitialQuizOwnerFrameFadeAlpha),
                 Color.Transparent);
 
-            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture, ownerBounds, _initialQuizOwnerBackgroundOrigin);
-            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture2, ownerBounds, _initialQuizOwnerBackground2Origin);
-            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds, Point.Zero);
+            foreach (InitialQuizOwnerLayerOrder layer in ResolveInitialQuizOwnerLayerDrawOrder(
+                         hasBackgrnd: _initialQuizOwnerBackgroundTexture != null,
+                         backgrndZ: _initialQuizOwnerBackgroundZ,
+                         hasBackgrnd2: _initialQuizOwnerBackgroundTexture2 != null,
+                         backgrnd2Z: _initialQuizOwnerBackground2Z,
+                         hasBackgrnd3: _initialQuizOwnerBackgroundTexture3 != null,
+                         backgrnd3Z: _initialQuizOwnerBackground3Z))
+            {
+                DrawInitialQuizOwnerLayer(layer.Layer, ownerBounds, overlayBounds);
+            }
 
             int displayedRemainingSeconds = _initialQuizOwnerHasDisplayedRemainingSeconds
                 ? _initialQuizOwnerDisplayedRemainingSeconds
@@ -1278,6 +1296,22 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(texture, drawBounds, Color.White);
         }
 
+        private void DrawInitialQuizOwnerLayer(InitialQuizOwnerLayerKind layer, Rectangle ownerBounds, Rectangle overlayBounds)
+        {
+            switch (layer)
+            {
+                case InitialQuizOwnerLayerKind.Backgrnd:
+                    DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture, ownerBounds, _initialQuizOwnerBackgroundOrigin);
+                    break;
+                case InitialQuizOwnerLayerKind.Backgrnd2:
+                    DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture2, ownerBounds, _initialQuizOwnerBackground2Origin);
+                    break;
+                case InitialQuizOwnerLayerKind.Backgrnd3:
+                    DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds, Point.Zero);
+                    break;
+            }
+        }
+
         private void DrawInitialQuizOwnerTimerDigits(Rectangle ownerBounds, int remainingSeconds)
         {
             string timerText = ComposeInitialQuizOwnerTimerText(remainingSeconds);
@@ -1450,6 +1484,9 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerBackgroundTexture3 = LoadUiCanvasTexture(preferredBackground3 ?? fallbackBackground3);
             _initialQuizOwnerBackgroundOrigin = ResolveCanvasOrigin((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
             _initialQuizOwnerBackground2Origin = ResolveCanvasOrigin((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
+            _initialQuizOwnerBackgroundZ = ResolveCanvasZ((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty, -5);
+            _initialQuizOwnerBackground2Z = ResolveCanvasZ((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty, -4);
+            _initialQuizOwnerBackground3Z = ResolveCanvasZ(preferredBackground3 ?? fallbackBackground3, -3);
             _initialQuizOwnerOkButtonNormalFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "normal");
             _initialQuizOwnerOkButtonHoverFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "mouseOver");
             _initialQuizOwnerOkButtonPressedFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "pressed");
@@ -1776,6 +1813,37 @@ namespace HaCreator.MapSimulator
             return keyFocused
                 ? InitialQuizOwnerButtonVisualState.KeyFocused
                 : InitialQuizOwnerButtonVisualState.Normal;
+        }
+
+        internal static IReadOnlyList<InitialQuizOwnerLayerOrder> ResolveInitialQuizOwnerLayerDrawOrder(
+            bool hasBackgrnd,
+            int backgrndZ,
+            bool hasBackgrnd2,
+            int backgrnd2Z,
+            bool hasBackgrnd3,
+            int backgrnd3Z)
+        {
+            List<(InitialQuizOwnerLayerOrder Order, int SourceIndex)> layers = new(3);
+            if (hasBackgrnd)
+            {
+                layers.Add((new InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind.Backgrnd, backgrndZ), 0));
+            }
+
+            if (hasBackgrnd2)
+            {
+                layers.Add((new InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind.Backgrnd2, backgrnd2Z), 1));
+            }
+
+            if (hasBackgrnd3)
+            {
+                layers.Add((new InitialQuizOwnerLayerOrder(InitialQuizOwnerLayerKind.Backgrnd3, backgrnd3Z), 2));
+            }
+
+            return layers
+                .OrderBy(static layer => layer.Order.Z)
+                .ThenBy(static layer => layer.SourceIndex)
+                .Select(static layer => layer.Order)
+                .ToArray();
         }
 
         internal static bool ShouldSubmitInitialQuizOwnerOkButtonRelease(bool pressedOkButton, bool hoveringOkButton, bool enabled)
@@ -2186,6 +2254,11 @@ namespace HaCreator.MapSimulator
 
             System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
             return new Point((int)Math.Round(origin.X), (int)Math.Round(origin.Y));
+        }
+
+        private static int ResolveCanvasZ(WzCanvasProperty canvas, int fallback)
+        {
+            return (canvas?["z"] as WzIntProperty)?.Value ?? fallback;
         }
 
         private static char? TryMapInitialQuizOwnerChar(Keys key, bool shiftPressed)

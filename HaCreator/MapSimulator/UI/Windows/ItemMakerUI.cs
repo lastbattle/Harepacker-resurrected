@@ -1258,6 +1258,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (recipe.Mode == ItemMakerRecipeMode.Disassemble)
             {
+                if (!CanRequestPacketOwnedDisassembly(_inventory, recipe.RequiredEmptyEtcSlots, recipe.MesoCost, out string requestFailureReason))
+                {
+                    _craftingRecipeIndex = -1;
+                    RefreshStatusMessage(requestFailureReason);
+                    return;
+                }
+
                 StagePendingPacketOwnedRequest(recipe);
                 _craftingRecipeIndex = -1;
                 RebuildVisiblePages();
@@ -3682,6 +3689,49 @@ namespace HaCreator.MapSimulator.UI
             // only to recipe classes 1, 3, and 4. Class 2 is packet-owned disassembly and only
             // checks that an equipment target is mounted before the gauge starts.
             return clientRecipeClass is 1 or 3 or 4;
+        }
+
+        internal static bool CanRequestPacketOwnedDisassembly(
+            IInventoryRuntime inventory,
+            int requiredEtcSlots,
+            int mesoCost,
+            out string failureReason)
+        {
+            if (inventory == null)
+            {
+                failureReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            int requiredSlots = Math.Max(1, requiredEtcSlots);
+            int occupiedCount = 0;
+            IReadOnlyList<InventorySlotData> slots = inventory.GetSlots(InventoryType.ETC);
+            if (slots != null)
+            {
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    if (slots[i] != null)
+                    {
+                        occupiedCount++;
+                    }
+                }
+            }
+
+            int availableSlots = Math.Max(0, inventory.GetSlotLimit(InventoryType.ETC) - occupiedCount);
+            if (availableSlots < requiredSlots)
+            {
+                failureReason = "Please make some room in your Etc inventory.";
+                return false;
+            }
+
+            if (mesoCost > 0 && inventory.GetMesoCount() < mesoCost)
+            {
+                failureReason = "Not enough meso for this disassembly.";
+                return false;
+            }
+
+            failureReason = string.Empty;
+            return true;
         }
     }
 }

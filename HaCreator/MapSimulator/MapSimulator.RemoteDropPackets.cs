@@ -1358,6 +1358,12 @@ namespace HaCreator.MapSimulator
 
             if (actorOwners != null)
             {
+                if (actorOwners.TryGetValue(actorId, out int directOwnerCharacterId)
+                    && directOwnerCharacterId > 0)
+                {
+                    AddObservedDropPartyOwnerAliasRoots(actorParents, targetRoots, directOwnerCharacterId);
+                }
+
                 foreach (KeyValuePair<int, int> observedOwnerEntry in actorOwners)
                 {
                     if (observedOwnerEntry.Value != actorId
@@ -1449,6 +1455,31 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static void AddObservedDropPartyOwnerAliasRoots(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            ISet<int> targetRoots,
+            int ownerCharacterId)
+        {
+            if (actorParents == null || targetRoots == null || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            if (actorParents.ContainsKey(ownerCharacterId))
+            {
+                targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, ownerCharacterId));
+            }
+
+            for (int slotIndex = 0; slotIndex < RemotePetPickupPredictedSlotCount; slotIndex++)
+            {
+                int ownerSlotActorId = BuildRemotePetPickupActorId(ownerCharacterId, slotIndex);
+                if (actorParents.ContainsKey(ownerSlotActorId))
+                {
+                    targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, ownerSlotActorId));
+                }
+            }
         }
 
         internal static bool ShouldSurfacePickupNotice(

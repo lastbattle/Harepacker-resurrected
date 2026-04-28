@@ -748,7 +748,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (!hasCandidateImage)
+            if (!hasCandidateImage || availableActionNames.Count == 0)
             {
                 return false;
             }
@@ -1239,7 +1239,7 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            followOwner = (GetIntValue(effectProperty["follow"]) ?? 0) != 0;
+            followOwner = ResolveActiveEffectItemFollowOwner(effectProperty);
             ItemEffectAnimationSet effectSet = CreateItemEffectAnimationSet(itemId, effectProperty, loop: true);
             if (effectSet == null)
             {
@@ -1354,6 +1354,53 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return null;
+        }
+
+        private static bool ResolveActiveEffectItemFollowOwner(WzSubProperty effectProperty)
+        {
+            if (effectProperty == null)
+            {
+                return false;
+            }
+
+            int? rootFollow = GetIntValue(effectProperty["follow"]);
+            if (rootFollow.HasValue)
+            {
+                return ResolveActiveEffectItemFollowOwnerForParity(rootFollow, Array.Empty<int?>());
+            }
+
+            List<int?> layerFollowValues = new();
+            foreach (ItemEffectLayerSource layerSource in ResolveItemEffectLayerSources(effectProperty))
+            {
+                layerFollowValues.Add(GetIntValue(layerSource.LayerProperty?["follow"]));
+            }
+
+            return ResolveActiveEffectItemFollowOwnerForParity(null, layerFollowValues);
+        }
+
+        internal static bool ResolveActiveEffectItemFollowOwnerForParity(
+            int? rootFollowValue,
+            IEnumerable<int?> layerFollowValues)
+        {
+            if (rootFollowValue.HasValue)
+            {
+                return rootFollowValue.Value != 0;
+            }
+
+            if (layerFollowValues == null)
+            {
+                return false;
+            }
+
+            foreach (int? layerFollowValue in layerFollowValues)
+            {
+                if (layerFollowValue.HasValue)
+                {
+                    return layerFollowValue.Value != 0;
+                }
+            }
+
+            return false;
         }
 
         private static WzSubProperty ResolveNewYearCardEffectProperty(int itemId)

@@ -3157,14 +3157,16 @@ namespace HaCreator.MapSimulator.Character
                 52 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 53 => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
                 // WZ still carries later post-Big Bang weapon families beyond the original
-                // v95-era stat surface. Treat Shining Rods as magic-weapon families and Soul
-                // Shooters as dex-driven pirate weapons until their exact client coefficients are
-                // recovered. Modern WZ also carries 159xxxx Ancient Bows on this same stat seam,
-                // and `String/Eqp.img` still labels those rows as bow-equippable so they follow
-                // the bow-style DEX/STR profile here.
-                56 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
+                // v95-era stat surface. The active extracted data publishes those families as
+                // full 12x weapon directories (for example Character/Weapon/01212000 and
+                // 01222000), so keep both the preserved raw class and older normalized aliases
+                // in this stat-window seam.
+                56 or 121 or 125 or 126 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 57 => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f),
-                58 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                58 or 122 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                123 => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f),
+                124 => new AttackFormulaProfile(false, 4.0f, TotalSTR + TotalDEX + TotalLUK, 0, 0.9f),
+                127 or 128 => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
                 59 => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
                 _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
@@ -3245,12 +3247,20 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsDexDrivenPirateWeaponCode(int weaponCode)
         {
-            return weaponCode is 49 or 58;
+            return weaponCode is 49 or 58 or 122;
         }
 
         private static int GetWeaponCode(int itemId)
         {
-            return itemId > 0 ? Math.Abs(itemId / 10000) % 100 : 0;
+            if (itemId <= 0)
+            {
+                return 0;
+            }
+
+            int weaponClass = Math.Abs(itemId / 10000);
+            return weaponClass is >= 120 and < 130
+                ? weaponClass
+                : weaponClass % 100;
         }
 
         private int GetSkillStatBonus(BuffStatType stat)

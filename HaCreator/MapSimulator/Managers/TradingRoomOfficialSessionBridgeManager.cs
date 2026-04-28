@@ -580,7 +580,7 @@ namespace HaCreator.MapSimulator.Managers
                 case 15:
                     if (payload.Length >= 5)
                     {
-                        detail = "subtype 15 has trader, slot, and GW_ItemSlotBase body bytes for CTradingRoomDlg::OnPutItem.";
+                        detail = "subtype 15 has trader, one-based trade slot, and GW_ItemSlotBase body bytes for CTradingRoomDlg::OnPutItem.";
                         return true;
                     }
 

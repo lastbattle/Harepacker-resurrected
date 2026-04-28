@@ -191,6 +191,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!visible)
+            {
+                ClearClientOwnedTransientFocusState(cancelImeComposition: true);
+            }
+
             ShowWindow(_editHandle, visible ? SwShow : SwHide);
             if (visible)
             {
@@ -268,6 +273,7 @@ namespace HaCreator.MapSimulator.UI
             _mouseSelectionAnchor = -1;
             _clientOwnedKeyDowns.Clear();
             TryReleaseMouseCapture();
+            ClearClientOwnedTransientFocusState(cancelImeComposition: true);
             SetFocus(_parentHandle);
         }
 
@@ -771,14 +777,8 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (msg == WmKillFocus)
             {
-                _clientOwnedKeyDowns.Clear();
-                _mouseSelecting = false;
-                _mouseSelectionAnchor = -1;
-                TryReleaseMouseCapture();
-                if (ShouldCancelImeCompositionOnFocusChange(hasFocus: false))
-                {
-                    CancelImeComposition();
-                }
+                ClearClientOwnedTransientFocusState(
+                    cancelImeComposition: ShouldCancelImeCompositionOnFocusChange(hasFocus: false));
 
                 if (ShouldDisableImeOpenStatusOnFocusChange(hasFocus: false))
                 {
@@ -1141,6 +1141,18 @@ namespace HaCreator.MapSimulator.UI
             if (ShouldReleaseClientOwnedMouseCaptureOnFocusChange(GetCapture(), _editHandle))
             {
                 ReleaseCapture();
+            }
+        }
+
+        private void ClearClientOwnedTransientFocusState(bool cancelImeComposition)
+        {
+            _clientOwnedKeyDowns.Clear();
+            _mouseSelecting = false;
+            _mouseSelectionAnchor = -1;
+            TryReleaseMouseCapture();
+            if (cancelImeComposition)
+            {
+                CancelImeComposition();
             }
         }
 

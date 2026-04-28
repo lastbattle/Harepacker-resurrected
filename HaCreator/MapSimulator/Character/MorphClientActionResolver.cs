@@ -316,6 +316,15 @@ namespace HaCreator.MapSimulator.Character
                 ["shoot6"] = new[] { "shootF", "shoot2", "shoot1" },
                 ["speedDualShot"] = new[] { "shoot1", "swingT2" },
                 ["shootDb1"] = new[] { "shoot1", "swingP2" },
+                // Phantom/HT rows under Skill/2400.img through Skill/2412.img publish
+                // these skill-only action names, while Character/00002000.img has no
+                // direct body-action rows for them and checked Morph/*.img has no
+                // verbatim HT branches. Keep ranged/card requests on the published
+                // shoot/archer morph surface first, then allow generic authored combat
+                // fallback for templates that only publish pirate or ice attacks.
+                ["HTdoublePiercing"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "arrowRain" },
+                ["HTcallOfFate"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "arrowRain" },
+                ["HTcoatOfArms"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "arrowRain" },
                 // Beginner capture skill rows still request the raw `capture` action,
                 // while Character/00002000.img backs that sequence with shoot2 frames
                 // and Morph/*.img publishes only generic shoot-family branches.
@@ -540,6 +549,22 @@ namespace HaCreator.MapSimulator.Character
                 // `windEffect` remains a client raw request on the skill side, while the
                 // checked body row keeps it on `swingT1` before `swingTF`.
                 ["windEffect"] = new[] { "swingT1", "swingTF" },
+                // Phantom/HT melee and movement-combat rows are WZ skill-only names in
+                // Skill/2410.img through Skill/2412.img with no body rows in
+                // Character/00002000.img and no verbatim Morph/*.img branches. Route
+                // them through the closest published melee/movement morph surfaces,
+                // then let the existing authored-combat fallback cover templates that
+                // only expose pirate, archer, or ice attack branches.
+                ["HTknightEngaging"] = new[] { "stabO1", "swingO1", "swingOF" },
+                ["HTphantomCharge"] = new[] { "swingOF", "swingPF", "jump", "swingO1" },
+                ["HTphantomCharge2"] = new[] { "swingOF", "swingPF", "jump", "swingO1" },
+                ["HTultimateDrivePrep"] = new[] { "stabO1", "swingO1", "alert" },
+                ["HTultimateDrive"] = new[] { "stabO1", "swingO1", "swingO2" },
+                ["HTultimateDriveEnd"] = new[] { "stabO1", "swingO1", "alert" },
+                ["HTtwilightVanish"] = new[] { "swingOF", "jump", "swingPF" },
+                ["HTtwilightFinish"] = new[] { "swingOF", "stabO1", "swingO1" },
+                ["HTtempestPrep"] = new[] { "alert", "swingPF", "swingOF" },
+                ["HTtempest"] = new[] { "swingPF", "swingOF", "alert" },
                 ["jShot"] = new[] { "swingT2", "swingPF", "swingOF" },
                 // Skill/2312.img/skill/23121003/action/0 still publishes
                 // `edgeSpiral`, while Character/00002000.img keeps no verbatim
@@ -830,7 +855,20 @@ namespace HaCreator.MapSimulator.Character
                 "demonJumpUpward",
                 "demonJumpFoward",
                 "HTswiftPhantom",
-                "swiftPhantom"
+                "swiftPhantom",
+                "HTdoublePiercing",
+                "HTcallOfFate",
+                "HTknightEngaging",
+                "HTcoatOfArms",
+                "HTphantomCharge",
+                "HTphantomCharge2",
+                "HTultimateDrivePrep",
+                "HTultimateDrive",
+                "HTultimateDriveEnd",
+                "HTtwilightVanish",
+                "HTtwilightFinish",
+                "HTtempestPrep",
+                "HTtempest"
             };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)

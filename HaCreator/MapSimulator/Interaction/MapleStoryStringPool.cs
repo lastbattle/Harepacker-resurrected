@@ -238,6 +238,7 @@ namespace HaCreator.MapSimulator.Interaction
             // literals explicit instead of resolving unrelated FriendRecommendations
             // resource paths.
             [0x16AE] = "UI/UIWindow.img/FriendRecommendations/UserInfo/back",
+            [0x16B5] = "Filling in your information will help us recommend friends who share your interests! \r\nDo you want to fill in your information now?",
             [0x16B6] = "Please fill in your information later. If not, you may not receive friend recommendations.",
             [0x16B7] = "Fail. Please try again later.",
             [0x16B8] = "Select",
@@ -503,6 +504,7 @@ namespace HaCreator.MapSimulator.Interaction
             [0x107D] = "When you click it%2C the quest will not register automatically even when the quest is in progress.",
             [0x18A8] = "This quest has recent progress updates.",
             [0x18EC] = "There are no quests in the quest helper.",
+            [0x1A51] = "Meso",
             // Recovered from MapleStory.exe v95 `CEngageDlg` and the surrounding
             // CWvsContext engagement result handlers. The generated table in this
             // workspace already carries most of this block, but keeping the proposal

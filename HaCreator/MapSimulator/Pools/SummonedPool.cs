@@ -326,6 +326,7 @@ namespace HaCreator.MapSimulator.Pools
             _skillLoader = skillLoader;
             _mobPool = mobPool;
             _remoteUserPool = remoteUserPool;
+            _remoteUserPool?.SetPacketOwnedSummonResolver(GetOwnerTableSummons);
             _texturePool = texturePool;
             _graphicsDevice = graphicsDevice;
             _localPlayerAccessor = localPlayerAccessor;
@@ -2899,15 +2900,29 @@ namespace HaCreator.MapSimulator.Pools
             PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
             if (localPlayer?.Build?.Id == ownerCharacterId)
             {
-                return localPlayer.PacketOwnedSummons.Summons;
+                IReadOnlyList<ActiveSummon> localRegisteredSummons = localPlayer.PacketOwnedSummons.Summons;
+                if (localRegisteredSummons.Count > 0)
+                {
+                    return localRegisteredSummons;
+                }
             }
 
             if (_remoteUserPool != null && _remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor actor))
             {
-                return actor.PacketOwnedSummons.Summons;
+                IReadOnlyList<ActiveSummon> remoteRegisteredSummons = actor.PacketOwnedSummons.Summons;
+                if (remoteRegisteredSummons.Count > 0)
+                {
+                    return remoteRegisteredSummons;
+                }
             }
 
-            return _summonsByOwnerId.TryGetValue(ownerCharacterId, out List<PacketOwnedSummonState> summons)
+            return GetOwnerTableSummons(ownerCharacterId);
+        }
+
+        private IReadOnlyList<ActiveSummon> GetOwnerTableSummons(int ownerCharacterId)
+        {
+            return ownerCharacterId > 0
+                   && _summonsByOwnerId.TryGetValue(ownerCharacterId, out List<PacketOwnedSummonState> summons)
                 ? summons.Select(static state => state.Summon).ToArray()
                 : Array.Empty<ActiveSummon>();
         }
@@ -3903,7 +3918,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             List<PacketOwnedExpiryTargetCandidate> candidateList = candidates
-                .Where(static candidate => candidate.MobObjectId > 0 && !candidate.Hitbox.IsEmpty)
+                .Where(static candidate => candidate.MobObjectId > 0 && HasPacketOwnedExpiryCandidateHitbox(candidate))
                 .GroupBy(static candidate => candidate.MobObjectId)
                 .Select(static group => group.First())
                 .ToList();
@@ -4005,7 +4020,7 @@ namespace HaCreator.MapSimulator.Pools
 
             return orderedCandidates
                 .Where(candidate => candidate.MobObjectId > 0
-                                    && !candidate.Hitbox.IsEmpty
+                                    && HasPacketOwnedExpiryCandidateHitbox(candidate)
                                     && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
                                     && IsPacketOwnedExpiryCandidateInSummonAttackRange(
                                         summon,
@@ -4030,7 +4045,7 @@ namespace HaCreator.MapSimulator.Pools
 
             return candidates
                 .Where(candidate => candidate.MobObjectId > 0
-                                    && !candidate.Hitbox.IsEmpty
+                                    && HasPacketOwnedExpiryCandidateHitbox(candidate)
                                     && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate))
                 .Select(candidate => new
                 {
@@ -4053,8 +4068,9 @@ namespace HaCreator.MapSimulator.Pools
             PacketOwnedExpiryTargetCandidate candidate,
             bool facingRight)
         {
-            float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
-            float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
+            Rectangle sortHitbox = ResolvePacketOwnedExpiryCandidateSortHitbox(candidate);
+            float centerX = sortHitbox.Left + (sortHitbox.Width * 0.5f);
+            float centerY = sortHitbox.Top + (sortHitbox.Height * 0.5f);
             float deltaX = centerX - summon.PositionX;
             float deltaY = centerY - summon.PositionY;
             float areaDistance = (deltaX * deltaX) + (deltaY * deltaY);
@@ -4076,7 +4092,7 @@ namespace HaCreator.MapSimulator.Pools
             PacketOwnedExpiryTargetCandidate candidate)
         {
             return candidate.MobObjectId > 0
-                   && !candidate.Hitbox.IsEmpty
+                   && HasPacketOwnedExpiryCandidateHitbox(candidate)
                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
                    && (IsPacketOwnedExpiryCandidateInSummonAttackRange(
                            summon,
@@ -4228,7 +4244,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 PacketOwnedExpiryTargetCandidate candidate = candidates[i];
                 if (candidate.MobObjectId <= 0
-                    || candidate.Hitbox.IsEmpty
+                    || !HasPacketOwnedExpiryCandidateHitbox(candidate)
                     || !IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
                     || !IsPacketOwnedExpiryCandidateInSummonAttackRange(
                         summon,
@@ -4269,8 +4285,9 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 inRangeCount++;
-                float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
-                float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
+                Rectangle sortHitbox = ResolvePacketOwnedExpiryCandidateSortHitbox(candidate);
+                float centerX = sortHitbox.Left + (sortHitbox.Width * 0.5f);
+                float centerY = sortHitbox.Top + (sortHitbox.Height * 0.5f);
                 float deltaX = centerX - summonPosition.X;
                 float deltaY = centerY - summonPosition.Y;
                 float distanceSq = (deltaX * deltaX) + (deltaY * deltaY);
@@ -4478,7 +4495,6 @@ namespace HaCreator.MapSimulator.Pools
         private static IEnumerable<Rectangle> EnumeratePacketOwnedExpiryCandidateBodyHitboxes(
             PacketOwnedExpiryTargetCandidate candidate)
         {
-            bool yieldedBodyHitbox = false;
             if (candidate.BodyHitboxes != null)
             {
                 foreach (Rectangle bodyHitbox in candidate.BodyHitboxes)
@@ -4488,15 +4504,58 @@ namespace HaCreator.MapSimulator.Pools
                         continue;
                     }
 
-                    yieldedBodyHitbox = true;
                     yield return bodyHitbox;
                 }
             }
 
-            if (!yieldedBodyHitbox && !candidate.Hitbox.IsEmpty)
+            if (!candidate.Hitbox.IsEmpty)
             {
                 yield return candidate.Hitbox;
             }
+        }
+
+        private static bool HasPacketOwnedExpiryCandidateHitbox(PacketOwnedExpiryTargetCandidate candidate)
+        {
+            if (!candidate.Hitbox.IsEmpty)
+            {
+                return true;
+            }
+
+            if (candidate.BodyHitboxes == null)
+            {
+                return false;
+            }
+
+            foreach (Rectangle bodyHitbox in candidate.BodyHitboxes)
+            {
+                if (!bodyHitbox.IsEmpty)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static Rectangle ResolvePacketOwnedExpiryCandidateSortHitbox(PacketOwnedExpiryTargetCandidate candidate)
+        {
+            if (!candidate.Hitbox.IsEmpty)
+            {
+                return candidate.Hitbox;
+            }
+
+            if (candidate.BodyHitboxes != null)
+            {
+                foreach (Rectangle bodyHitbox in candidate.BodyHitboxes)
+                {
+                    if (!bodyHitbox.IsEmpty)
+                    {
+                        return bodyHitbox;
+                    }
+                }
+            }
+
+            return Rectangle.Empty;
         }
 
         private static bool DoesRectangleIntersectCircle(Rectangle rectangle, Vector2 circleCenter, float radius)
@@ -8270,6 +8329,23 @@ namespace HaCreator.MapSimulator.Pools
                 return string.Empty;
             }
 
+            string normalized = token;
+            for (int pass = 0; pass < 3; pass++)
+            {
+                string decoded = NormalizePacketMobAttackGeneralEffectEncodedPathSeparatorsOnce(normalized);
+                if (string.Equals(decoded, normalized, StringComparison.Ordinal))
+                {
+                    return decoded;
+                }
+
+                normalized = decoded;
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizePacketMobAttackGeneralEffectEncodedPathSeparatorsOnce(string token)
+        {
             var normalizedBuilder = new System.Text.StringBuilder(token.Length);
             for (int i = 0; i < token.Length; i++)
             {

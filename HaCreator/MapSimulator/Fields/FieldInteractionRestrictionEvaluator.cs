@@ -176,6 +176,19 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetDragonCompanionRestrictionMessage(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON
+                   || mapInfo?.vanishDragon == true
+                ? "Dragon companion features are disabled in this map."
+                : null;
+        }
+
+        public static bool CanUseDragonCompanion(MapInfo mapInfo)
+        {
+            return GetDragonCompanionRestrictionMessage(mapInfo) == null;
+        }
+
         public static string GetPartyBossRestrictionMessage(long fieldLimit)
         {
             return GetPartyBossRestrictionMessage(fieldLimit, mapInfo: null);
@@ -629,6 +642,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetParcelOpenRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetQuestAlertRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetAndroidRestrictionMessage(fieldLimit, mapInfo));
+            AddFieldEntryMessage(messages, GetDragonCompanionRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetTamingMobRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit, mapInfo));
             AddFieldEntryMessage(messages, GetDropRestrictionMessage(fieldLimit));

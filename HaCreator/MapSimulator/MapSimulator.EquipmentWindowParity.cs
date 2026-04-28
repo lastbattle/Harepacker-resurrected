@@ -74,6 +74,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeSubmission.Reject(androidRestrictionRejectReason);
             }
 
+            if (TryGetDragonCompanionRestrictionRejectReason(request, out string dragonRestrictionRejectReason))
+            {
+                return EquipmentChangeSubmission.Reject(dragonRestrictionRejectReason);
+            }
+
             if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
             {
                 return EquipmentChangeSubmission.Reject(tamingMobRestrictionRejectReason);
@@ -3201,6 +3206,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject(androidRestrictionRejectReason);
             }
 
+            if (TryGetDragonCompanionRestrictionRejectReason(request, out string dragonRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(dragonRestrictionRejectReason);
+            }
+
             if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
             {
                 return EquipmentChangeResult.Reject(tamingMobRestrictionRejectReason);
@@ -3271,6 +3281,11 @@ namespace HaCreator.MapSimulator
             if (TryGetAndroidCompanionRestrictionRejectReason(request, out string androidRestrictionRejectReason))
             {
                 return EquipmentChangeResult.Reject(androidRestrictionRejectReason);
+            }
+
+            if (TryGetDragonCompanionRestrictionRejectReason(request, out string dragonRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(dragonRestrictionRejectReason);
             }
 
             if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
@@ -3565,6 +3580,26 @@ namespace HaCreator.MapSimulator
         private static bool IsAndroidEquipmentSlot(EquipSlot? slot)
         {
             return slot is EquipSlot.Android or EquipSlot.AndroidHeart;
+        }
+
+        private bool TryGetDragonCompanionRestrictionRejectReason(EquipmentChangeRequest request, out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                return false;
+            }
+
+            bool touchesDragonEquipment =
+                request.TargetCompanionKind == EquipmentChangeCompanionKind.Dragon
+                || request.SourceCompanionKind == EquipmentChangeCompanionKind.Dragon;
+            if (!touchesDragonEquipment)
+            {
+                return false;
+            }
+
+            rejectReason = FieldInteractionRestrictionEvaluator.GetDragonCompanionRestrictionMessage(_mapBoard?.MapInfo);
+            return !string.IsNullOrWhiteSpace(rejectReason);
         }
 
         private bool TryGetTamingMobEquipmentRestrictionRejectReason(EquipmentChangeRequest request, out string rejectReason)

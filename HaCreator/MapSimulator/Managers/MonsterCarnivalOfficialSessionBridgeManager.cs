@@ -658,7 +658,7 @@ namespace HaCreator.MapSimulator.Managers
         private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
         {
             bool autoSelectListenPort = listenPort <= 0;
-            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+            int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
 
             try
             {
@@ -673,6 +673,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                ListenPort = _roleSessionProxy.ListenPort;
                 status = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                 LastStatus = status;
                 return true;

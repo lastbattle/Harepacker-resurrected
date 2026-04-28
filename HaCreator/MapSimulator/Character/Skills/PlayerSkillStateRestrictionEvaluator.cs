@@ -16,6 +16,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ThrowingStarWeaponType = 47;
         private const int BulletWeaponType = 49;
         private const int WildHunterJaguarJumpSkillId = 33001002;
+        private const int ClientJumpShootAllowedSkillId1 = 33001000;
+        private const int ClientJumpShootAllowedSkillId2 = 33101001;
+        private const int ClientJumpShootAllowedSkillId3 = 33121001;
+        private const int ClientJumpShootAllowedSkillId4 = 33121009;
         private const int JaguarRiderSkillId = 33001001;
         private const int MechanicPrototypeSkillId = 35001002;
         private const int FlameLauncherSkillId = 35001001;
@@ -236,6 +240,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return hpRatioRestrictionMessage;
             }
 
+            if (ShouldBlockClientShootAttackAirborneNoFoothold(
+                    skill,
+                    player.Build?.GetWeapon()?.ItemId ?? 0,
+                    player.Physics.IsOnFoothold(),
+                    player.Physics.IsSwimming(),
+                    player.Physics.IsUserFlying()))
+            {
+                return "This ranged skill cannot be used while airborne without foothold support.";
+            }
+
             if (ShouldBlockClientShootAttackOnLadderOrRope(
                     skill,
                     player.Build?.GetWeapon()?.ItemId ?? 0,
@@ -341,6 +355,32 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return IsShootingWeaponCode(GetWeaponCode(equippedWeaponItemId))
                 && !IsWildHunterJaguarMountItemId(mountedTamingMobItemId);
+        }
+
+        internal static bool ShouldBlockClientShootAttackAirborneNoFoothold(
+            SkillData skill,
+            int equippedWeaponItemId,
+            bool isOnFoothold,
+            bool isSwimming,
+            bool isUserFlying)
+        {
+            if (isOnFoothold
+                || isSwimming
+                || isUserFlying
+                || skill?.IsAttack != true
+                || skill.AttackType != SkillAttackType.Ranged
+                || IsShootSkillNotUsingShootingWeapon(skill.SkillId))
+            {
+                return false;
+            }
+
+            int weaponCode = GetWeaponCode(equippedWeaponItemId);
+            if (weaponCode != ArrowWeaponType && weaponCode != CrossbowWeaponType)
+            {
+                return false;
+            }
+
+            return !AllowsClientJumpShoot(skill.SkillId, skill.Job);
         }
 
         private static string GetMovementRestrictionMessage(PlayerCharacter player, SkillData skill)
@@ -504,6 +544,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 or 21110004
                 or 21120006
                 or 33101007;
+        }
+
+        private static bool AllowsClientJumpShoot(int skillId, int jobId)
+        {
+            return skillId == ClientJumpShootAllowedSkillId1
+                   || skillId == ClientJumpShootAllowedSkillId2
+                   || skillId == ClientJumpShootAllowedSkillId3
+                   || skillId == ClientJumpShootAllowedSkillId4
+                   || (skillId == 0 && Math.Abs(jobId) / 100 == 33);
         }
 
         private static bool RequiresStableVehicleCastState(SkillData skill)

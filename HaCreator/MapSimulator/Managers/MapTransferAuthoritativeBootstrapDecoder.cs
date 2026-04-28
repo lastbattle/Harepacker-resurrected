@@ -1067,19 +1067,10 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 nextOffset += sizeof(ushort);
-                if (payload.Length - nextOffset < sizeof(ushort))
+                if (!TrySkipMapleString(payload, nextOffset, out nextOffset))
                 {
                     return false;
                 }
-
-                ushort stringLength = BitConverter.ToUInt16(payload.Slice(nextOffset, sizeof(ushort)));
-                nextOffset += sizeof(ushort);
-                if (payload.Length - nextOffset < stringLength)
-                {
-                    return false;
-                }
-
-                nextOffset += stringLength;
             }
 
             return true;

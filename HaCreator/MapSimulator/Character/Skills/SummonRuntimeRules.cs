@@ -483,7 +483,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     : currentAssistType;
             }
 
-            return HasAuthoredSummonOwnedPacketSkillBranchWithoutExplicitFamilyCue(skill)
+            return HasAuthoredSummonOwnedNoActionPacketSkillBranch(skill)
                 ? SummonAssistType.SummonAction
                 : currentAssistType;
         }
@@ -501,6 +501,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             byte normalizedAction = (byte)(packetAction & 0x7F);
             if (assistType == SummonAssistType.SummonAction)
             {
+                if (normalizedAction == 0)
+                {
+                    return HasExplicitSummonOwnedPacketSkillBranch(skill, PacketSkillActionSubsummon)
+                           || HasAuthoredSummonOwnedNoActionPacketSkillBranch(skill);
+                }
+
                 if (normalizedAction == PacketSkillActionSubsummon)
                 {
                     // Client action `14` is the subsummon family. Do not flip ownership
@@ -525,6 +531,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
             else if (assistType == SummonAssistType.Support)
             {
+                if (normalizedAction == 0)
+                {
+                    return (HasSupportOwnedMinionAbilityCue(skill)
+                            || HasExplicitSupportOwnedPacketSkillBranch(
+                                skill,
+                                PacketSkillActionHealingRobotHeal))
+                           && HasAuthoredSupportOwnedPacketSkillBranch(
+                               skill,
+                               PacketSkillActionHealingRobotHeal);
+                }
+
                 if (normalizedAction == PacketSkillActionHealingRobotHeal)
                 {
                     if (!HasSupportOwnedMinionAbilityCue(skill)
@@ -604,30 +621,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, indexedBranch));
         }
 
-        private static bool HasAuthoredSummonOwnedPacketSkillBranchWithoutExplicitFamilyCue(SkillData skill)
+        private static bool HasAuthoredSummonOwnedNoActionPacketSkillBranch(SkillData skill)
         {
-            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
-            {
-                return false;
-            }
-
-            for (byte action = PacketSkillActionSkillBranchMin;
-                 action <= PacketSkillActionSkillBranchMax;
-                 action++)
-            {
-                if (HasAuthoredSummonOwnedPacketSkillBranch(
-                        skill,
-                        action,
-                        allowMissingSummonMinionCue: false))
-                {
-                    return true;
-                }
-            }
-
-            return HasAuthoredSummonOwnedPacketSkillBranch(
-                skill,
-                PacketSkillActionSubsummon,
-                allowMissingSummonMinionCue: true);
+            return HasSummonOwnedMinionAbilityCue(skill)
+                   && !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "subsummon"));
         }
 
         private static bool HasAuthoredSupportOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
@@ -720,7 +717,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     : null;
             }
 
-            return HasAuthoredSummonOwnedPacketSkillBranchWithoutExplicitFamilyCue(skill)
+            return HasAuthoredSummonOwnedNoActionPacketSkillBranch(skill)
                 ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.SummonAction)
                 : null;
         }

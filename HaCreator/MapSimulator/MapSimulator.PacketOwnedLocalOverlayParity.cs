@@ -2908,17 +2908,7 @@ namespace HaCreator.MapSimulator
                     : false;
             }
 
-            if (!TryResolveFieldHazardHpPotionCandidate(
-                    predictedRemainingHp,
-                    out candidate,
-                    out FieldHazardSharedPetConsumeSource resolvedSource))
-            {
-                return false;
-            }
-
-            SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType, resolvedSource);
-            sharedSource = resolvedSource;
-            return true;
+            return false;
         }
 
         private static PetRuntime FindClientFirstFieldHazardAutoConsumePet(IReadOnlyList<PetRuntime> activePets)
@@ -3392,62 +3382,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            var seenItems = new System.Collections.Generic.HashSet<(InventoryType Type, int ItemId)>();
-            var hotkeyBindings = _playerManager?.Skills?.GetAllItemHotkeys();
-            if (hotkeyBindings != null)
-            {
-                foreach (var hotkeyEntry in hotkeyBindings.OrderBy(entry => entry.Key))
-                {
-                    Character.Skills.ItemHotkeyBinding binding = hotkeyEntry.Value;
-                    if (binding == null || binding.ItemId <= 0 || binding.InventoryType == InventoryType.NONE)
-                    {
-                        continue;
-                    }
-
-                    if (!seenItems.Add((binding.InventoryType, binding.ItemId)))
-                    {
-                        continue;
-                    }
-
-                    if (TryCreateFieldHazardHpPotionCandidate(binding.ItemId, binding.InventoryType, predictedRemainingHp, inventoryWindow, player, out candidate))
-                    {
-                        source = FieldHazardSharedPetConsumeSource.Hotkey;
-                        return true;
-                    }
-                }
-            }
-
-            InventoryType[] fallbackInventories = { InventoryType.USE, InventoryType.CASH };
-            for (int inventoryIndex = 0; inventoryIndex < fallbackInventories.Length; inventoryIndex++)
-            {
-                InventoryType inventoryType = fallbackInventories[inventoryIndex];
-                var slots = inventoryWindow.GetSlots(inventoryType);
-                if (slots == null)
-                {
-                    continue;
-                }
-
-                for (int i = 0; i < slots.Count; i++)
-                {
-                    var slot = slots[i];
-                    if (slot == null || slot.ItemId <= 0 || slot.Quantity <= 0)
-                    {
-                        continue;
-                    }
-
-                    if (!seenItems.Add((inventoryType, slot.ItemId)))
-                    {
-                        continue;
-                    }
-
-                    if (TryCreateFieldHazardHpPotionCandidate(slot.ItemId, inventoryType, predictedRemainingHp, inventoryWindow, player, out candidate))
-                    {
-                        source = FieldHazardSharedPetConsumeSource.InventoryFallback;
-                        return true;
-                    }
-                }
-            }
-
+            // CUserLocal::TryConsumePetHP uses CFuncKeyMappedMan::m_nPetConsumeItemID
+            // and scans USE inventory slots for that exact item. It does not infer a
+            // replacement from hotkeys or arbitrary inventory rows.
             return false;
         }
 

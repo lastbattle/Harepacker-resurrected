@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator.Character
     public class PlayerManager
     {
         private const int AffectedAreaAvatarEffectIdBase = int.MinValue;
+        private const int MoreWildDamageUpSkillId = 35121010;
+        private const int AffectedAreaAr01AvatarEffectId = unchecked(AffectedAreaAvatarEffectIdBase + MoreWildDamageUpSkillId);
         private const int DragonFurySkillId = 22160000;
         private const string WeaponSfxAttackSoundName = "Attack";
         internal const int ClientPickupRepeatDelayMs = 30;
@@ -94,6 +96,7 @@ namespace HaCreator.MapSimulator.Character
         private WzImage _weaponSoundImage;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
         private Action<SkillManager.LocalAttackAreaResolution> _localAttackAreaHandler;
+        private Func<SkillManager.LocalAttackAreaPreflight, bool> _localAttackAreaPreflightHandler;
         private PlayerMobStatusController _mobStatusController;
         private PlayerMobStatusFrameState _currentMobStatusState = PlayerMobStatusFrameState.Default;
         private Action<PlayerCharacter, Rectangle, int> _attackHitboxHandler;
@@ -309,6 +312,15 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        internal void SetLocalAttackAreaPreflightHandler(Func<SkillManager.LocalAttackAreaPreflight, bool> localAttackAreaPreflightHandler)
+        {
+            _localAttackAreaPreflightHandler = localAttackAreaPreflightHandler;
+            if (Skills != null)
+            {
+                Skills.OnLocalAttackAreaPreflight = localAttackAreaPreflightHandler;
+            }
+        }
+
         public void SetAttackHitboxHandler(Action<PlayerCharacter, Rectangle, int> attackHitboxHandler)
         {
             _attackHitboxHandler = attackHitboxHandler;
@@ -517,6 +529,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetTamingMobLoader(Loader.LoadTamingMob);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
                 Skills.OnLocalAttackAreaResolved = _localAttackAreaHandler;
+                Skills.OnLocalAttackAreaPreflight = _localAttackAreaPreflightHandler;
                 Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
                 Skills.OnRepeatSkillImmediateEffectRequestReady = HandleRepeatSkillImmediateEffectRequestReady;
                 Skills.OnExternalAreaDamageSharingApplied = _remoteAffectedAreaDamageShareHandler;
@@ -547,6 +560,7 @@ namespace HaCreator.MapSimulator.Character
             ConfigureDragonActionLayerOwnerZProvider();
 
             _mobStatusController = new PlayerMobStatusController(Player, Skills, TeleportToSpawn);
+            _mobStatusController.PeriodicDamageApplied += HandleMobStatusPeriodicDamageApplied;
             Skills?.SetExternalCastBlockedEvaluator(currentTime => _currentMobStatusState.SkillCastBlocked);
             Skills?.SetExternalBoundJumpBlockedEvaluator(
                 (skillId, currentTime) => SkillManager.ShouldBlockClientBoundJumpForExternalJumpBlocked(
@@ -954,6 +968,42 @@ namespace HaCreator.MapSimulator.Character
                 duration);
         }
 
+        private void HandleMobStatusPeriodicDamageApplied(PlayerMobStatusEffect effect, int damage, int currentTime)
+        {
+            if (effect != PlayerMobStatusEffect.Bomb || Player == null || _animationEffects == null || _mobSkillEffectLoader == null)
+            {
+                return;
+            }
+
+            MobSkillEffectData effectData = _mobSkillEffectLoader.LoadMobSkillEffect(171, 1);
+            if (effectData == null)
+            {
+                return;
+            }
+
+            if (effectData.HasBombEffect)
+            {
+                _animationEffects.AddOneTime(
+                    effectData.BombEffectFrames,
+                    Player.X,
+                    Player.Y,
+                    flip: false,
+                    currentTime,
+                    zOrder: 1);
+            }
+
+            if (effectData.HasHitEffect)
+            {
+                _animationEffects.AddOneTime(
+                    effectData.HitFrames,
+                    Player.X,
+                    Player.Y,
+                    flip: false,
+                    currentTime,
+                    zOrder: 1);
+            }
+        }
+
         /// <summary>
         /// Create default player
         /// </summary>
@@ -1316,17 +1366,27 @@ namespace HaCreator.MapSimulator.Character
             }
 
             bool ownerIsPartyMember = _affectedAreaOwnerPartyMembershipEvaluator?.Invoke(area.OwnerId) == true;
-            bool ownerIsSameTeamMember = _affectedAreaOwnerTeamMembershipEvaluator?.Invoke(area.OwnerId) == true;
-            if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
-                    skill,
-                    supportSkills,
-                    localPlayerId,
-                    area.OwnerId,
-                    ownerIsPartyMember,
-                    ownerIsSameTeamMember,
-                    effectiveLevelData))
+            if (UsesClientSingleAr01AffectedAreaAvatarLayer(area.SkillId))
             {
-                return false;
+                if (!CanApplyClientAr01AffectedAreaAvatarEffect(area.SkillId, area.OwnerId, localPlayerId, ownerIsPartyMember))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                bool ownerIsSameTeamMember = _affectedAreaOwnerTeamMembershipEvaluator?.Invoke(area.OwnerId) == true;
+                if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
+                        skill,
+                        supportSkills,
+                        localPlayerId,
+                        area.OwnerId,
+                        ownerIsPartyMember,
+                        ownerIsSameTeamMember,
+                        effectiveLevelData))
+                {
+                    return false;
+                }
             }
 
             effectSkill = GetOrCreateAffectedAreaAvatarEffectSkill(skill, supportSkills, out effectSignature);
@@ -1335,7 +1395,7 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            avatarEffectId = CreateAffectedAreaAvatarEffectId(area.ObjectId);
+            avatarEffectId = ResolveAffectedAreaAvatarEffectIdForParity(area.ObjectId, area.SkillId);
             return true;
         }
 
@@ -1487,7 +1547,30 @@ namespace HaCreator.MapSimulator.Character
 
         private static int CreateAffectedAreaAvatarEffectId(int objectId)
         {
-            return unchecked(AffectedAreaAvatarEffectIdBase + objectId);
+            return ResolveAffectedAreaAvatarEffectIdForParity(objectId, skillId: 0);
+        }
+
+        internal static bool UsesClientSingleAr01AffectedAreaAvatarLayer(int skillId)
+        {
+            return skillId == MoreWildDamageUpSkillId;
+        }
+
+        internal static int ResolveAffectedAreaAvatarEffectIdForParity(int objectId, int skillId)
+        {
+            return UsesClientSingleAr01AffectedAreaAvatarLayer(skillId)
+                ? AffectedAreaAr01AvatarEffectId
+                : unchecked(AffectedAreaAvatarEffectIdBase + objectId);
+        }
+
+        internal static bool CanApplyClientAr01AffectedAreaAvatarEffect(
+            int skillId,
+            int ownerId,
+            int localPlayerId,
+            bool ownerIsPartyMember)
+        {
+            return !UsesClientSingleAr01AffectedAreaAvatarLayer(skillId)
+                   || ownerId == localPlayerId
+                   || ownerIsPartyMember;
         }
 
         private static int ResolveMobSkillBlockingDurationMs(int skillId, MobSkillRuntimeData runtimeData, MobSkillEffectData effectData)

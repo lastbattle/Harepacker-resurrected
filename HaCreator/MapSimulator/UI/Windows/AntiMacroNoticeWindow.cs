@@ -243,8 +243,11 @@ namespace HaCreator.MapSimulator.UI
                 return text.Length;
             }
 
-            int lastSpace = text.LastIndexOf(' ', bestFit - 1, bestFit);
-            return lastSpace > 0 ? lastSpace : bestFit;
+            // `CUIAntiMacroNotice::OnCreate` advances by character until the
+            // small-white client font reaches 0xA0 pixels. It does not backtrack
+            // to the previous word boundary; only a single leading space is
+            // stripped from the next line after the split.
+            return bestFit;
         }
 
         private static string TrimSingleLeadingSpace(string text)

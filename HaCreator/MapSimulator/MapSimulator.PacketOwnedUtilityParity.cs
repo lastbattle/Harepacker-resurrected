@@ -177,6 +177,15 @@ namespace HaCreator.MapSimulator
             PacketOwnedRadioClientHandleStatus HandleStatus,
             string FailureReason);
 
+        internal readonly record struct PacketOwnedRadioMmsStopPlan(
+            bool EnteredStop,
+            bool HaltedHandle,
+            bool UnloadedHandle,
+            bool ClearedHandle,
+            bool ReleasedSoundObject,
+            bool ReleasedTrackProperty,
+            PacketOwnedRadioClientHandleStatus HandleStatus);
+
         private readonly record struct PacketOwnedSkillLearnItemResult(
             bool OnExclusiveRequest,
             int CharacterId,
@@ -375,8 +384,10 @@ namespace HaCreator.MapSimulator
         private bool _lastPacketOwnedRadioClientTrackPropertyLoaded;
         private bool _lastPacketOwnedRadioClientSoundObjectLoaded;
         private bool _lastPacketOwnedRadioClientRawBufferLoaded;
+        private int _lastPacketOwnedRadioClientRawBufferLength;
         private bool _lastPacketOwnedRadioClientMmsPlaySucceeded;
         private string _lastPacketOwnedRadioClientMmsPlayFailureReason = "idle";
+        private PacketOwnedRadioMmsStopPlan _lastPacketOwnedRadioMmsStopPlan;
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -5596,6 +5607,10 @@ namespace HaCreator.MapSimulator
                 }
 
                 noticeWindow.Configure(string.Empty, body, autoSeparated, tightLine);
+                if (GraphicsDevice != null)
+                {
+                    noticeWindow.CenterOnViewport(GraphicsDevice.Viewport);
+                }
                 ShowWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice, noticeWindow, trackDirectionModeOwner: true);
                 return;
             }
@@ -5619,6 +5634,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 randomMesoBagWindow.Configure(presentation);
+                if (GraphicsDevice != null)
+                {
+                    Viewport viewport = GraphicsDevice.Viewport;
+                    randomMesoBagWindow.CenterOnViewport(viewport.Width, viewport.Height);
+                }
                 ShowWindow(MapSimulatorWindowNames.RandomMesoBag, randomMesoBagWindow, trackDirectionModeOwner: true);
                 return true;
             }
@@ -12295,10 +12315,11 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldApplyPacketOwnedTutorLevelTwoUiSideEffects(int previousObservedLevel, int currentLevel)
         {
-            // Client evidence: CWvsContext::OnStatChanged checks the previous level value
-            // and runs the skill/quest-alarm branch when old level == 2 and a level-up occurred.
-            return previousObservedLevel == 2
-                && currentLevel > previousObservedLevel;
+            // Client evidence: CWvsContext::OnStatChanged runs this branch when the
+            // decoded post-change level is 2 after a level-up.
+            return previousObservedLevel > 0
+                && currentLevel > previousObservedLevel
+                && currentLevel == 2;
         }
 
         private void ApplyPacketOwnedTutorAdjacentLevelUpEffects(int previousObservedLevel, int currentLevel)
@@ -15991,6 +16012,7 @@ namespace HaCreator.MapSimulator
                     requireExactClientPayload,
                     out ushort chatLogType,
                     out string chatText,
+                    out bool hasChatLogType,
                     out bool hasChannelId,
                     out int channelId,
                     out message))
@@ -16000,7 +16022,7 @@ namespace HaCreator.MapSimulator
 
             message = hasChannelId
                 ? ApplyPacketOwnedChatMessage(chatText, chatLogType, channelId: channelId)
-                : chatLogType > 0
+                : hasChatLogType
                     ? ApplyPacketOwnedChatMessage(chatText, chatLogType)
                     : ApplyPacketOwnedChatMessage(chatText);
             return true;
@@ -16015,8 +16037,30 @@ namespace HaCreator.MapSimulator
             out int channelId,
             out string message)
         {
+            return TryDecodePacketOwnedChatPayload(
+                payload,
+                requireExactClientPayload,
+                out chatLogType,
+                out chatText,
+                out _,
+                out hasChannelId,
+                out channelId,
+                out message);
+        }
+
+        internal static bool TryDecodePacketOwnedChatPayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out ushort chatLogType,
+            out string chatText,
+            out bool hasChatLogType,
+            out bool hasChannelId,
+            out int channelId,
+            out string message)
+        {
             chatLogType = 0;
             chatText = null;
+            hasChatLogType = false;
             hasChannelId = false;
             channelId = -1;
             message = "Chat payload is missing.";
@@ -16027,6 +16071,7 @@ namespace HaCreator.MapSimulator
 
             if (TryDecodePacketOwnedTypedChatPayload(payload, out chatLogType, out chatText))
             {
+                hasChatLogType = true;
                 message = "Decoded packet-owned chat payload.";
                 return true;
             }
@@ -16039,6 +16084,7 @@ namespace HaCreator.MapSimulator
 
             if (TryDecodePacketOwnedChannelChatPayload(payload, out chatLogType, out channelId, out chatText))
             {
+                hasChatLogType = true;
                 hasChannelId = true;
                 message = "Decoded packet-owned channel chat payload.";
                 return true;
@@ -16776,6 +16822,14 @@ namespace HaCreator.MapSimulator
                 {
                     appliedCardUpdates++;
                     latestSnapshot = pickupResult.Snapshot;
+                    if (activeCharacterId > 0 && _playerManager?.Player?.Build?.Id == activeCharacterId)
+                    {
+                        TryRegisterAnimationDisplayerMonsterBookCardPickup(
+                            activeCharacterId,
+                            () => _playerManager?.Player?.Position ?? Vector2.Zero,
+                            pickup.ItemId,
+                            out _);
+                    }
                 }
                 else if (pickupResult.Outcome == MonsterBookManager.CardPickupOutcome.AlreadyFull)
                 {

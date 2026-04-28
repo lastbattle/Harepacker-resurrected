@@ -1492,7 +1492,12 @@ namespace HaCreator.MapSimulator.Interaction
                     PreInventoryHeaderValue1 = twoIntValueRecord.Value1,
                     PreInventoryHeaderValue2 = twoIntValueRecord.Value2,
                     TwoIntValueRecord = twoIntValueRecord,
-                    TwoIntValueRecordByteCount = checked((int)(reader.BaseStream.Position - sectionStart))
+                    TwoIntValueRecordByteCount = checked((int)(reader.BaseStream.Position - sectionStart)),
+                    TwoIntValueRecordFieldByteCounts = new Dictionary<string, int>(StringComparer.Ordinal)
+                    {
+                        [nameof(PacketCharacterDataTwoIntValueRecord.Value1)] = sizeof(int),
+                        [nameof(PacketCharacterDataTwoIntValueRecord.Value2)] = sizeof(int)
+                    }
                 };
                 decodedSectionFlags |= CharacterDataTwoIntValueRecordFlag;
                 decodedSectionByteCounts[CharacterDataTwoIntValueRecordFlag] = checked((int)(reader.BaseStream.Position - sectionStart));
@@ -2836,7 +2841,12 @@ namespace HaCreator.MapSimulator.Interaction
                         RegularMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.RegularCapacity),
                         ContinentMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.ContinentCapacity),
                         RegularMapTransferRecordByteCount = regularMapTransferRecordByteCount,
-                        ContinentMapTransferRecordByteCount = continentMapTransferRecordByteCount
+                        ContinentMapTransferRecordByteCount = continentMapTransferRecordByteCount,
+                        MapTransferRecordByteCountsByGroup = new Dictionary<string, int>(StringComparer.Ordinal)
+                        {
+                            ["Regular"] = regularMapTransferRecordByteCount,
+                            ["Continent"] = continentMapTransferRecordByteCount
+                        }
                     };
                     decodedSectionFlags |= CharacterDataMapTransferFlag;
                     decodedSectionByteCounts[CharacterDataMapTransferFlag] =
@@ -2890,14 +2900,16 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out int wildHunterInfoByteCount,
                         out int wildHunterInfoModeByteCount,
-                        out int wildHunterInfoCapturedMobRecordByteCount);
+                        out int wildHunterInfoCapturedMobRecordByteCount,
+                        out IReadOnlyDictionary<string, int> wildHunterInfoFieldByteCounts);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         HasWildHunterInfo = true,
                         WildHunterInfo = wildHunterInfo,
                         WildHunterInfoByteCount = wildHunterInfoByteCount,
                         WildHunterInfoModeByteCount = wildHunterInfoModeByteCount,
-                        WildHunterInfoCapturedMobRecordByteCount = wildHunterInfoCapturedMobRecordByteCount
+                        WildHunterInfoCapturedMobRecordByteCount = wildHunterInfoCapturedMobRecordByteCount,
+                        WildHunterInfoFieldByteCounts = wildHunterInfoFieldByteCounts
                     };
                     decodedSectionFlags |= CharacterDataWildHunterInfoFlag;
                     decodedSectionByteCounts[CharacterDataWildHunterInfoFlag] =
@@ -3402,7 +3414,8 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out int byteCount,
             out int modeByteCount,
-            out int capturedMobRecordByteCount)
+            out int capturedMobRecordByteCount,
+            out IReadOnlyDictionary<string, int> fieldByteCounts)
         {
             long sectionStart = reader.BaseStream.Position;
             int[] capturedMobIds = new int[5];
@@ -3415,6 +3428,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             capturedMobRecordByteCount = checked(capturedMobIds.Length * sizeof(int));
             byteCount = checked((int)(reader.BaseStream.Position - sectionStart));
+            fieldByteCounts = new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                [nameof(PacketCharacterDataWildHunterInfo.RawMode)] = modeByteCount,
+                [nameof(PacketCharacterDataWildHunterInfo.CapturedMobIds)] = capturedMobRecordByteCount
+            };
             return new PacketCharacterDataWildHunterInfo(
                 rawMode,
                 (byte)(rawMode / 10),
@@ -3558,6 +3576,20 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<PacketCharacterDataFixedClientRecord> coupleRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             IReadOnlyList<PacketCharacterDataFixedClientRecord> friendRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             IReadOnlyList<PacketCharacterDataFixedClientRecord> marriageRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
+            Dictionary<string, int> fixedRecordCountByteCountsByOwner = new(StringComparer.Ordinal)
+            {
+                [PacketCharacterDataFixedClientRecord.MiniGameOwner] = 0,
+                [PacketCharacterDataFixedClientRecord.CoupleOwner] = 0,
+                [PacketCharacterDataFixedClientRecord.FriendOwner] = 0,
+                [PacketCharacterDataFixedClientRecord.MarriageOwner] = 0
+            };
+            Dictionary<string, int> fixedRecordRecordByteCountsByOwner = new(StringComparer.Ordinal)
+            {
+                [PacketCharacterDataFixedClientRecord.MiniGameOwner] = 0,
+                [PacketCharacterDataFixedClientRecord.CoupleOwner] = 0,
+                [PacketCharacterDataFixedClientRecord.FriendOwner] = 0,
+                [PacketCharacterDataFixedClientRecord.MarriageOwner] = 0
+            };
             int miniGameRecordCountByteCount = 0;
             int miniGameRecordByteCount = 0;
             int coupleRecordCountByteCount = 0;
@@ -3575,6 +3607,8 @@ namespace HaCreator.MapSimulator.Interaction
                     CharacterDataMiniGameRecordByteLength,
                     out miniGameRecordCountByteCount,
                     out miniGameRecordByteCount);
+                fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.MiniGameOwner] = miniGameRecordCountByteCount;
+                fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.MiniGameOwner] = miniGameRecordByteCount;
                 decodedSectionFlags |= CharacterDataMiniGameRecordFlag;
                 decodedSectionByteCounts[CharacterDataMiniGameRecordFlag] =
                     checked((int)(reader.BaseStream.Position - sectionStart));
@@ -3589,18 +3623,24 @@ namespace HaCreator.MapSimulator.Interaction
                     CharacterDataCoupleRecordByteLength,
                     out coupleRecordCountByteCount,
                     out coupleRecordByteCount);
+                fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.CoupleOwner] = coupleRecordCountByteCount;
+                fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.CoupleOwner] = coupleRecordByteCount;
                 friendRecords = ReadCharacterDataFixedRecordGroup(
                     reader,
                     PacketCharacterDataFixedClientRecord.FriendOwner,
                     CharacterDataFriendRecordByteLength,
                     out friendRecordCountByteCount,
                     out friendRecordByteCount);
+                fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.FriendOwner] = friendRecordCountByteCount;
+                fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.FriendOwner] = friendRecordByteCount;
                 marriageRecords = ReadCharacterDataFixedRecordGroup(
                     reader,
                     PacketCharacterDataFixedClientRecord.MarriageOwner,
                     CharacterDataMarriageRecordByteLength,
                     out marriageRecordCountByteCount,
                     out marriageRecordByteCount);
+                fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.MarriageOwner] = marriageRecordCountByteCount;
+                fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.MarriageOwner] = marriageRecordByteCount;
                 decodedSectionFlags |= CharacterDataRelationshipRecordFlag;
                 decodedSectionByteCounts[CharacterDataRelationshipRecordFlag] =
                     checked((int)(reader.BaseStream.Position - sectionStart));
@@ -3628,6 +3668,8 @@ namespace HaCreator.MapSimulator.Interaction
                 MarriageRecordByteCount = marriageRecordByteCount,
                 MarriageRecordEntries = marriageRecords,
                 MarriageRecords = ExtractFixedClientRecordBytes(marriageRecords),
+                FixedRecordCountByteCountsByOwner = fixedRecordCountByteCountsByOwner,
+                FixedRecordRecordByteCountsByOwner = fixedRecordRecordByteCountsByOwner,
                 DecodedSectionFlags = decodedSectionFlags,
                 DecodedSectionByteCounts = decodedSectionByteCounts
             };
@@ -4210,6 +4252,7 @@ namespace HaCreator.MapSimulator.Interaction
         int? Meso = null,
         PacketCharacterDataTwoIntValueRecord? TwoIntValueRecord = null,
         int TwoIntValueRecordByteCount = 0,
+        IReadOnlyDictionary<string, int> TwoIntValueRecordFieldByteCounts = null,
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> InventoryItemsByType = null,
         IReadOnlyDictionary<InventoryType, int> InventorySectionByteCounts = null,
@@ -4305,6 +4348,7 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<int> ContinentMapTransferFields = null,
         int RegularMapTransferRecordByteCount = 0,
         int ContinentMapTransferRecordByteCount = 0,
+        IReadOnlyDictionary<string, int> MapTransferRecordByteCountsByGroup = null,
         int MiniGameRecordCount = 0,
         int MiniGameRecordCountByteCount = 0,
         int MiniGameRecordByteCount = 0,
@@ -4325,6 +4369,8 @@ namespace HaCreator.MapSimulator.Interaction
         int MarriageRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataFixedClientRecord> MarriageRecordEntries = null,
         IReadOnlyList<byte[]> MarriageRecords = null,
+        IReadOnlyDictionary<string, int> FixedRecordCountByteCountsByOwner = null,
+        IReadOnlyDictionary<string, int> FixedRecordRecordByteCountsByOwner = null,
         int NewYearCardRecordCount = 0,
         int NewYearCardRecordCountByteCount = 0,
         int NewYearCardRecordByteCount = 0,
@@ -4337,6 +4383,7 @@ namespace HaCreator.MapSimulator.Interaction
         int WildHunterInfoByteCount = 0,
         int WildHunterInfoModeByteCount = 0,
         int WildHunterInfoCapturedMobRecordByteCount = 0,
+        IReadOnlyDictionary<string, int> WildHunterInfoFieldByteCounts = null,
         PacketCharacterDataWildHunterInfo? WildHunterInfo = null,
         int QuestCompleteRecordCount = 0,
         int QuestCompleteRecordCountByteCount = 0,

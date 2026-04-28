@@ -4879,6 +4879,13 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyMiniRoomBaseEnterPacket(PacketReader reader, out string message)
         {
             int seatIndex = reader.ReadByte();
+            if (IsMiniRoomBaseSeatOccupied(seatIndex))
+            {
+                message = $"CMiniRoomBaseDlg::OnEnterBase rejected occupied seat {Math.Max(0, seatIndex)}, matching the client disconnect guard before DecodeAvatar.";
+                StatusMessage = message;
+                return false;
+            }
+
             if (RequiresMerchantSeatBaseStub(seatIndex))
             {
                 int merchantId = reader.ReadInt();
@@ -4918,9 +4925,53 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyMiniRoomBaseLeavePacket(PacketReader reader, out string message)
         {
             int seatIndex = reader.ReadByte();
+            if (IsMiniRoomBaseMissingLeaveSeat(seatIndex))
+            {
+                message = $"CMiniRoomBaseDlg::OnLeaveBase rejected missing seat {Math.Max(0, seatIndex)}, matching the client disconnect guard for absent avatars.";
+                StatusMessage = message;
+                return false;
+            }
+
             ApplyMiniRoomBaseSeatLeavePacket(seatIndex);
             message = StatusMessage;
             return true;
+        }
+
+        private bool IsMiniRoomBaseSeatOccupied(int seatIndex)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            if (normalizedSeatIndex >= Capacity && Capacity > 0)
+            {
+                return true;
+            }
+
+            return normalizedSeatIndex < _occupants.Count
+                && !IsMiniRoomBasePlaceholderOccupant(normalizedSeatIndex, _occupants[normalizedSeatIndex]);
+        }
+
+        private bool IsMiniRoomBaseMissingLeaveSeat(int seatIndex)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            if (normalizedSeatIndex <= 0)
+            {
+                return false;
+            }
+
+            return normalizedSeatIndex >= _occupants.Count
+                || IsMiniRoomBasePlaceholderOccupant(normalizedSeatIndex, _occupants[normalizedSeatIndex]);
+        }
+
+        private bool IsMiniRoomBasePlaceholderOccupant(int seatIndex, SocialRoomOccupant occupant)
+        {
+            if (occupant == null)
+            {
+                return true;
+            }
+
+            string seatLabel = ResolveBasePacketSeatLabel(Math.Max(0, seatIndex));
+            return string.Equals(occupant.Name, seatLabel, StringComparison.OrdinalIgnoreCase)
+                && occupant.AvatarBuild == null
+                && !occupant.IsReady;
         }
 
         private static bool TryReadPacketOwnedAvatarLook(PacketReader reader, out LoginAvatarLook avatarLook, out string message)

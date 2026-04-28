@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 
 namespace HaCreator.MapSimulator.UI
@@ -161,6 +162,9 @@ namespace HaCreator.MapSimulator.UI
         public CollectionBookRecordType Type { get; init; }
         public CollectionBookRecordRole Role { get; init; }
         public string Text { get; init; } = string.Empty;
+        public string ClientSourceText { get; init; } = string.Empty;
+        public int ClientTextBlockIndex { get; init; } = -1;
+        public int ClientTextLineIndex { get; init; } = -1;
         public int Left { get; init; }
         public int Top { get; init; }
         public int Width { get; init; }
@@ -169,6 +173,30 @@ namespace HaCreator.MapSimulator.UI
         public CollectionBookTextAlignment Alignment { get; init; }
         public bool UsesResolvedAnalyzerOffset { get; init; }
         public int AnalyzerLineWidth { get; init; }
+    }
+
+    internal static class CollectionBookClientResources
+    {
+        internal const int Dot0StringPoolId = 0x0B95;
+        internal const int Dot1StringPoolId = 0x0B96;
+        internal const int PrevButtonStringPoolId = 0x0D99;
+        internal const int NextButtonStringPoolId = 0x0D9A;
+        internal const int CloseButtonStringPoolId = 0x0D9B;
+
+        internal static string ResolveDot0ResourcePath() =>
+            MapleStoryStringPool.GetOrFallback(Dot0StringPoolId, "UI/UIWindow2.img/UtilDlgEx/dot0");
+
+        internal static string ResolveDot1ResourcePath() =>
+            MapleStoryStringPool.GetOrFallback(Dot1StringPoolId, "UI/UIWindow2.img/UtilDlgEx/dot1");
+
+        internal static string ResolvePrevButtonResourcePath() =>
+            MapleStoryStringPool.GetOrFallback(PrevButtonStringPoolId, "UI/UIWindow.img/Book/BtPrev");
+
+        internal static string ResolveNextButtonResourcePath() =>
+            MapleStoryStringPool.GetOrFallback(NextButtonStringPoolId, "UI/UIWindow.img/Book/BtNext");
+
+        internal static string ResolveCloseButtonResourcePath() =>
+            MapleStoryStringPool.GetOrFallback(CloseButtonStringPoolId, "UI/UIWindow.img/Book/BtClose");
     }
 
     internal static class CollectionBookSnapshotFactory
@@ -1046,6 +1074,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            int clientBlockIndex = ResolveNextClientTextBlockIndex(records);
+            string clientSourceText = text ?? string.Empty;
             for (int i = 0; i < lines.Count; i++)
             {
                 int resolvedLeft = ResolveAnalyzedTextLeft(left, width, alignment, lines[i], styleIndex, measureTextWidth);
@@ -1059,8 +1089,30 @@ namespace HaCreator.MapSimulator.UI
                     alignment,
                     role,
                     usesResolvedAnalyzerOffset: true,
-                    analyzerLineWidth: analyzerLineWidth));
+                    analyzerLineWidth: analyzerLineWidth,
+                    clientSourceText: clientSourceText,
+                    clientTextBlockIndex: clientBlockIndex,
+                    clientTextLineIndex: i));
             }
+        }
+
+        private static int ResolveNextClientTextBlockIndex(IReadOnlyList<CollectionBookRecordSnapshot> records)
+        {
+            if (records == null || records.Count == 0)
+            {
+                return 0;
+            }
+
+            int maxBlockIndex = -1;
+            foreach (CollectionBookRecordSnapshot record in records)
+            {
+                if (record?.Type == CollectionBookRecordType.Text)
+                {
+                    maxBlockIndex = Math.Max(maxBlockIndex, record.ClientTextBlockIndex);
+                }
+            }
+
+            return maxBlockIndex + 1;
         }
 
         private static int GetWrappedCollectionLineCount(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)
@@ -1345,13 +1397,19 @@ namespace HaCreator.MapSimulator.UI
             CollectionBookTextAlignment alignment,
             CollectionBookRecordRole role = CollectionBookRecordRole.GenericText,
             bool usesResolvedAnalyzerOffset = false,
-            int analyzerLineWidth = 0)
+            int analyzerLineWidth = 0,
+            string clientSourceText = null,
+            int clientTextBlockIndex = -1,
+            int clientTextLineIndex = -1)
         {
             return new CollectionBookRecordSnapshot
             {
                 Type = CollectionBookRecordType.Text,
                 Role = role,
                 Text = text ?? string.Empty,
+                ClientSourceText = clientSourceText ?? text ?? string.Empty,
+                ClientTextBlockIndex = clientTextBlockIndex,
+                ClientTextLineIndex = clientTextLineIndex,
                 Left = left,
                 Top = top,
                 Width = width,

@@ -27,5 +27,19 @@ namespace HaCreator.MapSimulator.UI
             return hasPendingRequestState
                 || ownerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily;
         }
+
+        internal static bool HasPendingResultRequestState(
+            bool hasPendingTradeRequest,
+            bool hasPendingWishlistRegister,
+            bool hasPendingWishlistSearch,
+            bool isWaitingForResult,
+            bool hasPendingPacketOwnedResult)
+        {
+            return hasPendingTradeRequest
+                || hasPendingWishlistRegister
+                || hasPendingWishlistSearch
+                || isWaitingForResult
+                || hasPendingPacketOwnedResult;
+        }
     }
 }

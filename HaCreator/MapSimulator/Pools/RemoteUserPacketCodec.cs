@@ -3436,11 +3436,8 @@ namespace HaCreator.MapSimulator.Pools
                 for (int j = defaultHelperSegmentIndex + 1; j < segments.Length; j++)
                 {
                     string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
-                    string nextCandidate = j + 1 < segments.Length
-                        ? NormalizeHelperMarkerNameSegment(segments[j + 1])
-                        : string.Empty;
-                    if (TryResolveCompositeHelperMarkerName(candidate, nextCandidate, out string compositeMarkerName)
-                        && KnownHelperMarkerNames.Contains(compositeMarkerName))
+                    if (TryResolveDefaultHelperCompositeMarkerName(segments, j, out string compositeMarkerName)
+                        && IsKnownDefaultHelperNormalizedMarkerName(compositeMarkerName))
                     {
                         return compositeMarkerName;
                     }
@@ -3459,11 +3456,8 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = segments.Length - 1; i >= 0; i--)
             {
                 string candidate = NormalizeHelperMarkerNameSegment(segments[i]);
-                string previousCandidate = i > 0
-                    ? NormalizeHelperMarkerNameSegment(segments[i - 1])
-                    : string.Empty;
-                if (TryResolveCompositeHelperMarkerName(previousCandidate, candidate, out string compositeMarkerName)
-                    && KnownHelperMarkerNames.Contains(compositeMarkerName))
+                if (TryResolveDefaultHelperCompositeMarkerNameEndingAt(segments, i, out string compositeMarkerName)
+                    && IsKnownDefaultHelperNormalizedMarkerName(compositeMarkerName))
                 {
                     return compositeMarkerName;
                 }
@@ -3539,6 +3533,12 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                if (TryResolveDirectionMarkerAlias(candidate, out string directionAlias))
+                {
+                    directionMarkerName = directionAlias;
+                    return true;
+                }
+
                 if (KnownMinimapIconDirectionAncillaryMarkerNames.Contains(candidate))
                 {
                     directionMarkerName = candidate;
@@ -3569,10 +3569,98 @@ namespace HaCreator.MapSimulator.Pools
                 ("party", "master") => "partymaster",
                 ("user", "trader") => "usertrader",
                 ("another", "trader") => "anothertrader",
+                ("start", "npc") => "startnpc",
+                ("end", "npc") => "endnpc",
+                ("arrow", "up") => "arrowup",
+                ("arrow", "down") => "arrowdown",
+                ("arrow", "right") => "arrowright",
+                ("arrow", "left") => "arrowleft",
                 _ => null
             };
 
             return markerName != null;
+        }
+
+        private static bool IsKnownDefaultHelperNormalizedMarkerName(string markerName)
+        {
+            return KnownHelperMarkerNames.Contains(markerName)
+                || KnownDefaultHelperAncillaryMarkerNames.Contains(markerName);
+        }
+
+        private static bool TryResolveDefaultHelperCompositeMarkerName(
+            string[] segments,
+            int startIndex,
+            out string markerName)
+        {
+            markerName = null;
+            string firstSegment = NormalizeHelperMarkerNameSegmentAt(segments, startIndex);
+            string secondSegment = NormalizeHelperMarkerNameSegmentAt(segments, startIndex + 1);
+            string thirdSegment = NormalizeHelperMarkerNameSegmentAt(segments, startIndex + 2);
+
+            if (!string.IsNullOrWhiteSpace(thirdSegment)
+                && !IsNumericHelperMarkerPathSegment(thirdSegment)
+                && TryResolveThreeSegmentDefaultHelperMarkerName(firstSegment, secondSegment, thirdSegment, out markerName))
+            {
+                return true;
+            }
+
+            return TryResolveCompositeHelperMarkerName(firstSegment, secondSegment, out markerName);
+        }
+
+        private static bool TryResolveDefaultHelperCompositeMarkerNameEndingAt(
+            string[] segments,
+            int endIndex,
+            out string markerName)
+        {
+            markerName = null;
+            string firstSegment = NormalizeHelperMarkerNameSegmentAt(segments, endIndex - 2);
+            string secondSegment = NormalizeHelperMarkerNameSegmentAt(segments, endIndex - 1);
+            string thirdSegment = NormalizeHelperMarkerNameSegmentAt(segments, endIndex);
+
+            if (!string.IsNullOrWhiteSpace(firstSegment)
+                && !IsNumericHelperMarkerPathSegment(firstSegment)
+                && TryResolveThreeSegmentDefaultHelperMarkerName(firstSegment, secondSegment, thirdSegment, out markerName))
+            {
+                return true;
+            }
+
+            return TryResolveCompositeHelperMarkerName(secondSegment, thirdSegment, out markerName);
+        }
+
+        private static bool TryResolveThreeSegmentDefaultHelperMarkerName(
+            string firstSegment,
+            string secondSegment,
+            string thirdSegment,
+            out string markerName)
+        {
+            markerName = null;
+            if (string.IsNullOrWhiteSpace(firstSegment)
+                || string.IsNullOrWhiteSpace(secondSegment)
+                || string.IsNullOrWhiteSpace(thirdSegment)
+                || IsNumericHelperMarkerPathSegment(firstSegment)
+                || IsNumericHelperMarkerPathSegment(secondSegment)
+                || IsNumericHelperMarkerPathSegment(thirdSegment))
+            {
+                return false;
+            }
+
+            markerName = (firstSegment, secondSegment, thirdSegment) switch
+            {
+                ("arrow", "up", "right") => "arrowupright",
+                ("arrow", "up", "left") => "arrowupleft",
+                ("arrow", "down", "right") => "arrowdownright",
+                ("arrow", "down", "left") => "arrowdownleft",
+                _ => null
+            };
+
+            return markerName != null;
+        }
+
+        private static string NormalizeHelperMarkerNameSegmentAt(string[] segments, int index)
+        {
+            return index >= 0 && index < segments.Length
+                ? NormalizeHelperMarkerNameSegment(segments[index])
+                : string.Empty;
         }
 
         private static bool TryResolveMinimapIconNpcMarkerSegment(
@@ -3639,10 +3727,36 @@ namespace HaCreator.MapSimulator.Pools
                 "arrowupleft" => "arrowupleft",
                 "arrowdownright" => "arrowdownright",
                 "arrowdownleft" => "arrowdownleft",
+                "northwest" => "nw",
+                "north" => "n",
+                "northeast" => "ne",
+                "west" => "w",
+                "east" => "e",
+                "southwest" => "sw",
+                "south" => "s",
+                "southeast" => "se",
                 "clear" => "clear",
                 "none" => "none",
                 _ => lowered
             };
+        }
+
+        private static bool TryResolveDirectionMarkerAlias(string candidate, out string directionMarkerName)
+        {
+            directionMarkerName = candidate switch
+            {
+                "northwest" => "nw",
+                "north" => "n",
+                "northeast" => "ne",
+                "west" => "w",
+                "east" => "e",
+                "southwest" => "sw",
+                "south" => "s",
+                "southeast" => "se",
+                _ => null
+            };
+
+            return directionMarkerName != null;
         }
 
         private static bool IsNumericHelperMarkerPathSegment(string segment)
@@ -4546,6 +4660,13 @@ namespace HaCreator.MapSimulator.Pools
                     scopedMaskBaseChargeElement,
                     out chargeSkillId))
             {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId))
+            {
+                chargeSkillId = effectivePreferredSkillId;
                 return true;
             }
 

@@ -324,6 +324,16 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                if (_passiveEstablishedSession.HasValue
+                    && IsSameEstablishedSession(_passiveEstablishedSession.Value, candidate))
+                {
+                    LastStatus =
+                        $"Guild boss official-session bridge is already observing established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}; keeping passive ownership and {PendingPacketCount} queued opcode {OutboundPulleyRequestOpcode} request(s). " +
+                        $"Reconnect through the localhost proxy for live packet ownership.";
+                    status = LastStatus;
+                    return true;
+                }
+
                 bool preservePendingForPassiveHandoff = !HasAttachedClient && _pendingOutboundRequests.Count > 0;
                 StopInternal(clearPending: !preservePendingForPassiveHandoff);
                 _passiveEstablishedSession = candidate;
@@ -850,6 +860,14 @@ namespace HaCreator.MapSimulator.Managers
         private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
+        }
+
+        private static bool IsSameEstablishedSession(SessionDiscoveryCandidate left, SessionDiscoveryCandidate right)
+        {
+            return left.ProcessId == right.ProcessId
+                && string.Equals(left.ProcessName, right.ProcessName, StringComparison.OrdinalIgnoreCase)
+                && Equals(left.LocalEndpoint, right.LocalEndpoint)
+                && Equals(left.RemoteEndpoint, right.RemoteEndpoint);
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

@@ -457,6 +457,7 @@ namespace HaCreator.MapSimulator
                 movingState.Y1,
                 movingState.Y2,
                 platform.MovementType);
+            ApplyPacketOwnedMovingFootholdWaypointsForPacketParity(platform, movingState);
             platform.X = movingState.CurrentX;
             platform.Y = movingState.CurrentY;
             platform.MovingDown = !movingState.ReverseVertical;
@@ -474,6 +475,11 @@ namespace HaCreator.MapSimulator
         {
             bool hasHorizontalSpan = x1 != x2;
             bool hasVerticalSpan = y1 != y2;
+            if (hasHorizontalSpan && hasVerticalSpan)
+            {
+                return PlatformMovementType.Waypoint;
+            }
+
             if (hasHorizontalSpan && !hasVerticalSpan)
             {
                 return PlatformMovementType.Horizontal;
@@ -485,6 +491,36 @@ namespace HaCreator.MapSimulator
             }
 
             return currentMovementType;
+        }
+
+        internal static void ApplyPacketOwnedMovingFootholdWaypointsForPacketParity(
+            DynamicPlatform platform,
+            PacketFieldUtilityMovingFootholdState movingState)
+        {
+            if (platform == null || movingState == null)
+            {
+                return;
+            }
+
+            if (platform.MovementType != PlatformMovementType.Waypoint
+                || movingState.X1 == movingState.X2
+                || movingState.Y1 == movingState.Y2)
+            {
+                return;
+            }
+
+            Vector2 firstEndpoint = new(movingState.X1, movingState.Y1);
+            Vector2 secondEndpoint = new(movingState.X2, movingState.Y2);
+            platform.Waypoints = new List<Vector2>
+            {
+                firstEndpoint,
+                secondEndpoint
+            };
+
+            bool secondEndpointIsRight = movingState.X2 > movingState.X1;
+            bool movingTowardSecondEndpoint = movingState.ReverseHorizontal != secondEndpointIsRight;
+            platform.CurrentWaypointIndex = movingTowardSecondEndpoint ? 0 : 1;
+            platform.LoopWaypoints = true;
         }
 
         private void CachePacketOwnedFootholdNames(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)

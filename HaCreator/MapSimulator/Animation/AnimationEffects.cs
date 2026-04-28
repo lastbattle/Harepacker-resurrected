@@ -3958,6 +3958,11 @@ namespace HaCreator.MapSimulator.Animation
         {
             return _flipResolver?.Invoke() ?? _flip;
         }
+
+        internal Vector2 ResolveDrawPositionForTesting()
+        {
+            return _positionResolver?.Invoke() ?? new Vector2(_x, _y);
+        }
     }
 
     /// <summary>

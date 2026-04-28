@@ -1557,7 +1557,7 @@ namespace HaCreator.MapSimulator
 
         internal static bool SuppressesDragonPresentation(MapInfo mapInfo)
         {
-            return mapInfo?.vanishDragon == true || IsNoDragonWrapperMap(mapInfo);
+            return !FieldInteractionRestrictionEvaluator.CanUseDragonCompanion(mapInfo);
         }
 
         private static bool IsWeddingPhotoWrapperMap(MapInfo mapInfo)

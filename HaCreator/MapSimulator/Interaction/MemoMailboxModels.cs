@@ -56,6 +56,25 @@ namespace HaCreator.MapSimulator.Interaction
         public bool ShowTaxInfo { get; init; }
         public string ModeSummary { get; init; } = string.Empty;
         public string TaxSummary { get; init; } = string.Empty;
+        public ParcelDialogOutboundRequestSnapshot LastOutboundRequest { get; init; }
+    }
+
+    internal sealed class ParcelDialogOutboundRequestSnapshot
+    {
+        public int Opcode { get; init; }
+        public byte Subtype { get; init; }
+        public ParcelDialogTab SourceTab { get; init; }
+        public byte InventoryType { get; init; }
+        public short InventoryPosition { get; init; }
+        public short ItemQuantity { get; init; }
+        public int Meso { get; init; }
+        public string Recipient { get; init; } = string.Empty;
+        public bool IsQuickDelivery { get; init; }
+        public string QuickDeliveryMemo { get; init; } = string.Empty;
+        public int QuickDeliveryCouponPosition { get; init; }
+        public int ParcelSerial { get; init; }
+        public byte[] Payload { get; init; } = Array.Empty<byte>();
+        public string PayloadHex => Payload.Length == 0 ? string.Empty : Convert.ToHexString(Payload);
     }
 
     internal sealed class MemoMailboxAttachmentSnapshot

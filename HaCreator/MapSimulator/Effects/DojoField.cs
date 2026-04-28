@@ -45,8 +45,8 @@ namespace HaCreator.MapSimulator.Effects
     /// - CField_Dojang::Update (0x54ef10) continuously mirrors boss HP, player HP, and energy into
     ///   dedicated HUD layers before calling UpdateTimer again.
     ///
-    /// This simulator pass mirrors the Dojo-specific timer plus the three gauge surfaces behind a
-    /// stable runtime seam. Stage effects and packet-driven result flow still need follow-up work.
+    /// This simulator pass mirrors the Dojo-specific timer, HUD gauges, and WZ-backed stage/result
+    /// presentations behind a stable runtime seam.
     /// </summary>
     public class DojoField
     {
@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int BarGaugeWidth = 305;
         private const int BarGaugeHeight = 13;
         private const int PlayerGaugeOffsetX = 308;
+        private const int PlayerGaugeRightOffsetX = 309;
         private const int MonsterGaugeOffsetX = 11;
         private const int BarGaugeOffsetY = 4;
         private const int EnergyGaugeWidth = 9;
@@ -156,6 +157,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
         internal static DojoHudGeometry ClientHudGeometry => new(
             PlayerGaugeOffsetX,
+            PlayerGaugeRightOffsetX,
             MonsterGaugeOffsetX,
             BarGaugeOffsetY,
             EnergyOrigin,
@@ -1801,7 +1803,11 @@ namespace HaCreator.MapSimulator.Effects
                     playerBounds.Y + BarGaugeOffsetY,
                     BarGaugeWidth,
                     BarGaugeHeight);
-                DrawHorizontalGauge(spriteBatch, pixelTexture, _playerGaugeTexture, playerGaugeBounds, _playerMaxHp > 0 ? (float)_playerHp / _playerMaxHp : 0f);
+                DrawHorizontalGauge(
+                    spriteBatch,
+                    pixelTexture,
+                    _playerGaugeTexture,
+                    ResolvePlayerGaugeFillBounds(playerBounds, _playerMaxHp > 0 ? (float)_playerHp / _playerMaxHp : 0f));
             }
 
             if (_bossHpPercent.HasValue)
@@ -1911,7 +1917,7 @@ namespace HaCreator.MapSimulator.Effects
         private static void DrawHorizontalGauge(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds, float progress)
         {
             int fillWidth = Math.Clamp((int)MathF.Round(bounds.Width * Math.Clamp(progress, 0f, 1f)), 0, bounds.Width);
-            if (fillWidth <= 0)
+            if (fillWidth <= 0 || bounds.Height <= 0)
             {
                 return;
             }
@@ -1921,6 +1927,37 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
             spriteBatch.Draw(source, new Rectangle(bounds.X, bounds.Y, fillWidth, bounds.Height), Color.White);
+        }
+
+        private static void DrawHorizontalGauge(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            Texture2D source = gaugeTexture ?? pixelTexture;
+            if (source == null)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(source, bounds, Color.White);
+        }
+        internal static Rectangle ResolvePlayerGaugeFillBounds(Rectangle playerBounds, float progress)
+        {
+            int fillWidth = Math.Clamp((int)MathF.Round(BarGaugeWidth * Math.Clamp(progress, 0f, 1f)), 0, BarGaugeWidth);
+            if (fillWidth <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int rightEdgeX = playerBounds.X + PlayerGaugeRightOffsetX;
+            return new Rectangle(
+                rightEdgeX - fillWidth,
+                playerBounds.Y + BarGaugeOffsetY,
+                fillWidth,
+                BarGaugeHeight);
         }
         private static void DrawVerticalGauge(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds, float progress)
         {
@@ -1991,6 +2028,7 @@ namespace HaCreator.MapSimulator.Effects
         internal readonly record struct DojoHudGeometry(
             int PlayerGaugeOffsetX,
             int MonsterGaugeOffsetX,
+            int PlayerGaugeRightOffsetX,
             int BarGaugeOffsetY,
             Point EnergyOrigin,
             int EnergyGaugeOffsetX,

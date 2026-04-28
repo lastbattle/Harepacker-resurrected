@@ -5,6 +5,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class PacketScriptDedicatedOwnerRuntime
     {
+        private const int SlideMenuExPageSize = 8;
+
         private PacketScriptMessageRuntime.PacketScriptDedicatedOwnerRequest _activeOwner;
         private int _selectedChoiceIndex = -1;
 
@@ -31,6 +33,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int selectedChoiceIndex = NormalizeChoiceIndex(_activeOwner, _selectedChoiceIndex);
+            int pageSize = ResolvePageSize(_activeOwner);
+            int currentPage = ResolveCurrentPage(selectedChoiceIndex, pageSize);
             snapshot = new PacketScriptDedicatedOwnerSnapshot(
                 _activeOwner.Kind,
                 _activeOwner.Title,
@@ -39,7 +43,9 @@ namespace HaCreator.MapSimulator.Interaction
                 _activeOwner.Choices,
                 _activeOwner.Mode,
                 _activeOwner.InitialSelectionId,
-                selectedChoiceIndex);
+                selectedChoiceIndex,
+                pageSize,
+                currentPage);
             return true;
         }
 
@@ -51,14 +57,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int choiceCount = _activeOwner.Choices.Count;
             int currentIndex = NormalizeChoiceIndex(_activeOwner, _selectedChoiceIndex);
             if (currentIndex < 0)
             {
                 currentIndex = 0;
             }
 
-            int nextIndex = ((currentIndex + delta) % choiceCount + choiceCount) % choiceCount;
+            int nextIndex = IsSlideMenuEx(_activeOwner)
+                ? ResolveSlideMenuPageMoveIndex(_activeOwner, currentIndex, delta)
+                : ResolveWrappedMoveIndex(_activeOwner.Choices.Count, currentIndex, delta);
             _selectedChoiceIndex = nextIndex;
             return true;
         }
@@ -104,9 +111,14 @@ namespace HaCreator.MapSimulator.Interaction
                 selectedIndex >= 0 && selectedIndex < _activeOwner.Choices.Count
                     ? _activeOwner.Choices[selectedIndex]?.Label ?? "(null)"
                     : "(none)";
+            int pageSize = ResolvePageSize(_activeOwner);
+            int currentPage = ResolveCurrentPage(selectedIndex, pageSize);
+            string pageStatus = pageSize > 0
+                ? $", page={currentPage + 1}/{ResolvePageCount(_activeOwner.Choices.Count, pageSize)}"
+                : string.Empty;
             return
                 $"Packet-script dedicated owner {_activeOwner.Kind}: title=\"{_activeOwner.Title}\", " +
-                $"choices={_activeOwner.Choices.Count}, selected={selectedIndex}, label=\"{selectedLabel}\".";
+                $"choices={_activeOwner.Choices.Count}, selected={selectedIndex}{pageStatus}, label=\"{selectedLabel}\".";
         }
 
         private static int ResolveInitialSelectionIndex(PacketScriptMessageRuntime.PacketScriptDedicatedOwnerRequest owner)
@@ -139,6 +151,50 @@ namespace HaCreator.MapSimulator.Interaction
                 ? index
                 : ResolveInitialSelectionIndex(owner);
         }
+
+        private static int ResolveWrappedMoveIndex(int choiceCount, int currentIndex, int delta)
+        {
+            return ((currentIndex + delta) % choiceCount + choiceCount) % choiceCount;
+        }
+
+        private static int ResolveSlideMenuPageMoveIndex(PacketScriptMessageRuntime.PacketScriptDedicatedOwnerRequest owner, int currentIndex, int delta)
+        {
+            int choiceCount = owner?.Choices?.Count ?? 0;
+            if (choiceCount <= 0)
+            {
+                return -1;
+            }
+
+            int currentPage = Math.Max(0, currentIndex / SlideMenuExPageSize);
+            int pageCount = ResolvePageCount(choiceCount, SlideMenuExPageSize);
+            int nextPage = Math.Clamp(currentPage + Math.Sign(delta), 0, Math.Max(0, pageCount - 1));
+            return Math.Min(choiceCount - 1, nextPage * SlideMenuExPageSize);
+        }
+
+        private static int ResolveCurrentPage(int selectedChoiceIndex, int pageSize)
+        {
+            return selectedChoiceIndex >= 0 && pageSize > 0
+                ? selectedChoiceIndex / pageSize
+                : 0;
+        }
+
+        private static int ResolvePageCount(int choiceCount, int pageSize)
+        {
+            return choiceCount > 0 && pageSize > 0
+                ? ((choiceCount - 1) / pageSize) + 1
+                : 0;
+        }
+
+        private static int ResolvePageSize(PacketScriptMessageRuntime.PacketScriptDedicatedOwnerRequest owner)
+        {
+            return IsSlideMenuEx(owner) ? SlideMenuExPageSize : 0;
+        }
+
+        private static bool IsSlideMenuEx(PacketScriptMessageRuntime.PacketScriptDedicatedOwnerRequest owner)
+        {
+            return owner?.Kind == PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu &&
+                   owner.Mode == 0;
+        }
     }
 
     internal sealed record PacketScriptDedicatedOwnerSnapshot(
@@ -149,5 +205,7 @@ namespace HaCreator.MapSimulator.Interaction
         System.Collections.Generic.IReadOnlyList<NpcInteractionChoice> Choices,
         int Mode,
         int InitialSelectionId,
-        int SelectedChoiceIndex);
+        int SelectedChoiceIndex,
+        int PageSize,
+        int CurrentPage);
 }

@@ -199,6 +199,7 @@ namespace HaCreator.MapSimulator.Effects
             PreparedDamageNumberCompositionInsertCommand InsertCommand);
         internal readonly record struct PreparedDamageNumberCompositionTrace(
             CanvasLayerRecoveredCanvasSettings CanvasSettings,
+            int RecoveredNativeAccumulatedCanvasWidth,
             PreparedDamageNumberCompositionInsertCommand[] InsertCanvasCommands,
             PreparedDamageNumberCompositionNativeOperation[] NativeOperations,
             bool KeepsCriticalBannerOnSeparateLayer,
@@ -621,14 +622,14 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
-        internal static (DigitLayoutEntry[] Entries, int LeftOffset, int TotalWidth) BuildDigitLayout(
+        internal static (DigitLayoutEntry[] Entries, int LeftOffset, int TotalWidth, int RecoveredNativeAccumulatedCanvasWidth) BuildDigitLayout(
             string damageString,
             DamageNumberDigitSet largeDigitSet,
             DamageNumberDigitSet smallDigitSet,
             bool addCriticalSpacing)
         {
             if (string.IsNullOrEmpty(damageString))
-                return (Array.Empty<DigitLayoutEntry>(), 0, 0);
+                return (Array.Empty<DigitLayoutEntry>(), 0, 0, 0);
 
             List<DigitLayoutEntry> entries = new(damageString.Length);
             int accumulatedX = addCriticalSpacing ? DamageNumberConstants.CRITICAL_LEADING_SPACING_PX : 0;
@@ -661,10 +662,10 @@ namespace HaCreator.MapSimulator.Effects
 
             if (entries.Count == 0)
             {
-                return (Array.Empty<DigitLayoutEntry>(), 0, 0);
+                return (Array.Empty<DigitLayoutEntry>(), 0, 0, 0);
             }
 
-            return (entries.ToArray(), minLeft, Math.Max(0, maxRight - minLeft));
+            return (entries.ToArray(), minLeft, Math.Max(0, maxRight - minLeft), Math.Max(0, accumulatedX));
         }
 
         internal static PreparedDamageNumberVisual PrepareVisual(
@@ -702,7 +703,7 @@ namespace HaCreator.MapSimulator.Effects
                 return PrepareSpecialTextVisual(damageString, ResolveSpecialTextDigitSet());
             }
 
-            (DigitLayoutEntry[] layoutEntries, int leftOffset, int totalWidth) = BuildDigitLayout(
+            (DigitLayoutEntry[] layoutEntries, int leftOffset, int totalWidth, int recoveredNativeAccumulatedCanvasWidth) = BuildDigitLayout(
                 damageString,
                 largeDigitSet,
                 smallDigitSet,
@@ -750,6 +751,7 @@ namespace HaCreator.MapSimulator.Effects
                 BuildRecoveredCompositionTrace(
                     composedWidth,
                     ResolveCompositeCanvasHeight(),
+                    recoveredNativeAccumulatedCanvasWidth,
                     digits,
                     largeDigitSet,
                     smallDigitSet,
@@ -798,6 +800,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
+                0,
                 Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                 BuildRecoveredCompositionNativeOperations(
                     0,
@@ -811,6 +814,7 @@ namespace HaCreator.MapSimulator.Effects
         private static PreparedDamageNumberCompositionTrace BuildRecoveredCompositionTrace(
             int canvasWidth,
             int canvasHeight,
+            int recoveredNativeAccumulatedCanvasWidth,
             IReadOnlyList<PreparedDigitDrawInfo> digits,
             DamageNumberDigitSet largeDigitSet,
             DamageNumberDigitSet smallDigitSet,
@@ -820,6 +824,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return new PreparedDamageNumberCompositionTrace(
                     new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                    Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                     BuildRecoveredCompositionNativeOperations(
                         canvasWidth,
@@ -849,6 +854,7 @@ namespace HaCreator.MapSimulator.Effects
 
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                Math.Max(0, recoveredNativeAccumulatedCanvasWidth),
                 insertCommands,
                 BuildRecoveredCompositionNativeOperations(canvasWidth, canvasHeight, insertCommands),
                 criticalBanner.HasValue,
@@ -867,6 +873,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return new PreparedDamageNumberCompositionTrace(
                     new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                    canvasWidth,
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                     BuildRecoveredCompositionNativeOperations(
                         canvasWidth,
@@ -894,6 +901,7 @@ namespace HaCreator.MapSimulator.Effects
 
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                canvasWidth,
                 new[] { insertCommand },
                 BuildRecoveredCompositionNativeOperations(
                     canvasWidth,

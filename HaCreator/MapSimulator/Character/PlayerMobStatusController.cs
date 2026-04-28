@@ -98,6 +98,8 @@ namespace HaCreator.MapSimulator.Character
         private readonly SkillManager _skills;
         private readonly Action _teleportToSpawn;
 
+        public event Action<PlayerMobStatusEffect, int, int> PeriodicDamageApplied;
+
         public PlayerMobStatusController(PlayerCharacter player, SkillManager skills, Action teleportToSpawn = null)
         {
             _player = player ?? throw new ArgumentNullException(nameof(player));
@@ -125,6 +127,7 @@ namespace HaCreator.MapSimulator.Character
                 if (shouldApplyPeriodicDamage)
                 {
                     _player.TakeStatusDamage(entry.Value);
+                    PeriodicDamageApplied?.Invoke(entry.Effect, entry.Value, currentTime);
                     if (entry.RemainingCount > 0)
                     {
                         entry.RemainingCount--;
@@ -361,40 +364,33 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (ShouldResistRemoteAffectedAreaStatus(
-                    skill,
-                    _skills?.GetActiveAbnormalStatusResistancePercent(currentTime) ?? 0,
-                    _skills?.GetActiveElementalResistancePercent(currentTime) ?? 0,
-                    Random.Shared.Next(100)))
-            {
-                return false;
-            }
-
+            int abnormalStatusResistancePercent = _skills?.GetActiveAbnormalStatusResistancePercent(currentTime) ?? 0;
+            int elementalResistancePercent = _skills?.GetActiveElementalResistancePercent(currentTime) ?? 0;
             bool applied = false;
             for (int i = 0; i < statuses.Count; i++)
             {
                 RemoteHostilePlayerAreaStatus status = statuses[i];
-                if (!ShouldApplyRemoteAffectedAreaStatus(status.PropPercent, Random.Shared.Next(100)))
+                if (!ShouldApplyRemoteAffectedAreaStatus(status.PropPercent, Random.Shared.Next(100))
+                    || ShouldResistRemoteAffectedAreaStatus(
+                        skill,
+                        abnormalStatusResistancePercent,
+                        elementalResistancePercent,
+                        Random.Shared.Next(100)))
                 {
                     continue;
                 }
 
-                if (status.TickIntervalMs > 0)
-                {
-                    ApplyPeriodicDamageStatus(
+                bool statusApplied = status.TickIntervalMs > 0
+                    ? ApplyPeriodicDamageStatus(
                         status.Effect,
                         status.DurationMs,
                         currentTime,
                         status.Value,
                         status.TickIntervalMs,
-                        status.RemainingCount);
-                }
-                else
-                {
-                    ApplyStatus(status.Effect, status.DurationMs, currentTime, status.Value);
-                }
+                        status.RemainingCount)
+                    : ApplyStatus(status.Effect, status.DurationMs, currentTime, status.Value);
 
-                applied = true;
+                applied |= statusApplied;
             }
 
             return applied;
@@ -407,6 +403,22 @@ namespace HaCreator.MapSimulator.Character
                 : 100;
             return clampedPropPercent > 0
                    && (clampedPropPercent >= 100 || Math.Clamp(rollPercent, 0, 99) < clampedPropPercent);
+        }
+
+        internal static bool ShouldApplyRemoteAffectedAreaStatus(
+            SkillData skill,
+            RemoteHostilePlayerAreaStatus status,
+            int abnormalStatusResistancePercent,
+            int elementalResistancePercent,
+            int statusRollPercent,
+            int resistanceRollPercent)
+        {
+            return ShouldApplyRemoteAffectedAreaStatus(status.PropPercent, statusRollPercent)
+                   && !ShouldResistRemoteAffectedAreaStatus(
+                       skill,
+                       abnormalStatusResistancePercent,
+                       elementalResistancePercent,
+                       resistanceRollPercent);
         }
 
         internal static bool ShouldResistRemoteAffectedAreaStatus(

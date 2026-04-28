@@ -159,6 +159,13 @@ namespace HaCreator.MapSimulator.Fields
             return hasPendingRequest;
         }
 
+        public static bool ShouldClearQueuedRetryAfterFreshHandleUpKeyDown(
+            bool hasPendingRequest,
+            bool handledPortalInteraction)
+        {
+            return hasPendingRequest && handledPortalInteraction;
+        }
+
         public static bool ShouldCancelQueuedRetryOnHorizontalKeyDown(
             bool hasPendingRequest,
             bool leftKeyPressed,
@@ -211,6 +218,19 @@ namespace HaCreator.MapSimulator.Fields
             return hasClientOwnedOneTimeAction
                    && hasPassiveTransferFieldPortalCollision
                    && allowsTransferField;
+        }
+
+        public static bool ShouldArmQueuedRetryFromHandleUpKeyDown(
+            bool hasPendingRequest,
+            bool hasClientOwnedOneTimeAction,
+            bool hasPassiveTransferFieldPortalCollision,
+            bool allowsTransferField)
+        {
+            return !hasPendingRequest
+                   && CanQueuePassiveTransferFieldRequest(
+                       hasClientOwnedOneTimeAction,
+                       hasPassiveTransferFieldPortalCollision,
+                       allowsTransferField);
         }
 
         public static bool ShouldClearQueuedRetryOnChairGetUp(

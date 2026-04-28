@@ -3746,18 +3746,18 @@ namespace HaCreator.MapSimulator.Interaction
 
             _directAttackCount++;
             _directDamageTotal += damage;
+            TotalHits++;
+            TotalDamage += damage;
             if (damage == 0)
             {
                 _directMissCount++;
             }
 
-            MaxDamage = Math.Max(MaxDamage, damage);
-            MinDamage = MinDamage == 0 ? damage : Math.Min(MinDamage, damage);
+            ApplyClientDamageBounds(damage);
             if (isCritical)
             {
                 _directCriticalCount++;
-                _directMaxCriticalDamage = Math.Max(_directMaxCriticalDamage, damage);
-                _directMinCriticalDamage = _directMinCriticalDamage == 0 ? damage : Math.Min(_directMinCriticalDamage, damage);
+                ApplyClientCriticalDamageBounds(damage);
             }
 
             if (attrRate.HasValue)
@@ -4028,8 +4028,7 @@ namespace HaCreator.MapSimulator.Interaction
                 LastDotHitCount = hitCount;
                 TotalHits += hitCount;
                 TotalDamage += dotDamage * hitCount;
-                MaxDamage = Math.Max(MaxDamage, dotDamage);
-                MinDamage = MinDamage == 0 ? dotDamage : Math.Min(MinDamage, dotDamage);
+                ApplyClientDamageBounds(dotDamage);
             }
             UpdateBattleDamageAverages(
                 damageDelta: dotDamage * hitCount,
@@ -4047,6 +4046,30 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = $"CBattleRecordMan applied DOT damage info: {dotDamage.ToString(CultureInfo.InvariantCulture)} x {hitCount.ToString(CultureInfo.InvariantCulture)}.";
             message = StatusMessage;
             return true;
+        }
+
+        private void ApplyClientDamageBounds(int damage)
+        {
+            if (damage == 0)
+            {
+                return;
+            }
+
+            MaxDamage = Math.Max(MaxDamage, damage);
+            MinDamage = MinDamage == 0 ? damage : Math.Min(MinDamage, damage);
+        }
+
+        private void ApplyClientCriticalDamageBounds(int damage)
+        {
+            if (damage == 0)
+            {
+                return;
+            }
+
+            _directMaxCriticalDamage = Math.Max(_directMaxCriticalDamage, damage);
+            _directMinCriticalDamage = _directMinCriticalDamage == 0
+                ? damage
+                : Math.Min(_directMinCriticalDamage, damage);
         }
 
         private void ResetSession(bool clearNotes)

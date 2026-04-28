@@ -541,12 +541,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 // Only touch-type reactors
-                if (!SupportsActivationType(data, ReactorActivationType.Touch))
-                {
-                    continue;
-                }
-
-                if (!MeetsQuestRequirement(data))
+                if (!CanPollLocalUserTouchOwnershipCandidate(data, SupportsActivationType(data, ReactorActivationType.Touch)))
                 {
                     continue;
                 }
@@ -591,9 +586,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 bool isTouchingNow = false;
-                if (CanPollLocalUserTouchReactor(data)
-                    && SupportsActivationType(data, ReactorActivationType.Touch)
-                    && MeetsQuestRequirement(data))
+                if (CanPollLocalUserTouchOwnershipCandidate(data, SupportsActivationType(data, ReactorActivationType.Touch)))
                 {
                     Rectangle bounds = reactor.GetCurrentBounds(resolvedTick);
                     if (ShouldSkipClientTouchOwnershipBoundsUpdate(bounds))
@@ -3384,9 +3377,7 @@ namespace HaCreator.MapSimulator.Pools
                 || data == null
                 || !localPlayerX.HasValue
                 || !localPlayerY.HasValue
-                || !CanPollLocalUserTouchReactor(data)
-                || !SupportsActivationType(data, ReactorActivationType.Touch)
-                || !MeetsQuestRequirement(data))
+                || !CanPollLocalUserTouchOwnershipCandidate(data, SupportsActivationType(data, ReactorActivationType.Touch)))
             {
                 return false;
             }
@@ -3445,6 +3436,12 @@ namespace HaCreator.MapSimulator.Pools
                 && data.State != ReactorState.Destroyed
                 && data.State != ReactorState.Respawning
                 && !data.PacketLeavePending;
+        }
+
+        internal static bool CanPollLocalUserTouchOwnershipCandidate(ReactorRuntimeData data, bool supportsTouchActivation)
+        {
+            return supportsTouchActivation
+                && CanPollLocalUserTouchReactor(data);
         }
 
         private void AddReactorNameLookup(string name, int index)

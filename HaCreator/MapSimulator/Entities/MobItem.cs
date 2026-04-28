@@ -737,8 +737,8 @@ namespace HaCreator.MapSimulator.Entities
                     isEscortMob,
                     mobData.SelfDestruction?.Hp ?? -1,
                     mobData.SelfDestruction?.Action ?? -1,
-                    mobData.SelfDestruction?.RemoveAfter > 0 ? mobData.SelfDestruction.RemoveAfter * 1000 : -1,
-                    mobData.RemoveAfter > 0 ? mobData.RemoveAfter * 1000 : -1);
+                    SpecialMobInteractionRules.NormalizeSelfDestructionRemoveAfterMilliseconds(mobData.SelfDestruction?.RemoveAfter ?? -1),
+                    SpecialMobInteractionRules.NormalizeRemoveAfterSecondsToMilliseconds(mobData.RemoveAfter));
                 AI.ConfigureAngerGauge(mobData.HasAngerGauge, mobData.ChargeCount);
 
                 // Set aggro range based on mob level/boss status

@@ -558,6 +558,28 @@ namespace HaCreator.MapSimulator.Managers
             return LastStatus;
         }
 
+        public string DescribeLiveOwnershipVerificationReport(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, Math.Max(MaxRecentOutboundPackets, MaxRecentInboundPackets));
+            LiveOwnershipVerificationState state = CurrentLiveOwnershipVerificationState;
+            string status = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _hasObservedLiveOutboundOpcode160,
+                _hasObservedLiveInboundOpcode371);
+
+            return $"Rock-Paper-Scissors live ownership verification state={state}."
+                + Environment.NewLine
+                + status
+                + Environment.NewLine
+                + DescribeLiveOwnershipVerificationEvidence()
+                + Environment.NewLine
+                + DescribeRecentOutboundPackets(normalizedCount)
+                + Environment.NewLine
+                + DescribeRecentInboundPackets(normalizedCount);
+        }
+
         public void Stop()
         {
             lock (_sync)

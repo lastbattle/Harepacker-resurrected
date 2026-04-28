@@ -114,16 +114,14 @@ namespace HaCreator.MapSimulator
             PreferredRequest,
             ObservedSlot,
             ObservedInventory,
-            CharacterPart,
-            Synthetic
+            CharacterPart
         }
 
         private readonly record struct VegaEquippedItemTokenResolution(
             int ItemToken,
             VegaEquippedItemTokenSource Source)
         {
-            public bool IsClientAuthored => Source != VegaEquippedItemTokenSource.None
-                && Source != VegaEquippedItemTokenSource.Synthetic;
+            public bool IsClientAuthored => Source != VegaEquippedItemTokenSource.None;
         }
 
         private void WireVegaSpellWindowOwnerCallbacks(VegaSpellUI vegaSpellWindow)
@@ -1175,35 +1173,6 @@ namespace HaCreator.MapSimulator
                 : (VegaPacketOwnedFailPreludeCode, VegaPacketOwnedFailTerminalCode);
         }
 
-        private static int BuildSyntheticVegaEquippedItemToken(
-            EquipSlot slot,
-            int itemId,
-            int encodedEquipPosition,
-            CharacterPart equippedPart)
-        {
-            int encodedPosition = encodedEquipPosition;
-            if (encodedPosition == int.MinValue
-                && !RepairDurabilityClientParity.TryEncodeEquippedPosition(slot, itemId, out encodedPosition))
-            {
-                encodedPosition = 0;
-            }
-
-            int normalizedPosition = Math.Abs(encodedPosition) & 0x3F;
-            return BuildDeterministicVegaItemToken(
-                itemId,
-                (int)slot,
-                normalizedPosition,
-                equippedPart?.OwnerAccountId ?? 0,
-                equippedPart?.OwnerCharacterId ?? 0,
-                equippedPart?.UpgradeSlots ?? 0,
-                equippedPart?.TotalUpgradeSlotCount ?? 0,
-                equippedPart?.RemainingUpgradeSlotCount ?? 0,
-                equippedPart?.EnhancementStarCount ?? 0,
-                equippedPart?.TradeAvailable ?? 0,
-                equippedPart?.IsCash == true ? 1 : 0,
-                equippedPart?.IsCashOwnershipLocked == true ? 1 : 0);
-        }
-
         private static VegaEquippedItemTokenResolution ResolveVegaEquippedItemToken(
             int preferredItemToken,
             int observedEquipItemToken,
@@ -1377,33 +1346,6 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private static int BuildSyntheticVegaInventoryItemToken(
-            InventoryType inventoryType,
-            int slotIndex,
-            int itemId,
-            InventorySlotData slot)
-        {
-            long cashSerialNumber = slot?.CashItemSerialNumber ?? 0L;
-            return BuildDeterministicVegaItemToken(
-                itemId,
-                (int)inventoryType,
-                Math.Max(slotIndex, 0) + 1,
-                slot?.Quantity ?? 0,
-                slot?.MaxStackSize ?? 0,
-                slot?.PendingRequestId ?? 0,
-                slot?.OwnerCharacterId ?? 0,
-                slot?.OwnerAccountId ?? 0,
-                slot?.IsCashOwnershipLocked == true ? 1 : 0,
-                slot?.IsEquipped == true ? 1 : 0,
-                slot?.TooltipPart?.ItemId ?? 0,
-                slot?.TooltipPart?.UpgradeSlots ?? 0,
-                slot?.TooltipPart?.TotalUpgradeSlotCount ?? 0,
-                slot?.TooltipPart?.RemainingUpgradeSlotCount ?? 0,
-                slot?.TooltipPart?.EnhancementStarCount ?? 0,
-                FoldVegaSerialNumberToInt(cashSerialNumber),
-                unchecked((int)(cashSerialNumber >> 32)));
-        }
-
         private static int BuildVegaInventoryItemToken(
             InventoryType inventoryType,
             int slotIndex,
@@ -1504,27 +1446,6 @@ namespace HaCreator.MapSimulator
             return folded;
         }
 
-        private static int BuildDeterministicVegaItemToken(params int[] components)
-        {
-            unchecked
-            {
-                const uint fnvOffset = 2166136261;
-                const uint fnvPrime = 16777619;
-                uint hash = fnvOffset;
-                for (int i = 0; i < components.Length; i++)
-                {
-                    uint component = (uint)components[i];
-                    hash ^= component;
-                    hash *= fnvPrime;
-                    hash ^= component >> 16;
-                    hash *= fnvPrime;
-                }
-
-                int token = (int)(hash & 0x7FFFFFFF);
-                return token == 0 ? 1 : token;
-            }
-        }
-
         private static bool TryResolveClientAuthoredVegaEquippedItemToken(CharacterPart equippedPart, out int itemToken)
         {
             itemToken = 0;
@@ -1597,15 +1518,6 @@ namespace HaCreator.MapSimulator
             return ResolveVegaResultCodes(success);
         }
 
-        internal static int BuildSyntheticVegaEquippedItemTokenForTests(
-            EquipSlot slot,
-            int itemId,
-            int encodedEquipPosition,
-            CharacterPart equippedPart = null)
-        {
-            return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition, equippedPart);
-        }
-
         internal static int BuildVegaEquippedItemTokenForTests(
             int preferredItemToken,
             int observedEquipItemToken,
@@ -1642,15 +1554,6 @@ namespace HaCreator.MapSimulator
                 itemId,
                 encodedEquipPosition,
                 equippedPart).IsClientAuthored;
-        }
-
-        internal static int BuildSyntheticVegaInventoryItemTokenForTests(
-            InventoryType inventoryType,
-            int slotIndex,
-            int itemId,
-            InventorySlotData slot)
-        {
-            return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
         }
 
         internal static int BuildVegaInventoryItemTokenForTests(

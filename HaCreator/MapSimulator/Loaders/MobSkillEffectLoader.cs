@@ -68,6 +68,9 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Animation frames for delayed bomb detonation visuals from bombInfo/effect</summary>
         public List<IDXObject> BombEffectFrames { get; set; } = new List<IDXObject>();
 
+        /// <summary>Animation frames for delayed bomb hit visuals from hit</summary>
+        public List<IDXObject> HitFrames { get; set; } = new List<IDXObject>();
+
         /// <summary>Whether this effect has valid affected frames</summary>
         public bool HasAffectedEffect => AffectedFrames != null && AffectedFrames.Count > 0;
 
@@ -76,6 +79,9 @@ namespace HaCreator.MapSimulator.Loaders
 
         /// <summary>Whether this effect has valid delayed bomb detonation frames</summary>
         public bool HasBombEffect => BombEffectFrames != null && BombEffectFrames.Count > 0;
+
+        /// <summary>Whether this effect has valid hit frames</summary>
+        public bool HasHitEffect => HitFrames != null && HitFrames.Count > 0;
 
         /// <summary>Whether this effect has valid tile frames for field-area rendering</summary>
         public bool HasTileAnimation => TileAnimation?.Frames.Count > 0;
@@ -247,6 +253,13 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 var usedProps = new ConcurrentBag<WzObject>();
                 effectData.BombEffectFrames = MapSimulatorLoader.LoadFrames(_texturePool, bombEffectNode, 0, 0, _device, usedProps);
+            }
+
+            var hitNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "hit");
+            if (hitNode != null)
+            {
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.HitFrames = MapSimulatorLoader.LoadFrames(_texturePool, hitNode, 0, 0, _device, usedProps);
             }
 
             // Load mob icon effect

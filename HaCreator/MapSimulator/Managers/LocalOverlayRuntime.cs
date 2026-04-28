@@ -46,6 +46,11 @@ namespace HaCreator.MapSimulator.Managers
             return DamageMeterExpiresAt != int.MinValue && unchecked(currentTickCount - DamageMeterExpiresAt) < 0;
         }
 
+        internal bool HasDamageMeterStatusBarFloatNoticeOwnerForClientParity()
+        {
+            return DamageMeterExpiresAt != int.MinValue;
+        }
+
         public int GetRemainingDamageMeterSeconds(int currentTickCount)
         {
             if (!HasDamageMeterTimer(currentTickCount))
@@ -110,6 +115,12 @@ namespace HaCreator.MapSimulator.Managers
             return LastFieldHazardNoticeExpiresAt != int.MinValue
                 && !string.IsNullOrWhiteSpace(LastFieldHazardMessage)
                 && unchecked(currentTickCount - LastFieldHazardNoticeExpiresAt) < 0;
+        }
+
+        internal bool HasFieldHazardStatusBarFloatNoticeOwnerForClientParity()
+        {
+            return LastFieldHazardNoticeExpiresAt != int.MinValue
+                && !string.IsNullOrWhiteSpace(LastFieldHazardMessage);
         }
 
         public float GetFieldHazardNoticeAlpha(int currentTickCount)

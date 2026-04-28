@@ -282,8 +282,8 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             // Client evidence: CUserLocal::DoActiveSkill rejects Evan current jobs
-            // in FIELDTYPE_NODRAGON before dispatching the requested skill family.
-            if (mapInfo.fieldType == FieldType.FIELDTYPE_NODRAGON
+            // in no-dragon fields before dispatching the requested skill family.
+            if (!FieldInteractionRestrictionEvaluator.CanUseDragonCompanion(mapInfo)
                 && IsEvanJobId(currentJobId > 0 ? currentJobId : skill.Job))
             {
                 return "Evan characters cannot use active skills in no-dragon fields.";
@@ -315,7 +315,8 @@ namespace HaCreator.MapSimulator.Fields
 
             if (IsEvanDragonMagicAttack(skill)
                 && (runtimeState?.HasLocalDragonActor == false
-                    || (runtimeState?.HasLocalDragonActor != true && IsNoDragonField(mapInfo))))
+                    || (runtimeState?.HasLocalDragonActor != true
+                        && !FieldInteractionRestrictionEvaluator.CanUseDragonCompanion(mapInfo))))
             {
                 return "Evan dragon magic skills cannot be used while the local dragon is unavailable.";
             }
@@ -720,12 +721,6 @@ namespace HaCreator.MapSimulator.Fields
             // CUserLocal::{TryDoingMeleeAttack,TryDoingShootAttack,TryDoingMagicAttack}
             // reject this exact skill set when CField::IsUnableToUseSkill is active.
             return skill != null && ClientUnableToUseSkillForbiddenSet.Contains(skill.SkillId);
-        }
-
-        private static bool IsNoDragonField(MapInfo mapInfo)
-        {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON
-                   || mapInfo?.vanishDragon == true;
         }
 
         private static bool IsEvanJobId(int jobId)

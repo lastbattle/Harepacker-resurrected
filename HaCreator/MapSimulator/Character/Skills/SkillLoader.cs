@@ -133,6 +133,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const string ClientSummonedUolEmbeddedMountedSkillPathPrefix = "skill/";
         private const int ClientSummonedUolHeuristicInfoTraversalDepth = 4;
         private const int ClientSummonedUolHeuristicSkillTraversalDepth = 2;
+        private const int ClientSummonedUolTableEntryTraversalDepth = 3;
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -3062,7 +3063,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetInt(pieceNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
                     IsClientActionManInitPiece: true,
-                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceNode)));
+                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceNode),
+                    InlineCanvasChildNames: EnumerateShadowPartnerClientActionPieceInlineCanvasChildNames(pieceNode)));
             }
 
             if (pieces.Count == 0 && ShadowPartnerClientActionResolver.IsClientActionPieceNode(pieceOwnerNode))
@@ -3077,7 +3079,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetInt(pieceOwnerNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
                     IsClientActionManInitPiece: true,
-                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceOwnerNode)));
+                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceOwnerNode),
+                    InlineCanvasChildNames: EnumerateShadowPartnerClientActionPieceInlineCanvasChildNames(pieceOwnerNode)));
             }
 
             if (pieces.Count == 0)
@@ -3118,8 +3121,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                     sourcePiece.RotationDegrees,
                     IsSyntheticMirroredTailPiece: true,
                     IsClientActionManInitPiece: sourcePiece.IsClientActionManInitPiece,
-                    EventDelayOverrideMs: sourcePiece.EventDelayOverrideMs));
+                    EventDelayOverrideMs: sourcePiece.EventDelayOverrideMs,
+                    InlineCanvasChildNames: sourcePiece.InlineCanvasChildNames));
             }
+        }
+
+        private static IReadOnlyList<string> EnumerateShadowPartnerClientActionPieceInlineCanvasChildNames(WzImageProperty pieceNode)
+        {
+            if (pieceNode?.WzProperties == null || pieceNode.WzProperties.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var canvasChildNames = new List<string>();
+            foreach (WzImageProperty child in pieceNode.WzProperties)
+            {
+                if (child is WzCanvasProperty && !string.IsNullOrWhiteSpace(child.Name))
+                {
+                    canvasChildNames.Add(child.Name);
+                }
+            }
+
+            return canvasChildNames.Count > 0 ? canvasChildNames.AsReadOnly() : Array.Empty<string>();
         }
 
         private static int? ResolveShadowPartnerClientActionPieceEventDelayMs(WzImageProperty pieceNode)
@@ -3413,16 +3436,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
+            WzImageProperty resolvedTileNode = tileNode;
+            if (resolvedTileNode == null
+                && !string.IsNullOrWhiteSpace(explicitTileUolPath)
+                && TryResolveSkillPropertyPath(explicitTileUolPath, out WzImageProperty explicitTileNode))
+            {
+                resolvedTileNode = explicitTileNode;
+            }
+
             var zoneEffect = new ZoneEffectData
             {
-                Animation = LoadZoneAnimation(tileNode),
-                AnimationPath = LoadZoneAnimationPath(tileNode),
+                Animation = LoadZoneAnimation(resolvedTileNode),
+                AnimationPath = LoadZoneAnimationPath(resolvedTileNode),
                 TileUolPath = !string.IsNullOrWhiteSpace(explicitTileUolPath)
                     ? explicitTileUolPath
-                    : NormalizeSkillAssetPath(tileNode),
-                VariantAnimations = LoadSummonIndexedAnimations(tileNode, "tile"),
-                VariantAnimationPaths = LoadSummonIndexedAnimationPaths(tileNode),
-                EffectDistance = GetInt(tileNode, "effectDistance")
+                    : NormalizeSkillAssetPath(resolvedTileNode),
+                VariantAnimations = LoadSummonIndexedAnimations(resolvedTileNode, "tile"),
+                VariantAnimationPaths = LoadSummonIndexedAnimationPaths(resolvedTileNode),
+                EffectDistance = GetInt(resolvedTileNode, "effectDistance")
             };
 
             if (zoneEffect.Animation?.Frames.Count <= 0)
@@ -3445,6 +3476,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             ApplyClientSkillAssetUolVariantPaths(
                 zoneEffect.LevelTileUolPaths,
                 explicitLevelTileUolPaths);
+            PopulateExplicitZoneTilePathVariants(
+                zoneEffect,
+                explicitCharacterLevelTileUolPaths,
+                zoneEffect.CharacterLevelVariantAnimations,
+                zoneEffect.CharacterLevelVariantAnimationPaths,
+                zoneEffect.CharacterLevelEffectDistances);
+            PopulateExplicitZoneTilePathVariants(
+                zoneEffect,
+                explicitLevelTileUolPaths,
+                zoneEffect.LevelVariantAnimations,
+                zoneEffect.LevelVariantAnimationPaths,
+                zoneEffect.LevelEffectDistances);
 
             if (!string.IsNullOrWhiteSpace(explicitTileUolPath))
             {
@@ -3458,6 +3501,74 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasClientPathFallback = !string.IsNullOrWhiteSpace(zoneEffect.TileUolPath)
                 || !string.IsNullOrWhiteSpace(zoneEffect.AnimationPath);
             return hasRenderableAnimation || hasClientPathFallback ? zoneEffect : null;
+        }
+
+        internal ZoneEffectData LoadZoneEffectForTest(
+            WzImageProperty tileNode,
+            WzImageProperty skillNode,
+            string explicitTileUolPath = null,
+            IReadOnlyDictionary<int, string> explicitCharacterLevelTileUolPaths = null,
+            IReadOnlyDictionary<int, string> explicitLevelTileUolPaths = null)
+        {
+            return LoadZoneEffect(
+                tileNode,
+                skillNode,
+                explicitTileUolPath,
+                explicitCharacterLevelTileUolPaths,
+                explicitLevelTileUolPaths);
+        }
+
+        private void PopulateExplicitZoneTilePathVariants(
+            ZoneEffectData zoneEffect,
+            IReadOnlyDictionary<int, string> explicitTileUolPaths,
+            IDictionary<int, List<SkillAnimation>> targetAnimations,
+            IDictionary<int, List<string>> targetAnimationPaths,
+            IDictionary<int, int> targetEffectDistances)
+        {
+            if (zoneEffect == null
+                || explicitTileUolPaths == null
+                || explicitTileUolPaths.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, string> entry in explicitTileUolPaths)
+            {
+                if (entry.Key <= 0
+                    || string.IsNullOrWhiteSpace(entry.Value)
+                    || !TryResolveSkillPropertyPath(entry.Value, out WzImageProperty explicitTileNode))
+                {
+                    continue;
+                }
+
+                List<SkillAnimation> variants = LoadSummonIndexedAnimations(explicitTileNode, "tile");
+                if (variants.Count == 0)
+                {
+                    SkillAnimation animation = LoadZoneAnimation(explicitTileNode);
+                    if (animation?.Frames.Count > 0)
+                    {
+                        variants.Add(animation);
+                    }
+                }
+
+                if (variants.Count > 0)
+                {
+                    targetAnimations[entry.Key] = variants;
+                }
+
+                List<string> variantPaths = LoadSummonIndexedAnimationPaths(explicitTileNode);
+                if (variantPaths.Count == 0)
+                {
+                    variantPaths.Add(entry.Value);
+                }
+
+                targetAnimationPaths[entry.Key] = variantPaths;
+                int effectDistance = GetInt(explicitTileNode, "effectDistance");
+                if (effectDistance > 0)
+                {
+                    targetEffectDistances[entry.Key] = effectDistance;
+                }
+            }
         }
 
         private SkillAnimation LoadZoneAnimation(WzImageProperty tileNode)
@@ -6022,19 +6133,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return new ClientSummonedUolCandidateValue(value, entryPathParts);
                 }
 
-                if (tableEntry.WzProperties == null)
+                foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) tableValue in EnumerateClientSummonedUolTableEntryValues(
+                             tableEntry,
+                             relativePathPrefix: string.Empty,
+                             depthRemaining: ClientSummonedUolTableEntryTraversalDepth))
                 {
-                    continue;
-                }
-
-                foreach (WzImageProperty child in tableEntry.WzProperties)
-                {
-                    if (child == null || !IsClientSummonedUolTableEntryValueName(child.Name))
-                    {
-                        continue;
-                    }
-
-                    value = GetClientSummonedUolCandidateValue(child);
+                    value = tableValue.UseNameAsValue
+                        ? tableValue.Property?.Name
+                        : GetClientSummonedUolCandidateValue(tableValue.Property);
                     if (string.IsNullOrWhiteSpace(value))
                     {
                         continue;
@@ -6042,7 +6148,48 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     yield return new ClientSummonedUolCandidateValue(
                         value,
-                        BuildResolvedClientSummonedUolChildPathParts(entryPathParts, child.Name));
+                        BuildResolvedClientSummonedUolNestedPathParts(entryPathParts, tableValue.RelativePath));
+                }
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Property, string RelativePath, bool UseNameAsValue)> EnumerateClientSummonedUolTableEntryValues(
+            WzImageProperty tableEntry,
+            string relativePathPrefix,
+            int depthRemaining)
+        {
+            if (tableEntry?.WzProperties == null || depthRemaining <= 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in tableEntry.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
+                    ? child.Name
+                    : $"{relativePathPrefix}/{child.Name}";
+                if (IsClientSummonedUolTableEntryValueName(child.Name))
+                {
+                    yield return (child, relativePath, UseNameAsValue: false);
+                }
+
+                if (LooksLikeClientSummonedUolRelativePathToken(child.Name)
+                    && !TryParseRequiredSkillId(child.Name, out _))
+                {
+                    yield return (child, relativePath, UseNameAsValue: true);
+                }
+
+                foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) nestedValue in EnumerateClientSummonedUolTableEntryValues(
+                             child,
+                             relativePath,
+                             depthRemaining - 1))
+                {
+                    yield return nestedValue;
                 }
             }
         }
@@ -7265,6 +7412,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return string.Empty;
             }
 
+            string normalized = token;
+            for (int pass = 0; pass < 3; pass++)
+            {
+                string decoded = NormalizeClientSummonedUolEncodedPathSyntaxOnce(normalized);
+                if (string.Equals(decoded, normalized, StringComparison.Ordinal))
+                {
+                    return decoded;
+                }
+
+                normalized = decoded;
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizeClientSummonedUolEncodedPathSyntaxOnce(string token)
+        {
             var builder = new System.Text.StringBuilder(token.Length);
             for (int i = 0; i < token.Length; i++)
             {
@@ -7778,6 +7942,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return normalizedPath;
             }
 
+            normalizedPath = NormalizeClientSkillAssetBranchToken(token, resolvedPathParts);
+            if (!string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return normalizedPath;
+            }
+
             if (!LooksLikeClientSummonedUolRelativePathToken(token)
                 || resolvedPathParts == null
                 || resolvedPathParts.Length == 0)
@@ -7828,6 +7998,117 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return normalizedCombinedPath;
+        }
+
+        private static string NormalizeClientSkillAssetBranchToken(string token, string[] resolvedPathParts)
+        {
+            if (string.IsNullOrWhiteSpace(token)
+                || resolvedPathParts == null
+                || resolvedPathParts.Length == 0)
+            {
+                return null;
+            }
+
+            string normalizedToken = NormalizeClientSummonedUolEncodedPathSyntax(token)
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Replace('\\', '/')
+                .TrimStart('/');
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return null;
+            }
+
+            string[] tokenParts = normalizedToken
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (tokenParts.Length == 0 || !IsClientSkillAssetBranchTokenAllowedForContext(tokenParts[0], resolvedPathParts))
+            {
+                return null;
+            }
+
+            int skillSegmentIndex = FindClientSummonedUolSkillIdSegmentIndex(resolvedPathParts);
+            if (skillSegmentIndex < 0)
+            {
+                return null;
+            }
+
+            var combinedParts = new List<string>(skillSegmentIndex + tokenParts.Length + 1);
+            for (int i = 0; i <= skillSegmentIndex; i++)
+            {
+                combinedParts.Add(resolvedPathParts[i]);
+            }
+
+            combinedParts.AddRange(tokenParts);
+            string normalizedCombinedPath = NormalizeClientSummonedUolPathSegments(combinedParts);
+            if (string.IsNullOrWhiteSpace(normalizedCombinedPath))
+            {
+                return null;
+            }
+
+            string[] normalizedCombinedParts = normalizedCombinedPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (TryNormalizeMountedSkillRootClientSummonedUolParts(
+                    normalizedCombinedParts,
+                    out string normalizedMountedRootPath))
+            {
+                return normalizedMountedRootPath;
+            }
+
+            return normalizedCombinedPath;
+        }
+
+        private static int FindClientSummonedUolSkillIdSegmentIndex(IReadOnlyList<string> pathParts)
+        {
+            if (pathParts == null)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < pathParts.Count - 1; i++)
+            {
+                if (string.Equals(pathParts[i], "skill", StringComparison.OrdinalIgnoreCase)
+                    && TryParseRequiredSkillId(pathParts[i + 1], out _))
+                {
+                    return i + 1;
+                }
+            }
+
+            return -1;
+        }
+
+        private static bool IsClientSkillAssetBranchTokenAllowedForContext(
+            string branchToken,
+            IReadOnlyList<string> contextPathParts)
+        {
+            if (string.IsNullOrWhiteSpace(branchToken) || contextPathParts == null || contextPathParts.Count == 0)
+            {
+                return false;
+            }
+
+            string contextLeaf = contextPathParts[^1]?.Trim() ?? string.Empty;
+            if (ClientTileUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            {
+                return string.Equals(branchToken, "tile", StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (ClientBallUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            {
+                return string.Equals(branchToken, "ball", StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (ClientFlipBallUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            {
+                return string.Equals(branchToken, "flipBall", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(branchToken, "ball", StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (ClientSummonedUolPropertyNames.Contains(contextLeaf, StringComparer.OrdinalIgnoreCase))
+            {
+                return string.Equals(branchToken, "summon", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(branchToken, "summoned", StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
         }
 
         private static bool LooksLikeClientSummonedUolRelativePathToken(string token)

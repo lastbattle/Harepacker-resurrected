@@ -2322,6 +2322,16 @@ namespace HaCreator.MapSimulator.Managers
             bool includesMoveActionByte = mismatchByteIndices.Contains(PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseMoveActionByteIndex);
             if (includesVecCtrlByte && includesMoveActionByte)
             {
+                if (mismatchByteIndices.Count == 2
+                    && TryResolveSg88VecCtrlReplayParityClass(mismatchPairs, decodeDetail, out string vecCtrlReplayParityClass)
+                    && TryResolveSg88MoveActionReplayParityClass(mismatchPairs, decodeDetail, out string moveActionReplayParityClass))
+                {
+                    string moveActionReplayParitySuffix = moveActionReplayParityClass.StartsWith("mismatch:", StringComparison.Ordinal)
+                        ? moveActionReplayParityClass.Substring("mismatch:".Length)
+                        : moveActionReplayParityClass;
+                    return $"{vecCtrlReplayParityClass}+{moveActionReplayParitySuffix}";
+                }
+
                 return mismatchByteIndices.Count == 2
                     ? "mismatch:vecCtrlAndMoveOnly"
                     : "mismatch:vecCtrlMovePlusOther";
@@ -2343,31 +2353,9 @@ namespace HaCreator.MapSimulator.Managers
             if (includesMoveActionByte)
             {
                 if (mismatchByteIndices.Count == 1
-                    && TryResolveSg88MismatchPairForByte(
-                        mismatchPairs,
-                        PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseMoveActionByteIndex,
-                        out byte observedMoveAction,
-                        out byte rebuiltMoveAction))
+                    && TryResolveSg88MoveActionReplayParityClass(mismatchPairs, decodeDetail, out string moveActionReplayParityClass))
                 {
-                    return (observedMoveAction & 1) == (rebuiltMoveAction & 1)
-                        ? "mismatch:moveActionHighBitsOnly"
-                        : "mismatch:moveActionLowBitChanged";
-                }
-
-                if (mismatchByteIndices.Count == 1
-                    && PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityMoveActionMismatchClass(
-                        decodeDetail,
-                        out string moveActionMismatchClass))
-                {
-                    if (string.Equals(moveActionMismatchClass, "highBitsOnly", StringComparison.Ordinal))
-                    {
-                        return "mismatch:moveActionHighBitsOnly";
-                    }
-
-                    if (string.Equals(moveActionMismatchClass, "lowBitChanged", StringComparison.Ordinal))
-                    {
-                        return "mismatch:moveActionLowBitChanged";
-                    }
+                    return moveActionReplayParityClass;
                 }
 
                 return mismatchByteIndices.Count == 1
@@ -2376,6 +2364,46 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return "mismatch:nonVecCtrlNonMoveAction";
+        }
+
+        private static bool TryResolveSg88MoveActionReplayParityClass(
+            IReadOnlyList<string> mismatchPairs,
+            string decodeDetail,
+            out string replayParityClass)
+        {
+            replayParityClass = null;
+            if (TryResolveSg88MismatchPairForByte(
+                    mismatchPairs,
+                    PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseMoveActionByteIndex,
+                    out byte observedMoveAction,
+                    out byte rebuiltMoveAction))
+            {
+                replayParityClass = (observedMoveAction & 1) == (rebuiltMoveAction & 1)
+                    ? "mismatch:moveActionHighBitsOnly"
+                    : "mismatch:moveActionLowBitChanged";
+                return true;
+            }
+
+            if (!PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityMoveActionMismatchClass(
+                    decodeDetail,
+                    out string moveActionMismatchClass))
+            {
+                return false;
+            }
+
+            if (string.Equals(moveActionMismatchClass, "highBitsOnly", StringComparison.Ordinal))
+            {
+                replayParityClass = "mismatch:moveActionHighBitsOnly";
+                return true;
+            }
+
+            if (string.Equals(moveActionMismatchClass, "lowBitChanged", StringComparison.Ordinal))
+            {
+                replayParityClass = "mismatch:moveActionLowBitChanged";
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryResolveSg88VecCtrlReplayParityClass(

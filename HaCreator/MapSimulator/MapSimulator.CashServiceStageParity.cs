@@ -82,9 +82,12 @@ namespace HaCreator.MapSimulator
             public bool HasPlateBigCanvas { get; init; }
             public bool HasShortcutHelpCanvas { get; init; }
             public bool HasBuyButton { get; init; }
+            public bool HasGiftButton { get; init; }
             public bool HasItemBoxButton { get; init; }
             public int BuyButtonWidth { get; init; }
             public int BuyButtonHeight { get; init; }
+            public int GiftButtonWidth { get; init; }
+            public int GiftButtonHeight { get; init; }
             public int ItemBoxButtonWidth { get; init; }
             public int ItemBoxButtonHeight { get; init; }
             public int JoinButtonWidth { get; init; }
@@ -453,6 +456,16 @@ namespace HaCreator.MapSimulator
                                 : summary;
                         }));
                 oneADayWindow.SetExternalAction(
+                    "BtGift",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () =>
+                        {
+                            string summary = BuildCashShopOneADayGiftSummary();
+                            return string.IsNullOrWhiteSpace(summary)
+                                ? "CCSWnd_OneADay routed the dedicated gift button through the packet-owned reward lane."
+                                : summary;
+                        }));
+                oneADayWindow.SetExternalAction(
                     "BtJoin",
                     () => ExecuteCashServiceClientCancelIngress(
                         () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
@@ -530,13 +543,13 @@ namespace HaCreator.MapSimulator
             if (!usePreviousLane)
             {
                 bool hasBuyCanvas = artSnapshot?.HasBuyButton == true;
-                bool hasItemBoxCanvas = artSnapshot?.HasItemBoxButton == true;
+                bool hasGiftCanvas = artSnapshot?.HasGiftButton == true;
                 bool hasCurrentReward = currentCommoditySerialNumber > 0;
                 return new[]
                 {
                     new CashShopStageChildWindow.OneADayOwnerState.PlateButtonState
                     {
-                        ButtonId = 2100,
+                        ButtonId = 0,
                         SlotIndex = 0,
                         CommandKey = "BtBuy",
                         Position = new Microsoft.Xna.Framework.Point(165, 202),
@@ -550,17 +563,17 @@ namespace HaCreator.MapSimulator
                     },
                     new CashShopStageChildWindow.OneADayOwnerState.PlateButtonState
                     {
-                        ButtonId = 2101,
+                        ButtonId = 1,
                         SlotIndex = 1,
-                        CommandKey = "BtItemBox",
+                        CommandKey = "BtGift",
                         Position = new Microsoft.Xna.Framework.Point(246, 202),
-                        Width = artSnapshot?.ItemBoxButtonWidth ?? 0,
-                        Height = artSnapshot?.ItemBoxButtonHeight ?? 0,
-                        HasCanvas = hasItemBoxCanvas,
-                        IsLoaded = hasItemBoxCanvas,
-                        IsEnabled = true,
+                        Width = artSnapshot?.GiftButtonWidth ?? 0,
+                        Height = artSnapshot?.GiftButtonHeight ?? 0,
+                        HasCanvas = hasGiftCanvas,
+                        IsLoaded = hasGiftCanvas,
+                        IsEnabled = hasCurrentReward,
                         IsFocused = false,
-                        Label = "ItemBox"
+                        Label = "Gift"
                     }
                 };
             }
@@ -575,9 +588,9 @@ namespace HaCreator.MapSimulator
                     : $"History {i + 1}";
                 buttons.Add(new CashShopStageChildWindow.OneADayOwnerState.PlateButtonState
                 {
-                    ButtonId = 2200 + i,
+                    ButtonId = 2 + i,
                     SlotIndex = i,
-                    CommandKey = "BtJoin",
+                    CommandKey = "BtItemBox",
                     Position = new Microsoft.Xna.Framework.Point(16 + ((i % 4) * 92), 252 + ((i / 4) * 44)),
                     Width = artSnapshot?.JoinButtonWidth ?? 0,
                     Height = artSnapshot?.JoinButtonHeight ?? 0,
@@ -1578,6 +1591,27 @@ namespace HaCreator.MapSimulator
                 : "CCSWnd_OneADay kept the item-box lane closed because packet reward-session state disabled previous history.";
         }
 
+        private string BuildCashShopOneADayGiftSummary()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_OneADay is waiting for the parent Cash Shop stage.";
+            }
+
+            bool pending = ResolveCashShopOneADayPendingState(
+                stageWindow.CashOneADayHasPacketRewardSessionByte,
+                stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                stageWindow.IsOneADayPending);
+            int commoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
+            string itemLabel = ResolveCashShopOneADayCommodityLabel(commoditySerialNumber);
+            if (!pending)
+            {
+                return $"CCSWnd_OneADay kept the dedicated gift lane idle because no packet-authored today reward is pending for {itemLabel}.";
+            }
+
+            return $"CCSWnd_OneADay routed client button 1 through the gift/package lane for {itemLabel} (SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}).";
+        }
+
         private IReadOnlyList<string> BuildCashShopOneADayOwnerLines()
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
@@ -1602,7 +1636,7 @@ namespace HaCreator.MapSimulator
                 stageWindow.NoticeState
             };
             lines.Add(artSnapshot.HasKeyFocusCanvas || artSnapshot.HasPlateBigCanvas || artSnapshot.NumberCanvasCount > 0
-                ? $"WZ-backed OneADay art exposes Base01={artSnapshot.HasKeyFocusCanvas}, ItemBox={artSnapshot.HasPlateCanvas}, ItemBoxBig={artSnapshot.HasPlateBigCanvas}, Counter digits={artSnapshot.NumberCanvasCount}, buttons Buy={artSnapshot.HasBuyButton}/ItemBox={artSnapshot.HasItemBoxButton}{(artSnapshot.ResolvedFromClientStringPool ? " via client StringPool paths" : string.Empty)}."
+                ? $"WZ-backed OneADay art exposes Base01={artSnapshot.HasKeyFocusCanvas}, ItemBox={artSnapshot.HasPlateCanvas}, ItemBoxBig={artSnapshot.HasPlateBigCanvas}, Counter digits={artSnapshot.NumberCanvasCount}, buttons Buy={artSnapshot.HasBuyButton}/Gift={artSnapshot.HasGiftButton}/ItemBox={artSnapshot.HasItemBoxButton}{(artSnapshot.ResolvedFromClientStringPool ? " via client StringPool paths" : string.Empty)}."
                 : "The active UI export does not expose OneADay.img/CSOneADay Base01/ItemBox/ItemBoxBig/Counter, so CCSWnd_OneADay keeps those seams explicit in owner state only while PicturePlate remains the visible fallback.");
 
             foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
@@ -1624,6 +1658,7 @@ namespace HaCreator.MapSimulator
             WzSubProperty counterProperty = TryResolveCashShopOneADayUiSubProperty(0x16A7, "OneADay.img", "CSOneADay", "Counter");
             WzSubProperty buyButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A8, "OneADay.img", "CSOneADay", "BtBuy");
             WzSubProperty itemBoxButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A9, "OneADay.img", "CSOneADay", "BtItemBox");
+            WzSubProperty giftButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x1A75, "OneADay.img", "CSOneADay", "BtGift");
             WzSubProperty joinButtonProperty = picturePlateProperty?["BtJoin"] as WzSubProperty;
             WzSubProperty shortcutButtonProperty = picturePlateProperty?["BtShortcut"] as WzSubProperty;
             int plateCount = 0;
@@ -1661,9 +1696,12 @@ namespace HaCreator.MapSimulator
                 HasPlateBigCanvas = plateBigProperty != null,
                 HasShortcutHelpCanvas = picturePlateProperty?["ShortcutHelp"] != null,
                 HasBuyButton = buyButtonProperty != null || picturePlateProperty?["BtJoin"] != null,
+                HasGiftButton = giftButtonProperty != null || itemBoxButtonProperty != null || picturePlateProperty?["BtShortcut"] != null,
                 HasItemBoxButton = itemBoxButtonProperty != null || picturePlateProperty?["BtShortcut"] != null,
                 BuyButtonWidth = ResolveCashShopOneADayButtonWidth(buyButtonProperty, joinButtonProperty),
                 BuyButtonHeight = ResolveCashShopOneADayButtonHeight(buyButtonProperty, joinButtonProperty),
+                GiftButtonWidth = ResolveCashShopOneADayButtonWidth(giftButtonProperty, itemBoxButtonProperty, shortcutButtonProperty),
+                GiftButtonHeight = ResolveCashShopOneADayButtonHeight(giftButtonProperty, itemBoxButtonProperty, shortcutButtonProperty),
                 ItemBoxButtonWidth = ResolveCashShopOneADayButtonWidth(itemBoxButtonProperty, shortcutButtonProperty),
                 ItemBoxButtonHeight = ResolveCashShopOneADayButtonHeight(itemBoxButtonProperty, shortcutButtonProperty),
                 JoinButtonWidth = ResolveCashShopOneADayButtonWidth(joinButtonProperty, buyButtonProperty),
@@ -1678,6 +1716,7 @@ namespace HaCreator.MapSimulator
                     || plateBigProperty != null
                     || counterProperty != null
                     || buyButtonProperty != null
+                    || giftButtonProperty != null
                     || itemBoxButtonProperty != null
             };
         }

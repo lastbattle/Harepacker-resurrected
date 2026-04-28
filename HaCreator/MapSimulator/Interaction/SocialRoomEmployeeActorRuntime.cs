@@ -1312,15 +1312,19 @@ namespace HaCreator.MapSimulator.Interaction
             return canvasProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
         }
 
-        private static Vector2? GetCanvasOriginVector(WzCanvasProperty canvasProperty)
+        private static Vector2? GetAuthoredCanvasOriginVector(WzCanvasProperty canvasProperty)
         {
             if (canvasProperty == null)
             {
                 return null;
             }
 
-            System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
-            return new Vector2(origin.X, origin.Y);
+            if (canvasProperty["origin"] is WzVectorProperty origin)
+            {
+                return new Vector2(origin.X.Value, origin.Y.Value);
+            }
+
+            return null;
         }
 
         private NameTagAssets ResolveNameTagAssets(SocialRoomFieldActorSnapshot snapshot, GraphicsDevice device)
@@ -1409,7 +1413,7 @@ namespace HaCreator.MapSimulator.Interaction
             EmployeeMiniRoomBoardAssets loadedAssets = new()
             {
                 Signboard = signboardTexture,
-                SignboardOrigin = GetCanvasOriginVector(signboardCanvas),
+                SignboardOrigin = GetAuthoredCanvasOriginVector(signboardCanvas),
                 EffectFrames = effectFrames,
                 TotalEffectDurationMs = effectFrames.Sum(frame => Math.Max(1, frame.DelayMs))
             };
@@ -1470,7 +1474,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 int delayMs = Math.Max(1, GetIntValue(canvas?["delay"]) ?? ClientEmployeeDefaultFrameDelayMs);
-                frames.Add(new EmployeeMiniRoomBoardEffectFrame(texture, delayMs, GetCanvasOriginVector(canvas)));
+                frames.Add(new EmployeeMiniRoomBoardEffectFrame(texture, delayMs, GetAuthoredCanvasOriginVector(canvas)));
             }
 
             return frames.ToArray();
@@ -1713,6 +1717,11 @@ namespace HaCreator.MapSimulator.Interaction
                 effectHeight,
                 configuredOrigin);
             return ((int)position.X, (int)position.Y);
+        }
+
+        internal static bool HasAuthoredCanvasOriginForTesting(WzCanvasProperty canvasProperty)
+        {
+            return GetAuthoredCanvasOriginVector(canvasProperty).HasValue;
         }
 
         internal static (

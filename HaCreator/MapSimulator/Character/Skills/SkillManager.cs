@@ -136,6 +136,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             int Damage,
             LocalAttackAreaOwnerLane OwnerLane);
 
+        internal readonly record struct LocalAttackAreaPreflight(
+            Rectangle WorldHitbox,
+            int CurrentTime,
+            int SkillId,
+            LocalAttackAreaOwnerLane OwnerLane);
+
         private enum AttackTargetSelectionMode
         {
             Default,
@@ -506,6 +512,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MovingShootActionSpeedMaxDegree = 10;
         private const int ClientMovingShootBaseSpeedOffsetSkillId = 4001334;
         private const int ClientMovingShootAntiRepeatBypassSkillId = 33121009;
+        private const int MaxClientHitAnimationTargetSlots = 15;
         private enum ClientRandomMovingShootActionFamily
         {
             None,
@@ -964,6 +971,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public const int FUNCTION_SLOT_COUNT = 12;     // F1-F12 (indices 8-19)
         public const int CTRL_SLOT_COUNT = 8;          // Ctrl+1-8 (indices 20-27)
         public const int TOTAL_SLOT_COUNT = PRIMARY_SLOT_COUNT + FUNCTION_SLOT_COUNT + CTRL_SLOT_COUNT;
+        public const int PACKET_OWNED_FUNC_KEY_OWNER_SLOT_COUNT = 89;
         private const int ClientBulletAfterimageIntervalMs = 200;
         private const int ClientBulletAfterimageStartAlpha = 200;
         private const string ClientDragonPulseNormalBulletEffectUol = "Skill/322.img/skill/3221007/ball";
@@ -1030,6 +1038,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private bool _buffControlledFlyingAbility;
         private int _activeMapFlyingRepeatAvatarEffectSkillId;
         private bool _packetOwnedNextShootExJablinArmed;
+        private bool _clientBoundJumpFlightActive;
+        private int _clientBoundJumpFlightStartTime = int.MinValue;
 
         // Skill book
         private readonly Dictionary<int, int> _skillLevels = new(); // skillId -> level
@@ -1085,6 +1095,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<TeslaCoilAttackRequest> OnTeslaCoilAttackRequested;
         public Action<Rectangle, int, int, int> OnAttackAreaResolved;
         internal Action<LocalAttackAreaResolution> OnLocalAttackAreaResolved;
+        internal Func<LocalAttackAreaPreflight, bool> OnLocalAttackAreaPreflight;
         public Action<string> OnMacroPartyNotifyRequested;
         public Action<int, int, int> OnExternalAreaDamageSharingApplied;
         public Func<int, InventoryType, int, bool> OnItemHotkeyUseRequested;
@@ -2457,6 +2468,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ClientPrepareArrowAmmoStringPoolId = 0x0B4F;
         private const int ClientPrepareThrowingStarAmmoStringPoolId = 0x0B50;
         private const int ClientPrepareBulletAmmoStringPoolId = 0x0B49;
+        private const int ClientMechanicSummonNoSupportStringPoolId = 0x18AA;
         private const int ClientTownPortalBlockedMapCategory = 9;
         private const int TOWN_PORTAL_SKILL_ID = 2311002;
         private const int BEGINNER_TOWN_PORTAL_SKILL_ID = 8001;
@@ -2849,7 +2861,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsPacketOwnedOwnerHotkeySlot(int ownerSlotIndex)
         {
-            return ownerSlotIndex >= TOTAL_SLOT_COUNT;
+            return ownerSlotIndex >= TOTAL_SLOT_COUNT
+                && ownerSlotIndex < TOTAL_SLOT_COUNT + PACKET_OWNED_FUNC_KEY_OWNER_SLOT_COUNT;
         }
 
         public void ArmPacketOwnedExJablin()
@@ -4541,26 +4554,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int normalizedMaxValue = Math.Max(normalizedCurrentValue, maxValue);
-            bool isAlerting = IsPassiveVehicleDurabilityAlertActiveForParity(normalizedCurrentValue, normalizedMaxValue);
+            _passiveVehicleTemporaryStatStates[skillId] =
+                ResolvePassiveVehicleTemporaryStatAllocationForParity(
+                    skillId,
+                    normalizedCurrentValue,
+                    normalizedMaxValue,
+                    currentTime);
+            return true;
+        }
+
+        internal static PassiveVehicleTemporaryStatState ResolvePassiveVehicleTemporaryStatAllocationForParity(
+            int skillId,
+            int currentValue,
+            int maxValue,
+            int currentTime)
+        {
+            int normalizedCurrentValue = Math.Max(0, currentValue);
+            if (skillId <= 0 || normalizedCurrentValue <= 0)
+            {
+                return null;
+            }
+
+            int normalizedMaxValue = Math.Max(normalizedCurrentValue, maxValue);
+            int constructorLeftValue = normalizedMaxValue;
             int shadowIndex = ResolvePassiveVehicleDurabilityShadowIndexForParity(
-                normalizedCurrentValue,
+                constructorLeftValue,
                 normalizedMaxValue);
-            _passiveVehicleTemporaryStatStates[skillId] = new PassiveVehicleTemporaryStatState
+
+            // Client evidence: TEMPORARY_STAT construction initializes tLeft to 0,
+            // then calls SetLeft(tDuration). The packet-owned UpdatePassively call
+            // later mutates that object. Keep the allocation snapshot at the full
+            // constructor duration so the following SetLeft-style update owns the
+            // low-bucket transition and layer animation metadata.
+            return new PassiveVehicleTemporaryStatState
             {
                 SkillId = skillId,
-                CurrentValue = normalizedCurrentValue,
+                CurrentValue = constructorLeftValue,
                 MaxValue = normalizedMaxValue,
                 StartTime = currentTime,
                 LastUpdatedTime = int.MinValue,
                 UpdateSequence = 0,
                 HasTemporaryObject = true,
                 AlertThresholdValue = ResolvePassiveVehicleDurabilityAlertThresholdForParity(normalizedMaxValue),
-                IsAlerting = isAlerting,
+                IsAlerting = false,
                 ShadowIndex = shadowIndex,
                 LayerUpdateSequence = 0,
                 LowDurabilityAlertSequence = 0,
                 LowDurabilityAlertStartTime = int.MinValue,
-                PreviousValue = normalizedCurrentValue,
+                PreviousValue = 0,
                 ShadowCanvasPath = ResolveTemporaryStatViewShadowCanvasPathForParity(shadowIndex),
                 ShadowCanvasRemoveIndex = TemporaryStatViewShadowCanvasRemoveIndex,
                 ShadowCanvasInsertDelayMs = TemporaryStatViewShadowCanvasInsertDelayMs,
@@ -4568,7 +4609,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ShadowCanvasAlphaEnd = TemporaryStatViewShadowCanvasAlphaEnd,
                 ShadowCanvasLastUpdatedTime = currentTime
             };
-            return true;
         }
 
         private void ClearCooldownPresentationState(int skillId)
@@ -9534,14 +9574,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (ClientDoActiveSkillSummonMonsterFamilySkillIds.Contains(skill.SkillId))
-            {
-                return true;
-            }
-
-            return skill.ClientInfoType == 33
-                   && HasClientShowSkillEffectSummonPlacementMetadata(skill)
-                   && !ClientDoActiveSkillSummonFamilySkillIds.Contains(skill.SkillId);
+            return ClientDoActiveSkillSummonMonsterFamilySkillIds.Contains(skill.SkillId)
+                   && HasClientShowSkillEffectSummonPlacementMetadata(skill);
         }
 
         private static bool ShouldUseClientLocalShowSkillEffectPlacementOwnedPointOffset(SkillData skill)
@@ -9556,9 +9590,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            // WZ-first fallback: unrecovered local summon rows with `info/type=33`
-            // that still author concrete summon branches match the
-            // `DoActiveSkill_SummonMonster` caller family shape.
+            // `CUserLocal::DoActiveSkill` reaches `DoActiveSkill_SummonMonster`
+            // through an explicit client switch branch. WZ still gates the
+            // recovered ids to concrete summon-authored rows, but type-33 summon
+            // authoring alone is too broad: ordinary summons also publish real
+            // `summon/*` frame branches.
             return IsClientLocalShowSkillEffectSummonMonsterFamilySkill(skill);
         }
 
@@ -9575,8 +9611,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             // Keep `nLast = 0x7FFFFFFF` on recovered `DoActiveSkill_Summon` rows
-            // while allowing unrecovered `DoActiveSkill_SummonMonster`-style rows
-            // to preserve caller-owned `nLast = -1`.
+            // and other type-33 summon-authored rows unless the client switch has
+            // recovered them as `DoActiveSkill_SummonMonster`.
             return IsClientLocalShowSkillEffectSummonMonsterFamilySkill(skill);
         }
 
@@ -12205,6 +12241,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (lane == ClientDoActiveSkillExecutionLane.Summon)
             {
+                if (ClientDoActiveSkillGroundedMechanicSummonSkillIds.Contains(skill.SkillId)
+                    && (isSwimming || isUserFlying)
+                    && !isOnLadderOrRope)
+                {
+                    return MapleStoryStringPool.GetOrFallback(
+                        ClientMechanicSummonNoSupportStringPoolId,
+                        "This summon skill cannot be used here.");
+                }
+
                 if (ClientDoActiveSkillGroundedMechanicSummonSkillIds.Contains(skill.SkillId) && !isOnFoothold)
                 {
                     return "This summon skill must be used from the ground.";
@@ -12396,7 +12441,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return;
                 }
 
-                ExecuteBoundJumpMovement(skill, level, levelData, movementActionName, moveDirection, horizontalRange);
+                ExecuteBoundJumpMovement(skill, level, levelData, movementActionName, moveDirection, horizontalRange, currentTime);
                 return;
             }
 
@@ -12439,7 +12484,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillLevelData levelData,
             string movementActionName,
             float moveDirection,
-            int horizontalRange)
+            int horizontalRange,
+            int currentTime)
         {
             if (TryResolveClientBoundJumpImpact(
                     skill,
@@ -12450,6 +12496,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     out float clientImpactY))
             {
                 ApplyClientMovementImpact(clientImpactX, clientImpactY);
+                MarkClientBoundJumpFlightActive(currentTime);
                 return;
             }
 
@@ -12482,6 +12529,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Math.Max(authoredVerticalImpulse, HaCreator.MapSimulator.Physics.CVecCtrl.JumpVelocity * jumpPower));
 
             ApplyClientMovementImpact(horizontalSpeed * moveDirection, -upwardSpeed);
+            MarkClientBoundJumpFlightActive(currentTime);
         }
 
         private static bool TryResolveClientBoundJumpVelocity(
@@ -12602,6 +12650,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             // jump-blocking rather than a generic skill-cast block, so keep this
             // admission rule on the bound-jump seam.
             return isJumpBlocked && skillId == WindWalkSkillId;
+        }
+
+        internal static bool ShouldBlockClientBoundJumpForActiveClientFlight(bool isClientBoundJumpFlightActive)
+        {
+            // `DoActiveSkill_BoundJump` rejects while `m_bFly` is already set, before
+            // skill-specific grounded/airborne gates run.
+            return isClientBoundJumpFlightActive;
         }
 
         private static bool UsesSharedFlashJumpBoundJumpVelocity(SkillData skill, string movementActionName)
@@ -12763,6 +12818,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _player.Physics.FacingRight = facingRight;
             _player.ApplySkillAvatarTransform(skill.SkillId, launchActionName);
             ApplyClientMovementImpact(ResolveRocketBoosterImpactX(), ResolveRocketBoosterImpactY(upwardSpeed));
+            MarkClientBoundJumpFlightActive(currentTime);
             _rocketBoosterState = new RocketBoosterState
             {
                 Skill = skill,
@@ -13627,6 +13683,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (ShouldBlockClientBoundJumpForActiveClientFlight(_clientBoundJumpFlightActive))
+            {
+                return false;
+            }
+
             if (!string.IsNullOrWhiteSpace(GetStateRestrictionMessage(skill, currentTime)))
             {
                 return false;
@@ -13680,6 +13741,42 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             ClearSkillMount(rocketBoosterSkillId);
             _rocketBoosterState = null;
+            ClearClientBoundJumpFlightActive();
+        }
+
+        private void MarkClientBoundJumpFlightActive(int currentTime)
+        {
+            _clientBoundJumpFlightActive = true;
+            _clientBoundJumpFlightStartTime = currentTime;
+        }
+
+        private void ClearClientBoundJumpFlightActive()
+        {
+            _clientBoundJumpFlightActive = false;
+            _clientBoundJumpFlightStartTime = int.MinValue;
+        }
+
+        private void UpdateClientBoundJumpFlightState(int currentTime)
+        {
+            if (!_clientBoundJumpFlightActive)
+            {
+                return;
+            }
+
+            if (_rocketBoosterState != null && _rocketBoosterState.LandingAttackTime == int.MinValue)
+            {
+                return;
+            }
+
+            if (_player?.Physics == null || currentTime <= _clientBoundJumpFlightStartTime)
+            {
+                return;
+            }
+
+            if (!_player.Physics.HasPendingImpact && _player.Physics.IsOnFoothold())
+            {
+                ClearClientBoundJumpFlightActive();
+            }
         }
 
         private void StartCyclone(SkillData skill, int level, int currentTime)
@@ -14586,6 +14683,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 localAttackAreaOwnerLane != LocalAttackAreaOwnerLane.None
                     ? localAttackAreaOwnerLane
                     : ResolveLocalAttackAreaOwnerLane(mode, skill?.SkillId ?? 0);
+            if (!CanResolveLocalAttackArea(worldHitbox, currentTime, skill.SkillId, resolvedOwnerLane))
+                return false;
+
             NotifyAttackAreaResolved(worldHitbox, currentTime, skill.SkillId);
             int maxTargets = Math.Max(1, levelData.MobCount);
             int attackCount = Math.Max(1, levelData.AttackCount);
@@ -18478,7 +18578,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 afterimageFlip,
                 clockwiseBounds);
             Point layerOrigin = ResolveBulletAfterimageLayerOrigin(owner.CurrentPosition);
-            Vector2 originShiftStart = ResolveBulletAfterimageLayerOriginShiftStart(previousLayer, currentTime);
+            Vector2 originShiftStart = ResolveBulletAfterimageLayerOriginShiftStart(owner, previousLayer, currentTime);
             Vector2 originShiftEnd = ResolveBulletAfterimageLayerOriginShiftEnd(
                 originShiftStart,
                 owner.PreviousPosition,
@@ -18702,9 +18802,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         internal static Vector2 ResolveBulletAfterimageLayerOriginShiftStart(
+            ActiveBulletAnimationOwner owner,
             ProjectileAfterimageLayer previousLayer,
             int currentTime)
         {
+            if (owner?.MainLayerObjectId > 0)
+            {
+                return Vector2.Zero;
+            }
+
             return previousLayer != null
                 ? previousLayer.ResolveOriginShift(currentTime)
                 : Vector2.Zero;
@@ -18735,9 +18841,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Prefer the active main-layer alpha start when that identity is available.
             if (owner?.MainLayerObjectId > 0)
             {
-                return owner.MainLayerHasAlphaVector
-                    ? Math.Clamp(fallbackAlphaVectorStart, 0, 255)
-                    : 0;
+                if (!owner.MainLayerHasAlphaVector)
+                {
+                    return 0;
+                }
+
+                return owner.Presentation != null
+                    ? ResolveBulletAfterimageStartAlpha(owner.Presentation, frame: null)
+                    : Math.Clamp(fallbackAlphaVectorStart, 0, 255);
             }
 
             if (previousLayer == null)
@@ -19661,15 +19772,25 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesClientFinalDamageLineSubHitAnimation(skill.SkillId))
             {
-                int subHitIndex = IsFinalDamageLineInAttackPack(damageIndex, attackCount) ? 1 : 0;
                 // `CSkill_HitAni::CreateForFlashRain` pre-fills `m_absHitAni[nOrder]` from
                 // `asHitUOL[0]` and `m_absSubHitAni[nOrder]` from `asHitUOL[1]` for every
                 // target index, while `TryDoingShootAttack` later uses `operator()` plus
-                // `GetSubHitAni` on final damage lines. Keep this lane on the base/sub split
-                // and do not widen it into target-order branch selection.
+                // `GetSubHitAni` on final damage lines. Both accessors read the raw
+                // target-order slot, so keep out-of-window orders from falling back to
+                // a valid base/sub hit branch.
+                int? subHitIndex = TryResolveClientFinalDamageLineSubHitAnimationIndex(
+                    skill.SkillId,
+                    targetOrder,
+                    damageIndex,
+                    attackCount);
+                if (!subHitIndex.HasValue)
+                {
+                    return null;
+                }
+
                 return ResolveIndexedTargetHitAnimation(
                     skill.TargetHitEffects,
-                    subHitIndex,
+                    subHitIndex.Value,
                     preserveFirstAuthoredFallback: false,
                     clampToLastIndex: false);
             }
@@ -19834,6 +19955,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `33121001` on the final damage line (`nDamageIdx == nDamagePerMob - 1`),
             // and `operator()` for the non-final lines.
             return skillId == 33121001;
+        }
+
+        internal static int? TryResolveClientFinalDamageLineSubHitAnimationIndex(
+            int skillId,
+            int targetOrder,
+            int damageIndex,
+            int attackCount)
+        {
+            if (!UsesClientFinalDamageLineSubHitAnimation(skillId)
+                || targetOrder < 0
+                || targetOrder >= MaxClientHitAnimationTargetSlots)
+            {
+                return null;
+            }
+
+            return IsFinalDamageLineInAttackPack(damageIndex, attackCount) ? 1 : 0;
         }
 
         internal static bool IsFinalDamageLineInAttackPack(int damageIndex, int attackCount)
@@ -23698,6 +23835,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                 currentTime,
                 skillId,
                 1,
+                ownerLane));
+        }
+
+        private bool CanResolveLocalAttackArea(
+            Rectangle worldHitbox,
+            int currentTime,
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane)
+        {
+            if (worldHitbox.Width <= 0
+                || worldHitbox.Height <= 0
+                || skillId <= 0
+                || ownerLane == LocalAttackAreaOwnerLane.None
+                || OnLocalAttackAreaPreflight == null)
+            {
+                return true;
+            }
+
+            return OnLocalAttackAreaPreflight(new LocalAttackAreaPreflight(
+                worldHitbox,
+                currentTime,
+                skillId,
                 ownerLane));
         }
 
@@ -28652,6 +28811,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(propertyName, "damR", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "indieDamR", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "mastery", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "x", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "prop", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "mhpX", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "mmpX", StringComparison.OrdinalIgnoreCase)
@@ -30005,6 +30165,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ProcessPendingProjectileSpawns(currentTime);
                 ProcessDeferredSkillPayloads(currentTime);
                 UpdateRocketBooster(currentTime);
+                UpdateClientBoundJumpFlightState(currentTime);
                 UpdateCyclone(currentTime);
                 ProcessQueuedFollowUpAttacks(currentTime);
                 ProcessQueuedSerialAttack(currentTime);
@@ -30257,9 +30418,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome
-                   && !hasSwallowState
-                   && !hasPendingSwallowAbsorb;
+            _ = hasSwallowState;
+            _ = hasPendingSwallowAbsorb;
+            return swallowFamilyOutcome;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

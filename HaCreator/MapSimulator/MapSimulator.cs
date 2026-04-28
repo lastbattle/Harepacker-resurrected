@@ -22991,6 +22991,7 @@ namespace HaCreator.MapSimulator
                 ApplyConsumableMobSkillEffects(effect.MobSkillEffects, currTickCount);
             }
 
+            PushConsumableScreenMessage(effect, currTickCount);
 
             if (!supportsMovement)
             {
@@ -24771,7 +24772,7 @@ namespace HaCreator.MapSimulator
 
         internal static long BuildPickupRemoteNoticeKey(int dropId, int actorId)
         {
-            return ((long)Math.Max(0, dropId) << 32) ^ (uint)Math.Max(0, actorId);
+            return ((long)Math.Max(0, dropId) << 32) ^ unchecked((uint)actorId);
         }
 
         internal static bool ShouldSuppressRemotePickupNotice(int lastNoticeTime, int currentTime, int suppressionWindowMs)
@@ -25046,6 +25047,7 @@ namespace HaCreator.MapSimulator
             public int DropRate { get; init; }
             public int MesoRate { get; init; }
             public int EnvironmentalDamageProtection { get; init; }
+            public string ScreenMessage { get; init; }
             public bool ConsumeOnPickup { get; init; }
             public int DurationMs { get; init; }
 
@@ -25440,6 +25442,7 @@ namespace HaCreator.MapSimulator
                 ApplyConsumableMobSkillEffects(effect.MobSkillEffects, currentTime);
             }
 
+            PushConsumableScreenMessage(effect, currentTime);
 
             if (!supportsMovement)
 
@@ -25764,6 +25767,7 @@ namespace HaCreator.MapSimulator
                 DropRate = ResolveConsumablePercentValue(specProperty, specExProperty, "dropRate", "dropR"),
                 MesoRate = ResolveConsumablePercentValue(specProperty, specExProperty, "mesoR"),
                 EnvironmentalDamageProtection = ResolveConsumableEnvironmentalDamageProtection(specProperty?["thaw"], specExProperty?["thaw"]),
+                ScreenMessage = ResolveConsumableScreenMessage(specProperty, specExProperty),
                 ConsumeOnPickup = ResolveConsumableIntValue(specProperty, specExProperty, "consumeOnPickup") > 0,
                 DurationMs = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "time")),
 
@@ -25791,6 +25795,39 @@ namespace HaCreator.MapSimulator
                 CuresUndead = ResolveConsumableIntValue(specProperty, specExProperty, "undead", "zombie") > 0,
                 MobSkillEffects = ResolveConsumableMobSkillEffects(specProperty, specExProperty)
             };
+        }
+
+        private void PushConsumableScreenMessage(ConsumableItemEffect effect, int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(effect.ScreenMessage))
+            {
+                return;
+            }
+
+            PushFieldRuleMessage(effect.ScreenMessage, currentTime, showOverlay: true, addChat: true);
+        }
+
+        internal static string ResolveConsumableScreenMessageForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return ResolveConsumableScreenMessage(specProperty, specExProperty);
+        }
+
+        private static string ResolveConsumableScreenMessage(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            string specMessage = NormalizeConsumableScreenMessage((specProperty?["screenMsg"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(specMessage))
+            {
+                return specMessage;
+            }
+
+            return NormalizeConsumableScreenMessage((specExProperty?["screenMsg"] as WzStringProperty)?.Value);
+        }
+
+        private static string NormalizeConsumableScreenMessage(string message)
+        {
+            return string.IsNullOrWhiteSpace(message)
+                ? string.Empty
+                : message.Replace("\\r\\n", "\n").Replace("\\n", "\n").Trim();
         }
 
         private bool ApplyConsumableMobSkillEffects(IReadOnlyList<ConsumableMobSkillEffect> effects, int currentTime)
@@ -29545,6 +29582,29 @@ namespace HaCreator.MapSimulator
                 resolution.OwnerLane);
         }
 
+        private bool HandleLocalAttackAreaPreflight(SkillManager.LocalAttackAreaPreflight preflight)
+        {
+            if (_affectedAreaPool == null
+                || !TryResolveLocalOwnedAffectedAreaRuntime(
+                    preflight.SkillId,
+                    preflight.OwnerLane,
+                    out SkillData skill,
+                    out _,
+                    out _))
+            {
+                return true;
+            }
+
+            int type = ResolveLocalOwnedAffectedAreaType(skill, preflight.OwnerLane);
+            return ShouldAllowLocalOwnedAffectedAreaPreflight(
+                preflight.SkillId,
+                preflight.OwnerLane,
+                type,
+                preflight.WorldHitbox,
+                preflight.CurrentTime,
+                _affectedAreaPool.IsAbleToInsertExclusiveArea);
+        }
+
         internal static bool HasCoconutOfficialSessionBridgeOwnership(
             bool officialSessionBridgeHasConnectedSession,
             bool officialSessionBridgeHasAttachedClient,
@@ -29819,6 +29879,22 @@ namespace HaCreator.MapSimulator
             return ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack
                    && skillId == 12111005
                    && type == 4;
+        }
+
+        internal static bool ShouldAllowLocalOwnedAffectedAreaPreflight(
+            int skillId,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
+            int type,
+            Rectangle worldHitbox,
+            int currentTime,
+            Func<Rectangle, int, bool> canInsertExclusiveArea)
+        {
+            if (!ShouldGateLocalOwnedAffectedAreaByClientExclusiveInsert(skillId, ownerLane, type))
+            {
+                return true;
+            }
+
+            return canInsertExclusiveArea?.Invoke(worldHitbox, currentTime) != false;
         }
 
         internal static short ResolveLocalOwnedAffectedAreaStartDelayUnits(
@@ -30801,9 +30877,24 @@ namespace HaCreator.MapSimulator
 
             }
 
-        private readonly Dictionary<Keys, int> _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey = new();
+        private readonly Dictionary<Keys, SkillMacroForwardedHotkeyState> _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey = new();
+        private readonly Dictionary<int, int> _skillMacroForwardedFunctionKeyInputTokensByIndex = new();
+        private readonly Dictionary<int, int> _skillMacroForwardedFixedHotkeyInputTokensBySlot = new();
         private readonly Dictionary<Keys, int> _skillMacroForwardedUtilityFunctionIdsByPhysicalKey = new();
         private readonly HashSet<Keys> _skillMacroImeSuppressedConfiguredHotkeyPhysicalKeys = new();
+        private int _nextSkillMacroForwardedInputToken = 1;
+
+        private readonly struct SkillMacroForwardedHotkeyState
+        {
+            public SkillMacroForwardedHotkeyState(int hotkeySlot, int inputToken)
+            {
+                HotkeySlot = hotkeySlot;
+                InputToken = inputToken;
+            }
+
+            public int HotkeySlot { get; }
+            public int InputToken { get; }
+        }
 
         private bool TrySelectSkillMacroImeCandidate(int listIndex, int candidateIndex)
         {
@@ -30827,11 +30918,12 @@ namespace HaCreator.MapSimulator
             int hotkeySlot = SkillManager.FUNCTION_SLOT_OFFSET + functionKeyIndex;
             if (keyDown)
             {
-                skills.TryCastHotkey(hotkeySlot, currTickCount);
+                int inputToken = GetOrCreateSkillMacroForwardedFunctionKeyInputToken(functionKeyIndex);
+                skills.TryCastHotkey(hotkeySlot, currTickCount, inputToken);
             }
-            else
+            else if (_skillMacroForwardedFunctionKeyInputTokensByIndex.Remove(functionKeyIndex, out int inputToken))
             {
-                skills.ReleaseHotkeyIfActive(hotkeySlot, currTickCount);
+                skills.ReleaseHotkeyIfActive(hotkeySlot, currTickCount, inputToken);
             }
         }
 
@@ -30850,12 +30942,46 @@ namespace HaCreator.MapSimulator
 
             if (keyDown)
             {
-                skills.TryCastHotkey(hotkeySlot, currTickCount);
+                int inputToken = GetOrCreateSkillMacroForwardedFixedHotkeyInputToken(hotkeySlot);
+                skills.TryCastHotkey(hotkeySlot, currTickCount, inputToken);
             }
-            else
+            else if (_skillMacroForwardedFixedHotkeyInputTokensBySlot.Remove(hotkeySlot, out int inputToken))
             {
-                skills.ReleaseHotkeyIfActive(hotkeySlot, currTickCount);
+                skills.ReleaseHotkeyIfActive(hotkeySlot, currTickCount, inputToken);
             }
+        }
+
+        private int GetOrCreateSkillMacroForwardedFunctionKeyInputToken(int functionKeyIndex)
+        {
+            if (!_skillMacroForwardedFunctionKeyInputTokensByIndex.TryGetValue(functionKeyIndex, out int inputToken))
+            {
+                inputToken = GetNextSkillMacroForwardedInputToken();
+                _skillMacroForwardedFunctionKeyInputTokensByIndex[functionKeyIndex] = inputToken;
+            }
+
+            return inputToken;
+        }
+
+        private int GetOrCreateSkillMacroForwardedFixedHotkeyInputToken(int hotkeySlot)
+        {
+            if (!_skillMacroForwardedFixedHotkeyInputTokensBySlot.TryGetValue(hotkeySlot, out int inputToken))
+            {
+                inputToken = GetNextSkillMacroForwardedInputToken();
+                _skillMacroForwardedFixedHotkeyInputTokensBySlot[hotkeySlot] = inputToken;
+            }
+
+            return inputToken;
+        }
+
+        private int GetNextSkillMacroForwardedInputToken()
+        {
+            int inputToken = _nextSkillMacroForwardedInputToken++;
+            if (_nextSkillMacroForwardedInputToken <= 0)
+            {
+                _nextSkillMacroForwardedInputToken = 1;
+            }
+
+            return inputToken;
         }
 
         private void HandleSkillMacroClientForwardedNonFunctionPhysicalKeyStateChanged(
@@ -30957,8 +31083,13 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
-                _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey[key] = hotkeySlot;
-                HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, keyDown: true);
+                int inputToken = GetNextSkillMacroForwardedInputToken();
+                _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey[key] =
+                    new SkillMacroForwardedHotkeyState(hotkeySlot, inputToken);
+                HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyStateChanged(
+                    hotkeySlot,
+                    inputToken,
+                    keyDown: true);
                 return;
             }
 
@@ -30968,20 +31099,39 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.TryGetValue(key, out int releasedHotkeySlot))
+            if (_skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.TryGetValue(key, out SkillMacroForwardedHotkeyState releasedHotkeyState))
             {
                 _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.Remove(key);
-                HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(releasedHotkeySlot, keyDown: false);
+                HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyStateChanged(
+                    releasedHotkeyState.HotkeySlot,
+                    releasedHotkeyState.InputToken,
+                    keyDown: false);
+            }
+        }
+
+        private void HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyStateChanged(
+            int hotkeySlot,
+            int inputToken,
+            bool keyDown)
+        {
+            if (hotkeySlot < 0 || hotkeySlot >= SkillManager.TOTAL_SLOT_COUNT)
+            {
                 return;
             }
 
-            if (TryResolveSkillMacroForwardedNonFunctionHotkeySlotForTesting(
-                    key,
-                    controlHeld,
-                    bindingResolver,
-                    out int fallbackHotkeySlot))
+            SkillManager skills = _playerManager?.Skills;
+            if (skills == null)
             {
-                HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(fallbackHotkeySlot, keyDown: false);
+                return;
+            }
+
+            if (keyDown)
+            {
+                skills.TryCastHotkey(hotkeySlot, currTickCount, inputToken);
+            }
+            else
+            {
+                skills.ReleaseHotkeyIfActive(hotkeySlot, currTickCount, inputToken);
             }
         }
 
@@ -31848,7 +31998,10 @@ namespace HaCreator.MapSimulator
 
             if (CanReplayPassiveTransferFieldUpKeyPath(currentTime) && _playerManager.Player?.CanMove == true)
             {
-                if (TryHandlePortalInteractCore(currentTime))
+                bool handledPortalInteraction = TryHandlePortalInteractCore(currentTime);
+                if (PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryAfterFreshHandleUpKeyDown(
+                        _passiveTransferRequestPending,
+                        handledPortalInteraction))
                 {
                     ClearPassiveTransferRequest();
                 }
@@ -31865,7 +32018,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _passiveTransferRequestPending = true;
+            ArmPassiveTransferRequest();
         }
 
         private void StopSkillMacroForHandleUpKeyDown()
@@ -31889,6 +32042,11 @@ namespace HaCreator.MapSimulator
         private void ClearPassiveTransferRequest()
         {
             _passiveTransferRequestPending = false;
+        }
+
+        private void ArmPassiveTransferRequest()
+        {
+            _passiveTransferRequestPending = true;
         }
 
         private void ConsumePassiveTransferRequestFromTransferLifecycle()
@@ -32096,7 +32254,8 @@ namespace HaCreator.MapSimulator
 
         private bool ShouldQueuePassiveTransferFieldRequest()
         {
-            return PassiveTransferFieldReadinessEvaluator.CanQueuePassiveTransferFieldRequest(
+            return PassiveTransferFieldReadinessEvaluator.ShouldArmQueuedRetryFromHandleUpKeyDown(
+                _passiveTransferRequestPending,
                 HasActivePassiveTransferFieldOneTimeAction(_playerManager?.Player),
                 HasPassiveTransferFieldPortalCollision(),
                 ResolvePassiveTransferFieldRuntimeTransferAllowance());
@@ -32574,8 +32733,6 @@ namespace HaCreator.MapSimulator
             }
 
             List<MovePathElement> path = physics.GetMovePathPacketSnapshot(currentTime);
-            IReadOnlyList<MovePathElement> normalizedPath =
-                CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(path);
             bool isTimeForFlush = physics.IsTimeForFlush(
                 currentTime,
                 isFlying: physics.IsFlying,
@@ -32587,18 +32744,11 @@ namespace HaCreator.MapSimulator
                 _lastPortalOwnedMovePathFlushAdmissionTick,
                 thresholdMs);
             IReadOnlyList<MovePathElement> cadenceShapedPath =
-                CMovePathClientPacketCodec.ApplyPortalOwnedFlushCadenceHint(
-                    normalizedPath,
-                    flushAdmitted);
-            cadenceShapedPath = CMovePathClientPacketCodec.ApplyPortalOwnedPostFlushCarryHint(
-                cadenceShapedPath,
-                !flushAdmitted ? _portalOwnedMovePathPostFlushCarry : Array.Empty<MovePathElement>(),
-                out bool consumedPostFlushCarry);
-            if (consumedPostFlushCarry)
-            {
-                cadenceShapedPath =
-                    CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(cadenceShapedPath);
-            }
+                CMovePathClientPacketCodec.ShapePortalOwnedMovePathForEncode(
+                    path,
+                    flushAdmitted,
+                    _portalOwnedMovePathPostFlushCarry,
+                    out bool consumedPostFlushCarry);
             if (consumedPostFlushCarry)
             {
                 _portalOwnedMovePathPostFlushCarry.Clear();
@@ -34987,6 +35137,7 @@ namespace HaCreator.MapSimulator
                 TriggerAttackReactors(worldHitbox, currentTick, skillId, damage);
             });
             _playerManager.SetLocalAttackAreaHandler(HandleLocalAttackAreaResolved);
+            _playerManager.SetLocalAttackAreaPreflightHandler(HandleLocalAttackAreaPreflight);
             _playerManager.SetAttackHitboxHandler(HandleSpecialFieldAttackHitbox);
 
 
@@ -37668,30 +37819,34 @@ namespace HaCreator.MapSimulator
                     IsExpired: false));
             }
 
-            if (_localOverlayRuntime?.HasDamageMeterTimer(currentTime) == true)
+            if (_localOverlayRuntime?.HasDamageMeterStatusBarFloatNoticeOwnerForClientParity() == true)
             {
                 hasActiveFloatNoticeOwner = true;
+                int ownerExpiresAtTick = _localOverlayRuntime.DamageMeterExpiresAt;
                 _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
                     StatusBarNoticeOwnerKind.FloatNotice,
                     OwnerIdentity: 1,
-                    OwnerExpiresAtTick: _localOverlayRuntime.DamageMeterExpiresAt,
+                    OwnerExpiresAtTick: ownerExpiresAtTick,
                     OwnerSourceKind: WeatherMessageOwnerSourceKind.Unknown,
                     OwnerSkillId: 0,
                     IsPresent: true,
-                    IsExpired: false));
+                    IsExpired: ownerExpiresAtTick != int.MinValue
+                        && unchecked(currentTime - ownerExpiresAtTick) >= 0));
             }
 
-            if (_localOverlayRuntime?.HasActiveFieldHazardNotice(currentTime) == true)
+            if (_localOverlayRuntime?.HasFieldHazardStatusBarFloatNoticeOwnerForClientParity() == true)
             {
                 hasActiveFloatNoticeOwner = true;
+                int ownerExpiresAtTick = _localOverlayRuntime.LastFieldHazardNoticeExpiresAt;
                 _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
                     StatusBarNoticeOwnerKind.FloatNotice,
                     OwnerIdentity: 2,
-                    OwnerExpiresAtTick: _localOverlayRuntime.LastFieldHazardNoticeExpiresAt,
+                    OwnerExpiresAtTick: ownerExpiresAtTick,
                     OwnerSourceKind: WeatherMessageOwnerSourceKind.Unknown,
                     OwnerSkillId: 0,
                     IsPresent: true,
-                    IsExpired: false));
+                    IsExpired: ownerExpiresAtTick != int.MinValue
+                        && unchecked(currentTime - ownerExpiresAtTick) >= 0));
             }
 
             IReadOnlyList<WeatherMessageInfo> weatherMessages = _fieldEffects?.WeatherMessages;

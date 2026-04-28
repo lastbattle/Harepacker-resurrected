@@ -263,6 +263,7 @@ namespace HaCreator.MapSimulator.Fields
         internal string EventName => _eventName;
         internal string EventObjectName => _eventObjectName;
         internal bool HasClientClock => _finishTick != 0;
+        internal int ClientFinishTick => _finishTick;
         internal bool IsBoardLayerDirty => _boardLayerDirty;
         internal int LastBoardLayerRedrawTick => _lastBoardLayerRedrawTick;
         internal string VictoryEffectPath => _victoryEffectPath;
@@ -438,7 +439,7 @@ namespace HaCreator.MapSimulator.Fields
             int durationMs = Math.Max(0, timeSeconds) * 1000;
             bool wasRoundOwned = _gameActive || _awaitingFinalScore;
             _runtimeActive = true;
-            _finishTick = durationMs > 0 ? now + durationMs : 1;
+            _finishTick = ResolveClientFinishTick(now, durationMs);
             _timeRemaining = Math.Max(0, timeSeconds);
             MarkBoardLayerDirty();
             if (timeSeconds > 0)
@@ -857,7 +858,7 @@ namespace HaCreator.MapSimulator.Fields
         }
         private void ProcessHitQueue(int tickCount)
         {
-            for (int i = _hitQueue.Count - 1; i >= 0; i--)
+            for (int i = 0; i < _hitQueue.Count;)
             {
                 var hit = _hitQueue[i];
                 if (tickCount >= hit.StartTime)
@@ -867,7 +868,10 @@ namespace HaCreator.MapSimulator.Fields
                         ApplyPacketState(_coconuts[hit.Target], (CoconutState)hit.NewState);
                     }
                     _hitQueue.RemoveAt(i);
+                    continue;
                 }
+
+                i++;
             }
         }
         private void QueueHit(int targetId, CoconutState newState, int startTime)
@@ -1159,6 +1163,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             return state is CoconutState.Team0Claimed or CoconutState.Team1Claimed;
         }
+
+        private static int ResolveClientFinishTick(int currentTick, int durationMs)
+        {
+            int finishTick = unchecked(currentTick + durationMs);
+            return finishTick != 0 ? finishTick : 1;
+        }
+
         private void ShowRoundResult(int currentTick)
         {
             EnsureAssetsLoaded();

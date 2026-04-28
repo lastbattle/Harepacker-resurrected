@@ -425,7 +425,10 @@ namespace HaCreator.MapSimulator
                 }
 
                 string rejectionNotice = AdminShopDialogClientParityText.GetOpenRejectedNotice();
-                message = adminShopWindow.ApplyPacketOwnedAdminShopOpenRejected(rejectionNotice);
+                message = adminShopWindow.ApplyPacketOwnedAdminShopOpenRejected(
+                    rejectionNotice,
+                    npcTemplateId,
+                    itemCount);
                 HideCashShopOwnerFamilyWindows();
                 ShowPacketOwnedNoticeDialog(rejectionNotice);
                 return true;

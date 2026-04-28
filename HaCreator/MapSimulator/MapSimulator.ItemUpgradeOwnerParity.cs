@@ -22,6 +22,9 @@ namespace HaCreator.MapSimulator
         private const int ItemUpgradeOwnerResultAckPayloadLength = sizeof(int) * 2;
         private const int ItemUpgradeResultReasonPayloadLength = sizeof(byte) + sizeof(int);
         private const int ItemUpgradeResultOutcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
+        private const int ItemUpgradeViciousHammerStartSoundStringPoolId = 5076;
+        private const string ItemUpgradeViciousHammerStartSoundFallback = "Sound/UI.img/Enchant";
+        private const string ItemUpgradeViciousHammerStartSoundOwnerImage = "UI.img";
         private const byte ItemUpgradePacketResultCodeFail = 0;
         private const byte ItemUpgradePacketResultCodeSuccess = 1;
         private const byte ItemUpgradePacketResultCodeClientNoUpgradeSlot = 65;
@@ -161,6 +164,10 @@ namespace HaCreator.MapSimulator
             };
             MarkItemUpgradeOwnerRequestSent();
             StampPacketOwnedUtilityRequestState();
+            if (request.UsesHammerAnimation)
+            {
+                TryPlayItemUpgradeViciousHammerStartSound();
+            }
 
             string payloadHex = Convert.ToHexString(encodedRequestPayload);
             string statusMessage = $"Enhancement request sent for {request.EquipName} with {request.ConsumableName}.";
@@ -903,6 +910,47 @@ namespace HaCreator.MapSimulator
                 : 0;
         }
 
+        private void TryPlayItemUpgradeViciousHammerStartSound()
+        {
+            string descriptor = ResolveItemUpgradeViciousHammerStartSoundDescriptor(
+                MapleStoryStringPool.GetOrFallback(
+                    ItemUpgradeViciousHammerStartSoundStringPoolId,
+                    ItemUpgradeViciousHammerStartSoundFallback));
+
+            TryPlayPacketOwnedWzSound(
+                descriptor,
+                ItemUpgradeViciousHammerStartSoundOwnerImage,
+                out _,
+                out _,
+                strictClientSoundFamily: false);
+        }
+
+        private static string ResolveItemUpgradeViciousHammerStartSoundDescriptor(string stringPoolText)
+        {
+            string normalized = NormalizePacketOwnedClientSoundDescriptor(stringPoolText);
+            if (string.IsNullOrWhiteSpace(normalized) ||
+                normalized.EndsWith(".img", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Contains(".img/", StringComparison.OrdinalIgnoreCase))
+            {
+                return NormalizePacketOwnedClientSoundDescriptor(ItemUpgradeViciousHammerStartSoundFallback);
+            }
+
+            if (!normalized.Contains('/', StringComparison.Ordinal))
+            {
+                return $"{ItemUpgradeViciousHammerStartSoundOwnerImage}/{normalized}";
+            }
+
+            if (!TrySplitPacketOwnedClientSoundDescriptor(normalized, out string imageName, out string propertyPath) ||
+                string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return NormalizePacketOwnedClientSoundDescriptor(ItemUpgradeViciousHammerStartSoundFallback);
+            }
+
+            return string.Equals(imageName, ItemUpgradeViciousHammerStartSoundOwnerImage, StringComparison.OrdinalIgnoreCase)
+                ? $"{imageName}/{propertyPath}"
+                : $"{ItemUpgradeViciousHammerStartSoundOwnerImage}/{propertyPath}";
+        }
+
         private static byte[] BuildItemUpgradeResultAckPayload(int returnResultCode, int resultValue)
         {
             byte[] payload = new byte[ItemUpgradeOwnerResultAckPayloadLength];
@@ -1030,6 +1078,11 @@ namespace HaCreator.MapSimulator
         internal static int ResolveItemUpgradeResultAckDispatchDelayMsForTests(byte returnResultCode, int resultValue)
         {
             return ResolveItemUpgradeResultAckDispatchDelayMs(returnResultCode, resultValue);
+        }
+
+        internal static string ResolveItemUpgradeViciousHammerStartSoundDescriptorForTests(string stringPoolText)
+        {
+            return ResolveItemUpgradeViciousHammerStartSoundDescriptor(stringPoolText);
         }
 
         internal static byte[] BuildItemUpgradeResultAckPayloadForTests(int returnResultCode, int resultValue)

@@ -279,13 +279,39 @@ namespace HaCreator.MapSimulator.Pools
             public int ActiveItemId { get; init; }
             public int SimulatedAnimationStateId { get; init; }
             public int SimulatedOverlayLayerHandleId { get; init; }
+            public int SimulatedOverlayLayerHandleRefCount { get; private set; }
             public int AnimationStartTime { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public int NextSampleTime { get; set; }
+            public bool TerminateRequested { get; private set; }
+            public bool IsTerminated { get; private set; }
             public IReadOnlyDictionary<AvatarRenderLayer, int> SimulatedLayerHandleIds { get; init; } =
                 new Dictionary<AvatarRenderLayer, int>();
+            public IReadOnlyDictionary<AvatarRenderLayer, int> SimulatedLayerHandleRefCounts { get; private set; } =
+                new Dictionary<AvatarRenderLayer, int>();
             public List<RemoteActiveEffectMotionBlurSnapshot> Snapshots { get; } = new();
+
+            public void CaptureRegisteredLayerReferences()
+            {
+                SimulatedOverlayLayerHandleRefCount = SimulatedOverlayLayerHandleId > 0 ? 1 : 0;
+                SimulatedLayerHandleRefCounts = SimulatedLayerHandleIds?
+                    .Where(static entry => entry.Value > 0)
+                    .ToDictionary(static entry => entry.Key, static _ => 1)
+                    ?? new Dictionary<AvatarRenderLayer, int>();
+                TerminateRequested = false;
+                IsTerminated = false;
+            }
+
+            public void MarkTerminated()
+            {
+                TerminateRequested = true;
+                IsTerminated = true;
+                SimulatedOverlayLayerHandleRefCount = 0;
+                SimulatedLayerHandleRefCounts = SimulatedLayerHandleRefCounts?
+                    .ToDictionary(static entry => entry.Key, static _ => 0)
+                    ?? new Dictionary<AvatarRenderLayer, int>();
+            }
         }
 
         public sealed class RemoteActiveEffectItemEffectState
@@ -293,6 +319,7 @@ namespace HaCreator.MapSimulator.Pools
             public int ItemId { get; init; }
             public ItemEffectAnimationSet Effect { get; init; }
             public int AnimationStartTime { get; init; }
+            public Vector2 WorldOrigin { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public bool FollowOwner { get; init; }
@@ -606,6 +633,7 @@ namespace HaCreator.MapSimulator.Pools
         private SkillLoader _skillLoader;
         private Texture2D _pixelTexture;
         private GraphicsDevice _pixelTextureDevice;
+        private Func<int, IReadOnlyList<ActiveSummon>> _packetOwnedSummonResolver;
 
         public int Count => _actorsById.Count;
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
@@ -626,6 +654,11 @@ namespace HaCreator.MapSimulator.Pools
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
+
+        public void SetPacketOwnedSummonResolver(Func<int, IReadOnlyList<ActiveSummon>> packetOwnedSummonResolver)
+        {
+            _packetOwnedSummonResolver = packetOwnedSummonResolver;
+        }
 
         public void Initialize(CharacterLoader loader, SkillLoader skillLoader)
         {
@@ -1798,6 +1831,56 @@ namespace HaCreator.MapSimulator.Pools
 
             ClearPortableChairPairRecord(packet.CharacterId);
             message = $"Removed remote couple-chair record for {packet.CharacterId}.";
+            return true;
+        }
+
+        public bool TryApplyPortableChairRecordEventFromSetActivePortableChairForParity(
+            int characterId,
+            int? chairItemId,
+            out string message)
+        {
+            message = null;
+            if (!TryResolvePortableChairRecordEventFromSetActivePortableChairForParity(
+                    characterId,
+                    chairItemId,
+                    out RemoteUserPortableChairRecordAddPacket addPacket,
+                    out RemoteUserPortableChairRecordRemovePacket removePacket))
+            {
+                message = $"Portable-chair record event requires a positive character ID; received {characterId}.";
+                return false;
+            }
+
+            if (addPacket.ChairItemId > 0)
+            {
+                return TryApplyPortableChairRecordAdd(addPacket, out message);
+            }
+
+            return TryApplyPortableChairRecordRemove(removePacket, out message);
+        }
+
+        internal static bool TryResolvePortableChairRecordEventFromSetActivePortableChairForParity(
+            int characterId,
+            int? chairItemId,
+            out RemoteUserPortableChairRecordAddPacket addPacket,
+            out RemoteUserPortableChairRecordRemovePacket removePacket)
+        {
+            addPacket = default;
+            removePacket = default;
+            if (characterId <= 0)
+            {
+                return false;
+            }
+
+            int resolvedChairItemId = chairItemId.GetValueOrDefault();
+            if (IsCoupleChairRecordItemIdForClientParity(resolvedChairItemId))
+            {
+                addPacket = new RemoteUserPortableChairRecordAddPacket(characterId, resolvedChairItemId);
+            }
+            else
+            {
+                removePacket = new RemoteUserPortableChairRecordRemovePacket(characterId);
+            }
+
             return true;
         }
 
@@ -5088,7 +5171,7 @@ namespace HaCreator.MapSimulator.Pools
             return ResolvePreparedSkillGaugeDurationForOverlay(textVariant, gaugeDurationMs, durationMs);
         }
 
-        private static bool TryResolvePreparedSkillWorldAnchor(
+        private bool TryResolvePreparedSkillWorldAnchor(
             RemoteUserActor actor,
             RemotePreparedSkillState prepared,
             int currentTime,
@@ -5115,7 +5198,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (prepared?.SkillId == PreparedSkillHudRules.SG88SkillId)
             {
-                anchor = ResolveRemoteSg88KeyDownBarAnchor(actor.PacketOwnedSummons?.Summons, actor.Position);
+                anchor = ResolveRemoteSg88KeyDownBarAnchor(actor, _packetOwnedSummonResolver);
                 return true;
             }
 
@@ -5129,9 +5212,45 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         private static Vector2 ResolveRemoteSg88KeyDownBarAnchor(
+            RemoteUserActor actor,
+            Func<int, IReadOnlyList<ActiveSummon>> registeredSummonResolver)
+        {
+            if (actor == null)
+            {
+                return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(Vector2.Zero);
+            }
+
+            if (TryResolveSg88SummonVector(actor.PacketOwnedSummons?.Summons, out Vector2 summonVector))
+            {
+                return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(summonVector);
+            }
+
+            IReadOnlyList<ActiveSummon> registeredSummons = registeredSummonResolver?.Invoke(actor.CharacterId);
+            if (TryResolveSg88SummonVector(registeredSummons, out summonVector))
+            {
+                return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(summonVector);
+            }
+
+            return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(actor.Position);
+        }
+
+        private static Vector2 ResolveRemoteSg88KeyDownBarAnchor(
             IReadOnlyList<ActiveSummon> packetOwnedSummons,
             Vector2 ownerVectorControlPosition)
         {
+            if (TryResolveSg88SummonVector(packetOwnedSummons, out Vector2 summonVector))
+            {
+                return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(summonVector);
+            }
+
+            return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(ownerVectorControlPosition);
+        }
+
+        private static bool TryResolveSg88SummonVector(
+            IReadOnlyList<ActiveSummon> packetOwnedSummons,
+            out Vector2 summonVector)
+        {
+            summonVector = Vector2.Zero;
             if (packetOwnedSummons != null)
             {
                 for (int i = 0; i < packetOwnedSummons.Count; i++)
@@ -5139,13 +5258,13 @@ namespace HaCreator.MapSimulator.Pools
                     ActiveSummon summon = packetOwnedSummons[i];
                     if (summon?.SkillId == PreparedSkillHudRules.SG88SkillId)
                     {
-                        return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(
-                            new Vector2(summon.PositionX, summon.PositionY));
+                        summonVector = new Vector2(summon.PositionX, summon.PositionY);
+                        return true;
                     }
                 }
             }
 
-            return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(ownerVectorControlPosition);
+            return false;
         }
 
         internal static Vector2 ResolveRemoteSg88KeyDownBarAnchorForTesting(
@@ -5153,6 +5272,31 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 ownerVectorControlPosition)
         {
             return ResolveRemoteSg88KeyDownBarAnchor(packetOwnedSummons, ownerVectorControlPosition);
+        }
+
+        internal static Vector2 ResolveRemoteSg88KeyDownBarAnchorForTesting(
+            IReadOnlyList<ActiveSummon> actorPacketOwnedSummons,
+            IReadOnlyList<ActiveSummon> registeredOwnerSummons,
+            Vector2 ownerVectorControlPosition)
+        {
+            var actor = new RemoteUserActor(
+                1,
+                "Remote1",
+                new CharacterBuild { Id = 1, Name = "Remote1" },
+                ownerVectorControlPosition,
+                true,
+                "stand1",
+                "test",
+                true);
+            if (actorPacketOwnedSummons != null)
+            {
+                foreach (ActiveSummon summon in actorPacketOwnedSummons)
+                {
+                    actor.PacketOwnedSummons.AddOrReplace(summon);
+                }
+            }
+
+            return ResolveRemoteSg88KeyDownBarAnchor(actor, _ => registeredOwnerSummons);
         }
 
         private static Vector2 ResolveStandardWorldAnchor(RemoteUserActor actor, int currentTime, float verticalOffset)
@@ -6593,6 +6737,9 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            Vector2 drawPosition = ResolveRemoteActiveEffectItemEffectDrawPositionForParity(state, actor.Position);
+            int drawScreenX = screenX + (int)(drawPosition.X - actor.Position.X);
+            int drawScreenY = screenY + (int)(drawPosition.Y - actor.Position.Y);
             int elapsedTime = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, state.AnimationStartTime);
             for (int i = 0; i < state.Effect.OwnerLayers.Count; i++)
             {
@@ -6607,8 +6754,8 @@ namespace HaCreator.MapSimulator.Pools
                     spriteBatch,
                     skeletonMeshRenderer,
                     frame,
-                    screenX,
-                    screenY,
+                    drawScreenX,
+                    drawScreenY,
                     state.OwnerFacingRight);
             }
         }
@@ -7486,7 +7633,12 @@ namespace HaCreator.MapSimulator.Pools
                 ?? actor.ActiveEffectMotionBlurLayerHandleIds);
             actor.ActiveEffectMotionBlurLayerHandleIds = layerHandleIds;
             int overlayLayerHandleId = ResolveRemoteActiveEffectMotionBlurOverlayLayerHandleId(actor);
-            actor.ActiveEffectMotionBlur = new RemoteActiveEffectMotionBlurState
+            if (actor.ActiveEffectMotionBlur != null)
+            {
+                actor.ActiveEffectMotionBlur.MarkTerminated();
+            }
+
+            var state = new RemoteActiveEffectMotionBlurState
             {
                 Definition = definition,
                 ActiveItemId = definition.ItemId,
@@ -7500,6 +7652,8 @@ namespace HaCreator.MapSimulator.Pools
                 SimulatedLayerHandleIds = layerHandleIds,
                 NextSampleTime = currentTime
             };
+            state.CaptureRegisteredLayerReferences();
+            actor.ActiveEffectMotionBlur = state;
         }
 
         private bool TryApplyRemoteActiveEffectItemEffectState(
@@ -7572,11 +7726,24 @@ namespace HaCreator.MapSimulator.Pools
                 AnimationStartTime = hasRestoredAnimationElapsed
                     ? unchecked(currentTime - restoredAnimationElapsedMs)
                     : currentTime,
+                WorldOrigin = actor.Position,
                 OwnerActionName = ownerActionName,
                 OwnerFacingRight = ownerFacingRight,
                 FollowOwner = followOwner
             };
             return true;
+        }
+
+        internal static Vector2 ResolveRemoteActiveEffectItemEffectDrawPositionForParity(
+            RemoteActiveEffectItemEffectState state,
+            Vector2 ownerPosition)
+        {
+            if (state == null || state.FollowOwner)
+            {
+                return ownerPosition;
+            }
+
+            return state.WorldOrigin;
         }
 
         private void ClearRemoteActiveEffectMotionBlurState(RemoteUserActor actor, int currentTime = int.MinValue)
@@ -7599,6 +7766,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
+            actor.ActiveEffectMotionBlur?.MarkTerminated();
             actor.ActiveEffectMotionBlur = null;
         }
 
@@ -7654,6 +7822,7 @@ namespace HaCreator.MapSimulator.Pools
                     && TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
                         frame,
                         state.SimulatedLayerHandleIds,
+                        state.SimulatedLayerHandleRefCounts,
                         out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots))
                 {
                     RemoteActiveEffectMotionBlurOwnerSample ownerSample =
@@ -7666,7 +7835,7 @@ namespace HaCreator.MapSimulator.Pools
                         FacingRight = ownerSample.FacingRight,
                         SampleTime = state.NextSampleTime,
                         SimulatedOverlayLayerHandleId = state.SimulatedOverlayLayerHandleId,
-                        SimulatedOverlayLayerHandleRefCount = state.SimulatedOverlayLayerHandleId > 0 ? 1 : 0
+                        SimulatedOverlayLayerHandleRefCount = state.SimulatedOverlayLayerHandleRefCount
                     });
                 }
 
@@ -7785,12 +7954,26 @@ namespace HaCreator.MapSimulator.Pools
             return TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
                 frame,
                 layerHandleIds: null,
+                layerHandleRefCounts: null,
                 out layerSnapshots);
         }
 
         internal static bool TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
             AssembledFrame frame,
             IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
+            out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots)
+        {
+            return TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
+                frame,
+                layerHandleIds,
+                layerHandleRefCounts: null,
+                out layerSnapshots);
+        }
+
+        internal static bool TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
+            AssembledFrame frame,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleRefCounts,
             out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots)
         {
             layerSnapshots = new List<RemoteActiveEffectMotionBlurLayerSnapshot>(RemoteActiveEffectMotionBlurLayerCaptureOrder.Length);
@@ -7831,7 +8014,7 @@ namespace HaCreator.MapSimulator.Pools
                     SourceLayer = layer,
                     SourceLayerCaptureOrder = i,
                     SimulatedLayerHandleId = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
-                    SimulatedLayerHandleRefCount = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds) > 0 ? 1 : 0,
+                    SimulatedLayerHandleRefCount = ResolveRemoteActiveEffectMotionBlurLayerHandleRefCount(layer, layerHandleIds, layerHandleRefCounts),
                     Parts = capturedParts
                 });
             }
@@ -7852,6 +8035,25 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return 0;
+        }
+
+        private static int ResolveRemoteActiveEffectMotionBlurLayerHandleRefCount(
+            AvatarRenderLayer layer,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleRefCounts)
+        {
+            if (ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds) <= 0)
+            {
+                return 0;
+            }
+
+            if (layerHandleRefCounts != null
+                && layerHandleRefCounts.TryGetValue(layer, out int refCount))
+            {
+                return Math.Max(0, refCount);
+            }
+
+            return 1;
         }
 
         private static IReadOnlyDictionary<AvatarRenderLayer, int> CreateRemoteActiveEffectMotionBlurLayerHandleIds()
@@ -8290,12 +8492,15 @@ namespace HaCreator.MapSimulator.Pools
             }
             else
             {
-                int ownerCharacterId = ResolveAvatarModifiedRelationshipOwnerCharacterId(
-                    actor.CharacterId,
-                    relationshipType,
-                    relationshipRecord);
-                RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
-                recordTable.Remove(ownerCharacterId);
+                foreach (int ownerCharacterId in ResolveAvatarModifiedRelationshipOwnerCharacterIdsToClear(
+                             actor.CharacterId,
+                             relationshipType,
+                             relationshipRecord,
+                             recordTable))
+                {
+                    RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
+                    recordTable.Remove(ownerCharacterId);
+                }
             }
 
             RefreshRelationshipOverlays(relationshipType, currentTime);
@@ -8315,6 +8520,97 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return actorCharacterId;
+        }
+
+        private static IReadOnlyList<int> ResolveAvatarModifiedRelationshipOwnerCharacterIdsToClear(
+            int actorCharacterId,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable)
+        {
+            HashSet<int> ownerCharacterIds = new();
+            int explicitOwnerCharacterId = ResolveAvatarModifiedRelationshipOwnerCharacterId(
+                actorCharacterId,
+                relationshipType,
+                relationshipRecord);
+            if (explicitOwnerCharacterId > 0)
+            {
+                ownerCharacterIds.Add(explicitOwnerCharacterId);
+            }
+
+            if (recordTable == null)
+            {
+                return ownerCharacterIds.ToArray();
+            }
+
+            foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable)
+            {
+                RemoteUserRelationshipRecord storedRecord = entry.Value;
+                if (!storedRecord.IsActive)
+                {
+                    continue;
+                }
+
+                if (DoesAvatarModifiedRelationshipClearMatch(
+                        actorCharacterId,
+                        relationshipRecord,
+                        entry.Key,
+                        storedRecord))
+                {
+                    ownerCharacterIds.Add(entry.Key);
+                }
+            }
+
+            return ownerCharacterIds.ToArray();
+        }
+
+        private static bool DoesAvatarModifiedRelationshipClearMatch(
+            int actorCharacterId,
+            RemoteUserRelationshipRecord clearRecord,
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord storedRecord)
+        {
+            if (actorCharacterId > 0)
+            {
+                if (ownerCharacterId == actorCharacterId)
+                {
+                    return true;
+                }
+
+                if (storedRecord.CharacterId.GetValueOrDefault() == actorCharacterId
+                    || storedRecord.PairCharacterId.GetValueOrDefault() == actorCharacterId)
+                {
+                    return true;
+                }
+            }
+
+            if (clearRecord.CharacterId.GetValueOrDefault() > 0)
+            {
+                int clearCharacterId = clearRecord.CharacterId.Value;
+                if (ownerCharacterId == clearCharacterId
+                    || storedRecord.CharacterId.GetValueOrDefault() == clearCharacterId
+                    || storedRecord.PairCharacterId.GetValueOrDefault() == clearCharacterId)
+                {
+                    return true;
+                }
+            }
+
+            return DoesAvatarModifiedRelationshipSerialClearMatch(clearRecord.ItemSerial, storedRecord)
+                || DoesAvatarModifiedRelationshipSerialClearMatch(clearRecord.PairItemSerial, storedRecord);
+        }
+
+        private static bool DoesAvatarModifiedRelationshipSerialClearMatch(
+            long? clearSerial,
+            RemoteUserRelationshipRecord storedRecord)
+        {
+            if (!clearSerial.HasValue)
+            {
+                return false;
+            }
+
+            long serial = clearSerial.Value;
+            return (storedRecord.ItemSerial.HasValue && storedRecord.ItemSerial.Value == serial)
+                || (storedRecord.PairItemSerial.HasValue && storedRecord.PairItemSerial.Value == serial);
         }
 
         private static int? ResolveMarriagePairCharacterId(int ownerCharacterId, RemoteUserRelationshipRecord relationshipRecord)
@@ -13220,7 +13516,8 @@ namespace HaCreator.MapSimulator.Pools
                 RemoteShadowPartnerClientSideOffsetPx,
                 RemoteShadowPartnerClientBackActionOffsetYPx,
                 rawActionCode,
-                actor.HasMorphTemplate);
+                actor.HasMorphTemplate,
+                HasRemoteGhostActionTransform(actor, observedPlayerActionName));
             actor.ShadowPartnerPresentation ??= new RemoteShadowPartnerPresentationState();
             if (!actor.ShadowPartnerPresentation.IsInitialized)
             {
@@ -13246,6 +13543,13 @@ namespace HaCreator.MapSimulator.Pools
                 currentTime,
                 RemoteShadowPartnerTransitionDurationMs);
             return actor.ShadowPartnerPresentation.CurrentClientOffsetPx;
+        }
+
+        private static bool HasRemoteGhostActionTransform(RemoteUserActor actor, string observedPlayerActionName)
+        {
+            return actor?.TemporaryStats.KnownState.GhostId.HasValue == true
+                   || IsRelationshipOverlayGhostAction(actor?.ActionName)
+                   || IsRelationshipOverlayGhostAction(observedPlayerActionName);
         }
 
         private static bool TryAdvanceRemoteShadowPartnerQueuedAction(RemoteUserActor actor, int currentTime)
@@ -14197,6 +14501,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId))
+            {
+                return effectivePreferredSkillId;
+            }
+
+            if (!hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -14404,6 +14714,13 @@ namespace HaCreator.MapSimulator.Pools
                     effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryGetChargeElement(effectivePreferredSkillId, out chargeElement))
             {
                 return true;
             }

@@ -110,7 +110,14 @@ namespace HaCreator.MapSimulator.Pools
             PlayerMobStatusEffect.PainMark,
             PlayerMobStatusEffect.Attract,
             PlayerMobStatusEffect.ReverseInput,
-            PlayerMobStatusEffect.Undead
+            PlayerMobStatusEffect.Undead,
+            PlayerMobStatusEffect.StopMotion,
+            PlayerMobStatusEffect.Banish,
+            PlayerMobStatusEffect.Polymorph,
+            PlayerMobStatusEffect.StopPotion,
+            PlayerMobStatusEffect.Fear,
+            PlayerMobStatusEffect.Bomb,
+            PlayerMobStatusEffect.BattlefieldFlag
         };
 
         private static readonly string[] HostileAreaTokens =

@@ -20,7 +20,8 @@ namespace HaCreator.MapSimulator.Character
             int RotationDegrees = 0,
             bool IsSyntheticMirroredTailPiece = false,
             bool IsClientActionManInitPiece = false,
-            int? EventDelayOverrideMs = null);
+            int? EventDelayOverrideMs = null,
+            IReadOnlyList<string> InlineCanvasChildNames = null);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -3481,9 +3482,10 @@ namespace HaCreator.MapSimulator.Character
             int sideOffsetPx,
             int backActionOffsetYPx,
             int? rawActionCode,
-            bool hasMorphTransform)
+            bool hasMorphTransform,
+            bool hasGhostTransform = false)
         {
-            if (IsClientBackAction(observedPlayerActionName, state, rawActionCode, hasMorphTransform))
+            if (IsClientBackAction(observedPlayerActionName, state, rawActionCode, hasMorphTransform, hasGhostTransform))
             {
                 return new Point(0, backActionOffsetYPx);
             }
@@ -4002,14 +4004,15 @@ namespace HaCreator.MapSimulator.Character
             string observedPlayerActionName,
             PlayerState state,
             int? rawActionCode,
-            bool hasMorphTransform)
+            bool hasMorphTransform,
+            bool hasGhostTransform = false)
         {
             if (state is PlayerState.Ladder or PlayerState.Rope)
             {
                 return true;
             }
 
-            if (rawActionCode.HasValue && IsClientBackRawAction(rawActionCode.Value, hasMorphTransform))
+            if (rawActionCode.HasValue && IsClientBackRawAction(rawActionCode.Value, hasMorphTransform || hasGhostTransform))
             {
                 return true;
             }
@@ -4030,6 +4033,13 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return rawActionCode is 45 or 46 or 129 or 130;
+        }
+
+        internal static bool IsClientGhostActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (string.Equals(actionName, "ghost", StringComparison.OrdinalIgnoreCase)
+                       || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool ShouldPreferActionSpecificAliasCandidates(string playerActionName)

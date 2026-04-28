@@ -1650,7 +1650,10 @@ namespace HaCreator.MapSimulator.UI
                             drawStyle.FontPixelSize ?? fontPixelSizeOverride);
                     }
                 },
-                color);
+                color,
+                forceEmphasis,
+                fontFamilyOverride,
+                fontPixelSizeOverride);
         }
 
         private static bool IsWithinClientCtCullBand(

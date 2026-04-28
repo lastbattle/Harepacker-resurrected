@@ -73,7 +73,11 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeThrowGrenade = 230;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
+        private const int ResultLayerStringPoolId = 0x1124;
+        private const int ResultSoundStringPoolId = 0x1125;
         private const int ScoreTextStringPoolId = 0x112A;
+        private const string ResultLayerFallbackPath = "UI/UIWindow.img/AriantMatch/Result";
+        private const string ResultSoundFallbackPath = "Sound/MiniGame.img/Show";
         private const string ScoreTextFallbackFormat = "{0} Point";
         private const int ScoreLayerScreenX = 0;
         private const int ScoreLayerScreenY = 30;
@@ -242,13 +246,17 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
                 int existingIndex = _entries.FindIndex(entry => string.Equals(entry.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
-                if (update.Score < 0 || ShouldSuppressLocalRankEntry(normalizedName))
+                if (update.Score < 0)
                 {
                     if (existingIndex >= 0)
                     {
                         _entries.RemoveAt(existingIndex);
                         changed = true;
                     }
+                    continue;
+                }
+                if (ShouldSuppressLocalRankEntry(normalizedName))
+                {
                     continue;
                 }
                 int clampedScore = Math.Clamp(update.Score, 0, MaxScore);
@@ -294,9 +302,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultFrameIndex = 0;
             _resultFrameStartedAt = currentTimeMs;
             _resultVisibleUntil = currentTimeMs + GetResultDuration() + ResultHoldDurationMs;
-            _lastResultMessage = _entries.Count > 0
-                ? $"{_entries[0].Name} wins Ariant Arena with {_entries[0].Score} point{(_entries[0].Score == 1 ? string.Empty : "s")}."
-                : "Ariant Arena result shown.";
+            _lastResultMessage = null;
             if (!string.IsNullOrWhiteSpace(_resultSoundKey))
             {
                 _soundManager?.PlaySound(_resultSoundKey);
@@ -552,6 +558,15 @@ namespace HaCreator.MapSimulator.Fields
         {
             return FormatScoreText(score);
         }
+        internal static string ResolveResultLayerPathForTesting()
+        {
+            return ResolveResultLayerPath();
+        }
+        internal static string ResolveResultSoundPathForTesting()
+        {
+            return ResolveResultSoundPath();
+        }
+        internal string LastResultMessageForTesting => _lastResultMessage;
         private static string FormatScoreText(int score)
         {
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
@@ -580,18 +595,6 @@ namespace HaCreator.MapSimulator.Fields
                 Color.White,
                 false,
                 null);
-            if (font != null && !string.IsNullOrWhiteSpace(_lastResultMessage))
-            {
-                Vector2 textSize = font.MeasureString(_lastResultMessage);
-                float textX = (viewport.Width - textSize.X) * 0.5f;
-                float textY = Math.Max(anchorY + 236, 220);
-                if (pixelTexture != null)
-                {
-                    Rectangle backdrop = new Rectangle((int)textX - 10, (int)textY - 6, (int)textSize.X + 20, (int)textSize.Y + 12);
-                    spriteBatch.Draw(pixelTexture, backdrop, new Color(0, 0, 0, 120));
-                }
-                DrawOutlinedText(spriteBatch, font, _lastResultMessage, new Vector2(textX, textY), Color.Black, Color.White);
-            }
         }
         private int GetResultDuration()
         {
@@ -608,11 +611,12 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return;
             }
+            WzImageProperty resultRoot = ResolveWzPath(ResolveResultLayerPath());
+            LoadAnimatedFrames(resultRoot, _resultFrames);
+            EnsureResultSoundRegistered();
             WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow.img")
                 ?? global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
             WzImageProperty ariantMatch = uiWindow?["AriantMatch"];
-            LoadAnimatedFrames(ariantMatch?["Result"], _resultFrames);
-            EnsureResultSoundRegistered();
             WzImageProperty iconRoot = ariantMatch?["characterIcon"];
             for (int i = 0; i < MaxRankEntries; i++)
             {
@@ -630,15 +634,47 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return;
             }
-            WzBinaryProperty sound =
-                WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Show"]) as WzBinaryProperty
-                ?? WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Win"]) as WzBinaryProperty;
+            WzBinaryProperty sound = WzInfoTools.GetRealProperty(ResolveWzPath(ResolveResultSoundPath())) as WzBinaryProperty
+                ?? WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Show"]) as WzBinaryProperty;
             if (sound == null)
             {
                 return;
             }
             _resultSoundKey = "AriantArena:Result";
             _soundManager.RegisterSound(_resultSoundKey, sound);
+        }
+        private static string ResolveResultLayerPath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ResultLayerStringPoolId,
+                ResultLayerFallbackPath);
+        }
+        private static string ResolveResultSoundPath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ResultSoundStringPoolId,
+                ResultSoundFallbackPath);
+        }
+        private static WzImageProperty ResolveWzPath(string wzPath)
+        {
+            if (string.IsNullOrWhiteSpace(wzPath))
+            {
+                return null;
+            }
+
+            string[] parts = wzPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage(parts[0], parts[1]);
+            if (image == null || parts.Length == 2)
+            {
+                return null;
+            }
+
+            return image.GetFromPath(string.Join("/", parts, 2, parts.Length - 2));
         }
         private static IEnumerable<AriantArenaScoreUpdate> DecodeUserScorePacket(byte[] payload)
         {

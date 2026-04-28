@@ -788,6 +788,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodeSlotListResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
             if (TryDecodeResultFirstPayload(payload, out result, out error))
             {
                 return true;
@@ -902,6 +912,109 @@ namespace HaCreator.MapSimulator
             }
 
             return TryDecodeSyntheticResultPayload(body, out result, out error);
+        }
+
+        private static bool TryDecodeSlotListResultPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < 1 + sizeof(int) + 1)
+            {
+                return false;
+            }
+
+            foreach (bool opcodeFirst in new[] { true, false })
+            {
+                int offset = 0;
+                short? operationCode = null;
+                if (opcodeFirst && !TryReadRepairOpcode(payload, ref offset, out operationCode))
+                {
+                    continue;
+                }
+
+                foreach (int countSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+                {
+                    int candidateOffset = offset;
+                    if (!TryReadSlotListCount(payload, ref candidateOffset, countSize, out int slotCount))
+                    {
+                        continue;
+                    }
+
+                    int requiredSlotBytes = slotCount * sizeof(int);
+                    if (payload.Length - candidateOffset < requiredSlotBytes + 1)
+                    {
+                        continue;
+                    }
+
+                    var encodedSlotPositions = new List<int>(slotCount);
+                    bool validPositions = true;
+                    for (int i = 0; i < slotCount; i++)
+                    {
+                        int encodedPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(candidateOffset, sizeof(int)));
+                        candidateOffset += sizeof(int);
+                        if (!LooksLikeEncodedSlotPosition(encodedPosition))
+                        {
+                            validPositions = false;
+                            break;
+                        }
+
+                        encodedSlotPositions.Add(encodedPosition);
+                    }
+
+                    if (!validPositions)
+                    {
+                        continue;
+                    }
+
+                    if (!TryDecodeResultAndReasonFromOffset(
+                            payload,
+                            candidateOffset,
+                            successIndexInTail: 0,
+                            out bool success,
+                            out int? reasonCode,
+                            out string statusText,
+                            out string decodeError))
+                    {
+                        error = decodeError;
+                        return false;
+                    }
+
+                    result = new ResultPayload(
+                        success,
+                        reasonCode,
+                        operationCode,
+                        encodedSlotPositions.Count > 0 ? encodedSlotPositions[0] : null,
+                        statusText,
+                        encodedSlotPositions);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryReadSlotListCount(byte[] payload, ref int offset, int countSize, out int slotCount)
+        {
+            slotCount = 0;
+            if (payload == null || payload.Length - offset < countSize)
+            {
+                return false;
+            }
+
+            slotCount = countSize switch
+            {
+                sizeof(byte) => payload[offset],
+                sizeof(short) => BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(short))),
+                sizeof(int) => BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int))),
+                _ => 0
+            };
+            if (slotCount <= 0 || slotCount > 128)
+            {
+                return false;
+            }
+
+            offset += countSize;
+            return true;
         }
 
         private static bool TryDecodeResultFirstPayload(byte[] payload, out ResultPayload result, out string error)

@@ -661,7 +661,11 @@ namespace HaCreator.MapSimulator.UI
                     ? QuestRewardRaiseWindowMode.PiecePlacement
                     : QuestRewardRaiseWindowMode.Selection,
                 MaxDropCount = Math.Max(1, metadata.MaxDropCount),
-                InitialQrData = 0
+                InitialQrData = 0,
+                UiData = metadata.UiData,
+                IncrementExpUnit = metadata.IncrementExpUnit,
+                Grade = metadata.Grade,
+                MessageLines = metadata.MessageLines
             };
             return true;
         }
@@ -994,13 +998,24 @@ namespace HaCreator.MapSimulator.UI
 
         private static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequence(WzSubProperty itemProperty, string groupName, int limit)
         {
-            if (itemProperty?["info"] is not WzSubProperty infoProperty
-                || infoProperty[groupName] is not WzSubProperty groupProperty)
+            if (itemProperty == null)
             {
                 return Array.Empty<WzCanvasProperty>();
             }
 
-            return GetNumericNamedCanvasRows(groupProperty, limit);
+            if (itemProperty["info"] is WzSubProperty infoProperty
+                && infoProperty[groupName] is WzSubProperty infoGroupProperty)
+            {
+                IReadOnlyList<WzCanvasProperty> infoRows = GetNumericNamedCanvasRows(infoGroupProperty, limit);
+                if (infoRows.Count > 0)
+                {
+                    return infoRows;
+                }
+            }
+
+            return itemProperty[groupName] is WzSubProperty rootGroupProperty
+                ? GetNumericNamedCanvasRows(rootGroupProperty, limit)
+                : Array.Empty<WzCanvasProperty>();
         }
 
         public static bool TryResolveRootCanvas(int itemId, string canvasPath, out WzCanvasProperty canvas)

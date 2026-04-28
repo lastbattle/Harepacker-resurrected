@@ -1088,6 +1088,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (_activeMobs.Count < 2)
             {
+                ClearStaleEncounterTargets(currentTick);
                 return;
             }
 

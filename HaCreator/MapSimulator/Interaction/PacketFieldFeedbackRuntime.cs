@@ -1173,7 +1173,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "Applied packet-owned obstacle state."
                 : $"Applied {appliedCount} packet-owned obstacle states.";
             message = _statusMessage;
-            return appliedCount > 0;
+            return batchMode || appliedCount > 0;
         }
 
         private bool TryApplyObstacleReset(int currentTick, PacketFieldFeedbackCallbacks callbacks, out string message)

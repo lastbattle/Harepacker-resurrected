@@ -3,6 +3,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzProperties;
@@ -186,6 +187,11 @@ namespace HaCreator.MapSimulator
 
                 ContextOwnedStageBackImageEntry resolvedEntry =
                     ContextOwnedStageSystemCatalog.ResolveClientMakeBackPieceFields(entry, sourceProperty);
+                if (!ShouldRenderContextOwnedStageBackForCurrentScreen(resolvedEntry.ScreenMode))
+                {
+                    continue;
+                }
+
                 BackgroundInstance backgroundInstance = (BackgroundInstance)backgroundInfo.CreateInstance(
                     _mapBoard,
                     resolvedEntry.X,
@@ -207,6 +213,29 @@ namespace HaCreator.MapSimulator
             }
 
             return backgrounds_back.Count > 0 || backgrounds_front.Count > 0;
+        }
+
+        private bool ShouldRenderContextOwnedStageBackForCurrentScreen(int screenMode)
+        {
+            return ShouldRenderContextOwnedStageBackForScreenMode(
+                screenMode,
+                IsContextOwnedStagePeriodLargeScreenMode(_renderParams.Resolution));
+        }
+
+        internal static bool ShouldRenderContextOwnedStageBackForScreenMode(int screenMode, bool isLargeScreen)
+        {
+            return screenMode switch
+            {
+                1 => !isLargeScreen,
+                2 => isLargeScreen,
+                _ => true
+            };
+        }
+
+        internal static bool IsContextOwnedStagePeriodLargeScreenMode(RenderResolution resolution)
+        {
+            return resolution != RenderResolution.Res_All
+                && resolution != RenderResolution.Res_800x600;
         }
 
         private BackgroundInfo ResolveContextOwnedStageBackInfo(ContextOwnedStageBackImageEntry entry)

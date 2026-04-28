@@ -1052,7 +1052,7 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        public string ApplyPacketOwnedAdminShopOpenRejected(string noticeText)
+        public string ApplyPacketOwnedAdminShopOpenRejected(string noticeText, int npcTemplateId = 0, int decodedItemCount = 0)
         {
             _packetOwnedAdminShopRows.Clear();
             _packetOwnedAdminShopSellTemplates.Clear();
@@ -1060,7 +1060,9 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopSession.RejectOpen(
                 noticeText,
                 outboundSummary,
-                "Packet 367 refusal closed the admin-shop unique-modeless owner.");
+                "Packet 367 refusal closed the admin-shop unique-modeless owner.",
+                rejectedNpcTemplateId: npcTemplateId,
+                rejectedDecodedItemCount: decodedItemCount);
             ClearPendingPacketOwnedUserSellSnapshot();
             ClearPendingPacketOwnedWishlistRegister();
             ClearPendingPacketOwnedWishlistSearchRequest();

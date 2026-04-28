@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
                 [15] = "CTradingRoomDlg::OnPutItem",
                 [16] = "CTradingRoomDlg::OnPutMoney",
                 [17] = "CTradingRoomDlg::OnTrade (handoff)",
+                [20] = "CTradingRoomDlg::OnTrade CRC follow-up",
                 [21] = "CTradingRoomDlg::OnExceedLimit"
             };
 

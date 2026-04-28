@@ -2241,6 +2241,12 @@ namespace HaCreator.MapSimulator.Entities
                         1,
                         TryReadOptionalInt(WzInfoTools.GetRealProperty(frameCanvas["delay"]))
                             ?? ClientLoadLayerFallbackDelayMs);
+                    continue;
+                }
+
+                if (resolvedFrameProperty is WzSubProperty)
+                {
+                    totalDuration += TryReadHitDuration(resolvedFrameProperty);
                 }
             }
 

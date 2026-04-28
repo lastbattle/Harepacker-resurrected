@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedLogoutGiftPrecursorThirdContextSymbol = "CWvsContext::dword_40A0";
 
         private readonly int[] _packetOwnedLogoutGiftCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
+        private readonly int[] _packetOwnedLogoutGiftOwnerCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
         private bool _packetOwnedLogoutGiftHasConfig;
         private int _packetOwnedLogoutGiftSelectedIndex;
         private byte[] _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
@@ -113,9 +114,13 @@ namespace HaCreator.MapSimulator
         private LogoutGiftOwnerSnapshot BuildPacketOwnedLogoutGiftSnapshot()
         {
             List<LogoutGiftEntrySnapshot> entries = new(PacketOwnedLogoutGiftEntryCount);
+            int[] displayedCommoditySerialNumbers = ResolvePacketOwnedLogoutGiftDisplayedCommoditySerialNumbers(
+                _packetOwnedLogoutGiftCommoditySerialNumbers,
+                _packetOwnedLogoutGiftOwnerCommoditySerialNumbers,
+                _packetOwnedLogoutGiftOwnerInstantiated);
             for (int i = 0; i < PacketOwnedLogoutGiftEntryCount; i++)
             {
-                int commoditySerialNumber = Math.Max(0, _packetOwnedLogoutGiftCommoditySerialNumbers[i]);
+                int commoditySerialNumber = Math.Max(0, displayedCommoditySerialNumbers[i]);
                 int itemId = 0;
                 long price = 0;
                 int count = 0;
@@ -183,7 +188,11 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedLogoutGiftSelectedIndex = index;
-            int commoditySerialNumber = Math.Max(0, _packetOwnedLogoutGiftCommoditySerialNumbers[index]);
+            int[] displayedCommoditySerialNumbers = ResolvePacketOwnedLogoutGiftDisplayedCommoditySerialNumbers(
+                _packetOwnedLogoutGiftCommoditySerialNumbers,
+                _packetOwnedLogoutGiftOwnerCommoditySerialNumbers,
+                _packetOwnedLogoutGiftOwnerInstantiated);
+            int commoditySerialNumber = Math.Max(0, displayedCommoditySerialNumbers[index]);
             _lastPacketOwnedLogoutGiftSelectionRequestIndex = index;
             _lastPacketOwnedLogoutGiftSelectionTick = Environment.TickCount;
             string commoditySuffix = commoditySerialNumber > 0
@@ -380,6 +389,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftPendingContinuation = continuation;
             _lastPacketOwnedLogoutGiftLaunchSource = string.IsNullOrWhiteSpace(launchSource) ? "simulator" : launchSource.Trim();
             _packetOwnedLogoutGiftOwnerInstantiated = true;
+            CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache();
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
             ShowWindow(
                 MapSimulatorWindowNames.LogoutGift,
@@ -489,6 +499,36 @@ namespace HaCreator.MapSimulator
             return string.Join(", ", parts);
         }
 
+        private static int[] ResolvePacketOwnedLogoutGiftDisplayedCommoditySerialNumbers(
+            IReadOnlyList<int> contextCommoditySerialNumbers,
+            IReadOnlyList<int> ownerCommoditySerialNumbers,
+            bool ownerInstantiated)
+        {
+            int[] displayedCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
+            IReadOnlyList<int> source = ownerInstantiated
+                ? ownerCommoditySerialNumbers
+                : contextCommoditySerialNumbers;
+
+            for (int i = 0; i < PacketOwnedLogoutGiftEntryCount; i++)
+            {
+                displayedCommoditySerialNumbers[i] = source != null && i < source.Count
+                    ? source[i]
+                    : 0;
+            }
+
+            return displayedCommoditySerialNumbers;
+        }
+
+        private void CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache()
+        {
+            for (int i = 0; i < PacketOwnedLogoutGiftEntryCount; i++)
+            {
+                _packetOwnedLogoutGiftOwnerCommoditySerialNumbers[i] = i < _packetOwnedLogoutGiftCommoditySerialNumbers.Length
+                    ? _packetOwnedLogoutGiftCommoditySerialNumbers[i]
+                    : 0;
+            }
+        }
+
         private void ResetPacketOwnedLogoutGiftRuntimeState(bool clearConfig, bool hideWindow, string summary)
         {
             if (clearConfig)
@@ -505,6 +545,7 @@ namespace HaCreator.MapSimulator
                 _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
                 _packetOwnedLogoutGiftHasPredictQuitFlag = false;
                 _packetOwnedLogoutGiftPredictQuitRawValue = 0;
+                Array.Clear(_packetOwnedLogoutGiftOwnerCommoditySerialNumbers, 0, _packetOwnedLogoutGiftOwnerCommoditySerialNumbers.Length);
                 _lastPacketOwnedLogoutGiftSelectionRequestIndex = -1;
                 _lastPacketOwnedLogoutGiftSelectionTick = int.MinValue;
                 _lastPacketOwnedLogoutGiftLaunchSource = string.Empty;

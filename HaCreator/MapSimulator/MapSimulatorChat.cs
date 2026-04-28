@@ -437,6 +437,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && ShouldForwardClientEditParentOnlyKey(newKeyboardState, oldKeyboardState, controlHeld, shiftHeld))
+            {
+                return false;
+            }
+
             // Handle Up arrow - browse history (older)
             if (newKeyboardState.IsKeyDown(Keys.Up))
             {
@@ -3134,6 +3140,19 @@ namespace HaCreator.MapSimulator
             return key >= Keys.F1 && key <= Keys.F12;
         }
 
+        internal static bool ShouldForwardClientEditParentOnlyKey(
+            Keys key,
+            bool controlHeld,
+            bool shiftHeld)
+        {
+            if (controlHeld && (key == Keys.Home || key == Keys.End || key == Keys.A))
+            {
+                return true;
+            }
+
+            return key == Keys.Insert && !shiftHeld;
+        }
+
         private static bool ShouldForwardClientEditStageKey(
             KeyboardState newKeyboardState,
             KeyboardState oldKeyboardState)
@@ -3141,6 +3160,24 @@ namespace HaCreator.MapSimulator
             foreach (Keys key in newKeyboardState.GetPressedKeys())
             {
                 if (oldKeyboardState.IsKeyUp(key) && ShouldForwardClientEditStageKey(key))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ShouldForwardClientEditParentOnlyKey(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            bool controlHeld,
+            bool shiftHeld)
+        {
+            foreach (Keys key in newKeyboardState.GetPressedKeys())
+            {
+                if (oldKeyboardState.IsKeyUp(key)
+                    && ShouldForwardClientEditParentOnlyKey(key, controlHeld, shiftHeld))
                 {
                     return true;
                 }

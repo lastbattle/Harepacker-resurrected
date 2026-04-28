@@ -76,11 +76,18 @@ namespace HaCreator.MapSimulator.Effects
 
             int forcedCount = 0;
             int resolvedFadeOutMs = Math.Max(0, fadeOutMs);
-            for (int index = 0; index < _entries.Count; index++)
+            for (int index = _entries.Count - 1; index >= 0; index--)
             {
                 FadeEntry entry = _entries[index];
                 if (entry.HasForcedFadeOut())
                 {
+                    continue;
+                }
+
+                if (resolvedFadeOutMs == 0)
+                {
+                    _entries.RemoveAt(index);
+                    forcedCount++;
                     continue;
                 }
 

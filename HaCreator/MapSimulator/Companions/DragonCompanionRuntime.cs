@@ -125,6 +125,38 @@ namespace HaCreator.MapSimulator.Companions
             public short Bottom { get; }
         }
 
+        internal readonly struct ClientDragonFlushTailComparison
+        {
+            public ClientDragonFlushTailComparison(
+                bool hasSimulatorTail,
+                bool hasCapturedTail,
+                bool keyPadStatesMatch,
+                bool boundsMatch,
+                string simulatorKeyPadStates,
+                string capturedKeyPadStates,
+                Rectangle simulatorBounds,
+                Rectangle capturedBounds)
+            {
+                HasSimulatorTail = hasSimulatorTail;
+                HasCapturedTail = hasCapturedTail;
+                KeyPadStatesMatch = keyPadStatesMatch;
+                BoundsMatch = boundsMatch;
+                SimulatorKeyPadStates = simulatorKeyPadStates;
+                CapturedKeyPadStates = capturedKeyPadStates;
+                SimulatorBounds = simulatorBounds;
+                CapturedBounds = capturedBounds;
+            }
+
+            public bool HasSimulatorTail { get; }
+            public bool HasCapturedTail { get; }
+            public bool KeyPadStatesMatch { get; }
+            public bool BoundsMatch { get; }
+            public string SimulatorKeyPadStates { get; }
+            public string CapturedKeyPadStates { get; }
+            public Rectangle SimulatorBounds { get; }
+            public Rectangle CapturedBounds { get; }
+        }
+
         private readonly GraphicsDevice _device;
         private readonly DragonActionLoader _actionLoader;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
@@ -175,6 +207,10 @@ namespace HaCreator.MapSimulator.Companions
         private readonly Queue<byte[]> _pendingVecCtrlEndUpdateActiveFlushPayloads = new();
         private readonly List<MovePathElement> _clientVecCtrlMovePathBuffer = new();
         private readonly List<byte> _clientVecCtrlMovePathKeyPadStates = new();
+        private ClientDragonFlushTail? _lastSimulatorVecCtrlEndUpdateActiveFlushTail;
+        private ClientDragonFlushTail? _lastCapturedVecCtrlEndUpdateActiveFlushTail;
+        private string _lastCapturedVecCtrlEndUpdateActiveFlushSource;
+        private string _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
         private const float GroundSideOffset = 42f;
@@ -505,6 +541,10 @@ namespace HaCreator.MapSimulator.Companions
             _pendingVecCtrlEndUpdateActiveFlushPayloads.Clear();
             _clientVecCtrlMovePathBuffer.Clear();
             _clientVecCtrlMovePathKeyPadStates.Clear();
+            _lastSimulatorVecCtrlEndUpdateActiveFlushTail = null;
+            _lastCapturedVecCtrlEndUpdateActiveFlushTail = null;
+            _lastCapturedVecCtrlEndUpdateActiveFlushSource = null;
+            _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
         }
 
         internal bool ClearClientOwnedOneTimeActionOnSkillCancel(PlayerCharacter owner, int currentTime)
@@ -544,7 +584,7 @@ namespace HaCreator.MapSimulator.Companions
                 _ => "hidden"
             };
 
-            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, action alpha: {Math.Round(_ownerPhaseActionAlpha * 255f)}, quest info: {questInfoLabel}, pending vecctrl flush: {_pendingVecCtrlEndUpdateActiveFlushPayloads.Count}, owner: {ownerName ?? "Unknown"}";
+            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, action alpha: {Math.Round(_ownerPhaseActionAlpha * 255f)}, quest info: {questInfoLabel}, pending vecctrl flush: {_pendingVecCtrlEndUpdateActiveFlushPayloads.Count}, owner: {ownerName ?? "Unknown"}. {DescribeClientVecCtrlEndUpdateActiveParityStatus()}";
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -1075,6 +1115,11 @@ namespace HaCreator.MapSimulator.Companions
         private void EnqueueClientVecCtrlEndUpdateActiveFlushPacketPayload(byte[] payload)
         {
             payload ??= Array.Empty<byte>();
+            if (TryDecodeClientDragonEndUpdateActiveFlushTail(payload, out ClientDragonFlushTail tail, out _))
+            {
+                _lastSimulatorVecCtrlEndUpdateActiveFlushTail = tail;
+            }
+
             while (_pendingVecCtrlEndUpdateActiveFlushPayloads.Count >= MaxPendingClientVecCtrlFlushPackets)
             {
                 _pendingVecCtrlEndUpdateActiveFlushPayloads.Dequeue();
@@ -1403,6 +1448,119 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return TryDecodeClientDragonEndUpdateActiveFlushTail(payload, out tail, out error);
+        }
+
+        internal bool TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+            IReadOnlyList<byte> bytes,
+            bool opcodeFramed,
+            string source,
+            out string message)
+        {
+            message = null;
+            bool decoded = opcodeFramed
+                ? TryDecodeClientDragonEndUpdateActiveFlushTailFromRawPacket(bytes, out ClientDragonFlushTail capturedTail, out string rawError)
+                : TryDecodeClientDragonEndUpdateActiveFlushTail(bytes, out capturedTail, out rawError);
+
+            if (!decoded)
+            {
+                message = rawError ?? "Captured dragon move packet could not be decoded.";
+                return false;
+            }
+
+            _lastCapturedVecCtrlEndUpdateActiveFlushTail = capturedTail;
+            _lastCapturedVecCtrlEndUpdateActiveFlushSource = string.IsNullOrWhiteSpace(source) ? "manual capture" : source.Trim();
+            _lastCapturedVecCtrlEndUpdateActiveFlushSummary =
+                $"Captured client dragon opcode {ClientVecCtrlDragonMovePacketOpcode} tail from {_lastCapturedVecCtrlEndUpdateActiveFlushSource}: keypad={FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates)}, bounds={FormatClientDragonFlushBounds(capturedTail)}.";
+
+            message = DescribeClientVecCtrlEndUpdateActiveParityStatus();
+            return true;
+        }
+
+        internal string DescribeClientVecCtrlEndUpdateActiveParityStatus()
+        {
+            ClientDragonFlushTailComparison comparison = CompareLastClientDragonFlushTailCapture();
+            string simulatorText = comparison.HasSimulatorTail
+                ? $"sim keypad={comparison.SimulatorKeyPadStates}, bounds={FormatRectangle(comparison.SimulatorBounds)}"
+                : "sim tail unavailable";
+            string capturedText = comparison.HasCapturedTail
+                ? $"capture keypad={comparison.CapturedKeyPadStates}, bounds={FormatRectangle(comparison.CapturedBounds)}"
+                : _lastCapturedVecCtrlEndUpdateActiveFlushSummary;
+
+            if (!comparison.HasCapturedTail)
+            {
+                return $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}";
+            }
+
+            string matchText = comparison.HasSimulatorTail
+                ? $"keypad {(comparison.KeyPadStatesMatch ? "match" : "mismatch")}, bounds {(comparison.BoundsMatch ? "match" : "mismatch")}"
+                : "waiting for simulator tail";
+            return $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}; {matchText}.";
+        }
+
+        internal ClientDragonFlushTailComparison CompareLastClientDragonFlushTailCapture()
+        {
+            bool hasSimulatorTail = _lastSimulatorVecCtrlEndUpdateActiveFlushTail.HasValue;
+            bool hasCapturedTail = _lastCapturedVecCtrlEndUpdateActiveFlushTail.HasValue;
+            ClientDragonFlushTail simulatorTail = hasSimulatorTail ? _lastSimulatorVecCtrlEndUpdateActiveFlushTail.Value : default;
+            ClientDragonFlushTail capturedTail = hasCapturedTail ? _lastCapturedVecCtrlEndUpdateActiveFlushTail.Value : default;
+            Rectangle simulatorBounds = hasSimulatorTail ? ToBoundsRectangle(simulatorTail) : Rectangle.Empty;
+            Rectangle capturedBounds = hasCapturedTail ? ToBoundsRectangle(capturedTail) : Rectangle.Empty;
+            return new ClientDragonFlushTailComparison(
+                hasSimulatorTail,
+                hasCapturedTail,
+                hasSimulatorTail && hasCapturedTail && AreClientDragonFlushKeyPadStatesEqual(simulatorTail.KeyPadStates, capturedTail.KeyPadStates),
+                hasSimulatorTail && hasCapturedTail && simulatorBounds == capturedBounds,
+                hasSimulatorTail ? FormatClientDragonFlushKeyPadStates(simulatorTail.KeyPadStates) : "none",
+                hasCapturedTail ? FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates) : "none",
+                simulatorBounds,
+                capturedBounds);
+        }
+
+        private static bool AreClientDragonFlushKeyPadStatesEqual(IReadOnlyList<byte> left, IReadOnlyList<byte> right)
+        {
+            int leftCount = left?.Count ?? 0;
+            int rightCount = right?.Count ?? 0;
+            if (leftCount != rightCount)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < leftCount; i++)
+            {
+                if (NormalizeClientVecCtrlPassiveKeyPadState(left[i]) != NormalizeClientVecCtrlPassiveKeyPadState(right[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static Rectangle ToBoundsRectangle(ClientDragonFlushTail tail)
+        {
+            int width = Math.Max(0, tail.Right - tail.Left);
+            int height = Math.Max(0, tail.Bottom - tail.Top);
+            return new Rectangle(tail.Left, tail.Top, width, height);
+        }
+
+        private static string FormatClientDragonFlushKeyPadStates(IReadOnlyList<byte> states)
+        {
+            if (states == null || states.Count == 0)
+            {
+                return "[]";
+            }
+
+            return "[" + string.Join(",", states.Select(state => $"0x{NormalizeClientVecCtrlPassiveKeyPadState(state):X1}")) + "]";
+        }
+
+        private static string FormatClientDragonFlushBounds(ClientDragonFlushTail tail)
+        {
+            return FormatRectangle(ToBoundsRectangle(tail));
+        }
+
+        private static string FormatRectangle(Rectangle rectangle)
+        {
+            return $"({rectangle.Left},{rectangle.Top})-({rectangle.Right},{rectangle.Bottom})";
         }
 
         internal bool TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(out int packetOpcode, out byte[] payload)
