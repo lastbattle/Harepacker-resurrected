@@ -820,6 +820,9 @@ namespace HaCreator.MapSimulator
                     ResolveQuestRecordText = ResolvePacketOwnedBalloonQuestRecordText,
                     ResolveQuestDetailRecordText = ResolvePacketOwnedBalloonQuestDetailRecordText,
                     ResolveJobNameText = ResolvePacketOwnedBalloonJobNameText,
+                    ResolveCurrentLevelText = ResolvePacketOwnedBalloonCurrentLevelText,
+                    ResolveCurrentFameText = ResolvePacketOwnedBalloonCurrentFameText,
+                    ResolveCurrentMesoText = ResolvePacketOwnedBalloonCurrentMesoText,
                     ResolvePlaceholderText = ResolvePacketOwnedBalloonPlaceholderText
                 });
             for (int i = 0; i < sanitized.Length; i++)
@@ -1231,6 +1234,24 @@ namespace HaCreator.MapSimulator
             return jobId > 0
                 ? SkillDataLoader.GetJobName(jobId)
                 : "your job";
+        }
+
+        private string ResolvePacketOwnedBalloonCurrentLevelText()
+        {
+            int level = _playerManager?.Player?.Build?.Level ?? _playerManager?.Player?.Level ?? 1;
+            return Math.Max(1, level).ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string ResolvePacketOwnedBalloonCurrentFameText()
+        {
+            int fame = _playerManager?.Player?.Build?.Fame ?? 0;
+            return fame.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string ResolvePacketOwnedBalloonCurrentMesoText()
+        {
+            long meso = (uiWindowManager?.InventoryWindow as IInventoryRuntime)?.GetMesoCount() ?? 0L;
+            return Math.Max(0L, meso).ToString(CultureInfo.InvariantCulture);
         }
 
         private string ResolvePacketOwnedBalloonPlaceholderText(string token)
@@ -4387,12 +4408,6 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedPetConsumeResultPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!TryDecodeFieldHazardPetConsumeResultPayload(payload, out FieldHazardPetConsumeInboundResult result, out string error))
-            {
-                message = error ?? "Pet-consume result payload could not be decoded.";
-                return false;
-            }
-
             FieldHazardPetAutoConsumeRequest request;
             bool usesClosedOwner = false;
             if (_pendingFieldHazardPetAutoConsumeRequest.HasValue)
@@ -4409,22 +4424,28 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!MatchesFieldHazardPetConsumeInboundResult(
+            if (!TryDecodeFieldHazardPetConsumeResultPayloadForTarget(
+                    payload,
                     request.InventoryClientSlotIndex,
                     request.Candidate.ItemId,
                     request.RequestIndex,
-                    result))
+                    out FieldHazardPetConsumeInboundResult result,
+                    out string error))
             {
-                message = string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Pet-consume result targeted slot={0}, item={1}, requestIndex={2}, but the {3} field-hazard request is slot={4}, item={5}, requestIndex={6}.",
-                    result.Slot,
-                    result.ItemId,
-                    DescribeFieldHazardPetConsumeRequestIndexForDiagnostics(result.HasRequestIndex, result.RequestIndex),
-                    usesClosedOwner ? "recently closed" : "pending",
-                    request.InventoryClientSlotIndex,
-                    request.Candidate.ItemId,
-                    request.RequestIndex);
+                message = error ?? "Pet-consume result payload could not be decoded for the pending field-hazard request.";
+                if (TryDecodeFieldHazardPetConsumeResultPayload(payload, out FieldHazardPetConsumeInboundResult mismatchedResult, out _))
+                {
+                    message = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "Pet-consume result targeted slot={0}, item={1}, requestIndex={2}, but the {3} field-hazard request is slot={4}, item={5}, requestIndex={6}.",
+                        mismatchedResult.Slot,
+                        mismatchedResult.ItemId,
+                        DescribeFieldHazardPetConsumeRequestIndexForDiagnostics(mismatchedResult.HasRequestIndex, mismatchedResult.RequestIndex),
+                        usesClosedOwner ? "recently closed" : "pending",
+                        request.InventoryClientSlotIndex,
+                        request.Candidate.ItemId,
+                        request.RequestIndex);
+                }
                 return false;
             }
 
@@ -4636,6 +4657,133 @@ namespace HaCreator.MapSimulator
             error = lastDecodeError
                 ?? "Pet-consume result payload has an unsupported shape.";
             return false;
+        }
+
+        internal static bool TryDecodeFieldHazardPetConsumeResultPayloadForTarget(
+            byte[] payload,
+            int expectedSlot,
+            int expectedItemId,
+            int expectedRequestIndex,
+            out FieldHazardPetConsumeInboundResult result,
+            out string error)
+        {
+            result = default;
+            error = null;
+            if (payload == null || payload.Length < sizeof(byte))
+            {
+                error = "Pet-consume result payload must contain at least a result byte.";
+                return false;
+            }
+
+            FieldHazardPetConsumeInboundResultKind kind = (FieldHazardPetConsumeInboundResultKind)payload[0];
+            if (!Enum.IsDefined(typeof(FieldHazardPetConsumeInboundResultKind), kind))
+            {
+                error = $"Pet-consume result code {payload[0]} is unsupported.";
+                return false;
+            }
+
+            int[] bodyOffsets =
+            {
+                sizeof(byte),
+                sizeof(byte) + sizeof(int),
+                sizeof(byte) + sizeof(ulong),
+                sizeof(byte) + sizeof(ulong) + sizeof(int)
+            };
+            FieldHazardPetConsumeInboundResult firstDecodedResult = default;
+            bool hasDecodedResult = false;
+            string lastDecodeError = null;
+            for (int i = 0; i < bodyOffsets.Length; i++)
+            {
+                if (!TryDecodeFieldHazardPetConsumeResultAtBodyOffset(
+                        payload,
+                        kind,
+                        bodyOffsets[i],
+                        out FieldHazardPetConsumeInboundResult candidate,
+                        out string candidateError))
+                {
+                    lastDecodeError ??= candidateError;
+                    continue;
+                }
+
+                if (!hasDecodedResult)
+                {
+                    firstDecodedResult = candidate;
+                    hasDecodedResult = true;
+                }
+
+                if (MatchesFieldHazardPetConsumeInboundResult(
+                        expectedSlot,
+                        expectedItemId,
+                        expectedRequestIndex,
+                        candidate))
+                {
+                    result = candidate;
+                    return true;
+                }
+            }
+
+            if (hasDecodedResult)
+            {
+                result = firstDecodedResult;
+                error = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Pet-consume result did not target the pending field-hazard request; first decoded target was slot={0}, item={1}, requestIndex={2}.",
+                    firstDecodedResult.Slot,
+                    firstDecodedResult.ItemId,
+                    DescribeFieldHazardPetConsumeRequestIndexForDiagnostics(firstDecodedResult.HasRequestIndex, firstDecodedResult.RequestIndex));
+                return false;
+            }
+
+            error = lastDecodeError
+                ?? "Pet-consume result payload has an unsupported shape.";
+            return false;
+        }
+
+        private static bool TryDecodeFieldHazardPetConsumeResultAtBodyOffset(
+            byte[] payload,
+            FieldHazardPetConsumeInboundResultKind kind,
+            int bodyOffset,
+            out FieldHazardPetConsumeInboundResult result,
+            out string error)
+        {
+            result = default;
+            error = null;
+            if (!TryDecodeFieldHazardPetConsumeResultBody(
+                    payload,
+                    bodyOffset,
+                    out int slot,
+                    out int itemId,
+                    out int tailOffset,
+                    out string bodyDecodeError))
+            {
+                error = bodyDecodeError;
+                return false;
+            }
+
+            int requestIndex = -1;
+            bool hasRequestIndex = false;
+            string detail = string.Empty;
+            if (payload.Length > tailOffset
+                && !TryDecodeFieldHazardPetConsumeResultTail(
+                    payload,
+                    tailOffset,
+                    out requestIndex,
+                    out hasRequestIndex,
+                    out detail,
+                    out string tailDecodeError))
+            {
+                error = tailDecodeError;
+                return false;
+            }
+
+            result = new FieldHazardPetConsumeInboundResult(
+                kind,
+                slot,
+                itemId,
+                requestIndex,
+                hasRequestIndex,
+                detail);
+            return true;
         }
 
         private static bool TryDecodeFieldHazardPetConsumeResultBody(
@@ -4858,6 +5006,19 @@ namespace HaCreator.MapSimulator
                 return TryDecodeFieldHazardPetConsumeResultKind(payload, out _)
                     ? PacketOwned1026PetConsumeRouting.DedicatedPetConsumeResult
                     : PacketOwned1026PetConsumeRouting.QuestRewardFallback;
+            }
+
+            if (expectedSlot > 0
+                && expectedItemId > 0
+                && TryDecodeFieldHazardPetConsumeResultPayloadForTarget(
+                    payload,
+                    expectedSlot,
+                    expectedItemId,
+                    expectedRequestIndex,
+                    out _,
+                    out _))
+            {
+                return PacketOwned1026PetConsumeRouting.TargetedPetConsumeResult;
             }
 
             return MatchesFieldHazardPetConsumeInboundResult(

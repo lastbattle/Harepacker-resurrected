@@ -460,8 +460,14 @@ namespace HaCreator.MapSimulator
             ApplyPacketOwnedMovingFootholdWaypointsForPacketParity(platform, movingState);
             platform.X = movingState.CurrentX;
             platform.Y = movingState.CurrentY;
-            platform.MovingDown = !movingState.ReverseVertical;
-            platform.MovingRight = !movingState.ReverseHorizontal;
+            platform.MovingDown = ResolvePacketOwnedMovingFootholdMovingDownForPacketParity(
+                movingState.Y1,
+                movingState.Y2,
+                movingState.ReverseVertical);
+            platform.MovingRight = ResolvePacketOwnedMovingFootholdMovingRightForPacketParity(
+                movingState.X1,
+                movingState.X2,
+                movingState.ReverseHorizontal);
             platform.DeltaX = platform.X - previousX;
             platform.DeltaY = platform.Y - previousY;
         }
@@ -491,6 +497,34 @@ namespace HaCreator.MapSimulator
             }
 
             return currentMovementType;
+        }
+
+        internal static bool ResolvePacketOwnedMovingFootholdMovingRightForPacketParity(
+            int x1,
+            int x2,
+            bool reverseHorizontal)
+        {
+            if (x1 == x2)
+            {
+                return !reverseHorizontal;
+            }
+
+            bool secondEndpointIsRight = x2 > x1;
+            return reverseHorizontal != secondEndpointIsRight;
+        }
+
+        internal static bool ResolvePacketOwnedMovingFootholdMovingDownForPacketParity(
+            int y1,
+            int y2,
+            bool reverseVertical)
+        {
+            if (y1 == y2)
+            {
+                return !reverseVertical;
+            }
+
+            bool secondEndpointIsBelow = y2 > y1;
+            return reverseVertical != secondEndpointIsBelow;
         }
 
         internal static void ApplyPacketOwnedMovingFootholdWaypointsForPacketParity(

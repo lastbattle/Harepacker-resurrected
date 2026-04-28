@@ -322,6 +322,7 @@ namespace HaCreator.MapSimulator
                 }
                 case PacketOwnedLogoutGiftRefreshDisposition.RefreshHiddenInstantiatedOwner:
                 {
+                    CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache();
                     string hiddenPayloadSuffix = payload != null && payload.Length > 0
                         ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                         : string.Empty;
@@ -336,6 +337,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache();
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
 
             string payloadSuffix = payload != null && payload.Length > 0
@@ -499,7 +501,7 @@ namespace HaCreator.MapSimulator
             return string.Join(", ", parts);
         }
 
-        private static int[] ResolvePacketOwnedLogoutGiftDisplayedCommoditySerialNumbers(
+        internal static int[] ResolvePacketOwnedLogoutGiftDisplayedCommoditySerialNumbers(
             IReadOnlyList<int> contextCommoditySerialNumbers,
             IReadOnlyList<int> ownerCommoditySerialNumbers,
             bool ownerInstantiated)

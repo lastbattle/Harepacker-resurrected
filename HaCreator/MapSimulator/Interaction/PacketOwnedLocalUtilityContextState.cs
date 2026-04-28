@@ -32,6 +32,13 @@ namespace HaCreator.MapSimulator.Interaction
         public byte LastPetConsumeBuffSkill { get; private set; }
         public int LastPetConsumeRequestIndex { get; private set; } = -1;
         public byte[] LastPetConsumePayload { get; private set; } = Array.Empty<byte>();
+        public bool HasQuestDeliveryItemPos { get; private set; }
+        public int QuestDeliveryItemPos { get; private set; }
+        public int LastQuestDeliveryItemPos { get; private set; }
+        public int LastQuestDeliveryItemPosSetTick { get; private set; } = int.MinValue;
+        public int LastQuestDeliveryItemPosClearTick { get; private set; } = int.MinValue;
+        public int QuestDeliveryItemPosBoundCharacterId { get; private set; }
+        public int QuestDeliveryItemPosLastObservedRuntimeCharacterId { get; private set; }
         private readonly int[] _petConsumeExclusiveRequestTicks = CreatePetConsumeExclusiveRequestTicks();
         public bool HasRadioCreateLayerLeftContextValue { get; private set; }
         public bool RadioCreateLayerLeftContextValue { get; private set; }
@@ -102,6 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
             ResetRadioScheduleState(0);
             ResetRevivePremiumSafetyCharmState(0);
             ClearChairContext();
+            ClearQuestDeliveryItemPosContext();
         }
 
         public void EnsureInitializedFromRuntime(int runtimeCharacterId)
@@ -140,6 +148,7 @@ namespace HaCreator.MapSimulator.Interaction
             ResetRadioCreateLayerState(resolvedCharacterId);
             ResetRadioScheduleState(resolvedCharacterId);
             ClearChairContext();
+            ClearQuestDeliveryItemPosContext(resolvedCharacterId);
         }
 
         public void EnsureSeeded(int characterId)
@@ -641,6 +650,54 @@ namespace HaCreator.MapSimulator.Interaction
             PetConsumeExclusiveRequestSent = false;
         }
 
+        public void SetQuestDeliveryItemPos(int itemPos, int currentTick, int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            QuestDeliveryItemPosLastObservedRuntimeCharacterId = resolvedCharacterId;
+            if (resolvedCharacterId > 0 && QuestDeliveryItemPosBoundCharacterId <= 0)
+            {
+                QuestDeliveryItemPosBoundCharacterId = resolvedCharacterId;
+            }
+
+            HasQuestDeliveryItemPos = itemPos > 0;
+            QuestDeliveryItemPos = HasQuestDeliveryItemPos ? itemPos : 0;
+            LastQuestDeliveryItemPos = QuestDeliveryItemPos;
+            LastQuestDeliveryItemPosSetTick = currentTick;
+        }
+
+        public void ClearQuestDeliveryItemPos(int currentTick, int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            QuestDeliveryItemPosLastObservedRuntimeCharacterId = resolvedCharacterId;
+            if (resolvedCharacterId > 0 && QuestDeliveryItemPosBoundCharacterId <= 0)
+            {
+                QuestDeliveryItemPosBoundCharacterId = resolvedCharacterId;
+            }
+
+            HasQuestDeliveryItemPos = false;
+            QuestDeliveryItemPos = 0;
+            LastQuestDeliveryItemPosClearTick = currentTick;
+        }
+
+        public string DescribeQuestDeliveryItemPosContext(int currentTick)
+        {
+            string active = HasQuestDeliveryItemPos ? QuestDeliveryItemPos.ToString() : "cleared";
+            string last = LastQuestDeliveryItemPos > 0 ? LastQuestDeliveryItemPos.ToString() : "unset";
+            string setAge = LastQuestDeliveryItemPosSetTick == int.MinValue
+                ? "idle"
+                : $"{Math.Max(0, unchecked(currentTick - LastQuestDeliveryItemPosSetTick))} ms";
+            string clearAge = LastQuestDeliveryItemPosClearTick == int.MinValue
+                ? "idle"
+                : $"{Math.Max(0, unchecked(currentTick - LastQuestDeliveryItemPosClearTick))} ms";
+            string boundCharacter = QuestDeliveryItemPosBoundCharacterId > 0
+                ? QuestDeliveryItemPosBoundCharacterId.ToString()
+                : "unset";
+            string runtimeCharacter = QuestDeliveryItemPosLastObservedRuntimeCharacterId > 0
+                ? QuestDeliveryItemPosLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            return $"Quest delivery CWvsContext itemPos active={active}, last={last}, setAge={setAge}, clearAge={clearAge}, boundCharacter={boundCharacter}, runtimeCharacter={runtimeCharacter}.";
+        }
+
         public string DescribePetConsumeContext(int currentTick)
         {
             string exclusiveSentText = PetConsumeExclusiveRequestSent.ToString().ToLowerInvariant();
@@ -759,6 +816,17 @@ namespace HaCreator.MapSimulator.Interaction
             LastPetConsumeRequestIndex = -1;
             LastPetConsumePayload = Array.Empty<byte>();
             Array.Fill(_petConsumeExclusiveRequestTicks, int.MinValue);
+        }
+
+        private void ClearQuestDeliveryItemPosContext(int boundCharacterId = 0)
+        {
+            HasQuestDeliveryItemPos = false;
+            QuestDeliveryItemPos = 0;
+            LastQuestDeliveryItemPos = 0;
+            LastQuestDeliveryItemPosSetTick = int.MinValue;
+            LastQuestDeliveryItemPosClearTick = int.MinValue;
+            QuestDeliveryItemPosBoundCharacterId = NormalizeRuntimeCharacterId(boundCharacterId);
+            QuestDeliveryItemPosLastObservedRuntimeCharacterId = QuestDeliveryItemPosBoundCharacterId;
         }
 
         private static int NormalizeCharacterId(int characterId)

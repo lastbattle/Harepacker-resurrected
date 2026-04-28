@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -46,6 +47,13 @@ namespace HaCreator.MapSimulator.Managers
         public long MaplePoint { get; private set; }
         public long PrepaidCash { get; private set; }
         public bool OneADayPending { get; private set; }
+        public int OneADayItemDate { get; private set; }
+        public int OneADayItemSerialNumber { get; private set; }
+        public int OneADayHistoryCount { get; private set; }
+        public bool OneADayHasPacketRewardSessionByte { get; private set; }
+        public int OneADayPacketRewardSessionByte { get; private set; }
+        public int OneADayTrailingByteCount { get; private set; }
+        public string OneADayTrailingPayloadHex { get; private set; } = string.Empty;
         public string PreviewResourcePath { get; private set; } = string.Empty;
         public string LastFreeItemNotice { get; private set; } = string.Empty;
 
@@ -58,7 +66,7 @@ namespace HaCreator.MapSimulator.Managers
             NexonCash = 0;
             MaplePoint = 0;
             PrepaidCash = 0;
-            OneADayPending = false;
+            ClearOneADayState();
             LastFreeItemNotice = string.Empty;
             _childOwners.Clear();
             _childOwners.Add("CCSWnd_Char (0,0 256x316)");
@@ -90,7 +98,7 @@ namespace HaCreator.MapSimulator.Managers
             NexonCash = 0;
             MaplePoint = 0;
             PrepaidCash = 0;
-            OneADayPending = false;
+            ClearOneADayState();
             LastFreeItemNotice = string.Empty;
             PreviewResourcePath = "ui/ITCPreview.img";
             _childOwners.Clear();
@@ -123,7 +131,7 @@ namespace HaCreator.MapSimulator.Managers
             NexonCash = 0;
             MaplePoint = 0;
             PrepaidCash = 0;
-            OneADayPending = false;
+            ClearOneADayState();
             PreviewResourcePath = string.Empty;
             LastFreeItemNotice = string.Empty;
             _childOwners.Clear();
@@ -382,10 +390,48 @@ namespace HaCreator.MapSimulator.Managers
 
         private string ApplyOneADayPacket(byte[] payload)
         {
-            OneADayPending = payload.Length == 0 || payload[0] != 0;
-            return OneADayPending
-                ? "One-a-Day state is pending on the cash-service stage."
-                : "One-a-Day state was cleared on the cash-service stage.";
+            if (!CashServiceStageWindow.TryDecodeOneADayPayload(payload, out CashServiceStageWindow.OneADayPacketState state))
+            {
+                ClearOneADayState();
+                return payload.Length == 0
+                    ? "One-a-Day state was cleared on the cash-service stage from an empty packet payload."
+                    : $"One-a-Day packet payload was not decodable ({payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)); stage runtime cleared the packet-owned reward state.";
+            }
+
+            OneADayItemDate = state.CurrentDate;
+            OneADayItemSerialNumber = Math.Max(0, state.CurrentCommoditySerialNumber);
+            OneADayHistoryCount = Math.Max(0, state.HistoryEntries?.Count ?? 0);
+            OneADayHasPacketRewardSessionByte = state.HasPacketRewardSessionByte;
+            OneADayPacketRewardSessionByte = state.PacketRewardSessionByte & 0xFF;
+            OneADayTrailingByteCount = Math.Max(0, state.TrailingByteCount);
+            OneADayTrailingPayloadHex = state.TrailingPayloadHex ?? string.Empty;
+            OneADayPending = state.HasPacketRewardSessionByte
+                ? (OneADayPacketRewardSessionByte & 1) != 0
+                : CashServiceStageWindow.IsOneADayRewardPending(OneADayItemSerialNumber);
+
+            string rewardSessionState = state.HasPacketRewardSessionByte
+                ? $"reward-session byte 0x{OneADayPacketRewardSessionByte:X2}"
+                : "no packet reward-session byte";
+            string trailingState = OneADayTrailingByteCount > 0
+                ? $", trailing {OneADayTrailingByteCount.ToString(CultureInfo.InvariantCulture)}B ({OneADayTrailingPayloadHex})"
+                : string.Empty;
+            return
+                $"One-a-Day packet decoded current date {OneADayItemDate.ToString(CultureInfo.InvariantCulture)}, " +
+                $"current SN {OneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, " +
+                $"{OneADayHistoryCount.ToString(CultureInfo.InvariantCulture)} previous entry(ies), " +
+                $"{rewardSessionState}{trailingState}; today lane {(OneADayPending ? "armed" : "idle")}.";
+        }
+
+        private void ClearOneADayState()
+        {
+            OneADayPending = false;
+            OneADayItemDate = 0;
+            OneADayItemSerialNumber = 0;
+            OneADayHistoryCount = 0;
+            OneADayHasPacketRewardSessionByte = false;
+            OneADayPacketRewardSessionByte = 0;
+            OneADayTrailingByteCount = 0;
+            OneADayTrailingPayloadHex = string.Empty;
         }
 
         private string ApplyFreeItemNoticePacket(byte[] payload)
@@ -409,7 +455,10 @@ namespace HaCreator.MapSimulator.Managers
 
             if (OneADayPending)
             {
-                footerParts.Add("One-a-Day panel is pending.");
+                string rewardSessionState = OneADayHasPacketRewardSessionByte
+                    ? $"0x{OneADayPacketRewardSessionByte:X2}"
+                    : "fallback";
+                footerParts.Add($"One-a-Day panel is pending for SN {OneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)} ({OneADayHistoryCount.ToString(CultureInfo.InvariantCulture)} history row(s), reward {rewardSessionState}).");
             }
 
             if (!string.IsNullOrWhiteSpace(LastFreeItemNotice))

@@ -49,6 +49,64 @@ namespace HaCreator.MapSimulator
             _localUtilityPacketOutbox.TryQueueOutboundPacket(packetOpcode, payload, out _);
         }
 
+        private ChatCommandHandler.CommandResult HandleDragonCompanionCommand(string[] args)
+        {
+            const string usage = "Usage: /dragoncompanion [status|capture <payload|packet> <hex> [source...]]";
+            DragonCompanionRuntime dragonRuntime = _playerManager?.Dragon;
+            if (dragonRuntime == null)
+            {
+                return ChatCommandHandler.CommandResult.Error("Dragon companion runtime is unavailable.");
+            }
+
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(dragonRuntime.DescribeClientVecCtrlEndUpdateActiveParityStatus());
+            }
+
+            if (!string.Equals(args[0], "capture", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Error(usage);
+            }
+
+            if (args.Length < 3)
+            {
+                return ChatCommandHandler.CommandResult.Error(usage);
+            }
+
+            bool opcodeFramed;
+            if (string.Equals(args[1], "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "raw", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "opcode", StringComparison.OrdinalIgnoreCase))
+            {
+                opcodeFramed = true;
+            }
+            else if (string.Equals(args[1], "payload", StringComparison.OrdinalIgnoreCase))
+            {
+                opcodeFramed = false;
+            }
+            else
+            {
+                return ChatCommandHandler.CommandResult.Error(usage);
+            }
+
+            if (!TryDecodeHexBytes(args[2], out byte[] bytes))
+            {
+                return ChatCommandHandler.CommandResult.Error("Dragon companion capture hex is invalid.");
+            }
+
+            string source = args.Length > 3
+                ? string.Join(" ", args, 3, args.Length - 3)
+                : (opcodeFramed ? "opcode-framed capture" : "payload capture");
+
+            return dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+                    bytes,
+                    opcodeFramed,
+                    source,
+                    out string message)
+                ? ChatCommandHandler.CommandResult.Ok(message)
+                : ChatCommandHandler.CommandResult.Error(message);
+        }
+
         private DragonCompanionRuntime.OwnerPhaseContext ResolveDragonOwnerPhaseContextParity()
         {
             bool hasOwnerBuild = _playerManager?.Player?.Build != null;

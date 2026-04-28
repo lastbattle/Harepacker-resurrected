@@ -701,10 +701,12 @@ namespace HaCreator.MapSimulator
             int mode,
             bool wasAwaitingResult,
             string source,
-            bool hasAuthoritativeSubmitTransport)
+            bool hasAuthoritativeSubmitTransport,
+            bool hasBridgeCorrelatedInboundResult)
         {
             return wasAwaitingResult
                 && hasAuthoritativeSubmitTransport
+                && hasBridgeCorrelatedInboundResult
                 && IsPacketOwnedAntiMacroAuthoritativeResultSource(source)
                 && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
         }
@@ -821,10 +823,9 @@ namespace HaCreator.MapSimulator
                 : "Anti-macro submit wait expired at timeout.";
         }
 
-        private bool HasPacketOwnedAntiMacroAuthoritativeResultEvidence(string resultSource, IReadOnlyList<byte> payload)
+        private bool HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(IReadOnlyList<byte> payload)
         {
-            if (!HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resultSource)
-                || payload == null
+            if (payload == null
                 || payload.Count == 0)
             {
                 return false;
@@ -1374,11 +1375,14 @@ namespace HaCreator.MapSimulator
 
                 if (IsPacketOwnedAntiMacroCloseResultMode(mode))
                 {
-                    bool hasAuthoritativeResultEvidence = HasPacketOwnedAntiMacroAuthoritativeResultEvidence(resolvedSource, payload);
+                    bool hasAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                    bool hasAuthoritativeResultEvidence = hasAuthoritativeSubmitTransport
+                        && HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(payload);
                     bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
                         mode,
                         wasAwaitingResult,
                         resolvedSource,
+                        hasAuthoritativeSubmitTransport,
                         hasAuthoritativeResultEvidence);
                     bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
                         wasAwaitingResult,
@@ -1406,11 +1410,14 @@ namespace HaCreator.MapSimulator
                     string userName = reader.BaseStream.Position < reader.BaseStream.Length
                         ? ReadPacketOwnedMapleString(reader)
                         : string.Empty;
-                    bool hasAuthoritativeResultEvidence = HasPacketOwnedAntiMacroAuthoritativeResultEvidence(resolvedSource, payload);
+                    bool hasAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                    bool hasAuthoritativeResultEvidence = hasAuthoritativeSubmitTransport
+                        && HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(payload);
                     bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
                         mode,
                         wasAwaitingResult,
                         resolvedSource,
+                        hasAuthoritativeSubmitTransport,
                         hasAuthoritativeResultEvidence);
                     bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
                         wasAwaitingResult,
@@ -1425,11 +1432,14 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                bool hasNoticeAuthoritativeResultEvidence = HasPacketOwnedAntiMacroAuthoritativeResultEvidence(resolvedSource, payload);
+                bool hasNoticeAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                bool hasNoticeAuthoritativeResultEvidence = hasNoticeAuthoritativeSubmitTransport
+                    && HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(payload);
                 bool noticeAuthoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
                     mode,
                     wasAwaitingResult,
                     resolvedSource,
+                    hasNoticeAuthoritativeSubmitTransport,
                     hasNoticeAuthoritativeResultEvidence);
                 bool shouldKeepAwaitingNoticeAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
                     wasAwaitingResult,

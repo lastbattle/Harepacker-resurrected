@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<int, string> ResolveMobName { get; init; }
         internal Func<int, int?> ResolveMobMaxHp { get; init; }
         internal Func<int, string> ResolveMapName { get; init; }
+        internal Func<byte, int, string> ResolveWhisperFindLocationName { get; init; }
         internal Func<int, bool> HasMapTransferTarget { get; init; }
         internal Func<int, string> ResolveItemName { get; init; }
         internal Func<int, string> ResolveChannelName { get; init; }
@@ -1855,7 +1856,7 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        string mapName = callbacks?.ResolveMapName?.Invoke(value);
+                        string mapName = ResolveWhisperFindLocationName(subtype, value, callbacks);
                         text = string.IsNullOrWhiteSpace(mapName)
                             ? string.Empty
                             : FormatWhisperUserListText(normalizedTarget, mapName.Trim());
@@ -1898,7 +1899,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    string mapName = callbacks?.ResolveMapName?.Invoke(value);
+                    string mapName = ResolveWhisperFindLocationName(subtype, value, callbacks);
                     if (string.IsNullOrWhiteSpace(mapName))
                     {
                         text = string.Empty;
@@ -2033,6 +2034,20 @@ namespace HaCreator.MapSimulator.Interaction
 
             int mapCategory = Math.Abs(mapId / 1000000) % 100;
             return mapCategory == 9 && callbacks?.IsUnderCover?.Invoke() != true;
+        }
+
+        private static string ResolveWhisperFindLocationName(
+            byte subtype,
+            int mapId,
+            PacketFieldFeedbackCallbacks callbacks)
+        {
+            string subtypeSpecific = callbacks?.ResolveWhisperFindLocationName?.Invoke(subtype, mapId);
+            if (!string.IsNullOrWhiteSpace(subtypeSpecific))
+            {
+                return subtypeSpecific.Trim();
+            }
+
+            return callbacks?.ResolveMapName?.Invoke(mapId)?.Trim() ?? string.Empty;
         }
 
         private static bool TryResolveGroupFamily(byte family, out int chatLogType, out string prefix)

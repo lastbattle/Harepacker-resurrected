@@ -4,10 +4,12 @@ namespace HaCreator.MapSimulator
 {
     internal static class RockPaperScissorsSessionCommandParsing
     {
-        internal const string SessionUsage = "Usage: /rps session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|recent [count]|clearrecent|recentin [count]|clearrecentin|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]";
+        internal const string SessionUsage = "Usage: /rps session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|verify [count]|clearverify|recent [count]|clearrecent|recentin [count]|clearrecentin|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]";
         internal const string DiscoverUsage = "Usage: /rps session discover <remotePort> [processName|pid] [localPort]";
         internal const string AttachUsage = "Usage: /rps session attach <remotePort> [processName|pid] [localPort]";
         internal const string AttachProxyUsage = "Usage: /rps session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]";
+        internal const string VerifyUsage = "Usage: /rps session verify [count]";
+        internal const string ClearVerifyUsage = "Usage: /rps session clearverify";
         internal const string RecentUsage = "Usage: /rps session recent [count]";
         internal const string ClearRecentUsage = "Usage: /rps session clearrecent";
         internal const string RecentInboundUsage = "Usage: /rps session recentin [count]";

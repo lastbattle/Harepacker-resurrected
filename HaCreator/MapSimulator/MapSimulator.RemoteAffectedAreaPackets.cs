@@ -343,6 +343,43 @@ namespace HaCreator.MapSimulator
                 : null;
         }
 
+        internal static void RefreshMonsterCarnivalAffectedAreaOwnerTeamSnapshot(
+            int ownerId,
+            int areaObjectId,
+            IDictionary<int, Fields.MonsterCarnivalTeam> cachedOwnerTeams,
+            IDictionary<int, Fields.MonsterCarnivalTeam> cachedAreaOwnerTeams,
+            Func<int, string> resolveLiveOwnerName,
+            Func<string, Fields.MonsterCarnivalTeam?> resolveCharacterTeam)
+        {
+            if (ownerId <= 0 || areaObjectId <= 0)
+            {
+                return;
+            }
+
+            string liveOwnerName = resolveLiveOwnerName?.Invoke(ownerId)?.Trim();
+            if (!string.IsNullOrWhiteSpace(liveOwnerName))
+            {
+                Fields.MonsterCarnivalTeam? liveOwnerTeam = resolveCharacterTeam?.Invoke(liveOwnerName);
+                if (liveOwnerTeam.HasValue)
+                {
+                    cachedAreaOwnerTeams?[areaObjectId] = liveOwnerTeam.Value;
+                    cachedOwnerTeams?[ownerId] = liveOwnerTeam.Value;
+                    return;
+                }
+            }
+
+            if (cachedAreaOwnerTeams?.ContainsKey(areaObjectId) == true)
+            {
+                return;
+            }
+
+            if (cachedOwnerTeams != null
+                && cachedOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedOwnerTeam))
+            {
+                cachedAreaOwnerTeams?[areaObjectId] = cachedOwnerTeam;
+            }
+        }
+
         internal static void CacheRemoteAffectedAreaOwnerRuntimeState(
             int ownerId,
             IDictionary<int, string> cachedOwnerNames,
@@ -448,28 +485,13 @@ namespace HaCreator.MapSimulator
                 _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId[areaObjectId] = cachedBattlefieldOwnerTeamId;
             }
 
-            Fields.MonsterCarnivalTeam? liveOwnerCarnivalTeam =
-                ResolveMonsterCarnivalAffectedAreaOwnerTeamSnapshot(
-                    ownerId,
-                    areaObjectId,
-                    _remoteAffectedAreaOwnerNamesByAreaObjectId,
-                    _remoteAffectedAreaOwnerNames,
-                    _remoteAffectedAreaMonsterCarnivalOwnerTeams,
-                    ResolveLiveRemoteAffectedAreaOwnerName,
-                    ResolveMonsterCarnivalAffectedAreaOwnerTeamByName);
-
-            bool hasAreaCarnivalTeamSnapshot =
-                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.TryGetValue(areaObjectId, out _);
-            if (liveOwnerCarnivalTeam.HasValue)
-            {
-                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId[areaObjectId] = liveOwnerCarnivalTeam.Value;
-                _remoteAffectedAreaMonsterCarnivalOwnerTeams[ownerId] = liveOwnerCarnivalTeam.Value;
-            }
-            else if (!hasAreaCarnivalTeamSnapshot
-                     && _remoteAffectedAreaMonsterCarnivalOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedCarnivalOwnerTeam))
-            {
-                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId[areaObjectId] = cachedCarnivalOwnerTeam;
-            }
+            RefreshMonsterCarnivalAffectedAreaOwnerTeamSnapshot(
+                ownerId,
+                areaObjectId,
+                _remoteAffectedAreaMonsterCarnivalOwnerTeams,
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId,
+                ResolveLiveRemoteAffectedAreaOwnerName,
+                ResolveMonsterCarnivalAffectedAreaOwnerTeamByName);
         }
 
         private void UpdateRemoteAffectedAreaGameplay(int currentTime)

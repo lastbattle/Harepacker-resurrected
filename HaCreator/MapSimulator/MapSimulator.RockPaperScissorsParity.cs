@@ -415,6 +415,26 @@ namespace HaCreator.MapSimulator
                     _rockPaperScissorsOfficialSessionBridge.DescribeDiscoveredSessions(remotePort, processSelector, localPort));
             }
 
+            if (string.Equals(args[0], "verify", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!RockPaperScissorsSessionCommandParsing.TryParseOptionalPositiveCount(args, 10, out int count))
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.VerifyUsage);
+                }
+
+                return ChatCommandHandler.CommandResult.Info(_rockPaperScissorsOfficialSessionBridge.DescribeLiveOwnershipVerificationReport(count));
+            }
+
+            if (string.Equals(args[0], "clearverify", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length != 1)
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.ClearVerifyUsage);
+                }
+
+                return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsOfficialSessionBridge.ClearLiveOwnershipVerificationEvidence());
+            }
+
             if (string.Equals(args[0], "recent", StringComparison.OrdinalIgnoreCase))
             {
                 if (!RockPaperScissorsSessionCommandParsing.TryParseOptionalPositiveCount(args, 10, out int count))

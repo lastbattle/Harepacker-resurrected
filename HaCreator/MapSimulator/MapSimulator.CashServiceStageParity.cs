@@ -3813,6 +3813,18 @@ namespace HaCreator.MapSimulator
             {
                 CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
                 int selectedPaymentControlId = modalWindow.SelectedCheckBoxControlId;
+                if (!IsCashPurchasePaymentSelectionAccepted(selectedPaymentControlId))
+                {
+                    message = BuildCashPurchasePaymentSelectionRequiredNotice(selectedPaymentControlId);
+                    stageWindow?.RecordPurchaseDialogSelection(
+                        selectedPaymentControlId,
+                        ResolveCashPurchasePaymentLabel(selectedPaymentControlId),
+                        modalWindow.SelectedComboValue,
+                        modalWindow.SelectedComboLabel);
+                    _chat?.AddErrorMessage(message, currTickCount);
+                    return;
+                }
+
                 string selectedPaymentLabel = ResolveCashPurchasePaymentLabel(selectedPaymentControlId);
                 string selectorSummary = stageWindow?.RecordPurchaseDialogSelection(
                         selectedPaymentControlId,
@@ -3934,6 +3946,20 @@ namespace HaCreator.MapSimulator
             return parts.Count == 0
                 ? string.Empty
                 : $"CConfirmPurchaseDlg confirmed with {string.Join(" and ", parts)}.";
+        }
+
+        internal static bool IsCashPurchasePaymentSelectionAccepted(int selectedCheckBoxControlId)
+        {
+            return selectedCheckBoxControlId is 1000 or 1001 or 1002;
+        }
+
+        internal static string BuildCashPurchasePaymentSelectionRequiredNotice(int selectedCheckBoxControlId)
+        {
+            string selectorLabel = ResolveCashPurchasePaymentLabel(selectedCheckBoxControlId);
+            string selectedLabel = string.IsNullOrWhiteSpace(selectorLabel)
+                ? "no accepted payment checkbox"
+                : $"{selectedCheckBoxControlId.ToString(CultureInfo.InvariantCulture)} ({selectorLabel})";
+            return $"CConfirmPurchaseDlg kept the modal open because SetRet(1) requires exactly one checked cash-payment option; selected {selectedLabel}.";
         }
 
         private static string ResolveCashPurchasePaymentLabel(int selectedCheckBoxControlId)

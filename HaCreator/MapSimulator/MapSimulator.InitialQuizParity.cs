@@ -1373,9 +1373,22 @@ namespace HaCreator.MapSimulator
             int ownerHeight = _initialQuizOwnerBackgroundTexture?.Height > 0
                 ? _initialQuizOwnerBackgroundTexture.Height
                 : InitialQuizOwnerHeight;
-            int left = Math.Max(0, (_renderParams.RenderWidth - ownerWidth) / 2);
-            int top = Math.Max(24, (_renderParams.RenderHeight - ownerHeight) / 2);
-            return new Rectangle(left, top, ownerWidth, ownerHeight);
+            return ResolveInitialQuizOwnerBounds(
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight,
+                ownerWidth,
+                ownerHeight);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerBounds(int renderWidth, int renderHeight, int ownerWidth, int ownerHeight)
+        {
+            int resolvedWidth = ownerWidth > 0 ? ownerWidth : InitialQuizOwnerWidth;
+            int resolvedHeight = ownerHeight > 0 ? ownerHeight : InitialQuizOwnerHeight;
+            return new Rectangle(
+                (renderWidth - resolvedWidth) / 2,
+                (renderHeight - resolvedHeight) / 2,
+                resolvedWidth,
+                resolvedHeight);
         }
 
         private Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds)

@@ -1875,13 +1875,20 @@ namespace HaCreator.MapSimulator
 
         private static string ResolveVegaResultLoopSoundClientPlaybackDescriptor()
         {
-            return BuildVegaPlayUiSoundLoopDescriptor(
-                VegaOwnerStringPoolText.GetResultLoopSoundAliasDescriptor());
+            return NormalizeVegaResultLoopSoundDescriptor(
+                BuildVegaPlayUiSoundLoopDescriptor(
+                    VegaOwnerStringPoolText.GetResultLoopSoundAliasDescriptor()),
+                VegaResultPreludeLoopSoundFallback);
         }
 
         internal static string BuildVegaPlayUiSoundLoopDescriptorForTests(string soundName)
         {
             return BuildVegaPlayUiSoundLoopDescriptor(soundName);
+        }
+
+        internal static string ResolveVegaResultLoopSoundClientPlaybackDescriptorForTests()
+        {
+            return ResolveVegaResultLoopSoundClientPlaybackDescriptor();
         }
 
         private static string BuildVegaPlayUiSoundLoopDescriptor(string soundName)

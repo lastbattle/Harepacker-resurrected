@@ -930,14 +930,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (IsSharableOnceCashOwnershipBlocked(slotData))
-            {
-                string blockedMessage = TrunkDialogClientParityText.ResolveSharableOnceBlockedNotice();
-                StatusMessage = $"CTrunkDlg blocked SendGetItemRequest on the sharable-once ownership branch: {blockedMessage}";
-                message = StatusMessage;
-                return false;
-            }
-
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 TrunkOutboundOpcode,
                 BuildGetItemRequestPayload(itemType, trunkRow),

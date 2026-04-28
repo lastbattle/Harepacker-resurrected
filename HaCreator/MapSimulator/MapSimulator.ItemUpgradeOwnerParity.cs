@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator
         private const int ItemUpgradeOwnerExternalResultFallbackDelayMs = 3000;
         private const int ItemUpgradeOwnerExclusiveRequestCooldownMs = 500;
         private const int ItemUpgradeOwnerResultAckViciousHammerDelayMs = 1000;
+        private const int ItemUpgradeOwnerGaugeHandoffDelayMs = 3120;
         private const int ItemUpgradeOwnerRequestPayloadLength = sizeof(int) * 3;
         private const int ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength = sizeof(int) + sizeof(short) + sizeof(int);
         private const int ItemUpgradeOwnerConsumeCashRequestPayloadLength = ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + ItemUpgradeOwnerRequestPayloadLength;
@@ -60,6 +61,9 @@ namespace HaCreator.MapSimulator
             public string PacketOwnedApplyStatusMessageOverride { get; set; }
             public bool PacketOwnedResultObserved { get; set; }
             public byte? PacketOwnedResultCode { get; set; }
+            public bool PacketOwnedResultAckPending { get; set; }
+            public byte PacketOwnedResultAckReturnCode { get; set; }
+            public int PacketOwnedResultAckValue { get; set; }
             public byte[] EncodedRequestPayload { get; init; } = Array.Empty<byte>();
             public int RequestItemToken { get; init; }
             public int RequestSlotPosition { get; init; }
@@ -242,6 +246,14 @@ namespace HaCreator.MapSimulator
                 ClearItemUpgradeOwnerRequestState(currTickCount);
             }
 
+            if (pendingRequest.PacketOwnedResultAckPending)
+            {
+                StageItemUpgradeResultAck(
+                    pendingRequest.PacketOwnedResultAckReturnCode,
+                    pendingRequest.PacketOwnedResultAckValue,
+                    currTickCount);
+            }
+
             return true;
         }
 
@@ -267,11 +279,15 @@ namespace HaCreator.MapSimulator
             {
                 _itemUpgradeOwnerLastResultValue = decodeState.OutcomeResultValue;
                 _itemUpgradeOwnerLastUpgradeStateValue = decodeState.OutcomeUpgradeState;
-                StageItemUpgradeResultAck(decodeState.ResultCode, decodeState.OutcomeResultValue, currTickCount);
             }
 
             if (_pendingItemUpgradeOwnerRequest == null)
             {
+                if (decodeState.HasOutcomeState)
+                {
+                    StageItemUpgradeResultAck(decodeState.ResultCode, decodeState.OutcomeResultValue, currTickCount);
+                }
+
                 if (TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
                         decodeState,
                         out string packetOwnedNoticeWithoutPendingRequest))
@@ -393,9 +409,29 @@ namespace HaCreator.MapSimulator
             _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
-            _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(
+            _pendingItemUpgradeOwnerRequest.PacketOwnedResultAckPending = decodeState.HasOutcomeState;
+            _pendingItemUpgradeOwnerRequest.PacketOwnedResultAckReturnCode = decodeState.ResultCode;
+            _pendingItemUpgradeOwnerRequest.PacketOwnedResultAckValue = decodeState.OutcomeResultValue;
+            int branchReadyDelayMs = ResolveItemUpgradeResultReadyDelayMs(
                 decodeState.ResultCode,
                 decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : (int?)null);
+            int gaugeHandoffReadyTick = decodeState.HasOutcomeState
+                ? ResolveItemUpgradeOutcomeApplyReadyTick(
+                    _pendingItemUpgradeOwnerRequest.RequestedAtTick,
+                    currTickCount,
+                    ResolveCurrentItemUpgradeGaugeHandoffDelayMs())
+                : currTickCount;
+            int branchReadyTick = unchecked(currTickCount + branchReadyDelayMs);
+            _pendingItemUpgradeOwnerRequest.ResultReadyAtTick =
+                unchecked(branchReadyTick - gaugeHandoffReadyTick) > 0
+                    ? branchReadyTick
+                    : gaugeHandoffReadyTick;
+
+            if (unchecked(currTickCount - _pendingItemUpgradeOwnerRequest.ResultReadyAtTick) >= 0)
+            {
+                TryCompletePendingItemUpgradeOwnerRequest();
+            }
+
             message = success
                 ? $"Queued packet-owned item-upgrade success result code {decodeState.ResultCode}."
                 : $"Queued packet-owned item-upgrade fail result code {decodeState.ResultCode}.";
@@ -479,6 +515,22 @@ namespace HaCreator.MapSimulator
                   outcomeResultValue.GetValueOrDefault() == ItemUpgradePacketOutcomeStateFail
                     ? ItemUpgradeOwnerResultAckViciousHammerDelayMs
                 : ItemUpgradeOwnerResultApplyDelayMs;
+        }
+
+        private static int ResolveItemUpgradeOutcomeApplyReadyTick(
+            int requestedAtTick,
+            int currentTick,
+            int gaugeHandoffDelayMs)
+        {
+            int readyTick = unchecked(requestedAtTick + Math.Max(0, gaugeHandoffDelayMs));
+            return unchecked(currentTick - readyTick) >= 0
+                ? currentTick
+                : readyTick;
+        }
+
+        private static int ResolveCurrentItemUpgradeGaugeHandoffDelayMs()
+        {
+            return ItemUpgradeOwnerGaugeHandoffDelayMs;
         }
 
         private int ResolveItemUpgradeRecoveredSlotCountArgument(EquipSlot slot)

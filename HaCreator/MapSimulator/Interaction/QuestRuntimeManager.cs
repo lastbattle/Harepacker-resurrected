@@ -324,6 +324,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int? StartPetTamenessMinimum { get; init; }
             public int? StartPetTamenessMaximum { get; init; }
             public IReadOnlyList<QuestSkillRequirement> StartSkillRequirements { get; init; } = Array.Empty<QuestSkillRequirement>();
+            public IReadOnlyList<int> StartRequiredBuffIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> StartExcludedBuffIds { get; init; } = Array.Empty<int>();
             public int? StartInfoNumber { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> StartInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> StartInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
@@ -332,6 +334,7 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
             public IReadOnlyList<QuestPetRequirement> EndPetRequirements { get; init; } = Array.Empty<QuestPetRequirement>();
             public IReadOnlyList<QuestSkillRequirement> EndSkillRequirements { get; init; } = Array.Empty<QuestSkillRequirement>();
+            public IReadOnlyList<QuestTraitRequirement> EndTraitRequirements { get; init; } = Array.Empty<QuestTraitRequirement>();
             public int? EndPetRecallLimit { get; init; }
             public int? EndPetTamenessMinimum { get; init; }
             public int? EndPetTamenessMaximum { get; init; }
@@ -975,6 +978,7 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetTamenessMaximum),
                 issues);
             AppendSkillIssues(definition.EndSkillRequirements, issues);
+            AppendTraitIssues(definition.EndTraitRequirements, build, issues);
             AppendAvailabilityIssues(
                 definition.EndAvailableFrom,
                 definition.EndAvailableUntil,
@@ -1079,9 +1083,10 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.ActionMinLevel,
                     definition.EndActions?.ActionMaxLevel,
                     definition.EndActions?.AllowedJobs,
-                    definition.EndFameRequirement))
+                    definition.EndFameRequirement,
+                    hasTraitRequirements: definition.EndTraitRequirements.Count > 0))
             {
-                issues.Add("Completion demand includes build-scoped level/job/fame gates, but character build context is unavailable.");
+                issues.Add("Completion demand includes build-scoped level/job/fame/trait gates, but character build context is unavailable.");
             }
 
             if (build != null &&
@@ -1368,7 +1373,8 @@ namespace HaCreator.MapSimulator.Interaction
             int? actionMinLevel,
             int? actionMaxLevel,
             IReadOnlyList<int> actionAllowedJobs,
-            int? fameRequirement = null)
+            int? fameRequirement = null,
+            bool hasTraitRequirements = false)
         {
             return minLevel.HasValue
                    || maxLevel.HasValue
@@ -1377,7 +1383,8 @@ namespace HaCreator.MapSimulator.Interaction
                    || actionMinLevel.HasValue
                    || actionMaxLevel.HasValue
                    || (actionAllowedJobs?.Count ?? 0) > 0
-                   || fameRequirement.HasValue;
+                   || fameRequirement.HasValue
+                   || hasTraitRequirements;
         }
 
         internal static bool HasUnmetCompletionActionJobDemand(IReadOnlyList<int> actionAllowedJobs, int currentJob)
@@ -5031,8 +5038,10 @@ namespace HaCreator.MapSimulator.Interaction
                 infoNumber,
                 infoRequirements,
                 infoExRequirements);
-            bool hasUnmetTraitRequirement = state == QuestStateType.Not_Started &&
-                HasUnmetTraitRequirements(definition.StartTraitRequirements, build);
+            bool hasUnmetTraitRequirement = state == QuestStateType.Not_Started
+                ? HasUnmetTraitRequirements(definition.StartTraitRequirements, build)
+                : state == QuestStateType.Started &&
+                  HasUnmetTraitRequirements(definition.EndTraitRequirements, build);
             IReadOnlyList<QuestSkillRequirement> skillRequirements = state == QuestStateType.Not_Started
                 ? definition.StartSkillRequirements
                 : definition.EndSkillRequirements;
@@ -5078,11 +5087,19 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetCompletionMorphDemand(
                     definition.EndMorphTemplateId,
                     ResolveCurrentMorphTemplateIdForCompletionDemand(_currentMorphTemplateIdProvider));
-            bool hasUnmetRequiredBuffRequirement = state == QuestStateType.Started &&
+            bool hasUnmetRequiredBuffRequirement = state == QuestStateType.Not_Started
+                ? HasUnmetRequiredCompletionBuffDemand(
+                    definition.StartRequiredBuffIds,
+                    _hasActiveQuestDemandBuffProvider)
+                : state == QuestStateType.Started &&
                 HasUnmetRequiredCompletionBuffDemand(
                     definition.EndRequiredBuffIds,
                     _hasActiveQuestDemandBuffProvider);
-            bool hasUnmetExcludedBuffRequirement = state == QuestStateType.Started &&
+            bool hasUnmetExcludedBuffRequirement = state == QuestStateType.Not_Started
+                ? HasUnmetExcludedCompletionBuffDemand(
+                    definition.StartExcludedBuffIds,
+                    _hasActiveQuestDemandBuffProvider)
+                : state == QuestStateType.Started &&
                 HasUnmetExcludedCompletionBuffDemand(
                     definition.EndExcludedBuffIds,
                     _hasActiveQuestDemandBuffProvider);
@@ -5402,7 +5419,8 @@ namespace HaCreator.MapSimulator.Interaction
                     "buff",
                     "buffId",
                     "requiredBuff",
-                    "needBuff"))
+                    "needBuff",
+                    "demandBuff"))
             {
                 return requiredBuffPages;
             }
@@ -5412,6 +5430,9 @@ namespace HaCreator.MapSimulator.Interaction
                     stopPages,
                     out IReadOnlyList<NpcInteractionPage> excludedBuffPages,
                     "noBuff",
+                    "exceptBuff",
+                    "exceptbuff",
+                    "except",
                     "blockedBuff",
                     "excludedBuff",
                     "buffBlock"))
@@ -6463,6 +6484,20 @@ namespace HaCreator.MapSimulator.Interaction
                 build,
                 issues);
             AppendSkillIssues(definition.StartSkillRequirements, issues);
+            if (HasUnmetRequiredCompletionBuffDemand(
+                    definition.StartRequiredBuffIds,
+                    _hasActiveQuestDemandBuffProvider))
+            {
+                issues.Add("Start demand requires an active buff owner.");
+            }
+
+            if (HasUnmetExcludedCompletionBuffDemand(
+                    definition.StartExcludedBuffIds,
+                    _hasActiveQuestDemandBuffProvider))
+            {
+                issues.Add("Start demand blocks while one of the excluded buffs is active.");
+            }
+
             AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(
                 definition.StartActions.RewardItems,
@@ -6508,6 +6543,7 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetTamenessMaximum),
                 issues);
             AppendSkillIssues(definition.EndSkillRequirements, issues);
+            AppendTraitIssues(definition.EndTraitRequirements, build, issues);
             AppendAvailabilityIssues(
                 definition.EndAvailableFrom,
                 definition.EndAvailableUntil,
@@ -6612,9 +6648,10 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.ActionMinLevel,
                     definition.EndActions?.ActionMaxLevel,
                     definition.EndActions?.AllowedJobs,
-                    definition.EndFameRequirement))
+                    definition.EndFameRequirement,
+                    hasTraitRequirements: definition.EndTraitRequirements.Count > 0))
             {
-                issues.Add("Completion demand includes build-scoped level/job/fame gates, but character build context is unavailable.");
+                issues.Add("Completion demand includes build-scoped level/job/fame/trait gates, but character build context is unavailable.");
             }
 
             if (build != null &&
@@ -9006,6 +9043,8 @@ namespace HaCreator.MapSimulator.Interaction
                 StartPetTamenessMinimum = ParsePositiveInt(startCheck?["pettamenessmin"]),
                 StartPetTamenessMaximum = ParsePositiveInt(startCheck?["pettamenessmax"]),
                 StartSkillRequirements = ParseSkillRequirements(startCheck?["skill"]),
+                StartRequiredBuffIds = ParseQuestDemandIntegerList(startCheck?["buff"]),
+                StartExcludedBuffIds = ParseQuestDemandIntegerList(startCheck?["exceptbuff"]),
                 StartInfoNumber = ParsePositiveInt(startCheck?["infoNumber"]),
                 StartInfoRequirements = ParseQuestRecordTextRequirements(startCheck?["info"]),
                 StartInfoExRequirements = ParseQuestRecordValueRequirements(startCheck?["infoex"]),
@@ -9015,6 +9054,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndAllowedDays = ParseAllowedDays(endCheck?["dayOfWeek"]),
                 EndPetRequirements = ParsePetRequirements(endCheck?["pet"]),
                 EndSkillRequirements = ParseSkillRequirements(endCheck?["skill"]),
+                EndTraitRequirements = ParseCompletionTraitRequirements(endCheck),
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
@@ -10257,6 +10297,18 @@ namespace HaCreator.MapSimulator.Interaction
             AppendTraitRequirement(property["craftMin"], QuestTraitType.Craft, requirements);
             AppendTraitRequirement(property["senseMin"], QuestTraitType.Sense, requirements);
             AppendTraitRequirement(property["charmMin"], QuestTraitType.Charm, requirements);
+            return requirements;
+        }
+
+        private static IReadOnlyList<QuestTraitRequirement> ParseCompletionTraitRequirements(WzSubProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<QuestTraitRequirement>();
+            }
+
+            var requirements = new List<QuestTraitRequirement>(ParseTraitRequirements(property));
+            AppendTraitRequirement(property["charm"], QuestTraitType.Charm, requirements);
             return requirements;
         }
 

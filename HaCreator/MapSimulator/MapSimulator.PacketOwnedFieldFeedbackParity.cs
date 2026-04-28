@@ -216,6 +216,7 @@ namespace HaCreator.MapSimulator
                 ResolveMobName = ResolvePacketFieldFeedbackMobName,
                 ResolveMobMaxHp = ResolvePacketFieldFeedbackMobMaxHp,
                 ResolveMapName = ResolvePacketOwnedWhisperMapLocationName,
+                ResolveWhisperFindLocationName = ResolvePacketOwnedWhisperFindLocationName,
                 HasMapTransferTarget = HasPacketOwnedWhisperTransferTarget,
                 ResolveItemName = ResolvePacketFieldFeedbackItemName,
                 ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
@@ -815,6 +816,21 @@ namespace HaCreator.MapSimulator
             }
 
             return string.Empty;
+        }
+
+        private string ResolvePacketOwnedWhisperFindLocationName(byte subtype, int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return string.Empty;
+            }
+
+            if (subtype == 9 && TryResolveMapDisplayNameFromCache(mapId, out string displayName))
+            {
+                return displayName;
+            }
+
+            return ResolvePacketOwnedWhisperMapLocationName(mapId);
         }
 
         private void ShowPacketOwnedBossTimerClock(PacketFieldBossTimerVisualState state)

@@ -506,6 +506,8 @@ namespace HaCreator.MapSimulator
                 _guildSkillRuntime.SetSkills(SkillDataLoader.LoadGuildSkills(_DxDeviceManager.GraphicsDevice));
             }
 
+            RefreshGuildSkillUiContext();
+
             string skillRecordDetail;
             if (hasSingleSkillRecord)
             {

@@ -29,6 +29,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 using BinaryReader = MapleLib.PacketLib.PacketReader;
 using BinaryWriter = MapleLib.PacketLib.PacketWriter;
@@ -128,7 +129,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedTutorBalloonClientLayerHeightPadding = 92;
         private const int PacketOwnedTutorBalloonClientArrowTopOffset = 35;
         private const int PacketOwnedTutorBalloonClientVerticalAnchorOffset = 90;
+        private const int PacketOwnedLevelUpEffectStringPoolId = 0x092C;
         private const int PacketOwnedLevelUpSoundStringPoolId = 0x1A4C;
+        private const string PacketOwnedLevelUpEffectFallbackDescriptor = "Effect/BasicEff.img/LevelUp";
         private const string PacketOwnedLevelUpSoundFallbackDescriptor = "Game.img/LevelUp";
         private PacketOwnedSocialUtilityDialogDispatcher _packetOwnedSocialUtilityDialogDispatcher;
         private const string PacketOwnedApspPromptExactBody =
@@ -4083,6 +4086,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.UserInfoPopularityResultPacketType:
                     return TryApplyCharacterInfoPopularityResultPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.UserInfoRemoteProfilePacketType:
+                    return TryApplyCharacterInfoRemoteProfilePayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.BuffzoneEffectPacketType:
                 case LocalUtilityPacketInboxManager.BuffzoneEffectClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedBuffzoneEffect, "Buff-zone payload is missing.", out message);
@@ -4460,7 +4466,7 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedMesoGiveSucceededPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveSucceeded(payload, out uint mesoAmount, out int trailingByteCount, out string decodeError))
+            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveSucceeded(payload, out int mesoAmount, out int trailingByteCount, out string decodeError))
             {
                 message = decodeError ?? "Meso-give success payload could not be decoded.";
                 return false;
@@ -4472,6 +4478,24 @@ namespace HaCreator.MapSimulator
             message = trailingByteCount > 0
                 ? $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
                 : $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
+            return true;
+        }
+
+        private bool TryApplyCharacterInfoRemoteProfilePayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                message = "Character-info remote profile payload is missing the target character id.";
+                return false;
+            }
+
+            int characterId = BitConverter.ToInt32(payload, 0);
+            StampPacketOwnedUtilityRequestState();
+            ShowPacketOwnedWindow(MapSimulatorWindowNames.CharacterInfo, "Character Info");
+            message = payload.Length > sizeof(int)
+                ? $"Applied packet-owned character-info remote profile handoff for character {characterId.ToString(CultureInfo.InvariantCulture)} and preserved {payload.Length - sizeof(int)} profile byte(s) for the Character Info owner."
+                : $"Applied packet-owned character-info remote profile handoff for character {characterId.ToString(CultureInfo.InvariantCulture)}.";
             return true;
         }
 
@@ -9320,9 +9344,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (payload.Length == sizeof(int))
+            {
+                // CUIRadio::CreateLayer consumes the packet-owned CWvsContext
+                // slot as a DWORD bLeft value; zero is an authored right-side
+                // value, not a simulator clear command.
+                int contextSlotValue = BitConverter.ToInt32(payload, 0);
+                hasOverride = true;
+                bLeft = contextSlotValue != 0;
+                message = $"Decoded packet-authored CWvsContext[3562] radio bLeft DWORD={(bLeft ? 1 : 0)}.";
+                return true;
+            }
+
             if (payload.Length > 2)
             {
-                message = "Radio CreateLayer context payload must be [0] to clear, [1] to set left, or [1,<bLeft>] to set right/left explicitly.";
+                message = "Radio CreateLayer context payload must be [0] to clear, [1] to set left, [1,<bLeft>] to set right/left explicitly, or a 4-byte CWvsContext[3562] DWORD value.";
                 return false;
             }
 
@@ -12332,6 +12368,16 @@ namespace HaCreator.MapSimulator
             string levelUpSoundDescriptor = MapleStoryStringPool.GetOrFallback(
                 PacketOwnedLevelUpSoundStringPoolId,
                 PacketOwnedLevelUpSoundFallbackDescriptor);
+            string levelUpEffectDescriptor = MapleStoryStringPool.GetOrFallback(
+                PacketOwnedLevelUpEffectStringPoolId,
+                PacketOwnedLevelUpEffectFallbackDescriptor);
+            bool attemptedLevelUpEffect = ShouldApplyPacketOwnedTutorLevelUpGeneralEffect(
+                previousObservedLevel,
+                currentLevel,
+                _playerManager?.Player?.Build?.Job ?? 0);
+            string resolvedLevelUpEffectDescriptor = null;
+            bool registeredLevelUpEffect = attemptedLevelUpEffect
+                && TryRegisterPacketOwnedTutorLevelUpGeneralEffect(levelUpEffectDescriptor, out resolvedLevelUpEffectDescriptor);
             bool playedLevelUpSound = TryPlayPacketOwnedWzSound(
                 levelUpSoundDescriptor,
                 "Game.img",
@@ -12342,6 +12388,16 @@ namespace HaCreator.MapSimulator
             string levelUpSummary = playedLevelUpSound
                 ? $"packet-owned OnStatChanged level-up branch played {resolvedLevelUpSoundDescriptor}."
                 : "packet-owned OnStatChanged level-up branch could not resolve the client level-up sound.";
+            if (attemptedLevelUpEffect)
+            {
+                levelUpSummary = registeredLevelUpEffect
+                    ? $"{levelUpSummary} Registered client level-up effect {resolvedLevelUpEffectDescriptor}."
+                    : $"{levelUpSummary} Could not resolve client level-up effect {levelUpEffectDescriptor}.";
+            }
+            else
+            {
+                levelUpSummary = $"{levelUpSummary} Suppressed client level-up effect on Evan job-change level {currentLevel}.";
+            }
 
             bool triggeredPetSpeaking = false;
             if (ShouldApplyPacketOwnedTutorLevelUpPetSpeaking(previousObservedLevel, currentLevel))
@@ -12367,6 +12423,62 @@ namespace HaCreator.MapSimulator
             NotifyEventAlarmOwnerActivity("packet-owned tutor level-up");
             ShowUtilityFeedbackMessage(
                 $"{levelUpSummary} Old-level-2 branch: {skillOwnerMessage} {questAlarmOwnerMessage}");
+        }
+
+        internal static bool ShouldApplyPacketOwnedTutorLevelUpGeneralEffect(int previousObservedLevel, int currentLevel, int currentJobId)
+        {
+            if (!ShouldApplyPacketOwnedTutorAdjacentLevelUpEffects(previousObservedLevel, currentLevel))
+            {
+                return false;
+            }
+
+            return !IsPacketOwnedTutorEvanJobChangeLevel(currentJobId, currentLevel);
+        }
+
+        internal static bool IsPacketOwnedTutorEvanJobChangeLevel(int jobId, int level)
+        {
+            if (!IsPacketOwnedTutorEvanJob(jobId))
+            {
+                return false;
+            }
+
+            return level switch
+            {
+                10 or 20 or 30 or 40 or 50 or 60 or 80 or 100 or 120 or 160 => true,
+                _ => false
+            };
+        }
+
+        internal static bool IsPacketOwnedTutorEvanJob(int jobId)
+        {
+            return Math.Max(0, jobId) / 100 == 22 || jobId == 2001;
+        }
+
+        private bool TryRegisterPacketOwnedTutorLevelUpGeneralEffect(string effectDescriptor, out string resolvedEffectDescriptor)
+        {
+            resolvedEffectDescriptor = NormalizeRemotePacketOwnedStringEffectUol(effectDescriptor);
+            if (string.IsNullOrWhiteSpace(resolvedEffectDescriptor)
+                || _animationEffects == null
+                || _playerManager?.Player == null
+                || !TryGetAnimationDisplayerFrames(
+                    $"packet-owned:levelup:{resolvedEffectDescriptor}",
+                    resolvedEffectDescriptor,
+                    out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            PlayerCharacter player = _playerManager.Player;
+            Vector2 fallbackPosition = player.Position;
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                () => _playerManager?.Player?.Position ?? fallbackPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currTickCount);
+            return true;
         }
 
         private bool ResolvePacketOwnedRadioCreateLayerLeftContext()
@@ -13993,12 +14105,25 @@ namespace HaCreator.MapSimulator
                     ? new Vector2(packet.TransferX.Value, packet.TransferY.Value)
                     : null);
             ApplyLocalFollowPlayerResult(detachResult);
+            ArmPassiveTransferRequestFromFollowCharacterTransferDetach(packet.TransferField);
             if (previousDriverId > 0)
             {
                 _remoteUserPool?.TryClearLocalPassengerFromDriver(previousDriverId, localCharacterId, out _);
             }
 
             return _localFollowRuntime.LastStatusMessage;
+        }
+
+        private void ArmPassiveTransferRequestFromFollowCharacterTransferDetach(bool transferField)
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldArmQueuedRetryFromFollowCharacterTransferDetach(
+                    isLocalUser: true,
+                    transferField))
+            {
+                return;
+            }
+
+            ArmPassiveTransferRequest();
         }
 
         private string ApplyPacketOwnedFollowCharacterFailed(FollowCharacterFailureInfo info)
@@ -18398,6 +18523,11 @@ namespace HaCreator.MapSimulator
             }
 
             string normalizedText = decodedText.Trim();
+            if (TryDecodePacketOwnedRankingPageHtmlPayload(normalizedText, out entries, out summary, out message))
+            {
+                return entries.Length > 0;
+            }
+
             if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
             {
@@ -18429,6 +18559,189 @@ namespace HaCreator.MapSimulator
             summary = $"Applied packet-authored CUIRanking page payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
             message = summary;
             return true;
+        }
+
+        private static bool TryDecodePacketOwnedRankingPageHtmlPayload(
+            string payloadText,
+            out RankingEntrySnapshot[] entries,
+            out string summary,
+            out string message)
+        {
+            entries = Array.Empty<RankingEntrySnapshot>();
+            summary = string.Empty;
+            message = "Ranking-page HTML payload did not contain a usable CWebWnd ranking table.";
+            if (string.IsNullOrWhiteSpace(payloadText)
+                || payloadText.IndexOf("<tr", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            List<RankingEntrySnapshot> parsedEntries = new();
+            List<string> headerCells = new();
+            MatchCollection rowMatches = Regex.Matches(
+                payloadText,
+                @"<tr\b[^>]*>(.*?)</tr>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            foreach (Match rowMatch in rowMatches)
+            {
+                string rowHtml = rowMatch.Groups[1].Value;
+                MatchCollection cellMatches = Regex.Matches(
+                    rowHtml,
+                    @"<t[dh]\b[^>]*>(.*?)</t[dh]>",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+                if (cellMatches.Count == 0)
+                {
+                    continue;
+                }
+
+                List<string> cells = cellMatches
+                    .Cast<Match>()
+                    .Select(match => NormalizePacketOwnedRankingHtmlCell(match.Groups[1].Value))
+                    .Where(cell => !string.IsNullOrWhiteSpace(cell))
+                    .ToList();
+                if (cells.Count == 0)
+                {
+                    continue;
+                }
+
+                bool isHeaderRow = Regex.IsMatch(rowHtml, @"<th\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (isHeaderRow)
+                {
+                    headerCells = cells;
+                    continue;
+                }
+
+                if (TryCreatePacketOwnedRankingEntryFromHtmlCells(cells, headerCells, out RankingEntrySnapshot entry))
+                {
+                    parsedEntries.Add(entry);
+                }
+            }
+
+            if (parsedEntries.Count == 0)
+            {
+                return false;
+            }
+
+            entries = parsedEntries.ToArray();
+            summary = $"Applied packet-authored CWebWnd ranking HTML table with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+            message = summary;
+            return true;
+        }
+
+        private static string NormalizePacketOwnedRankingHtmlCell(string html)
+        {
+            if (string.IsNullOrWhiteSpace(html))
+            {
+                return string.Empty;
+            }
+
+            string withoutTags = Regex.Replace(
+                html,
+                @"<[^>]+>",
+                " ",
+                RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            string decoded = WebUtility.HtmlDecode(withoutTags) ?? string.Empty;
+            return Regex.Replace(decoded, @"\s+", " ", RegexOptions.CultureInvariant).Trim();
+        }
+
+        private static bool TryCreatePacketOwnedRankingEntryFromHtmlCells(
+            IReadOnlyList<string> cells,
+            IReadOnlyList<string> headerCells,
+            out RankingEntrySnapshot entry)
+        {
+            entry = null;
+            if (cells == null || cells.Count == 0)
+            {
+                return false;
+            }
+
+            int rankIndex = ResolvePacketOwnedRankingHtmlColumnIndex(headerCells, "rank", "ranking", "position", "place");
+            int nameIndex = ResolvePacketOwnedRankingHtmlColumnIndex(headerCells, "character", "charactername", "charname", "name", "player", "ranker");
+            int jobIndex = ResolvePacketOwnedRankingHtmlColumnIndex(headerCells, "job", "jobname", "class");
+            int worldIndex = ResolvePacketOwnedRankingHtmlColumnIndex(headerCells, "world", "worldname", "server");
+            if (rankIndex < 0 && cells.Count >= 2)
+            {
+                rankIndex = 0;
+            }
+
+            if (nameIndex < 0 && cells.Count >= 2)
+            {
+                nameIndex = rankIndex == 0 ? 1 : 0;
+            }
+
+            if (jobIndex < 0 && cells.Count >= 3)
+            {
+                jobIndex = cells.Count > 3 && nameIndex == 1 ? 2 : -1;
+            }
+
+            if (worldIndex < 0 && cells.Count >= 4)
+            {
+                worldIndex = cells.Count > 3 && nameIndex == 1 ? 3 : -1;
+            }
+
+            string label = GetPacketOwnedRankingHtmlCell(cells, nameIndex);
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return false;
+            }
+
+            string value = GetPacketOwnedRankingHtmlCell(cells, rankIndex);
+            List<string> detailParts = new();
+            AddPacketOwnedRankingHtmlDetailPart(detailParts, GetPacketOwnedRankingHtmlCell(cells, jobIndex));
+            AddPacketOwnedRankingHtmlDetailPart(detailParts, GetPacketOwnedRankingHtmlCell(cells, worldIndex));
+            for (int i = 0; i < cells.Count; i++)
+            {
+                if (i == rankIndex || i == nameIndex || i == jobIndex || i == worldIndex)
+                {
+                    continue;
+                }
+
+                AddPacketOwnedRankingHtmlDetailPart(detailParts, cells[i]);
+            }
+
+            entry = CreatePacketOwnedRankingEntry(label, value, string.Join(" / ", detailParts));
+            return true;
+        }
+
+        private static int ResolvePacketOwnedRankingHtmlColumnIndex(IReadOnlyList<string> headerCells, params string[] aliases)
+        {
+            if (headerCells == null || aliases == null)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < headerCells.Count; i++)
+            {
+                string normalizedHeader = Regex.Replace(
+                    headerCells[i] ?? string.Empty,
+                    @"[^a-z0-9]",
+                    string.Empty,
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                for (int aliasIndex = 0; aliasIndex < aliases.Length; aliasIndex++)
+                {
+                    if (string.Equals(normalizedHeader, aliases[aliasIndex], StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return -1;
+        }
+
+        private static string GetPacketOwnedRankingHtmlCell(IReadOnlyList<string> cells, int index)
+        {
+            return cells != null && index >= 0 && index < cells.Count
+                ? cells[index]?.Trim() ?? string.Empty
+                : string.Empty;
+        }
+
+        private static void AddPacketOwnedRankingHtmlDetailPart(ICollection<string> detailParts, string value)
+        {
+            if (detailParts != null && !string.IsNullOrWhiteSpace(value))
+            {
+                detailParts.Add(value.Trim());
+            }
         }
 
         internal static bool TryDecodePacketOwnedRankingPagePayloadForTests(
@@ -23361,6 +23674,7 @@ namespace HaCreator.MapSimulator
                     ClearPacketOwnedPassiveMoveState();
                     LocalFollowApplyResult detachResult = _localFollowRuntime.ApplyServerDetach(previousDriver, detachTransferField, detachTransferPosition);
                     ApplyLocalFollowPlayerResult(detachResult);
+                    ArmPassiveTransferRequestFromFollowCharacterTransferDetach(detachTransferField);
                     if (localDetachCharacterId > 0 && previousDriver.CharacterId > 0)
                     {
                         _remoteUserPool?.TryClearLocalPassengerFromDriver(previousDriver.CharacterId, localDetachCharacterId, out _);

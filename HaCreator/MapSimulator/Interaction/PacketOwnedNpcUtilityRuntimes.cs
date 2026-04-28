@@ -3491,6 +3491,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal long RecoveryTotalHpApplied => _recoveryTotalHpIncApply;
         internal long RecoveryTotalMpRequested => _recoveryTotalMpIncReq;
         internal long RecoveryTotalMpApplied => _recoveryTotalMpIncApply;
+        internal int RecoveryUseItemTotal => _recoveryTotalUseItem;
         internal int RecoveryForecastUsePerHour => _recoveryForecastUsePerHour;
         internal string StatusMessage { get; private set; } = "CBattleRecordMan::OnPacket idle.";
 
@@ -3788,7 +3789,8 @@ namespace HaCreator.MapSimulator.Interaction
             int beforeMp,
             int? currentHp,
             int? currentMp,
-            int currentTickCount)
+            int currentTickCount,
+            bool hasWvsContext = true)
         {
             if (!(OnCalc && ServerOnCalc))
             {
@@ -3808,6 +3810,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             _recoveryTotalHpIncReq += requestedHp;
             _recoveryTotalMpIncReq += requestedMp;
+            if (!hasWvsContext)
+            {
+                StatusMessage = $"CBattleRecordMan::SetBattleRecoveryInfo recorded requested HP={requestedHp.ToString(CultureInfo.InvariantCulture)}, MP={requestedMp.ToString(CultureInfo.InvariantCulture)} but skipped applied totals, item-use counters, averages, forecast, and overflow checks because the recovered CWvsContext guard was absent.";
+                AppendNote(StatusMessage);
+                return StatusMessage;
+            }
+
             _recoveryTotalHpIncApply += appliedHp;
             _recoveryTotalMpIncApply += appliedMp;
             _recoveryCount += (appliedHp > 0 || appliedMp > 0) ? 1 : 0;

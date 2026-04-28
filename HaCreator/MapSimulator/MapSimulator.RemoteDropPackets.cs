@@ -997,6 +997,11 @@ namespace HaCreator.MapSimulator
             {
                 RemoveObservedDropPartyActor(_observedDropPartyActorParents, _observedDropPartyAnchorActorIds, normalizedActorId);
             }
+
+            RemoveObservedDropPartyOwnerActorAliases(
+                _observedDropPartyActorParents,
+                _observedDropPartyAnchorActorIds,
+                actorId);
         }
 
         private void ForgetObservedDropPartyActorOwner(int actorId)
@@ -1008,6 +1013,8 @@ namespace HaCreator.MapSimulator
             {
                 RemoveObservedDropPartyActorOwners(_observedDropPartyActorOwners, normalizedActorId);
             }
+
+            RemoveObservedDropPartyOwnerActorAliasOwners(_observedDropPartyActorOwners, actorId);
         }
 
         private void ForgetObservedRemotePetPickupOwner(int ownerCharacterId)
@@ -1039,6 +1046,25 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < keysToRemove.Length; i++)
             {
                 actorParents.Remove(keysToRemove[i]);
+            }
+        }
+
+        internal static void RemoveObservedDropPartyOwnerActorAliases(
+            IDictionary<int, int> actorParents,
+            ISet<int> observedPartyAnchorActorIds,
+            int ownerCharacterId)
+        {
+            if (ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            for (int slotIndex = 0; slotIndex < RemotePetPickupPredictedSlotCount; slotIndex++)
+            {
+                RemoveObservedDropPartyActor(
+                    actorParents,
+                    observedPartyAnchorActorIds,
+                    BuildRemotePetPickupActorId(ownerCharacterId, slotIndex));
             }
         }
 
@@ -1078,6 +1104,23 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < keysToRemove.Length; i++)
             {
                 actorOwners.Remove(keysToRemove[i]);
+            }
+        }
+
+        internal static void RemoveObservedDropPartyOwnerActorAliasOwners(
+            IDictionary<int, int> actorOwners,
+            int ownerCharacterId)
+        {
+            if (actorOwners == null || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            for (int slotIndex = 0; slotIndex < RemotePetPickupPredictedSlotCount; slotIndex++)
+            {
+                RemoveObservedDropPartyActorOwners(
+                    actorOwners,
+                    BuildRemotePetPickupActorId(ownerCharacterId, slotIndex));
             }
         }
 

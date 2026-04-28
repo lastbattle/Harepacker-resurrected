@@ -1450,7 +1450,10 @@ namespace HaCreator.MapSimulator.Managers
                         "Maker-session compact delta hidden recipe entry",
                         out entries))
                 {
-                    return false;
+                    return TryDecodeHiddenTailCountlessOutputOnlyList(
+                        payload,
+                        requirePositiveOutputItemId: true,
+                        out additions);
                 }
 
                 if (reader.BaseStream.Position != reader.BaseStream.Length)
@@ -1708,7 +1711,11 @@ namespace HaCreator.MapSimulator.Managers
                         out entries,
                         useByteCount: true))
                 {
-                    return false;
+                    return encoding == HiddenRecipeEntryEncoding.OutputOnly
+                           && TryDecodeHiddenTailCountlessOutputOnlyList(
+                               payload,
+                               requirePositiveOutputItemId: isAdditionList,
+                               out entries);
                 }
 
                 return reader.BaseStream.Position == reader.BaseStream.Length;
@@ -1723,6 +1730,54 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (InvalidDataException)
             {
+                return false;
+            }
+        }
+
+        private static bool TryDecodeHiddenTailCountlessOutputOnlyList(
+            byte[] payload,
+            bool requirePositiveOutputItemId,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            entries = null;
+            if (payload == null || payload.Length == 0 || payload.Length % sizeof(int) != 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                int count = payload.Length / sizeof(int);
+                entries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    int outputItemId = reader.ReadInt32();
+                    if (requirePositiveOutputItemId && outputItemId <= 0)
+                    {
+                        entries = null;
+                        return false;
+                    }
+
+                    entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(-1, outputItemId));
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                entries = null;
+                return false;
+            }
+            catch (IOException)
+            {
+                entries = null;
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                entries = null;
                 return false;
             }
         }

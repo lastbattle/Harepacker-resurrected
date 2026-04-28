@@ -46,6 +46,9 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly Regex Sg88MismatchPairRegex = new(
             @"byte[\s_\-]*(?<index>\d+)\s*(?::|=|\-)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex Sg88IndexedMismatchPairRegex = new(
+            @"(?:byte[\s_\-]*index|byte[\s_\-]*offset|offset|index)?[\s_\-]*(?<index>\d+)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchFieldPairRegex = new(
             @"(?<field>(?:raw[\s_\-]*)?move[\s_\-]*action(?:[\s_\-]*(?:byte|flag|low[\s_\-]*bit))?|vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))?|vec[\s_\-]*owner)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -2124,6 +2127,17 @@ namespace HaCreator.MapSimulator.Managers
                 normalizedByByte[byteIndex] = normalizedPair;
             }
 
+            MatchCollection indexedMatches = Sg88IndexedMismatchPairRegex.Matches(rawPairSegment);
+            foreach (Match match in indexedMatches.Cast<Match>())
+            {
+                if (!TryParseSg88ReplayParityMismatchPair(match.Value, out int byteIndex, out string normalizedPair))
+                {
+                    continue;
+                }
+
+                normalizedByByte[byteIndex] = normalizedPair;
+            }
+
             MatchCollection fieldMatches = Sg88MismatchFieldPairRegex.Matches(rawPairSegment);
             foreach (Match match in fieldMatches.Cast<Match>())
             {
@@ -2274,6 +2288,18 @@ namespace HaCreator.MapSimulator.Managers
                         string rawString = element.GetString() ?? string.Empty;
                         MatchCollection byteMatches = Sg88MismatchPairRegex.Matches(rawString);
                         foreach (Match match in byteMatches.Cast<Match>())
+                        {
+                            if (TryParseSg88ReplayParityMismatchPair(
+                                match.Value,
+                                out int parsedByteIndex,
+                                out string parsedPair))
+                            {
+                                normalizedByByte[parsedByteIndex] = parsedPair;
+                            }
+                        }
+
+                        MatchCollection indexedMatches = Sg88IndexedMismatchPairRegex.Matches(rawString);
+                        foreach (Match match in indexedMatches.Cast<Match>())
                         {
                             if (TryParseSg88ReplayParityMismatchPair(
                                 match.Value,
@@ -2588,9 +2614,15 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            string trimmedName = propertyName.Trim().Trim('"', '\'');
+            if (int.TryParse(trimmedName, out byteIndex) && byteIndex >= 0)
+            {
+                return true;
+            }
+
             Match match = Regex.Match(
                 propertyName,
-                @"^byte[\s_\-]*(?<index>\d+)$",
+                @"^(?:byte|byte[\s_\-]*index|byte[\s_\-]*offset|offset|index)[\s_\-]*(?<index>\d+)$",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             return match.Success
                    && int.TryParse(match.Groups["index"].Value, out byteIndex)
@@ -2667,6 +2699,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             Match match = Sg88MismatchPairRegex.Match(token);
+            if (!match.Success)
+            {
+                match = Sg88IndexedMismatchPairRegex.Match(token);
+            }
+
             if (!match.Success
                 || !int.TryParse(match.Groups["index"].Value, out int parsedByteIndex)
                 || parsedByteIndex < 0

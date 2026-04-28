@@ -101,14 +101,14 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public static bool TryDecodeMesoGiveSucceeded(byte[] payload, out uint mesoAmount, out string error)
+        public static bool TryDecodeMesoGiveSucceeded(byte[] payload, out int mesoAmount, out string error)
         {
             return TryDecodeMesoGiveSucceeded(payload, out mesoAmount, out _, out error);
         }
 
         public static bool TryDecodeMesoGiveSucceeded(
             byte[] payload,
-            out uint mesoAmount,
+            out int mesoAmount,
             out int trailingByteCount,
             out string error)
         {
@@ -127,7 +127,7 @@ namespace HaCreator.MapSimulator.Managers
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
 
-                mesoAmount = reader.ReadUInt32();
+                mesoAmount = reader.ReadInt32();
                 trailingByteCount = (int)Math.Max(0, stream.Length - stream.Position);
 
                 return true;
@@ -159,13 +159,13 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        public static string FormatMesoGiveSucceededText(uint mesoAmount)
+        public static string FormatMesoGiveSucceededText(int mesoAmount)
         {
             string format = ResolveTextFormat(
                 MesoGiveSucceededStringPoolId,
                 "You have received {0} mesos.",
                 1);
-            return FormatInvariant(format, (ulong)mesoAmount);
+            return FormatInvariant(format, mesoAmount);
         }
 
         public static string GetMesoGiveFailedText()

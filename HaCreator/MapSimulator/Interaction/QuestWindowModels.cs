@@ -277,10 +277,18 @@ namespace HaCreator.MapSimulator.Interaction
         PiecePlacement
     }
 
+    internal enum QuestRewardRaiseClientWindowKind
+    {
+        Selection,
+        RaiseWnd,
+        RaisePieceWnd
+    }
+
     internal sealed class QuestRewardRaiseOwnerContext
     {
         public int OwnerItemId { get; init; }
         public QuestRewardRaiseWindowMode WindowMode { get; init; }
+        public QuestRewardRaiseClientWindowKind ClientWindowKind { get; init; }
         public int MaxDropCount { get; init; } = 1;
         public int InitialQrData { get; init; }
         public string UiData { get; init; } = string.Empty;

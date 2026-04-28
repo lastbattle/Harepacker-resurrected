@@ -918,13 +918,12 @@ namespace HaCreator.MapSimulator
                 ownerFacingRight,
                 currTickCount,
                 ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedMonsterBookCardGet(
                 frames,
+                AnimationDisplayerMonsterBookCardGetEffectUol,
                 getPosition,
-                getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
-                fallbackFlip: false,
                 currTickCount,
                 initialElapsedMs: initialElapsedMs);
             message = $"Registered Monster Book card-get animation-displayer layer from {AnimationDisplayerMonsterBookCardGetEffectUol}.";
@@ -1868,6 +1867,23 @@ namespace HaCreator.MapSimulator
                 (clampedDurationMs / 100f) * clampedProbability,
                 MidpointRounding.AwayFromZero);
             return Math.Max(1, bursts);
+        }
+
+        internal static int ResolveAnimationDisplayerReservedAreaBurstAttemptCount(int durationMs, int updateIntervalMs)
+        {
+            int clampedDurationMs = Math.Max(1, durationMs);
+            int clampedUpdateIntervalMs = Math.Max(1, updateIntervalMs);
+            return Math.Max(1, (int)Math.Ceiling(clampedDurationMs / (double)clampedUpdateIntervalMs));
+        }
+
+        internal static float ResolveAnimationDisplayerReservedAreaSpawnProbability(float probability)
+        {
+            if (float.IsNaN(probability) || probability <= 0f)
+            {
+                return 0f;
+            }
+
+            return Math.Min(1f, probability);
         }
 
         internal static int ResolveAnimationDisplayerReservedVisualVariantIndex(
@@ -3973,20 +3989,22 @@ namespace HaCreator.MapSimulator
                         (int)MathF.Round(anchor.Y - (metadata.Height / 2f)),
                         Math.Max(1, metadata.Width),
                         Math.Max(1, metadata.Height));
-                    int updateCount = ResolveAnimationDisplayerReservedAreaBurstCount(
-                        metadata.DurationMs,
-                        metadata.Probability);
                     int durationMs = Math.Max(1, metadata.DurationMs > 0 ? metadata.DurationMs : 1000);
+                    int updateIntervalMs = 100;
+                    int updateCount = ResolveAnimationDisplayerReservedAreaBurstAttemptCount(
+                        durationMs,
+                        updateIntervalMs);
                     int registrationId = _animationEffects.RegisterAreaAnimation(
                         reservedFrames,
                         area,
-                        updateIntervalMs: 100,
+                        updateIntervalMs,
                         updateCount,
                         updateNextMs: 0,
                         durationMs,
                         registerTime,
                         onSpawn: () => TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor),
-                        zOrder: metadata.LayerZ);
+                        zOrder: metadata.LayerZ,
+                        spawnProbability: ResolveAnimationDisplayerReservedAreaSpawnProbability(metadata.Probability));
                     if (registrationId >= 0)
                     {
                         _packetOwnedAnimationDisplayerAreaAnimationIds.Add(registrationId);
@@ -4695,7 +4713,7 @@ namespace HaCreator.MapSimulator
                     return actor.Position;
                 },
                 initialElapsedMs: actor.PacketOwnedQuestDeliveryEffectAppliedTime != int.MinValue
-                    ? Math.Max(0, currTickCount - actor.PacketOwnedQuestDeliveryEffectAppliedTime)
+                    ? ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currTickCount, actor.PacketOwnedQuestDeliveryEffectAppliedTime)
                     : 0,
                 out _);
         }
@@ -5359,7 +5377,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5383,7 +5401,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5407,7 +5425,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5431,7 +5449,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5464,7 +5482,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5491,7 +5509,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5518,7 +5536,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5548,7 +5566,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -5572,7 +5590,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
@@ -8116,9 +8134,9 @@ namespace HaCreator.MapSimulator
             int? authoredFixed,
             int? authoredPos)
         {
-            return authoredAnimate.GetValueOrDefault() == 0
-                && authoredFixed.GetValueOrDefault() == 0
-                && !authoredPos.HasValue;
+            // CItemEffectManager::LoadItemEffect branches to CAnimateEffect only from the authored animate flag.
+            // Other effect metadata must not suppress the CParticleEffect/FOLLOWINFO owner path.
+            return authoredAnimate.GetValueOrDefault() == 0;
         }
 
         internal static bool ResolveAnimationDisplayerFollowEquipmentNoFlip(int? authoredBNoFlip, int? authoredNoFlip)

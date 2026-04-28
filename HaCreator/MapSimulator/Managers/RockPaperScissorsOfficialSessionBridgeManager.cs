@@ -558,6 +558,22 @@ namespace HaCreator.MapSimulator.Managers
             return LastStatus;
         }
 
+        public string ClearLiveOwnershipVerificationEvidence()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+                _recentInboundPackets.Clear();
+                _hasObservedLiveOutboundOpcode160 = false;
+                _hasObservedLiveInboundOpcode371 = false;
+                _liveOutboundOpcode160Evidence = null;
+                _liveInboundOpcode371Evidence = null;
+            }
+
+            LastStatus = "Rock-Paper-Scissors live ownership verification evidence cleared.";
+            return LastStatus;
+        }
+
         public string DescribeLiveOwnershipVerificationReport(int maxCount = 10)
         {
             int normalizedCount = Math.Clamp(maxCount, 1, Math.Max(MaxRecentOutboundPackets, MaxRecentInboundPackets));
@@ -917,12 +933,17 @@ namespace HaCreator.MapSimulator.Managers
 
             if (state == LiveOwnershipVerificationState.ReconnectPending)
             {
-                return $"Live ownership verification pending reconnect: passive attach cannot capture opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} after handshake.";
-            }
+                if (isRunning)
+                {
+                    return $"Live ownership verification pending reconnect: waiting for Maple to reconnect through localhost before opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} capture can start.";
+                }
 
-            if (isRunning && !hasConnectedSession)
-            {
-                return $"Live ownership verification pending reconnect: waiting for Maple to reconnect through localhost before opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} capture can start.";
+                if (hasPassiveEstablishedSocketPair)
+                {
+                    return $"Live ownership verification pending reconnect: passive attach cannot capture opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} after handshake.";
+                }
+
+                return $"Live ownership verification pending reconnect: arm the localhost proxy and reconnect Maple before opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} capture can start.";
             }
 
             if (state == LiveOwnershipVerificationState.WaitingForBothDirections)

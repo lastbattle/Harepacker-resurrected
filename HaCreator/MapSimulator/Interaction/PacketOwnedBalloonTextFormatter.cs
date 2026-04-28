@@ -76,9 +76,9 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex FontSizeResetRegex = new(@"#fs#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|default|black|red|green|blue|yellow|orange|gray|grey|purple|violet|magenta|0x[0-9a-fA-F]+|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
-        private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex TerminatedInlineStyleRegex = new(@"#(?<tag>[bkrgdenmc])#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex InlineStyleBlockRegex = new(@"#(?<tag>[bkrgdemc])(?<text>[A-Z0-9][^#\r\n]*)#", RegexOptions.Compiled);
+        private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdeonymc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex TerminatedInlineStyleRegex = new(@"#(?<tag>[bkrgdeonymc])#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex InlineStyleBlockRegex = new(@"#(?<tag>[bkrgdeoymc])(?<text>[A-Z0-9][^#\r\n]*)#", RegexOptions.Compiled);
         private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>[!?,.;:)])#?", RegexOptions.Compiled);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)(?:#l|(?=(?:\s|#(?:[A-Za-z])#?|#W[^#\s]*#|#(?:[!?,.;:)])#?)*#L-?\d+#)|\z)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -348,6 +348,8 @@ namespace HaCreator.MapSimulator.Interaction
                     case 'f':
                     case 'w':
                     case 'j':
+                    case 'o':
+                    case 'y':
                         return true;
                 }
             }

@@ -261,6 +261,7 @@ namespace HaCreator.MapSimulator
                             request.Variant,
                             request.Summary,
                             clientPremiumFlag: false)));
+                    ApplyReviveOwnerClientReviveState(request, currentTick);
                     _playerManager?.Respawn();
                     return;
                 }
@@ -279,6 +280,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(request));
+                ApplyReviveOwnerClientReviveState(request, currentTick);
                 Vector2 deathPoint = new(_playerManager.Player.DeathX, _playerManager.Player.DeathY);
                 Vector2 respawnPoint = ResolveCurrentFieldReviveRespawnPoint(request.Variant, deathPoint);
                 _playerManager.RespawnAt(respawnPoint.X, respawnPoint.Y);
@@ -286,7 +288,18 @@ namespace HaCreator.MapSimulator
             }
 
             Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(request));
+            ApplyReviveOwnerClientReviveState(request, currentTick);
             _playerManager?.Respawn();
+        }
+
+        private void ApplyReviveOwnerClientReviveState(ReviveOwnerTransferRequest request, int currentTick)
+        {
+            if (!ReviveOwnerRuntime.ShouldClearTemporaryStatsOnClientRevive(request))
+            {
+                return;
+            }
+
+            _playerManager?.Skills?.CancelAllActiveBuffs(currentTick);
         }
 
         private ReviveOwnerVariant ResolveReviveOwnerVariant()

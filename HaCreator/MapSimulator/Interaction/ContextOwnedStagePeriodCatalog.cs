@@ -529,39 +529,25 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            WzImageProperty backImgInfo = GetChildProperty(property, "backImgInfo");
-            string spineAnimation = ReadStringWithFallback(property, "spineAni", backImgInfo);
-            bool animated = ReadBoolWithFallback(property, "ani", defaultValue: false, backImgInfo);
-            BackgroundInfoType infoType = !string.IsNullOrWhiteSpace(spineAnimation)
-                ? BackgroundInfoType.Spine
-                : animated
-                    ? BackgroundInfoType.Animation
-                    : BackgroundInfoType.Background;
-            MapleBool flipValue = InfoTool.GetOptionalBool(GetChildProperty(property, "f"));
-            if (!flipValue.HasValue)
-            {
-                flipValue = InfoTool.GetOptionalBool(GetChildProperty(backImgInfo, "f"));
-            }
-            WzImageProperty frontProperty = GetChildProperty(property, "front") ?? GetChildProperty(backImgInfo, "front");
             ContextOwnedStageBackImageEntry entry = new(
                 backgroundSet.Trim(),
                 number.ToString(CultureInfo.InvariantCulture),
-                infoType,
-                ReadClientInt(property, StageBackXStringPoolId, "x", secondaryProperty: backImgInfo),
-                ReadClientInt(property, StageBackYStringPoolId, "y", secondaryProperty: backImgInfo),
-                ReadClientInt(property, StageBackAbsRxStringPoolId, "absRX", 1, backImgInfo),
-                ReadClientInt(property, StageBackAbsRyStringPoolId, "absRY", 1, backImgInfo),
-                ReadClientInt(property, MapBackCxStringPoolId, "cx", secondaryProperty: backImgInfo),
-                ReadClientInt(property, MapBackCyStringPoolId, "cy", secondaryProperty: backImgInfo),
-                Math.Clamp(ReadClientInt(property, MapBackAlphaStringPoolId, "a", 255, backImgInfo), 0, 255),
-                (BackgroundType)ReadClientInt(property, MapBackTypeStringPoolId, "type", secondaryProperty: backImgInfo),
-                frontProperty == null ? front : InfoTool.GetBool(frontProperty),
-                flipValue.HasValue && flipValue.Value,
-                ReadIntWithFallback(property, "page", defaultValue: 0, backImgInfo),
-                ReadIntWithFallback(property, "screenMode", defaultValue: 0, backImgInfo),
-                ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
-                spineAnimation,
-                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo),
+                BackgroundInfoType.Background,
+                ReadClientInt(property, StageBackXStringPoolId, "x"),
+                ReadClientInt(property, StageBackYStringPoolId, "y"),
+                ReadClientInt(property, StageBackAbsRxStringPoolId, "absRX", 1),
+                ReadClientInt(property, StageBackAbsRyStringPoolId, "absRY", 1),
+                0,
+                0,
+                255,
+                BackgroundType.Regular,
+                front,
+                false,
+                0,
+                0,
+                0,
+                null,
+                false,
                 UseSourceBackPieceFields: true);
             UpsertNativeStageBackImageEntry(entries, entry);
             return true;

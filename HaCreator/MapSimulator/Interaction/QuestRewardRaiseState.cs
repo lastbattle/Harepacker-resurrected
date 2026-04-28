@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Point WindowPosition { get; set; }
         public QuestRewardRaiseWindowMode WindowMode { get; set; }
         public QuestRewardRaiseWindowMode DisplayMode { get; set; }
+        public QuestRewardRaiseClientWindowKind ClientWindowKind { get; set; }
         public string OpenDispatchSummary { get; set; } = string.Empty;
         public string LastInboundSummary { get; set; } = string.Empty;
         public bool AwaitingConfirmAck { get; set; }
@@ -228,6 +229,7 @@ namespace HaCreator.MapSimulator.Interaction
                 WindowPosition = WindowPosition,
                 WindowMode = WindowMode,
                 DisplayMode = DisplayMode,
+                ClientWindowKind = ClientWindowKind,
                 OpenDispatchSummary = OpenDispatchSummary,
                 LastInboundSummary = LastInboundSummary,
                 AwaitingConfirmAck = AwaitingConfirmAck,

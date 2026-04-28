@@ -1933,6 +1933,10 @@ namespace HaCreator.MapSimulator
                 request,
                 out MapTransferRuntimeResponse response,
                 out string dispatchStatus);
+            if (requestDispatched)
+            {
+                ClearDispatchedMapTransferDeleteSelection(destination);
+            }
             if (_mapTransferOfficialSessionBridge.HasConnectedSession && requestDispatched)
             {
                 if (!string.IsNullOrWhiteSpace(dispatchStatus))
@@ -1967,6 +1971,24 @@ namespace HaCreator.MapSimulator
 
             RefreshMapTransferWindow();
 
+        }
+
+        private void ClearDispatchedMapTransferDeleteSelection(MapTransferUI.DestinationEntry destination)
+        {
+            if (destination == null)
+            {
+                return;
+            }
+
+            if (_mapTransferEditDestination?.SavedSlotIndex == destination.SavedSlotIndex)
+            {
+                _mapTransferEditDestination = null;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI mapTransferWindow)
+            {
+                mapTransferWindow.ClearSelectedDestination();
+            }
         }
 
 
@@ -29960,7 +29982,9 @@ namespace HaCreator.MapSimulator
                     out bool hasFallbackTokens);
                 if (!hasFallbackTokens)
                 {
-                    return 0;
+                    return ResolveClientExplicitLocalOwnedAffectedAreaElementAttributeFallback(
+                        skill.SkillId,
+                        ownerLane);
                 }
             }
 
@@ -32753,8 +32777,15 @@ namespace HaCreator.MapSimulator
             {
                 _portalOwnedMovePathPostFlushCarry.Clear();
             }
-            if (!CMovePathClientPacketCodec.TryEncode(
+            IReadOnlyList<MovePathElement> encodedPath =
+                CMovePathClientPacketCodec.TrimPortalOwnedClientFlushRetainedTailForEncode(
                     cadenceShapedPath,
+                    flushAdmitted
+                    && physics.RetainsPostGroundTailAfterClientFlush(
+                        isFlying: physics.IsFlying,
+                        hasDynamicFoothold: hasDynamicFoothold));
+            if (!CMovePathClientPacketCodec.TryEncode(
+                    encodedPath,
                     out byte[] payload,
                     out _,
                     includeClientRandomCounts))
@@ -35294,11 +35325,13 @@ namespace HaCreator.MapSimulator
             // Set up flying-map flags from map info.
             bool isFlyingMap = _mapBoard.MapInfo.fly == true;
             bool requiresFlyingSkillForMap = _mapBoard.MapInfo.needSkillForFly == true;
+            bool noLandingMap = !FieldInteractionRestrictionEvaluator.CanLandOnFoothold(_mapBoard.MapInfo);
             if (isFlyingMap)
             {
                 Debug.WriteLine($"[FlyingMap] Map allows flying (fly=true, needSkillForFly={requiresFlyingSkillForMap})");
             }
             _playerManager.SetFlyingMap(isFlyingMap, requiresFlyingSkillForMap);
+            _playerManager.SetNoLandingMap(noLandingMap);
             _playerManager.SetMoveSpeedCapResolver(ApplyBattlefieldMoveSpeedCap);
 
 
@@ -35460,7 +35493,9 @@ namespace HaCreator.MapSimulator
             // Set up flying map flags
             bool isFlyingMap = _mapBoard.MapInfo.fly == true;
             bool requiresFlyingSkillForMap = _mapBoard.MapInfo.needSkillForFly == true;
+            bool noLandingMap = !FieldInteractionRestrictionEvaluator.CanLandOnFoothold(_mapBoard.MapInfo);
             _playerManager.SetFlyingMap(isFlyingMap, requiresFlyingSkillForMap);
+            _playerManager.SetNoLandingMap(noLandingMap);
             _playerManager.SetMoveSpeedCapResolver(ApplyBattlefieldMoveSpeedCap);
 
 
@@ -35471,6 +35506,7 @@ namespace HaCreator.MapSimulator
                 _playerManager.GetSwimAreaCheck(),
                 isFlyingMap,
                 requiresFlyingSkillForMap,
+                noLandingMap,
                 _mobPool,
                 _dropPool,
                 _combatEffects);
@@ -36546,6 +36582,7 @@ namespace HaCreator.MapSimulator
             return reference.Source is QuestDetailInlineReferenceSource.RequirementText
                 or QuestDetailInlineReferenceSource.RequirementLine
                 or QuestDetailInlineReferenceSource.HintText
+                or QuestDetailInlineReferenceSource.SummaryText
                 or QuestDetailInlineReferenceSource.Unknown;
         }
 
@@ -37819,34 +37856,19 @@ namespace HaCreator.MapSimulator
                     IsExpired: false));
             }
 
-            if (_localOverlayRuntime?.HasDamageMeterStatusBarFloatNoticeOwnerForClientParity() == true)
+            if (_localOverlayRuntime != null
+                && SkillCooldownNoticeUI.TryResolveStatusBarFloatNoticeOwnerForClientParity(
+                    _localOverlayRuntime.HasDamageMeterStatusBarFloatNoticeOwnerForClientParity(),
+                    _localOverlayRuntime.DamageMeterStartedAt,
+                    _localOverlayRuntime.DamageMeterExpiresAt,
+                    _localOverlayRuntime.HasFieldHazardStatusBarFloatNoticeOwnerForClientParity(),
+                    _localOverlayRuntime.LastFieldHazardNoticeStartedAt,
+                    _localOverlayRuntime.LastFieldHazardNoticeExpiresAt,
+                    currentTime,
+                    out SkillCooldownNoticeUI.StatusBarNoticeOwnerState floatNoticeOwner))
             {
                 hasActiveFloatNoticeOwner = true;
-                int ownerExpiresAtTick = _localOverlayRuntime.DamageMeterExpiresAt;
-                _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
-                    StatusBarNoticeOwnerKind.FloatNotice,
-                    OwnerIdentity: 1,
-                    OwnerExpiresAtTick: ownerExpiresAtTick,
-                    OwnerSourceKind: WeatherMessageOwnerSourceKind.Unknown,
-                    OwnerSkillId: 0,
-                    IsPresent: true,
-                    IsExpired: ownerExpiresAtTick != int.MinValue
-                        && unchecked(currentTime - ownerExpiresAtTick) >= 0));
-            }
-
-            if (_localOverlayRuntime?.HasFieldHazardStatusBarFloatNoticeOwnerForClientParity() == true)
-            {
-                hasActiveFloatNoticeOwner = true;
-                int ownerExpiresAtTick = _localOverlayRuntime.LastFieldHazardNoticeExpiresAt;
-                _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
-                    StatusBarNoticeOwnerKind.FloatNotice,
-                    OwnerIdentity: 2,
-                    OwnerExpiresAtTick: ownerExpiresAtTick,
-                    OwnerSourceKind: WeatherMessageOwnerSourceKind.Unknown,
-                    OwnerSkillId: 0,
-                    IsPresent: true,
-                    IsExpired: ownerExpiresAtTick != int.MinValue
-                        && unchecked(currentTime - ownerExpiresAtTick) >= 0));
+                _statusBarNoticeOwnerBuffer.Add(floatNoticeOwner);
             }
 
             IReadOnlyList<WeatherMessageInfo> weatherMessages = _fieldEffects?.WeatherMessages;
@@ -42928,9 +42950,9 @@ namespace HaCreator.MapSimulator
 
                     return payload[0] switch
                     {
-                        TransportationPacketInboxManager.ContiMoveStartShip => _transportField.TryApplyStartShipMovePacket(payload[1], out resultMessage),
-                        TransportationPacketInboxManager.ContiMoveMoveField => _transportField.TryApplyMoveFieldPacket(payload[1], out resultMessage),
-                        TransportationPacketInboxManager.ContiMoveEndShip => _transportField.TryApplyEndShipMovePacket(payload[1], out resultMessage),
+                        TransportationPacketInboxManager.ContiMoveStartShip => _transportField.TryApplyStartShipMovePacket(payload[1], message.Source, out resultMessage),
+                        TransportationPacketInboxManager.ContiMoveMoveField => _transportField.TryApplyMoveFieldPacket(payload[1], message.Source, out resultMessage),
+                        TransportationPacketInboxManager.ContiMoveEndShip => _transportField.TryApplyEndShipMovePacket(payload[1], message.Source, out resultMessage),
                         _ => FailTransportMessage(
                             $"Ignored OnContiMove subtype {payload[0]}; client only handles 8, 10, and 12.",
                             out resultMessage)
@@ -42943,7 +42965,7 @@ namespace HaCreator.MapSimulator
                     }
 
 
-                    return _transportField.TryApplyContiState(payload[0], payload[1], out resultMessage);
+                    return _transportField.TryApplyContiState(payload[0], payload[1], message.Source, out resultMessage);
                 default:
                     resultMessage = $"Unsupported transport packet opcode: {message.PacketType}";
                     return false;

@@ -113,7 +113,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            OpenQuestRewardChoicePrompt(prompt, QuestRewardRaiseSourceKind.InventoryItem);
+            OpenQuestRewardRaiseItemOwnerWindow(prompt);
             QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
             if (activeRaise == null || activeRaise.OwnerItemId != itemId)
             {
@@ -126,6 +126,25 @@ namespace HaCreator.MapSimulator
                     : $"Opened raise owner #{itemId} from {inventoryType} for quest #{questId}. {activeRaise.OpenDispatchSummary}",
                 currentTime);
             return true;
+        }
+
+        private void OpenQuestRewardRaiseItemOwnerWindow(QuestRewardChoicePrompt prompt)
+        {
+            if (prompt?.OwnerContext == null || prompt.OwnerContext.OwnerItemId <= 0)
+            {
+                return;
+            }
+
+            Point defaultPosition = uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestRewardRaise)?.Position ?? Point.Zero;
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.Open(prompt, QuestRewardRaiseSourceKind.InventoryItem, defaultPosition);
+            if (activeRaise == null)
+            {
+                return;
+            }
+
+            ApplyQuestRewardRaiseQuestRecordContext(activeRaise);
+            activeRaise.OpenDispatchSummary = DispatchQuestRewardRaiseOpenRequest(activeRaise);
+            ShowActiveQuestRewardRaiseGroup();
         }
 
         private int ResolveQuestRewardRaiseInitialQrData(int questId)
@@ -152,6 +171,7 @@ namespace HaCreator.MapSimulator
             {
                 OwnerItemId = ownerContext.OwnerItemId,
                 WindowMode = QuestRewardRaiseWindowMode.PiecePlacement,
+                ClientWindowKind = ownerContext.ClientWindowKind,
                 MaxDropCount = Math.Max(1, ownerContext.MaxDropCount),
                 InitialQrData = initialQrData,
                 UiData = ownerContext.UiData,
@@ -614,7 +634,7 @@ namespace HaCreator.MapSimulator
                 return "Raise owner idle.";
             }
 
-            return $"Opened raise owner session #{Math.Max(0, activeRaise.ManagerSessionId)} request #{Math.Max(0, activeRaise.RequestId)} for quest #{Math.Max(0, activeRaise.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, activeRaise.OwnerItemId)} in {activeRaise.WindowMode} mode.";
+            return $"Opened raise owner session #{Math.Max(0, activeRaise.ManagerSessionId)} request #{Math.Max(0, activeRaise.RequestId)} for quest #{Math.Max(0, activeRaise.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, activeRaise.OwnerItemId)} as {activeRaise.ClientWindowKind} in {activeRaise.WindowMode} mode.";
         }
 
         private string DispatchQuestRewardRaiseOpenRequest(QuestRewardRaiseState activeRaise)
@@ -993,14 +1013,15 @@ namespace HaCreator.MapSimulator
                 case QuestRewardRaiseInboundPacketKind.OwnerDestroyResult:
                     observedRaise.AwaitingOwnerDestroyAck = false;
                     ClearQuestRewardRaisePlacedPieceReservations(observedRaise);
+                    int questOwnerItemId = _questRewardRaiseManager.QuestToItem(questId);
+                    if (questOwnerItemId == 0 || questOwnerItemId == observedRaise.OwnerItemId)
+                    {
+                        _questRewardRaiseManager.DestroyByQuestId(questId);
+                    }
+
                     if (raiseIsActive)
                     {
-                        _questRewardRaiseManager.ClearActiveRaise();
                         ClearQuestRewardRaiseWindow();
-                    }
-                    else
-                    {
-                        _questRewardRaiseManager.ClearRetainedRaiseByQuestId(questId);
                     }
                     break;
             }

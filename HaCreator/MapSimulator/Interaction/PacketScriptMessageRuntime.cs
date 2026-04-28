@@ -1271,6 +1271,10 @@ namespace HaCreator.MapSimulator.Interaction
                 ? (dispatched ? "outbound dispatch sent." : "outbound dispatch unavailable.")
                 : detail.Trim();
             _statusMessage = $"{responsePacket.Summary} {dispatchText}";
+            if (dispatched)
+            {
+                _activePromptContext = null;
+            }
         }
 
         private static NpcInteractionChoice CreateResponseChoice(string label, string responseLabel, int responseValue)

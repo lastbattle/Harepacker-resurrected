@@ -1806,7 +1806,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            AddMessage($"{prefix} {message}", color, tickCount, (int)chatLogType);
+            AddMessage(FormatLocalGroupChatEcho(message, prefix), color, tickCount, (int)chatLogType);
             MessageSubmitted?.Invoke(message, tickCount);
         }
 
@@ -1939,7 +1939,7 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                AddMessage($"{prefix} {payload}", color, tickCount, (int)chatLogType);
+                AddMessage(FormatLocalGroupChatEcho(payload, prefix), color, tickCount, (int)chatLogType);
             }
 
             MessageSubmitted?.Invoke(payload, tickCount);
@@ -3145,12 +3145,51 @@ namespace HaCreator.MapSimulator
             bool controlHeld,
             bool shiftHeld)
         {
-            if (controlHeld && (key == Keys.Home || key == Keys.End || key == Keys.A))
+            if (key == Keys.Insert && !shiftHeld)
             {
                 return true;
             }
 
-            return key == Keys.Insert && !shiftHeld;
+            if (!controlHeld)
+            {
+                return false;
+            }
+
+            if (IsClientEditModifierKey(key)
+                || IsClientEditClipboardShortcutKey(key)
+                || IsClientEditOwnedControlKey(key))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsClientEditModifierKey(Keys key)
+        {
+            return key == Keys.LeftControl
+                || key == Keys.RightControl
+                || key == Keys.LeftShift
+                || key == Keys.RightShift
+                || key == Keys.LeftAlt
+                || key == Keys.RightAlt;
+        }
+
+        private static bool IsClientEditClipboardShortcutKey(Keys key)
+        {
+            return key == Keys.C
+                || key == Keys.V
+                || key == Keys.X;
+        }
+
+        private static bool IsClientEditOwnedControlKey(Keys key)
+        {
+            return key == Keys.Back
+                || key == Keys.Delete
+                || key == Keys.Left
+                || key == Keys.Right
+                || key == Keys.Up
+                || key == Keys.Down;
         }
 
         private static bool ShouldForwardClientEditStageKey(
@@ -3319,6 +3358,39 @@ namespace HaCreator.MapSimulator
                 MapSimulatorChatTargetType.Expedition => "[Expedition]",
                 _ => string.Empty
             };
+        }
+
+        private string FormatLocalGroupChatEcho(string message, string fallbackPrefix)
+        {
+            string trimmedMessage = message?.Trim() ?? string.Empty;
+            string localName = NormalizeChatSpeakerCandidate(_localPlayerName);
+            if (string.IsNullOrWhiteSpace(localName))
+            {
+                return $"{fallbackPrefix} {trimmedMessage}".Trim();
+            }
+
+            string format = MapleStoryStringPool.GetOrFallback(0x072D, "%s: %s");
+            return FormatClientString(format, localName, trimmedMessage);
+        }
+
+        private static string FormatClientString(string format, string first, string second)
+        {
+            if (string.IsNullOrEmpty(format))
+            {
+                return $"{first}: {second}";
+            }
+
+            int firstPlaceholder = format.IndexOf("%s", StringComparison.Ordinal);
+            if (firstPlaceholder < 0)
+            {
+                return format;
+            }
+
+            string result = format.Remove(firstPlaceholder, 2).Insert(firstPlaceholder, first ?? string.Empty);
+            int secondPlaceholder = result.IndexOf("%s", firstPlaceholder + (first?.Length ?? 0), StringComparison.Ordinal);
+            return secondPlaceholder < 0
+                ? result
+                : result.Remove(secondPlaceholder, 2).Insert(secondPlaceholder, second ?? string.Empty);
         }
 
     }

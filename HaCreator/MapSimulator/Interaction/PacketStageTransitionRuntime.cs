@@ -4107,15 +4107,21 @@ namespace HaCreator.MapSimulator.Interaction
         int RawSkillLevel = 0,
         int RawMasterLevel = 0,
         bool HasMasterLevelData = false,
-        int RemainingCooldownSeconds = 0);
+        int RemainingCooldownSeconds = 0,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null);
 
     internal readonly record struct PacketCharacterDataSkillExpirationRecord(
         int SkillId,
-        long ExpirationFileTime);
+        long ExpirationFileTime,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null);
 
     internal readonly record struct PacketCharacterDataInt16ValueRecord(
         int Key,
-        int Value);
+        int Value,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null);
 
     internal readonly record struct PacketCharacterDataFixedClientRecord(
         string ClientOwner,
