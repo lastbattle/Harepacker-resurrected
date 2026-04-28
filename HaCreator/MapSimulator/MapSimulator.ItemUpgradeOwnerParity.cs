@@ -61,6 +61,8 @@ namespace HaCreator.MapSimulator
             public string PacketOwnedApplyStatusMessageOverride { get; set; }
             public bool PacketOwnedResultObserved { get; set; }
             public byte? PacketOwnedResultCode { get; set; }
+            public bool PacketOwnedUpgradeStateObserved { get; set; }
+            public int PacketOwnedUpgradeState { get; set; } = int.MinValue;
             public bool PacketOwnedResultAckPending { get; set; }
             public byte PacketOwnedResultAckReturnCode { get; set; }
             public int PacketOwnedResultAckValue { get; set; }
@@ -238,6 +240,13 @@ namespace HaCreator.MapSimulator
                 {
                     itemUpgradeWindow.SetOwnerStatusMessage(statusMessage, success);
                 }
+
+                if (pendingRequest.PacketOwnedUpgradeStateObserved)
+                {
+                    itemUpgradeWindow.ApplyPacketOwnedUpgradeSlotState(
+                        pendingRequest.Request.Slot,
+                        pendingRequest.PacketOwnedUpgradeState);
+                }
             }
 
             ShowUtilityFeedbackMessage(statusMessage);
@@ -412,6 +421,10 @@ namespace HaCreator.MapSimulator
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultAckPending = decodeState.HasOutcomeState;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultAckReturnCode = decodeState.ResultCode;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultAckValue = decodeState.OutcomeResultValue;
+            _pendingItemUpgradeOwnerRequest.PacketOwnedUpgradeStateObserved = decodeState.HasOutcomeState;
+            _pendingItemUpgradeOwnerRequest.PacketOwnedUpgradeState = decodeState.HasOutcomeState
+                ? decodeState.OutcomeUpgradeState
+                : int.MinValue;
             int branchReadyDelayMs = ResolveItemUpgradeResultReadyDelayMs(
                 decodeState.ResultCode,
                 decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : (int?)null);

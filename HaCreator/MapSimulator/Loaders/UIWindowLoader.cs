@@ -3689,7 +3689,9 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/1", basicImage, uiWindow1Image, device),
                 LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/2", basicImage, uiWindow1Image, device),
                 LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/0", basicImage, uiWindow1Image, device),
-                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/1", basicImage, uiWindow1Image, device));
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/1", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/2", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/3", basicImage, uiWindow1Image, device));
             manager.RegisterCustomWindow(window);
         }
 
@@ -5330,8 +5332,9 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            WzCanvasProperty background = monsterBookProperty?["backgrnd"] as WzCanvasProperty
-                ?? bookProperty?["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty collectionBackground = bookProperty?["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty monsterBookBackground = monsterBookProperty?["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty background = monsterBookBackground ?? collectionBackground;
             if (background == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -5351,6 +5354,12 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
+            Texture2D collectionFrameTexture = collectionBackground == background
+                ? frameTexture
+                : collectionBackground?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            Texture2D monsterBookFrameTexture = monsterBookBackground == background
+                ? frameTexture
+                : monsterBookBackground?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
 
             Texture2D pixel = new Texture2D(device, 1, 1);
             pixel.SetData(new[] { Color.White });
@@ -5361,6 +5370,9 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Position = position
             };
+            bookCollection.SetOwnerFrames(
+                collectionFrameTexture != null ? new DXObject(0, 0, collectionFrameTexture, 0) : null,
+                monsterBookFrameTexture != null ? new DXObject(0, 0, monsterBookFrameTexture, 0) : null);
 
             WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
                 ?? uiWindow1Image?["UtilDlgEx"] as WzSubProperty;
@@ -5402,32 +5414,35 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(contextMenuProperty, "c", device),
                 LoadCanvasTexture(contextMenuProperty, "s", device));
 
-            UIObject prevButton = LoadButton(monsterBookProperty, "arrowLeft", btClickSound, btOverSound, device)
+            UIObject collectionPrevButton = LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device);
+            UIObject collectionNextButton = LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device);
+            UIObject collectionCloseButton = LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device);
+            UIObject monsterBookPrevButton = LoadButton(monsterBookProperty, "arrowLeft", btClickSound, btOverSound, device)
                 ?? LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device);
-            UIObject nextButton = LoadButton(monsterBookProperty, "arrowRight", btClickSound, btOverSound, device)
+            UIObject monsterBookNextButton = LoadButton(monsterBookProperty, "arrowRight", btClickSound, btOverSound, device)
                 ?? LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device);
-            UIObject closeButton = LoadButton(monsterBookProperty, "BtClose", btClickSound, btOverSound, device)
+            UIObject monsterBookCloseButton = LoadButton(monsterBookProperty, "BtClose", btClickSound, btOverSound, device)
                 ?? LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device);
             UIObject searchButton = LoadButton(monsterBookProperty, "BtSearch", btClickSound, btOverSound, device);
             UIObject registerButton = LoadButton(contextMenuProperty, "BtRegister", btClickSound, btOverSound, device);
             UIObject releaseButton = LoadButton(contextMenuProperty, "BtRelease", btClickSound, btOverSound, device);
 
-            if (prevButton != null)
+            if (collectionPrevButton != null)
 
             {
 
-                prevButton.X = 34;
-                prevButton.Y = 287;
+                collectionPrevButton.X = 34;
+                collectionPrevButton.Y = 287;
             }
-            if (nextButton != null)
+            if (collectionNextButton != null)
             {
-                nextButton.X = 403;
-                nextButton.Y = 287;
+                collectionNextButton.X = 403;
+                collectionNextButton.Y = 287;
             }
-            if (closeButton != null)
+            if (collectionCloseButton != null)
             {
-                closeButton.X = 430;
-                closeButton.Y = 10;
+                collectionCloseButton.X = 430;
+                collectionCloseButton.Y = 10;
 
             }
             if (searchButton != null)
@@ -5436,7 +5451,14 @@ namespace HaCreator.MapSimulator.Loaders
                 searchButton.Y = 299;
             }
 
-            bookCollection.InitializeButtons(prevButton, nextButton, closeButton, searchButton);
+            bookCollection.InitializeOwnerButtons(
+                collectionPrevButton,
+                collectionNextButton,
+                collectionCloseButton,
+                monsterBookPrevButton,
+                monsterBookNextButton,
+                monsterBookCloseButton,
+                searchButton);
             bookCollection.InitializeContextMenuButtons(registerButton, releaseButton);
             return bookCollection;
 
@@ -9269,11 +9291,12 @@ namespace HaCreator.MapSimulator.Loaders
                 .EnumerateFallbackUiDataSourceDirectories(currentDirectoryPath);
             IReadOnlyList<string> countryAlignedFallbackUiDirectories = AccountMoreInfoOwnerStringPoolText
                 .PrioritizeUiFallbackDirectoriesForCountryNameParity(currentDirectoryPath, fallbackUiDirectories);
+            bool activeDataSourceHasCountryNameCatalog = AccountMoreInfoOwnerStringPoolText
+                .HasCountryNameCatalogInDirectory(currentDirectoryPath);
 
             foreach (AccountMoreInfoBackgroundResourceCandidate backgroundCandidate in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundProbeCandidates())
             {
-                bool prefersCountryAlignedFallback = !backgroundCandidate.MirrorsClientSetBackgrnd
-                    && !AccountMoreInfoOwnerStringPoolText.HasCountryNameCatalogInDirectory(currentDirectoryPath);
+                bool prefersCountryAlignedFallback = !activeDataSourceHasCountryNameCatalog;
                 IDXObject candidateFrame = null;
                 Point candidateOffset = Point.Zero;
                 string frameSourceDirectory = null;

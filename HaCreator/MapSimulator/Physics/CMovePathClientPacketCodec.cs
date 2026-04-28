@@ -64,7 +64,7 @@ namespace HaCreator.MapSimulator.Physics
             List<MovePathElement> normalized = new(path.Count);
             for (int i = 0; i < path.Count; i++)
             {
-                MovePathElement current = path[i];
+                MovePathElement current = NormalizePortalOwnedClientMakeMovePathElement(path[i]);
                 if (normalized.Count == 0)
                 {
                     normalized.Add(current);
@@ -99,6 +99,17 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             return normalized;
+        }
+
+        private static MovePathElement NormalizePortalOwnedClientMakeMovePathElement(MovePathElement element)
+        {
+            if (!IsPortalOwnedImpactAttribute(element.MovePathAttribute))
+            {
+                return element;
+            }
+
+            element.Duration = 0;
+            return element;
         }
 
         internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedFlushCadenceHint(
@@ -409,6 +420,11 @@ namespace HaCreator.MapSimulator.Physics
         private static bool IsClientCoalesceAttribute(int attribute)
         {
             return attribute == 0 || attribute == 12 || attribute == 14;
+        }
+
+        private static bool IsPortalOwnedImpactAttribute(int attribute)
+        {
+            return attribute == 24 || attribute == 25;
         }
 
         private static bool HasStableVelocityDirection(short previousVelocity, short currentVelocity)

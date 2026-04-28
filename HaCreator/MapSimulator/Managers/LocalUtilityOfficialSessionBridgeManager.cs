@@ -47,8 +47,10 @@ namespace HaCreator.MapSimulator.Managers
         public int QueuedCount { get; private set; }
         public int LastQueuedOpcode { get; private set; } = -1;
         public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
+        public int ForwardedOutboundCount { get; private set; }
         public int PendingPacketCount => _pendingOutboundPackets.Count;
         public string LastStatus { get; private set; } = "Local utility official-session bridge inactive.";
+        public event EventHandler<LocalUtilityOutboundPacketObservedEventArgs> ClientOutboundPacketObserved;
 
         public LocalUtilityOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
         {
@@ -71,7 +73,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,193,234,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1019,1023,1024,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,193,234,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1019,1023,1024,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,214,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -391,7 +393,31 @@ namespace HaCreator.MapSimulator.Managers
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
+            if (e != null && !e.IsInit)
+            {
+                ForwardedOutboundCount++;
+                TryPublishObservedClientOutboundPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}");
+            }
+
             LastStatus = _roleSessionProxy.LastStatus;
+        }
+
+        private void TryPublishObservedClientOutboundPacket(byte[] rawPacket, string source)
+        {
+            if (!LocalUtilityPacketInboxManager.TryDecodeOpcodeFramedPacket(rawPacket, out int opcode, out byte[] payload, out _))
+            {
+                return;
+            }
+
+            byte[] safeRawPacket = rawPacket?.ToArray() ?? Array.Empty<byte>();
+            byte[] safePayload = payload?.ToArray() ?? Array.Empty<byte>();
+            ClientOutboundPacketObserved?.Invoke(
+                this,
+                new LocalUtilityOutboundPacketObservedEventArgs(
+                    opcode,
+                    safePayload,
+                    safeRawPacket,
+                    string.IsNullOrWhiteSpace(source) ? "official-session:outbound" : source.Trim()));
         }
 
         private void StopInternal(bool clearPending)
@@ -409,6 +435,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 SentCount = 0;
+                ForwardedOutboundCount = 0;
                 LastSentOpcode = -1;
                 LastSentRawPacket = Array.Empty<byte>();
                 QueuedCount = 0;

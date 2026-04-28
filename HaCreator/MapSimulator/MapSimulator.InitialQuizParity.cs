@@ -2062,7 +2062,7 @@ namespace HaCreator.MapSimulator
                 return new InitialQuizOwnerSubmissionValidation(false, null, false);
             }
 
-            int inputByteLength = Encoding.Default.GetByteCount(answerText ?? string.Empty);
+            int inputByteLength = InitialQuizTimerRuntime.GetClientMapleStringByteCount(answerText);
             int minimum = Math.Max(0, minInputByteLength);
             if (inputByteLength < minimum)
             {

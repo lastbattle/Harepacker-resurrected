@@ -342,8 +342,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int availableLength = Math.Max(0, _maxLength - GetTextElementCount(_inputText));
-            if (availableLength <= 0)
+            int replacementStart = HasSelection ? GetSelectionStart() : _caretIndex;
+            int replacementEnd = HasSelection ? GetSelectionEnd() : _caretIndex;
+            string limitedComposition = ResolveClientCompositionPreviewText(
+                sanitized,
+                _inputText,
+                replacementStart,
+                replacementEnd,
+                _maxLength);
+            if (limitedComposition.Length == 0)
             {
                 ClearCompositionText();
                 return;
@@ -351,10 +358,7 @@ namespace HaCreator.MapSimulator.UI
 
             DeleteSelectionIfAny();
             _compositionInsertionIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
-            int compositionTextElementCount = GetTextElementCount(sanitized);
-            _compositionText = compositionTextElementCount > availableLength
-                ? GetLeadingTextElements(sanitized, availableLength)
-                : sanitized;
+            _compositionText = limitedComposition;
             _compositionCaretIndex = Math.Clamp(state.CursorPosition, -1, _compositionText.Length);
             _caretBlinkTick = Environment.TickCount;
         }
@@ -554,6 +558,21 @@ namespace HaCreator.MapSimulator.UI
             return NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
                 text,
                 resolvedCurrent,
+                selectionStart,
+                selectionEnd,
+                maxLength);
+        }
+
+        internal static string ResolveClientCompositionPreviewText(
+            string text,
+            string currentText,
+            int selectionStart,
+            int selectionEnd,
+            int maxLength)
+        {
+            return NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
+                text,
+                currentText ?? string.Empty,
                 selectionStart,
                 selectionEnd,
                 maxLength);

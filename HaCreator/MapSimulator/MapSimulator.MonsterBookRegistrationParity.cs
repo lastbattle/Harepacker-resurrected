@@ -657,6 +657,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryDecodeMonsterBookOwnershipSaveAckBinaryPayload(payload, out result, out detail))
+            {
+                return true;
+            }
+
             if (TryDecodeMonsterBookOwnershipSyncCompactBinaryPayload(payload, out result, out detail))
             {
                 return true;
@@ -1043,6 +1048,97 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private static bool TryDecodeMonsterBookOwnershipSaveAckBinaryPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            int? requestId = null;
+            int resultCode;
+            string statusText = string.Empty;
+            if (payload.Length == sizeof(byte))
+            {
+                resultCode = payload[0];
+            }
+            else if (payload.Length >= sizeof(byte) + sizeof(int)
+                && TryReadMonsterBookAckStatusTail(payload, sizeof(byte) + sizeof(int), out statusText))
+            {
+                resultCode = payload[0];
+                requestId = NormalizePositiveInt(BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int))));
+            }
+            else if (payload.Length >= sizeof(int) + sizeof(byte)
+                && TryReadMonsterBookAckStatusTail(payload, sizeof(int) + sizeof(byte), out statusText))
+            {
+                requestId = NormalizePositiveInt(BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))));
+                resultCode = payload[sizeof(int)];
+            }
+            else if (payload.Length >= sizeof(int) * 2
+                && TryReadMonsterBookAckStatusTail(payload, sizeof(int) * 2, out statusText))
+            {
+                requestId = NormalizePositiveInt(BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))));
+                resultCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)));
+            }
+            else
+            {
+                return false;
+            }
+
+            result = new MonsterBookOwnershipSyncPayload(
+                clearRequested: false,
+                replaceExisting: true,
+                hasOwnershipSnapshot: false,
+                saveAccepted: ResolveMonsterBookSaveAcceptedFromResultCode(resultCode),
+                requestId,
+                characterId: null,
+                characterName: string.Empty,
+                registeredMobId: null,
+                cardCountsByMob: new Dictionary<int, int>(),
+                statusText);
+            detail = "Decoded Monster Book ownership-save acknowledgement binary payload.";
+            return true;
+        }
+
+        private static bool TryReadMonsterBookAckStatusTail(byte[] payload, int offset, out string statusText)
+        {
+            statusText = string.Empty;
+            if (payload == null || offset < 0 || offset > payload.Length)
+            {
+                return false;
+            }
+
+            int remaining = payload.Length - offset;
+            if (remaining == 0)
+            {
+                return true;
+            }
+
+            if (remaining < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort byteCount = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
+            if (byteCount == 0)
+            {
+                return remaining == sizeof(ushort);
+            }
+
+            if (remaining != sizeof(ushort) + byteCount)
+            {
+                return false;
+            }
+
+            statusText = Encoding.UTF8.GetString(payload, offset + sizeof(ushort), byteCount).Trim();
+            return true;
+        }
+
         private static bool TryDecodeMonsterBookSetCoverPayload(
             byte[] payload,
             out MonsterBookOwnershipSyncPayload result,
@@ -1405,7 +1501,7 @@ namespace HaCreator.MapSimulator
         private static bool TryReadMonsterBookCardCounts(JsonElement root, out Dictionary<int, int> counts)
         {
             counts = new Dictionary<int, int>();
-            foreach (string propertyName in new[] { "cardCountsByMob", "card_counts_by_mob", "cardCounts", "cards", "counts", "ownership", "bookByMob", "book_by_mob", "ownedCardsByMob", "owned_cards_by_mob" })
+            foreach (string propertyName in new[] { "cardCountsByMob", "card_counts_by_mob", "cardCounts", "cards", "cardList", "card_list", "ownedCards", "owned_cards", "ownedCardList", "owned_card_list", "monsterBookCards", "monster_book_cards", "counts", "ownership", "bookByMob", "book_by_mob", "ownedCardsByMob", "owned_cards_by_mob" })
             {
                 if (!root.TryGetProperty(propertyName, out JsonElement element))
                 {
@@ -1443,8 +1539,8 @@ namespace HaCreator.MapSimulator
                             continue;
                         }
 
-                        int? mobId = ReadInt(entry, "mobId", "mob", "id", "mob_id", "monsterId", "monster_id");
-                        int? count = ReadInt(entry, "count", "copies", "ownedCopies", "value", "owned_copies", "cardCount", "card_count");
+                        int? mobId = ReadInt(entry, "mobId", "mob", "id", "mob_id", "monsterId", "monster_id", "nMobID", "nMobId", "mobID");
+                        int? count = ReadInt(entry, "count", "copies", "ownedCopies", "value", "owned_copies", "cardCount", "card_count", "nCount", "cnt");
                         if (mobId.GetValueOrDefault() <= 0 || count.GetValueOrDefault() <= 0)
                         {
                             continue;

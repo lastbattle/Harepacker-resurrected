@@ -733,6 +733,15 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (snapshot.IsRejectedByEmptyCatalog)
+            {
+                message = ApplyPacketOwnedAdminShopOpenRejected(
+                    AdminShopDialogClientParityText.GetOpenRejectedNotice(),
+                    snapshot.NpcTemplateId,
+                    snapshot.CommodityCount);
+                return true;
+            }
+
             return TryBeginPacketOwnedAdminShopSession(snapshot, out message);
         }
 

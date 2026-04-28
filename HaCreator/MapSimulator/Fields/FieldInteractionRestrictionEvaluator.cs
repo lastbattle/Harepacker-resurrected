@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Fields
         private const string GenericMapTransferRegistrationRestrictionMessage = "This destination cannot be saved in a teleport slot.";
         private const string RegularFieldMapTransferRegistrationRestrictionMessage = "Only regular field maps can be saved in a teleport slot.";
         private const int PortalScrollItemGroup = 203;
+        private const int UpgradeScrollItemGroup = 204;
         private const int SummonSackItemGroup = 210;
         private const int AntiMacroItemGroup = 219;
         private const int CashWeatherItemGroup = 512;
@@ -505,6 +506,30 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetItemUseRestrictionMessage(
             long fieldLimit,
+            MapInfo mapInfo,
+            InventoryType inventoryType,
+            int itemId,
+            string itemName,
+            string itemDescription,
+            bool isStatChangeConsumable)
+        {
+            string fieldLimitRestrictionMessage = GetItemUseRestrictionMessage(
+                fieldLimit,
+                inventoryType,
+                itemId,
+                itemName,
+                itemDescription,
+                isStatChangeConsumable);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return GetScrollUseRestrictionMessage(mapInfo, inventoryType, itemId);
+        }
+
+        public static string GetItemUseRestrictionMessage(
+            long fieldLimit,
             InventoryType inventoryType,
             int itemId,
             string itemName,
@@ -564,6 +589,13 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        public static string GetScrollUseRestrictionMessage(MapInfo mapInfo, InventoryType inventoryType, int itemId)
+        {
+            return IsInfoFlagSet(mapInfo, "scrollDisable") && IsUpgradeScrollItem(inventoryType, itemId)
+                ? "Upgrade scrolls cannot be used in this map."
+                : null;
+        }
+
         public static bool IsStatChangeConsumable(
             bool hasRecoveryEffect,
             bool hasTemporaryBuffEffect,
@@ -579,6 +611,11 @@ namespace HaCreator.MapSimulator.Fields
         }
 
         public static IReadOnlyList<string> GetFieldEntryItemRestrictionMessages(long fieldLimit)
+        {
+            return GetFieldEntryItemRestrictionMessages(fieldLimit, mapInfo: null);
+        }
+
+        public static IReadOnlyList<string> GetFieldEntryItemRestrictionMessages(long fieldLimit, MapInfo mapInfo)
         {
             List<string> messages = new();
 
@@ -632,6 +669,12 @@ namespace HaCreator.MapSimulator.Fields
             if (FieldLimitType.Unable_To_Summon_NPC.Check(fieldLimit))
             {
                 messages.Add("NPC-summon items are disabled in this map.");
+            }
+
+            string scrollRestrictionMessage = GetScrollUseRestrictionMessage(mapInfo, InventoryType.USE, UpgradeScrollItemGroup * 10000);
+            if (!string.IsNullOrWhiteSpace(scrollRestrictionMessage))
+            {
+                messages.Add("Upgrade scrolls are disabled in this map.");
             }
 
             string miniGameMessage = GetMiniGameRestrictionMessage(fieldLimit);
@@ -860,6 +903,11 @@ namespace HaCreator.MapSimulator.Fields
         private static bool IsSpecificPortalScrollItem(InventoryType inventoryType, int itemId)
         {
             return IsPortalScrollItem(inventoryType, itemId) && itemId != NearestTownPortalScrollItemId;
+        }
+
+        private static bool IsUpgradeScrollItem(InventoryType inventoryType, int itemId)
+        {
+            return inventoryType == InventoryType.USE && (itemId / 10000) == UpgradeScrollItemGroup;
         }
 
         private static bool IsSummonItem(InventoryType inventoryType, int itemId)

@@ -303,7 +303,8 @@ namespace HaCreator.MapSimulator.Fields
                 return Math.Max(0, _timeRemaining);
             }
 
-            return Math.Max(0, (int)Math.Ceiling(Math.Max(0, unchecked(_finishTick - currentTick)) / 1000.0));
+            int remainingMs = Math.Max(0, unchecked(_finishTick - currentTick));
+            return remainingMs / 1000;
         }
 
         private static string FormatClientBoardTimer(int seconds)

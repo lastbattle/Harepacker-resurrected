@@ -15,12 +15,22 @@ namespace HaCreator.MapSimulator.Interaction
 
             try
             {
-                return string.Format(format, safeItemName);
+                return string.Format(ToDotNetCompositeFormat(format), safeItemName);
             }
             catch
             {
                 return $"Would you like to register {safeItemName} in the wish list?";
             }
+        }
+
+        internal static string ToDotNetCompositeFormat(string format)
+        {
+            if (string.IsNullOrEmpty(format))
+            {
+                return "{0}";
+            }
+
+            return format.Replace("%s", "{0}");
         }
     }
 }

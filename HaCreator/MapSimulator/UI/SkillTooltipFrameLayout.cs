@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientTooltipTextY = 32;
         internal const int ClientTooltipRightPadding = 20;
         internal static readonly Color PlainTooltipBackgroundColor = new(0, 0, 0, 235);
+        internal static readonly Color PlainTooltipBorderColor = new(214, 174, 82);
         private const int LegacyTooltipOffsetX = 12;
         private const int LegacyTooltipOffsetY = -4;
         private const int SkillBookCursorYOffset = 20;
@@ -68,6 +69,41 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawPlainTooltipBackground(sprite, fillTexture, rect);
+            DrawPlainTooltipBorder(sprite, fillTexture, rect);
+        }
+
+        internal static Rectangle[] GetPlainTooltipBorderRectangles(Rectangle rect)
+        {
+            if (rect.Width <= 0 || rect.Height <= 0)
+            {
+                return Array.Empty<Rectangle>();
+            }
+
+            return new[]
+            {
+                new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1),
+                new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1),
+                new Rectangle(rect.X - 1, rect.Y, 1, rect.Height),
+                new Rectangle(rect.Right, rect.Y, 1, rect.Height)
+            };
+        }
+
+        private static void DrawPlainTooltipBorder(SpriteBatch sprite, Texture2D fillTexture, Rectangle rect)
+        {
+            if (sprite == null || fillTexture == null)
+            {
+                return;
+            }
+
+            if (rect.Width <= 0 || rect.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(fillTexture, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), PlainTooltipBorderColor);
+            sprite.Draw(fillTexture, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), PlainTooltipBorderColor);
+            sprite.Draw(fillTexture, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), PlainTooltipBorderColor);
+            sprite.Draw(fillTexture, new Rectangle(rect.Right, rect.Y, 1, rect.Height), PlainTooltipBorderColor);
         }
 
         internal static Point ResolveSameFamilyOriginFallback(

@@ -176,7 +176,9 @@ namespace HaCreator.MapSimulator.UI
             string ownerState = null,
             AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden,
             int rejectedNpcTemplateId = 0,
-            int rejectedDecodedItemCount = 0)
+            int rejectedDecodedItemCount = 0,
+            int rejectedTrailingByteCount = 0,
+            string rejectedTrailingPayloadSignature = null)
         {
             IsActive = false;
             IsWaitingForResult = false;
@@ -185,9 +187,11 @@ namespace HaCreator.MapSimulator.UI
             OwnerVisibilityState = visibilityState;
             DecodedItemCount = Math.Max(0, rejectedDecodedItemCount);
             NpcTemplateId = Math.Max(0, rejectedNpcTemplateId);
-            TrailingByteCount = 0;
+            TrailingByteCount = Math.Max(0, rejectedTrailingByteCount);
             ResultTrailingByteCount = 0;
-            TrailingPayloadSignature = "none";
+            TrailingPayloadSignature = TrailingByteCount > 0
+                ? NormalizePayloadSignature(rejectedTrailingPayloadSignature)
+                : "none";
             ResultTrailingPayloadSignature = "none";
             AskItemWishlist = false;
             LastSubtype = -1;

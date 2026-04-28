@@ -10,6 +10,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int PacketType = 43;
         private const byte RequestMode = 0;
         private const byte FailMode = 1;
+        private static readonly Lazy<Encoding> ClientMapleStringEncoding = new(CreateClientMapleStringEncoding);
 
         private int _boundCharacterId;
         private int _lastObservedRuntimeCharacterId;
@@ -239,7 +240,35 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] bytes = reader.ReadBytes(length);
-            return Encoding.Default.GetString(bytes);
+            return DecodeClientMapleString(bytes);
+        }
+
+        internal static int GetClientMapleStringByteCount(string value)
+        {
+            return EncodeClientMapleString(value).Length;
+        }
+
+        internal static byte[] EncodeClientMapleString(string value)
+        {
+            return ClientMapleStringEncoding.Value.GetBytes(value ?? string.Empty);
+        }
+
+        internal static string DecodeClientMapleString(byte[] bytes)
+        {
+            return ClientMapleStringEncoding.Value.GetString(bytes ?? Array.Empty<byte>());
+        }
+
+        private static Encoding CreateClientMapleStringEncoding()
+        {
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                return Encoding.GetEncoding(949);
+            }
+            catch (ArgumentException)
+            {
+                return Encoding.Default;
+            }
         }
 
         private static string FormatQuotedValue(string value)

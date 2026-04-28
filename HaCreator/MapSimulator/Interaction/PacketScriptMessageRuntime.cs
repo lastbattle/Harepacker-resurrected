@@ -1822,7 +1822,7 @@ namespace HaCreator.MapSimulator.Interaction
                     if (submission.Kind == NpcInteractionInputKind.Text
                         || submission.Kind == NpcInteractionInputKind.MultiLineText)
                     {
-                        writer.WriteMapleString(submittedValue ?? string.Empty);
+                        WriteInitialQuizOwnerClientMapleString(writer, submittedValue);
                         break;
                     }
 
@@ -1919,8 +1919,16 @@ namespace HaCreator.MapSimulator.Interaction
             PacketWriter writer = new PacketWriter();
             writer.WriteShort(OutboundScriptAnswerOpcode);
             writer.WriteByte(6);
-            writer.WriteMapleString(submittedValue ?? string.Empty);
+            WriteInitialQuizOwnerClientMapleString(writer, submittedValue);
             return writer.ToArray();
+        }
+
+        private static void WriteInitialQuizOwnerClientMapleString(PacketWriter writer, string value)
+        {
+            byte[] encoded = InitialQuizTimerRuntime.EncodeClientMapleString(value);
+            int length = Math.Min(encoded.Length, ushort.MaxValue);
+            writer.WriteShort((short)length);
+            writer.Write(encoded, 0, length);
         }
 
         private static PacketScriptResponsePacket CreateAutoResponsePacket(

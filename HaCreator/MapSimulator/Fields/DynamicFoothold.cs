@@ -573,6 +573,11 @@ namespace HaCreator.MapSimulator.Fields
         public float TopBound, BottomBound;
         public bool MovingDown = true;
 
+        // Packet-authored endpoint order. Client reverse flags are encoded relative to
+        // X1/X2 and Y1/Y2, while simulator bounds are normalized for local movement.
+        public int? PacketOwnedMovingX1, PacketOwnedMovingX2;
+        public int? PacketOwnedMovingY1, PacketOwnedMovingY2;
+
         // Waypoint path
         public List<Vector2> Waypoints;
         public int CurrentWaypointIndex;

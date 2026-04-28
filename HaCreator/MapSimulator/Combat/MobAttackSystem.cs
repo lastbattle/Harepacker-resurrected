@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.Combat
     {
         internal const int ClientAnimationDisplayerMobBulletLoadAction = 1;
         private const string AnimationDisplayerMobCategoryPrefix = "Mob";
+        internal const string AnimationDisplayerMobBulletOwnerActionName = "attack1";
 
         public readonly record struct AnimationDisplayerProjectileRegistrationRequest(
             int MobId,
@@ -492,7 +493,8 @@ namespace HaCreator.MapSimulator.Combat
                 _activeMobProjectiles.Add(projectile);
 
                 string ballUol = BuildAnimationDisplayerMobBulletEffectUol(mobItem.MobId, attack.AnimationName);
-                bool hasClientMobActionFrames = mobItem.HasActionAnimation(attack.AnimationName);
+                bool hasClientMobActionFrames = mobItem.HasActionAnimation(
+                    ResolveAnimationDisplayerMobBulletOwnerActionName(attack.AnimationName));
                 bool hasCanvasFrames = projectile.Frames?.Count > 0;
                 _onAnimationDisplayerProjectileRegistration?.Invoke(new AnimationDisplayerProjectileRegistrationRequest(
                     mobItem.MobId,
@@ -687,7 +689,13 @@ namespace HaCreator.MapSimulator.Combat
                      playerManager.IsPlayerActive &&
                      playerManager.Combat.TryApplyMobHit(projectile.SourceMob, projectileHitbox, currentTime, projectile.Attack)))
                 {
-                    SpawnMobWorldEffects(projectile.SourceMob, projectile.Attack, projectile.Position, currentTime, animationEffects);
+                    SpawnMobWorldEffects(
+                        projectile.SourceMob,
+                        projectile.Attack,
+                        projectile.Position,
+                        currentTime,
+                        animationEffects,
+                        projectile.TargetInfo);
                     _activeMobProjectiles.RemoveAt(i);
                     continue;
                 }
@@ -699,7 +707,13 @@ namespace HaCreator.MapSimulator.Combat
 
                 if (TryApplyLockedTargetImpact(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, currentTime))
                 {
-                    SpawnMobWorldEffects(projectile.SourceMob, projectile.Attack, projectile.Target, currentTime, animationEffects);
+                    SpawnMobWorldEffects(
+                        projectile.SourceMob,
+                        projectile.Attack,
+                        projectile.Target,
+                        currentTime,
+                        animationEffects,
+                        projectile.TargetInfo);
                     _activeMobProjectiles.RemoveAt(i);
                     continue;
                 }
@@ -729,7 +743,13 @@ namespace HaCreator.MapSimulator.Combat
                 }
                 else
                 {
-                    SpawnMobWorldEffects(projectile.SourceMob, projectile.Attack, projectile.Target, currentTime, animationEffects);
+                    SpawnMobWorldEffects(
+                        projectile.SourceMob,
+                        projectile.Attack,
+                        projectile.Target,
+                        currentTime,
+                        animationEffects,
+                        projectile.TargetInfo);
                 }
 
                 _activeMobProjectiles.RemoveAt(i);
@@ -800,7 +820,13 @@ namespace HaCreator.MapSimulator.Combat
                         }
                     }
 
-                    SpawnMobWorldEffects(groundAttack.SourceMob, groundAttack.Attack, groundAttack.EffectPosition, currentTime, animationEffects);
+                    SpawnMobWorldEffects(
+                        groundAttack.SourceMob,
+                        groundAttack.Attack,
+                        groundAttack.EffectPosition,
+                        currentTime,
+                        animationEffects,
+                        groundAttack.TargetInfo);
 
                     if (groundAttack.SourceMob.AI.IsBoss || groundAttack.Attack?.Tremble == true)
                     {
@@ -889,7 +915,8 @@ namespace HaCreator.MapSimulator.Combat
                         directAttack.Attack,
                         effectPosition,
                         currentTime,
-                        animationEffects);
+                        animationEffects,
+                        directAttack.TargetInfo);
 
                     if (directAttack.Attack?.Tremble == true)
                     {
@@ -904,7 +931,13 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private void SpawnMobWorldEffects(MobItem mobItem, MobAttackEntry attack, Vector2 position, int currentTime, AnimationEffects animationEffects)
+        private void SpawnMobWorldEffects(
+            MobItem mobItem,
+            MobAttackEntry attack,
+            Vector2 position,
+            int currentTime,
+            AnimationEffects animationEffects,
+            MobTargetInfo targetInfo = null)
         {
             if (ShouldUseSourceAnchoredEffects(mobItem, attack))
             {
@@ -919,6 +952,43 @@ namespace HaCreator.MapSimulator.Combat
             {
                 Vector2 groundedPosition = attack.IsAreaOfEffect ? ResolveGroundPoint(position.X, position.Y) : position;
                 animationEffects?.AddOneTime(effectFrames, groundedPosition.X, groundedPosition.Y, effectFlip, currentTime);
+            }
+
+            MobAnimationSet.AttackHitEffectEntry hitEntry = mobItem.GetAttackHitEffectEntry(attack.AnimationName);
+            if (hitEntry?.Frames != null && hitEntry.Frames.Count > 0)
+            {
+                MobAnimationSet.AttackInfoMetadata attackInfo = mobItem.GetAttackInfo(attack.AnimationName);
+                bool attachHitEffect = ShouldAttachMobHitEffect(attackInfo, hitEntry.SourceFrameIndex);
+                bool facingAttach = attackInfo?.ResolveFacingAttachForHitAnimationFrame(hitEntry.SourceFrameIndex) == true;
+                Func<Vector2> getPosition = null;
+                Func<bool> getFlip = null;
+                Vector2 fallbackPosition = Vector2.Zero;
+                bool fallbackFlip = false;
+                bool attached = attachHitEffect &&
+                    TryResolveAttachedHitEffectTarget(
+                        targetInfo,
+                        currentTime,
+                        out getPosition,
+                        out getFlip,
+                        out fallbackPosition,
+                        out fallbackFlip);
+
+                if (attached)
+                {
+                    animationEffects?.AddOneTimeAttached(
+                        hitEntry.Frames,
+                        getPosition,
+                        getFlip,
+                        fallbackPosition.X,
+                        fallbackPosition.Y,
+                        fallbackFlip,
+                        currentTime);
+                }
+                else
+                {
+                    bool hitFlip = facingAttach ? effectFlip : false;
+                    animationEffects?.AddOneTime(hitEntry.Frames, position.X, position.Y, hitFlip, currentTime);
+                }
             }
 
             IReadOnlyList<MobAnimationSet.AttackEffectNode> extraEffects = mobItem.GetAttackExtraEffects(attack.AnimationName);
@@ -1717,6 +1787,14 @@ namespace HaCreator.MapSimulator.Combat
         internal static bool ShouldRegisterAnimationDisplayerMobBullet(bool hasClientMobActionFrames, string ballUol)
         {
             return hasClientMobActionFrames && !string.IsNullOrWhiteSpace(ballUol);
+        }
+
+        internal static string ResolveAnimationDisplayerMobBulletOwnerActionName(string attackAction)
+        {
+            // Client evidence (`CAnimationDisplayer::RegisterMobBulletAnimation`):
+            // the action layer is loaded with action index 1 even when the ball UOL
+            // points at the concrete attack branch that launched the projectile.
+            return AnimationDisplayerMobBulletOwnerActionName;
         }
 
         internal static bool ShouldRegisterAnimationDisplayerMobSwallowBullet(
@@ -2842,6 +2920,102 @@ namespace HaCreator.MapSimulator.Combat
                 default:
                     return null;
             }
+        }
+
+        internal static bool ShouldAttachMobHitEffect(MobAnimationSet.AttackInfoMetadata attackInfo, int sourceFrameIndex)
+        {
+            return attackInfo?.ResolveHitAttachForHitAnimationFrame(sourceFrameIndex) == true;
+        }
+
+        private bool TryResolveAttachedHitEffectTarget(
+            MobTargetInfo targetInfo,
+            int currentTime,
+            out Func<Vector2> getPosition,
+            out Func<bool> getFlip,
+            out Vector2 fallbackPosition,
+            out bool fallbackFlip)
+        {
+            getPosition = null;
+            getFlip = null;
+            fallbackPosition = Vector2.Zero;
+            fallbackFlip = false;
+
+            if (targetInfo == null)
+            {
+                return false;
+            }
+
+            if (targetInfo.TargetType == MobTargetType.Player)
+            {
+                Rectangle playerHitbox = _playerHitboxAccessor?.Invoke() ?? Rectangle.Empty;
+                if (playerHitbox.IsEmpty)
+                {
+                    return false;
+                }
+
+                Vector2 resolvedFallbackPosition = GetHitboxCenter(playerHitbox);
+                fallbackPosition = resolvedFallbackPosition;
+                getPosition = () => GetHitboxCenter(_playerHitboxAccessor?.Invoke() ?? playerHitbox);
+                getFlip = () => false;
+                return true;
+            }
+
+            if (targetInfo.TargetType == MobTargetType.Summoned)
+            {
+                PuppetInfo puppet = FindTargetPuppet(targetInfo);
+                if (puppet == null)
+                {
+                    return false;
+                }
+
+                Vector2 resolvedFallbackPosition = GetHitboxCenter(CreatePuppetHitbox(puppet));
+                fallbackPosition = resolvedFallbackPosition;
+                getPosition = () =>
+                {
+                    PuppetInfo livePuppet = FindTargetPuppet(targetInfo);
+                    return livePuppet != null
+                        ? GetHitboxCenter(CreatePuppetHitbox(livePuppet))
+                        : resolvedFallbackPosition;
+                };
+                getFlip = () => false;
+                return true;
+            }
+
+            if (targetInfo.TargetType != MobTargetType.Mob)
+            {
+                return false;
+            }
+
+            MobItem targetMob = _mobAccessor?.Invoke(targetInfo.TargetId);
+            Rectangle targetHitbox = targetMob?.AI != null && !targetMob.AI.IsDead
+                ? targetMob.GetBodyHitbox(currentTime)
+                : Rectangle.Empty;
+            if (targetHitbox.IsEmpty)
+            {
+                return false;
+            }
+
+            Vector2 resolvedMobFallbackPosition = GetHitboxCenter(targetHitbox);
+            bool resolvedMobFallbackFlip = targetMob?.MovementInfo?.FlipX ?? false;
+            fallbackPosition = resolvedMobFallbackPosition;
+            fallbackFlip = resolvedMobFallbackFlip;
+            getPosition = () =>
+            {
+                MobItem liveMob = _mobAccessor?.Invoke(targetInfo.TargetId);
+                Rectangle liveHitbox = liveMob?.AI != null && !liveMob.AI.IsDead
+                    ? liveMob.GetBodyHitbox(currentTime)
+                    : Rectangle.Empty;
+                return liveHitbox.IsEmpty ? resolvedMobFallbackPosition : GetHitboxCenter(liveHitbox);
+            };
+            getFlip = () => _mobAccessor?.Invoke(targetInfo.TargetId)?.MovementInfo?.FlipX ?? resolvedMobFallbackFlip;
+            return true;
+        }
+
+        private static Vector2 GetHitboxCenter(Rectangle hitbox)
+        {
+            return new Vector2(
+                hitbox.Left + hitbox.Width / 2f,
+                hitbox.Top + hitbox.Height / 2f);
         }
 
         private bool TryApplyPuppetHit(

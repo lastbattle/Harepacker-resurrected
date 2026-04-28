@@ -18,9 +18,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             using PacketWriter writer = CreateHeader(npcId, 6);
             writer.Write((byte)0);
-            WriteMapleString(writer, title);
-            WriteMapleString(writer, problemText);
-            WriteMapleString(writer, hintText);
+            WriteInitialQuizClientMapleString(writer, title);
+            WriteInitialQuizClientMapleString(writer, problemText);
+            WriteInitialQuizClientMapleString(writer, hintText);
             writer.Write(minInputLength);
             writer.Write(maxInputLength);
             writer.Write(remainingSeconds);
@@ -129,8 +129,17 @@ namespace HaCreator.MapSimulator.Interaction
         {
             value ??= string.Empty;
             byte[] bytes = Encoding.Default.GetBytes(value);
-            writer.Write((ushort)Math.Min(bytes.Length, ushort.MaxValue));
-            writer.Write(bytes, 0, Math.Min(bytes.Length, ushort.MaxValue));
+            int length = Math.Min(bytes.Length, ushort.MaxValue);
+            writer.Write((ushort)length);
+            writer.Write(bytes, 0, length);
+        }
+
+        private static void WriteInitialQuizClientMapleString(PacketWriter writer, string value)
+        {
+            byte[] bytes = InitialQuizTimerRuntime.EncodeClientMapleString(value);
+            int length = Math.Min(bytes.Length, ushort.MaxValue);
+            writer.Write((ushort)length);
+            writer.Write(bytes, 0, length);
         }
     }
 }

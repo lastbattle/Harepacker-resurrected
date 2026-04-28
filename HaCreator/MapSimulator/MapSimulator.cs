@@ -25872,7 +25872,12 @@ namespace HaCreator.MapSimulator
                 int skillLevel = Math.Max(1, effect.Level);
                 MobSkillRuntimeData runtimeData = ResolveMobSkillRuntimeData(skillId, skillLevel);
                 bool appliedStatus = _playerManager.TryApplyMobSkillStatus(skillId, runtimeData, currentTime);
-                bool appliedBlocking = _playerManager.TryApplyMobSkillBlockingStatus(skillId, skillLevel, runtimeData, currentTime);
+                bool appliedBlocking = false;
+                if (ShouldMirrorMobSkillBlockingStatus(skillId, appliedStatus))
+                {
+                    appliedBlocking = _playerManager.TryApplyMobSkillBlockingStatus(skillId, skillLevel, runtimeData, currentTime);
+                }
+
                 if (!appliedStatus && !appliedBlocking)
                 {
                     continue;
@@ -27900,6 +27905,11 @@ namespace HaCreator.MapSimulator
                 return MinimapUI.HelperMarkerType.Match;
             }
 
+            if (isCouplePartner || isMarriedPartner)
+            {
+                return MinimapUI.HelperMarkerType.Friend;
+            }
+
             if (isPartyMember)
             {
                 return isPartyLeader ? MinimapUI.HelperMarkerType.PartyMaster : MinimapUI.HelperMarkerType.Party;
@@ -27910,10 +27920,7 @@ namespace HaCreator.MapSimulator
                 return isGuildLeader ? MinimapUI.HelperMarkerType.GuildMaster : MinimapUI.HelperMarkerType.Guild;
             }
 
-            if (isFriend
-                || isCouplePartner
-                || isMarriedPartner
-                || isStalkTarget)
+            if (isFriend || isStalkTarget)
             {
                 return MinimapUI.HelperMarkerType.Friend;
             }
@@ -31034,6 +31041,10 @@ namespace HaCreator.MapSimulator
                 keyDown,
                 suppressImeOwnedForwarding,
                 bindingResolver);
+            HandleSkillMacroClientForwardedPacketOwnedRawKeyState(
+                key,
+                keyDown,
+                suppressImeOwnedForwarding);
         }
 
         private void HandleSkillMacroClientForwardedUtilityFunctionState(
@@ -31133,6 +31144,123 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void HandleSkillMacroClientForwardedPacketOwnedRawKeyState(
+            Keys key,
+            bool keyDown,
+            bool suppressImeOwnedForwarding)
+        {
+            if (key == Keys.None)
+            {
+                return;
+            }
+
+            if (!keyDown)
+            {
+                ReleaseSkillMacroClientForwardedPacketOwnedRawCastKey(key);
+                return;
+            }
+
+            if (suppressImeOwnedForwarding)
+            {
+                return;
+            }
+
+            if (!_skillMacroForwardedUtilityFunctionIdsByPhysicalKey.ContainsKey(key))
+            {
+                TryDispatchSkillMacroClientForwardedPacketOwnedRawFunctionKey(key);
+            }
+
+            TryDispatchSkillMacroClientForwardedPacketOwnedRawEmotionKey(key);
+
+            if (TryResolvePacketOwnedHeldRawCastInputOwner(key, out _)
+                || !TryResolvePacketOwnedActiveCastInputOwner(key, out PacketOwnedCastInputOwner owner)
+                || !ShouldDispatchSkillMacroPacketOwnedRawCastOwnerForTesting(
+                    owner.IsHandledByLiveHotkeyBinding,
+                    suppressImeOwnedForwarding))
+            {
+                return;
+            }
+
+            int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(owner.ScanCode);
+            if (TryDispatchPacketOwnedRawFuncKeyEntry(owner.Entry, currTickCount, ownerInputToken)
+                && owner.Entry.Type == PacketOwnedFuncKeySkillType)
+            {
+                _packetOwnedHeldRawCastInputOwnersByKey[key] = owner;
+            }
+        }
+
+        private void ReleaseSkillMacroClientForwardedPacketOwnedRawCastKey(Keys key)
+        {
+            if (!TryResolvePacketOwnedHeldRawCastInputOwner(key, out PacketOwnedCastInputOwner owner))
+            {
+                return;
+            }
+
+            if (owner.Entry.Type == PacketOwnedFuncKeySkillType && owner.Entry.Id > 0)
+            {
+                int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(owner.ScanCode);
+                _playerManager?.Skills?.ReleasePacketOwnedFuncKeySkillIfActive(
+                    owner.Entry.Id,
+                    currTickCount,
+                    ResolvePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken),
+                    ownerInputToken);
+            }
+
+            _packetOwnedHeldRawCastInputOwnersByKey.Remove(key);
+        }
+
+        private bool TryDispatchSkillMacroClientForwardedPacketOwnedRawFunctionKey(Keys key)
+        {
+            foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
+            {
+                if (entry.Type != PacketOwnedFuncKeyFunctionType
+                    || entry.Id < 0
+                    || ResolvePacketOwnedScanCodeKey(scanCode) != key)
+                {
+                    continue;
+                }
+
+                PacketOwnedRawFunctionOwner functionOwner = ResolvePacketOwnedRawFunctionOwner(entry.Id);
+                PacketOwnedRawChatOwner chatOwner = ResolvePacketOwnedRawChatOwner(entry.Id);
+                if (functionOwner == PacketOwnedRawFunctionOwner.None
+                    && chatOwner == PacketOwnedRawChatOwner.None)
+                {
+                    continue;
+                }
+
+                return TryDispatchPacketOwnedRawFunctionEntry(entry.Id, currTickCount);
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchSkillMacroClientForwardedPacketOwnedRawEmotionKey(Keys key)
+        {
+            foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
+            {
+                if (entry.Type != PacketOwnedFuncKeyEmotionType
+                    || ResolvePacketOwnedScanCodeKey(scanCode) != key
+                    || !TryResolvePacketOwnedEmotionBinding(entry.Id, out int emotionId)
+                    || !ShouldHandlePacketOwnedCastEntryViaRawRuntime(
+                        _playerManager?.Input,
+                        key,
+                        handledByLiveHotkeyBinding: false))
+                {
+                    continue;
+                }
+
+                _playerManager?.Player?.TryApplyPacketOwnedEmotion(
+                    emotionId,
+                    durationMs: 0,
+                    byItemOption: false,
+                    currTickCount,
+                    out _);
+                return true;
+            }
+
+            return false;
+        }
+
         private void HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyStateChanged(
             int hotkeySlot,
             int inputToken,
@@ -31168,6 +31296,13 @@ namespace HaCreator.MapSimulator
                 key,
                 imeCompositionActive,
                 imeCandidateWindowActive);
+        }
+
+        internal static bool ShouldDispatchSkillMacroPacketOwnedRawCastOwnerForTesting(
+            bool handledByLiveHotkeyBinding,
+            bool suppressImeOwnedForwarding)
+        {
+            return !handledByLiveHotkeyBinding && !suppressImeOwnedForwarding;
         }
 
         internal static bool TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(

@@ -99,6 +99,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _comboBoxButtonTexture;
         private Texture2D _checkBoxUncheckedTexture;
         private Texture2D _checkBoxCheckedTexture;
+        private Texture2D _checkBoxDisabledUncheckedTexture;
+        private Texture2D _checkBoxDisabledCheckedTexture;
         private string _title = string.Empty;
         private string _body = string.Empty;
         private string _footer = string.Empty;
@@ -166,13 +168,17 @@ namespace HaCreator.MapSimulator.UI
             Texture2D comboBoxMiddleTexture,
             Texture2D comboBoxButtonTexture,
             Texture2D checkBoxUncheckedTexture,
-            Texture2D checkBoxCheckedTexture)
+            Texture2D checkBoxCheckedTexture,
+            Texture2D checkBoxDisabledUncheckedTexture = null,
+            Texture2D checkBoxDisabledCheckedTexture = null)
         {
             _comboBoxLeftTexture = comboBoxLeftTexture;
             _comboBoxMiddleTexture = comboBoxMiddleTexture;
             _comboBoxButtonTexture = comboBoxButtonTexture;
             _checkBoxUncheckedTexture = checkBoxUncheckedTexture;
             _checkBoxCheckedTexture = checkBoxCheckedTexture;
+            _checkBoxDisabledUncheckedTexture = checkBoxDisabledUncheckedTexture;
+            _checkBoxDisabledCheckedTexture = checkBoxDisabledCheckedTexture;
         }
 
         public override void SetFont(SpriteFont font)
@@ -680,7 +686,7 @@ namespace HaCreator.MapSimulator.UI
                 Color border = checkBox.IsEnabled ? new Color(196, 196, 196) : new Color(96, 96, 96);
                 Color text = checkBox.IsEnabled ? Color.White : new Color(130, 130, 130);
                 bool isSelected = checkBox.ControlId == _selectedCheckBoxControlId;
-                Texture2D checkTexture = isSelected ? _checkBoxCheckedTexture : _checkBoxUncheckedTexture;
+                Texture2D checkTexture = ResolveCheckBoxTexture(checkBox.IsEnabled, isSelected);
                 if (checkTexture != null)
                 {
                     Color tint = checkBox.IsEnabled ? Color.White : new Color(160, 160, 160);
@@ -788,6 +794,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return new Rectangle(Position.X + BodyOffsetX, (int)cursor.Y, ResolveContentWidth(), CheckBoxRowHeight);
+        }
+
+        private Texture2D ResolveCheckBoxTexture(bool isEnabled, bool isSelected)
+        {
+            if (isEnabled)
+            {
+                return isSelected ? _checkBoxCheckedTexture : _checkBoxUncheckedTexture;
+            }
+
+            Texture2D disabledTexture = isSelected ? _checkBoxDisabledCheckedTexture : _checkBoxDisabledUncheckedTexture;
+            return disabledTexture ?? (isSelected ? _checkBoxCheckedTexture : _checkBoxUncheckedTexture);
         }
 
         private Rectangle ResolveComboBoxBounds(Vector2 cursor)

@@ -1093,23 +1093,14 @@ namespace HaCreator.MapSimulator
         private bool TryResolvePendingQuestDeliveryQuestResult(int questId, out string outcome)
         {
             outcome = string.Empty;
-            int phaseHintIndex = FindLatestPendingQuestDeliveryResultPhaseHintIndex(
-                _pendingQuestDeliveryResultPhaseHints,
-                questId);
             int ownershipIndex;
-            if (phaseHintIndex >= 0)
-            {
-                QuestDetailDeliveryType queuedDeliveryTypeHint = _pendingQuestDeliveryResultPhaseHints[phaseHintIndex].DeliveryType;
-                ownershipIndex = FindPendingQuestDeliveryResultOwnershipIndex(
+            if (TryFindPendingQuestDeliveryResultOwnershipIndexFromPhaseHints(
+                    _pendingQuestDeliveryResultPhaseHints,
                     _pendingQuestDeliveryResults,
                     questId,
-                    ResolveCompletionPhaseForDeliveryType(queuedDeliveryTypeHint),
-                    enforcePreferredPhaseMatch: true);
-                if (ownershipIndex < 0)
-                {
-                    return false;
-                }
-
+                    out int phaseHintIndex,
+                    out ownershipIndex))
+            {
                 _pendingQuestDeliveryResultPhaseHints.RemoveAt(phaseHintIndex);
             }
             else
@@ -1265,6 +1256,52 @@ namespace HaCreator.MapSimulator
             }
 
             return -1;
+        }
+
+        private static bool TryFindPendingQuestDeliveryResultOwnershipIndexFromPhaseHints(
+            IReadOnlyList<PendingQuestDeliveryResultPhaseHint> pendingHints,
+            IReadOnlyList<PendingQuestDeliveryResultOwnership> pendingResults,
+            int questId,
+            out int phaseHintIndex,
+            out int ownershipIndex)
+        {
+            int normalizedQuestId = Math.Max(0, questId);
+            if (pendingHints == null ||
+                pendingResults == null ||
+                pendingHints.Count == 0 ||
+                pendingResults.Count == 0 ||
+                normalizedQuestId <= 0)
+            {
+                phaseHintIndex = -1;
+                ownershipIndex = -1;
+                return false;
+            }
+
+            for (int i = pendingHints.Count - 1; i >= 0; i--)
+            {
+                if (pendingHints[i].QuestId != normalizedQuestId)
+                {
+                    continue;
+                }
+
+                int candidateOwnershipIndex = FindPendingQuestDeliveryResultOwnershipIndex(
+                    pendingResults,
+                    normalizedQuestId,
+                    ResolveCompletionPhaseForDeliveryType(pendingHints[i].DeliveryType),
+                    enforcePreferredPhaseMatch: true);
+                if (candidateOwnershipIndex < 0)
+                {
+                    continue;
+                }
+
+                phaseHintIndex = i;
+                ownershipIndex = candidateOwnershipIndex;
+                return true;
+            }
+
+            phaseHintIndex = -1;
+            ownershipIndex = -1;
+            return false;
         }
 
         private static int FindPendingQuestDeliveryResultOwnershipIndex(
@@ -1653,19 +1690,14 @@ namespace HaCreator.MapSimulator
             }
 
             int ownershipIndex;
-            int phaseHintIndex = FindLatestPendingQuestDeliveryResultPhaseHintIndex(pendingHints, questId);
-            if (phaseHintIndex >= 0)
-            {
-                QuestDetailDeliveryType queuedDeliveryTypeHint = pendingHints[phaseHintIndex].DeliveryType;
-                ownershipIndex = FindPendingQuestDeliveryResultOwnershipIndex(
+            if (TryFindPendingQuestDeliveryResultOwnershipIndexFromPhaseHints(
+                    pendingHints,
                     pendingResults,
                     questId,
-                    ResolveCompletionPhaseForDeliveryType(queuedDeliveryTypeHint),
-                    enforcePreferredPhaseMatch: true);
-                if (ownershipIndex >= 0)
-                {
-                    pendingHints.RemoveAt(phaseHintIndex);
-                }
+                    out int phaseHintIndex,
+                    out ownershipIndex))
+            {
+                pendingHints.RemoveAt(phaseHintIndex);
             }
             else
             {

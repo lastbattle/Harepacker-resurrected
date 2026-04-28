@@ -219,6 +219,8 @@ namespace HaCreator.MapSimulator.Fields
             _currentAlpha = 255f;
             _deltaX = 0f;
             _deltaY = 0f;
+            _voyageBalrogDepartureStartTime = 0;
+            _voyageBalrogAutoTriggered = false;
 
             if (queueAnnouncement)
             {
@@ -345,6 +347,8 @@ namespace HaCreator.MapSimulator.Fields
             _startMoveX = _x0; // Start at away position
             _endMoveX = _x;    // End at dock
             _currentX = _startMoveX;
+            _voyageBalrogDepartureStartTime = 0;
+            _voyageBalrogAutoTriggered = false;
 
             QueueAnnouncement("The ship is arriving.", 2000);
         }
@@ -449,7 +453,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (_state != ShipState.Moving && _state != ShipState.InTransit)
+            if (!IsVoyageBalrogAttackWindow())
             {
                 message = $"Ignored voyage Balrog event while ship state is {_state}; the client-owned voyage attack only makes sense during departure or transit.";
                 return false;
@@ -828,6 +832,8 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     // Arrived at dock
                     _state = ShipState.Docked;
+                    _voyageBalrogDepartureStartTime = 0;
+                    _voyageBalrogAutoTriggered = false;
                     OnArrival?.Invoke();
                     System.Diagnostics.Debug.WriteLine("[TransportField] Ship docked");
                     QueueAnnouncement("We have arrived at our destination.", 3000);
@@ -1282,7 +1288,7 @@ namespace HaCreator.MapSimulator.Fields
                 || _voyageBalrogAutoTriggered
                 || _shipKind != 0
                 || _balrogState != BalrogState.Hidden
-                || (_state != ShipState.Moving && _state != ShipState.InTransit)
+                || !IsVoyageBalrogAttackWindow()
                 || _voyageBalrogDepartureStartTime == 0)
             {
                 return;
@@ -1295,6 +1301,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             TryStartVoyageBalrogAttack(_voyageBalrogAutoDurationMs, "wz-route-auto", out _);
+        }
+
+        private bool IsVoyageBalrogAttackWindow()
+        {
+            return _state == ShipState.InTransit
+                || (_state == ShipState.Moving && _voyageBalrogDepartureStartTime != 0);
         }
 
         private int ResolveDefaultVoyageBalrogTriggerOffsetMs()

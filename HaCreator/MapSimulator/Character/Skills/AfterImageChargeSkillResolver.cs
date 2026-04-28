@@ -1004,13 +1004,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 out chargeElement);
         }
 
-        private static int ResolveAdjacentSkillElementPair(int candidateSkillId, int candidateElement)
+        private static int ResolveAdjacentSkillElementPair(int firstValue, int secondValue)
         {
-            return IsKnownChargeElement(candidateElement)
-                && TryGetChargeElement(candidateSkillId, out int skillElement)
-                && skillElement == candidateElement
-                ? candidateElement
-                : 0;
+            if (IsKnownChargeElement(secondValue)
+                && TryGetChargeElement(firstValue, out int firstSkillElement)
+                && firstSkillElement == secondValue)
+            {
+                return secondValue;
+            }
+
+            if (IsKnownChargeElement(firstValue)
+                && TryGetChargeElement(secondValue, out int secondSkillElement)
+                && secondSkillElement == firstValue)
+            {
+                return firstValue;
+            }
+
+            return 0;
         }
 
         private static bool TryResolveChargeElementFromConsensusCounts(

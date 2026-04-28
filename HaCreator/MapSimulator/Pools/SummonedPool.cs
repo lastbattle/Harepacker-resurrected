@@ -879,11 +879,6 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon,
                 state.LastMoveActionRaw,
                 state.Summon.FacingRight);
-            if (ShouldApplyHealingRobotSkillPacketFacing(state.Summon, state.LastSkillAction))
-            {
-                state.Summon.FacingRight = ResolveHealingRobotSkillPacketFacingRight(attackAction);
-            }
-
             BeginPacketOwnedSkillAnimation(state, currentTime);
             return true;
         }
@@ -2146,14 +2141,16 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static bool ShouldApplyHealingRobotSkillPacketFacing(ActiveSummon summon, byte normalizedAction)
         {
-            return summon?.SkillId == HealingRobotSkillId
-                   && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData)
-                   && normalizedAction == HealingRobotHealSkillAction;
+            // CSummoned::OnSkill decodes the packet byte, masks it with 0x7F, and
+            // passes only the action family into SetAttackAction. Facing remains
+            // owned by the current move action, not by the packet-skill high bit.
+            return false;
         }
 
         internal static bool ResolveHealingRobotSkillPacketFacingRight(byte rawSkillAction)
         {
-            // CSummoned::TryDoingHealingRobot sends (moveAction << 7) | 13.
+            // Local request builders still encode the protocol byte, but packet-owned
+            // runtime replay intentionally ignores this high bit on receive.
             return (rawSkillAction & 0x80) == 0;
         }
 
@@ -3862,10 +3859,10 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 candidatesById[mob.PoolId] = mob;
-                IReadOnlyList<Rectangle> bodyHitboxes = mob.GetBodyHitboxes(currentTime);
+                IReadOnlyList<Rectangle> bodyHitboxes = mob.GetClientMultiBodyHitboxes(currentTime);
                 orderedCandidates.Add(new PacketOwnedExpiryTargetCandidate(
                     mob.PoolId,
-                    GetMobHitbox(mob, currentTime),
+                    mob.GetClientBodyHitbox(currentTime),
                     sourceOrder++,
                     bodyHitboxes,
                     TemplateId: mob.MobId,

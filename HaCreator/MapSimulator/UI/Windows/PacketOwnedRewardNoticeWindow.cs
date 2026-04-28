@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.UI
         private const float BodyTopY = 20f;
         private const float BodyLeftX = 20f;
         private const float BodyLineSpacing = 14f;
-        private const int ClientNoticeOkButtonX = 156;
+        private const int ClientNoticeOkButtonX = 197;
         private const int ButtonBottomMargin = 15;
         private const int SeparatorTopFromBottom = 64;
         private const int CloseButtonRightMargin = 8;
@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.UI
             int normalizedFrameWidth = Math.Max(0, frameWidth);
             int normalizedButtonWidth = Math.Max(0, buttonWidth);
             int maxX = Math.Max(0, normalizedFrameWidth - normalizedButtonWidth);
+            // CUtilDlg::OnCreate uses a literal x=0xC5 for the stock BtOK notice branch.
             return Math.Min(ClientNoticeOkButtonX, maxX);
         }
 

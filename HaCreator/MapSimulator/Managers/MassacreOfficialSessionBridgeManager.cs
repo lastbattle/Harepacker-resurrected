@@ -885,6 +885,27 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (mappedKind == MassacrePacketInboxMessageKind.Info
+                || mappedKind == MassacrePacketInboxMessageKind.InfoPayload)
+            {
+                if (!TryDecodeMappedInfoPayload(payload, out int hit, out int miss, out int cool, out int skill))
+                {
+                    return false;
+                }
+
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Info,
+                    source,
+                    rawText,
+                    hit,
+                    miss,
+                    cool,
+                    skill,
+                    packetType: opcode,
+                    payload: payload);
+                return true;
+            }
+
             if (mappedKind == MassacrePacketInboxMessageKind.Stage
                 && TryDecodeMappedInt32Payload(payload, out int stage)
                 && stage > 0)
@@ -950,6 +971,27 @@ namespace HaCreator.MapSimulator.Managers
                 packetType: opcode,
                 payload: payload);
             return true;
+        }
+
+        private static bool TryDecodeMappedInfoPayload(byte[] payload, out int hit, out int miss, out int cool, out int skill)
+        {
+            hit = 0;
+            miss = 0;
+            cool = 0;
+            skill = 0;
+            if (payload == null || payload.Length < sizeof(int) * 3)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> span = payload.AsSpan();
+            hit = BinaryPrimitives.ReadInt32LittleEndian(span);
+            miss = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int)));
+            cool = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int) * 2));
+            skill = payload.Length >= sizeof(int) * 4
+                ? BinaryPrimitives.ReadInt32LittleEndian(span.Slice(sizeof(int) * 3))
+                : 0;
+            return hit >= 0 && miss >= 0 && cool >= 0 && skill >= 0;
         }
 
         private static bool IsSessionValueMappedKind(MassacrePacketInboxMessageKind kind)

@@ -384,7 +384,8 @@ namespace HaCreator.MapSimulator.Character
                         linkedTemplateId = GetMorphLinkTemplateId(candidateImage);
                     }
 
-                    if (GetMorphSuperManFlag(candidateImage))
+                    if (ShouldUseMorphTemplateInfo(morphTemplateId, candidateTemplateId)
+                        && GetMorphSuperManFlag(candidateImage))
                     {
                         isSuperManMorph = true;
                     }
@@ -813,7 +814,8 @@ namespace HaCreator.MapSimulator.Character
                     Name = $"Morph_{candidateTemplateId:D4}",
                     Type = CharacterPartType.Morph,
                     Slot = EquipSlot.None,
-                    IsSuperManMorph = GetMorphSuperManFlag(candidateImage)
+                    IsSuperManMorph = ShouldUseMorphTemplateInfo(morphTemplateId, candidateTemplateId)
+                        && GetMorphSuperManFlag(candidateImage)
                 };
 
                 LoadPartAnimations(candidatePart, candidateImage, includeAttackActions: false);
@@ -981,6 +983,21 @@ namespace HaCreator.MapSimulator.Character
                     yield return pairedTemplateId;
                 }
             }
+        }
+
+        private static bool ShouldUseMorphTemplateInfo(int morphTemplateId, int candidateTemplateId)
+        {
+            // `CActionMan::GetMorphImgEntry` merges linked morph action properties but
+            // skips the linked `info` branch. Keep simulator-only paired/family fallback
+            // metadata out of the requested morph entry for the same reason.
+            return morphTemplateId > 0 && candidateTemplateId == morphTemplateId;
+        }
+
+        internal static bool ShouldUseMorphTemplateInfoForTesting(
+            int morphTemplateId,
+            int candidateTemplateId)
+        {
+            return ShouldUseMorphTemplateInfo(morphTemplateId, candidateTemplateId);
         }
 
         private static int GetMorphLinkTemplateId(WzImage morphImage)
@@ -2845,6 +2862,8 @@ namespace HaCreator.MapSimulator.Character
             part.BonusLUK = GetIntValue(info["incLUK"]) ?? 0;
             part.BonusHP = GetIntValue(info["incMHP"]) ?? 0;
             part.BonusMP = GetIntValue(info["incMMP"]) ?? 0;
+            part.BonusHPPercent = GetIntValue(info["incMHPr"]) ?? 0;
+            part.BonusMPPercent = GetIntValue(info["incMMPr"]) ?? 0;
             part.BonusWeaponAttack = GetIntValue(info["incPAD"]) ?? 0;
             part.BonusMagicAttack = GetIntValue(info["incMAD"]) ?? 0;
             part.BonusWeaponDefense = GetIntValue(info["incPDD"]) ?? 0;

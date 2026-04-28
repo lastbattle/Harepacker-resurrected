@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -1132,47 +1133,85 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            string memoText = string.IsNullOrWhiteSpace(entry.MemoText)
-                ? entry.IsQuickDelivery
+            StringBuilder memoBuilder = new();
+            if (entry.IsQuickDelivery)
+            {
+                string memoText = string.IsNullOrWhiteSpace(entry.MemoText)
                     ? MapleStoryStringPool.GetOrFallback(
                         StringPoolQuickDeliveryDefaultMemo,
                         "The received package can be obtained through the Quick Delivery NPC.")
-                    : "Packet-owned parcel payload did not include memo text."
-                : entry.MemoText.Trim();
+                    : entry.MemoText.Trim();
+                memoBuilder.Append(memoText);
+            }
+            else
+            {
+                // CTabReceive::Draw only forwards PARCEL::sMemo into CParcelDlg::SetMemo for quick delivery rows.
+                memoBuilder.Append("Standard parcel package.");
+            }
+
             if (entry.HasUndecodedItemAttachment)
             {
-                memoText += "\n\nAttachment: item payload present but the exact GW_ItemSlotBase body was not fully decoded here.";
+                AppendParcelBodySection(
+                    memoBuilder,
+                    "Attachment: item payload present but the exact GW_ItemSlotBase body was not fully decoded here.");
             }
 
             if (entry.AttachmentItemId > 0 && entry.AttachmentMeso > 0)
             {
-                memoText += $"\n\nAttachment summary: {ResolveItemName(entry.AttachmentItemId)} x{Math.Max(1, entry.AttachmentQuantity)}, {entry.AttachmentMeso:N0} meso.";
+                AppendParcelBodySection(
+                    memoBuilder,
+                    $"Attachment summary: {ResolveItemName(entry.AttachmentItemId)} x{Math.Max(1, entry.AttachmentQuantity)}, {entry.AttachmentMeso:N0} meso.");
             }
             else if (entry.AttachmentItemId > 0)
             {
-                memoText += $"\n\nAttachment summary: {ResolveItemName(entry.AttachmentItemId)} x{Math.Max(1, entry.AttachmentQuantity)}.";
+                AppendParcelBodySection(
+                    memoBuilder,
+                    $"Attachment summary: {ResolveItemName(entry.AttachmentItemId)} x{Math.Max(1, entry.AttachmentQuantity)}.");
             }
             else if (entry.HasMesoAttachment && entry.AttachmentMeso > 0)
             {
-                memoText += $"\n\nAttachment summary: {entry.AttachmentMeso:N0} meso.";
+                AppendParcelBodySection(
+                    memoBuilder,
+                    $"Attachment summary: {entry.AttachmentMeso:N0} meso.");
             }
 
             if (entry.ExpirationTimestampUtc.HasValue)
             {
-                memoText += $"\n\nClaim deadline: {entry.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}.";
+                AppendParcelBodySection(
+                    memoBuilder,
+                    $"Claim deadline: {entry.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}.");
             }
 
             if (entry.HasQuickDeliveryReservedState)
             {
-                memoText += $"\n\nQuick-delivery internal bytes: {FormatByteHex(entry.QuickDeliveryReservedBytes)}.";
+                AppendParcelBodySection(
+                    memoBuilder,
+                    $"Quick-delivery internal bytes: {FormatByteHex(entry.QuickDeliveryReservedBytes)}.");
             }
 
             if (entry.HasTrailingPayloadBytes)
             {
-                memoText += $"\n\nUndecoded parcel trailing bytes: {FormatByteHex(entry.TrailingPayloadBytes)}.";
+                AppendParcelBodySection(
+                    memoBuilder,
+                    $"Undecoded parcel trailing bytes: {FormatByteHex(entry.TrailingPayloadBytes)}.");
             }
 
-            return memoText;
+            return memoBuilder.ToString();
+        }
+
+        private static void AppendParcelBodySection(StringBuilder builder, string text)
+        {
+            if (builder == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.Append("\n\n");
+            }
+
+            builder.Append(text.Trim());
         }
 
         private static int ResolvePacketOwnedAttachmentMeso(PacketOwnedParcelDecodedEntry entry)

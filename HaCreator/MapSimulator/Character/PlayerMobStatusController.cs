@@ -300,7 +300,15 @@ namespace HaCreator.MapSimulator.Character
                 case 131:
                     return ApplyStatus(PlayerMobStatusEffect.Freeze, runtimeData.DurationMs, currentTime, 1);
                 case 132:
-                    return ApplyStatus(PlayerMobStatusEffect.ReverseInput, runtimeData.DurationMs, currentTime, 1);
+                    return HasAuthoredPeriodicDamage(runtimeData)
+                        ? ApplyPeriodicDamageStatus(
+                            PlayerMobStatusEffect.ReverseInput,
+                            runtimeData.DurationMs,
+                            currentTime,
+                            ResolvePeriodicDamageValue(runtimeData, 1),
+                            ResolveTickInterval(runtimeData, 1000),
+                            runtimeData.Count)
+                        : ApplyStatus(PlayerMobStatusEffect.ReverseInput, runtimeData.DurationMs, currentTime, 1);
                 case 133:
                     return ApplyStatus(PlayerMobStatusEffect.Undead, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 100));
                 case 134:
@@ -483,6 +491,7 @@ namespace HaCreator.MapSimulator.Character
             return effect == PlayerMobStatusEffect.Poison
                    || effect == PlayerMobStatusEffect.Burn
                    || effect == PlayerMobStatusEffect.PainMark
+                   || effect == PlayerMobStatusEffect.ReverseInput
                    || effect == PlayerMobStatusEffect.Bomb;
         }
 
@@ -522,7 +531,7 @@ namespace HaCreator.MapSimulator.Character
             RemoveExpiredEffects(currentTime);
             if (!TryMapMobSkillStatusEffect(skillId, out PlayerMobStatusEffect effect))
             {
-                return skillId == 127;
+                return false;
             }
 
             return HasStatus(effect);
@@ -630,12 +639,21 @@ namespace HaCreator.MapSimulator.Character
                         1,
                         refreshLeadTimeMs);
                 case 132:
-                    return WouldStatusApplicationChangeState(
-                        PlayerMobStatusEffect.ReverseInput,
-                        runtimeData.DurationMs,
-                        currentTime,
-                        1,
-                        refreshLeadTimeMs);
+                    return HasAuthoredPeriodicDamage(runtimeData)
+                        ? WouldPeriodicStatusApplicationChangeState(
+                            PlayerMobStatusEffect.ReverseInput,
+                            runtimeData.DurationMs,
+                            currentTime,
+                            ResolvePeriodicDamageValue(runtimeData, 1),
+                            ResolveTickInterval(runtimeData, 1000),
+                            runtimeData.Count,
+                            refreshLeadTimeMs)
+                        : WouldStatusApplicationChangeState(
+                            PlayerMobStatusEffect.ReverseInput,
+                            runtimeData.DurationMs,
+                            currentTime,
+                            1,
+                            refreshLeadTimeMs);
                 case 133:
                     return WouldStatusApplicationChangeState(
                         PlayerMobStatusEffect.Undead,
@@ -1159,6 +1177,33 @@ namespace HaCreator.MapSimulator.Character
             if (runtimeData.Hp > 0)
             {
                 return runtimeData.Hp;
+            }
+
+            return fallbackValue;
+        }
+
+        private static bool HasAuthoredPeriodicDamage(MobSkillRuntimeData runtimeData)
+        {
+            return runtimeData != null
+                   && runtimeData.Hp > 0
+                   && (runtimeData.IntervalMs > 0 || runtimeData.Count > 0);
+        }
+
+        private static int ResolvePeriodicDamageValue(MobSkillRuntimeData runtimeData, int fallbackValue)
+        {
+            if (runtimeData == null)
+            {
+                return fallbackValue;
+            }
+
+            if (runtimeData.Hp > 0)
+            {
+                return runtimeData.Hp;
+            }
+
+            if (runtimeData.X > 0)
+            {
+                return runtimeData.X;
             }
 
             return fallbackValue;

@@ -175,6 +175,7 @@ namespace HaCreator.MapSimulator.UI {
         private bool _useBitmapFont = false;      // Whether to use bitmap font or SpriteFont
         private bool _useLevelBitmapFont = false; // Whether to use lvNumber textures for the level label
         private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, Texture2D> _temporaryStatViewShadowTextures = new Dictionary<int, Texture2D>();
         private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
         private readonly Dictionary<int, StatusBarBuffRenderData> _buffTooltipEntries = new Dictionary<int, StatusBarBuffRenderData>();
         private readonly List<StatusBarCooldownTooltipHitTarget> _cooldownTooltipHitTargets = new List<StatusBarCooldownTooltipHitTarget>();
@@ -496,6 +497,23 @@ namespace HaCreator.MapSimulator.UI {
         public void SetTemporaryStatViewTexture(Texture2D temporaryStatViewTexture)
         {
             _temporaryStatViewTexture = temporaryStatViewTexture;
+        }
+
+        public void SetTemporaryStatViewShadowTextures(Dictionary<int, Texture2D> temporaryStatViewShadowTextures)
+        {
+            _temporaryStatViewShadowTextures.Clear();
+            if (temporaryStatViewShadowTextures == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, Texture2D> shadowEntry in temporaryStatViewShadowTextures)
+            {
+                if (shadowEntry.Value != null)
+                {
+                    _temporaryStatViewShadowTextures[Math.Clamp(shadowEntry.Key, 0, 15)] = shadowEntry.Value;
+                }
+            }
         }
 
         public void SetKeyDownBarTextures(Dictionary<string, StatusBarKeyDownBarTextures> keyDownBarTextures)
@@ -1017,6 +1035,8 @@ namespace HaCreator.MapSimulator.UI {
                     sprite.Draw(iconTexture, iconRect, Color.White);
                 }
 
+                DrawTemporaryStatViewShadow(sprite, iconRect, buffEntry, currentTime);
+
                 if (buffEntry.IsAlerting)
                 {
                     DrawBuffAlertOverlay(sprite, iconRect, buffEntry, currentTime);
@@ -1038,6 +1058,62 @@ namespace HaCreator.MapSimulator.UI {
 
                 DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
             }
+        }
+
+        private void DrawTemporaryStatViewShadow(
+            SpriteBatch sprite,
+            Rectangle iconRect,
+            StatusBarBuffRenderData buffEntry,
+            int currentTime)
+        {
+            if (buffEntry?.UseTemporaryStatViewArtworkOnly != true)
+            {
+                return;
+            }
+
+            if (!_temporaryStatViewShadowTextures.TryGetValue(
+                    Math.Clamp(buffEntry.ShadowIndex, 0, 15),
+                    out Texture2D shadowTexture)
+                || shadowTexture == null)
+            {
+                return;
+            }
+
+            byte alpha = ResolveTemporaryStatViewShadowAlphaForParity(
+                currentTime,
+                buffEntry.ShadowCanvasLastUpdatedTime,
+                buffEntry.ShadowCanvasInsertDelayMs,
+                buffEntry.ShadowCanvasAlphaStart,
+                buffEntry.ShadowCanvasAlphaEnd);
+            sprite.Draw(shadowTexture, iconRect, new Color((byte)255, (byte)255, (byte)255, alpha));
+        }
+
+        internal static byte ResolveTemporaryStatViewShadowAlphaForParity(
+            int currentTime,
+            int shadowCanvasLastUpdatedTime,
+            int insertDelayMs,
+            int alphaStart,
+            int alphaEnd)
+        {
+            int boundedStart = Math.Clamp(alphaStart, 0, 255);
+            int boundedEnd = Math.Clamp(alphaEnd, 0, 255);
+            int boundedDelay = Math.Max(0, insertDelayMs);
+            if (shadowCanvasLastUpdatedTime == int.MinValue || boundedDelay == 0)
+            {
+                return (byte)boundedEnd;
+            }
+
+            int elapsed = Math.Max(0, unchecked(currentTime - shadowCanvasLastUpdatedTime));
+            if (elapsed >= boundedDelay)
+            {
+                return (byte)boundedEnd;
+            }
+
+            float progress = elapsed / (float)boundedDelay;
+            return (byte)Math.Clamp(
+                (int)MathF.Round(boundedStart + ((boundedEnd - boundedStart) * progress)),
+                0,
+                255);
         }
 
         private void DrawBuffAlertOverlay(

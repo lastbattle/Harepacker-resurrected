@@ -921,6 +921,8 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 }
                 case QuestDetailCtEntryKind.RichText:
+                {
+                    bool preserveClientLineLayout = UsesClientCtVerbatimLineLayout(entry);
                     y = DrawRichTextClipped(
                         sprite,
                         entry.Text,
@@ -932,8 +934,10 @@ namespace HaCreator.MapSimulator.UI
                         ResolveCtEntryLane(entry),
                         entry.Bold,
                         NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                        ResolveCtEntryFontPixelSize(entry));
+                        ResolveCtEntryFontPixelSize(entry),
+                        preserveClientLineLayout);
                     break;
+                }
                 case QuestDetailCtEntryKind.Canvas:
                 {
                     Texture2D canvasTexture = ResolveCtEntryCanvasTexture(entry);
@@ -986,6 +990,8 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 }
                 case QuestDetailCtEntryKind.RichText:
+                {
+                    bool preserveClientLineLayout = UsesClientCtVerbatimLineLayout(entry);
                     y += AdvanceRichText(
                         entry.Text,
                         ResolveCtEntryWidth(entry),
@@ -993,8 +999,10 @@ namespace HaCreator.MapSimulator.UI
                         ResolveCtEntryLane(entry),
                         entry.Bold,
                         NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                        ResolveCtEntryFontPixelSize(entry));
+                        ResolveCtEntryFontPixelSize(entry),
+                        preserveClientLineLayout);
                     break;
+                }
                 case QuestDetailCtEntryKind.Canvas:
                 {
                     Texture2D canvasTexture = ResolveCtEntryCanvasTexture(entry);
@@ -1129,6 +1137,11 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static bool UsesClientCtVerbatimLineLayout(QuestDetailCtEntry entry)
+        {
+            return entry != null && (entry.RowIndex.HasValue || entry.RowHeight > 0);
+        }
+
         internal static IReadOnlyList<float> ResolveCtEntryRelativeYPositionsForTesting(IReadOnlyList<QuestDetailCtEntry> entries)
         {
             List<float> positions = new();
@@ -1172,6 +1185,11 @@ namespace HaCreator.MapSimulator.UI
             float cullTop = clipTop - ClientCtCullTopPadding;
             float cullBottom = clipTop + clipHeight + Math.Max(0, cullBottomPadding);
             return entryBottom >= cullTop && entryY < cullBottom;
+        }
+
+        internal static bool UsesClientCtVerbatimLineLayoutForTesting(QuestDetailCtEntry entry)
+        {
+            return UsesClientCtVerbatimLineLayout(entry);
         }
 
         private static float ResolveCtRowAdvanceForTesting(CtEntryRow row)
@@ -1670,7 +1688,8 @@ namespace HaCreator.MapSimulator.UI
             QuestDetailTextLane lane,
             bool forceEmphasis = false,
             string fontFamilyOverride = null,
-            float? fontPixelSizeOverride = null)
+            float? fontPixelSizeOverride = null,
+            bool preserveClientLineLayout = false)
         {
             return LayoutRichText(
                 text,
@@ -1722,7 +1741,8 @@ namespace HaCreator.MapSimulator.UI
                 color,
                 forceEmphasis,
                 fontFamilyOverride,
-                fontPixelSizeOverride);
+                fontPixelSizeOverride,
+                preserveClientLineLayout);
         }
 
         private static bool IsWithinClientCtCullBand(
@@ -1746,7 +1766,8 @@ namespace HaCreator.MapSimulator.UI
             QuestDetailTextLane lane,
             bool forceEmphasis = false,
             string fontFamilyOverride = null,
-            float? fontPixelSizeOverride = null)
+            float? fontPixelSizeOverride = null,
+            bool preserveClientLineLayout = false)
         {
             return LayoutRichText(
                 text,
@@ -1758,7 +1779,8 @@ namespace HaCreator.MapSimulator.UI
                 Color.White,
                 forceEmphasis,
                 fontFamilyOverride,
-                fontPixelSizeOverride);
+                fontPixelSizeOverride,
+                preserveClientLineLayout);
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth, float scale, QuestDetailTextLane lane = QuestDetailTextLane.Detail)
@@ -1809,7 +1831,8 @@ namespace HaCreator.MapSimulator.UI
             Color defaultColor,
             bool forceEmphasis = false,
             string fontFamilyOverride = null,
-            float? fontPixelSizeOverride = null)
+            float? fontPixelSizeOverride = null,
+            bool preserveClientLineLayout = false)
         {
             float baselineHeight = Math.Max(1f, GetLineHeight(scale, lane));
             float currentX = position.X;
@@ -1863,12 +1886,12 @@ namespace HaCreator.MapSimulator.UI
                 Vector2 measuredToken = MeasureRichTextToken(token, scale, currentStyle, lane);
                 if (token.Kind == RichTextTokenKind.Space)
                 {
-                    if (!lineHasContent)
+                    if (!preserveClientLineLayout && !lineHasContent)
                     {
                         continue;
                     }
 
-                    if ((currentX - lineStartX) + measuredToken.X > maxWidth)
+                    if (!preserveClientLineLayout && (currentX - lineStartX) + measuredToken.X > maxWidth)
                     {
                         currentY += lineHeight;
                         currentX = lineStartX;
@@ -1877,7 +1900,7 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
                 }
-                else if (lineHasContent && (currentX - lineStartX) + measuredToken.X > maxWidth)
+                else if (!preserveClientLineLayout && lineHasContent && (currentX - lineStartX) + measuredToken.X > maxWidth)
                 {
                     currentY += lineHeight;
                     currentX = lineStartX;
@@ -2454,7 +2477,8 @@ namespace HaCreator.MapSimulator.UI
                     entry.Source,
                     entry.Bold,
                     NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                    ResolveCtEntryFontPixelSize(entry));
+                    ResolveCtEntryFontPixelSize(entry),
+                    UsesClientCtVerbatimLineLayout(entry));
             }
 
             if (entry.Kind == QuestDetailCtEntryKind.ConditionLines)
@@ -2500,7 +2524,8 @@ namespace HaCreator.MapSimulator.UI
                     entry.Source,
                     entry.Bold,
                     NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                    ResolveCtEntryFontPixelSize(entry));
+                    ResolveCtEntryFontPixelSize(entry),
+                    UsesClientCtVerbatimLineLayout(entry));
             }
 
             if (entry.Kind == QuestDetailCtEntryKind.ConditionLines)
@@ -2532,7 +2557,8 @@ namespace HaCreator.MapSimulator.UI
             QuestDetailInlineReferenceSource source = QuestDetailInlineReferenceSource.Unknown,
             bool forceEmphasis = false,
             string fontFamilyOverride = null,
-            float? fontPixelSizeOverride = null)
+            float? fontPixelSizeOverride = null,
+            bool preserveClientLineLayout = false)
         {
             if (string.IsNullOrWhiteSpace(text) || !clipRect.Contains(mouseX, mouseY))
             {
@@ -2566,7 +2592,8 @@ namespace HaCreator.MapSimulator.UI
                 Color.White,
                 forceEmphasis,
                 fontFamilyOverride,
-                fontPixelSizeOverride);
+                fontPixelSizeOverride,
+                preserveClientLineLayout);
 
             return hoveredItem;
         }
@@ -2583,7 +2610,8 @@ namespace HaCreator.MapSimulator.UI
             QuestDetailInlineReferenceSource source = QuestDetailInlineReferenceSource.Unknown,
             bool forceEmphasis = false,
             string fontFamilyOverride = null,
-            float? fontPixelSizeOverride = null)
+            float? fontPixelSizeOverride = null,
+            bool preserveClientLineLayout = false)
         {
             if (string.IsNullOrWhiteSpace(text) || !clipRect.Contains(mouseX, mouseY))
             {
@@ -2629,7 +2657,8 @@ namespace HaCreator.MapSimulator.UI
                 Color.White,
                 forceEmphasis,
                 fontFamilyOverride,
-                fontPixelSizeOverride);
+                fontPixelSizeOverride,
+                preserveClientLineLayout);
 
             return hoveredReference;
         }

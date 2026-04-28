@@ -586,6 +586,11 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldMirrorMobAffectedAreaSkillBlock(int skillId, bool appliedStatus)
         {
+            return ShouldMirrorMobSkillBlockingStatus(skillId, appliedStatus);
+        }
+
+        internal static bool ShouldMirrorMobSkillBlockingStatus(int skillId, bool appliedStatus)
+        {
             return appliedStatus
                    && HaCreator.MapSimulator.Character.Skills.PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out _);
         }

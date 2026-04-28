@@ -296,7 +296,8 @@ namespace HaCreator.MapSimulator.Fields
             if (ownerCharacterId == 0
                 || townMapId <= 0
                 || !_remoteTownPortals.TryGetValue(ownerCharacterId, out RemoteTownPortalState state)
-                || state.MapId != townMapId)
+                || state.MapId != townMapId
+                || state.Phase == RemoteTownPortalVisualPhase.Removing)
             {
                 return;
             }
@@ -1010,7 +1011,9 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalState? existingState,
             int townMapId)
         {
-            if (!existingState.HasValue || existingState.Value.MapId != townMapId)
+            if (!existingState.HasValue
+                || existingState.Value.MapId != townMapId
+                || existingState.Value.Phase == RemoteTownPortalVisualPhase.Removing)
             {
                 return null;
             }
@@ -3666,6 +3669,25 @@ namespace HaCreator.MapSimulator.Fields
                     RemovalSnapshot: null)
                 : null;
             return ResolveRemoteTownPortalCreateState(packetState, existingState);
+        }
+
+        internal static bool HasActiveRemoteTownPortalStateForTownMapForTesting(
+            int existingStateMapId,
+            RemoteTownPortalVisualPhase existingPhase,
+            int townMapId)
+        {
+            RemoteTownPortalState existingState = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: existingStateMapId,
+                X: 0,
+                Y: 0,
+                Destination: new RemoteTownPortalResolvedDestination(101000000, 10, 20),
+                Phase: existingPhase,
+                PhaseStartedAt: 0,
+                RemovalState: null,
+                RemovalSnapshot: null);
+            return FilterRemoteTownPortalStateByTownMap(existingState, townMapId).HasValue;
         }
 
         internal static RemoteTownPortalVisualPhase ResolveRemoteTownPortalCreatePhaseForTesting(

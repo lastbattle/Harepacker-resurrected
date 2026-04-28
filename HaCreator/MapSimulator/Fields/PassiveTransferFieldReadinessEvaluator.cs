@@ -55,6 +55,10 @@ namespace HaCreator.MapSimulator.Fields
         bool IsAttractLocked,
         bool IsOnFoothold);
 
+    public readonly record struct PassiveTransferFieldHorizontalOnKeyDownDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldClearQueuedRetry);
+
     public static class PassiveTransferFieldReadinessEvaluator
     {
         public enum QueuedRetryDecision
@@ -174,6 +178,19 @@ namespace HaCreator.MapSimulator.Fields
             return hasPendingRequest && (leftKeyPressed || rightKeyPressed);
         }
 
+        public static PassiveTransferFieldHorizontalOnKeyDownDecision EvaluateHorizontalOnKeyDown(
+            bool hasPendingRequest,
+            bool leftKeyPressed,
+            bool rightKeyPressed)
+        {
+            return new PassiveTransferFieldHorizontalOnKeyDownDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed),
+                ShouldClearQueuedRetry: ShouldCancelQueuedRetryOnHorizontalKeyDown(
+                    hasPendingRequest,
+                    leftKeyPressed,
+                    rightKeyPressed));
+        }
+
         public static bool ShouldStopSkillMacroForHorizontalQueuedCancel(bool shouldCancelQueuedRetry)
         {
             return shouldCancelQueuedRetry;
@@ -208,6 +225,11 @@ namespace HaCreator.MapSimulator.Fields
         public static bool CanHandleFreshUpKeyDown(bool hasAttachedPacketOwnedDriver)
         {
             return !hasAttachedPacketOwnedDriver;
+        }
+
+        public static bool ShouldStopSkillMacroForFreshUpKeyDown(bool canHandleFreshUpKeyDown)
+        {
+            return canHandleFreshUpKeyDown;
         }
 
         public static bool CanQueuePassiveTransferFieldRequest(

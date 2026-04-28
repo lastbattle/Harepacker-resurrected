@@ -8,6 +8,8 @@ namespace HaCreator.MapSimulator.UI
         public int NpcTemplateId { get; init; }
         public int CommodityCount { get; init; }
         public bool AskItemWishlist { get; init; }
+        public bool HasAskItemWishlistByte { get; init; }
+        public bool IsRejectedByEmptyCatalog { get; init; }
         public int TrailingByteCount { get; init; }
         public string TrailingPayloadSignature { get; init; } = string.Empty;
         public IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> Rows { get; init; }
@@ -52,6 +54,23 @@ namespace HaCreator.MapSimulator.UI
                 offset += RowSize;
             }
 
+            if (itemCount == 0)
+            {
+                ReadOnlySpan<byte> rejectedTrailingPayload = payload.AsSpan(offset);
+                snapshot = new AdminShopPacketOwnedOpenPayloadSnapshot
+                {
+                    NpcTemplateId = Math.Max(0, npcTemplateId),
+                    CommodityCount = 0,
+                    AskItemWishlist = false,
+                    HasAskItemWishlistByte = false,
+                    IsRejectedByEmptyCatalog = true,
+                    TrailingByteCount = Math.Max(0, payload.Length - offset),
+                    TrailingPayloadSignature = BuildPayloadSignature(rejectedTrailingPayload),
+                    Rows = rows
+                };
+                return true;
+            }
+
             if (payload.Length - offset < sizeof(byte))
             {
                 return false;
@@ -65,6 +84,8 @@ namespace HaCreator.MapSimulator.UI
                 NpcTemplateId = Math.Max(0, npcTemplateId),
                 CommodityCount = Math.Max(0, itemCount),
                 AskItemWishlist = askItemWishlist,
+                HasAskItemWishlistByte = true,
+                IsRejectedByEmptyCatalog = false,
                 TrailingByteCount = Math.Max(0, payload.Length - offset),
                 TrailingPayloadSignature = BuildPayloadSignature(trailingPayload),
                 Rows = rows

@@ -6111,7 +6111,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return ancestorProperty;
                 }
 
-                foreach (string wrapperName in new[] { "client", "hidden", "sidecar", "skillEntry", "SKILLENTRY" })
+                foreach (string wrapperName in new[]
+                         {
+                             "client",
+                             "clientData",
+                             "clientOwned",
+                             "hidden",
+                             "sidecar",
+                             "skillEntry",
+                             "SKILLENTRY",
+                             "skillInfo",
+                             "CSkillInfo"
+                         })
                 {
                     WzImageProperty wrapperNode = ancestorProperty[wrapperName];
                     if (TryAddClientSummonedUolCandidateNode(yieldedNodePaths, wrapperNode))
@@ -6319,6 +6330,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield return mountedSkillEntry;
             }
 
+            WzImageProperty mountedSkillEntryWithoutImageSuffix = tableNode["Skill"]?[jobIdText]?["skill"]?[skillIdText];
+            if (mountedSkillEntryWithoutImageSuffix != null)
+            {
+                yield return mountedSkillEntryWithoutImageSuffix;
+            }
+
+            WzImageProperty imageGroupedEntry = tableNode[imageName]?[skillIdText];
+            if (imageGroupedEntry != null)
+            {
+                yield return imageGroupedEntry;
+            }
+
+            WzImageProperty mountedImageGroupedEntry = tableNode["Skill"]?[imageName]?[skillIdText];
+            if (mountedImageGroupedEntry != null)
+            {
+                yield return mountedImageGroupedEntry;
+            }
+
+            foreach (WzImageProperty tokenNamedEntry in EnumerateClientSummonedUolTableSkillTokenNamedEntries(
+                         tableNode,
+                         skillId))
+            {
+                yield return tokenNamedEntry;
+            }
+
             foreach (WzImageProperty ownerMatchedEntry in EnumerateClientSummonedUolTableOwnerFieldEntryNodes(
                          tableNode,
                          skillId,
@@ -6365,6 +6401,61 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolTableSkillTokenNamedEntries(
+            WzImageProperty tableNode,
+            int skillId)
+        {
+            if (tableNode?.WzProperties == null || skillId <= 0)
+            {
+                yield break;
+            }
+
+            string skillIdText = skillId.ToString(CultureInfo.InvariantCulture);
+            foreach (WzImageProperty child in tableNode.WzProperties)
+            {
+                if (child == null
+                    || string.IsNullOrWhiteSpace(child.Name)
+                    || child.Name.Equals(skillIdText, StringComparison.OrdinalIgnoreCase)
+                    || !ContainsClientSummonedUolTableSkillIdToken(child.Name, skillIdText))
+                {
+                    continue;
+                }
+
+                yield return child;
+            }
+        }
+
+        private static bool ContainsClientSummonedUolTableSkillIdToken(string name, string skillIdText)
+        {
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(skillIdText))
+            {
+                return false;
+            }
+
+            int searchIndex = 0;
+            while (searchIndex < name.Length)
+            {
+                int matchIndex = name.IndexOf(skillIdText, searchIndex, StringComparison.OrdinalIgnoreCase);
+                if (matchIndex < 0)
+                {
+                    return false;
+                }
+
+                int beforeIndex = matchIndex - 1;
+                int afterIndex = matchIndex + skillIdText.Length;
+                bool separatedBefore = beforeIndex < 0 || !char.IsDigit(name[beforeIndex]);
+                bool separatedAfter = afterIndex >= name.Length || !char.IsDigit(name[afterIndex]);
+                if (separatedBefore && separatedAfter)
+                {
+                    return true;
+                }
+
+                searchIndex = matchIndex + skillIdText.Length;
+            }
+
+            return false;
+        }
+
         private static bool TryReadClientSummonedUolTableOwnerSkillId(WzImageProperty rowNode, out int skillId)
         {
             skillId = 0;
@@ -6403,6 +6494,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
             return normalizedName.Equals("skillid", StringComparison.Ordinal)
                    || normalizedName.Equals("nskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("skill", StringComparison.Ordinal)
+                   || normalizedName.Equals("nskill", StringComparison.Ordinal)
+                   || normalizedName.Equals("id", StringComparison.Ordinal)
+                   || normalizedName.Equals("key", StringComparison.Ordinal)
+                   || normalizedName.Equals("owner", StringComparison.Ordinal)
                    || normalizedName.Equals("summonskillid", StringComparison.Ordinal)
                    || normalizedName.Equals("ownerskillid", StringComparison.Ordinal);
         }
@@ -7513,7 +7609,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string normalizedSegmentPath = NormalizeClientSummonedUolPathSegments(parts);
-            if (!string.IsNullOrWhiteSpace(normalizedSegmentPath))
+            if (!string.IsNullOrWhiteSpace(normalizedSegmentPath)
+                && TryParseClientSummonedUolRootSkillId(normalizedSegmentPath, out _))
             {
                 return normalizedSegmentPath;
             }
@@ -8428,6 +8525,35 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         private static IEnumerable<string> EnumerateClientSummonedUolPathTokensFromValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            var yieldedTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string token in EnumerateClientSummonedUolPathTokensFromDecodedValue(value))
+            {
+                if (!string.IsNullOrWhiteSpace(token) && yieldedTokens.Add(token))
+                {
+                    yield return token;
+                }
+            }
+
+            string decodedValue = NormalizeClientSummonedUolEncodedPathSyntax(value);
+            if (!string.Equals(decodedValue, value, StringComparison.Ordinal))
+            {
+                foreach (string token in EnumerateClientSummonedUolPathTokensFromDecodedValue(decodedValue))
+                {
+                    if (!string.IsNullOrWhiteSpace(token) && yieldedTokens.Add(token))
+                    {
+                        yield return token;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolPathTokensFromDecodedValue(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
             {

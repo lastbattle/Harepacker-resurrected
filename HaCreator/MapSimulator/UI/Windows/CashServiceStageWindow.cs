@@ -1176,14 +1176,14 @@ namespace HaCreator.MapSimulator.UI
                 100 => TryApplyCashBuyDone(packetPayload, out string buyDoneMessage)
                     ? buyDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyDone", packetPayload),
-                101 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyFailed"),
+                101 => BuildCashStockAwareFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyFailed"),
                 102 => TryApplyCashCouponDone(packetPayload, isGiftCoupon: false, out string couponDoneMessage)
                     ? couponDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResUseCouponDone", packetPayload),
                 104 => TryApplyCashCouponDone(packetPayload, isGiftCoupon: true, out string giftCouponDoneMessage)
                     ? giftCouponDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftCouponDone", packetPayload),
-                105 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResUseCouponFailed"),
+                105 => BuildCashCouponFailureMessage(packetPayload, "CCashShop::OnCashItemResUseCouponFailed"),
                 107 => TryApplyCashGiftDone(packetPayload, out string giftDoneMessage)
                     ? giftDoneMessage
                     : _cashReceiveGiftPendingAcceptEntry != null
@@ -1195,15 +1195,15 @@ namespace HaCreator.MapSimulator.UI
                 -102 => TryApplyCashBuyPackageDone(packetPayload, out string buyPackageDoneMessage)
                     ? buyPackageDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyPackageDone", packetPayload),
-                -101 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyPackageFailed"),
+                -101 => BuildCashStockAwareFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyPackageFailed"),
                 -100 => TryApplyCashGiftPackageDone(packetPayload, out string giftPackageDoneMessage)
                     ? giftPackageDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftPackageDone", packetPayload),
-                -99 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResGiftPackageFailed"),
+                -99 => BuildCashStockAwareFailureMessage(packetPayload, "CCashShop::OnCashItemResGiftPackageFailed"),
                 -98 => TryApplyCashBuyNormalDone(packetPayload, out string buyNormalDoneMessage)
                     ? buyNormalDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyNormalDone", packetPayload),
-                -97 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyNormalFailed"),
+                -97 => BuildCashStockAwareFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyNormalFailed"),
                 -81 => TryApplyCashPurchaseRecord(packetPayload, out string purchaseRecordMessage)
                     ? purchaseRecordMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResPurchaseRecord", packetPayload),
@@ -1218,11 +1218,11 @@ namespace HaCreator.MapSimulator.UI
                 -73 => TryApplyCashGachaponDone(packetPayload, isCopyResult: false, out string gachaponOpenDoneMessage)
                     ? gachaponOpenDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResCashGachaponOpenDone", packetPayload),
-                -72 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResCashGachaponOpenFailed"),
+                -72 => BuildCashTransferAwareFailureMessage(packetPayload, "CCashShop::OnCashItemResCashGachaponOpenFailed"),
                 -71 => TryApplyCashGachaponDone(packetPayload, isCopyResult: true, out string gachaponCopyDoneMessage)
                     ? gachaponCopyDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResCashGachaponCopyDone", packetPayload),
-                -70 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResCashGachaponCopyFailed"),
+                -70 => BuildCashTransferAwareFailureMessage(packetPayload, "CCashShop::OnCashItemResCashGachaponCopyFailed", transferFieldOnReasonZeroOneTwo: false),
                 -69 => TryApplyCashMaplePointChangeDone(packetPayload, out string maplePointChangeDoneMessage)
                     ? maplePointChangeDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResChangeMaplePointDone", packetPayload),
@@ -2814,6 +2814,138 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return failureMessage;
+        }
+
+        private string BuildCashTransferAwareFailureMessage(
+            byte[] payload,
+            string ownerName,
+            bool transferFieldOnReasonZeroOneTwo = true)
+        {
+            string failureMessage = BuildCashItemFailureMessage(payload, ownerName);
+            int reason = payload?.Length >= 2 ? payload[1] : -1;
+            if (transferFieldOnReasonZeroOneTwo && reason is 0 or 1 or 2)
+            {
+                failureMessage += " Client transfer-field exit was requested after the failure notice.";
+                _noticeState = failureMessage;
+                AppendCashPacketCatalogEntry("Packet failures", "Fail", new PacketCatalogEntry
+                {
+                    Title = $"{ownerName} transfer-field exit",
+                    Detail = failureMessage,
+                    Seller = "CCashShop",
+                    PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                    StateLabel = "Transfer field",
+                    PacketSource = ownerName,
+                    PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: true),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
+                });
+            }
+
+            return failureMessage;
+        }
+
+        private string BuildCashStockAwareFailureMessage(byte[] payload, string ownerName)
+        {
+            string failureMessage = BuildCashTransferAwareFailureMessage(payload, ownerName);
+            int reason = payload?.Length >= 2 ? payload[1] : -1;
+            int commoditySerialNumber = 0;
+            if (reason is 29 or 30 && payload?.Length >= 2 + sizeof(int))
+            {
+                commoditySerialNumber = Math.Max(0, BitConverter.ToInt32(payload, 2));
+                string stockSummary =
+                    $"Client stock/limit owner consumed commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} for failure reason {reason.ToString(CultureInfo.InvariantCulture)} and refreshed CCSWnd_List page ownership.";
+                failureMessage += $" {stockSummary}";
+                _noticeState = failureMessage;
+                ApplyCashStockFailureStateToCatalogEntries(commoditySerialNumber, reason);
+                AppendCashPacketCatalogEntry("Packet limit-goods", "Limit", new PacketCatalogEntry
+                {
+                    Title = commoditySerialNumber > 0
+                        ? $"Limit goods {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                        : "Limit goods",
+                    Detail = stockSummary,
+                    Seller = "CCSWnd_List",
+                    PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                    StateLabel = reason == 29 ? "Stock update" : "Limit update",
+                    ListingId = commoditySerialNumber,
+                    CommodityId = commoditySerialNumber,
+                    PacketSource = ownerName,
+                    PacketFieldSummary = $"Failure reason={reason.ToString(CultureInfo.InvariantCulture)}, nCommoditySN={commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}",
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
+                });
+            }
+
+            return failureMessage;
+        }
+
+        private string BuildCashCouponFailureMessage(byte[] payload, string ownerName)
+        {
+            string failureMessage = BuildCashTransferAwareFailureMessage(
+                payload,
+                ownerName,
+                transferFieldOnReasonZeroOneTwo: payload?.Length >= 2 && payload[1] is 0 or 2);
+            int reason = payload?.Length >= 2 ? payload[1] : -1;
+            if (reason == 15)
+            {
+                failureMessage += " Client status owner exits the coupon flow after the dedicated reason-15 notice.";
+                _cashCouponLastSummary = failureMessage;
+                _noticeState = failureMessage;
+                AppendCashPacketCatalogEntry("Packet coupons", "Coupon", new PacketCatalogEntry
+                {
+                    Title = "Coupon status exit",
+                    Detail = failureMessage,
+                    Seller = "CCSWnd_Status",
+                    PriceLabel = "Reason 15",
+                    StateLabel = "Status exit",
+                    PacketSource = ownerName,
+                    PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: true),
+                    PacketRawByteLength = payload?.Length ?? 0,
+                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
+                });
+            }
+
+            return failureMessage;
+        }
+
+        private void ApplyCashStockFailureStateToCatalogEntries(int commoditySerialNumber, int reason)
+        {
+            if (commoditySerialNumber <= 0)
+            {
+                return;
+            }
+
+            ApplyCashStockFailureStateToCatalogEntries(_cashPacketCatalogEntries, commoditySerialNumber, reason);
+            ApplyCashStockFailureStateToCatalogEntries(_cashLockerPacketEntries, commoditySerialNumber, reason);
+            ApplyCashStockFailureStateToCatalogEntries(_cashInventoryPacketEntries, commoditySerialNumber, reason);
+        }
+
+        private static void ApplyCashStockFailureStateToCatalogEntries(
+            IEnumerable<PacketCatalogEntry> entries,
+            int commoditySerialNumber,
+            int reason)
+        {
+            if (entries == null || commoditySerialNumber <= 0)
+            {
+                return;
+            }
+
+            foreach (PacketCatalogEntry entry in entries)
+            {
+                if (entry == null
+                    || (entry.ListingId != commoditySerialNumber && entry.CommodityId != commoditySerialNumber))
+                {
+                    continue;
+                }
+
+                entry.StateLabel = reason == 29
+                    ? "Stock failure"
+                    : "Limit failure";
+                string updateSummary =
+                    $"Stock/limit failure reason {reason.ToString(CultureInfo.InvariantCulture)} was applied to commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.";
+                entry.Detail = string.IsNullOrWhiteSpace(entry.Detail)
+                    ? updateSummary
+                    : $"{entry.Detail} {updateSummary}";
+            }
         }
 
         private void AppendCashDecodeFailurePacketEntry(string subtypeLabel, byte[] payload, string summary)

@@ -431,6 +431,54 @@ namespace HaCreator.MapSimulator.Entities
             return Array.Empty<Rectangle>();
         }
 
+        public IReadOnlyList<Rectangle> GetClientMultiBodyHitboxes(int tickCount)
+        {
+            if (AI?.IsDoomed == true)
+            {
+                return Array.Empty<Rectangle>();
+            }
+
+            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
+            IReadOnlyList<Rectangle> localBounds = frameMetadata?.ClientMultiBodyBounds;
+            if (localBounds == null || localBounds.Count == 0)
+            {
+                return Array.Empty<Rectangle>();
+            }
+
+            Rectangle[] worldBounds = new Rectangle[localBounds.Count];
+            for (int i = 0; i < localBounds.Count; i++)
+            {
+                worldBounds[i] = TranslateMobBodyBoundsToWorld(localBounds[i]);
+            }
+
+            return worldBounds;
+        }
+
+        public Rectangle GetClientBodyHitbox(int tickCount)
+        {
+            if (AI?.IsDoomed == true)
+            {
+                return new Rectangle(
+                    CurrentX + DoomBodyOffsetLeft,
+                    CurrentY + DoomBodyOffsetTop,
+                    DoomBodyWidth,
+                    DoomBodyHeight);
+            }
+
+            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
+            if (frameMetadata == null)
+            {
+                return GetBodyHitbox(tickCount);
+            }
+
+            Rectangle bodyBounds = frameMetadata.BodyBounds.IsEmpty
+                ? frameMetadata.EffectiveBodyBounds
+                : frameMetadata.BodyBounds;
+            return bodyBounds.IsEmpty
+                ? Rectangle.Empty
+                : TranslateMobBodyBoundsToWorld(bodyBounds);
+        }
+
         /// <summary>
         /// Gets the mob's current body bounds in world space using the current system tick.
         /// </summary>

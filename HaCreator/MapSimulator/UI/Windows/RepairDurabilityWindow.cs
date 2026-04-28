@@ -1069,7 +1069,7 @@ namespace HaCreator.MapSimulator.UI
                 fallbackLabel,
                 valueText,
                 valueColor,
-                BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: true)));
+                BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: false)));
         }
 
         private void AppendRequirementRow(List<TooltipInfoRow> rows, string labelKey, string fallbackLabel, int requiredValue, int actualValue)

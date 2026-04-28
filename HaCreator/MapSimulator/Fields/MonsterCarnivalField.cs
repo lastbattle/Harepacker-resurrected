@@ -2240,7 +2240,10 @@ namespace HaCreator.MapSimulator.Fields
                     case MonsterCarnivalPacketType.Enter:
                         if (_definition?.IsReviveMode == true)
                         {
-                            OnReviveEnter((MonsterCarnivalTeam)reader.ReadByte(), currentTimeMs);
+                            reader.ReadByte();
+                            EnsurePacketConsumed(stream, "revive-forwarded-enter");
+                            RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
+                            return true;
                         }
                         else
                         {
@@ -2286,8 +2289,16 @@ namespace HaCreator.MapSimulator.Fields
                         return true;
 
                     case MonsterCarnivalPacketType.GameResult:
-                        OnShowGameResult(reader.ReadByte(), currentTimeMs);
-                        EnsurePacketConsumed(stream, "game-result");
+                        if (_definition?.IsReviveMode == true)
+                        {
+                            reader.ReadByte();
+                            EnsurePacketConsumed(stream, "revive-forwarded-game-result");
+                        }
+                        else
+                        {
+                            OnShowGameResult(reader.ReadByte(), currentTimeMs);
+                            EnsurePacketConsumed(stream, "game-result");
+                        }
                         RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         return true;
 
@@ -3432,15 +3443,15 @@ namespace HaCreator.MapSimulator.Fields
             out PendingLocalRequestToken consumedToken)
         {
             consumedToken = default;
+            if (!isLocalRequestOwner)
+            {
+                return false;
+            }
+
             if (TryConsumePendingLocalRequest(tab, entryIndex))
             {
                 consumedToken = new PendingLocalRequestToken(tab, entryIndex);
                 return true;
-            }
-
-            if (!isLocalRequestOwner)
-            {
-                return false;
             }
 
             return TryConsumeNextPendingLocalRequest(out consumedToken);

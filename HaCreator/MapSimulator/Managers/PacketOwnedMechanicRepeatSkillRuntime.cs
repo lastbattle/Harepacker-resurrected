@@ -1875,6 +1875,15 @@ namespace HaCreator.MapSimulator.Managers
                 case "moveactionlowbit":
                 case "rawmoveactionbyte":
                 case "rawmovebyte":
+                case "moveactionmismatch":
+                case "moveactiondiff":
+                case "moveactionparity":
+                case "rawmoveactionmismatch":
+                case "rawmoveactiondiff":
+                case "rawmoveactionparity":
+                case "moveactionbytemismatch":
+                case "moveactionbyteparity":
+                case "moveactionbytediff":
                     byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
                     return true;
                 case "vecctrl":
@@ -1890,6 +1899,30 @@ namespace HaCreator.MapSimulator.Managers
                 case "vecowner":
                 case "vecctrlflag":
                 case "vecctrlownerbyte":
+                case "vecctrlmismatch":
+                case "vecctrldiff":
+                case "vecctrlparity":
+                case "vecctrlbytemismatch":
+                case "vecctrlbyteparity":
+                case "vecctrlbytediff":
+                case "vecctrlownermismatch":
+                case "vecctrlownerdiff":
+                case "vecctrlownerparity":
+                case "vectorcontrolmismatch":
+                case "vectorcontroldiff":
+                case "vectorcontrolparity":
+                case "vectorcontrolbytemismatch":
+                case "vectorcontrolbyteparity":
+                case "vectorcontrolbytediff":
+                case "vectorcontrolownermismatch":
+                case "vectorcontrolownerdiff":
+                case "vectorcontrolownerparity":
+                case "vecmismatch":
+                case "vecdiff":
+                case "vecparity":
+                case "vecownermismatch":
+                case "vecownerdiff":
+                case "vecownerparity":
                     byteIndices = new[] { Sg88FirstUseVecCtrlByteIndex };
                     return true;
                 default:

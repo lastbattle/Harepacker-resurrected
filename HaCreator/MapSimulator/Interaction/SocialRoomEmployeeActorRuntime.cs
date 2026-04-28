@@ -1527,8 +1527,21 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static Texture2D[] LoadDigitTextures(WzSubProperty source, GraphicsDevice device)
         {
-            Texture2D[] digits = new Texture2D[5];
-            for (int i = 1; i <= 4; i++)
+            int maxDigit = 0;
+            if (source != null)
+            {
+                foreach (WzImageProperty child in source.WzProperties)
+                {
+                    if (int.TryParse(child?.Name, NumberStyles.None, CultureInfo.InvariantCulture, out int digit)
+                        && digit > maxDigit)
+                    {
+                        maxDigit = digit;
+                    }
+                }
+            }
+
+            Texture2D[] digits = new Texture2D[Math.Max(1, maxDigit + 1)];
+            for (int i = 1; i < digits.Length; i++)
             {
                 digits[i] = LoadUiCanvasTexture(source?[i.ToString()] as WzCanvasProperty, device);
             }
@@ -1987,17 +2000,33 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            int normalizedValue = Math.Clamp((int)value, 0, 4);
-            if (normalizedValue <= 0 || normalizedValue >= digits.Count)
+            int digitIndex = ResolveMiniRoomBalloonDigitIndex(value, digits.Count);
+            if (digitIndex < 0)
             {
                 return;
             }
 
-            Texture2D digitTexture = digits[normalizedValue];
+            Texture2D digitTexture = digits[digitIndex];
             if (digitTexture != null)
             {
                 spriteBatch.Draw(digitTexture, new Vector2(x, y), Color.White);
             }
+        }
+
+        internal static int ResolveMiniRoomBalloonDigitIndexForTesting(byte value, int digitArrayLength)
+        {
+            return ResolveMiniRoomBalloonDigitIndex(value, digitArrayLength);
+        }
+
+        private static int ResolveMiniRoomBalloonDigitIndex(byte value, int digitArrayLength)
+        {
+            int digit = value;
+            if (digit <= 0 || digitArrayLength <= digit)
+            {
+                return -1;
+            }
+
+            return digit;
         }
 
         private void DrawMiniRoomBalloonText(

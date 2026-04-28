@@ -1189,6 +1189,10 @@ namespace HaCreator.MapSimulator
                 {
                     BindPacketOwnedHotkeyAction(input, slot.Action, key);
                     RecordPacketOwnedBindableHotkeyAssignment(slot, scanCode);
+                    _playerManager.Skills.TrySetPacketOwnedLiveHotkeyOwnerRoute(
+                        slot.SlotIndex,
+                        ownerSlotIndex,
+                        ComposePacketOwnedFuncKeyInputToken(scanCode));
                     translated++;
                     bindableSlotIndex = slot.SlotIndex;
                 }

@@ -50,6 +50,11 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 int candidatePriorityTier = ResolvePriorityTier(sourceTeam, candidate.MobInstance?.Team, candidate.UsesMobCombatLane);
+                if (candidatePriorityTier == SpecialMobInteractionRules.InvalidEncounterTargetPriority)
+                {
+                    continue;
+                }
+
                 if (!ShouldPreferCandidate(
                     currentTargetId,
                     bestTarget?.PoolId ?? 0,
@@ -116,17 +121,18 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolvePriorityTier(int? sourceTeam, int? candidateTeam, bool usesEncounterTarget)
         {
-            if (sourceTeam.HasValue && candidateTeam.HasValue && sourceTeam.Value == candidateTeam.Value)
+            int teamPriority = SpecialMobInteractionRules.ResolveEncounterTargetPriority(sourceTeam, candidateTeam);
+            if (teamPriority == SpecialMobInteractionRules.InvalidEncounterTargetPriority)
+            {
+                return SpecialMobInteractionRules.InvalidEncounterTargetPriority;
+            }
+
+            if (teamPriority == 0)
             {
                 return usesEncounterTarget ? 0 : 1;
             }
 
-            if (sourceTeam.HasValue)
-            {
-                return usesEncounterTarget ? 2 : 3;
-            }
-
-            return usesEncounterTarget ? 0 : 1;
+            return usesEncounterTarget ? 2 : 3;
         }
 
         internal static bool ShouldPreferCandidate(

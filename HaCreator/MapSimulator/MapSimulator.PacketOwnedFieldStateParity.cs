@@ -126,13 +126,33 @@ namespace HaCreator.MapSimulator
                 if (selected)
                 {
                     mapObject.RestartAnimation(currentTick);
-                    StampPacketOwnedNamedObjectDebugText(mapObject, stateIndex);
+                    ApplyPacketOwnedNamedObjectSelectedStateLifecycle(mapObject, stateIndex);
                 }
 
                 applied = true;
             }
 
             return applied;
+        }
+
+        private void ApplyPacketOwnedNamedObjectSelectedStateLifecycle(BaseDXDrawableItem mapObject, int stateIndex)
+        {
+            if (mapObject == null ||
+                !_packetStageTransitionNamedObjectMetadata.TryGetValue(mapObject, out PacketOwnedNamedObjectStateMetadata metadata))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(metadata.StateSfx))
+            {
+                _ = TryPlayPacketOwnedWzSound(
+                    metadata.StateSfx,
+                    defaultImageName: "Field.img",
+                    out _,
+                    out _);
+            }
+
+            StampPacketOwnedNamedObjectDebugText(mapObject, stateIndex);
         }
 
         private void StampPacketOwnedNamedObjectDebugText(BaseDXDrawableItem mapObject, int stateIndex)
@@ -144,7 +164,7 @@ namespace HaCreator.MapSimulator
             }
 
             mapObject.DebugText =
-                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}";
+                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.LifecycleDebugSuffix}";
         }
 
         private int? TryGetPacketOwnedNamedObjectStateIndex(string objectName)
@@ -195,9 +215,29 @@ namespace HaCreator.MapSimulator
             int Y,
             int Z,
             int PlatformNumber,
-            bool Flow)
+            bool Flow,
+            string StateSfx)
         {
             public string ObjectPath => $"Map/Obj/{ObjectSet}.img/{Layer0}/{Layer1}/{Layer2}";
+
+            public string LifecycleDebugSuffix
+            {
+                get
+                {
+                    List<string> parts = new();
+                    if (!string.IsNullOrWhiteSpace(StateSfx))
+                    {
+                        parts.Add($"sfx={StateSfx}");
+                    }
+
+                    if (Flow)
+                    {
+                        parts.Add("restartMoving");
+                    }
+
+                    return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
+                }
+            }
         }
 
         private bool TryApplyClientOwnedSessionValuePacket(byte[] payload, int currentTick, out string message)

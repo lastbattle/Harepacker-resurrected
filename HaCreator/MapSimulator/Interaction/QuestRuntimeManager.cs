@@ -1362,7 +1362,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool HasUnresolvedCompletionPvpGradeDemand(int? requiredPvpGrade)
         {
-            return requiredPvpGrade.HasValue && requiredPvpGrade.Value >= 0;
+            // CQuestMan::CheckCompleteDemand in the v95 client does not gate
+            // completion on the WZ-authored completion pvpGrade rows. Keep the
+            // parsed metadata available for conversation branch selection, but
+            // do not let it hold packet-owned auto-completion alert ownership.
+            return false;
         }
 
         internal static bool HasUnresolvedCompletionBuildContextDemand(

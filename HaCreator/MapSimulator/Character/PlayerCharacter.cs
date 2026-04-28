@@ -75,11 +75,12 @@ namespace HaCreator.MapSimulator.Character
         int ExpireTime,
         bool ByItemOption)
     {
-        public bool HasFiniteDuration => DurationMs > 0 && ExpireTime > AppliedAt;
+        public bool HasFiniteDuration => DurationMs > 0 && ExpireTime != 0;
 
         public bool IsExpired(int currentTime)
         {
-            return ExpireTime > 0 && currentTime >= ExpireTime;
+            return ExpireTime != 0
+                   && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, ExpireTime);
         }
     }
 
@@ -10021,7 +10022,8 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (_packetOwnedEmotionEndTime > 0 && currentTime >= _packetOwnedEmotionEndTime)
+            if (_packetOwnedEmotionEndTime != 0
+                && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, _packetOwnedEmotionEndTime))
             {
                 // CAvatar::PrepareFaceLayer also gates Etc/EmotionEffect overlays on the resolved emotion lifetime.
                 ResetPacketOwnedEmotionState(clearVisualEffect: true);

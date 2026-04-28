@@ -2335,11 +2335,26 @@ namespace HaCreator.MapSimulator.Entities
                 return 0;
             }
 
-            int totalDuration = 0;
-            foreach (WzImageProperty frameProperty in hitProperty.WzProperties.Where(child => int.TryParse(child?.Name, out _)))
+            return TryReadContiguousFrameSequenceDuration(hitProperty);
+        }
+
+        private static int TryReadContiguousFrameSequenceDuration(WzSubProperty frameSequenceProperty)
+        {
+            if (frameSequenceProperty.WzProperties.Count == 1)
             {
-                WzImageProperty resolvedFrameProperty = WzInfoTools.GetRealProperty(frameProperty);
-                if (resolvedFrameProperty is WzCanvasProperty frameCanvas)
+                return TryReadHitDuration(WzInfoTools.GetRealProperty(frameSequenceProperty.WzProperties[0]));
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; ; i++)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(frameSequenceProperty[i.ToString()]);
+                if (frameProperty == null)
+                {
+                    break;
+                }
+
+                if (frameProperty is WzCanvasProperty frameCanvas)
                 {
                     totalDuration += Math.Max(
                         1,
@@ -2348,21 +2363,13 @@ namespace HaCreator.MapSimulator.Entities
                     continue;
                 }
 
-                if (resolvedFrameProperty is WzSubProperty)
+                if (frameProperty is WzSubProperty nestedFrameSequence)
                 {
-                    totalDuration += TryReadHitDuration(resolvedFrameProperty);
+                    totalDuration += TryReadContiguousFrameSequenceDuration(nestedFrameSequence);
                 }
             }
 
-            if (totalDuration > 0)
-            {
-                return totalDuration;
-            }
-
-            WzImageProperty nestedDefaultFrames = WzInfoTools.GetRealProperty(hitProperty["0"]);
-            return !ReferenceEquals(nestedDefaultFrames, hitProperty)
-                ? TryReadHitDuration(nestedDefaultFrames)
-                : 0;
+            return totalDuration;
         }
 
         private static int LoadTemplateLayerMode(ReactorInstance reactorInstance)

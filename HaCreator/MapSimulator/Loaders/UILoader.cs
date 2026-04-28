@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly ConcurrentDictionary<string, Texture2D[]> _skillTooltipTextureCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, Texture2D[]> _statusBarCooldownMaskCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, Texture2D> _statusBarTemporaryStatViewCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, Dictionary<int, Texture2D>> _statusBarTemporaryStatViewShadowCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, Dictionary<string, StatusBarKeyDownBarTextures>> _keyDownBarTextureCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, StatusBarWarningAnimation> _warningAnimationCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, (Dictionary<MapSimulatorChatTargetType, Texture2D> Textures, Dictionary<MapSimulatorChatTargetType, Point> Origins)> _chatTargetTextureCache = new(StringComparer.Ordinal);
@@ -491,6 +492,7 @@ namespace HaCreator.MapSimulator.Loaders
                     }
                     statusBar.SetCooldownMasks(LoadStatusBarCooldownMasks(device, isBigBang: true));
                     statusBar.SetTemporaryStatViewTexture(LoadStatusBarTemporaryStatViewTexture(device, isBigBang: true));
+                    statusBar.SetTemporaryStatViewShadowTextures(LoadStatusBarTemporaryStatViewShadowTextures(device, isBigBang: true));
                     statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
                     statusBar.SetTooltipOrigins(LoadSkillTooltipOrigins());
                     statusBar.SetWarningAnimations(
@@ -932,6 +934,7 @@ namespace HaCreator.MapSimulator.Loaders
                     }
                     statusBar.SetCooldownMasks(LoadStatusBarCooldownMasks(device, isBigBang: false));
                     statusBar.SetTemporaryStatViewTexture(LoadStatusBarTemporaryStatViewTexture(device, isBigBang: false));
+                    statusBar.SetTemporaryStatViewShadowTextures(LoadStatusBarTemporaryStatViewShadowTextures(device, isBigBang: false));
                     statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
                     statusBar.SetTooltipOrigins(LoadSkillTooltipOrigins());
                     statusBar.SetWarningAnimations(
@@ -1277,6 +1280,38 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D texture = LoadCanvasTexture(uiWindowImage?["TemporaryStatView"]?["1"] as WzCanvasProperty, device);
             _statusBarTemporaryStatViewCache[cacheKey] = texture;
             return texture;
+        }
+
+        private static Dictionary<int, Texture2D> LoadStatusBarTemporaryStatViewShadowTextures(GraphicsDevice device, bool isBigBang)
+        {
+            if (device == null)
+            {
+                return new Dictionary<int, Texture2D>();
+            }
+
+            string cacheKey = $"{GetDeviceCachePrefix(device)}|statusbarTemporaryStatShadow|bb:{isBigBang}";
+            if (_statusBarTemporaryStatViewShadowCache.TryGetValue(cacheKey, out Dictionary<int, Texture2D> cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            var textures = new Dictionary<int, Texture2D>();
+            WzImage uiWindowImage = Program.FindImage("UI", isBigBang ? "UIWindow2.img" : "UIWindow.img");
+            WzSubProperty temporaryStatView = uiWindowImage?["TemporaryStatView"] as WzSubProperty;
+            if (temporaryStatView != null)
+            {
+                for (int i = 0; i <= 15; i++)
+                {
+                    Texture2D texture = LoadCanvasTexture(temporaryStatView[i.ToString()] as WzCanvasProperty, device);
+                    if (texture != null)
+                    {
+                        textures[i] = texture;
+                    }
+                }
+            }
+
+            _statusBarTemporaryStatViewShadowCache[cacheKey] = textures;
+            return textures;
         }
 
         private static WzCanvasProperty ResolveBigBangStatusBarBackgroundCanvas(WzSubProperty mainBarProperties, RenderParameters renderParams)

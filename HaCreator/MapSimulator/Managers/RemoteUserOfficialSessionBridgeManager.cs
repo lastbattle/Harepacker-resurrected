@@ -1658,7 +1658,8 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (!TryDecodeInboundRemoteUserPacket(e.RawPacket, $"{OfficialSessionSourcePrefix}unknown:{e.SourceEndpoint}", out RemoteUserOfficialSessionBridgeMessage message))
+            string evidenceSource = BuildOfficialSessionEvidenceSource(e);
+            if (!TryDecodeInboundRemoteUserPacket(e.RawPacket, evidenceSource, out RemoteUserOfficialSessionBridgeMessage message))
             {
                 LastStatus = _roleSessionProxy.LastStatus;
                 return;
@@ -1666,7 +1667,7 @@ namespace HaCreator.MapSimulator.Managers
 
             _pendingMessages.Enqueue(message);
             ReceivedCount++;
-            LastStatus = $"Queued {RemoteUserPacketInboxManager.DescribePacketType(message.PacketType)} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {e.SourceEndpoint}.";
+            LastStatus = $"Queued {RemoteUserPacketInboxManager.DescribePacketType(message.PacketType)} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {e.SourceEndpoint} ({ResolveOfficialSessionBuildTag(evidenceSource)} evidence).";
         }
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
@@ -1694,6 +1695,22 @@ namespace HaCreator.MapSimulator.Managers
                     .OrderBy(entry => entry.Key)
                     .Select(entry =>
                         $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} (observed={entry.Value.ObservationCount}; officialSessionObserved={entry.Value.OfficialSessionObservationCount}; officialSessionBuildObserved={entry.Value.OfficialSessionBuildObservationSummary}; reason={entry.Value.Reason}; source={entry.Value.LastSource})"));
+        }
+
+        internal static string BuildOfficialSessionEvidenceSource(MapleSessionPacketEventArgs e)
+        {
+            if (e == null)
+            {
+                return $"{OfficialSessionSourcePrefix}unknown:unknown-endpoint";
+            }
+
+            string buildTag = e.SessionVersion.HasValue && e.SessionVersion.Value > 0
+                ? $"v{e.SessionVersion.Value}"
+                : "unknown";
+            string endpoint = string.IsNullOrWhiteSpace(e.SourceEndpoint)
+                ? "unknown-endpoint"
+                : e.SourceEndpoint;
+            return $"{OfficialSessionSourcePrefix}{buildTag}:{endpoint}";
         }
 
         private string DescribeTutorInferenceConflictsNoLock()

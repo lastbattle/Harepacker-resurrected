@@ -1009,6 +1009,25 @@ namespace HaCreator.MapSimulator
             return style.Scale;
         }
 
+        internal static bool TryResolvePacketOwnedBalloonInlineCodeStyleForTests(
+            char code,
+            int baseColorArgb,
+            out int resolvedColorArgb,
+            out bool emphasis)
+        {
+            Color baseColor = new(unchecked((uint)baseColorArgb));
+            PacketOwnedBalloonTextStyle style = new(baseColor, false, 1f, false, Color.Transparent);
+            bool applied = TryApplyPacketOwnedBalloonInlineCode(
+                code.ToString(CultureInfo.InvariantCulture),
+                0,
+                baseColor,
+                ref style,
+                out _);
+            resolvedColorArgb = unchecked((int)style.Color.PackedValue);
+            emphasis = style.Emphasis;
+            return applied;
+        }
+
         private static bool TryResolvePacketOwnedBalloonFontNameStyle(
             string value,
             PacketOwnedBalloonTextStyle currentStyle,
@@ -1146,6 +1165,12 @@ namespace HaCreator.MapSimulator
 
                 case 'b':
                     style = style with { Color = PacketOwnedBalloonMarkupBlue };
+                    consumedCharacters = 1;
+                    return true;
+
+                case 'o':
+                case 'y':
+                    style = style with { Color = PacketOwnedBalloonMarkupYellow };
                     consumedCharacters = 1;
                     return true;
 

@@ -337,7 +337,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 int noticeDurationMs = ResolveNoticeDurationForClientParity(notice.Type);
-                if (elapsed >= noticeDurationMs)
+                if (elapsed > noticeDurationMs)
                 {
                     notice.IsExpired = true;
                     _notices.RemoveAt(i);
@@ -665,7 +665,7 @@ namespace HaCreator.MapSimulator.UI
                 OwnerSkillId: 0,
                 IsPresent: true,
                 IsExpired: ownerExpiresAtTick != int.MinValue
-                    && unchecked(currentTime - ownerExpiresAtTick) >= 0);
+                    && unchecked(currentTime - ownerExpiresAtTick) > 0);
             return true;
         }
 
@@ -685,7 +685,7 @@ namespace HaCreator.MapSimulator.UI
             if (message.StartTime != int.MinValue && message.Duration > 0)
             {
                 ownerExpiresAtTick = message.StartTime + message.Duration;
-                isExpired = unchecked(currentTime - ownerExpiresAtTick) >= 0;
+                isExpired = unchecked(currentTime - ownerExpiresAtTick) > 0;
             }
 
             owner = new StatusBarNoticeOwnerState(

@@ -1151,43 +1151,23 @@ namespace HaCreator.MapSimulator.Managers
                     out int knownTailOffset))
             {
                 ReadOnlySpan<byte> trailingTail = payload[knownTailOffset..];
-                if (trailingTail.Length == 0)
+                if (TryValidatePostMapTransferRemainder(
+                        trailingTail,
+                        out matchedKnownTail,
+                        out tailCandidateScore))
                 {
-                    matchedKnownTail = true;
-                    tailCandidateScore = GetKnownCharacterDataTailCandidateScore(0);
                     return true;
                 }
+            }
 
-                if (TryValidateExactKnownTrailingTail(trailingTail, out bool matchedExactTail, out int exactTailCandidateScore))
-                {
-                    matchedKnownTail = matchedExactTail;
-                    tailCandidateScore = exactTailCandidateScore;
-                    return true;
-                }
-
-                if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
-                {
-                    matchedKnownTail = matchedKnownLogoutGiftTail;
-                    tailCandidateScore = matchedKnownLogoutGiftTail
-                        ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
-                        : GetRecognizedLogoutGiftTailCandidateScore(trailingTail.Length);
-                    return true;
-                }
-
-                if (TryValidateKnownTrailingServerFileTimeTail(trailingTail, out bool matchedKnownServerFileTimeTail))
-                {
-                    matchedKnownTail = matchedKnownServerFileTimeTail;
-                    tailCandidateScore = matchedKnownServerFileTimeTail
-                        ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
-                        : GetBoundedOpaqueTailCandidateScore(trailingTail.Length);
-                    return true;
-                }
-
-                if (trailingTail.Length <= MaximumOpaquePostMapTransferTailByteLength)
-                {
-                    tailCandidateScore = GetBoundedOpaqueTailCandidateScore(trailingTail.Length);
-                    return true;
-                }
+            if (TryValidateBoundedOpaquePrefixBeforeKnownPostMapTransferTail(
+                    payload,
+                    characterDataFlags,
+                    characterJobId,
+                    out matchedKnownTail,
+                    out tailCandidateScore))
+            {
+                return true;
             }
 
             try
@@ -1263,36 +1243,11 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReadOnlySpan<byte> trailingTail = payload[(int)stream.Position..];
-                if (TryValidateExactKnownTrailingTail(trailingTail, out bool matchedExactTail, out int exactTailCandidateScore))
+                if (TryValidatePostMapTransferRemainder(
+                        trailingTail,
+                        out matchedKnownTail,
+                        out tailCandidateScore))
                 {
-                    matchedKnownTail = matchedExactTail;
-                    tailCandidateScore = exactTailCandidateScore;
-                    return true;
-                }
-
-                if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
-                {
-                    matchedKnownTail = matchedKnownLogoutGiftTail;
-                    tailCandidateScore = matchedKnownLogoutGiftTail
-                        ? GetKnownCharacterDataTailCandidateScore(trailingByteCount)
-                        : GetRecognizedLogoutGiftTailCandidateScore(trailingByteCount);
-                    return true;
-                }
-
-                if (TryValidateKnownTrailingServerFileTimeTail(trailingTail, out bool matchedKnownServerFileTimeTail))
-                {
-                    matchedKnownTail = matchedKnownServerFileTimeTail;
-                    tailCandidateScore = matchedKnownServerFileTimeTail
-                        ? GetKnownCharacterDataTailCandidateScore(trailingByteCount)
-                        : GetBoundedOpaqueTailCandidateScore(trailingByteCount);
-                    return true;
-                }
-
-                // Keep map-transfer bootstrap recovery resilient when additional
-                // CharacterData tail bytes follow known sections.
-                if (trailingByteCount > 0 && trailingByteCount <= MaximumOpaquePostMapTransferTailByteLength)
-                {
-                    tailCandidateScore = GetBoundedOpaqueTailCandidateScore(trailingByteCount);
                     return true;
                 }
 
@@ -1308,6 +1263,95 @@ namespace HaCreator.MapSimulator.Managers
 
                 return false;
             }
+        }
+
+        private static bool TryValidateBoundedOpaquePrefixBeforeKnownPostMapTransferTail(
+            ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
+            short characterJobId,
+            out bool matchedKnownTail,
+            out int tailCandidateScore)
+        {
+            matchedKnownTail = false;
+            tailCandidateScore = int.MinValue;
+            int maximumOpaquePrefixLength = Math.Min(
+                MaximumOpaquePostMapTransferTailByteLength,
+                Math.Max(0, payload.Length - 1));
+            for (int opaquePrefixLength = 1; opaquePrefixLength <= maximumOpaquePrefixLength; opaquePrefixLength++)
+            {
+                ReadOnlySpan<byte> candidateTail = payload[opaquePrefixLength..];
+                if (!TrySkipKnownPostMapTransferCharacterDataTail(
+                        candidateTail,
+                        characterDataFlags,
+                        characterJobId,
+                        out int knownTailOffset))
+                {
+                    continue;
+                }
+
+                if (!TryValidatePostMapTransferRemainder(
+                        candidateTail[knownTailOffset..],
+                        out _,
+                        out int remainderCandidateScore))
+                {
+                    continue;
+                }
+
+                tailCandidateScore = Math.Min(
+                    GetBoundedOpaqueTailCandidateScore(opaquePrefixLength),
+                    remainderCandidateScore);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryValidatePostMapTransferRemainder(
+            ReadOnlySpan<byte> trailingTail,
+            out bool matchedKnownTail,
+            out int tailCandidateScore)
+        {
+            matchedKnownTail = false;
+            tailCandidateScore = int.MinValue;
+            if (trailingTail.Length == 0)
+            {
+                matchedKnownTail = true;
+                tailCandidateScore = GetKnownCharacterDataTailCandidateScore(0);
+                return true;
+            }
+
+            if (TryValidateExactKnownTrailingTail(trailingTail, out bool matchedExactTail, out int exactTailCandidateScore))
+            {
+                matchedKnownTail = matchedExactTail;
+                tailCandidateScore = exactTailCandidateScore;
+                return true;
+            }
+
+            if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
+            {
+                matchedKnownTail = matchedKnownLogoutGiftTail;
+                tailCandidateScore = matchedKnownLogoutGiftTail
+                    ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
+                    : GetRecognizedLogoutGiftTailCandidateScore(trailingTail.Length);
+                return true;
+            }
+
+            if (TryValidateKnownTrailingServerFileTimeTail(trailingTail, out bool matchedKnownServerFileTimeTail))
+            {
+                matchedKnownTail = matchedKnownServerFileTimeTail;
+                tailCandidateScore = matchedKnownServerFileTimeTail
+                    ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
+                    : GetBoundedOpaqueTailCandidateScore(trailingTail.Length);
+                return true;
+            }
+
+            if (trailingTail.Length > 0 && trailingTail.Length <= MaximumOpaquePostMapTransferTailByteLength)
+            {
+                tailCandidateScore = GetBoundedOpaqueTailCandidateScore(trailingTail.Length);
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TrySkipKnownPostMapTransferCharacterDataTail(

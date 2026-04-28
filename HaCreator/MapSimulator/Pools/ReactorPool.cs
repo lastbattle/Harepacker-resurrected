@@ -1216,6 +1216,7 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.PacketLeavePending = false;
             data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
+            QueuePacketTouchRequestRemoval(data);
             ClearLocalTouchOwnership(index, data);
             ClearPreferredAuthoredOrder(data);
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
@@ -2048,6 +2049,7 @@ namespace HaCreator.MapSimulator.Pools
             int remainingCurrentAnimationDuration = reactor.GetRemainingStoppedAnimationDuration(currentTick);
             ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick, applyAnimationState: false);
             data.PacketLeavePending = true;
+            QueuePacketTouchRequestRemoval(data);
             ClearLocalTouchOwnership(index, data);
             data.PacketProperEventIndex = -2;
             data.PacketAnimationSourceState = packetAnimationSourceState;
@@ -3341,6 +3343,22 @@ namespace HaCreator.MapSimulator.Pools
             {
                 _reactorsOnLocalUser.Remove(touchObjectId);
             }
+        }
+
+        private void QueuePacketTouchRequestRemoval(ReactorRuntimeData data)
+        {
+            int objectId = ResolveRemovedPacketTouchRequestObjectId(data);
+            if (objectId > 0)
+            {
+                _pendingPacketTouchRequestRemovalObjectIds.Enqueue(objectId);
+            }
+        }
+
+        internal static int ResolveRemovedPacketTouchRequestObjectId(ReactorRuntimeData data)
+        {
+            return data?.PacketObjectId is int objectId && objectId > 0
+                ? objectId
+                : 0;
         }
 
         private static bool UsesPacketObjectIdForLocalTouch(ReactorRuntimeData data, int objectId)

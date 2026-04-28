@@ -1941,6 +1941,8 @@ namespace HaCreator.MapSimulator
                     {
                         string latePickupActorName = ResolveRemoteUserDropPickupActorName(
                             dropPickupPacket,
+                            resolvedPickupActorId,
+                            pickupNoticeFallbackOwnerId,
                             _remoteUserPool,
                             ResolveMobPickupSourceName,
                             ResolvePickupItemName);
@@ -1962,6 +1964,8 @@ namespace HaCreator.MapSimulator
 
                     string pickupActorName = ResolveRemoteUserDropPickupActorName(
                         dropPickupPacket,
+                        resolvedPickupActorId,
+                        pickupNoticeFallbackOwnerId,
                         _remoteUserPool,
                         ResolveMobPickupSourceName,
                         ResolvePickupItemName);
@@ -1970,16 +1974,21 @@ namespace HaCreator.MapSimulator
                         resolvedPickupActorId,
                         pickupNoticeFallbackOwnerId,
                         (actorKind, actorId, fallbackOwnerId) => ResolveDropPickupActorPosition(actorKind, actorId, fallbackOwnerId));
-                    if (dropPickupPacket.ActorKind == DropPickupActorKind.Pet
-                        && dropPickupPacket.HasExplicitTargetPosition
-                        && pickupTargetPosition.HasValue)
+                    if (ShouldRetainRemoteUserDropPickupPetTargetPosition(dropPickupPacket, pickupTargetPosition))
                     {
                         foreach (int observedPetActorId in ResolveRemoteUserDropPickupObservedPetActorIds(
                             dropPickupPacket,
                             resolvedPickupActorId,
                             pickupOwnerCharacterId))
                         {
-                            RememberObservedRemotePetPickupActorPosition(observedPetActorId, pickupTargetPosition.Value);
+                            if (dropPickupPacket.HasExplicitTargetPosition)
+                            {
+                                RememberObservedRemotePetPickupActorPosition(observedPetActorId, pickupTargetPosition.Value);
+                            }
+                            else
+                            {
+                                RememberPredictedRemotePetPickupActorPosition(observedPetActorId, pickupTargetPosition.Value);
+                            }
                         }
                     }
 
@@ -2214,14 +2223,31 @@ namespace HaCreator.MapSimulator
             Func<int, string> mobNameResolver,
             Func<int, string> itemNameResolver)
         {
+            return ResolveRemoteUserDropPickupActorName(
+                packet,
+                packet.ActorId,
+                packet.FallbackOwnerId,
+                remoteUserPool,
+                mobNameResolver,
+                itemNameResolver);
+        }
+
+        internal static string ResolveRemoteUserDropPickupActorName(
+            RemoteUserDropPickupPacket packet,
+            int resolvedActorId,
+            int fallbackOwnerId,
+            RemoteUserActorPool remoteUserPool,
+            Func<int, string> mobNameResolver,
+            Func<int, string> itemNameResolver)
+        {
             return ResolveRemotePickupActorName(
                 packet.ActorKind,
-                packet.ActorId,
+                packet.ActorKind == DropPickupActorKind.Pet ? resolvedActorId : packet.ActorId,
                 packet.ActorName,
                 remoteUserPool,
                 mobNameResolver,
                 itemNameResolver,
-                packet.FallbackOwnerId);
+                fallbackOwnerId > 0 ? fallbackOwnerId : packet.FallbackOwnerId);
         }
 
         internal static Vector2? ResolveRemoteUserDropPickupTargetPosition(RemoteUserDropPickupPacket packet)
@@ -2247,6 +2273,14 @@ namespace HaCreator.MapSimulator
                 packet.ActorKind,
                 resolvedActorId,
                 fallbackOwnerId);
+        }
+
+        internal static bool ShouldRetainRemoteUserDropPickupPetTargetPosition(
+            RemoteUserDropPickupPacket packet,
+            Vector2? pickupTargetPosition)
+        {
+            return packet.ActorKind == DropPickupActorKind.Pet
+                && pickupTargetPosition.HasValue;
         }
 
         internal static Vector2? ResolveRemoteUserDropPickupStartPosition(DropItem drop)

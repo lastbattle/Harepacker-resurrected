@@ -259,18 +259,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 212, // finishBlow
                 215, // cyclone
                 216, // cyclone_after
-                217, // lasergun
-                242, // doubleJump
-                243, // knockback
-                244, // swallow_pre
-                245, // swallow_loop
-                246, // swallow
-                259, // flashRain
-                260, // clawCut
-                261, // mine
-                262, // ride
-                263, // getoff
-                264  // capture
+                217  // lasergun
             );
 
         private static readonly string[] WzOnlyMechanicVehicleOneTimeActionNames =
@@ -307,11 +296,23 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static readonly string[] ClientConfirmedMechanicVehicleOwnerOnlyOneTimeActionNames =
             ResolveClientRawActionNames(
-                // IDA admits raw actions 249 and 251 for vehicle id 1932016, but
+                // IDA admits these raw one-time actions for vehicle id 1932016, but
                 // Character/TamingMob/01932016 does not publish these roots. Preserve
-                // the known owner without treating the names as renderable mount frames.
+                // the known owner without treating the names as renderable mount frames,
+                // even if a cache or later data set exposes an exact root.
+                242, // doubleJump
+                243, // knockback
+                244, // swallow_pre
+                245, // swallow_loop
+                246, // swallow
                 249, // giant
-                251  // crossRoad
+                251, // crossRoad
+                259, // flashRain
+                260, // clawCut
+                261, // mine
+                262, // ride
+                263, // getoff
+                264  // capture
             );
 
         private static readonly string[] ClientConfirmedMechanicVehicleCurrentActionNames =

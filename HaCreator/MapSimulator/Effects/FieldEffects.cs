@@ -633,7 +633,7 @@ namespace HaCreator.MapSimulator.Effects
                 var msg = _weatherMessages[i];
                 int elapsed = currentTimeMs - msg.StartTime;
 
-                if (elapsed >= msg.Duration)
+                if (ShouldExpireWeatherMessageForClientParity(msg, currentTimeMs))
                 {
                     _weatherMessages.RemoveAt(i);
                     continue;
@@ -653,6 +653,24 @@ namespace HaCreator.MapSimulator.Effects
                     msg.Alpha = 1f;
                 }
             }
+        }
+
+        internal static bool ShouldExpireWeatherMessageForClientParity(WeatherMessageInfo message, int currentTimeMs)
+        {
+            if (message == null || message.Duration <= 0 || message.StartTime == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = unchecked(currentTimeMs - message.StartTime);
+            if (message.OwnerKind == WeatherMessageOwnerKind.StatusBarItemMsg)
+            {
+                // Client evidence: CUIStatusBar::Update deletes m_itemMsg only after
+                // the timer has overflowed (`timeGetTime() > m_dwItemMsg`).
+                return elapsed > message.Duration;
+            }
+
+            return elapsed >= message.Duration;
         }
 
         #endregion

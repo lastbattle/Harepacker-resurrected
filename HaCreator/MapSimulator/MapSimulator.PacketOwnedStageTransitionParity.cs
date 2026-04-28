@@ -7,6 +7,8 @@ using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
@@ -400,8 +402,19 @@ namespace HaCreator.MapSimulator
                     objInst.Y,
                     objInst.Z,
                     objInst.PlatformNumber,
-                    objInst.flow == true);
+                    objInst.flow == true,
+                    ResolvePacketOwnedNamedObjectStateSfx(objectInfo));
             }
+        }
+
+        private static string ResolvePacketOwnedNamedObjectStateSfx(ObjectInfo objectInfo)
+        {
+            if (objectInfo?.ParentObject is not WzImageProperty objectProperty)
+            {
+                return string.Empty;
+            }
+
+            return (objectProperty["sfx"] as WzStringProperty)?.Value?.Trim() ?? string.Empty;
         }
 
         private void BindPacketOwnedStageTransitionMapState()

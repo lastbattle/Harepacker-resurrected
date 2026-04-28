@@ -451,6 +451,10 @@ namespace HaCreator.MapSimulator
             platform.RightBound = Math.Max(movingState.X1, movingState.X2);
             platform.TopBound = Math.Min(movingState.Y1, movingState.Y2);
             platform.BottomBound = Math.Max(movingState.Y1, movingState.Y2);
+            platform.PacketOwnedMovingX1 = movingState.X1;
+            platform.PacketOwnedMovingX2 = movingState.X2;
+            platform.PacketOwnedMovingY1 = movingState.Y1;
+            platform.PacketOwnedMovingY2 = movingState.Y2;
             platform.MovementType = ResolvePacketOwnedMovingFootholdMovementTypeForPacketParity(
                 movingState.X1,
                 movingState.X2,
@@ -1138,16 +1142,98 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            ResolvePacketOwnedMovingFootholdEndpointOrderForPacketParity(
+                platform,
+                out int x1,
+                out int x2,
+                out int y1,
+                out int y2);
+
             return new PacketFieldUtilityMovingFootholdState(
                 (int)platform.Speed,
-                (int)platform.LeftBound,
-                (int)platform.RightBound,
-                (int)platform.TopBound,
-                (int)platform.BottomBound,
+                x1,
+                x2,
+                y1,
+                y2,
                 (int)platform.X,
                 (int)platform.Y,
-                !platform.MovingDown,
-                !platform.MovingRight);
+                EncodePacketOwnedMovingFootholdReverseVerticalForPacketParity(
+                    y1,
+                    y2,
+                    platform.MovingDown),
+                EncodePacketOwnedMovingFootholdReverseHorizontalForPacketParity(
+                    x1,
+                    x2,
+                    platform.MovingRight));
+        }
+
+        internal static void ResolvePacketOwnedMovingFootholdEndpointOrderForPacketParity(
+            DynamicPlatform platform,
+            out int x1,
+            out int x2,
+            out int y1,
+            out int y2)
+        {
+            int leftBound = (int)(platform?.LeftBound ?? 0);
+            int rightBound = (int)(platform?.RightBound ?? 0);
+            int topBound = (int)(platform?.TopBound ?? 0);
+            int bottomBound = (int)(platform?.BottomBound ?? 0);
+
+            if (platform?.PacketOwnedMovingX1 is int packetX1
+                && platform.PacketOwnedMovingX2 is int packetX2
+                && Math.Min(packetX1, packetX2) == leftBound
+                && Math.Max(packetX1, packetX2) == rightBound)
+            {
+                x1 = packetX1;
+                x2 = packetX2;
+            }
+            else
+            {
+                x1 = leftBound;
+                x2 = rightBound;
+            }
+
+            if (platform?.PacketOwnedMovingY1 is int packetY1
+                && platform.PacketOwnedMovingY2 is int packetY2
+                && Math.Min(packetY1, packetY2) == topBound
+                && Math.Max(packetY1, packetY2) == bottomBound)
+            {
+                y1 = packetY1;
+                y2 = packetY2;
+            }
+            else
+            {
+                y1 = topBound;
+                y2 = bottomBound;
+            }
+        }
+
+        internal static bool EncodePacketOwnedMovingFootholdReverseHorizontalForPacketParity(
+            int x1,
+            int x2,
+            bool movingRight)
+        {
+            if (x1 == x2)
+            {
+                return !movingRight;
+            }
+
+            bool secondEndpointIsRight = x2 > x1;
+            return movingRight != secondEndpointIsRight;
+        }
+
+        internal static bool EncodePacketOwnedMovingFootholdReverseVerticalForPacketParity(
+            int y1,
+            int y2,
+            bool movingDown)
+        {
+            if (y1 == y2)
+            {
+                return !movingDown;
+            }
+
+            bool secondEndpointIsBelow = y2 > y1;
+            return movingDown != secondEndpointIsBelow;
         }
 
         private bool TryBuildPacketOwnedCachedFootholdSnapshotEntry(

@@ -201,6 +201,8 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Queue<OneTimeAnimation> _oneTimePool = new();
         private readonly Queue<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayerPool = new();
         private readonly Queue<FallingAnimation> _fallingPool = new();
+        private int _nextOneTimeCanvasLayerHandleId = 1;
+        private int _nextOneTimeTemporaryCanvasHandleId = 1;
 
         #region One-Time Animation (ONETIMEINFO)
 
@@ -405,7 +407,9 @@ namespace HaCreator.MapSimulator.Animation
                 owner,
                 registration.RecoveredLayerSettings,
                 recoveredRegistrationTrace,
-                recoveredOwnerTrace);
+                recoveredOwnerTrace,
+                AllocateOneTimeCanvasLayerHandleId(),
+                AllocateOneTimeTemporaryCanvasHandleId());
             InsertOneTimeCanvasLayer(anim);
         }
 
@@ -436,7 +440,9 @@ namespace HaCreator.MapSimulator.Animation
                 owner,
                 registration.RecoveredLayerSettings,
                 registration.RecoveredRegistrationTrace,
-                registration.RecoveredOwnerTrace);
+                registration.RecoveredOwnerTrace,
+                AllocateOneTimeCanvasLayerHandleId(),
+                AllocateOneTimeTemporaryCanvasHandleId());
             InsertOneTimeCanvasLayer(anim);
         }
 
@@ -457,6 +463,26 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             _oneTimeCanvasLayers.Insert(insertIndex, animation);
+        }
+
+        private int AllocateOneTimeCanvasLayerHandleId()
+        {
+            if (_nextOneTimeCanvasLayerHandleId == int.MaxValue)
+            {
+                _nextOneTimeCanvasLayerHandleId = 1;
+            }
+
+            return _nextOneTimeCanvasLayerHandleId++;
+        }
+
+        private int AllocateOneTimeTemporaryCanvasHandleId()
+        {
+            if (_nextOneTimeTemporaryCanvasHandleId == int.MaxValue)
+            {
+                _nextOneTimeTemporaryCanvasHandleId = 1;
+            }
+
+            return _nextOneTimeTemporaryCanvasHandleId++;
         }
 
         public void ClearCanvasLayers(AnimationCanvasLayerOwner owner)
@@ -3135,7 +3161,9 @@ namespace HaCreator.MapSimulator.Animation
             AnimationCanvasLayerOwner owner,
             CanvasLayerRecoveredLayerSettings recoveredLayerSettings,
             CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
-            CanvasLayerRecoveredOwnerTrace? recoveredOwnerTrace = null)
+            CanvasLayerRecoveredOwnerTrace? recoveredOwnerTrace = null,
+            int simulatedLayerHandleId = 1,
+            int simulatedTemporaryCanvasHandleId = 1)
         {
             _canvasTexture = canvasTexture;
             _overlayTexture = overlayTexture;
@@ -3165,7 +3193,9 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
                 RecoveredRegistrationTrace,
                 recoveredOwnerTrace,
-                RecoveredNativeExecutionTrace);
+                RecoveredNativeExecutionTrace,
+                simulatedLayerHandleId,
+                simulatedTemporaryCanvasHandleId);
         }
 
         public bool Update(int currentTimeMs)
@@ -3248,13 +3278,15 @@ namespace HaCreator.MapSimulator.Animation
         internal static CanvasLayerRecoveredNativeLifetimeState BuildRecoveredNativeLifetimeState(
             CanvasLayerRecoveredRegistrationTrace registrationTrace,
             CanvasLayerRecoveredOwnerTrace? ownerTrace,
-            IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace = null)
+            IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace = null,
+            int simulatedLayerHandleId = 1,
+            int simulatedTemporaryCanvasHandleId = 1)
         {
             IReadOnlyList<CanvasLayerRecoveredNativeOperation> trace =
                 executionTrace ?? BuildRecoveredNativeExecutionTrace(registrationTrace, ownerTrace);
 
-            const int simulatedLayerHandleId = 1;
-            const int simulatedTemporaryCanvasHandleId = 1;
+            simulatedLayerHandleId = Math.Max(0, simulatedLayerHandleId);
+            simulatedTemporaryCanvasHandleId = Math.Max(0, simulatedTemporaryCanvasHandleId);
             int layerRefCount = 0;
             int layerReferenceCountAfterCreate = 0;
             int layerReferenceCountAfterRegister = 0;

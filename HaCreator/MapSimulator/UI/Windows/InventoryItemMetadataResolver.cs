@@ -1238,7 +1238,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                IReadOnlyList<int> dropItemIds = GetPositiveRaiseItemEntries(infoProperty["item"] as WzSubProperty);
+                IReadOnlyList<int> dropItemIds = ResolveRaiseDropItemEntries(infoProperty);
                 metadata.Add(new QuestRewardRaiseItemMetadata
                 {
                     OwnerItemId = ownerItemId,
@@ -1257,6 +1257,52 @@ namespace HaCreator.MapSimulator.UI
             return _raiseItemMetadataCache;
         }
 
+        private static IReadOnlyList<int> ResolveRaiseDropItemEntries(WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            IReadOnlyList<int> itemEntries = GetPositiveRaiseItemEntries(infoProperty["item"] as WzSubProperty);
+            IReadOnlyList<int> consumeItemEntries = GetPositiveRaiseItemEntries(infoProperty["consumeItem"] as WzSubProperty);
+            if (itemEntries.Count == 0)
+            {
+                return consumeItemEntries;
+            }
+
+            if (consumeItemEntries.Count == 0)
+            {
+                return itemEntries;
+            }
+
+            List<int> mergedEntries = new(itemEntries.Count + consumeItemEntries.Count);
+            HashSet<int> seenItemIds = new();
+            AppendDistinctRaiseDropItems(mergedEntries, seenItemIds, itemEntries);
+            AppendDistinctRaiseDropItems(mergedEntries, seenItemIds, consumeItemEntries);
+            return mergedEntries;
+        }
+
+        private static void AppendDistinctRaiseDropItems(
+            List<int> mergedEntries,
+            HashSet<int> seenItemIds,
+            IReadOnlyList<int> itemIds)
+        {
+            if (mergedEntries == null || seenItemIds == null || itemIds == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < itemIds.Count; i++)
+            {
+                int itemId = itemIds[i];
+                if (itemId > 0 && seenItemIds.Add(itemId))
+                {
+                    mergedEntries.Add(itemId);
+                }
+            }
+        }
+
         private static IReadOnlyList<int> GetPositiveRaiseItemEntries(WzSubProperty itemListProperty)
         {
             if (itemListProperty?.WzProperties == null || itemListProperty.WzProperties.Count == 0)
@@ -1267,13 +1313,21 @@ namespace HaCreator.MapSimulator.UI
             var itemIdsByIndex = new SortedDictionary<int, int>();
             for (int i = 0; i < itemListProperty.WzProperties.Count; i++)
             {
-                WzSubProperty entryProperty = itemListProperty.WzProperties[i] as WzSubProperty;
-                int itemId = GetIntValue(entryProperty?["0"]);
+                WzImageProperty property = itemListProperty.WzProperties[i];
+                WzSubProperty entryProperty = property as WzSubProperty;
+                int itemId = entryProperty != null
+                    ? GetIntOrStringValue(entryProperty["0"])
+                    : GetIntOrStringValue(property);
                 if (itemId > 0)
                 {
-                    int index = int.TryParse(entryProperty.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedIndex)
+                    int index = int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedIndex)
                         ? parsedIndex
                         : i;
+                    while (itemIdsByIndex.ContainsKey(index))
+                    {
+                        index++;
+                    }
+
                     itemIdsByIndex[index] = itemId;
                 }
             }

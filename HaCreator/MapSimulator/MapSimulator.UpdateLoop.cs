@@ -186,6 +186,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (TryHandlePacketOwnedLogoutGiftSystemCloseShortcut(newKeyboardState, _oldKeyboardState, isWindowActive))
+            {
+                return;
+            }
+
 
             // Handle print screen
             if (isWindowActive && newKeyboardState.IsKeyDown(Keys.PrintScreen))

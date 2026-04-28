@@ -88,7 +88,9 @@ namespace HaCreator.MapSimulator.UI
         private bool _autoTrackEnabled;
         private int _hoveredDeleteQuestId = -1;
         private int _pressedDeleteQuestId = -1;
+        private int _pressedCollapsedTitleQuestId = -1;
         private bool _pressedDeleteAll;
+        private bool _allowNoSelectedRow;
         private int _scrollOffset;
         private Rectangle _deleteAllBounds = Rectangle.Empty;
 
@@ -279,6 +281,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _hiddenAutoQuestIds.Remove(questId);
+            _allowNoSelectedRow = false;
             _selectedQuestId = questId;
             EnsureSelectionVisible(RefreshFilteredSnapshot());
             SetMinimized(false);
@@ -331,12 +334,17 @@ namespace HaCreator.MapSimulator.UI
                     {
                         DismissQuest(_pressedDeleteQuestId);
                     }
+                    else if (_pressedCollapsedTitleQuestId > 0 && _pressedCollapsedTitleQuestId == titleQuestId)
+                    {
+                        _pressedCollapsedTitleQuestId = -1;
+                    }
                     else
                     {
                         HandleTitleSelection(titleQuestId);
                     }
 
                     _pressedDeleteQuestId = -1;
+                    _pressedCollapsedTitleQuestId = -1;
                     _pressedDeleteAll = false;
                 }
             }
@@ -346,6 +354,7 @@ namespace HaCreator.MapSimulator.UI
                 if (leftReleased)
                 {
                     _pressedDeleteQuestId = -1;
+                    _pressedCollapsedTitleQuestId = -1;
                     _pressedDeleteAll = false;
                 }
             }
@@ -801,6 +810,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AcknowledgeQuestAlertStateForInteraction(questId, ref snapshot);
+
+            if (questId == _selectedQuestId)
+            {
+                // Client mouse-down on an expanded title clears that demand rect and marks
+                // the release so it does not also route into ShowQuestInfoDetail.
+                _allowNoSelectedRow = true;
+                _selectedQuestId = -1;
+                _pressedCollapsedTitleQuestId = questId;
+                RefreshFrame(snapshot);
+                UpdateButtonStates();
+            }
         }
 
         private void HandleTitleSelection(int questId)
@@ -811,6 +831,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
+            _allowNoSelectedRow = false;
             _selectedQuestId = questId;
             EnsureSelectionVisible(snapshot);
             UpdateButtonStates();
@@ -1052,7 +1073,13 @@ namespace HaCreator.MapSimulator.UI
             if (snapshot.Entries.Count == 0)
             {
                 _selectedQuestId = -1;
+                _allowNoSelectedRow = false;
                 _scrollOffset = 0;
+                return;
+            }
+
+            if (_allowNoSelectedRow && _selectedQuestId <= 0)
+            {
                 return;
             }
 
@@ -1090,6 +1117,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            _allowNoSelectedRow = false;
             _selectedQuestId = preferredEntry.QuestId;
         }
 
@@ -1794,12 +1822,14 @@ namespace HaCreator.MapSimulator.UI
 
             if (WasPressed(keyboardState, Keys.Home))
             {
+                _allowNoSelectedRow = false;
                 _selectedQuestId = snapshot.Entries[0].QuestId;
                 EnsureSelectionVisible(snapshot);
             }
 
             if (WasPressed(keyboardState, Keys.End))
             {
+                _allowNoSelectedRow = false;
                 _selectedQuestId = snapshot.Entries[snapshot.Entries.Count - 1].QuestId;
                 EnsureSelectionVisible(snapshot);
             }
@@ -1841,6 +1871,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int nextIndex = Math.Clamp(currentIndex + direction, 0, snapshot.Entries.Count - 1);
+            _allowNoSelectedRow = false;
             _selectedQuestId = snapshot.Entries[nextIndex].QuestId;
             EnsureSelectionVisible(snapshot);
             UpdateButtonStates();
@@ -2247,8 +2278,10 @@ namespace HaCreator.MapSimulator.UI
         private void ResetSelectionAfterMutation()
         {
             _selectedQuestId = -1;
+            _allowNoSelectedRow = false;
             _hoveredDeleteQuestId = -1;
             _pressedDeleteQuestId = -1;
+            _pressedCollapsedTitleQuestId = -1;
             _pressedDeleteAll = false;
             _scrollOffset = 0;
         }

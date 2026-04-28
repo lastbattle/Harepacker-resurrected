@@ -2106,6 +2106,12 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePrimaryMatchedSerialNumberByteCountsByType = primaryMatchedByteCountsByType,
                 BackwardUpdateSecondaryMatchedSerialNumberByteCountsByType = secondaryMatchedByteCountsByType,
                 BackwardUpdateTotalMatchedSerialNumberByteCountsByType = totalMatchedByteCountsByType,
+                BackwardUpdatePrimaryMatchedSerialNumberCountsByFlag = BuildCharacterDataInventoryFlagMap(primaryMatchedCountsByType),
+                BackwardUpdateSecondaryMatchedSerialNumberCountsByFlag = BuildCharacterDataInventoryFlagMap(secondaryMatchedCountsByType),
+                BackwardUpdateTotalMatchedSerialNumberCountsByFlag = BuildCharacterDataInventoryFlagMap(totalMatchedCountsByType),
+                BackwardUpdatePrimaryMatchedSerialNumberByteCountsByFlag = BuildCharacterDataInventoryFlagMap(primaryMatchedByteCountsByType),
+                BackwardUpdateSecondaryMatchedSerialNumberByteCountsByFlag = BuildCharacterDataInventoryFlagMap(secondaryMatchedByteCountsByType),
+                BackwardUpdateTotalMatchedSerialNumberByteCountsByFlag = BuildCharacterDataInventoryFlagMap(totalMatchedByteCountsByType),
                 BackwardUpdatePrimaryMatchedSerialNumberCount = primaryMatchedCount,
                 BackwardUpdatePrimaryUnmatchedSerialNumberCount = primaryUnmatchedCount,
                 BackwardUpdateSecondaryMatchedSerialNumberCount = secondaryMatchedCount,
@@ -2131,7 +2137,24 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePositionFallbackInsertedCashItemByteCountsByType = positionFallbackInsertedByteCountsByType,
                 BackwardUpdatePositionFallbackReplacementCashItemCountsByType = positionFallbackReplacementCountsByType,
                 BackwardUpdatePositionFallbackReplacementCashItemByteCountsByType = positionFallbackReplacementByteCountsByType,
+                BackwardUpdatePositionValidatedCashItemCountsByFlag = BuildCharacterDataInventoryFlagMap(positionValidatedCountsByType),
+                BackwardUpdatePositionFallbackCashItemCountsByFlag = BuildCharacterDataInventoryFlagMap(positionFallbackCountsByType),
+                BackwardUpdatePositionValidatedCashItemByteCountsByFlag = BuildCharacterDataInventoryFlagMap(positionValidatedByteCountsByType),
+                BackwardUpdatePositionFallbackCashItemByteCountsByFlag = BuildCharacterDataInventoryFlagMap(positionFallbackByteCountsByType),
+                BackwardUpdatePositionOutOfRangeCashItemCountsByFlag = BuildCharacterDataInventoryFlagMap(positionOutOfRangeCountsByType),
+                BackwardUpdatePositionOutOfRangeCashItemByteCountsByFlag = BuildCharacterDataInventoryFlagMap(positionOutOfRangeByteCountsByType),
+                BackwardUpdatePositionSlotOverflowCashItemCountsByFlag = BuildCharacterDataInventoryFlagMap(positionSlotOverflowCountsByType),
+                BackwardUpdatePositionSlotOverflowCashItemByteCountsByFlag = BuildCharacterDataInventoryFlagMap(positionSlotOverflowByteCountsByType),
+                BackwardUpdatePositionCollisionCashItemCountsByFlag = BuildCharacterDataInventoryFlagMap(positionCollisionCountsByType),
+                BackwardUpdatePositionCollisionCashItemByteCountsByFlag = BuildCharacterDataInventoryFlagMap(positionCollisionByteCountsByType),
+                BackwardUpdatePositionFallbackInsertedCashItemCountsByFlag = BuildCharacterDataInventoryFlagMap(positionFallbackInsertedCountsByType),
+                BackwardUpdatePositionFallbackInsertedCashItemByteCountsByFlag = BuildCharacterDataInventoryFlagMap(positionFallbackInsertedByteCountsByType),
+                BackwardUpdatePositionFallbackReplacementCashItemCountsByFlag = BuildCharacterDataInventoryFlagMap(positionFallbackReplacementCountsByType),
+                BackwardUpdatePositionFallbackReplacementCashItemByteCountsByFlag = BuildCharacterDataInventoryFlagMap(positionFallbackReplacementByteCountsByType),
                 BackwardUpdateCashMutationSequenceByType = mutationSequenceByType,
+                BackwardUpdateCashMutationSequenceByFlag = BuildCharacterDataInventoryFlagSequenceMap(mutationSequenceByType),
+                BackwardUpdateCashMutationCountsByFlag = BuildCharacterDataBackwardUpdateMutationCountFlagMap(mutationSequenceByType),
+                BackwardUpdateCashMutationByteCountsByFlag = BuildCharacterDataBackwardUpdateMutationByteCountFlagMap(mutationSequenceByType),
                 BackwardUpdateCashMutationSequence = mutationSequence,
                 BackwardUpdatePositionValidatedCashItemCount = positionValidatedCount,
                 BackwardUpdatePositionFallbackCashItemCount = positionFallbackCount,
@@ -2149,6 +2172,82 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePositionFallbackReplacementCashItemByteCount = positionFallbackReplacementByteCount,
                 BackwardUpdateCashMutationByteCount = mutationByteCount
             };
+        }
+
+        private static Dictionary<ulong, int> BuildCharacterDataInventoryFlagMap(IReadOnlyDictionary<InventoryType, int> valuesByType)
+        {
+            Dictionary<ulong, int> valuesByFlag = new(CharacterDataInventoryOrder.Length);
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                valuesByFlag[inventoryFlag] = valuesByType != null && valuesByType.TryGetValue(inventoryType, out int value)
+                    ? value
+                    : 0;
+            }
+
+            return valuesByFlag;
+        }
+
+        private static Dictionary<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> BuildCharacterDataInventoryFlagSequenceMap(
+            IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequencesByType)
+        {
+            Dictionary<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequencesByFlag = new(CharacterDataInventoryOrder.Length);
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                sequencesByFlag[inventoryFlag] = sequencesByType != null &&
+                    sequencesByType.TryGetValue(inventoryType, out IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> sequence) &&
+                    sequence != null
+                        ? sequence
+                        : Array.Empty<PacketCharacterDataBackwardUpdateCashMutation>();
+            }
+
+            return sequencesByFlag;
+        }
+
+        private static Dictionary<ulong, int> BuildCharacterDataBackwardUpdateMutationCountFlagMap(
+            IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequencesByType)
+        {
+            Dictionary<ulong, int> countsByFlag = new(CharacterDataInventoryOrder.Length);
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                countsByFlag[inventoryFlag] = sequencesByType != null &&
+                    sequencesByType.TryGetValue(inventoryType, out IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> sequence) &&
+                    sequence != null
+                        ? sequence.Count
+                        : 0;
+            }
+
+            return countsByFlag;
+        }
+
+        private static Dictionary<ulong, int> BuildCharacterDataBackwardUpdateMutationByteCountFlagMap(
+            IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> sequencesByType)
+        {
+            Dictionary<ulong, int> byteCountsByFlag = new(CharacterDataInventoryOrder.Length);
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                int byteCount = 0;
+                if (sequencesByType != null &&
+                    sequencesByType.TryGetValue(inventoryType, out IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation> sequence) &&
+                    sequence != null)
+                {
+                    for (int mutationIndex = 0; mutationIndex < sequence.Count; mutationIndex++)
+                    {
+                        byteCount = checked(byteCount + Math.Max(0, sequence[mutationIndex].ItemByteCount));
+                    }
+                }
+
+                byteCountsByFlag[inventoryFlag] = byteCount;
+            }
+
+            return byteCountsByFlag;
         }
 
         private static void BuildBackwardUpdateCashPositionAssignmentSummary(
@@ -4418,6 +4517,52 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionCountByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePrimaryMatchedSerialNumberCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdateSecondaryMatchedSerialNumberCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdateTotalMatchedSerialNumberCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePrimaryMatchedSerialNumberByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdateSecondaryMatchedSerialNumberByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdateTotalMatchedSerialNumberByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionValidatedCashItemCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionFallbackCashItemCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionValidatedCashItemByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionFallbackCashItemByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionOutOfRangeCashItemCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionOutOfRangeCashItemByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionSlotOverflowCashItemCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionSlotOverflowCashItemByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionCollisionCashItemCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionCollisionCashItemByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionFallbackInsertedCashItemCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionFallbackInsertedCashItemByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionFallbackReplacementCashItemCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdatePositionFallbackReplacementCashItemByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, IReadOnlyList<PacketCharacterDataBackwardUpdateCashMutation>> BackwardUpdateCashMutationSequenceByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdateCashMutationCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> BackwardUpdateCashMutationByteCountsByFlag { get; init; } = null;
     }
 
     internal readonly record struct PacketCharacterDataBackwardUpdateCashMutation(

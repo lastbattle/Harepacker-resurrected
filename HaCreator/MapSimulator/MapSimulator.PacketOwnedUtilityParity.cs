@@ -5254,7 +5254,9 @@ namespace HaCreator.MapSimulator
                         drawOrder: ResolvePacketOwnedActiveEffectMotionBlurLayerDrawOrder(layer),
                         sourceLayerCode: (int)layer,
                         sourceLayerCaptureOrder: i,
-                        simulatedLayerHandleId: ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds));
+                        simulatedLayerHandleId: ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
+                        simulatedSnapshotLayerHandleId: NextPacketOwnedActiveEffectMotionBlurLayerHandleId(),
+                        simulatedRepeatAnimationStateId: NextPacketOwnedActiveEffectMotionBlurStateId());
                     frames.Add(layerFrame);
                 }
             }

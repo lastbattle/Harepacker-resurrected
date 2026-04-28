@@ -1817,6 +1817,41 @@ namespace HaCreator.MapSimulator.UI
             return ResolveTooltipAnchorPointForTesting(0, 0, mouseX, mouseY);
         }
 
+        internal static Rectangle ResolveTooltipRectangleForTesting(
+            Point tooltipAnchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight)
+        {
+            int resolvedTooltipWidth = Math.Max(1, tooltipWidth);
+            int resolvedTooltipHeight = Math.Max(1, tooltipHeight);
+            int tooltipX = tooltipAnchorPoint.X;
+            int tooltipY = tooltipAnchorPoint.Y;
+
+            if (tooltipX + resolvedTooltipWidth > renderWidth - TOOLTIP_MARGIN)
+            {
+                tooltipX = Math.Max(TOOLTIP_MARGIN, renderWidth - resolvedTooltipWidth - TOOLTIP_MARGIN);
+            }
+
+            if (tooltipX < TOOLTIP_MARGIN)
+            {
+                tooltipX = TOOLTIP_MARGIN;
+            }
+
+            tooltipY = Math.Clamp(
+                tooltipY,
+                TOOLTIP_MARGIN,
+                Math.Max(TOOLTIP_MARGIN, renderHeight - resolvedTooltipHeight - TOOLTIP_MARGIN));
+
+            return new Rectangle(tooltipX, tooltipY, resolvedTooltipWidth, resolvedTooltipHeight);
+        }
+
+        internal static Vector2 ResolveTooltipTextPositionForTesting(Rectangle tooltipRect)
+        {
+            return new Vector2(tooltipRect.X + TOOLTIP_PADDING, tooltipRect.Y + TOOLTIP_PADDING);
+        }
+
         internal static bool IsClientHoverTargetKindPreferredForTesting(
             ClientHoverTargetKind candidate,
             ClientHoverTargetKind current)
@@ -1921,26 +1956,18 @@ namespace HaCreator.MapSimulator.UI
             _hoverTooltipMaxWidth = ResolveTooltipMaxWidth(sprite?.GraphicsDevice);
             int tooltipWidth = (int)Math.Ceiling(_hoverTooltipMaxWidth) + (TOOLTIP_PADDING * 2);
             int tooltipHeight = (_hoverTooltipVisibleLineCount * lineHeight) + ((_hoverTooltipVisibleLineCount - 1) * TOOLTIP_LINE_GAP) + (TOOLTIP_PADDING * 2);
-            int tooltipX = tooltipAnchorPoint.X;
-            int tooltipY = tooltipAnchorPoint.Y;
-
-            if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_MARGIN)
-            {
-                tooltipX = Math.Max(TOOLTIP_MARGIN, renderWidth - tooltipWidth - TOOLTIP_MARGIN);
-            }
-
-            if (tooltipX < TOOLTIP_MARGIN)
-            {
-                tooltipX = TOOLTIP_MARGIN;
-            }
-
-            tooltipY = Math.Clamp(tooltipY, TOOLTIP_MARGIN, Math.Max(TOOLTIP_MARGIN, renderHeight - tooltipHeight - TOOLTIP_MARGIN));
-            Rectangle tooltipRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            Rectangle tooltipRect = ResolveTooltipRectangleForTesting(
+                tooltipAnchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight);
 
             sprite.Draw(_tooltipPixelTexture, tooltipRect, new Color(18, 18, 26, 235));
             DrawTooltipBorder(sprite, tooltipRect);
 
-            float drawY = tooltipRect.Y + TOOLTIP_PADDING;
+            Vector2 textPosition = ResolveTooltipTextPositionForTesting(tooltipRect);
+            float drawY = textPosition.Y;
             for (int i = 0; i < _hoverTooltipLines.Count; i++)
             {
                 string line = _hoverTooltipLines[i];
@@ -1949,8 +1976,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                Vector2 textPosition = new Vector2(tooltipRect.X + TOOLTIP_PADDING, drawY);
-                ClientTextDrawing.DrawShadowed(sprite, line, textPosition, Color.White, _tooltipFont);
+                ClientTextDrawing.DrawShadowed(sprite, line, new Vector2(textPosition.X, drawY), Color.White, _tooltipFont);
                 drawY += lineHeight + TOOLTIP_LINE_GAP;
             }
         }

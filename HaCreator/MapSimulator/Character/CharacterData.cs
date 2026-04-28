@@ -820,6 +820,8 @@ namespace HaCreator.MapSimulator.Character
         public int BonusLUK { get; set; }
         public int BonusHP { get; set; }
         public int BonusMP { get; set; }
+        public int BonusHPPercent { get; set; }
+        public int BonusMPPercent { get; set; }
         public int BonusWeaponAttack { get; set; }
         public int BonusMagicAttack { get; set; }
         public int BonusWeaponDefense { get; set; }
@@ -898,6 +900,8 @@ namespace HaCreator.MapSimulator.Character
                 BonusLUK = BonusLUK,
                 BonusHP = BonusHP,
                 BonusMP = BonusMP,
+                BonusHPPercent = BonusHPPercent,
+                BonusMPPercent = BonusMPPercent,
                 BonusWeaponAttack = BonusWeaponAttack,
                 BonusMagicAttack = BonusMagicAttack,
                 BonusWeaponDefense = BonusWeaponDefense,
@@ -1740,6 +1744,8 @@ namespace HaCreator.MapSimulator.Character
                 BonusLUK = BonusLUK,
                 BonusHP = BonusHP,
                 BonusMP = BonusMP,
+                BonusHPPercent = BonusHPPercent,
+                BonusMPPercent = BonusMPPercent,
                 BonusWeaponAttack = BonusWeaponAttack,
                 BonusMagicAttack = BonusMagicAttack,
                 BonusWeaponDefense = BonusWeaponDefense,
@@ -2174,8 +2180,8 @@ namespace HaCreator.MapSimulator.Character
         public int TotalDEX => DEX + SumEquipmentBonus(part => part.BonusDEX) + GetSkillStatBonus(BuffStatType.Dexterity);
         public int TotalINT => INT + SumEquipmentBonus(part => part.BonusINT) + GetSkillStatBonus(BuffStatType.Intelligence);
         public int TotalLUK => LUK + SumEquipmentBonus(part => part.BonusLUK) + GetSkillStatBonus(BuffStatType.Luck);
-        public int TotalMaxHP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxHP(), GetSkillStatBonus(BuffStatType.MaxHPPercent)), 1, MaxHpMpStat);
-        public int TotalMaxMP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxMP(), GetSkillStatBonus(BuffStatType.MaxMPPercent)), 0, MaxHpMpStat);
+        public int TotalMaxHP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxHP(), GetTotalMaxHpPercentBonus()), 1, MaxHpMpStat);
+        public int TotalMaxMP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxMP(), GetTotalMaxMpPercentBonus()), 0, MaxHpMpStat);
         public int TotalHP => Math.Clamp(HP + GetTotalMaxHpDelta(), 0, TotalMaxHP);
         public int TotalMP => Math.Clamp(MP + GetTotalMaxMpDelta(), 0, TotalMaxMP);
         public int TotalMastery => Math.Clamp(SkillMasteryProvider?.Invoke() ?? MinimumMasteryPercent, MinimumMasteryPercent, 100);
@@ -2466,6 +2472,8 @@ namespace HaCreator.MapSimulator.Character
                 hash = (hash * 31) + part.BonusLUK;
                 hash = (hash * 31) + part.BonusHP;
                 hash = (hash * 31) + part.BonusMP;
+                hash = (hash * 31) + part.BonusHPPercent;
+                hash = (hash * 31) + part.BonusMPPercent;
                 hash = (hash * 31) + part.BonusWeaponAttack;
                 hash = (hash * 31) + part.BonusMagicAttack;
                 hash = (hash * 31) + part.BonusWeaponDefense;
@@ -2869,14 +2877,24 @@ namespace HaCreator.MapSimulator.Character
         {
             int unscaledTotal = GetUnscaledTotalMaxHP();
             return Math.Max(0, unscaledTotal - MaxHP)
-                   + GetRateBonusDelta(unscaledTotal, GetSkillStatBonus(BuffStatType.MaxHPPercent));
+                   + GetRateBonusDelta(unscaledTotal, GetTotalMaxHpPercentBonus());
         }
 
         private int GetTotalMaxMpDelta()
         {
             int unscaledTotal = GetUnscaledTotalMaxMP();
             return Math.Max(0, unscaledTotal - MaxMP)
-                   + GetRateBonusDelta(unscaledTotal, GetSkillStatBonus(BuffStatType.MaxMPPercent));
+                   + GetRateBonusDelta(unscaledTotal, GetTotalMaxMpPercentBonus());
+        }
+
+        private int GetTotalMaxHpPercentBonus()
+        {
+            return SumEquipmentBonus(part => part.BonusHPPercent) + GetSkillStatBonus(BuffStatType.MaxHPPercent);
+        }
+
+        private int GetTotalMaxMpPercentBonus()
+        {
+            return SumEquipmentBonus(part => part.BonusMPPercent) + GetSkillStatBonus(BuffStatType.MaxMPPercent);
         }
 
         private static int GetRateBonusDelta(int value, int percent)

@@ -1510,7 +1510,10 @@ namespace HaCreator.MapSimulator.Loaders
                 : fallbackBounds;
 
             Point? headAnchor = TryGetVector(canvasProperty?["head"]);
-            List<Rectangle> multiBodyBounds = TryGetBodyBounds(canvasProperty, "multiRect", "rect");
+            List<Rectangle> clientMultiBodyBounds = TryGetBodyBounds(canvasProperty, "multiRect");
+            List<Rectangle> clientBodyBounds = TryGetBodyBounds(canvasProperty, "rect");
+            List<Rectangle> multiBodyBounds = CombineBodyBounds(clientMultiBodyBounds, clientBodyBounds);
+            Rectangle bodyBounds = ResolvePrimaryBodyBounds(frameBounds, clientBodyBounds);
             int? alphaStart = TryGetOptionalInt(canvasProperty?["a0"]);
             int? alphaEnd = TryGetOptionalInt(canvasProperty?["a1"]);
             bool hasAlphaRange = alphaStart.HasValue || alphaEnd.HasValue;
@@ -1524,9 +1527,11 @@ namespace HaCreator.MapSimulator.Loaders
                 CanvasSize = canvasSize,
                 VisualBounds = fallbackBounds,
                 FrameBounds = frameBounds,
+                BodyBounds = bodyBounds,
                 HasHeadAnchor = headAnchor.HasValue,
                 HeadAnchor = headAnchor ?? Point.Zero,
                 MultiBodyBounds = multiBodyBounds,
+                ClientMultiBodyBounds = clientMultiBodyBounds,
                 HasAlphaRange = hasAlphaRange,
                 AlphaStart = resolvedAlphaStart,
                 AlphaEnd = resolvedAlphaEnd,
@@ -1571,9 +1576,11 @@ namespace HaCreator.MapSimulator.Loaders
                 CanvasSize = new Point(1, 1),
                 VisualBounds = new Rectangle(0, 0, 1, 1),
                 FrameBounds = new Rectangle(0, 0, 1, 1),
+                BodyBounds = new Rectangle(0, 0, 1, 1),
                 HasHeadAnchor = false,
                 HeadAnchor = Point.Zero,
                 MultiBodyBounds = null,
+                ClientMultiBodyBounds = null,
                 HasAlphaRange = false,
                 AlphaStart = byte.MaxValue,
                 AlphaEnd = byte.MaxValue,
@@ -1677,6 +1684,44 @@ namespace HaCreator.MapSimulator.Loaders
             return bounds.Count > 0 ? bounds : null;
         }
 
+        private static List<Rectangle> CombineBodyBounds(params List<Rectangle>[] bodyBounds)
+        {
+            if (bodyBounds == null || bodyBounds.Length == 0)
+            {
+                return null;
+            }
+
+            List<Rectangle> combined = null;
+            foreach (List<Rectangle> source in bodyBounds)
+            {
+                if (source == null || source.Count == 0)
+                {
+                    continue;
+                }
+
+                combined ??= new List<Rectangle>();
+                combined.AddRange(source);
+            }
+
+            return combined?.Count > 0 ? combined : null;
+        }
+
+        private static Rectangle ResolvePrimaryBodyBounds(Rectangle fallbackBounds, IReadOnlyList<Rectangle> bodyBounds)
+        {
+            if (bodyBounds == null || bodyBounds.Count == 0)
+            {
+                return fallbackBounds;
+            }
+
+            Rectangle resolved = bodyBounds[0];
+            for (int i = 1; i < bodyBounds.Count; i++)
+            {
+                resolved = Rectangle.Union(resolved, bodyBounds[i]);
+            }
+
+            return resolved.IsEmpty ? fallbackBounds : resolved;
+        }
+
         private static bool ShouldAppendReversePlayback(WzSubProperty mobStateProperty)
         {
             WzImageProperty infoProperty = WzInfoTools.GetRealProperty(mobStateProperty?["info"]);
@@ -1708,37 +1753,10 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static List<CachedMobFrameOverlay> BuildMobActionFrameOverlays(WzSubProperty actionProperty)
         {
-            var overlays = new List<CachedMobFrameOverlay>();
-            if (actionProperty?.WzProperties == null)
-            {
-                return overlays;
-            }
-
-            foreach (WzImageProperty childProperty in actionProperty.WzProperties)
-            {
-                if (childProperty == null ||
-                    int.TryParse(childProperty.Name, out _) ||
-                    string.Equals(childProperty.Name, "info", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                List<WzCanvasProperty> overlayFrames = BuildMobActionFrameCanvases(childProperty);
-                if (overlayFrames.Count == 0)
-                {
-                    continue;
-                }
-
-                overlays.Add(new CachedMobFrameOverlay
-                {
-                    Name = childProperty.Name,
-                    LayerZ = ResolveMobOverlayLayerZ(overlayFrames[0]) ?? childProperty.Name,
-                    FrameCanvases = overlayFrames,
-                    FrameDelays = BuildMobActionFrameDelays(overlayFrames)
-                });
-            }
-
-            return overlays;
+            // CActionMan::LoadMobAction queries each action child as IWzCanvas while building
+            // MOBACTIONFRAMEENTRY rows. Rare nonnumeric branches such as stand/face/face are
+            // separate authored data, not frame entries owned by this cache seam.
+            return new List<CachedMobFrameOverlay>();
         }
 
         internal static int CountMobActionFrameOverlaysForTests(WzSubProperty actionProperty)

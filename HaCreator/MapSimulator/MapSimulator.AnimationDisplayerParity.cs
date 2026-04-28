@@ -73,6 +73,10 @@ namespace HaCreator.MapSimulator
         private const int AnimationDisplayerFollowUpdateIntervalMs = 100;
         private const int AnimationDisplayerFollowDurationMs = 10000;
         private const int AnimationDisplayerFollowEmissionBoxSize = 25;
+        private const int AnimationDisplayerFollowDefaultEmissionLeft = -25;
+        private const int AnimationDisplayerFollowDefaultEmissionTop = -25;
+        private const int AnimationDisplayerFollowDefaultEmissionRight = 25;
+        private const int AnimationDisplayerFollowDefaultEmissionBottom = 25;
         private const int AnimationDisplayerFollowAbsoluteTravelOffsetY = -20;
         private const int AnimationDisplayerFollowEmissionVerticalBias = 10;
         private const int AnimationDisplayerLadderRawActionCode = 31;
@@ -8293,12 +8297,16 @@ namespace HaCreator.MapSimulator
             return ResolveAnimationDisplayerOwnerMapPoint(actor.Position, actor.FacingRight, frame, mapPointName);
         }
 
-        private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)
+        internal static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)
         {
-            int left = GetAnimationDisplayerNumericValue(effectProperty, "left") ?? 0;
-            int top = GetAnimationDisplayerNumericValue(effectProperty, "top") ?? 0;
-            int right = GetAnimationDisplayerNumericValue(effectProperty, "right") ?? AnimationDisplayerFollowEmissionBoxSize;
-            int bottom = GetAnimationDisplayerNumericValue(effectProperty, "bottom") ?? AnimationDisplayerFollowEmissionBoxSize;
+            int left = GetAnimationDisplayerNumericValue(effectProperty, "left")
+                ?? AnimationDisplayerFollowDefaultEmissionLeft;
+            int top = GetAnimationDisplayerNumericValue(effectProperty, "top")
+                ?? AnimationDisplayerFollowDefaultEmissionTop;
+            int right = GetAnimationDisplayerNumericValue(effectProperty, "right")
+                ?? AnimationDisplayerFollowDefaultEmissionRight;
+            int bottom = GetAnimationDisplayerNumericValue(effectProperty, "bottom")
+                ?? AnimationDisplayerFollowDefaultEmissionBottom;
             int width = Math.Max(1, right - left);
             int height = Math.Max(1, bottom - top);
             return new Rectangle(left, top, width, height);

@@ -325,6 +325,31 @@ namespace HaCreator.MapSimulator.Pools
             public bool FollowOwner { get; init; }
         }
 
+        public sealed class RemoteDragonCompanionPresentationState
+        {
+            public Vector2 VisualAnchor { get; set; }
+            public Vector2 FollowVelocity { get; set; }
+            public int LastFollowUpdateTime { get; set; } = int.MinValue;
+            public bool FollowActive { get; set; }
+            public int ActiveVerticalFollowState { get; set; }
+            public int ActiveVerticalCheckCount { get; set; }
+            public int ActiveFollowReleaseStableFrames { get; set; }
+            public string ActionName { get; set; }
+            public int ActionStartTime { get; set; } = int.MinValue;
+            public int OwnerActionStartTime { get; set; } = int.MinValue;
+        }
+
+        public readonly record struct RemoteDragonCompanionRenderState(
+            int CharacterId,
+            int JobId,
+            string ActionName,
+            Vector2 TargetAnchor,
+            Vector2 VisualAnchor,
+            bool FacingRight,
+            int ActionElapsedMs,
+            int FrameHeight,
+            int OriginX);
+
         public sealed class RemoteActiveEffectMotionBlurSnapshot
         {
             public IReadOnlyList<RemoteActiveEffectMotionBlurLayerSnapshot> Layers { get; init; } = Array.Empty<RemoteActiveEffectMotionBlurLayerSnapshot>();
@@ -631,6 +656,8 @@ namespace HaCreator.MapSimulator.Pools
         private int _helperMarkerCount;
         private CharacterLoader _loader;
         private SkillLoader _skillLoader;
+        private DragonActionLoader _remoteDragonActionLoader;
+        private GraphicsDevice _remoteDragonActionLoaderDevice;
         private Texture2D _pixelTexture;
         private GraphicsDevice _pixelTextureDevice;
         private Func<int, IReadOnlyList<ActiveSummon>> _packetOwnedSummonResolver;
@@ -5413,6 +5440,353 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        internal static bool TryResolveRemoteDragonCompanionRenderStateForParity(
+            RemoteUserActor actor,
+            int currentTime,
+            out RemoteDragonCompanionRenderState renderState)
+        {
+            renderState = default;
+            if (actor?.Build == null
+                || !TryResolveRemoteDragonHudMetadata(actor.Build.Job, out RemoteDragonHudMetadata metadata))
+            {
+                return false;
+            }
+
+            return TryResolveRemoteDragonCompanionRenderStateForParity(actor, metadata, currentTime, out renderState);
+        }
+
+        internal static bool TryResolveRemoteDragonCompanionRenderStateForParity(
+            RemoteUserActor actor,
+            RemoteDragonHudMetadata metadata,
+            int currentTime,
+            out RemoteDragonCompanionRenderState renderState)
+        {
+            renderState = default;
+            if (actor?.Build == null
+                || metadata.ActionTimelines == null
+                || metadata.ActionTimelines.Count == 0)
+            {
+                return false;
+            }
+
+            actor.RemoteDragonCompanion ??= new RemoteDragonCompanionPresentationState();
+            RemoteDragonCompanionPresentationState dragon = actor.RemoteDragonCompanion;
+            AssembledFrame ownerFrame = actor.GetFrameAtTimeForRendering(currentTime);
+            float ownerBodyOriginY = ownerFrame != null
+                ? actor.Position.Y - ownerFrame.FeetOffset
+                : actor.Position.Y;
+            string ownerPacketActionName = ResolveRemoteDragonOwnerPacketActionName(actor);
+
+            string dragonActionName;
+            int dragonActionElapsedMs;
+            if (!TryResolveRemoteDragonPacketOwnedAttackAction(
+                    actor,
+                    metadata,
+                    currentTime,
+                    out dragonActionName,
+                    out dragonActionElapsedMs))
+            {
+                ResolveRemoteDragonCompanionActionSelection(
+                    dragon,
+                    ownerPacketActionName,
+                    actor.BaseActionRawCode,
+                    actor.BaseActionStartTime,
+                    metadata,
+                    currentTime,
+                    out dragonActionName,
+                    out dragonActionElapsedMs);
+            }
+
+            Vector2 targetAnchor = ResolveRemoteDragonAnchor(
+                actor,
+                ownerFrame,
+                ownerPacketActionName,
+                actor.BaseActionRawCode,
+                ownerBodyOriginY,
+                dragonActionName,
+                dragonActionElapsedMs,
+                metadata);
+            Vector2 visualAnchor = ResolveRemoteDragonCompanionVisualAnchor(dragon, targetAnchor, currentTime);
+            renderState = new RemoteDragonCompanionRenderState(
+                actor.CharacterId,
+                actor.Build.Job,
+                dragonActionName,
+                targetAnchor,
+                visualAnchor,
+                actor.FacingRight,
+                dragonActionElapsedMs,
+                metadata.ResolveFrameHeight(dragonActionName, dragonActionElapsedMs),
+                metadata.ResolveOriginX(dragonActionName, dragonActionElapsedMs));
+            return true;
+        }
+
+        private static bool TryResolveRemoteDragonPacketOwnedAttackAction(
+            RemoteUserActor actor,
+            RemoteDragonHudMetadata metadata,
+            int currentTime,
+            out string actionName,
+            out int elapsedMs)
+        {
+            actionName = null;
+            elapsedMs = 0;
+            if (actor == null
+                || string.IsNullOrWhiteSpace(actor.RemoteDragonAttackActionName)
+                || actor.RemoteDragonAttackStartTime == int.MinValue
+                || metadata.ActionTimelines == null
+                || !metadata.ActionTimelines.TryGetValue(actor.RemoteDragonAttackActionName, out RemoteDragonHudAnimationTimeline timeline))
+            {
+                return false;
+            }
+
+            elapsedMs = Math.Max(0, currentTime - actor.RemoteDragonAttackStartTime);
+            if (!timeline.Loop
+                && timeline.TotalDurationMs > 0
+                && elapsedMs >= timeline.TotalDurationMs)
+            {
+                actor.RemoteDragonAttackSkillId = null;
+                actor.RemoteDragonAttackActionName = null;
+                actor.RemoteDragonAttackStartTime = int.MinValue;
+                return false;
+            }
+
+            actionName = actor.RemoteDragonAttackActionName;
+            return true;
+        }
+
+        private static void ResolveRemoteDragonCompanionActionSelection(
+            RemoteDragonCompanionPresentationState dragon,
+            string ownerActionName,
+            int? ownerRawActionCode,
+            int ownerActionStartTime,
+            RemoteDragonHudMetadata metadata,
+            int currentTime,
+            out string actionName,
+            out int elapsedMs)
+        {
+            if (TryResolveRemoteExplicitDragonActionName(
+                    ownerActionName,
+                    ownerRawActionCode,
+                    metadata,
+                    out string explicitActionName,
+                    out bool useOwnerActionTimeline))
+            {
+                actionName = explicitActionName;
+                elapsedMs = ResolveRemoteDragonCompanionActionElapsedMs(
+                    dragon,
+                    actionName,
+                    currentTime,
+                    useOwnerActionTimeline,
+                    ownerActionStartTime);
+                return;
+            }
+
+            actionName = ShouldUseRemoteDragonMoveAction(ownerActionName, ownerRawActionCode) && metadata.HasAction("move")
+                ? "move"
+                : "stand";
+            elapsedMs = ResolveRemoteDragonCompanionActionElapsedMs(
+                dragon,
+                actionName,
+                currentTime,
+                useOwnerActionTimeline: false,
+                ownerActionStartTime: int.MinValue);
+        }
+
+        private static int ResolveRemoteDragonCompanionActionElapsedMs(
+            RemoteDragonCompanionPresentationState dragon,
+            string actionName,
+            int currentTime,
+            bool useOwnerActionTimeline,
+            int ownerActionStartTime)
+        {
+            if (dragon == null)
+            {
+                return 0;
+            }
+
+            useOwnerActionTimeline = useOwnerActionTimeline
+                && ownerActionStartTime != int.MinValue;
+            int actionStartTime = useOwnerActionTimeline
+                ? ownerActionStartTime
+                : currentTime;
+            bool actionChanged = !string.Equals(dragon.ActionName, actionName, StringComparison.OrdinalIgnoreCase);
+            bool ownerTimelineChanged = useOwnerActionTimeline
+                && dragon.OwnerActionStartTime != ownerActionStartTime;
+            bool localTimelineMissing = !useOwnerActionTimeline
+                && dragon.ActionStartTime == int.MinValue;
+
+            if (actionChanged || ownerTimelineChanged || localTimelineMissing)
+            {
+                dragon.ActionName = actionName;
+                dragon.ActionStartTime = actionStartTime;
+                dragon.OwnerActionStartTime = useOwnerActionTimeline
+                    ? ownerActionStartTime
+                    : int.MinValue;
+            }
+
+            return Math.Max(0, currentTime - dragon.ActionStartTime);
+        }
+
+        private static Vector2 ResolveRemoteDragonCompanionVisualAnchor(
+            RemoteDragonCompanionPresentationState dragon,
+            Vector2 targetAnchor,
+            int currentTime)
+        {
+            if (dragon == null)
+            {
+                return targetAnchor;
+            }
+
+            if (dragon.LastFollowUpdateTime == int.MinValue)
+            {
+                dragon.VisualAnchor = targetAnchor;
+                dragon.FollowVelocity = Vector2.Zero;
+                dragon.LastFollowUpdateTime = currentTime;
+                return dragon.VisualAnchor;
+            }
+
+            int elapsedMs = Math.Max(0, currentTime - dragon.LastFollowUpdateTime);
+            dragon.LastFollowUpdateTime = currentTime;
+            if (elapsedMs <= 0)
+            {
+                return dragon.VisualAnchor;
+            }
+
+            if (DragonCompanionRuntime.ShouldSnapActiveFollowToTarget(dragon.VisualAnchor, targetAnchor))
+            {
+                dragon.VisualAnchor = targetAnchor;
+                dragon.FollowVelocity = Vector2.Zero;
+                dragon.FollowActive = false;
+                dragon.ActiveVerticalFollowState = 0;
+                dragon.ActiveVerticalCheckCount = 0;
+                dragon.ActiveFollowReleaseStableFrames = 0;
+                return dragon.VisualAnchor;
+            }
+
+            UpdateRemoteDragonCompanionFollowState(dragon, targetAnchor);
+            if (dragon.FollowActive)
+            {
+                float nextX = DragonCompanionRuntime.ResolveClientActiveFollowHorizontalStep(
+                    dragon.VisualAnchor.X,
+                    targetAnchor.X,
+                    out double velocityX);
+                float nextY = ResolveRemoteDragonCompanionActiveFollowVerticalStep(
+                    dragon.VisualAnchor.Y,
+                    targetAnchor.Y,
+                    dragon,
+                    out double velocityY);
+                dragon.VisualAnchor = new Vector2(nextX, nextY);
+                dragon.FollowVelocity = new Vector2((float)velocityX, (float)velocityY);
+                return dragon.VisualAnchor;
+            }
+
+            float stepSeconds = RemoteDragonPassiveFollowStepMilliseconds / 1000f;
+            Vector2 visualAnchor = dragon.VisualAnchor;
+            Vector2 velocity = dragon.FollowVelocity;
+            visualAnchor.X = ResolveRemoteDragonPassiveFollowAxis(
+                visualAnchor.X,
+                targetAnchor.X,
+                ref velocity.X,
+                stepSeconds,
+                RemoteDragonPassiveHorizontalResponse,
+                RemoteDragonPassiveMaxHorizontalSpeed,
+                CVecCtrl.WalkAcceleration * RemoteDragonPassiveHorizontalForceScale);
+            visualAnchor.Y = ResolveRemoteDragonPassiveFollowAxis(
+                visualAnchor.Y,
+                targetAnchor.Y,
+                ref velocity.Y,
+                stepSeconds,
+                RemoteDragonPassiveVerticalResponse,
+                RemoteDragonPassiveMaxVerticalSpeed,
+                CVecCtrl.AirDragDeceleration * RemoteDragonPassiveVerticalForceScale);
+            dragon.VisualAnchor = visualAnchor;
+            dragon.FollowVelocity = velocity;
+            return dragon.VisualAnchor;
+        }
+
+        private static void UpdateRemoteDragonCompanionFollowState(
+            RemoteDragonCompanionPresentationState dragon,
+            Vector2 targetAnchor)
+        {
+            float horizontalDelta = Math.Abs(targetAnchor.X - dragon.VisualAnchor.X);
+            float verticalDelta = Math.Abs(targetAnchor.Y - dragon.VisualAnchor.Y);
+            bool hasMomentum = Math.Abs(dragon.FollowVelocity.X) > RemoteDragonFollowMinSpeed
+                || Math.Abs(dragon.FollowVelocity.Y) > RemoteDragonFollowMinSpeed;
+            bool shouldEngage = hasMomentum
+                || horizontalDelta > RemoteDragonActiveFollowDistanceX + RemoteDragonActiveFollowStepX
+                || verticalDelta > RemoteDragonActiveFollowVerticalCheckDistance;
+            bool shouldHold = hasMomentum
+                || horizontalDelta > RemoteDragonActiveFollowDistanceX
+                || verticalDelta > RemoteDragonActiveFollowVerticalCheckDistance;
+
+            if (dragon.FollowActive)
+            {
+                if (shouldHold)
+                {
+                    dragon.ActiveFollowReleaseStableFrames = 0;
+                    return;
+                }
+
+                dragon.ActiveFollowReleaseStableFrames++;
+                dragon.FollowActive = dragon.ActiveFollowReleaseStableFrames < RemoteDragonActiveFollowReleaseStableFrameCount;
+                return;
+            }
+
+            dragon.ActiveFollowReleaseStableFrames = 0;
+            dragon.FollowActive = shouldEngage;
+        }
+
+        private static float ResolveRemoteDragonCompanionActiveFollowVerticalStep(
+            float currentY,
+            float targetY,
+            RemoteDragonCompanionPresentationState dragon,
+            out double velocityY)
+        {
+            float deltaY = targetY - currentY;
+            float absoluteDeltaY = Math.Abs(deltaY);
+            if (dragon.ActiveVerticalFollowState == 0)
+            {
+                if (absoluteDeltaY > RemoteDragonActiveFollowVerticalCheckDistance)
+                {
+                    dragon.ActiveVerticalCheckCount++;
+                    if (dragon.ActiveVerticalCheckCount >= RemoteDragonActiveFollowVerticalCheckFrames)
+                    {
+                        dragon.ActiveVerticalFollowState = 1;
+                    }
+                }
+                else
+                {
+                    dragon.ActiveVerticalCheckCount = 0;
+                }
+            }
+            else
+            {
+                dragon.ActiveVerticalCheckCount = 0;
+            }
+
+            bool shouldMoveVertically = dragon.ActiveVerticalFollowState != 0
+                || Math.Abs(deltaY) > RemoteDragonActiveFollowImmediateVerticalDistance;
+            if (!shouldMoveVertically)
+            {
+                velocityY = 0d;
+                return currentY;
+            }
+
+            if (dragon.ActiveVerticalFollowState < 0 && currentY == targetY)
+            {
+                dragon.ActiveVerticalFollowState = 0;
+                velocityY = deltaY >= 0f ? 1d : -1d;
+                return currentY;
+            }
+
+            int verticalStep = Math.Max(1, (int)(MathF.Min(17f, absoluteDeltaY / 10f) + 1f));
+            float nextY = deltaY >= 0f
+                ? Math.Min(targetY, currentY + verticalStep)
+                : Math.Max(targetY, currentY - verticalStep);
+            dragon.ActiveVerticalFollowState = nextY == targetY ? -1 : 1;
+            velocityY = deltaY >= 0f ? 1d : -1d;
+            return nextY;
+        }
+
         internal static Vector2 ResolveRemoteDragonHudVisualAnchorForTesting(
             RemotePreparedSkillState prepared,
             Vector2 targetAnchor,
@@ -6257,6 +6631,15 @@ namespace HaCreator.MapSimulator.Pools
                     centerX,
                     centerY,
                     tickCount);
+                DrawRemoteDragonCompanion(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    tickCount);
                 DrawRemoteActorFrame(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -6457,6 +6840,78 @@ namespace HaCreator.MapSimulator.Pools
                         1),
                     new Color(160, 0, 0));
             }
+        }
+
+        private void DrawRemoteDragonCompanion(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (spriteBatch?.GraphicsDevice == null
+                || !TryResolveRemoteDragonCompanionRenderStateForParity(actor, currentTime, out RemoteDragonCompanionRenderState state))
+            {
+                return;
+            }
+
+            DragonActionLoader loader = GetOrCreateRemoteDragonActionLoader(spriteBatch.GraphicsDevice);
+            SkillAnimation animation = loader?.GetOrLoadAnimation(state.JobId, state.ActionName);
+            if (animation?.TryGetFrameAtTime(state.ActionElapsedMs, out SkillFrame frame, out int frameElapsedMs) != true
+                || frame?.Texture == null)
+            {
+                return;
+            }
+
+            float frameAlpha = ResolveFrameAlpha(frame, frameElapsedMs);
+            if (frameAlpha <= 0.01f)
+            {
+                return;
+            }
+
+            int screenX = (int)Math.Round(state.VisualAnchor.X) - mapShiftX + centerX;
+            int screenY = (int)Math.Round(state.VisualAnchor.Y) - mapShiftY + centerY;
+            frame.Texture.DrawBackground(
+                spriteBatch,
+                skeletonMeshRenderer,
+                null,
+                screenX,
+                screenY,
+                Color.White * frameAlpha,
+                !state.FacingRight,
+                null);
+        }
+
+        private DragonActionLoader GetOrCreateRemoteDragonActionLoader(GraphicsDevice device)
+        {
+            if (device == null)
+            {
+                return null;
+            }
+
+            if (_remoteDragonActionLoader == null || !ReferenceEquals(_remoteDragonActionLoaderDevice, device))
+            {
+                _remoteDragonActionLoader = new DragonActionLoader(device);
+                _remoteDragonActionLoaderDevice = device;
+            }
+
+            return _remoteDragonActionLoader;
+        }
+
+        private static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        {
+            if (frame == null)
+            {
+                return 0f;
+            }
+
+            int startAlpha = Math.Clamp(frame.AlphaStart, 0, 255);
+            int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
+            float progress = MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
+            return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
         }
 
         private Texture2D GetPixelTexture(GraphicsDevice device)
@@ -7812,11 +8267,27 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (actor.PacketOwnedEmotion.ExpireTime > 0
-                && currentTime >= actor.PacketOwnedEmotion.ExpireTime)
+            if (ShouldExpireRemotePacketOwnedEmotionForParity(actor.PacketOwnedEmotion, currentTime))
             {
                 ClearPacketOwnedEmotionState(actor, currentTime);
             }
+        }
+
+        internal static bool ShouldExpireRemotePacketOwnedEmotionForTesting(
+            RemotePacketOwnedEmotionState state,
+            int currentTime)
+        {
+            return ShouldExpireRemotePacketOwnedEmotionForParity(state, currentTime);
+        }
+
+        private static bool ShouldExpireRemotePacketOwnedEmotionForParity(
+            RemotePacketOwnedEmotionState state,
+            int currentTime)
+        {
+            return state?.ExpireTime != 0
+                   && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(
+                       currentTime,
+                       state.ExpireTime);
         }
 
         private static void UpdateRemoteActiveEffectMotionBlurState(RemoteUserActor actor, int currentTime)
@@ -13300,6 +13771,14 @@ namespace HaCreator.MapSimulator.Pools
                 presentation.ObservedPlayerFacingRight = actor.FacingRight;
                 presentation.ObservedRawActionCode = rawActionCode;
                 presentation.ObservedPlayerActionTriggerTime = actionTriggerTime;
+                TrySeedRemoteShadowPartnerClientOffset(
+                    actor,
+                    observedPlayerActionName,
+                    state,
+                    actor.FacingRight,
+                    rawActionCode,
+                    currentTime,
+                    out _);
                 bool observedAttackAction = ShouldUseRemoteShadowPartnerAttackObservationGate(
                     observedPlayerActionName,
                     state);
@@ -13521,25 +14000,24 @@ namespace HaCreator.MapSimulator.Pools
                 return Point.Zero;
             }
 
-            Point targetOffset = ShadowPartnerClientActionResolver.ResolveClientTargetOffset(
+            if (TrySeedRemoteShadowPartnerClientOffset(
+                    actor,
+                    observedPlayerActionName,
+                    state,
+                    facingRight,
+                    rawActionCode,
+                    currentTime,
+                    out Point targetOffset))
+            {
+                return targetOffset;
+            }
+
+            targetOffset = ResolveRemoteShadowPartnerTargetClientOffset(
+                actor,
                 observedPlayerActionName,
                 state,
                 facingRight,
-                RemoteShadowPartnerClientSideOffsetPx,
-                RemoteShadowPartnerClientBackActionOffsetYPx,
-                rawActionCode,
-                actor.HasMorphTemplate,
-                HasRemoteGhostActionTransform(actor, observedPlayerActionName));
-            actor.ShadowPartnerPresentation ??= new RemoteShadowPartnerPresentationState();
-            if (!actor.ShadowPartnerPresentation.IsInitialized)
-            {
-                actor.ShadowPartnerPresentation.CurrentClientOffsetPx = targetOffset;
-                actor.ShadowPartnerPresentation.ClientOffsetStartPx = targetOffset;
-                actor.ShadowPartnerPresentation.ClientOffsetTargetPx = targetOffset;
-                actor.ShadowPartnerPresentation.ClientOffsetTransitionStartTime = currentTime;
-                actor.ShadowPartnerPresentation.IsInitialized = true;
-                return targetOffset;
-            }
+                rawActionCode);
 
             if (targetOffset != actor.ShadowPartnerPresentation.ClientOffsetTargetPx)
             {
@@ -13555,6 +14033,103 @@ namespace HaCreator.MapSimulator.Pools
                 currentTime,
                 RemoteShadowPartnerTransitionDurationMs);
             return actor.ShadowPartnerPresentation.CurrentClientOffsetPx;
+        }
+
+        private static Point ResolveRemoteShadowPartnerTargetClientOffset(
+            RemoteUserActor actor,
+            string observedPlayerActionName,
+            PlayerState state,
+            bool facingRight,
+            int? rawActionCode)
+        {
+            if (actor == null)
+            {
+                return Point.Zero;
+            }
+
+            return ShadowPartnerClientActionResolver.ResolveClientTargetOffset(
+                observedPlayerActionName,
+                state,
+                facingRight,
+                RemoteShadowPartnerClientSideOffsetPx,
+                RemoteShadowPartnerClientBackActionOffsetYPx,
+                rawActionCode,
+                actor.HasMorphTemplate,
+                HasRemoteGhostActionTransform(actor, observedPlayerActionName));
+        }
+
+        private static bool TrySeedRemoteShadowPartnerClientOffset(
+            RemoteUserActor actor,
+            string observedPlayerActionName,
+            PlayerState state,
+            bool facingRight,
+            int? rawActionCode,
+            int currentTime,
+            out Point targetOffset)
+        {
+            targetOffset = Point.Zero;
+            if (actor == null)
+            {
+                return false;
+            }
+
+            targetOffset = ResolveRemoteShadowPartnerTargetClientOffset(
+                actor,
+                observedPlayerActionName,
+                state,
+                facingRight,
+                rawActionCode);
+            actor.ShadowPartnerPresentation ??= new RemoteShadowPartnerPresentationState();
+            if (actor.ShadowPartnerPresentation.IsInitialized)
+            {
+                return false;
+            }
+
+            SeedRemoteShadowPartnerClientOffset(
+                actor.ShadowPartnerPresentation,
+                targetOffset,
+                currentTime);
+            return true;
+        }
+
+        private static void SeedRemoteShadowPartnerClientOffset(
+            RemoteShadowPartnerPresentationState presentation,
+            Point targetOffset,
+            int currentTime)
+        {
+            if (presentation == null)
+            {
+                return;
+            }
+
+            presentation.CurrentClientOffsetPx = targetOffset;
+            presentation.ClientOffsetStartPx = targetOffset;
+            presentation.ClientOffsetTargetPx = targetOffset;
+            presentation.ClientOffsetTransitionStartTime = currentTime;
+            presentation.IsInitialized = true;
+        }
+
+        internal static RemoteShadowPartnerPresentationState SeedRemoteShadowPartnerClientOffsetForTesting(
+            string observedPlayerActionName,
+            PlayerState state,
+            bool facingRight,
+            int? rawActionCode,
+            bool hasMorphTransform,
+            bool hasGhostTransform,
+            int currentTime)
+        {
+            var presentation = new RemoteShadowPartnerPresentationState();
+            Point targetOffset = ShadowPartnerClientActionResolver.ResolveClientTargetOffset(
+                observedPlayerActionName,
+                state,
+                facingRight,
+                RemoteShadowPartnerClientSideOffsetPx,
+                RemoteShadowPartnerClientBackActionOffsetYPx,
+                rawActionCode,
+                hasMorphTransform,
+                hasGhostTransform);
+            SeedRemoteShadowPartnerClientOffset(presentation, targetOffset, currentTime);
+            return presentation;
         }
 
         private static bool HasRemoteGhostActionTransform(RemoteUserActor actor, string observedPlayerActionName)
@@ -15340,6 +15915,7 @@ namespace HaCreator.MapSimulator.Pools
         public Point? LastThrowGrenadeTarget { get; set; }
         public int LastThrowGrenadeKeyDownTime { get; set; }
         public int LastThrowGrenadePacketTime { get; set; } = int.MinValue;
+        public RemoteUserActorPool.RemoteDragonCompanionPresentationState RemoteDragonCompanion { get; set; }
         public int? RemoteDragonAttackSkillId { get; set; }
         public string RemoteDragonAttackActionName { get; set; }
         public int RemoteDragonAttackStartTime { get; set; } = int.MinValue;

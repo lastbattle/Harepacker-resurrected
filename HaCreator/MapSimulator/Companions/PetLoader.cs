@@ -63,7 +63,7 @@ namespace HaCreator.MapSimulator.Companions
     {
         internal const int ClientPetActionDefaultDelay = 180;
 
-        private readonly record struct PetActionFrame(string Name, IDXObject Frame);
+        private readonly record struct PetActionFrame(string Name, IDXObject Frame, WzImageProperty SourceProperty);
         private readonly record struct FrameCanvasCandidate(WzCanvasProperty Canvas, int SourceIndex);
         private readonly record struct PetAnimationCacheKey(int PetItemId, int PetWearItemId);
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
@@ -676,51 +676,52 @@ namespace HaCreator.MapSimulator.Companions
                 return loadedBaseFrames;
             }
 
-            var overlayFramesByName = new Dictionary<string, IDXObject>(StringComparer.OrdinalIgnoreCase);
+            var overlayFramesByName = new Dictionary<string, PetActionFrame>(StringComparer.OrdinalIgnoreCase);
             foreach (PetActionFrame overlayFrame in overlayFrames)
             {
                 if (!string.IsNullOrWhiteSpace(overlayFrame.Name) &&
                     overlayFrame.Frame != null &&
                     !overlayFramesByName.ContainsKey(overlayFrame.Name))
                 {
-                    overlayFramesByName[overlayFrame.Name] = overlayFrame.Frame;
+                    overlayFramesByName[overlayFrame.Name] = overlayFrame;
                 }
             }
 
             var composedFrames = new List<IDXObject>(baseFrames.Count);
-            List<IDXObject> overlayFrameOrder = overlayFrames.Select(static frame => frame.Frame).ToList();
+            List<PetActionFrame> overlayFrameOrder = overlayFrames.ToList();
             for (int baseFrameIndex = 0; baseFrameIndex < baseFrames.Count; baseFrameIndex++)
             {
                 PetActionFrame baseFrame = baseFrames[baseFrameIndex];
-                IDXObject overlayFrame = ResolvePetWearOverlayFrame(
+                PetActionFrame? overlayFrame = ResolvePetWearOverlayFrame(
                     overlayFramesByName,
                     overlayFrameOrder,
                     baseFrame.Name,
                     baseFrameIndex);
-                composedFrames.Add(overlayFrame == null ? baseFrame.Frame : ComposePetWearFrame(baseFrame.Frame, overlayFrame));
+                composedFrames.Add(overlayFrame.HasValue ? ComposePetWearFrame(baseFrame, overlayFrame.Value) : baseFrame.Frame);
             }
 
             _actionCache[cacheKey] = composedFrames;
             return composedFrames;
         }
 
-        internal static IDXObject ResolvePetWearOverlayFrame(
-            IReadOnlyDictionary<string, IDXObject> overlayFramesByName,
-            IReadOnlyList<IDXObject> overlayFramesByIndex,
+        private static PetActionFrame? ResolvePetWearOverlayFrame(
+            IReadOnlyDictionary<string, PetActionFrame> overlayFramesByName,
+            IReadOnlyList<PetActionFrame> overlayFramesByIndex,
             string baseFrameName,
             int baseFrameIndex)
         {
             if (!string.IsNullOrWhiteSpace(baseFrameName) &&
                 overlayFramesByName != null &&
-                overlayFramesByName.TryGetValue(baseFrameName, out IDXObject namedFrame) &&
-                namedFrame != null)
+                overlayFramesByName.TryGetValue(baseFrameName, out PetActionFrame namedFrame) &&
+                namedFrame.Frame != null)
             {
                 return namedFrame;
             }
 
             if (overlayFramesByIndex != null &&
                 baseFrameIndex >= 0 &&
-                baseFrameIndex < overlayFramesByIndex.Count)
+                baseFrameIndex < overlayFramesByIndex.Count &&
+                overlayFramesByIndex[baseFrameIndex].Frame != null)
             {
                 return overlayFramesByIndex[baseFrameIndex];
             }
@@ -853,6 +854,17 @@ namespace HaCreator.MapSimulator.Companions
         internal static IReadOnlyList<string> EnumerateFrameCanvasNamesForTesting(WzImageProperty frameProperty)
         {
             return CollectFrameCanvasCandidates(frameProperty)
+                .Select(static candidate => candidate.Canvas?.Name)
+                .Where(static name => !string.IsNullOrWhiteSpace(name))
+                .ToArray();
+        }
+
+        internal static IReadOnlyList<string> EnumerateComposedPetWearCanvasNamesForTesting(
+            WzImageProperty baseFrameProperty,
+            WzImageProperty overlayFrameProperty)
+        {
+            return CollectPetWearFrameCanvasCandidates(baseFrameProperty, overlayFrameProperty)
+                .OrderBy(static candidate => candidate, FrameCanvasCandidateComparer.Instance)
                 .Select(static candidate => candidate.Canvas?.Name)
                 .Where(static name => !string.IsNullOrWhiteSpace(name))
                 .ToArray();
@@ -1155,7 +1167,7 @@ namespace HaCreator.MapSimulator.Companions
                 IDXObject frame = LoadFrameTexture(child, frameDelay);
                 if (frame != null)
                 {
-                    frames.Add(new PetActionFrame(frameName, frame));
+                    frames.Add(new PetActionFrame(frameName, frame, child));
                 }
             }
 
@@ -1220,6 +1232,18 @@ namespace HaCreator.MapSimulator.Companions
             var visited = new HashSet<WzImageProperty>();
             int sourceIndex = 0;
             CollectFrameCanvasCandidates(frameProperty, canvases, visited, ref sourceIndex);
+            return canvases;
+        }
+
+        private static IReadOnlyList<FrameCanvasCandidate> CollectPetWearFrameCanvasCandidates(
+            WzImageProperty baseFrameProperty,
+            WzImageProperty overlayFrameProperty)
+        {
+            var canvases = new List<FrameCanvasCandidate>();
+            var visited = new HashSet<WzImageProperty>();
+            int sourceIndex = 0;
+            CollectFrameCanvasCandidates(baseFrameProperty, canvases, visited, ref sourceIndex);
+            CollectFrameCanvasCandidates(overlayFrameProperty, canvases, visited, ref sourceIndex);
             return canvases;
         }
 
@@ -1339,67 +1363,96 @@ namespace HaCreator.MapSimulator.Companions
             };
         }
 
-        private IDXObject ComposePetWearFrame(IDXObject baseFrame, IDXObject overlayFrame)
+        private IDXObject ComposePetWearFrame(PetActionFrame baseFrame, PetActionFrame overlayFrame)
         {
-            if (baseFrame?.Tag is not WzCanvasProperty baseCanvas ||
-                overlayFrame?.Tag is not WzCanvasProperty overlayCanvas)
+            if (baseFrame.Frame == null || overlayFrame.Frame == null)
             {
-                return baseFrame;
+                return baseFrame.Frame;
             }
 
             try
             {
-                using SD.Bitmap baseBitmap = baseCanvas.GetLinkedWzCanvasBitmap();
-                using SD.Bitmap overlayBitmap = overlayCanvas.GetLinkedWzCanvasBitmap();
-                if (!TryGetBitmapDimensions(baseBitmap, out int baseWidth, out int baseHeight) ||
-                    !TryGetBitmapDimensions(overlayBitmap, out int overlayWidth, out int overlayHeight))
-                {
-                    return baseFrame;
-                }
+                IReadOnlyList<FrameCanvasCandidate> canvasCandidates = CollectPetWearFrameCanvasCandidates(
+                    baseFrame.SourceProperty,
+                    overlayFrame.SourceProperty);
+                var layerEntries = new List<LayeredFrameEntry>(canvasCandidates.Count);
 
-                Rectangle baseBounds = ResolveCanvasBounds(baseCanvas, baseWidth, baseHeight);
-                Rectangle overlayBounds = ResolveCanvasBounds(overlayCanvas, overlayWidth, overlayHeight);
-                Rectangle composedBounds = Rectangle.FromLTRB(
-                    Math.Min(baseBounds.Left, overlayBounds.Left),
-                    Math.Min(baseBounds.Top, overlayBounds.Top),
-                    Math.Max(baseBounds.Right, overlayBounds.Right),
-                    Math.Max(baseBounds.Bottom, overlayBounds.Bottom));
-
-                using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
-                using (SDG graphics = SDG.FromImage(composedBitmap))
+                try
                 {
-                    graphics.Clear(SD.Color.Transparent);
-                    ApplyNativeCanvasCopySettings(graphics);
-                    bool drawOverlayAfterBase = ShouldDrawPetWearOverlayAfterBase(
-                        ResolveCanvasZ(baseCanvas),
-                        ResolveCanvasZ(overlayCanvas));
-                    if (drawOverlayAfterBase)
+                    foreach (FrameCanvasCandidate canvasCandidate in canvasCandidates)
                     {
-                        DrawCanvasCopyAlpha255(graphics, baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
-                        DrawCanvasCopyAlpha255(graphics, overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
+                        WzCanvasProperty layerCanvas = canvasCandidate.Canvas;
+                        if (layerCanvas == null)
+                        {
+                            continue;
+                        }
+
+                        SD.Bitmap layerBitmap = layerCanvas.GetLinkedWzCanvasBitmap();
+                        if (!TryGetBitmapDimensions(layerBitmap, out int layerWidth, out int layerHeight))
+                        {
+                            layerBitmap?.Dispose();
+                            continue;
+                        }
+
+                        Rectangle layerBounds = ResolveCanvasBounds(layerCanvas, layerWidth, layerHeight);
+                        layerEntries.Add(new LayeredFrameEntry(
+                            null,
+                            layerCanvas,
+                            layerBitmap,
+                            layerBounds,
+                            ResolveCanvasZ(layerCanvas),
+                            canvasCandidate.SourceIndex));
                     }
-                    else
+
+                    if (layerEntries.Count == 0)
                     {
-                        DrawCanvasCopyAlpha255(graphics, overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
-                        DrawCanvasCopyAlpha255(graphics, baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
+                        return baseFrame.Frame;
+                    }
+
+                    Rectangle composedBounds = Rectangle.FromLTRB(
+                        layerEntries.Min(static entry => entry.Bounds.Left),
+                        layerEntries.Min(static entry => entry.Bounds.Top),
+                        layerEntries.Max(static entry => entry.Bounds.Right),
+                        layerEntries.Max(static entry => entry.Bounds.Bottom));
+
+                    using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
+                    using (SDG graphics = SDG.FromImage(composedBitmap))
+                    {
+                        graphics.Clear(SD.Color.Transparent);
+                        ApplyNativeCanvasCopySettings(graphics);
+                        foreach (LayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, LayeredFrameEntryComparer.Instance))
+                        {
+                            DrawCanvasCopyAlpha255(
+                                graphics,
+                                layerEntry.Bitmap,
+                                layerEntry.Bounds.X - composedBounds.X,
+                                layerEntry.Bounds.Y - composedBounds.Y);
+                        }
+                    }
+
+                    Texture2D texture = composedBitmap.ToTexture2DAndDispose(_device);
+                    if (texture == null)
+                    {
+                        return baseFrame.Frame;
+                    }
+
+                    int delay = ResolveComposedPetWearFrameDelay(baseFrame.Frame, overlayFrame.Frame);
+                    return new DXObject(new PointF(-composedBounds.X, -composedBounds.Y), texture, delay)
+                    {
+                        Tag = layerEntries[0].Canvas
+                    };
+                }
+                finally
+                {
+                    foreach (LayeredFrameEntry layerEntry in layerEntries)
+                    {
+                        layerEntry.Bitmap.Dispose();
                     }
                 }
-
-                Texture2D texture = composedBitmap.ToTexture2DAndDispose(_device);
-                if (texture == null)
-                {
-                    return baseFrame;
-                }
-
-                int delay = ResolveComposedPetWearFrameDelay(baseFrame, overlayFrame);
-                return new DXObject(new PointF(-composedBounds.X, -composedBounds.Y), texture, delay)
-                {
-                    Tag = baseCanvas
-                };
             }
             catch
             {
-                return baseFrame;
+                return baseFrame.Frame;
             }
         }
 
@@ -1679,6 +1732,16 @@ namespace HaCreator.MapSimulator.Companions
             public int Compare(LayeredFrameEntry x, LayeredFrameEntry y)
             {
                 return CompareCanvasLayerOrder(x.Z, x.SourceIndex, y.Z, y.SourceIndex);
+            }
+        }
+
+        private sealed class FrameCanvasCandidateComparer : IComparer<FrameCanvasCandidate>
+        {
+            internal static readonly FrameCanvasCandidateComparer Instance = new();
+
+            public int Compare(FrameCanvasCandidate x, FrameCanvasCandidate y)
+            {
+                return CompareCanvasLayerOrder(ResolveCanvasZ(x.Canvas), x.SourceIndex, ResolveCanvasZ(y.Canvas), y.SourceIndex);
             }
         }
     }

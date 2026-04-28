@@ -802,6 +802,42 @@ namespace HaCreator.MapSimulator.UI
                 forcedSuccess);
         }
 
+        public bool ApplyPacketOwnedUpgradeSlotState(EquipSlot slot, int packetUpgradeState)
+        {
+            CharacterPart selectedPart = null;
+            if (_characterBuild?.Equipment == null ||
+                !_characterBuild.Equipment.TryGetValue(slot, out selectedPart) ||
+                selectedPart == null)
+            {
+                return false;
+            }
+
+            UpgradeState state = GetOrCreateState(slot, selectedPart);
+            int remainingSlots = ResolvePacketOwnedRemainingUpgradeSlotCount(
+                state.TotalSlots,
+                packetUpgradeState);
+            state.RemainingSlots = Math.Clamp(remainingSlots, 0, Math.Max(0, state.TotalSlots));
+            SyncStateToPart(selectedPart, state);
+            return true;
+        }
+
+        internal static int ResolvePacketOwnedRemainingUpgradeSlotCountForTests(
+            int totalSlotCount,
+            int packetUpgradeState)
+        {
+            return ResolvePacketOwnedRemainingUpgradeSlotCount(totalSlotCount, packetUpgradeState);
+        }
+
+        private static int ResolvePacketOwnedRemainingUpgradeSlotCount(
+            int totalSlotCount,
+            int packetUpgradeState)
+        {
+            int totalSlots = Math.Max(0, totalSlotCount);
+            int consumedSlotCount = packetUpgradeState & 0xFF;
+            int recoveredSlotCount = (packetUpgradeState >> 8) & 0xFF;
+            return Math.Clamp(totalSlots + recoveredSlotCount - consumedSlotCount, 0, totalSlots);
+        }
+
         private static bool ShouldUseSharedItemUpgradeAnimation(EnhancementConsumable consumable)
         {
             if (consumable == null)

@@ -580,6 +580,11 @@ namespace HaCreator.MapSimulator
             // Handle Left arrow - move cursor left (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Left))
             {
+                bool forwardEditCaretMoveToParent = ShouldForwardClientEditCaretMoveKeyToParent(
+                    Keys.Left,
+                    IsWhisperTargetPickerModalFooterFocused(),
+                    IsWhisperTargetPickerModalDropdownNavigating());
+
                 if (_isWhisperTargetPickerActive
                     && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
                     && oldKeyboardState.IsKeyUp(Keys.Left))
@@ -613,7 +618,7 @@ namespace HaCreator.MapSimulator
                     ClearInputSelection();
                     _lastKeyRepeatTime = tickCount;
                 }
-                return true;
+                return !forwardEditCaretMoveToParent;
             }
             else if (_lastHeldKey == Keys.Left)
             {
@@ -623,6 +628,11 @@ namespace HaCreator.MapSimulator
             // Handle Right arrow - move cursor right (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Right))
             {
+                bool forwardEditCaretMoveToParent = ShouldForwardClientEditCaretMoveKeyToParent(
+                    Keys.Right,
+                    IsWhisperTargetPickerModalFooterFocused(),
+                    IsWhisperTargetPickerModalDropdownNavigating());
+
                 if (_isWhisperTargetPickerActive
                     && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
                     && oldKeyboardState.IsKeyUp(Keys.Right))
@@ -656,7 +666,7 @@ namespace HaCreator.MapSimulator
                     ClearInputSelection();
                     _lastKeyRepeatTime = tickCount;
                 }
-                return true;
+                return !forwardEditCaretMoveToParent;
             }
             else if (_lastHeldKey == Keys.Right)
             {
@@ -846,6 +856,11 @@ namespace HaCreator.MapSimulator
 
             if (newKeyboardState.IsKeyDown(Keys.PageUp) && oldKeyboardState.IsKeyUp(Keys.PageUp))
             {
+                if (ShouldForwardClientEditPageKeyToParent())
+                {
+                    return false;
+                }
+
                 if (_isWhisperTargetPickerActive)
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
@@ -871,6 +886,11 @@ namespace HaCreator.MapSimulator
 
             if (newKeyboardState.IsKeyDown(Keys.PageDown) && oldKeyboardState.IsKeyUp(Keys.PageDown))
             {
+                if (ShouldForwardClientEditPageKeyToParent())
+                {
+                    return false;
+                }
+
                 if (_isWhisperTargetPickerActive)
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
@@ -1030,6 +1050,17 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private bool ShouldForwardClientEditPageKeyToParent()
+        {
+            if (!_isWhisperTargetPickerActive)
+            {
+                return true;
+            }
+
+            return _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                && IsWhisperTargetPickerModalComboFocused();
         }
 
         /// <summary>
@@ -3138,6 +3169,19 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldForwardClientEditStageKey(Keys key)
         {
             return key >= Keys.F1 && key <= Keys.F12;
+        }
+
+        internal static bool ShouldForwardClientEditCaretMoveKeyToParent(
+            Keys key,
+            bool footerLaneFocused,
+            bool modalDropdownNavigating)
+        {
+            if (footerLaneFocused || modalDropdownNavigating)
+            {
+                return false;
+            }
+
+            return key == Keys.Left || key == Keys.Right;
         }
 
         internal static bool ShouldForwardClientEditParentOnlyKey(

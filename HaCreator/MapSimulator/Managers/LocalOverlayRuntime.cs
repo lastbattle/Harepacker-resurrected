@@ -194,14 +194,14 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Update(int currentTickCount)
         {
-            if (DamageMeterExpiresAt != int.MinValue && unchecked(currentTickCount - DamageMeterExpiresAt) >= 0)
+            if (DamageMeterExpiresAt != int.MinValue && unchecked(currentTickCount - DamageMeterExpiresAt) > 0)
             {
                 DamageMeterDurationSeconds = 0;
                 DamageMeterStartedAt = int.MinValue;
                 DamageMeterExpiresAt = int.MinValue;
             }
 
-            if (LastFieldHazardNoticeExpiresAt != int.MinValue && unchecked(currentTickCount - LastFieldHazardNoticeExpiresAt) >= 0)
+            if (LastFieldHazardNoticeExpiresAt != int.MinValue && unchecked(currentTickCount - LastFieldHazardNoticeExpiresAt) > 0)
             {
                 ClearFieldHazardNotice();
             }

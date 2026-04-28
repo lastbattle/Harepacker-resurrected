@@ -97,6 +97,8 @@ namespace HaCreator.MapSimulator.Managers
         private enum HiddenRecipeEntryEncoding
         {
             Pair,
+            CompactBucketUInt16,
+            CompactBucketByte,
             OutputOnly
         }
 
@@ -202,7 +204,13 @@ namespace HaCreator.MapSimulator.Managers
                     }
                     : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
                 HiddenRecipeEntryEncoding[] hiddenEncodings = flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList)
-                    ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                    ? new[]
+                    {
+                        HiddenRecipeEntryEncoding.Pair,
+                        HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                        HiddenRecipeEntryEncoding.CompactBucketByte,
+                        HiddenRecipeEntryEncoding.OutputOnly
+                    }
                     : new[] { HiddenRecipeEntryEncoding.Pair };
 
                 for (int disassemblyEncodingIndex = 0; disassemblyEncodingIndex < disassemblyEncodings.Length; disassemblyEncodingIndex++)
@@ -331,7 +339,13 @@ namespace HaCreator.MapSimulator.Managers
                     }
                     : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
                 HiddenRecipeEntryEncoding[] hiddenEncodings = flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList)
-                    ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                    ? new[]
+                    {
+                        HiddenRecipeEntryEncoding.Pair,
+                        HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                        HiddenRecipeEntryEncoding.CompactBucketByte,
+                        HiddenRecipeEntryEncoding.OutputOnly
+                    }
                     : new[] { HiddenRecipeEntryEncoding.Pair };
 
                 for (int disassemblyEncodingIndex = 0; disassemblyEncodingIndex < disassemblyEncodings.Length; disassemblyEncodingIndex++)
@@ -1047,10 +1061,22 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
             HiddenRecipeEntryEncoding[] hiddenAdditionEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions)
-                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                ? new[]
+                {
+                    HiddenRecipeEntryEncoding.Pair,
+                    HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                    HiddenRecipeEntryEncoding.CompactBucketByte,
+                    HiddenRecipeEntryEncoding.OutputOnly
+                }
                 : new[] { HiddenRecipeEntryEncoding.Pair };
             HiddenRecipeEntryEncoding[] hiddenRemovalEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals)
-                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                ? new[]
+                {
+                    HiddenRecipeEntryEncoding.Pair,
+                    HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                    HiddenRecipeEntryEncoding.CompactBucketByte,
+                    HiddenRecipeEntryEncoding.OutputOnly
+                }
                 : new[] { HiddenRecipeEntryEncoding.Pair };
 
             for (int additionEncodingIndex = 0; additionEncodingIndex < disassemblyAdditionEncodings.Length; additionEncodingIndex++)
@@ -1197,10 +1223,22 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
             HiddenRecipeEntryEncoding[] hiddenAdditionEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions)
-                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                ? new[]
+                {
+                    HiddenRecipeEntryEncoding.Pair,
+                    HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                    HiddenRecipeEntryEncoding.CompactBucketByte,
+                    HiddenRecipeEntryEncoding.OutputOnly
+                }
                 : new[] { HiddenRecipeEntryEncoding.Pair };
             HiddenRecipeEntryEncoding[] hiddenRemovalEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals)
-                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                ? new[]
+                {
+                    HiddenRecipeEntryEncoding.Pair,
+                    HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                    HiddenRecipeEntryEncoding.CompactBucketByte,
+                    HiddenRecipeEntryEncoding.OutputOnly
+                }
                 : new[] { HiddenRecipeEntryEncoding.Pair };
             bool[] compactCountModes = { false, true };
 
@@ -1539,11 +1577,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             HiddenRecipeEntryEncoding[] firstListEncodings = additionsFirst
-                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
-                : new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly };
+                ? CreateHiddenRecipeEntryEncodingProbeOrder()
+                : CreateHiddenRecipeEntryEncodingProbeOrder();
             HiddenRecipeEntryEncoding[] secondListEncodings = additionsFirst
-                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
-                : new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly };
+                ? CreateHiddenRecipeEntryEncodingProbeOrder()
+                : CreateHiddenRecipeEntryEncodingProbeOrder();
 
             for (int firstEncodingIndex = 0; firstEncodingIndex < firstListEncodings.Length; firstEncodingIndex++)
             {
@@ -1578,6 +1616,17 @@ namespace HaCreator.MapSimulator.Managers
             additions = null;
             removals = null;
             return false;
+        }
+
+        private static HiddenRecipeEntryEncoding[] CreateHiddenRecipeEntryEncodingProbeOrder()
+        {
+            return new[]
+            {
+                HiddenRecipeEntryEncoding.Pair,
+                HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                HiddenRecipeEntryEncoding.CompactBucketByte,
+                HiddenRecipeEntryEncoding.OutputOnly
+            };
         }
 
         private static bool TryDecodeHiddenTailTwoListsWithEncodings(
@@ -1665,6 +1714,8 @@ namespace HaCreator.MapSimulator.Managers
             HiddenRecipeEntryEncoding[] encodings = new[]
             {
                 HiddenRecipeEntryEncoding.Pair,
+                HiddenRecipeEntryEncoding.CompactBucketUInt16,
+                HiddenRecipeEntryEncoding.CompactBucketByte,
                 HiddenRecipeEntryEncoding.OutputOnly
             };
             for (int i = 0; i < encodings.Length; i++)

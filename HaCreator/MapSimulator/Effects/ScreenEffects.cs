@@ -174,6 +174,17 @@ namespace HaCreator.MapSimulator.Effects
         private int _fadeDuration = 0;
         private Color _fadeColor = Color.Black;
         private Action _fadeCompleteCallback = null;  // Optional callback when fade completes
+        private bool _stageTransitionToneFadeActive;
+        private int _stageTransitionFadeInEndTime;
+        private byte _stageTransitionStartRedTone = byte.MaxValue;
+        private byte _stageTransitionStartGreenTone = byte.MaxValue;
+        private byte _stageTransitionStartBlueTone = byte.MaxValue;
+        private byte _stageTransitionRedTone = byte.MaxValue;
+        private byte _stageTransitionGreenTone = byte.MaxValue;
+        private byte _stageTransitionBlueTone = byte.MaxValue;
+        private byte _stageTransitionTargetRedTone = byte.MaxValue;
+        private byte _stageTransitionTargetGreenTone = byte.MaxValue;
+        private byte _stageTransitionTargetBlueTone = byte.MaxValue;
 
         /// <summary>
         /// Whether a fade effect is currently active
@@ -209,6 +220,7 @@ namespace HaCreator.MapSimulator.Effects
             _fadeStartTime = currentTimeMs;
             _fadeColor = color;
             _fadeCompleteCallback = onComplete;
+            _stageTransitionToneFadeActive = false;
         }
 
         /// <summary>
@@ -264,6 +276,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _fadeAlpha = _fadeTargetAlpha;
                 _fadeActive = false;
+                CompleteStageTransitionToneFade();
                 var callback = _fadeCompleteCallback;
                 _fadeCompleteCallback = null;
                 callback?.Invoke();
@@ -281,6 +294,14 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsFadeInComplete => !_fadeActive && _fadeAlpha <= 0.0f;
 
         internal int FadeDurationMs => _fadeDuration;
+        internal StageTransitionToneSnapshot StageTransitionTone => new(
+            _stageTransitionRedTone,
+            _stageTransitionGreenTone,
+            _stageTransitionBlueTone,
+            _stageTransitionTargetRedTone,
+            _stageTransitionTargetGreenTone,
+            _stageTransitionTargetBlueTone,
+            _stageTransitionFadeInEndTime);
 
         /// <summary>
         /// Update the fade effect
@@ -297,6 +318,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _fadeAlpha = _fadeTargetAlpha;
                 _fadeActive = false;
+                CompleteStageTransitionToneFade();
 
                 // Invoke callback if set
                 var callback = _fadeCompleteCallback;
@@ -308,10 +330,18 @@ namespace HaCreator.MapSimulator.Effects
             // Linear interpolation from start to target
             float t = (float)elapsed / _fadeDuration;
             _fadeAlpha = MathHelper.Lerp(_fadeStartAlpha, _fadeTargetAlpha, t);
+            UpdateStageTransitionToneFade(t);
         }
 
         private void StartStageTransitionToneFade(byte targetTone, int durationMs, int currentTimeMs, Action onComplete)
         {
+            if (targetTone == byte.MaxValue && _stageTransitionFadeInEndTime > currentTimeMs)
+            {
+                _stageTransitionRedTone = 0;
+                _stageTransitionGreenTone = 0;
+                _stageTransitionBlueTone = 0;
+            }
+
             byte currentTone = GetCurrentToneLevel();
             if (currentTone == targetTone)
             {
@@ -323,11 +353,28 @@ namespace HaCreator.MapSimulator.Effects
                 _fadeStartTime = currentTimeMs;
                 _fadeColor = Color.Black;
                 _fadeCompleteCallback = null;
+                _stageTransitionToneFadeActive = false;
+                SetStageTransitionToneChannels(targetTone);
+                if (targetTone == byte.MaxValue)
+                {
+                    _stageTransitionFadeInEndTime = currentTimeMs;
+                }
                 onComplete?.Invoke();
                 return;
             }
 
             int scaledDuration = ScaleStageTransitionDuration(durationMs, currentTone, targetTone);
+            _stageTransitionStartRedTone = _stageTransitionRedTone;
+            _stageTransitionStartGreenTone = _stageTransitionGreenTone;
+            _stageTransitionStartBlueTone = _stageTransitionBlueTone;
+            _stageTransitionTargetRedTone = targetTone;
+            _stageTransitionTargetGreenTone = targetTone;
+            _stageTransitionTargetBlueTone = targetTone;
+            if (targetTone == byte.MaxValue)
+            {
+                _stageTransitionFadeInEndTime = currentTimeMs + scaledDuration;
+            }
+
             StartFade(
                 1.0f - (currentTone / 255f),
                 1.0f - (targetTone / 255f),
@@ -335,6 +382,7 @@ namespace HaCreator.MapSimulator.Effects
                 Color.Black,
                 currentTimeMs,
                 onComplete);
+            _stageTransitionToneFadeActive = true;
         }
 
         internal static int ScaleStageTransitionDuration(int durationMs, byte startTone, byte targetTone)
@@ -351,8 +399,60 @@ namespace HaCreator.MapSimulator.Effects
 
         private byte GetCurrentToneLevel()
         {
-            float tone = (1.0f - MathHelper.Clamp(_fadeAlpha, 0.0f, 1.0f)) * 255.0f;
-            return (byte)Math.Clamp((int)Math.Round(tone, MidpointRounding.AwayFromZero), 0, 255);
+            return ResolveStageTransitionToneAverage(
+                _stageTransitionRedTone,
+                _stageTransitionGreenTone,
+                _stageTransitionBlueTone);
+        }
+
+        internal static byte ResolveStageTransitionToneAverage(byte redTone, byte greenTone, byte blueTone)
+        {
+            return (byte)((redTone + greenTone + blueTone) / 3);
+        }
+
+        private void UpdateStageTransitionToneFade(float progress)
+        {
+            if (!_stageTransitionToneFadeActive)
+            {
+                return;
+            }
+
+            float clampedProgress = MathHelper.Clamp(progress, 0.0f, 1.0f);
+            _stageTransitionRedTone = LerpByte(_stageTransitionStartRedTone, _stageTransitionTargetRedTone, clampedProgress);
+            _stageTransitionGreenTone = LerpByte(_stageTransitionStartGreenTone, _stageTransitionTargetGreenTone, clampedProgress);
+            _stageTransitionBlueTone = LerpByte(_stageTransitionStartBlueTone, _stageTransitionTargetBlueTone, clampedProgress);
+        }
+
+        private void CompleteStageTransitionToneFade()
+        {
+            if (!_stageTransitionToneFadeActive)
+            {
+                return;
+            }
+
+            _stageTransitionToneFadeActive = false;
+            _stageTransitionRedTone = _stageTransitionTargetRedTone;
+            _stageTransitionGreenTone = _stageTransitionTargetGreenTone;
+            _stageTransitionBlueTone = _stageTransitionTargetBlueTone;
+        }
+
+        private void SetStageTransitionToneChannels(byte tone)
+        {
+            _stageTransitionStartRedTone = tone;
+            _stageTransitionStartGreenTone = tone;
+            _stageTransitionStartBlueTone = tone;
+            _stageTransitionRedTone = tone;
+            _stageTransitionGreenTone = tone;
+            _stageTransitionBlueTone = tone;
+            _stageTransitionTargetRedTone = tone;
+            _stageTransitionTargetGreenTone = tone;
+            _stageTransitionTargetBlueTone = tone;
+        }
+
+        private static byte LerpByte(byte start, byte target, float progress)
+        {
+            float value = MathHelper.Lerp(start, target, progress);
+            return (byte)Math.Clamp((int)Math.Round(value, MidpointRounding.AwayFromZero), 0, 255);
         }
 
         #endregion
@@ -746,10 +846,22 @@ namespace HaCreator.MapSimulator.Effects
             _fadeStartAlpha = 0.0f;
             _fadeTargetAlpha = 0.0f;
             _fadeCompleteCallback = null;
+            _stageTransitionToneFadeActive = false;
+            _stageTransitionFadeInEndTime = 0;
+            SetStageTransitionToneChannels(byte.MaxValue);
             _flashActive = false;
             _flashAlpha = 0;
             StopMotionBlur();
             StopExplosion();
         }
     }
+
+    internal readonly record struct StageTransitionToneSnapshot(
+        byte RedTone,
+        byte GreenTone,
+        byte BlueTone,
+        byte TargetRedTone,
+        byte TargetGreenTone,
+        byte TargetBlueTone,
+        int FadeInEndTime);
 }

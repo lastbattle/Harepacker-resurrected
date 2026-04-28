@@ -5,6 +5,7 @@ using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -217,34 +218,42 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedLogoutGiftSummary;
         }
 
-        private bool TryLaunchPacketOwnedLogoutGiftForUtilityQuit(out string message)
+        private bool TryLaunchPacketOwnedLogoutGiftForUtilityQuit(string launchSource, out string message)
         {
             return TryShowPacketOwnedLogoutGiftDialog(
                 PacketOwnedLogoutGiftContinuation.ExitSimulator,
-                "Game menu quit",
+                launchSource,
                 out message);
         }
 
         private bool TryHandleConfirmedUtilityQuit(out string message)
         {
+            return TryHandleConfirmedUtilityQuit(
+                "Game menu quit",
+                "CWvsContext::UI_Menu",
+                out message);
+        }
+
+        private bool TryHandleConfirmedUtilityQuit(string launchSource, string clientCaller, out string message)
+        {
             RegisterPacketOwnedLogoutGiftWindow();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is LogoutGiftWindow existingWindow
                 && IsPacketOwnedLogoutGiftOwnerSingletonPresent(_packetOwnedLogoutGiftOwnerInstantiated, existingWindow.IsVisible))
             {
-                message = "CUILogoutGift::TryShowLogoutGiftDialog returned 0 because the logout-gift singleton is already instantiated; matching `CWvsContext::UI_Menu`, the simulator suppresses the quit continuation until the existing owner completes.";
+                message = $"CUILogoutGift::TryShowLogoutGiftDialog returned 0 because the logout-gift singleton is already instantiated; matching `{clientCaller}`, the simulator suppresses the quit continuation until the existing owner completes.";
                 _lastPacketOwnedLogoutGiftSummary = message;
                 NotifyEventAlarmOwnerActivity("packet-owned logout gift");
                 return true;
             }
 
-            if (TryLaunchPacketOwnedLogoutGiftForUtilityQuit(out message))
+            if (TryLaunchPacketOwnedLogoutGiftForUtilityQuit(launchSource, out message))
             {
                 return true;
             }
 
             message = string.IsNullOrWhiteSpace(message)
-                ? "CWvsContext::UI_Menu quit flow continued directly because CUILogoutGift::TryShowLogoutGiftDialog returned 1 without surfacing a modal owner."
-                : $"{message} CWvsContext::UI_Menu therefore continues the quit flow because the client TryShowLogoutGiftDialog branch returns 1 when no singleton blocks the continuation.";
+                ? $"{clientCaller} quit flow continued directly because CUILogoutGift::TryShowLogoutGiftDialog returned 1 without surfacing a modal owner."
+                : $"{message} {clientCaller} therefore continues the quit flow because the client TryShowLogoutGiftDialog branch returns 1 when no singleton blocks the continuation.";
             _lastPacketOwnedLogoutGiftSummary = message;
             return false;
         }
@@ -259,6 +268,35 @@ namespace HaCreator.MapSimulator
 
             ShowUtilityFeedbackMessage(message);
             Exit();
+        }
+
+        private bool TryHandlePacketOwnedLogoutGiftSystemCloseShortcut(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            bool isWindowActive)
+        {
+            if (!ShouldRoutePacketOwnedLogoutGiftSystemCloseShortcut(
+                    isWindowActive,
+                    newKeyboardState.IsKeyDown(Keys.F4),
+                    oldKeyboardState.IsKeyDown(Keys.F4),
+                    newKeyboardState.IsKeyDown(Keys.LeftAlt),
+                    newKeyboardState.IsKeyDown(Keys.RightAlt)))
+            {
+                return false;
+            }
+
+            if (TryHandleConfirmedUtilityQuit(
+                    "Alt+F4 / WM_SYSCOMMAND(SC_CLOSE)",
+                    "CWndMan::ProcessKey / CWvsApp::WindowProc close accelerator",
+                    out string message))
+            {
+                ShowUtilityFeedbackMessage(message);
+                return true;
+            }
+
+            ShowUtilityFeedbackMessage(message);
+            Exit();
+            return true;
         }
 
         private bool TryApplyPacketOwnedLogoutGiftPayload(byte[] payload, out string message)
@@ -1148,6 +1186,19 @@ namespace HaCreator.MapSimulator
             }
 
             return !isCashShopStageVisible && !isMtsStageVisible;
+        }
+
+        internal static bool ShouldRoutePacketOwnedLogoutGiftSystemCloseShortcut(
+            bool isWindowActive,
+            bool f4Down,
+            bool previousF4Down,
+            bool leftAltDown,
+            bool rightAltDown)
+        {
+            return isWindowActive
+                && f4Down
+                && !previousF4Down
+                && (leftAltDown || rightAltDown);
         }
 
         internal static string DescribePacketOwnedLogoutGiftLeadingInt32Values(IReadOnlyList<int> leadingOpaqueInt32Values)

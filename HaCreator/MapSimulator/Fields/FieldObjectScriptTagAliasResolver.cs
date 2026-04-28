@@ -56,6 +56,10 @@ namespace HaCreator.MapSimulator.Fields
             @"\breturn\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\b",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex FunctionBodyReturnExpressionPattern = new(
+            @"\breturn\s+(?<expr>[^;\{\}]+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex FunctionDeclarationPattern = new(
             @"(?:^|[;\{\(\s])function\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*\{(?<body>[^{}]*)\}",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -736,6 +740,42 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            foreach (string conditionalBranch in EnumerateConditionalExpressionBranches(normalizedValue))
+            {
+                foreach (string branchAlias in ResolveAssignmentAliasCandidates(
+                             conditionalBranch,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    AddAlias(branchAlias);
+                }
+            }
+
+            foreach (string logicalBranch in EnumerateLogicalExpressionBranches(normalizedValue))
+            {
+                foreach (string branchAlias in ResolveAssignmentAliasCandidates(
+                             logicalBranch,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    AddAlias(branchAlias);
+                }
+            }
+
+            if (IsFunctionExpressionText(normalizedValue))
+            {
+                foreach (string returnExpression in EnumerateFunctionReturnExpressions(normalizedValue))
+                {
+                    foreach (string returnAlias in ResolveAssignmentAliasCandidates(
+                                 returnExpression,
+                                 localAliasMap,
+                                 objectMemberAliasMap))
+                    {
+                        AddAlias(returnAlias);
+                    }
+                }
+            }
+
             string singleAlias = ResolveAssignmentAliasCandidate(
                 normalizedValue,
                 localAliasMap,
@@ -782,6 +822,30 @@ namespace HaCreator.MapSimulator.Fields
                 if (!string.IsNullOrWhiteSpace(callbackTargetAlias))
                 {
                     return callbackTargetAlias;
+                }
+            }
+
+            foreach (string conditionalBranch in EnumerateConditionalExpressionBranches(normalizedValue))
+            {
+                string branchAlias = ResolveAssignmentAliasCandidate(
+                    conditionalBranch,
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (!string.IsNullOrWhiteSpace(branchAlias))
+                {
+                    return branchAlias;
+                }
+            }
+
+            foreach (string logicalBranch in EnumerateLogicalExpressionBranches(normalizedValue))
+            {
+                string branchAlias = ResolveAssignmentAliasCandidate(
+                    logicalBranch,
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (!string.IsNullOrWhiteSpace(branchAlias))
+                {
+                    return branchAlias;
                 }
             }
 
@@ -1590,6 +1654,28 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            foreach (string conditionalBranch in EnumerateConditionalExpressionBranches(normalizedCandidate))
+            {
+                foreach (string branchCandidate in EnumerateCanonicalAliasCandidates(
+                             conditionalBranch,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    yield return branchCandidate;
+                }
+            }
+
+            foreach (string logicalBranch in EnumerateLogicalExpressionBranches(normalizedCandidate))
+            {
+                foreach (string branchCandidate in EnumerateCanonicalAliasCandidates(
+                             logicalBranch,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    yield return branchCandidate;
+                }
+            }
+
             if (TryResolveNoArgumentFunctionCallAliasCandidate(
                     normalizedCandidate,
                     localAliasMap,
@@ -1813,6 +1899,235 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private static IEnumerable<string> EnumerateFunctionReturnExpressions(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in FunctionBodyReturnExpressionPattern.Matches(value))
+            {
+                string expression = match.Groups["expr"]?.Value;
+                if (!string.IsNullOrWhiteSpace(expression))
+                {
+                    yield return expression.Trim();
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateConditionalExpressionBranches(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            string normalizedValue = StripOuterBalancedParentheses(value.Trim());
+            int questionIndex = FindTopLevelCharacter(normalizedValue, '?');
+            if (questionIndex <= 0 || questionIndex >= normalizedValue.Length - 1)
+            {
+                yield break;
+            }
+
+            int colonIndex = FindMatchingConditionalColon(normalizedValue, questionIndex);
+            if (colonIndex <= questionIndex || colonIndex >= normalizedValue.Length - 1)
+            {
+                yield break;
+            }
+
+            string trueBranch = normalizedValue[(questionIndex + 1)..colonIndex].Trim();
+            string falseBranch = normalizedValue[(colonIndex + 1)..].Trim();
+            if (!string.IsNullOrWhiteSpace(trueBranch))
+            {
+                yield return trueBranch;
+            }
+
+            if (!string.IsNullOrWhiteSpace(falseBranch))
+            {
+                yield return falseBranch;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateLogicalExpressionBranches(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            IReadOnlyList<string> branches = SplitTopLevelByLogicalOperators(
+                StripOuterBalancedParentheses(value.Trim()));
+            if (branches.Count <= 1)
+            {
+                yield break;
+            }
+
+            for (int i = 0; i < branches.Count; i++)
+            {
+                string branch = branches[i]?.Trim();
+                if (!string.IsNullOrWhiteSpace(branch))
+                {
+                    yield return branch;
+                }
+            }
+        }
+
+        private static int FindMatchingConditionalColon(string value, int questionIndex)
+        {
+            if (string.IsNullOrWhiteSpace(value) || questionIndex < 0 || questionIndex >= value.Length)
+            {
+                return -1;
+            }
+
+            int nestedConditionalDepth = 0;
+            int groupingDepth = 0;
+            char quote = '\0';
+            for (int i = questionIndex + 1; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '(' || current == '[' || current == '{')
+                {
+                    groupingDepth++;
+                    continue;
+                }
+
+                if (current == ')' || current == ']' || current == '}')
+                {
+                    if (groupingDepth > 0)
+                    {
+                        groupingDepth--;
+                    }
+
+                    continue;
+                }
+
+                if (groupingDepth > 0)
+                {
+                    continue;
+                }
+
+                if (current == '?')
+                {
+                    nestedConditionalDepth++;
+                    continue;
+                }
+
+                if (current != ':')
+                {
+                    continue;
+                }
+
+                if (nestedConditionalDepth == 0)
+                {
+                    return i;
+                }
+
+                nestedConditionalDepth--;
+            }
+
+            return -1;
+        }
+
+        private static IReadOnlyList<string> SplitTopLevelByLogicalOperators(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return Array.Empty<string>();
+            }
+
+            var tokens = new List<string>();
+            int tokenStart = 0;
+            int groupingDepth = 0;
+            char quote = '\0';
+            for (int i = 0; i < value.Length - 1; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '(' || current == '[' || current == '{')
+                {
+                    groupingDepth++;
+                    continue;
+                }
+
+                if (current == ')' || current == ']' || current == '}')
+                {
+                    if (groupingDepth > 0)
+                    {
+                        groupingDepth--;
+                    }
+
+                    continue;
+                }
+
+                if (groupingDepth > 0)
+                {
+                    continue;
+                }
+
+                string operatorText = value.Substring(i, Math.Min(2, value.Length - i));
+                if (operatorText != "||" && operatorText != "&&" && operatorText != "??")
+                {
+                    continue;
+                }
+
+                tokens.Add(value[tokenStart..i].Trim());
+                i++;
+                tokenStart = i + 1;
+            }
+
+            if (tokens.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            tokens.Add(value[tokenStart..].Trim());
+            return tokens;
         }
 
         private static int FindMatchingCloseBracket(string value, int openIndex)

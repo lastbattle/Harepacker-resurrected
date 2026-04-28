@@ -149,6 +149,16 @@ namespace HaCreator.MapSimulator.Character
                 : (int)elapsed;
         }
 
+        internal static bool HasUnsignedTickReached(int currentTime, int targetTime)
+        {
+            if (currentTime == int.MinValue || targetTime == int.MinValue)
+            {
+                return false;
+            }
+
+            return unchecked((uint)(currentTime - targetTime)) < int.MaxValue;
+        }
+
         private static HashSet<string> BuildRotateSensitiveActionNames()
         {
             var actionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

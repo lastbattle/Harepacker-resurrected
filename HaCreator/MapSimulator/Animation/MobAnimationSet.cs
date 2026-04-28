@@ -40,9 +40,11 @@ namespace HaCreator.MapSimulator.Animation
             public Point CanvasSize { get; init; }
             public Rectangle VisualBounds { get; init; }
             public Rectangle FrameBounds { get; init; }
+            public Rectangle BodyBounds { get; init; }
             public bool HasHeadAnchor { get; init; }
             public Point HeadAnchor { get; init; }
             public IReadOnlyList<Rectangle> MultiBodyBounds { get; init; }
+            public IReadOnlyList<Rectangle> ClientMultiBodyBounds { get; init; }
             public bool HasAlphaRange { get; init; }
             public byte AlphaStart { get; init; } = byte.MaxValue;
             public byte AlphaEnd { get; init; } = byte.MaxValue;
@@ -55,7 +57,7 @@ namespace HaCreator.MapSimulator.Animation
                 {
                     if (MultiBodyBounds == null || MultiBodyBounds.Count == 0)
                     {
-                        return FrameBounds;
+                        return BodyBounds.IsEmpty ? FrameBounds : BodyBounds;
                     }
 
                     Rectangle union = MultiBodyBounds[0];
