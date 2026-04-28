@@ -2720,7 +2720,7 @@ namespace HaCreator.MapSimulator.Fields
             if (existingObservationSource == observationSource
                 && recordedAt != existingRecordedAt)
             {
-                return recordedAt > existingRecordedAt;
+                return CompareRemoteTownPortalRecordedAt(recordedAt, existingRecordedAt) > 0;
             }
 
             return existingSourceMapId != sourceMapId
@@ -2742,10 +2742,20 @@ namespace HaCreator.MapSimulator.Fields
 
             if (recordedAt != recordedAtOther)
             {
-                return recordedAt.CompareTo(recordedAtOther);
+                return CompareRemoteTownPortalRecordedAt(recordedAt, recordedAtOther);
             }
 
             return 0;
+        }
+
+        private static int CompareRemoteTownPortalRecordedAt(int recordedAt, int otherRecordedAt)
+        {
+            if (recordedAt == otherRecordedAt)
+            {
+                return 0;
+            }
+
+            return unchecked(recordedAt - otherRecordedAt) > 0 ? 1 : -1;
         }
 
         private static int CompareRemoteTownPortalSameSourceCoordinateAuthority(
@@ -2763,7 +2773,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (metadataRecordedAt != observationRecordedAt)
             {
-                return metadataRecordedAt.CompareTo(observationRecordedAt);
+                return CompareRemoteTownPortalRecordedAt(metadataRecordedAt, observationRecordedAt);
             }
 
             return CompareRemoteTownPortalObservationQuality(

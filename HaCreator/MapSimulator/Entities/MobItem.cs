@@ -1,4 +1,5 @@
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Core;
@@ -1147,28 +1148,17 @@ namespace HaCreator.MapSimulator.Entities
 
             WzSubProperty skillNode = mobSkillImage[skillId.ToString()] as WzSubProperty;
             WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
-            WzSubProperty selectedLevel =
-                levelNode?[Math.Max(1, skillLevel).ToString()] as WzSubProperty ??
-                levelNode?["1"] as WzSubProperty;
-            if (selectedLevel == null)
-            {
-                return 0;
-            }
-
-            WzVectorProperty lt = selectedLevel["lt"] as WzVectorProperty;
-            WzVectorProperty rb = selectedLevel["rb"] as WzVectorProperty;
-            if (lt == null || rb == null)
-            {
-                return 0;
-            }
-
-            int horizontalRange = Math.Max(Math.Abs(lt.X.Value), Math.Abs(rb.X.Value));
-            int verticalRange = Math.Max(Math.Abs(lt.Y.Value), Math.Abs(rb.Y.Value));
-            return Math.Max(horizontalRange, verticalRange);
+            return MobSkillLevelResolver.ResolveInheritedAreaRange(levelNode, Math.Max(1, skillLevel));
         }
 
         private static int DetermineSkillCooldown(MobSkillData skillData, bool isBoss)
         {
+            int authoredCooldown = ResolveAuthoredMobSkillCooldown(skillData?.Skill ?? 0, skillData?.Level ?? 1);
+            if (authoredCooldown > 0)
+            {
+                return Math.Max(authoredCooldown, Math.Max(0, skillData?.SkillAfter ?? 0));
+            }
+
             int cooldown = skillData.SkillAfter > 0 ? skillData.SkillAfter + 1500 : 4000;
             if (skillData.PreSkillCount > 0)
             {
@@ -1181,6 +1171,41 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return cooldown;
+        }
+
+        internal static int ResolveMobSkillCooldownFromLevelNodeForTesting(WzSubProperty levelNode, int skillLevel)
+        {
+            return ResolveAuthoredMobSkillCooldown(levelNode, skillLevel);
+        }
+
+        private static int ResolveAuthoredMobSkillCooldown(int skillId, int skillLevel)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            WzImage mobSkillImage = Program.FindImage("Skill", "MobSkill");
+            if (mobSkillImage == null)
+            {
+                return 0;
+            }
+
+            if (!mobSkillImage.Parsed)
+            {
+                mobSkillImage.ParseImage();
+            }
+
+            WzSubProperty skillNode = mobSkillImage[skillId.ToString()] as WzSubProperty;
+            return ResolveAuthoredMobSkillCooldown(skillNode?["level"] as WzSubProperty, skillLevel);
+        }
+
+        private static int ResolveAuthoredMobSkillCooldown(WzSubProperty levelNode, int skillLevel)
+        {
+            int intervalSeconds = Math.Max(
+                MobSkillLevelResolver.ResolveInheritedInt(levelNode, skillLevel, "interval"),
+                MobSkillLevelResolver.ResolveInheritedInt(levelNode, skillLevel, "inteval"));
+            return Math.Max(0, intervalSeconds) * 1000;
         }
 
         private static int GetActionIndex(string animationName)

@@ -1388,6 +1388,7 @@ namespace HaCreator.MapSimulator.Fields
         public MonsterCarnivalTab? Season2SubDialogSelectedTab => _season2SubDialogSelectedTab;
         public int Season2SubDialogSelectedIndex => _season2SubDialogSelectedIndex;
         public string Season2SubDialogRouteTrailSummary => BuildSeason2SubDialogRouteTrailSummary();
+        public string Season2ChatRouteTrailSummary => BuildSeason2ChatRouteTrailSummary();
         public int ReviveDirectPacketCount => _reviveDirectPacketCount;
         public int ReviveForwardedPacketCount => _reviveForwardedPacketCount;
         public int ReviveRoundSequence => _reviveRoundSequence;
@@ -1644,6 +1645,89 @@ namespace HaCreator.MapSimulator.Fields
 
             _activeTab = tab;
             _selectedEntryIndex = 0;
+            message = DescribeStatus();
+            return true;
+        }
+
+        public bool TrySelectSeason2SubDialogEntry(string tabText, int entryIndex, out string message)
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                message = "Season 2 sub dialog is only owned by CField_MonsterCarnivalS2_Game.";
+                return false;
+            }
+
+            if (!_season2SubDialogVisible)
+            {
+                message = "Season 2 sub dialog is hidden.";
+                return false;
+            }
+
+            if (_season2SubDialogSelectionLocked)
+            {
+                message = "Season 2 sub dialog selection is locked by the current packet-owned state.";
+                RecordSeason2SubDialogRouteEvent("selection-blocked(lock=true)");
+                return false;
+            }
+
+            if (!TryParseTab(tabText, out MonsterCarnivalTab tab))
+            {
+                message = $"Unknown Monster Carnival tab: {tabText}";
+                return false;
+            }
+
+            MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
+            if (entry == null)
+            {
+                message = $"Monster Carnival {tab.ToString().ToLowerInvariant()} index {entryIndex} is out of range.";
+                return false;
+            }
+
+            _season2SubDialogSelectedTab = tab;
+            _season2SubDialogSelectedIndex = entryIndex;
+            _season2SubDialogSelectionChangeCount++;
+            _season2SubDialogLastButtonRoute =
+                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub selection tab={(int)tab},index={entryIndex},id={entry.Id}";
+            RecordSeason2SubDialogRouteEvent($"select(tab={(int)tab},index={entryIndex},id={entry.Id})");
+            SetSeason2SubDialogState(
+                visible: true,
+                okEnabled: true,
+                selectionLocked: false,
+                $"Season 2 sub dialog selected {entry.Name} (tab={(int)tab}, index={entryIndex}, id={entry.Id}) inside the UIWindow2 sub owner surface.",
+                _season2SubDialogPhase);
+            message = DescribeStatus();
+            return true;
+        }
+
+        public bool TryAcknowledgeSeason2SubDialog(int tickCount, out string message)
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                message = "Season 2 sub dialog is only owned by CField_MonsterCarnivalS2_Game.";
+                return false;
+            }
+
+            if (!_season2SubDialogVisible || !_season2SubDialogOkEnabled)
+            {
+                message = "Season 2 sub dialog BtOK is not enabled.";
+                return false;
+            }
+
+            _season2SubDialogOkClickCount++;
+            string selectedText = _season2SubDialogSelectedTab.HasValue && _season2SubDialogSelectedIndex >= 0
+                ? $"selectedTab={(int)_season2SubDialogSelectedTab.Value},selectedIndex={_season2SubDialogSelectedIndex}"
+                : "selected=none";
+            _season2SubDialogLastButtonRoute =
+                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK click #{_season2SubDialogOkClickCount} ({selectedText})";
+            RecordSeason2SubDialogRouteEvent($"btok(click={_season2SubDialogOkClickCount},{selectedText})");
+            _season2SubDialogDeadlineTick = null;
+            _season2SubDialogTimerSummary = "Season 2 sub dialog timer closed by UIWindow2 BtOK acknowledgement.";
+            SetSeason2SubDialogState(
+                visible: false,
+                okEnabled: false,
+                selectionLocked: false,
+                $"Season 2 sub dialog acknowledged through BtOK at tick {tickCount}; UIWindow2 sub surface closed locally while preserving packet-owner routing.",
+                MonsterCarnivalSeason2SubDialogPhase.ResultClosed);
             message = DescribeStatus();
             return true;
         }
@@ -4214,6 +4298,20 @@ namespace HaCreator.MapSimulator.Fields
             while (_season2ChatRouteTrail.Count > Season2ChatRouteTrailCapacity)
             {
                 _season2ChatRouteTrail.Dequeue();
+            }
+        }
+
+        private void RecordSeason2SubDialogRouteEvent(string summary)
+        {
+            if (_definition?.IsSeason2Mode != true || string.IsNullOrWhiteSpace(summary))
+            {
+                return;
+            }
+
+            _season2SubDialogRouteTrail.Enqueue(summary.Trim());
+            while (_season2SubDialogRouteTrail.Count > Season2SubDialogRouteTrailCapacity)
+            {
+                _season2SubDialogRouteTrail.Dequeue();
             }
         }
 

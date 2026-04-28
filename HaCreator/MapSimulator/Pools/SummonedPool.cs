@@ -6847,7 +6847,9 @@ namespace HaCreator.MapSimulator.Pools
             return TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '.', out frameOffset)
                    || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, ':', out frameOffset)
                    || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '=', out frameOffset)
-                   || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '_', out frameOffset);
+                   || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '_', out frameOffset)
+                   || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '+', out frameOffset)
+                   || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '-', out frameOffset);
         }
 
         private static bool TryParsePacketMobAttackGeneralEffectSourceAliasWrappedSignedFrameOffset(
@@ -8332,7 +8334,8 @@ namespace HaCreator.MapSimulator.Pools
             string normalized = token;
             for (int pass = 0; pass < 3; pass++)
             {
-                string decoded = NormalizePacketMobAttackGeneralEffectEncodedPathSeparatorsOnce(normalized);
+                string decoded = NormalizePacketMobAttackGeneralEffectEncodedPathSeparatorsOnce(
+                    NormalizePacketMobAttackGeneralEffectEntityEncodedPathSyntax(normalized));
                 if (string.Equals(decoded, normalized, StringComparison.Ordinal))
                 {
                     return decoded;
@@ -8342,6 +8345,110 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalized;
+        }
+
+        private static string NormalizePacketMobAttackGeneralEffectEntityEncodedPathSyntax(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token)
+                || token.IndexOf('&') < 0)
+            {
+                return token ?? string.Empty;
+            }
+
+            var builder = new System.Text.StringBuilder(token.Length);
+            for (int i = 0; i < token.Length; i++)
+            {
+                char current = token[i];
+                if (current == '&'
+                    && TryParsePacketMobAttackGeneralEffectEntityEncodedChar(
+                        token,
+                        i,
+                        out char decoded,
+                        out int consumedLength)
+                    && IsPacketMobAttackGeneralEffectPercentDecodedPathCharacter(decoded))
+                {
+                    builder.Append(decoded == '\\' ? '/' : decoded);
+                    i += consumedLength - 1;
+                    continue;
+                }
+
+                builder.Append(current);
+            }
+
+            return builder.ToString();
+        }
+
+        private static bool TryParsePacketMobAttackGeneralEffectEntityEncodedChar(
+            string token,
+            int startIndex,
+            out char decoded,
+            out int consumedLength)
+        {
+            decoded = '\0';
+            consumedLength = 0;
+            if (string.IsNullOrEmpty(token)
+                || startIndex < 0
+                || startIndex >= token.Length
+                || token[startIndex] != '&')
+            {
+                return false;
+            }
+
+            int semicolonIndex = token.IndexOf(';', startIndex + 1);
+            if (semicolonIndex < 0 || semicolonIndex - startIndex > 10)
+            {
+                return false;
+            }
+
+            string entity = token.Substring(startIndex + 1, semicolonIndex - startIndex - 1);
+            if (string.IsNullOrWhiteSpace(entity))
+            {
+                return false;
+            }
+
+            consumedLength = semicolonIndex - startIndex + 1;
+            switch (entity.ToLowerInvariant())
+            {
+                case "quot":
+                    decoded = '"';
+                    return true;
+                case "apos":
+                    decoded = '\'';
+                    return true;
+                case "amp":
+                    decoded = '&';
+                    return true;
+                case "lt":
+                    decoded = '<';
+                    return true;
+                case "gt":
+                    decoded = '>';
+                    return true;
+            }
+
+            if (entity[0] != '#')
+            {
+                return false;
+            }
+
+            NumberStyles style = NumberStyles.Integer;
+            string numericToken = entity.Substring(1);
+            if (numericToken.Length > 1
+                && (numericToken[0] == 'x' || numericToken[0] == 'X'))
+            {
+                style = NumberStyles.HexNumber;
+                numericToken = numericToken.Substring(1);
+            }
+
+            if (!int.TryParse(numericToken, style, CultureInfo.InvariantCulture, out int codePoint)
+                || codePoint < 0
+                || codePoint > char.MaxValue)
+            {
+                return false;
+            }
+
+            decoded = (char)codePoint;
+            return true;
         }
 
         private static string NormalizePacketMobAttackGeneralEffectEncodedPathSeparatorsOnce(string token)

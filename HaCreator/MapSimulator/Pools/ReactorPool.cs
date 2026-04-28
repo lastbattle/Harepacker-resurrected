@@ -589,16 +589,11 @@ namespace HaCreator.MapSimulator.Pools
                 if (CanPollLocalUserTouchOwnershipCandidate(data, SupportsActivationType(data, ReactorActivationType.Touch)))
                 {
                     Rectangle bounds = reactor.GetCurrentBounds(resolvedTick);
-                    if (ShouldSkipClientTouchOwnershipBoundsUpdate(bounds))
-                    {
-                        // CReactorPool::FindTouchReactorAroundLocalUser skips ownership mutation
-                        // when the live layer bounds are empty/invalid.
-                        isTouchingNow = _reactorsOnLocalUser.ContainsKey(objectId);
-                    }
-                    else
-                    {
-                        isTouchingNow = DoesClientTouchBoundsContainPosition(bounds, playerX, playerY);
-                    }
+                    isTouchingNow = ResolveClientTouchOwnershipPollContainment(
+                        bounds,
+                        playerX,
+                        playerY,
+                        _reactorsOnLocalUser.ContainsKey(objectId));
                 }
 
                 pollResults.Add(new LocalTouchOwnershipPollResult(i, objectId, isTouchingNow));
@@ -3413,6 +3408,22 @@ namespace HaCreator.MapSimulator.Pools
         internal static bool ShouldSkipClientTouchOwnershipBoundsUpdate(Rectangle bounds)
         {
             return bounds.Width <= 0 || bounds.Height <= 0;
+        }
+
+        internal static bool ResolveClientTouchOwnershipPollContainment(
+            Rectangle bounds,
+            float playerX,
+            float playerY,
+            bool wasTouching)
+        {
+            if (ShouldSkipClientTouchOwnershipBoundsUpdate(bounds))
+            {
+                // CReactorPool::FindTouchReactorAroundLocalUser skips ownership mutation
+                // when the live layer returns empty bounds before the point test.
+                return wasTouching;
+            }
+
+            return DoesClientTouchBoundsContainPosition(bounds, playerX, playerY);
         }
 
         internal static int ResolveLocalTouchObjectId(ReactorRuntimeData data)

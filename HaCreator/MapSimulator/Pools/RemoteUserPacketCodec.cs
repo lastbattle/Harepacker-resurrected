@@ -3695,13 +3695,12 @@ namespace HaCreator.MapSimulator.Pools
                 return string.Empty;
             }
 
-            int extensionSeparatorIndex = candidate.LastIndexOf('.');
-            if (extensionSeparatorIndex > 0)
+            string lowered = candidate.Trim().ToLowerInvariant();
+            if (TryStripHelperMarkerPathExtension(lowered, out string extensionless))
             {
-                candidate = candidate[..extensionSeparatorIndex];
+                lowered = extensionless;
             }
 
-            string lowered = candidate.Trim().ToLowerInvariant();
             string collapsed = CollapseHelperMarkerToken(lowered);
             return collapsed switch
             {
@@ -3739,6 +3738,35 @@ namespace HaCreator.MapSimulator.Pools
                 "none" => "none",
                 _ => lowered
             };
+        }
+
+        private static bool TryStripHelperMarkerPathExtension(string value, out string extensionless)
+        {
+            extensionless = value;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            return TryStripKnownHelperMarkerPathExtension(value, ".img", out extensionless)
+                || TryStripKnownHelperMarkerPathExtension(value, ".png", out extensionless)
+                || TryStripKnownHelperMarkerPathExtension(value, ".canvas", out extensionless);
+        }
+
+        private static bool TryStripKnownHelperMarkerPathExtension(
+            string value,
+            string extension,
+            out string extensionless)
+        {
+            extensionless = value;
+            if (value.Length <= extension.Length
+                || !value.EndsWith(extension, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            extensionless = value[..^extension.Length];
+            return true;
         }
 
         private static bool TryResolveDirectionMarkerAlias(string candidate, out string directionMarkerName)

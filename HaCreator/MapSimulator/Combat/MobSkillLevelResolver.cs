@@ -105,6 +105,20 @@ internal static class MobSkillLevelResolver
         return FindInheritedProperty(levelNode, level, propertyName) as WzSubProperty;
     }
 
+    public static int ResolveInheritedAreaRange(WzSubProperty levelNode, int level)
+    {
+        Point? lt = ResolveInheritedVector(levelNode, level, "lt");
+        Point? rb = ResolveInheritedVector(levelNode, level, "rb");
+        if (!lt.HasValue || !rb.HasValue)
+        {
+            return 0;
+        }
+
+        int horizontalRange = Math.Max(Math.Abs(lt.Value.X), Math.Abs(rb.Value.X));
+        int verticalRange = Math.Max(Math.Abs(lt.Value.Y), Math.Abs(rb.Value.Y));
+        return Math.Max(horizontalRange, verticalRange);
+    }
+
     private static IEnumerable<int> EnumerateCandidateLevels(WzSubProperty levelNode, int level)
     {
         var seenLevels = new HashSet<int>();

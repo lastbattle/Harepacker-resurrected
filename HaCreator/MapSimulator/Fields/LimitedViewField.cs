@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Fields
             CopyLocalViewrange,
             EvaluateShareViewRemoteLoop,
             SkipRemoteViewrangeBecauseShareViewDisabled,
+            SkipRemoteViewrangeBecauseLocalUserMissing,
             ResolveRemoteUserPosition,
             CopyRemoteViewrange,
             AppendPreviousMaskHistory
@@ -540,7 +541,10 @@ namespace HaCreator.MapSimulator.Fields
                 case ViewMode.Spotlight:
                     if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
                     {
-                        IReadOnlyList<Vector2> maskTopLefts = GetClientOwnedUpdateParityMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
+                        Vector2? localMaskTopLeft = TryGetClientOwnedUpdateParityLocalMaskTopLeft(mapShiftX, mapShiftY, centerX, centerY, out Vector2 resolvedLocalMaskTopLeft)
+                            ? resolvedLocalMaskTopLeft
+                            : null;
+                        IReadOnlyList<Vector2> remoteMaskTopLefts = GetClientOwnedUpdateParityRemoteMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
                         int viewrangeWidth = Math.Max(1, _clientOwnedViewrangeTexture.Width);
                         int viewrangeHeight = Math.Max(1, _clientOwnedViewrangeTexture.Height);
                         ExecuteClientOwnedDrawViewrangeOperationPlan(
@@ -548,7 +552,9 @@ namespace HaCreator.MapSimulator.Fields
                             fogColorWithAlpha,
                             BuildClientOwnedDrawViewrangeOperationPlan(
                                 _clientOwnedPreviousMaskTopLefts.ToArray(),
-                                maskTopLefts,
+                                localMaskTopLeft,
+                                remoteMaskTopLefts,
+                                _clientOwnedShareView,
                                 viewrangeWidth,
                                 viewrangeHeight));
                         break;
@@ -978,12 +984,30 @@ namespace HaCreator.MapSimulator.Fields
         internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityMaskTopLefts(int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
             _clientOwnedMaskTopLeftsBuffer.Clear();
-            if (!_clientOwnedFocusWorldPositionValid)
+            if (!TryGetClientOwnedUpdateParityLocalMaskTopLeft(mapShiftX, mapShiftY, centerX, centerY, out Vector2 localMaskTopLeft))
             {
                 return _clientOwnedMaskTopLeftsBuffer;
             }
 
-            _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
+            _clientOwnedMaskTopLeftsBuffer.Add(localMaskTopLeft);
+
+            if (_clientOwnedShareView)
+            {
+                _clientOwnedMaskTopLeftsBuffer.AddRange(GetClientOwnedUpdateParityRemoteMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY));
+            }
+
+            return _clientOwnedMaskTopLeftsBuffer;
+        }
+
+        internal bool TryGetClientOwnedUpdateParityLocalMaskTopLeft(int mapShiftX, int mapShiftY, int centerX, int centerY, out Vector2 maskTopLeft)
+        {
+            if (!_clientOwnedFocusWorldPositionValid)
+            {
+                maskTopLeft = Vector2.Zero;
+                return false;
+            }
+
+            maskTopLeft = ResolveClientOwnedMaskTopLeft(
                 _clientOwnedFocusWorldPosition.X,
                 _clientOwnedFocusWorldPosition.Y,
                 mapShiftX,
@@ -991,22 +1015,24 @@ namespace HaCreator.MapSimulator.Fields
                 centerX,
                 centerY,
                 _clientOwnedMaskOriginX,
-                _clientOwnedMaskOriginY));
+                _clientOwnedMaskOriginY);
+            return true;
+        }
 
-            if (_clientOwnedShareView)
+        internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityRemoteMaskTopLefts(int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            _clientOwnedMaskTopLeftsBuffer.Clear();
+            foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
             {
-                foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
-                {
-                    _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
-                        worldPosition.X,
-                        worldPosition.Y,
-                        mapShiftX,
-                        mapShiftY,
-                        centerX,
-                        centerY,
-                        _clientOwnedMaskOriginX,
-                        _clientOwnedMaskOriginY));
-                }
+                _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
+                    worldPosition.X,
+                    worldPosition.Y,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    _clientOwnedMaskOriginX,
+                    _clientOwnedMaskOriginY));
             }
 
             return _clientOwnedMaskTopLeftsBuffer;
@@ -1037,7 +1063,7 @@ namespace HaCreator.MapSimulator.Fields
                 currentMaskTopLefts.Add(localMaskTopLeft.Value);
             }
 
-            if (shareView && remoteMaskTopLefts != null)
+            if (shareView && localMaskTopLeft.HasValue && remoteMaskTopLefts != null)
             {
                 for (int i = 0; i < remoteMaskTopLefts.Count; i++)
                 {
@@ -1055,6 +1081,13 @@ namespace HaCreator.MapSimulator.Fields
             {
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled,
+                    Vector2.Zero,
+                    -1));
+            }
+            else if (shareView && !localMaskTopLeft.HasValue && remoteMaskTopLefts != null && remoteMaskTopLefts.Count > 0)
+            {
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseLocalUserMissing,
                     Vector2.Zero,
                     -1));
             }
@@ -1337,6 +1370,7 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions:
                     case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:
+                    case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseLocalUserMissing:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition:
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch:

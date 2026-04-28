@@ -3698,28 +3698,16 @@ namespace HaCreator.MapSimulator.Combat
             int effectFrameWidth,
             int extraEffectCount)
         {
-            if (attack == null || !attack.IsRanged || attack.IsAreaOfEffect)
+            if (attack == null || (effectFrameCount <= 0 && extraEffectCount <= 0))
             {
                 return false;
             }
 
-            if (hasProjectileFrames || effectFrameCount <= 0)
-            {
-                return false;
-            }
-
-            if (attack.EffectFacingAttach || extraEffectCount > 0)
-            {
-                return true;
-            }
-
-            if (!attack.HasRangeBounds)
-            {
-                return false;
-            }
-
-            int rangeWidth = Math.Abs(attack.RangeRight - attack.RangeLeft);
-            return rangeWidth > effectFrameWidth + 80;
+            // CMob::DoAttack records AttackInfo::sEffect on m_effectAttack before
+            // branching on nType. ProcessAttack later loads that effect from the
+            // mob/action layer at tEffectAfter for direct, projectile, and area
+            // attacks alike; it is not an impact-time hit effect.
+            return true;
         }
 
         private Vector2 GetSourceEffectPosition(MobItem mobItem, MobAttackEntry attack, int currentTime, bool faceLeft)

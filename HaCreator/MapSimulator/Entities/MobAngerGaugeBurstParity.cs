@@ -49,6 +49,11 @@ namespace HaCreator.MapSimulator.Entities
 
             if (currentAttack?.IsSpecialAttack == true)
             {
+                return ResolveRepeatIntervalMs(frames, specialAttackAfterMs: 0);
+            }
+
+            if (currentAttack == null)
+            {
                 return ResolveRepeatIntervalMs(frames, configuredSpecialAttackAfterMs);
             }
 

@@ -157,8 +157,8 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
         internal static DojoHudGeometry ClientHudGeometry => new(
             PlayerGaugeOffsetX,
-            PlayerGaugeRightOffsetX,
             MonsterGaugeOffsetX,
+            PlayerGaugeRightOffsetX,
             BarGaugeOffsetY,
             EnergyOrigin,
             EnergyGaugeOffsetX,

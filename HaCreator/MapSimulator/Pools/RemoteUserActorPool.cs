@@ -6730,9 +6730,10 @@ namespace HaCreator.MapSimulator.Pools
             bool drawFrontLayers)
         {
             RemoteActiveEffectItemEffectState state = actor?.ActiveEffectItemEffect;
-            if (state?.Effect?.OwnerLayers == null
-                || state.Effect.OwnerLayers.Count == 0
-                || actor.HiddenLikeClient)
+            if (!ShouldDrawRemoteActiveEffectItemEffectForParity(
+                    state,
+                    actor?.HiddenLikeClient == true,
+                    actor?.HasMorphTemplate == true))
             {
                 return;
             }
@@ -7744,6 +7745,17 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return state.WorldOrigin;
+        }
+
+        internal static bool ShouldDrawRemoteActiveEffectItemEffectForParity(
+            RemoteActiveEffectItemEffectState state,
+            bool hiddenLikeClient,
+            bool hasMorphTemplate)
+        {
+            return state?.Effect?.OwnerLayers != null
+                && state.Effect.OwnerLayers.Count > 0
+                && !hiddenLikeClient
+                && !hasMorphTemplate;
         }
 
         private void ClearRemoteActiveEffectMotionBlurState(RemoteUserActor actor, int currentTime = int.MinValue)
@@ -14560,6 +14572,22 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!hasValidMetadataOffset
                 && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByAdjacentSkillElementPairConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int adjacentPairConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    adjacentPairConsensusChargeElement,
+                    out int adjacentPairConsensusChargeSkillId))
+            {
+                return adjacentPairConsensusChargeSkillId;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -14765,6 +14793,18 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByAdjacentSkillElementPairConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
                     out chargeElement))
             {
                 return true;
@@ -15496,6 +15536,10 @@ namespace HaCreator.MapSimulator.Pools
             string setItemText = CompletedSetItemId > 0 ? CompletedSetItemId.ToString() : "none";
             string activeEffectText = PacketOwnedEmotion != null
                 ? $"{PacketOwnedEmotion.ItemId}:{PacketOwnedEmotion.EmotionName}"
+                : ActiveEffectItemEffect != null
+                    ? $"{ActiveEffectItemEffect.ItemId}:effect"
+                    : ActiveEffectMotionBlur != null
+                        ? $"{ActiveEffectMotionBlur.ActiveItemId}:spectrum"
                 : "none";
             string ridingVehicleText = RidingVehicleId > 0 ? RidingVehicleId.ToString() : "none";
             string shadowPartnerText = TemporaryStatShadowPartnerSkillId?.ToString() ?? "none";

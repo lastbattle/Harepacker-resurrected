@@ -1510,7 +1510,7 @@ namespace HaCreator.MapSimulator.Loaders
                 : fallbackBounds;
 
             Point? headAnchor = TryGetVector(canvasProperty?["head"]);
-            List<Rectangle> multiBodyBounds = TryGetMultiBodyBounds(canvasProperty);
+            List<Rectangle> multiBodyBounds = TryGetBodyBounds(canvasProperty, "multiRect", "rect");
             int? alphaStart = TryGetOptionalInt(canvasProperty?["a0"]);
             int? alphaEnd = TryGetOptionalInt(canvasProperty?["a1"]);
             bool hasAlphaRange = alphaStart.HasValue || alphaEnd.HasValue;
@@ -1639,25 +1639,38 @@ namespace HaCreator.MapSimulator.Loaders
             return true;
         }
 
-        private static List<Rectangle> TryGetMultiBodyBounds(WzCanvasProperty canvasProperty)
+        private static List<Rectangle> TryGetBodyBounds(WzCanvasProperty canvasProperty, params string[] propertyNames)
         {
-            if (canvasProperty?["multiRect"] is not WzSubProperty multiRectProperty)
+            if (canvasProperty == null || propertyNames == null)
             {
                 return null;
             }
 
             var bounds = new List<Rectangle>();
-            foreach (WzImageProperty childProperty in multiRectProperty.WzProperties)
+            foreach (string propertyName in propertyNames)
             {
-                WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(childProperty);
-                if (resolvedProperty is not WzSubProperty rectProperty)
+                if (string.IsNullOrWhiteSpace(propertyName))
                 {
                     continue;
                 }
 
-                if (TryBuildRect(rectProperty["lt"], rectProperty["rb"], out Rectangle rect))
+                if (WzInfoTools.GetRealProperty(canvasProperty[propertyName]) is not WzSubProperty rectContainer)
                 {
-                    bounds.Add(rect);
+                    continue;
+                }
+
+                foreach (WzImageProperty childProperty in rectContainer.WzProperties)
+                {
+                    WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(childProperty);
+                    if (resolvedProperty is not WzSubProperty rectProperty)
+                    {
+                        continue;
+                    }
+
+                    if (TryBuildRect(rectProperty["lt"], rectProperty["rb"], out Rectangle rect))
+                    {
+                        bounds.Add(rect);
+                    }
                 }
             }
 

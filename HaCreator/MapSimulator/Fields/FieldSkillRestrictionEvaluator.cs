@@ -307,7 +307,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Skills cannot be used while the Guild Boss field owns basic attacks.";
             }
 
-            if (runtimeState?.ClientFieldMineSkillBlocked == true
+            if (IsClientFieldMineSkillBlocked(mapInfo, runtimeState)
                 && IsWildHunterMineSkill(skill))
             {
                 return "Wild Hunter Mine cannot be used in the current field state.";
@@ -706,8 +706,15 @@ namespace HaCreator.MapSimulator.Fields
         private static bool IsWildHunterMineSkill(SkillData skill)
         {
             // Client evidence: CUserLocal::DoActiveSkill@0x9445b0 checks CField+0x18C
-            // before allowing Wild Hunter Mine (33101004) through the active-skill branch.
+            // (CField::m_bTown; also used by TryDoingMine@0x907d70) before allowing
+            // visible Wild Hunter Mine (33101004) through the active-skill branch.
             return skill?.SkillId == WildHunterMineSkillId;
+        }
+
+        private static bool IsClientFieldMineSkillBlocked(MapInfo mapInfo, RuntimeState runtimeState)
+        {
+            return runtimeState?.ClientFieldMineSkillBlocked == true
+                   || mapInfo?.town == true;
         }
 
         private static bool UsesTamingMobRestrictedSkill(SkillData skill)

@@ -718,7 +718,6 @@ namespace HaCreator.MapSimulator.Pools
         internal const int ClientPetPickupBottomOffset = 10;
 
         // Mob pickup constants
-        private const float MOB_PICKUP_RANGE = 30f;             // Range for mob pickup detection
         internal const int ClientMobPickupHalfWidth = 20;
         internal const int ClientMobPickupTopOffset = 40;
         internal const int ClientMobPickupBottomOffset = 10;
@@ -2136,8 +2135,6 @@ namespace HaCreator.MapSimulator.Pools
 
             // Client scans m_lDrop in pool order and sends the first eligible drop.
             DropItem selectedDrop = null;
-            float rangeSq = MOB_PICKUP_RANGE * MOB_PICKUP_RANGE;
-
             foreach (var drop in _activeDrops)
             {
                 if (drop.State != DropState.Idle || !drop.CanPickup)
@@ -2147,12 +2144,6 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
 
                 if (!CanMobPickup(drop))
-                    continue;
-
-                float dx = drop.X - mobX;
-                float dy = drop.Y - mobY;
-                float distSq = dx * dx + dy * dy;
-                if (distSq > rangeSq)
                     continue;
 
                 if (!IsWithinClientPickupRect(

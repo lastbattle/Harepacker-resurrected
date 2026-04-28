@@ -105,7 +105,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _transientHitLayerSourceState = -1;
         private int _transientHitLayerProperEventIndex = -1;
         private int _transientFrameIndex;
-        private int _lastTransientTick;
+        private int _transientStartTick;
         private int _lastVisibilityCheckFrame = -1;
 
         private enum HitAnimationSourceKind
@@ -497,8 +497,23 @@ namespace HaCreator.MapSimulator.Entities
                 return 0;
             }
 
-            GetStateFrame(tickCount, out int frameIndex);
-            int elapsedWithinFrame = Math.Max(0, tickCount - (_transientFrames != null ? _lastTransientTick : _lastStateTick));
+            int elapsedWithinFrame;
+            int frameIndex;
+            if (_transientFrames != null)
+            {
+                ResolveLoadLayerFrameTiming(
+                    frames,
+                    Math.Max(0, tickCount - _transientStartTick),
+                    repeat: false,
+                    out frameIndex,
+                    out elapsedWithinFrame);
+            }
+            else
+            {
+                GetStateFrame(tickCount, out frameIndex);
+                elapsedWithinFrame = Math.Max(0, tickCount - _lastStateTick);
+            }
+
             int remainingDuration = Math.Max(0, Math.Max(1, frames[frameIndex].Delay) - elapsedWithinFrame);
 
             for (int i = frameIndex + 1; i < frames.Length; i++)
@@ -564,7 +579,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 _transientFrames = frames;
                 _transientFrameIndex = 0;
-                _lastTransientTick = tickCount;
+                _transientStartTick = tickCount;
             }
 
             return duration > 0;
@@ -577,7 +592,7 @@ namespace HaCreator.MapSimulator.Entities
             _transientHitLayerSourceState = -1;
             _transientHitLayerProperEventIndex = -1;
             _transientFrameIndex = 0;
-            _lastTransientTick = 0;
+            _transientStartTick = 0;
         }
 
         public bool IsStateRepeat(int state)
@@ -1208,13 +1223,14 @@ namespace HaCreator.MapSimulator.Entities
         {
             if (_transientFrames != null && _transientFrames.Length > 0)
             {
-                return GetAnimationFrame(
+                ResolveLoadLayerFrameTiming(
                     _transientFrames,
-                    ref _transientFrameIndex,
-                    ref _lastTransientTick,
+                    Math.Max(0, tickCount - _transientStartTick),
                     repeat: false,
-                    tickCount,
-                    out frameIndex);
+                    out frameIndex,
+                    out _);
+                _transientFrameIndex = frameIndex;
+                return _transientFrames[frameIndex];
             }
 
             IDXObject[] frames = ResolveStateFrames(_activeState);
@@ -1312,6 +1328,94 @@ namespace HaCreator.MapSimulator.Entities
 
             frameIndex = activeFrameIndex;
             return frames[activeFrameIndex];
+        }
+
+        internal static int ResolveLoadLayerFrameIndexForTesting(int[] frameDelays, int elapsedMs, bool repeat)
+        {
+            return ResolveLoadLayerFrameTiming(
+                frameDelays ?? Array.Empty<int>(),
+                elapsedMs,
+                repeat,
+                out int frameIndex,
+                out _)
+                ? frameIndex
+                : 0;
+        }
+
+        internal static bool ResolveLoadLayerFrameTimingForTesting(
+            int[] frameDelays,
+            int elapsedMs,
+            bool repeat,
+            out int frameIndex,
+            out int elapsedWithinFrame)
+        {
+            return ResolveLoadLayerFrameTiming(
+                frameDelays ?? Array.Empty<int>(),
+                elapsedMs,
+                repeat,
+                out frameIndex,
+                out elapsedWithinFrame);
+        }
+
+        private static bool ResolveLoadLayerFrameTiming(
+            IDXObject[] frames,
+            int elapsedMs,
+            bool repeat,
+            out int frameIndex,
+            out int elapsedWithinFrame)
+        {
+            return ResolveLoadLayerFrameTiming(
+                frames?.Select(static frame => frame?.Delay ?? 0).ToArray() ?? Array.Empty<int>(),
+                elapsedMs,
+                repeat,
+                out frameIndex,
+                out elapsedWithinFrame);
+        }
+
+        private static bool ResolveLoadLayerFrameTiming(
+            IReadOnlyList<int> frameDelays,
+            int elapsedMs,
+            bool repeat,
+            out int frameIndex,
+            out int elapsedWithinFrame)
+        {
+            frameIndex = 0;
+            elapsedWithinFrame = 0;
+            if (frameDelays == null || frameDelays.Count == 0)
+            {
+                return false;
+            }
+
+            int elapsed = Math.Max(0, elapsedMs);
+            int totalDuration = 0;
+            for (int i = 0; i < frameDelays.Count; i++)
+            {
+                totalDuration += Math.Max(1, frameDelays[i]);
+            }
+
+            if (repeat && totalDuration > 0)
+            {
+                elapsed %= totalDuration;
+            }
+
+            for (int i = 0; i < frameDelays.Count; i++)
+            {
+                int delay = Math.Max(1, frameDelays[i]);
+                if (elapsed < delay || i == frameDelays.Count - 1)
+                {
+                    frameIndex = i;
+                    elapsedWithinFrame = repeat || elapsed < delay
+                        ? Math.Min(elapsed, delay)
+                        : delay;
+                    return true;
+                }
+
+                elapsed -= delay;
+            }
+
+            frameIndex = frameDelays.Count - 1;
+            elapsedWithinFrame = Math.Max(1, frameDelays[frameIndex]);
+            return true;
         }
 
         private int ResolveState(int state)

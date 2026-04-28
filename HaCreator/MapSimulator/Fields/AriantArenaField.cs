@@ -73,9 +73,11 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeThrowGrenade = 230;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
+        private const int RankIconStringPoolId = 0x1123;
         private const int ResultLayerStringPoolId = 0x1124;
         private const int ResultSoundStringPoolId = 0x1125;
         private const int ScoreTextStringPoolId = 0x112A;
+        private const string RankIconFallbackPathFormat = "UI/UIWindow.img/AriantMatch/characterIcon/{0}";
         private const string ResultLayerFallbackPath = "UI/UIWindow.img/AriantMatch/Result";
         private const string ResultSoundFallbackPath = "Sound/MiniGame.img/Show";
         private const string ScoreTextFallbackFormat = "{0} Point";
@@ -116,6 +118,8 @@ namespace HaCreator.MapSimulator.Fields
         public int ScoreRefreshSerial => _scoreRefreshSerial;
         public int RemoteParticipantCount => CountAriantRemoteParticipants();
         internal static Rectangle ScoreLayerBoundsForTesting => new(ScoreLayerScreenX, ScoreLayerScreenY, ScoreLayerWidth, ScoreLayerHeight);
+        internal bool IsScoreLayerVisibleForTesting => _showScoreboard;
+        internal bool IsResultLayerVisibleForTesting => _showResult;
         public void Initialize(
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
@@ -287,7 +291,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _scoreRefreshSerial++;
-            _showScoreboard = _entries.Count > 0;
+            _showScoreboard = true;
             _showResult = false;
         }
         public void OnShowResult(int currentTimeMs)
@@ -562,6 +566,10 @@ namespace HaCreator.MapSimulator.Fields
         {
             return ResolveResultLayerPath();
         }
+        internal static string ResolveRankIconPathForTesting(int iconIndex)
+        {
+            return ResolveRankIconPath(iconIndex);
+        }
         internal static string ResolveResultSoundPathForTesting()
         {
             return ResolveResultSoundPath();
@@ -575,6 +583,15 @@ namespace HaCreator.MapSimulator.Fields
                 maxPlaceholderCount: 1,
                 out _);
             return string.Format(CultureInfo.InvariantCulture, format, Math.Clamp(score, 0, MaxScore));
+        }
+        private static string ResolveRankIconPath(int iconIndex)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                RankIconStringPoolId,
+                RankIconFallbackPathFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, Math.Clamp(iconIndex, 0, MaxRankEntries - 1));
         }
         private void DrawResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, Texture2D pixelTexture, SpriteFont font)
         {
@@ -614,14 +631,15 @@ namespace HaCreator.MapSimulator.Fields
             WzImageProperty resultRoot = ResolveWzPath(ResolveResultLayerPath());
             LoadAnimatedFrames(resultRoot, _resultFrames);
             EnsureResultSoundRegistered();
-            WzImage uiWindow = global::HaCreator.Program.FindImage("UI", "UIWindow.img")
-                ?? global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
-            WzImageProperty ariantMatch = uiWindow?["AriantMatch"];
-            WzImageProperty iconRoot = ariantMatch?["characterIcon"];
             for (int i = 0; i < MaxRankEntries; i++)
             {
-                if (WzInfoTools.GetRealProperty(iconRoot?[i.ToString()]) is WzCanvasProperty canvas
-                    && TryCreateDxObject(canvas, out IDXObject icon))
+                WzCanvasProperty canvas =
+                    WzInfoTools.GetRealProperty(ResolveWzPath(ResolveRankIconPath(i))) as WzCanvasProperty
+                    ?? WzInfoTools.GetRealProperty(ResolveWzPath(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "UI/UIWindow2.img/AriantMatch/characterIcon/{0}",
+                        i))) as WzCanvasProperty;
+                if (canvas != null && TryCreateDxObject(canvas, out IDXObject icon))
                 {
                     _rankIcons.Add(icon);
                 }

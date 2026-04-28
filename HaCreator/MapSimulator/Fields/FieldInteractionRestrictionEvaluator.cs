@@ -223,6 +223,18 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetLandingRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "noLanding")
+                ? "Foothold landing is disabled in this map."
+                : null;
+        }
+
+        public static bool CanLandOnFoothold(MapInfo mapInfo)
+        {
+            return GetLandingRestrictionMessage(mapInfo) == null;
+        }
+
         internal static string GetExpeditionPartyBossChangeRestrictionMessage(
             long fieldLimit,
             ExpeditionIntermediaryOutboundRequestKind requestKind)
@@ -654,6 +666,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetShopOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFollowCharacterRestrictionMessage(mapInfo));
             if (GetPetRuntimeRestrictionMessage(fieldLimit) == null)
             {

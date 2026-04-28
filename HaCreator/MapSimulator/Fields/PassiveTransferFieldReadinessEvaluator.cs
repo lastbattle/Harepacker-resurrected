@@ -233,6 +233,13 @@ namespace HaCreator.MapSimulator.Fields
                        allowsTransferField);
         }
 
+        public static bool ShouldArmQueuedRetryFromFollowCharacterTransferDetach(
+            bool isLocalUser,
+            bool transferField)
+        {
+            return isLocalUser && transferField;
+        }
+
         public static bool ShouldClearQueuedRetryOnChairGetUp(
             bool hasPendingRequest,
             bool consumedChairGetUpBranch)

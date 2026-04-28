@@ -1930,8 +1930,17 @@ namespace HaCreator.MapSimulator.Effects
                     return true;
                 }
 
+                RemoteUserRelationshipRecord mappedRecord = mappedParticipant.AvatarModifiedState.HasValue
+                    ? GetRelationshipRecord(mappedParticipant.AvatarModifiedState.Value, packet.RelationshipType)
+                    : default;
                 if (ApplyRelationshipRecordRemove(mappedParticipant, packet.RelationshipType, mappedOwnerCharacterId, packet.ItemSerial))
                 {
+                    ApplyRelationshipRecordRemoveForRelatedOwner(
+                        mappedParticipant,
+                        packet.RelationshipType,
+                        mappedRecord,
+                        mappedOwnerCharacterId,
+                        packet.ItemSerial);
                     RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, mappedOwnerCharacterId);
                     return true;
                 }
@@ -2006,6 +2015,58 @@ namespace HaCreator.MapSimulator.Effects
                 ?? CreateDefaultAvatarModifiedState(participant.CharacterId);
             state = ApplyRelationshipRecordToAvatarModifiedState(state, relationshipType, relationshipRecord);
             StoreAvatarModifiedState(participant, state);
+            MirrorRelationshipRecordToCanonicalOwnerParticipant(participant, relationshipType, relationshipRecord);
+        }
+
+        private void MirrorRelationshipRecordToCanonicalOwnerParticipant(
+            WeddingRemoteParticipant packetParticipant,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            if (packetParticipant == null
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !relationshipRecord.IsActive
+                || relationshipRecord.CharacterId.GetValueOrDefault() <= 0
+                || relationshipRecord.CharacterId.Value == packetParticipant.CharacterId
+                || !TryResolveParticipantForTemporaryStats(
+                    relationshipRecord.CharacterId.Value,
+                    out WeddingRemoteParticipant ownerParticipant,
+                    out _))
+            {
+                return;
+            }
+
+            RemoteUserAvatarModifiedPacket ownerState = ownerParticipant.AvatarModifiedState
+                ?? CreateDefaultAvatarModifiedState(ownerParticipant.CharacterId);
+            ownerState = ApplyRelationshipRecordToAvatarModifiedState(ownerState, relationshipType, relationshipRecord);
+            StoreAvatarModifiedState(ownerParticipant, ownerState);
+            RegisterRelationshipRecordDispatchKeys(relationshipType, default, relationshipRecord, ownerParticipant.CharacterId);
+        }
+
+        private void ApplyRelationshipRecordRemoveForRelatedOwner(
+            WeddingRemoteParticipant dispatchParticipant,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord removedRecord,
+            int? characterId,
+            long? itemSerial)
+        {
+            if (dispatchParticipant == null
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !removedRecord.IsActive
+                || removedRecord.CharacterId.GetValueOrDefault() <= 0
+                || removedRecord.CharacterId.Value == dispatchParticipant.CharacterId
+                || !TryResolveParticipantForTemporaryStats(
+                    removedRecord.CharacterId.Value,
+                    out WeddingRemoteParticipant ownerParticipant,
+                    out _))
+            {
+                return;
+            }
+
+            if (ApplyRelationshipRecordRemove(ownerParticipant, relationshipType, characterId, itemSerial))
+            {
+                RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerParticipant.CharacterId);
+            }
         }
 
         private RemoteUserRelationshipRecord NormalizeWeddingRelationshipRecordForApply(
