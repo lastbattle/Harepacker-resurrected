@@ -1413,16 +1413,57 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Height ?? 0,
                 _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Width ?? 0,
                 _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Height ?? 0);
-            return ResolveInitialQuizOwnerOkButtonBounds(ownerBounds, buttonSize.X, buttonSize.Y);
+            Point buttonOrigin = ResolveInitialQuizOwnerOkButtonHitOrigin(
+                _initialQuizOwnerOkButtonNormalFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonHoverFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonPressedFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonDisabledFrame?.Origin ?? Point.Zero,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Origin ?? Point.Zero);
+            return ResolveInitialQuizOwnerOkButtonBounds(ownerBounds, buttonSize.X, buttonSize.Y, buttonOrigin);
         }
 
         internal static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds, int buttonWidth, int buttonHeight)
         {
+            return ResolveInitialQuizOwnerOkButtonBounds(ownerBounds, buttonWidth, buttonHeight, Point.Zero);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds, int buttonWidth, int buttonHeight, Point origin)
+        {
             return new Rectangle(
-                ownerBounds.X + InitialQuizOwnerOkButtonLeft,
-                ownerBounds.Y + InitialQuizOwnerOkButtonTop,
+                ownerBounds.X + InitialQuizOwnerOkButtonLeft - origin.X,
+                ownerBounds.Y + InitialQuizOwnerOkButtonTop - origin.Y,
                 Math.Max(1, buttonWidth),
                 Math.Max(1, buttonHeight));
+        }
+
+        internal static Point ResolveInitialQuizOwnerOkButtonHitOrigin(
+            Point normalOrigin,
+            Point hoverOrigin,
+            Point pressedOrigin,
+            Point disabledOrigin,
+            Point keyFocusedOrigin)
+        {
+            if (normalOrigin != Point.Zero)
+            {
+                return normalOrigin;
+            }
+
+            if (hoverOrigin != Point.Zero)
+            {
+                return hoverOrigin;
+            }
+
+            if (pressedOrigin != Point.Zero)
+            {
+                return pressedOrigin;
+            }
+
+            if (disabledOrigin != Point.Zero)
+            {
+                return disabledOrigin;
+            }
+
+            return keyFocusedOrigin;
         }
 
         internal static Point ResolveInitialQuizOwnerOkButtonHitSize(
@@ -1713,7 +1754,7 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-                return buttonProperty[stateName]?["0"] as WzCanvasProperty
+            return buttonProperty[stateName]?["0"] as WzCanvasProperty
                 ?? buttonProperty[stateName]?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault()
                 ?? buttonProperty[stateName == "mouseOver" ? "keyFocused" : stateName]?["0"] as WzCanvasProperty
                 ?? buttonProperty.WzProperties.OfType<WzSubProperty>()
@@ -1724,10 +1765,7 @@ namespace HaCreator.MapSimulator
 
         private static Point ResolveInitialQuizOwnerButtonOrigin(WzCanvasProperty canvas)
         {
-            Point origin = ResolveCanvasOrigin(canvas);
-            return origin.X < 0 || origin.Y < 0
-                ? Point.Zero
-                : origin;
+            return ResolveCanvasOrigin(canvas);
         }
 
         internal static bool ShouldShowInitialQuizOwnerHint(string hintText)

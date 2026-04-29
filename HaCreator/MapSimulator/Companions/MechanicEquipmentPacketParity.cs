@@ -1645,6 +1645,9 @@ namespace HaCreator.MapSimulator.Companions
                 matchedByHeader = true;
             }
 
+            long itemBodyStart = stream.CanSeek
+                ? stream.Position
+                : -1;
             if (TryConsumeClientInventoryOperationAddEntryBody(
                     reader,
                     slotType,
@@ -1653,6 +1656,11 @@ namespace HaCreator.MapSimulator.Companions
                     out rejectReason))
             {
                 return true;
+            }
+
+            if (itemBodyStart >= 0)
+            {
+                stream.Position = itemBodyStart;
             }
 
             if (matchedByHeader)
@@ -1729,6 +1737,9 @@ namespace HaCreator.MapSimulator.Companions
                 mutation = new MechanicInventoryOperationMutation(mechanicSlot, itemId);
             }
 
+            long itemBodyStart = stream.CanSeek
+                ? stream.Position
+                : -1;
             if (TryConsumeClientInventoryOperationAddEntryBody(
                     reader,
                     slotType,
@@ -1737,6 +1748,11 @@ namespace HaCreator.MapSimulator.Companions
                     out rejectReason))
             {
                 return true;
+            }
+
+            if (itemBodyStart >= 0)
+            {
+                stream.Position = itemBodyStart;
             }
 
             if (mutation.HasValue)

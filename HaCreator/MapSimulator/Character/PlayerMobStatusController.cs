@@ -286,7 +286,7 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.DurationMs,
                         currentTime,
                         ResolveValue(runtimeData, 10),
-                        ResolveTickInterval(runtimeData, 1000),
+                        ResolvePeriodicTickInterval(runtimeData, 1000),
                         recastLeadTimeMs: recastLeadTimeMs);
                 case 126:
                     return ApplyStatus(PlayerMobStatusEffect.Slow, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 20), recastLeadTimeMs: recastLeadTimeMs);
@@ -313,7 +313,7 @@ namespace HaCreator.MapSimulator.Character
                             runtimeData.DurationMs,
                             currentTime,
                             ResolvePeriodicDamageValue(runtimeData, 1),
-                            ResolveTickInterval(runtimeData, 1000),
+                            ResolvePeriodicTickInterval(runtimeData, 1000),
                             runtimeData.Count,
                             recastLeadTimeMs)
                         : ApplyStatus(PlayerMobStatusEffect.ReverseInput, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
@@ -325,7 +325,7 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.DurationMs,
                         currentTime,
                         ResolveValue(runtimeData, 1),
-                        ResolveTickInterval(runtimeData, 1000),
+                        ResolvePeriodicTickInterval(runtimeData, 1000),
                         runtimeData.Count,
                         recastLeadTimeMs);
                 case 135:
@@ -340,7 +340,7 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.DurationMs,
                         currentTime,
                         ResolveValue(runtimeData, 1),
-                        ResolveTickInterval(runtimeData, 1000),
+                        ResolvePeriodicTickInterval(runtimeData, 1000),
                         runtimeData.Count,
                         recastLeadTimeMs);
                 case 171:
@@ -617,7 +617,7 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.DurationMs,
                         currentTime,
                         ResolveValue(runtimeData, 10),
-                        ResolveTickInterval(runtimeData, 1000),
+                        ResolvePeriodicTickInterval(runtimeData, 1000),
                         0,
                         refreshLeadTimeMs);
                 case 126:
@@ -657,7 +657,7 @@ namespace HaCreator.MapSimulator.Character
                             runtimeData.DurationMs,
                             currentTime,
                             ResolvePeriodicDamageValue(runtimeData, 1),
-                            ResolveTickInterval(runtimeData, 1000),
+                            ResolvePeriodicTickInterval(runtimeData, 1000),
                             runtimeData.Count,
                             refreshLeadTimeMs)
                         : WouldStatusApplicationChangeState(
@@ -679,7 +679,7 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.DurationMs,
                         currentTime,
                         ResolveValue(runtimeData, 1),
-                        ResolveTickInterval(runtimeData, 1000),
+                        ResolvePeriodicTickInterval(runtimeData, 1000),
                         runtimeData.Count,
                         refreshLeadTimeMs);
                 case 135:
@@ -709,7 +709,7 @@ namespace HaCreator.MapSimulator.Character
                         runtimeData.DurationMs,
                         currentTime,
                         ResolveValue(runtimeData, 1),
-                        ResolveTickInterval(runtimeData, 1000),
+                        ResolvePeriodicTickInterval(runtimeData, 1000),
                         runtimeData.Count,
                         refreshLeadTimeMs);
                 case 171:
@@ -1074,6 +1074,16 @@ namespace HaCreator.MapSimulator.Character
         private static int ResolveTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)
         {
             return runtimeData.IntervalMs > 0 ? runtimeData.IntervalMs : fallbackMs;
+        }
+
+        internal static int ResolvePeriodicTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)
+        {
+            if (runtimeData?.Count > 0 && runtimeData.DurationMs > 0)
+            {
+                return Math.Max(1, (int)Math.Ceiling(runtimeData.DurationMs / (runtimeData.Count + 1d)));
+            }
+
+            return ResolveTickInterval(runtimeData, fallbackMs);
         }
 
         internal static int ResolveSkillStatusDurationMs(int skillId, MobSkillRuntimeData runtimeData)

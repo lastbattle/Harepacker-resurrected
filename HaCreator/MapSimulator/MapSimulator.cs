@@ -21261,7 +21261,7 @@ namespace HaCreator.MapSimulator
 
             if (definition.Operation == MobSkillOperation.Heal)
             {
-                int healAmount = Math.Max(0, runtimeData.X);
+                int healAmount = ResolveMobSkillHealAmount(runtimeData, _mobSkillRandom);
                 if (healAmount <= 0)
                 {
                     return;
@@ -21736,6 +21736,49 @@ namespace HaCreator.MapSimulator
             return runtimeData?.TargetMobType == MobSkillTargetMobType.NearbyMobs
                 ? MobSkillStatusTargetMode.NearbyMobs
                 : MobSkillStatusTargetMode.Self;
+        }
+
+        internal static int ResolveMobSkillHealAmountForTesting(
+            MobSkillRuntimeData runtimeData,
+            int deterministicRoll)
+        {
+            return ResolveMobSkillHealAmount(runtimeData, null, deterministicRoll);
+        }
+
+        private static int ResolveMobSkillHealAmount(
+            MobSkillRuntimeData runtimeData,
+            Random random,
+            int deterministicRoll = -1)
+        {
+            if (runtimeData == null)
+            {
+                return 0;
+            }
+
+            int x = Math.Max(0, runtimeData.X);
+            int y = Math.Max(0, runtimeData.Y);
+            if (x <= 0)
+            {
+                return y;
+            }
+
+            if (y <= 0)
+            {
+                return x;
+            }
+
+            int min = Math.Min(x, y);
+            int max = Math.Max(x, y);
+            if (min == max)
+            {
+                return min;
+            }
+
+            int range = max - min + 1;
+            int offset = deterministicRoll >= 0
+                ? (int)(Math.Abs((long)deterministicRoll) % range)
+                : (random ?? Random.Shared).Next(range);
+            return min + offset;
         }
 
 
@@ -25259,6 +25302,8 @@ namespace HaCreator.MapSimulator
             public int ExperienceRate { get; init; }
             public int DropRate { get; init; }
             public int MesoRate { get; init; }
+            public int DamageReductionRate { get; init; }
+            public string DamageReductionAuthoredKey { get; init; }
             public int EnvironmentalDamageProtection { get; init; }
             public string ScreenMessage { get; init; }
             public bool ConsumeOnPickup { get; init; }
@@ -25358,7 +25403,8 @@ namespace HaCreator.MapSimulator
                  AbnormalStatusResistance != 0 ||
                  ExperienceRate != 0 ||
                  DropRate != 0 ||
-                 MesoRate != 0);
+                 MesoRate != 0 ||
+                 DamageReductionRate != 0);
 
             public bool HasSupportedFieldProtection =>
                 EnvironmentalDamageProtection > 0 &&
@@ -26023,6 +26069,8 @@ namespace HaCreator.MapSimulator
                 ExperienceRate = ResolveConsumablePercentValue(specProperty, specExProperty, "expBuff", "expR", "plusExpRate"),
                 DropRate = ResolveConsumablePercentValue(specProperty, specExProperty, "dropRate", "dropR"),
                 MesoRate = ResolveConsumablePercentValue(specProperty, specExProperty, "mesoR"),
+                DamageReductionRate = ResolveConsumablePercentValue(specProperty, specExProperty, "damR", "indieDamR", "PVPdamage", "incPVPDamage"),
+                DamageReductionAuthoredKey = ResolveConsumableAuthoredKey(specProperty, specExProperty, "damR", "indieDamR", "PVPdamage", "incPVPDamage"),
                 EnvironmentalDamageProtection = ResolveConsumableEnvironmentalDamageProtection(specProperty?["thaw"], specExProperty?["thaw"]),
                 ScreenMessage = ResolveConsumableScreenMessage(specProperty, specExProperty),
                 ConsumeOnPickup = ResolveConsumableIntValue(specProperty, specExProperty, "consumeOnPickup") > 0,
@@ -26406,8 +26454,45 @@ namespace HaCreator.MapSimulator
                 AbnormalStatusResistance = effect.AbnormalStatusResistance,
                 ExperienceRate = effect.ExperienceRate,
                 DropRate = effect.DropRate,
-                MesoRate = effect.MesoRate
+                MesoRate = effect.MesoRate,
+                DamageReductionRate = effect.DamageReductionRate,
+                AuthoredPropertyOrder = BuildConsumableBuffAuthoredPropertyOrder(effect)
             };
+        }
+
+        internal static SkillLevelData CreateConsumableBuffLevelDataForTests(
+            int durationMs,
+            int damageReductionRate,
+            string damageReductionAuthoredKey)
+        {
+            return CreateConsumableBuffLevelData(new ConsumableItemEffect
+            {
+                DurationMs = durationMs,
+                DamageReductionRate = damageReductionRate,
+                DamageReductionAuthoredKey = damageReductionAuthoredKey
+            });
+        }
+
+        private static List<string> BuildConsumableBuffAuthoredPropertyOrder(ConsumableItemEffect effect)
+        {
+            var authoredProperties = new List<string>();
+            if (effect.DamageReductionRate > 0)
+            {
+                string authoredKey = NormalizeConsumableDamageReductionAuthoredKey(effect.DamageReductionAuthoredKey);
+                if (!string.IsNullOrWhiteSpace(authoredKey))
+                {
+                    authoredProperties.Add(authoredKey);
+                }
+            }
+
+            return authoredProperties;
+        }
+
+        private static string NormalizeConsumableDamageReductionAuthoredKey(string authoredKey)
+        {
+            return string.Equals(authoredKey, "incPVPDamage", StringComparison.OrdinalIgnoreCase)
+                ? "PVPdamage"
+                : authoredKey;
         }
 
         private void ApplyConsumableEnvironmentalDamageProtection(ConsumableItemEffect effect, int currentTime)
@@ -26806,6 +26891,46 @@ namespace HaCreator.MapSimulator
             return value > 0
                 ? value
                 : ResolveConsumablePercentValue(specExProperty, propertyNames);
+        }
+
+        internal static string ResolveConsumableAuthoredKeyForTests(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            params string[] propertyNames)
+        {
+            return ResolveConsumableAuthoredKey(specProperty, specExProperty, propertyNames);
+        }
+
+        private static string ResolveConsumableAuthoredKey(WzSubProperty specProperty, WzSubProperty specExProperty, params string[] propertyNames)
+        {
+            string key = ResolveConsumableAuthoredKey(specProperty, propertyNames);
+            return !string.IsNullOrWhiteSpace(key)
+                ? key
+                : ResolveConsumableAuthoredKey(specExProperty, propertyNames);
+        }
+
+        private static string ResolveConsumableAuthoredKey(WzSubProperty specProperty, params string[] propertyNames)
+        {
+            if (specProperty == null || propertyNames == null)
+            {
+                return string.Empty;
+            }
+
+            for (int i = 0; i < propertyNames.Length; i++)
+            {
+                string propertyName = propertyNames[i];
+                if (string.IsNullOrWhiteSpace(propertyName))
+                {
+                    continue;
+                }
+
+                if (GetWzIntValue(specProperty[propertyName]) != 0)
+                {
+                    return propertyName;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static int ResolveConsumableIntValue(WzSubProperty specProperty, params string[] propertyNames)
@@ -33467,7 +33592,7 @@ namespace HaCreator.MapSimulator
             }
 
             double horizontalImpact = ResolveCollisionVerticalJumpHorizontalImpact(player.HorizontalInputDirection, player.FacingRight);
-            player.Physics.SetMovePathAttribute(CollisionVerticalJumpMovePathAttribute);
+            player.Physics.SetMovePathAttribute(CollisionVerticalJumpMovePathAttribute, timeStampMs: currentTime);
             player.Physics.SetImpactNext(horizontalImpact, CollisionVerticalJumpVelocityY);
             _lastCollisionVerticalJumpMovePathAttribute = CollisionVerticalJumpMovePathAttribute;
             bool hasDynamicFoothold = IsPortalOwnedMovePathDynamicFootholdBranch(_mapBoard?.MapInfo?.fieldType);
@@ -33565,7 +33690,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            player.Physics.SetMovePathAttribute(CollisionCustomImpactMovePathAttribute);
+            player.Physics.SetMovePathAttribute(CollisionCustomImpactMovePathAttribute, timeStampMs: currentTime);
             player.Physics.SetImpactNext(velocityX, velocityY);
             _lastCollisionCustomImpactMovePathAttribute = CollisionCustomImpactMovePathAttribute;
             bool hasDynamicFoothold = IsPortalOwnedMovePathDynamicFootholdBranch(_mapBoard?.MapInfo?.fieldType);
@@ -34405,7 +34530,8 @@ namespace HaCreator.MapSimulator
                 _mapBoard.MapInfo?.mobRate ?? 1.5f,
                 _mapBoard.MapInfo?.createMobInterval,
                 _mapBoard.MapInfo?.fieldLimit ?? 0,
-                simulatedCharacterCount: 1);
+                simulatedCharacterCount: 1,
+                noRegenMap: !FieldInteractionRestrictionEvaluator.CanRegenerateMobs(_mapBoard.MapInfo));
             _mobPool.TrimInitialPopulation();
 
 
@@ -42061,6 +42187,9 @@ namespace HaCreator.MapSimulator
             renderData.IsAlerting = buffEntry.IsAlerting;
             renderData.UseTemporaryStatViewArtworkOnly = buffEntry.UseTemporaryStatViewArtworkOnly;
             renderData.TemporaryStatViewOwnerIdentity = buffEntry.TemporaryStatViewOwnerIdentity;
+            renderData.TemporaryStatViewParentLayerIdentity = buffEntry.TemporaryStatViewParentLayerIdentity;
+            renderData.TemporaryStatViewMainLayerIdentity = buffEntry.TemporaryStatViewMainLayerIdentity;
+            renderData.TemporaryStatViewShadowLayerIdentity = buffEntry.TemporaryStatViewShadowLayerIdentity;
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;

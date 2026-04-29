@@ -79,6 +79,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
+        internal static int ResolveEffectiveChargeElementForSkill(
+            int activeChargeElement,
+            int skillId,
+            string elementAttributeToken,
+            bool admitSkillElementAttribute)
+        {
+            if (IsKnownChargeElement(activeChargeElement))
+            {
+                return activeChargeElement;
+            }
+
+            if (TryGetChargeElement(skillId, out int skillChargeElement))
+            {
+                return skillChargeElement;
+            }
+
+            return admitSkillElementAttribute
+                   && TryResolveChargeElementFromElementAttributeToken(elementAttributeToken, out int attributeChargeElement)
+                ? attributeChargeElement
+                : 0;
+        }
+
         internal static bool TryGetRepresentativeChargeSkillIdForElement(
             int chargeElement,
             out int chargeSkillId)

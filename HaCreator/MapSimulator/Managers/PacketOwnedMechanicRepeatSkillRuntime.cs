@@ -2356,11 +2356,19 @@ namespace HaCreator.MapSimulator.Managers
         private static void CollectSg88ReplayParityMismatchPairsFromJsonElement(
             JsonElement element,
             IDictionary<int, string> normalizedByByte,
-            bool insidePairContainer)
+            bool insidePairContainer,
+            bool insidePacketComparisonContainer = false,
+            bool insidePayloadComparisonContainer = false)
         {
             switch (element.ValueKind)
             {
                 case JsonValueKind.Object:
+                    TryCollectSg88ReplayParityMismatchPairsFromJsonPacketComparisonObject(
+                        element,
+                        normalizedByByte,
+                        insidePacketComparisonContainer,
+                        insidePayloadComparisonContainer);
+
                     if (TryResolveSg88ReplayParityMismatchPairJsonObject(
                         element,
                         out int byteIndex,
@@ -2390,10 +2398,16 @@ namespace HaCreator.MapSimulator.Managers
 
                         bool childPairContainer = insidePairContainer
                             || IsSg88MismatchPairJsonLabel(property.Name);
+                        bool childPacketComparisonContainer = insidePacketComparisonContainer
+                            || IsSg88PacketComparisonByteArrayLabel(property.Name);
+                        bool childPayloadComparisonContainer = insidePayloadComparisonContainer
+                            || IsSg88PayloadComparisonByteArrayLabel(property.Name);
                         CollectSg88ReplayParityMismatchPairsFromJsonElement(
                             property.Value,
                             normalizedByByte,
-                            childPairContainer);
+                            childPairContainer,
+                            childPacketComparisonContainer,
+                            childPayloadComparisonContainer);
                     }
 
                     break;
@@ -2412,7 +2426,9 @@ namespace HaCreator.MapSimulator.Managers
                         CollectSg88ReplayParityMismatchPairsFromJsonElement(
                             item,
                             normalizedByByte,
-                            insidePairContainer);
+                            insidePairContainer,
+                            insidePacketComparisonContainer,
+                            insidePayloadComparisonContainer);
                     }
 
                     break;
@@ -2470,6 +2486,63 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     break;
+            }
+        }
+
+        private static void TryCollectSg88ReplayParityMismatchPairsFromJsonPacketComparisonObject(
+            JsonElement element,
+            IDictionary<int, string> normalizedByByte,
+            bool insidePacketComparisonContainer,
+            bool insidePayloadComparisonContainer)
+        {
+            if (element.ValueKind != JsonValueKind.Object || normalizedByByte == null)
+            {
+                return;
+            }
+
+            byte[] observedBytes = null;
+            byte[] rebuiltBytes = null;
+            bool observedPayload = insidePayloadComparisonContainer;
+            bool rebuiltPayload = insidePayloadComparisonContainer;
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (!TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName)
+                    || (!insidePacketComparisonContainer && !IsSg88PacketComparisonByteArrayLabel(property.Name))
+                    || !TryParseSg88PacketComparisonJsonBytes(property.Value, out byte[] parsedBytes))
+                {
+                    continue;
+                }
+
+                switch (normalizedName)
+                {
+                    case "observed":
+                        observedBytes = parsedBytes;
+                        observedPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name);
+                        break;
+                    case "rebuilt":
+                        rebuiltBytes = parsedBytes;
+                        rebuiltPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name);
+                        break;
+                }
+            }
+
+            if (observedBytes == null
+                || rebuiltBytes == null)
+            {
+                return;
+            }
+
+            int comparedLength = Math.Min(observedBytes.Length, rebuiltBytes.Length);
+            int byteIndexOffset = observedPayload && rebuiltPayload ? sizeof(ushort) : 0;
+            for (int i = 0; i < comparedLength; i++)
+            {
+                if (observedBytes[i] == rebuiltBytes[i])
+                {
+                    continue;
+                }
+
+                int byteIndex = i + byteIndexOffset;
+                normalizedByByte[byteIndex] = $"byte{byteIndex}:0x{observedBytes[i]:X2}->0x{rebuiltBytes[i]:X2}";
             }
         }
 
@@ -2691,6 +2764,139 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        private static bool IsSg88PacketComparisonByteArrayLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized.Contains("packet", StringComparison.Ordinal)
+                   || normalized.Contains("payload", StringComparison.Ordinal)
+                   || normalized.Contains("rawbytes", StringComparison.Ordinal)
+                   || normalized.Contains("packetbytes", StringComparison.Ordinal)
+                   || normalized.Contains("payloadbytes", StringComparison.Ordinal);
+        }
+
+        private static bool IsSg88PayloadComparisonByteArrayLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized.Contains("payload", StringComparison.Ordinal);
+        }
+
+        private static bool TryParseSg88PacketComparisonJsonBytes(JsonElement value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.String:
+                    return TryParseSg88PacketComparisonHexBytes(value.GetString(), out bytes);
+                case JsonValueKind.Array:
+                    List<byte> parsed = new();
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        if (!TryParseSg88MismatchPairJsonByteValue(item, out byte parsedByte))
+                        {
+                            bytes = Array.Empty<byte>();
+                            return false;
+                        }
+
+                        parsed.Add(parsedByte);
+                    }
+
+                    bytes = parsed.ToArray();
+                    return bytes.Length > 0;
+                case JsonValueKind.Object:
+                    foreach (JsonProperty property in value.EnumerateObject())
+                    {
+                        if (!IsSg88MismatchPairJsonScalarValueLabel(property.Name)
+                            && !IsSg88PacketComparisonByteArrayLabel(property.Name))
+                        {
+                            continue;
+                        }
+
+                        if (TryParseSg88PacketComparisonJsonBytes(property.Value, out bytes))
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseSg88PacketComparisonHexBytes(string value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string trimmed = value.Trim().Trim('"', '\'');
+            StringBuilder hex = new(trimmed.Length);
+            for (int i = 0; i < trimmed.Length; i++)
+            {
+                char ch = trimmed[i];
+                if (Uri.IsHexDigit(ch))
+                {
+                    hex.Append(ch);
+                    continue;
+                }
+
+                if (ch is 'x' or 'X'
+                    && i > 0
+                    && trimmed[i - 1] == '0')
+                {
+                    if (hex.Length > 0 && hex[^1] == '0')
+                    {
+                        hex.Length--;
+                    }
+
+                    continue;
+                }
+
+                if (char.IsWhiteSpace(ch) || ch is ':' or '-' or ',' or ';' or '[' or ']')
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (hex.Length == 0 || (hex.Length % 2) != 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                bytes = Convert.FromHexString(hex.ToString());
+                return bytes.Length > 0;
+            }
+            catch (FormatException)
+            {
+                bytes = Array.Empty<byte>();
+                return false;
+            }
+        }
+
         private static bool TryNormalizeSg88MismatchPairJsonPropertyName(string propertyName, out string normalizedName)
         {
             normalizedName = null;
@@ -2745,9 +2951,34 @@ namespace HaCreator.MapSimulator.Managers
                 case "packet":
                 case "packetvalue":
                 case "packetbyte":
+                case "officialrawpacket":
+                case "officialpacket":
+                case "officialpackethex":
+                case "officialpayload":
+                case "officialpayloadhex":
+                case "clientrawpacket":
+                case "clientpacket":
+                case "clientpackethex":
+                case "clientpayload":
+                case "clientpayloadhex":
+                case "capturedrawpacket":
+                case "capturedpacket":
+                case "capturedpackethex":
+                case "capturedpayload":
+                case "capturedpayloadhex":
+                case "observedrawpacket":
+                case "observedpacket":
+                case "observedpackethex":
+                case "observedpayload":
+                case "observedpayloadhex":
                 case "capture":
                 case "capturevalue":
                 case "capturebyte":
+                case "capturerawpacket":
+                case "capturepacket":
+                case "capturepackethex":
+                case "capturepayload":
+                case "capturepayloadhex":
                 case "from":
                 case "before":
                 case "left":
@@ -2762,18 +2993,33 @@ namespace HaCreator.MapSimulator.Managers
                 case "replay":
                 case "replayvalue":
                 case "replaybyte":
+                case "replayrawpacket":
+                case "replaypacket":
+                case "replaypackethex":
+                case "replaypayload":
+                case "replaypayloadhex":
                 case "replayed":
                 case "replayedvalue":
                 case "replayedbyte":
                 case "simulator":
                 case "simulatorvalue":
                 case "simulatorbyte":
+                case "simulatorrawpacket":
+                case "simulatorpacket":
+                case "simulatorpackethex":
+                case "simulatorpayload":
+                case "simulatorpayloadhex":
                 case "simulated":
                 case "simulatedvalue":
                 case "simulatedbyte":
                 case "generated":
                 case "generatedvalue":
                 case "generatedbyte":
+                case "generatedrawpacket":
+                case "generatedpacket":
+                case "generatedpackethex":
+                case "generatedpayload":
+                case "generatedpayloadhex":
                 case "candidate":
                 case "candidatevalue":
                 case "candidatebyte":
@@ -2783,6 +3029,11 @@ namespace HaCreator.MapSimulator.Managers
                 case "reconstructed":
                 case "reconstructedvalue":
                 case "reconstructedbyte":
+                case "reconstructedrawpacket":
+                case "reconstructedpacket":
+                case "reconstructedpackethex":
+                case "reconstructedpayload":
+                case "reconstructedpayloadhex":
                 case "to":
                 case "after":
                 case "right":
@@ -2853,7 +3104,15 @@ namespace HaCreator.MapSimulator.Managers
                 or "diffvalues"
                 or "comparisonvalues"
                 or "replayvalues"
-                or "packetvalues";
+                or "packetvalues"
+                or "rawpacket"
+                or "rawpackets"
+                or "packet"
+                or "packets"
+                or "packethex"
+                or "payload"
+                or "payloads"
+                or "payloadhex";
         }
 
         private static bool IsSg88MismatchPairJsonScalarValueLabel(string propertyName)

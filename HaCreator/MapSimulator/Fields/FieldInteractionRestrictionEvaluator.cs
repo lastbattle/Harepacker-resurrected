@@ -316,6 +316,18 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetMobRegenRestrictionMessage(MapInfo mapInfo)
+        {
+            return mapInfo?.noRegenMap == true || IsInfoFlagSet(mapInfo, "noRegenMap")
+                ? "Monster regeneration is disabled in this map."
+                : null;
+        }
+
+        public static bool CanRegenerateMobs(MapInfo mapInfo)
+        {
+            return GetMobRegenRestrictionMessage(mapInfo) == null;
+        }
+
         public static string GetExpDecreaseRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.No_EXP_Decrease.Check(fieldLimit)
@@ -748,6 +760,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit, mapInfo));
             AddFieldEntryMessage(messages, GetDropRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetMonsterCapacityLimitMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetMobRegenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetExpDecreaseRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetItemOptionLimitMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetJumpDownRestrictionMessage(fieldLimit));

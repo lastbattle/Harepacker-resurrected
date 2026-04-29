@@ -911,10 +911,19 @@ namespace HaCreator.MapSimulator.UI
         private void ApplyClientStateTransition(ClientStateTransition transition)
         {
             BaseDXDrawableItem previousFrame = GetVisibleFrame();
+            bool shouldResetTransientHoverState = ShouldResetTransientHoverStateForTransitionForTesting(
+                _currentOption,
+                _bIsCollapsedState,
+                transition.CurrentOption,
+                transition.IsCollapsed);
 
             _currentOption = transition.CurrentOption;
             _previousExpandedOption = transition.PreviousExpandedOption;
             _bIsCollapsedState = transition.IsCollapsed;
+            if (shouldResetTransientHoverState)
+            {
+                ResetTransientHoverState();
+            }
 
             SyncFramePositionsFrom(previousFrame);
             if (_useLegacyOptionButtonCycle)
@@ -929,6 +938,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateButtonLayout();
+        }
+
+        internal static bool ShouldResetTransientHoverStateForTransitionForTesting(
+            int currentOption,
+            bool isCurrentlyCollapsed,
+            int nextOption,
+            bool isNextCollapsed)
+        {
+            return isCurrentlyCollapsed != isNextCollapsed
+                || NormalizeRememberedExpandedOption(currentOption) != NormalizeRememberedExpandedOption(nextOption);
         }
 
         internal static ClientStateTransition ResolveClientStateTransitionForTesting(

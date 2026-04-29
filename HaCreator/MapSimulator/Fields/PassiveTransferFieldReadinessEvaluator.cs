@@ -1,4 +1,5 @@
 using System;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -63,6 +64,11 @@ namespace HaCreator.MapSimulator.Fields
         bool ShouldStopSkillMacro,
         bool ShouldReplayHandleUpKeyDown,
         bool ShouldClearQueuedRetry);
+
+    public readonly record struct PassiveTransferFieldPortalRoutingDecision(
+        bool IsPassiveTransferFieldPortal,
+        bool ShouldSendTransferFieldRequest,
+        bool ShouldPlayTransferFieldPortalSound);
 
     public static class PassiveTransferFieldReadinessEvaluator
     {
@@ -191,6 +197,11 @@ namespace HaCreator.MapSimulator.Fields
             return hasPendingRequest;
         }
 
+        public static bool ShouldConsumeQueuedRetryOnMapTransferAdmission(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromTransferLifecycle(hasPendingRequest);
+        }
+
         public static bool ShouldClearQueuedRetryAfterFreshHandleUpKeyDown(
             bool hasPendingRequest,
             bool handledPortalInteraction)
@@ -268,6 +279,58 @@ namespace HaCreator.MapSimulator.Fields
             return hasClientOwnedOneTimeAction
                    && hasPassiveTransferFieldPortalCollision
                    && allowsTransferField;
+        }
+
+        public static PassiveTransferFieldPortalRoutingDecision EvaluatePortalRouting(
+            int targetMapId,
+            int currentMapId,
+            PortalType portalType)
+        {
+            bool isPassiveTransferFieldPortal =
+                IsPassiveTransferFieldPortalType(portalType)
+                && IsPassiveTransferFieldPortalCandidate(targetMapId);
+
+            return new PassiveTransferFieldPortalRoutingDecision(
+                IsPassiveTransferFieldPortal: isPassiveTransferFieldPortal,
+                ShouldSendTransferFieldRequest: ShouldSendTransferFieldRequestForPortal(
+                    targetMapId,
+                    currentMapId,
+                    portalType),
+                ShouldPlayTransferFieldPortalSound: ShouldPlayTransferFieldPortalSound(portalType));
+        }
+
+        public static bool IsPassiveTransferFieldPortalType(PortalType portalType)
+        {
+            return portalType != PortalType.CollisionScript
+                   && portalType != PortalType.CollisionVerticalJump
+                   && portalType != PortalType.CollisionCustomImpact
+                   && portalType != PortalType.CollisionCustomImpact2;
+        }
+
+        public static bool IsPassiveTransferFieldPortalCandidate(int targetMapId)
+        {
+            return targetMapId > 0
+                   && targetMapId != MapConstants.MaxMap;
+        }
+
+        public static bool ShouldSendTransferFieldRequestForPortal(
+            int targetMapId,
+            int currentMapId,
+            PortalType portalType)
+        {
+            return IsPassiveTransferFieldPortalCandidate(targetMapId)
+                   && (targetMapId != currentMapId || IsChangeablePortalType(portalType));
+        }
+
+        public static bool ShouldPlayTransferFieldPortalSound(PortalType portalType)
+        {
+            return !IsChangeablePortalType(portalType);
+        }
+
+        private static bool IsChangeablePortalType(PortalType portalType)
+        {
+            return portalType == PortalType.Changeable
+                   || portalType == PortalType.ChangeableInvisible;
         }
 
         public static bool ShouldArmQueuedRetryFromHandleUpKeyDown(

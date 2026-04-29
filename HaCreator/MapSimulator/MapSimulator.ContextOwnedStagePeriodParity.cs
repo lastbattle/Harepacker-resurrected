@@ -122,7 +122,9 @@ namespace HaCreator.MapSimulator
                 () =>
                 {
                     ReloadContextOwnedStagePeriodBackLayers();
-                    _screenEffects?.StageTransitionFadeIn(PORTAL_FADE_DURATION_MS, Environment.TickCount);
+                    _screenEffects?.StageTransitionFadeIn(
+                        PORTAL_FADE_DURATION_MS,
+                        _screenEffects.LastFadeCompletionTimeMs);
                 });
 
             string backColorText = _contextOwnedStageCurrentBackColorArgb.HasValue

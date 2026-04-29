@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.UI
         public bool IsRejectedByEmptyCatalog { get; init; }
         public int TrailingByteCount { get; init; }
         public string TrailingPayloadSignature { get; init; } = string.Empty;
+        public byte[] TrailingPayload { get; init; } = Array.Empty<byte>();
         public IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> Rows { get; init; }
             = Array.Empty<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot>();
     }
@@ -57,6 +58,7 @@ namespace HaCreator.MapSimulator.UI
             if (itemCount == 0)
             {
                 ReadOnlySpan<byte> rejectedTrailingPayload = payload.AsSpan(offset);
+                byte[] rejectedTrailingPayloadBytes = rejectedTrailingPayload.ToArray();
                 snapshot = new AdminShopPacketOwnedOpenPayloadSnapshot
                 {
                     NpcTemplateId = Math.Max(0, npcTemplateId),
@@ -66,6 +68,7 @@ namespace HaCreator.MapSimulator.UI
                     IsRejectedByEmptyCatalog = true,
                     TrailingByteCount = Math.Max(0, payload.Length - offset),
                     TrailingPayloadSignature = BuildPayloadSignature(rejectedTrailingPayload),
+                    TrailingPayload = rejectedTrailingPayloadBytes,
                     Rows = rows
                 };
                 return true;
@@ -79,6 +82,7 @@ namespace HaCreator.MapSimulator.UI
             bool askItemWishlist = payload[offset] != 0;
             offset += sizeof(byte);
             ReadOnlySpan<byte> trailingPayload = payload.AsSpan(offset);
+            byte[] trailingPayloadBytes = trailingPayload.ToArray();
             snapshot = new AdminShopPacketOwnedOpenPayloadSnapshot
             {
                 NpcTemplateId = Math.Max(0, npcTemplateId),
@@ -88,6 +92,7 @@ namespace HaCreator.MapSimulator.UI
                 IsRejectedByEmptyCatalog = false,
                 TrailingByteCount = Math.Max(0, payload.Length - offset),
                 TrailingPayloadSignature = BuildPayloadSignature(trailingPayload),
+                TrailingPayload = trailingPayloadBytes,
                 Rows = rows
             };
             return true;

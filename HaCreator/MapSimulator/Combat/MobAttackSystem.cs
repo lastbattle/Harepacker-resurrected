@@ -742,7 +742,12 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                if (TryApplyLockedTargetImpact(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, currentTime))
+                if (TryApplyLockedTargetImpact(
+                        projectile.SourceMob,
+                        projectile.Attack,
+                        projectile.TargetInfo,
+                        currentTime,
+                        ResolveProjectileLockedImpactPlayerManager(projectile.TargetInfo, playerManager)))
                 {
                     SpawnMobWorldEffects(
                         projectile.SourceMob,
@@ -3468,6 +3473,13 @@ namespace HaCreator.MapSimulator.Combat
         internal static bool ShouldSweepProjectileImpactCollateralTargets(bool targetedSummoned, bool targetedMob)
         {
             return !targetedSummoned && !targetedMob;
+        }
+
+        internal static PlayerManager ResolveProjectileLockedImpactPlayerManager(
+            MobTargetInfo targetInfo,
+            PlayerManager playerManager)
+        {
+            return targetInfo?.TargetType == MobTargetType.Player ? playerManager : null;
         }
 
         internal static bool IsEncounterParticipant(bool usesMobCombatLane, bool isTargetingMob)

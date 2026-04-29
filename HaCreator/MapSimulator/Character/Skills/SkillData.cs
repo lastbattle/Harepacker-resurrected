@@ -241,6 +241,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SpeedPercent { get; set; }        // speedRate percentage speed boost
         public int SpeedMax { get; set; }            // speedMax max-speed cap boost
         public int AllStat { get; set; }             // Big Bang indie all-stat boost
+        public int StrengthPercent { get; set; }     // strR percentage STR boost
+        public int DexterityPercent { get; set; }    // dexR percentage DEX boost
+        public int IntelligencePercent { get; set; } // intR percentage INT boost
+        public int LuckPercent { get; set; }         // lukR percentage LUK boost
+        public int AllStatPercent { get; set; }      // allStatR percentage STR/DEX/INT/LUK boost
         public int StrengthToDexterityPercent { get; set; } // WZ str2dex stat conversion
         public int DexterityToStrengthPercent { get; set; } // WZ dex2str stat conversion
         public int IntelligenceToLuckPercent { get; set; }  // WZ int2luk stat conversion
@@ -2325,6 +2330,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public ShootAmmoSelection ResolvedShootAmmoSelection { get; set; }
         public int ResolvedShootWeaponCode { get; set; }
         public int ResolvedShootWeaponItemId { get; set; }
+        public bool ShootAmmoBypassActive { get; set; }
         public bool AllowFollowUpQueue { get; set; } = true;
         public bool ForceCritical { get; set; }
         public bool IsQueuedFinalAttack { get; set; }

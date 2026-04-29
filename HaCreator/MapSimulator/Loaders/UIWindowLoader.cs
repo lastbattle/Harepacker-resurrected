@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator.Loaders
 {
     public static partial class UIWindowLoader
     {
+        private const int ClassCompetitionDefaultLoadingFrameDelayMs = 150;
+
         #region Helper Methods
         /// <summary>
         /// Load a standard button from WZ property
@@ -5911,7 +5913,7 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     loadingFrames.Add(new UtilityPanelWindow.IndicatorFrame(
                         loadingFrame,
-                        Math.Max(0, loadingCanvas?["delay"]?.GetInt() ?? 0)));
+                        ResolveClassCompetitionLoadingFrameDelayMs(loadingCanvas?["delay"]?.GetInt() ?? 0)));
                 }
             }
 
@@ -6520,6 +6522,18 @@ namespace HaCreator.MapSimulator.Loaders
 
             window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
             return window;
+        }
+
+        internal static int ResolveClassCompetitionLoadingFrameDelayMsForTests(int authoredDelayMs)
+        {
+            return ResolveClassCompetitionLoadingFrameDelayMs(authoredDelayMs);
+        }
+
+        private static int ResolveClassCompetitionLoadingFrameDelayMs(int authoredDelayMs)
+        {
+            return authoredDelayMs > 0
+                ? authoredDelayMs
+                : ClassCompetitionDefaultLoadingFrameDelayMs;
         }
 
         private static UIWindowBase CreateFriendGroupWindow(

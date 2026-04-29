@@ -2273,6 +2273,14 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
+                foreach (int questId in state.PacketRegisteredQuestIds)
+                {
+                    if (questId > 0 && _trackedQuestIds.Contains(questId))
+                    {
+                        _packetRegisteredQuestIds.Add(questId);
+                    }
+                }
+
                 _hiddenAutoQuestIds.Clear();
                 foreach (int questId in state.HiddenAutoQuestIds)
                 {
@@ -2305,6 +2313,7 @@ namespace HaCreator.MapSimulator.UI
                     IsMinimized = _isMinimized,
                     IsOpened = IsVisible,
                     TrackedQuestIds = _trackedQuestIds.ToArray(),
+                    PacketRegisteredQuestIds = _packetRegisteredQuestIds.ToArray(),
                     HiddenAutoQuestIds = _hiddenAutoQuestIds.ToArray()
                 });
         }

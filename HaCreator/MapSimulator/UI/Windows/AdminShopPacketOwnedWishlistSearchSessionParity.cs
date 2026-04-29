@@ -44,5 +44,23 @@ namespace HaCreator.MapSimulator.UI
                 && registerItemId > 0
                 && !alreadyWishlisted;
         }
+
+        internal static string BuildAcceptedRegisterKey(int serviceSessionId, int registerItemId)
+        {
+            if (registerItemId <= 0)
+            {
+                return string.Empty;
+            }
+
+            return string.Concat(
+                serviceSessionId >= 0 ? serviceSessionId.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-1",
+                ":",
+                registerItemId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        internal static bool ResolveAlreadyWishlisted(bool packetAuthoredState, bool locallyAcceptedRegister)
+        {
+            return packetAuthoredState || locallyAcceptedRegister;
+        }
     }
 }

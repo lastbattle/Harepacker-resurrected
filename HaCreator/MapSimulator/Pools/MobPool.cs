@@ -197,7 +197,14 @@ namespace HaCreator.MapSimulator.Pools
             _noMonsterCapacityLimit = false;
         }
 
-        public void ConfigureSpawnModel(int mapWidth, int mapHeight, float mobRate, int? createMobIntervalMs, long fieldLimit, int simulatedCharacterCount = 1)
+        public void ConfigureSpawnModel(
+            int mapWidth,
+            int mapHeight,
+            float mobRate,
+            int? createMobIntervalMs,
+            long fieldLimit,
+            int simulatedCharacterCount = 1,
+            bool noRegenMap = false)
         {
             int spawnWidth = Math.Max(MIN_SPAWN_WIDTH, mapWidth);
             int spawnHeight = Math.Max(MIN_SPAWN_HEIGHT, mapHeight - SPAWN_HEIGHT_REDUCTION);
@@ -208,6 +215,7 @@ namespace HaCreator.MapSimulator.Pools
             _globalRespawnIntervalMs = createMobIntervalMs.GetValueOrDefault(DEFAULT_CREATE_MOB_INTERVAL);
             _simulatedCharacterCount = Math.Max(1, simulatedCharacterCount);
             _noMonsterCapacityLimit = FieldLimitType.No_Monster_Capacity_Limit.Check(fieldLimit);
+            _respawnEnabled = !noRegenMap;
             _nextRespawnTime = -1;
         }
 

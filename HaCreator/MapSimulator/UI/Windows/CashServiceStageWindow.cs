@@ -4893,15 +4893,16 @@ namespace HaCreator.MapSimulator.UI
             return rows;
         }
 
-        private bool TryReadItcItemEntry(BinaryReader reader, out PacketCatalogEntry entry)
+        private static bool TryReadItcItemEntry(BinaryReader reader, out PacketCatalogEntry entry)
         {
             entry = null;
+            Stream stream = reader?.BaseStream;
+            long rowStart = stream?.Position ?? 0;
             if (!TryReadItemAttachment(reader, out int itemId, out int quantity, out _, out _))
             {
                 return false;
             }
 
-            Stream stream = reader.BaseStream;
             if (stream.Length - stream.Position < (sizeof(int) * 3) + sizeof(long))
             {
                 return false;
@@ -4936,6 +4937,8 @@ namespace HaCreator.MapSimulator.UI
             int maxPrice = reader.ReadInt32();
             int unitPrice = reader.ReadInt32();
             short processStatus = reader.ReadInt16();
+            long rowEnd = stream.Position;
+            byte[] rawRowBytes = CopyPacketRowBytes(stream, rowStart, rowEnd);
             string seller = string.IsNullOrWhiteSpace(gameId) ? userId : gameId;
             if (string.IsNullOrWhiteSpace(seller))
             {
@@ -4961,6 +4964,10 @@ namespace HaCreator.MapSimulator.UI
                 detail += $" Range {Math.Max(0, minPrice).ToString("N0", CultureInfo.InvariantCulture)}-{Math.Max(0, maxPrice).ToString("N0", CultureInfo.InvariantCulture)} (+{Math.Max(0, bidRange).ToString("N0", CultureInfo.InvariantCulture)}).";
             }
 
+            string fieldSummary = string.Create(
+                CultureInfo.InvariantCulture,
+                $"ITC row[{rawRowBytes.Length}]: nItemID={Math.Max(0, itemId)}, nNumber={Math.Max(1, quantity)}, nListingID={Math.Max(0, listingId)}, nPrice={Math.Max(0, price)}, sUserID={SanitizePacketString(userId, string.Empty)}, sGameID={SanitizePacketString(gameId, string.Empty)}, sComment={SanitizePacketString(comment, string.Empty)}, nBidCount={bidCount}, nBidRange={bidRange}, nBidPrice={bidPrice}, nMinPrice={minPrice}, nMaxPrice={maxPrice}, nUnitPrice={unitPrice}, nProcessStatus={processStatus}");
+
             entry = new PacketCatalogEntry
             {
                 Title = title,
@@ -4971,8 +4978,39 @@ namespace HaCreator.MapSimulator.UI
                 ListingId = Math.Max(0, listingId),
                 ItemId = Math.Max(0, itemId),
                 Quantity = Math.Max(1, quantity),
-                Price = Math.Max(0, price)
+                Price = Math.Max(0, price),
+                PacketSource = "ITC_ItemEntry",
+                PacketFieldSummary = fieldSummary,
+                PacketRawByteLength = rawRowBytes.Length,
+                PacketPayloadRawHex = BuildPacketRowRawHexSummary("ITC item row", rawRowBytes)
             };
+            return true;
+        }
+
+        internal static bool TryDecodeItcItemEntryForTests(
+            byte[] payload,
+            out string fieldSummary,
+            out string rawHexSummary,
+            out int listingId)
+        {
+            fieldSummary = string.Empty;
+            rawHexSummary = string.Empty;
+            listingId = 0;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (!TryReadItcItemEntry(reader, out PacketCatalogEntry entry))
+            {
+                return false;
+            }
+
+            fieldSummary = entry.PacketFieldSummary;
+            rawHexSummary = entry.PacketPayloadRawHex;
+            listingId = entry.ListingId;
             return true;
         }
 
@@ -5342,6 +5380,49 @@ namespace HaCreator.MapSimulator.UI
             Buffer.BlockCopy(normalizedPayload, 0, preview, 0, previewLength);
             string suffix = normalizedPayload.Length > previewLength ? "..." : string.Empty;
             return $"Raw packet hex ({normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)): {Convert.ToHexString(preview)}{suffix}";
+        }
+
+        private static string BuildPacketRowRawHexSummary(string label, byte[] payload)
+        {
+            byte[] normalizedPayload = payload ?? Array.Empty<byte>();
+            if (normalizedPayload.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            int previewLength = Math.Min(normalizedPayload.Length, 64);
+            byte[] preview = new byte[previewLength];
+            Buffer.BlockCopy(normalizedPayload, 0, preview, 0, previewLength);
+            string suffix = normalizedPayload.Length > previewLength ? "..." : string.Empty;
+            string rowLabel = string.IsNullOrWhiteSpace(label) ? "Packet row" : label.Trim();
+            return $"{rowLabel} raw[{normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)}]={Convert.ToHexString(preview)}{suffix}";
+        }
+
+        private static byte[] CopyPacketRowBytes(Stream stream, long rowStart, long rowEnd)
+        {
+            if (stream == null || !stream.CanSeek || rowEnd <= rowStart || rowStart < 0 || rowEnd > stream.Length)
+            {
+                return Array.Empty<byte>();
+            }
+
+            long savedPosition = stream.Position;
+            int length = (int)Math.Min(int.MaxValue, rowEnd - rowStart);
+            byte[] bytes = new byte[length];
+            stream.Position = rowStart;
+            int read = stream.Read(bytes, 0, length);
+            stream.Position = savedPosition;
+            if (read == length)
+            {
+                return bytes;
+            }
+
+            byte[] resized = new byte[Math.Max(0, read)];
+            if (read > 0)
+            {
+                Buffer.BlockCopy(bytes, 0, resized, 0, read);
+            }
+
+            return resized;
         }
 
         private static string SanitizePacketString(string value, string fallback)

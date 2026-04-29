@@ -276,7 +276,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                StopInternal(clearPending: true);
+                StopForStartPreservingDeferredTouchRequestsUnsafe();
 
                 try
                 {
@@ -285,7 +285,7 @@ namespace HaCreator.MapSimulator.Managers
                     RemotePort = remotePort;
                     if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
                     {
-                        StopInternal(clearPending: true);
+                        StopInternal(clearPending: false);
                         LastStatus = proxyStatus;
                         return;
                     }
@@ -294,7 +294,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 catch (Exception ex)
                 {
-                    StopInternal(clearPending: true);
+                    StopInternal(clearPending: false);
                     LastStatus = $"Reactor official-session bridge failed to start: {ex.Message}";
                 }
             }
@@ -463,6 +463,17 @@ namespace HaCreator.MapSimulator.Managers
                 LastQueuedTouchFlag = null;
                 LastQueuedTouchPacket = Array.Empty<byte>();
             }
+        }
+
+        private void StopForStartPreservingDeferredTouchRequestsUnsafe()
+        {
+            _roleSessionProxy.Stop(resetCounters: true);
+
+            while (_pendingMessages.TryDequeue(out _))
+            {
+            }
+
+            ReceivedCount = 0;
         }
 
         private int FlushQueuedTouchRequestsViaProxyUnsafe(int currentTick)

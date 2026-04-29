@@ -4308,28 +4308,28 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryDecodePacketOwnedFieldFadeOutForcePayload(
             byte[] payload,
-            out int layerZ,
+            out int fadeOutMs,
             out string message)
         {
             return TryDecodeSingleInt32LocalUtilityPayload(
                 payload,
                 "Field-fade-out-force",
-                "layer",
-                out layerZ,
+                "fade-out duration",
+                out fadeOutMs,
                 out message);
         }
 
         private bool TryApplyPacketOwnedFieldFadeOutForcePayload(byte[] payload, out string message)
         {
-            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int layerZ, out message))
+            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int fadeOutMs, out message))
             {
                 return false;
             }
 
-            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(layerZ);
-            message = removedCount > 0
-                ? $"Removed {removedCount} packet-authored field fade entr{(removedCount == 1 ? "y" : "ies")} on layer {layerZ}."
-                : $"No live packet-authored field fade entries were registered on layer {layerZ}.";
+            int forcedCount = _packetOwnedFieldFadeOverlay.ForceFadeOutPending(fadeOutMs, currTickCount);
+            message = forcedCount > 0
+                ? $"Forced {forcedCount} packet-authored field fade entr{(forcedCount == 1 ? "y" : "ies")} to fade out over {Math.Max(0, fadeOutMs)}ms."
+                : $"No live packet-authored field fade entries were eligible for fade-out force over {Math.Max(0, fadeOutMs)}ms.";
             return true;
         }
 

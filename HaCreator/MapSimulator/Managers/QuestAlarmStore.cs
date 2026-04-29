@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsMinimized { get; init; }
         public bool IsOpened { get; init; }
         public IReadOnlyCollection<int> TrackedQuestIds { get; init; } = Array.Empty<int>();
+        public IReadOnlyCollection<int> PacketRegisteredQuestIds { get; init; } = Array.Empty<int>();
         public IReadOnlyCollection<int> HiddenAutoQuestIds { get; init; } = Array.Empty<int>();
     }
 
@@ -31,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
             public bool IsMinimized { get; set; }
             public bool IsOpened { get; set; }
             public List<int> TrackedQuestIds { get; set; } = new();
+            public List<int> PacketRegisteredQuestIds { get; set; } = new();
             public List<int> HiddenAutoQuestIds { get; set; } = new();
         }
 
@@ -74,6 +76,7 @@ namespace HaCreator.MapSimulator.Managers
                 IsMinimized = record.IsMinimized,
                 IsOpened = record.IsOpened,
                 TrackedQuestIds = NormalizeTrackedQuestIds(record.TrackedQuestIds),
+                PacketRegisteredQuestIds = NormalizePacketRegisteredQuestIds(record.PacketRegisteredQuestIds, record.TrackedQuestIds),
                 HiddenAutoQuestIds = NormalizeQuestIds(record.HiddenAutoQuestIds)
             };
         }
@@ -92,6 +95,7 @@ namespace HaCreator.MapSimulator.Managers
                 IsMinimized = state.IsMinimized,
                 IsOpened = state.IsOpened,
                 TrackedQuestIds = NormalizeTrackedQuestIds(state.TrackedQuestIds).ToList(),
+                PacketRegisteredQuestIds = NormalizePacketRegisteredQuestIds(state.PacketRegisteredQuestIds, state.TrackedQuestIds).ToList(),
                 HiddenAutoQuestIds = NormalizeQuestIds(state.HiddenAutoQuestIds).ToList()
             };
 
@@ -110,6 +114,21 @@ namespace HaCreator.MapSimulator.Managers
         {
             return NormalizeQuestIds(questIds)
                 .Take(MaxTrackedQuestSlots)
+                .ToArray();
+        }
+
+        private static int[] NormalizePacketRegisteredQuestIds(
+            IEnumerable<int> packetRegisteredQuestIds,
+            IEnumerable<int> trackedQuestIds)
+        {
+            HashSet<int> trackedQuestIdSet = NormalizeTrackedQuestIds(trackedQuestIds).ToHashSet();
+            if (trackedQuestIdSet.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return NormalizeQuestIds(packetRegisteredQuestIds)
+                .Where(trackedQuestIdSet.Contains)
                 .ToArray();
         }
 
@@ -162,7 +181,8 @@ namespace HaCreator.MapSimulator.Managers
                         AutoRegisterEnabled = record.AutoRegisterEnabled,
                         IsMinimized = record.IsMinimized,
                         IsOpened = record.IsOpened,
-                        TrackedQuestIds = NormalizeQuestIds(record.TrackedQuestIds).ToList(),
+                        TrackedQuestIds = NormalizeTrackedQuestIds(record.TrackedQuestIds).ToList(),
+                        PacketRegisteredQuestIds = NormalizePacketRegisteredQuestIds(record.PacketRegisteredQuestIds, record.TrackedQuestIds).ToList(),
                         HiddenAutoQuestIds = NormalizeQuestIds(record.HiddenAutoQuestIds).ToList()
                     };
                 }

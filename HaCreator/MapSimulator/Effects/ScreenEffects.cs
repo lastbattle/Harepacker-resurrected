@@ -294,6 +294,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsFadeInComplete => !_fadeActive && _fadeAlpha <= 0.0f;
 
         internal int FadeDurationMs => _fadeDuration;
+        internal int LastFadeCompletionTimeMs { get; private set; }
         internal StageTransitionToneSnapshot StageTransitionTone => new(
             _stageTransitionRedTone,
             _stageTransitionGreenTone,
@@ -318,6 +319,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _fadeAlpha = _fadeTargetAlpha;
                 _fadeActive = false;
+                LastFadeCompletionTimeMs = currentTimeMs;
                 CompleteStageTransitionToneFade();
 
                 // Invoke callback if set

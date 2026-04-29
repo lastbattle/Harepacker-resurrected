@@ -95,7 +95,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             out bool shouldClear)
         {
             shouldClear = false;
-            if (currentTime >= activationStartTime)
+            if (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, activationStartTime))
             {
                 return false;
             }
@@ -103,7 +103,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool sameAction = string.Equals(currentActionName, afterImageActionName, StringComparison.OrdinalIgnoreCase);
             if (!sameAction
                 || (actionDuration > 0
-                    && currentTime - animationStartTime >= actionDuration))
+                    && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, animationStartTime) >= actionDuration))
             {
                 shouldClear = true;
             }
@@ -124,7 +124,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return actionDuration > 0
-                   && currentTime - animationStartTime >= actionDuration;
+                   && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, animationStartTime) >= actionDuration;
         }
 
         internal static bool TryResolveSnapshot(

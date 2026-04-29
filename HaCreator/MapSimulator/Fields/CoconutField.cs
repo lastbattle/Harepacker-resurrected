@@ -733,7 +733,7 @@ namespace HaCreator.MapSimulator.Fields
             _gameActive = true;
             _runtimeActive = true;
             _timeRemaining = resolvedDurationSeconds;
-            _finishTick = startTick + Math.Max(0, resolvedDurationSeconds) * 1000;
+            _finishTick = ResolveClientFinishTick(startTick, Math.Max(0, resolvedDurationSeconds) * 1000);
             _lastUpdateTime = startTick;
             _awaitingFinalScore = false;
             _lastScorePacketTick = null;

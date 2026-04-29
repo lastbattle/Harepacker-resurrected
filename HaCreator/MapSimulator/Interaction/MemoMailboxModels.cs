@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int AttachmentItemId { get; init; }
         public short ItemQuantity { get; init; }
         public int Meso { get; init; }
+        public int FeeMeso { get; init; }
         public string Recipient { get; init; } = string.Empty;
         public bool IsQuickDelivery { get; init; }
         public string QuickDeliveryMemo { get; init; } = string.Empty;

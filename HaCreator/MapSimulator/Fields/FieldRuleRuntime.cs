@@ -1,6 +1,7 @@
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Interaction;
@@ -57,7 +58,7 @@ namespace HaCreator.MapSimulator.Fields
             _ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(mapInfo);
             _allowedItems = mapInfo?.allowedItem != null ? new List<int>(mapInfo.allowedItem) : new List<int>();
             _protectItems = mapInfo?.protectItem != null ? new List<int>(mapInfo.protectItem) : new List<int>();
-            _moveLimit = NormalizeMoveLimit(mapInfo?.moveLimit);
+            _moveLimit = ResolveMoveLimit(mapInfo);
             _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? 0);
             _mapInfo = mapInfo;
             _entryScripts = CollectEntryScripts(mapInfo, includeFirstUserEnterScript);
@@ -80,6 +81,7 @@ namespace HaCreator.MapSimulator.Fields
             FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_fieldLimit, _mapInfo) != null ||
             FieldInteractionRestrictionEvaluator.GetTamingMobRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetMonsterCapacityLimitMessage(_fieldLimit) != null ||
+            FieldInteractionRestrictionEvaluator.GetMobRegenRestrictionMessage(_mapInfo) != null ||
             FieldInteractionRestrictionEvaluator.GetExpDecreaseRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetItemOptionLimitMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetAutoExpandMinimapMessage(_fieldLimit) != null ||
@@ -404,9 +406,66 @@ namespace HaCreator.MapSimulator.Fields
                 : -1;
         }
 
+        private static int? ResolveMoveLimit(MapInfo mapInfo)
+        {
+            int? typedMoveLimit = NormalizeMoveLimit(mapInfo?.moveLimit);
+            if (typedMoveLimit.HasValue)
+            {
+                return typedMoveLimit;
+            }
+
+            return NormalizeMoveLimit(GetInfoInt(mapInfo, "moveLimit"));
+        }
+
         private static int? NormalizeMoveLimit(int? moveLimit)
         {
             return moveLimit is > 0 ? moveLimit : null;
+        }
+
+        private static int? GetInfoInt(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty property = FindNamedProperty(mapInfo.additionalProps, propertyName)
+                ?? FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName)
+                ?? mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+            if (property == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return property.GetInt();
+            }
+            catch
+            {
+                return property is WzStringProperty stringProperty
+                       && int.TryParse(stringProperty.Value, out int value)
+                    ? value
+                    : null;
+            }
+        }
+
+        private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)
+        {
+            if (properties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
 
         private static int NormalizeDecIntervalMs(int? decInterval)

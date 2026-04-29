@@ -2395,10 +2395,8 @@ namespace HaCreator.MapSimulator.AI
                 }
 
                 _currentAttackIndex = i;
-                UpdateAngerGaugeFullChargeEffectInterval(attack);
-                attack.LastUseTime = currentTick;
                 _selfDestructPending = true;
-                SetState(MobAIState.Attack, currentTick);
+                StartAttack(i, currentTick);
                 return true;
             }
 
@@ -2412,9 +2410,27 @@ namespace HaCreator.MapSimulator.AI
                 }
 
                 _currentSkillIndex = i;
-                skill.LastUseTime = currentTick;
                 _selfDestructPending = true;
-                SetState(MobAIState.Skill, currentTick);
+                StartSkill(i, currentTick);
+                return true;
+            }
+
+            return TryStartFallbackSelfDestructionAction(currentTick);
+        }
+
+        private bool TryStartFallbackSelfDestructionAction(int currentTick)
+        {
+            if (_attacks.Count == 1)
+            {
+                _selfDestructPending = true;
+                StartAttack(0, currentTick);
+                return true;
+            }
+
+            if (_skills.Count == 1)
+            {
+                _selfDestructPending = true;
+                StartSkill(0, currentTick);
                 return true;
             }
 

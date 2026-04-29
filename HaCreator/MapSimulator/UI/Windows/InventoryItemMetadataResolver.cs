@@ -2023,6 +2023,7 @@ namespace HaCreator.MapSimulator.UI
             AppendReturnMapRecordEffectLine(effectLines, effectSpecProperty["returnMapQR"]);
             AppendRandomMoveInFieldSetEffectLine(effectLines, effectSpecProperty["randomMoveInFieldSet"]);
             AppendExperienceEffectLines(effectLines, effectSpecProperty);
+            AppendFixedDamageEffectLine(effectLines, effectSpecProperty["incFixedDamageR"]);
             AppendEventPointEffectLine(effectLines, effectSpecProperty["eventPoint"]);
             AppendDeathmarkEffectLine(effectLines, itemId, effectSpecProperty);
             AppendMobEffectLines(effectLines, effectSpecProperty["mob"] as WzSubProperty);
@@ -2666,6 +2667,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             effectLines.Add($"Cookie House points +{eventPoint.ToString("N0", CultureInfo.InvariantCulture)}");
+        }
+
+        private static void AppendFixedDamageEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int fixedDamageRate = GetIntOrStringValue(property);
+            if (fixedDamageRate <= 0)
+            {
+                return;
+            }
+
+            effectLines.Add($"Fixed Damage {FormatSignedValue(fixedDamageRate)}%");
         }
 
         private static void AppendDeathmarkEffectLine(List<string> effectLines, int itemId, WzSubProperty specProperty)
@@ -4203,6 +4215,28 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["buffchair"]) == 1)
             {
                 metadataLines.Add("Buff Chair");
+            }
+
+            if (GetIntValue(infoProperty["bigSize"]) == 1)
+            {
+                metadataLines.Add("Uses large item icon");
+            }
+
+            if (GetIntValue(infoProperty["effectByItemID"]) == 1)
+            {
+                metadataLines.Add("Uses item-specific effect");
+            }
+
+            int pointCost = GetIntOrStringValue(infoProperty["pointCost"]);
+            if (pointCost > 0)
+            {
+                metadataLines.Add($"Point Cost: {pointCost.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+
+            int itemPoint = GetIntOrStringValue(infoProperty["itemPoint"]);
+            if (itemPoint > 0)
+            {
+                metadataLines.Add($"Item Points: {itemPoint.ToString("N0", CultureInfo.InvariantCulture)}");
             }
 
             if (GetIntValue(infoProperty["pachinko"]) == 1)

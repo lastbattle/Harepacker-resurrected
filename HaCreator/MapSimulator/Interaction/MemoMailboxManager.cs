@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -1538,6 +1539,20 @@ namespace HaCreator.MapSimulator.Interaction
             bool isQuickDelivery,
             string quickDeliveryMemo)
         {
+            string normalizedRecipient = recipient?.Trim() ?? string.Empty;
+            string normalizedQuickMemo = isQuickDelivery ? quickDeliveryMemo?.Trim() ?? string.Empty : string.Empty;
+            int meso = GetAttachmentMeso(attachment);
+            int feeMeso = isQuickDelivery
+                ? GetParcelTax(meso)
+                : GetParcelTax(meso) + 5000;
+            byte[] payload = BuildParcelDialogOutboundPayload(
+                isQuickDelivery ? ParcelDialogQuickSendRequestSubtype : ParcelDialogNormalSendRequestSubtype,
+                normalizedRecipient,
+                attachment,
+                meso,
+                feeMeso,
+                normalizedQuickMemo);
+
             return new ParcelDialogOutboundRequestSnapshot
             {
                 // The official outbound opcode is still an unrecovered client seam for this row.
@@ -1546,11 +1561,54 @@ namespace HaCreator.MapSimulator.Interaction
                 SourceTab = sourceTab,
                 AttachmentItemId = GetAttachmentItemId(attachment),
                 ItemQuantity = (short)Math.Clamp(GetAttachmentQuantity(attachment), 0, short.MaxValue),
-                Meso = GetAttachmentMeso(attachment),
-                Recipient = recipient?.Trim() ?? string.Empty,
+                Meso = meso,
+                FeeMeso = feeMeso,
+                Recipient = normalizedRecipient,
                 IsQuickDelivery = isQuickDelivery,
-                QuickDeliveryMemo = isQuickDelivery ? quickDeliveryMemo?.Trim() ?? string.Empty : string.Empty
+                QuickDeliveryMemo = normalizedQuickMemo,
+                Payload = payload
             };
+        }
+
+        private static byte[] BuildParcelDialogOutboundPayload(
+            byte subtype,
+            string recipient,
+            MemoAttachmentState attachment,
+            int meso,
+            int feeMeso,
+            string quickDeliveryMemo)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+            writer.Write(subtype);
+            WriteMapleString(writer, recipient);
+            writer.Write(Math.Max(0, meso));
+            writer.Write(Math.Max(0, feeMeso));
+
+            bool hasItem = HasItemAttachment(attachment);
+            writer.Write((byte)(hasItem ? 1 : 0));
+            if (hasItem)
+            {
+                writer.Write(Math.Max(0, attachment.ItemId));
+                writer.Write((short)Math.Clamp(attachment.Quantity, 1, short.MaxValue));
+            }
+
+            WriteMapleString(writer, quickDeliveryMemo);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static void WriteMapleString(BinaryWriter writer, string value)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(value?.Trim() ?? string.Empty);
+            writer.Write((short)Math.Clamp(bytes.Length, 0, short.MaxValue));
+            if (bytes.Length > short.MaxValue)
+            {
+                writer.Write(bytes, 0, short.MaxValue);
+                return;
+            }
+
+            writer.Write(bytes);
         }
 
         private MemoDraftAttachmentKind ResolveDraftAttachmentKind()

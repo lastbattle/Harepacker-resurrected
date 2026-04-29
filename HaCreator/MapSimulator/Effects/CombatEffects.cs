@@ -722,7 +722,8 @@ namespace HaCreator.MapSimulator.Effects
             int currentTime,
             DamageColorType colorType)
         {
-            if (_animationDisplayerSpecialTextSink == null)
+            if (_animationDisplayerSpecialTextSink == null
+                || !DamageNumberRenderer.IsSupportedColorType(colorType))
             {
                 return false;
             }

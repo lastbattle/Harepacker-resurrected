@@ -19,6 +19,7 @@ using Spine;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Linq;
 using SD = System.Drawing;
@@ -1288,9 +1289,11 @@ namespace HaCreator.MapSimulator.Interaction
                 using (SDG graphics = SDG.FromImage(composedBitmap))
                 {
                     graphics.Clear(SD.Color.Transparent);
+                    ApplyNativeEmployeeCanvasCopySettings(graphics);
                     foreach (EmployeeLayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, EmployeeLayeredFrameEntryComparer.Instance))
                     {
-                        graphics.DrawImageUnscaled(
+                        DrawEmployeeCanvasCopyAlpha255(
+                            graphics,
                             layerEntry.Bitmap,
                             layerEntry.Bounds.X - composedBounds.X,
                             layerEntry.Bounds.Y - composedBounds.Y);
@@ -1429,6 +1432,72 @@ namespace HaCreator.MapSimulator.Interaction
         private static (int X, int Y) ResolveEmployeeFrameDrawOffset(System.Drawing.PointF origin)
         {
             return (-(int)origin.X, -(int)origin.Y);
+        }
+
+        internal static int ResolveNativeEmployeeCanvasCopyAlphaForTesting()
+        {
+            return 255;
+        }
+
+        internal static CompositingMode ResolveNativeEmployeeCanvasCopyCompositingModeForTesting()
+        {
+            return CompositingMode.SourceOver;
+        }
+
+        internal static InterpolationMode ResolveNativeEmployeeCanvasCopyInterpolationModeForTesting()
+        {
+            return InterpolationMode.NearestNeighbor;
+        }
+
+        internal static PixelOffsetMode ResolveNativeEmployeeCanvasCopyPixelOffsetModeForTesting()
+        {
+            return PixelOffsetMode.Half;
+        }
+
+        internal static CompositingQuality ResolveNativeEmployeeCanvasCopyCompositingQualityForTesting()
+        {
+            return CompositingQuality.HighSpeed;
+        }
+
+        internal static SmoothingMode ResolveNativeEmployeeCanvasCopySmoothingModeForTesting()
+        {
+            return SmoothingMode.None;
+        }
+
+        internal static SD.GraphicsUnit ResolveNativeEmployeeCanvasCopyPageUnitForTesting()
+        {
+            return SD.GraphicsUnit.Pixel;
+        }
+
+        internal static float ResolveNativeEmployeeCanvasCopyPageScaleForTesting()
+        {
+            return 1f;
+        }
+
+        private static void ApplyNativeEmployeeCanvasCopySettings(SDG graphics)
+        {
+            if (graphics == null)
+            {
+                return;
+            }
+
+            graphics.CompositingMode = ResolveNativeEmployeeCanvasCopyCompositingModeForTesting();
+            graphics.CompositingQuality = ResolveNativeEmployeeCanvasCopyCompositingQualityForTesting();
+            graphics.InterpolationMode = ResolveNativeEmployeeCanvasCopyInterpolationModeForTesting();
+            graphics.PixelOffsetMode = ResolveNativeEmployeeCanvasCopyPixelOffsetModeForTesting();
+            graphics.SmoothingMode = ResolveNativeEmployeeCanvasCopySmoothingModeForTesting();
+            graphics.PageUnit = ResolveNativeEmployeeCanvasCopyPageUnitForTesting();
+            graphics.PageScale = ResolveNativeEmployeeCanvasCopyPageScaleForTesting();
+        }
+
+        private static void DrawEmployeeCanvasCopyAlpha255(SDG graphics, SD.Bitmap bitmap, int x, int y)
+        {
+            if (graphics == null || bitmap == null)
+            {
+                return;
+            }
+
+            graphics.DrawImageUnscaled(bitmap, x, y);
         }
 
         internal static (int X, int Y) ResolveEmployeeFrameDrawOffsetForTesting(float originX, float originY)

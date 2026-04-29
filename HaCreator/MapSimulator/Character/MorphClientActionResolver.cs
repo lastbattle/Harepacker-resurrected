@@ -494,6 +494,11 @@ namespace HaCreator.MapSimulator.Character
                 // not publish the full T-family swing surface.
                 ["elfrush_final"] = new[] { "swingTF", "swingT1", "alert", "swingO1" },
                 ["elfrush_final2"] = new[] { "swingTF", "swingT1", "alert", "swingO1" },
+                // Skill/2312.img/skill/23120011 publishes `rollingElf`, while the
+                // checked body and morph images keep no direct branch for that root.
+                // Keep it near the Mercedes rush/final rush swing surface before
+                // falling through to published morph combat aliases.
+                ["rollingElf"] = new[] { "swingO1", "swingP2", "swingP1", "alert" },
                 ["deathDraw"] = new[] { "alert", "swingO2", "swingOF", "swingO3" },
                 ["dealingRush"] = new[] { "swingPF", "swingO1" },
                 ["elfTornado"] = new[] { "alert", "swingPF", "swingTF" },
@@ -509,6 +514,18 @@ namespace HaCreator.MapSimulator.Character
                 ["demonicBreathe_prep"] = new[] { "alert", "stabO1", "swingO2" },
                 ["demonicBreathe"] = new[] { "stabO1", "swingO2", "alert" },
                 ["demonicBreathe_end"] = new[] { "alert", "swingO2", "stabO1" },
+                // Skill/3112.img publishes these later Demon roots as skill-only
+                // action strings, while Character/00002000.img and Morph/*.img keep no
+                // direct branches for them. Keep attack/bind roots on adjacent checked
+                // Demon swing surfaces and support/gravity roots on alert-first morph
+                // surfaces before generic authored-combat fallback.
+                ["reverseGravity"] = new[] { "alert", "swingO2", "swingOF" },
+                ["reverseGravity2"] = new[] { "alert", "swingO2", "swingOF" },
+                ["demonImpact"] = new[] { "swingO3", "swingOF", "alert" },
+                ["partyHealing"] = new[] { "alert", "stabO1" },
+                ["provoc"] = new[] { "alert", "swingO2", "swingOF" },
+                ["devilishPower"] = new[] { "alert", "swingO2", "swingOF" },
+                ["demonbind"] = new[] { "alert", "swingO2", "swingOF" },
                 // These later client raw-action requests stay outside Morph/*.img
                 // verbatim roots; Character/00002000.img backs them with ordinary
                 // body-action families instead.
@@ -851,6 +868,14 @@ namespace HaCreator.MapSimulator.Character
                 "demonicBreathe_prep",
                 "demonicBreathe",
                 "demonicBreathe_end",
+                "reverseGravity",
+                "reverseGravity2",
+                "demonImpact",
+                "partyHealing",
+                "provoc",
+                "devilishPower",
+                "demonbind",
+                "rollingElf",
                 "doubleSpiral",
                 "bulletSmash2",
                 "doubleBarrel",

@@ -2873,26 +2873,63 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < authoritativeTargets.Count; i++)
             {
                 PacketOwnedItemMakerDisassemblyTargetEntry entry = authoritativeTargets[i];
-                if (entry.SlotIndex < 0 || entry.SlotIndex >= equipSlots.Count)
+                if (!TryResolveAuthoritativeDisassemblyTarget(equipSlots, entry, out int slotIndex, out int itemId))
                 {
                     continue;
                 }
 
-                InventorySlotData slot = equipSlots[entry.SlotIndex];
-                if (slot == null || slot.IsDisabled || slot.ItemId <= 0)
-                {
-                    continue;
-                }
-
-                if (entry.ItemId > 0 && slot.ItemId != entry.ItemId)
-                {
-                    continue;
-                }
-
-                targets.Add((entry.SlotIndex, slot.ItemId));
+                targets.Add((slotIndex, itemId));
             }
 
             return targets;
+        }
+
+        private static bool TryResolveAuthoritativeDisassemblyTarget(
+            IReadOnlyList<InventorySlotData> equipSlots,
+            PacketOwnedItemMakerDisassemblyTargetEntry entry,
+            out int slotIndex,
+            out int itemId)
+        {
+            if (TryResolveAuthoritativeDisassemblyTargetAtIndex(equipSlots, entry.SlotIndex, entry.ItemId, out slotIndex, out itemId))
+            {
+                return true;
+            }
+
+            // Official inventory packets carry client slot positions. The simulator's live
+            // inventory list is zero-based, so accept a one-based packet slot when the exact
+            // array index is not the mounted target.
+            return entry.SlotIndex > 0
+                   && TryResolveAuthoritativeDisassemblyTargetAtIndex(equipSlots, entry.SlotIndex - 1, entry.ItemId, out slotIndex, out itemId);
+        }
+
+        private static bool TryResolveAuthoritativeDisassemblyTargetAtIndex(
+            IReadOnlyList<InventorySlotData> equipSlots,
+            int candidateIndex,
+            int expectedItemId,
+            out int slotIndex,
+            out int itemId)
+        {
+            slotIndex = -1;
+            itemId = 0;
+            if (equipSlots == null || candidateIndex < 0 || candidateIndex >= equipSlots.Count)
+            {
+                return false;
+            }
+
+            InventorySlotData slot = equipSlots[candidateIndex];
+            if (slot == null || slot.IsDisabled || slot.ItemId <= 0)
+            {
+                return false;
+            }
+
+            if (expectedItemId > 0 && slot.ItemId != expectedItemId)
+            {
+                return false;
+            }
+
+            slotIndex = candidateIndex;
+            itemId = slot.ItemId;
+            return true;
         }
 
         private bool TryResolveDisassemblySource(ItemMakerRecipe recipe, out InventorySlotData slotData)

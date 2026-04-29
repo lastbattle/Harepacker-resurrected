@@ -368,6 +368,16 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        internal static bool ResolveFirstEntryFlagFromOpenPayload(byte[] payload)
+        {
+            // CWvsContext::OnAccountMoreInfo subtype 0 carries the owner-local
+            // m_bMoreInfoFirst byte after the subtype when the server includes
+            // it. Older simulator injections only provided the subtype; keep
+            // those on the first-entry branch so existing packet scripts still
+            // exercise the prompt/close-notice path.
+            return payload == null || payload.Length < 2 || payload[1] != 0;
+        }
+
         internal static string ResolveAreaGroupComboText(int areaCode)
         {
             EnsureCountryNameCatalogLoaded();

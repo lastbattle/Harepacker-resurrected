@@ -1173,15 +1173,34 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            if (UsesClientCtIndexedRowLayout(entries))
+            if (HasClientCtIndexedRows(entries))
             {
-                foreach (IGrouping<int, QuestDetailCtEntry> rowGroup in entries
-                    .Where(entry => entry?.RowIndex is int)
-                    .GroupBy(entry => entry.RowIndex.Value)
-                    .OrderBy(group => group.Key))
+                int index = 0;
+                while (index < entries.Count)
                 {
-                    QuestDetailCtEntry[] rowEntries = OrderCtEntriesWithinClientRow(rowGroup).ToArray();
-                    yield return new CtEntryRow(rowEntries, rowEntries.Length > 1 || rowEntries[0].RowHeight > 0);
+                    QuestDetailCtEntry entry = entries[index];
+                    if (entry?.RowIndex is null)
+                    {
+                        yield return new CtEntryRow(new[] { entry }, entry?.RowHeight > 0);
+                        index++;
+                        continue;
+                    }
+
+                    List<QuestDetailCtEntry> indexedRun = new();
+                    do
+                    {
+                        indexedRun.Add(entries[index]);
+                        index++;
+                    }
+                    while (index < entries.Count && entries[index]?.RowIndex is int);
+
+                    foreach (IGrouping<int, QuestDetailCtEntry> rowGroup in indexedRun
+                        .GroupBy(runEntry => runEntry.RowIndex.Value)
+                        .OrderBy(group => group.Key))
+                    {
+                        QuestDetailCtEntry[] rowEntries = OrderCtEntriesWithinClientRow(rowGroup).ToArray();
+                        yield return new CtEntryRow(rowEntries, rowEntries.Length > 1 || rowEntries[0].RowHeight > 0);
+                    }
                 }
 
                 yield break;
@@ -1194,9 +1213,8 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static bool UsesClientCtIndexedRowLayout(IReadOnlyList<QuestDetailCtEntry> entries)
+        private static bool HasClientCtIndexedRows(IReadOnlyList<QuestDetailCtEntry> entries)
         {
-            bool hasIndexedEntry = false;
             foreach (QuestDetailCtEntry entry in entries)
             {
                 if (entry == null)
@@ -1206,13 +1224,13 @@ namespace HaCreator.MapSimulator.UI
 
                 if (!entry.RowIndex.HasValue)
                 {
-                    return false;
+                    continue;
                 }
 
-                hasIndexedEntry = true;
+                return true;
             }
 
-            return hasIndexedEntry;
+            return false;
         }
 
         private static IEnumerable<QuestDetailCtEntry> OrderCtEntriesWithinClientRow(IEnumerable<QuestDetailCtEntry> entries)

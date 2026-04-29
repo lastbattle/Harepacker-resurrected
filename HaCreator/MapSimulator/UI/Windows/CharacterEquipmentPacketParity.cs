@@ -442,6 +442,7 @@ namespace HaCreator.MapSimulator.UI
             return reason.StartsWith("Inventory-operation swap did not ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Inventory-operation add entry did not ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Inventory-operation remove entry did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation cash add entry serial did not ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Character equip-in inventory-operation ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Character move inventory-operation ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Character unequip inventory-operation ", StringComparison.OrdinalIgnoreCase)
@@ -1802,7 +1803,25 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            long expectedCashItemSerialNumber = ResolveExpectedCashItemSerialNumber(request);
+            if (expectedCashItemSerialNumber > 0 && cashItemSerialNumber != expectedCashItemSerialNumber)
+            {
+                rejectReason = "Inventory-operation cash add entry serial did not match the requested source cash item ownership stamp.";
+                return false;
+            }
+
             return true;
+        }
+
+        private static long ResolveExpectedCashItemSerialNumber(EquipmentChangeRequest request)
+        {
+            if (request?.SourceInventorySlot?.CashItemSerialNumber is long sourceCashItemSerialNumber
+                && sourceCashItemSerialNumber > 0)
+            {
+                return sourceCashItemSerialNumber;
+            }
+
+            return 0;
         }
 
         private static bool TryConsumeHeaderMatchedModeZeroFallbackBody(

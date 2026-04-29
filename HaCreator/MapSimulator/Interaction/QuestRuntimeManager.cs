@@ -733,6 +733,7 @@ namespace HaCreator.MapSimulator.Interaction
                    token.Equals("money", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("min", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("hour", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("kept", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("sec", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("date", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("rank", StringComparison.OrdinalIgnoreCase) ||
@@ -5309,6 +5310,10 @@ namespace HaCreator.MapSimulator.Interaction
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId));
             bool hasUnresolvedPvpGradeRequirement = state == QuestStateType.Started &&
                 HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement);
+            bool hasUnmetUserInteractRequirement = state == QuestStateType.Started &&
+                HasUnmetCompletionUserInteractDemand(
+                    definition.EndUserInteractDemand,
+                    TryResolveCompletionUserInteractDemandRecordValue(definition));
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -5340,7 +5345,8 @@ namespace HaCreator.MapSimulator.Interaction
                 GetMissingMobRequirementIds(definition),
                 GetUnmetQuestRequirementIds(questRequirements),
                 stopPages,
-                lostPages);
+                lostPages,
+                hasUnmetUserInteractRequirement: hasUnmetUserInteractRequirement);
         }
 
         internal static IReadOnlyList<NpcInteractionPage> SelectIssueConversationPagesCore(
@@ -5373,7 +5379,8 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<int> missingMobStopBranchIds,
             IReadOnlyList<int> unmetQuestStopBranchIds,
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
-            IReadOnlyList<NpcInteractionPage> lostPages)
+            IReadOnlyList<NpcInteractionPage> lostPages,
+            bool hasUnmetUserInteractRequirement = false)
         {
             if (state == QuestStateType.Started &&
                 !isCompletionNpc &&
@@ -5682,6 +5689,19 @@ namespace HaCreator.MapSimulator.Interaction
                     "grade"))
             {
                 return pvpGradePages;
+            }
+
+            if (hasUnmetUserInteractRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> userInteractPages,
+                    "userInteract",
+                    "userInteraction",
+                    "interact",
+                    "interaction",
+                    "info"))
+            {
+                return userInteractPages;
             }
 
             if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
@@ -12469,6 +12489,8 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("petskill", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("pettameness", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("petspeed", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("userInteract", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("userInteraction", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("map", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.EndsWith("EXP", StringComparison.OrdinalIgnoreCase);
         }

@@ -3628,9 +3628,13 @@ namespace HaCreator.MapSimulator.Pools
             markerName = (firstSegment, secondSegment) switch
             {
                 ("guild", "master") => "guildmaster",
+                ("guild", "leader") => "guildmaster",
                 ("party", "master") => "partymaster",
+                ("party", "leader") => "partymaster",
                 ("user", "trader") => "usertrader",
+                ("user", "merchant") => "usertrader",
                 ("another", "trader") => "anothertrader",
+                ("another", "merchant") => "anothertrader",
                 ("start", "npc") => "startnpc",
                 ("end", "npc") => "endnpc",
                 ("arrow", "up") => "arrowup",
@@ -3814,9 +3818,13 @@ namespace HaCreator.MapSimulator.Pools
             return collapsed switch
             {
                 "guildmaster" => "guildmaster",
+                "guildleader" => "guildmaster",
                 "partymaster" => "partymaster",
+                "partyleader" => "partymaster",
                 "usertrader" => "usertrader",
+                "usermerchant" => "usertrader",
                 "anothertrader" => "anothertrader",
+                "anothermerchant" => "anothertrader",
                 "another" => "another",
                 "user" => "user",
                 "friend" => "friend",

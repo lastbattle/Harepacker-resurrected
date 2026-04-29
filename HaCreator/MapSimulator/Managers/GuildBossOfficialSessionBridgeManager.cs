@@ -651,8 +651,10 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            _pendingOutboundRequests.Enqueue(new PendingPulleyRequest(request, BuildPulleyRequestPacket()));
+            byte[] rawPacket = BuildPulleyRequestPacket();
+            _pendingOutboundRequests.Enqueue(new PendingPulleyRequest(request, rawPacket));
             QueuedCount++;
+            RecordOutboundTrace(BuildOutboundTrace(rawPacket, request.Sequence, "simulator-queue"));
             status = HasPassiveEstablishedSocketPair
                 ? $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} while observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Arm `/guildboss session attachproxy ...` or `/guildboss session startauto ...` and reconnect through localhost to flush it after the proxied handshake initializes."
                 : $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";

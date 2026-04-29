@@ -3942,8 +3942,14 @@ namespace HaCreator.MapSimulator
                         localCharacterId,
                         metadata.ActionName))
                 {
+                    int authoredActionDurationMs = ResolveAnimationDisplayerReservedLocalUtilityActionDurationMs(
+                        metadata.ActionName);
+                    int minimumDurationMs = ResolveAnimationDisplayerReservedLocalOneTimeActionMinimumDurationMs(
+                        metadata.DurationMs,
+                        authoredActionDurationMs);
                     _ = TryApplyAnimationDisplayerReservedLocalUtilityActionOwnerEffect(
                         metadata.ActionName,
+                        minimumDurationMs,
                         registerTime);
                 }
             }
@@ -4223,6 +4229,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyAnimationDisplayerReservedLocalUtilityActionOwnerEffect(
             string actionName,
+            int minimumDurationMs,
             int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
@@ -4234,9 +4241,22 @@ namespace HaCreator.MapSimulator
             player.TriggerSkillAnimation(
                 actionName.Trim(),
                 skillId: 0,
-                currentTime,
-                playEffectiveWeaponSfx: false);
+                currentTime: currentTime,
+                playEffectiveWeaponSfx: false,
+                minimumDurationMs: minimumDurationMs);
             return true;
+        }
+
+        private int ResolveAnimationDisplayerReservedLocalUtilityActionDurationMs(string actionName)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Assembler == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
+            return ResolveAnimationDisplayerReservedUtilityActionDurationMs(
+                player.Assembler.GetAnimation(actionName.Trim()));
         }
 
         private static int ResolveAnimationDisplayerReservedRemoteUtilityActionDurationMs(
@@ -4248,7 +4268,12 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            AssembledFrame[] animation = actor.Assembler.GetAnimation(actionName);
+            return ResolveAnimationDisplayerReservedUtilityActionDurationMs(
+                actor.Assembler.GetAnimation(actionName));
+        }
+
+        private static int ResolveAnimationDisplayerReservedUtilityActionDurationMs(AssembledFrame[] animation)
+        {
             if (animation == null || animation.Length == 0)
             {
                 return 0;
@@ -4261,6 +4286,15 @@ namespace HaCreator.MapSimulator
             }
 
             return Math.Max(0, totalDurationMs);
+        }
+
+        internal static int ResolveAnimationDisplayerReservedLocalOneTimeActionMinimumDurationMs(
+            int metadataDurationMs,
+            int actionDurationMs)
+        {
+            return ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreDelayMs(
+                metadataDurationMs,
+                actionDurationMs);
         }
 
         private bool TryApplyAnimationDisplayerReservedTransferFieldOwnerEffect(int targetFieldId, int currentTime)

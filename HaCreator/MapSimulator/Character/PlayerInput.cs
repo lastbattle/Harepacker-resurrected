@@ -210,6 +210,20 @@ namespace HaCreator.MapSimulator.Character
             Buttons.RightStick,
         };
 
+        private static readonly Buttons[] ClientJoypadNativeButtons =
+        {
+            Buttons.A,
+            Buttons.B,
+            Buttons.X,
+            Buttons.Y,
+            Buttons.LeftShoulder,
+            Buttons.RightShoulder,
+            Buttons.Back,
+            Buttons.Start,
+            Buttons.LeftStick,
+            Buttons.RightStick,
+        };
+
         #region Key Bindings
 
         private readonly Dictionary<InputAction, KeyBinding> _bindings = new();
@@ -403,7 +417,7 @@ namespace HaCreator.MapSimulator.Character
 
         public static IReadOnlyList<Buttons> GetClientJoypadSelectableButtons()
         {
-            return UtilityConfigGamepadButtons;
+            return ClientJoypadNativeButtons;
         }
 
         public static int GetDetectedClientJoypadSelectableButtonCount(PlayerIndex index)
@@ -415,9 +429,9 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int count = 0;
-            for (int i = 0; i < UtilityConfigGamepadButtons.Length; i++)
+            for (int i = 0; i < ClientJoypadNativeButtons.Length; i++)
             {
-                if (HasConfigurableButtonCapability(capabilities, UtilityConfigGamepadButtons[i]))
+                if (HasConfigurableButtonCapability(capabilities, ClientJoypadNativeButtons[i]))
                 {
                     count++;
                 }
@@ -434,10 +448,10 @@ namespace HaCreator.MapSimulator.Character
                 return Array.Empty<Buttons>();
             }
 
-            List<Buttons> detectedButtons = new(UtilityConfigGamepadButtons.Length);
-            for (int i = 0; i < UtilityConfigGamepadButtons.Length; i++)
+            List<Buttons> detectedButtons = new(ClientJoypadNativeButtons.Length);
+            for (int i = 0; i < ClientJoypadNativeButtons.Length; i++)
             {
-                Buttons candidate = UtilityConfigGamepadButtons[i];
+                Buttons candidate = ClientJoypadNativeButtons[i];
                 if (HasConfigurableButtonCapability(capabilities, candidate))
                 {
                     detectedButtons.Add(candidate);

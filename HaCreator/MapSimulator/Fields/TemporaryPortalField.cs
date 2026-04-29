@@ -1979,17 +1979,18 @@ namespace HaCreator.MapSimulator.Fields
             int matchCount = 0;
             foreach ((string mapIdKey, Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap) in Program.InfoManager.MapsCache)
             {
-                if (cachedMap?.Item5 == null
-                    || !int.TryParse(mapIdKey, out int candidateSourceMapId)
+                if (!int.TryParse(mapIdKey, out int candidateSourceMapId)
                     || candidateSourceMapId <= 0
                     || candidateSourceMapId == townMapId)
                 {
                     continue;
                 }
 
-                int candidateTownMapId = NormalizeRemoteTownPortalConfiguredReturnMap(
-                    cachedMap.Item5.returnMap,
-                    cachedMap.Item5.forcedReturn);
+                if (!TryResolveRemoteTownPortalConfiguredTownMapFromCachedMap(cachedMap, out int candidateTownMapId))
+                {
+                    continue;
+                }
+
                 if (candidateTownMapId != townMapId)
                 {
                     continue;
@@ -2317,7 +2318,21 @@ namespace HaCreator.MapSimulator.Fields
             string mapIdKey = sourceMapId.ToString().PadLeft(9, '0');
             if (Program.InfoManager?.MapsCache != null
                 && Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap)
-                && cachedMap?.Item5 != null)
+                && TryResolveRemoteTownPortalConfiguredTownMapFromCachedMap(cachedMap, out townMapId))
+            {
+                return true;
+            }
+
+            WzImage mapImage = TryGetMapImageForRemoteTownPortalMetadataLookup(sourceMapId);
+            return TryResolveRemoteTownPortalConfiguredTownMapFromMapImage(mapImage, out townMapId);
+        }
+
+        private static bool TryResolveRemoteTownPortalConfiguredTownMapFromCachedMap(
+            Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap,
+            out int townMapId)
+        {
+            townMapId = -1;
+            if (cachedMap?.Item5 != null)
             {
                 int configuredReturnMap = NormalizeRemoteTownPortalConfiguredReturnMap(
                     cachedMap.Item5.returnMap,
@@ -2329,7 +2344,14 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            WzImage mapImage = TryGetMapImageForRemoteTownPortalMetadataLookup(sourceMapId);
+            return TryResolveRemoteTownPortalConfiguredTownMapFromMapImage(cachedMap?.Item1, out townMapId);
+        }
+
+        private static bool TryResolveRemoteTownPortalConfiguredTownMapFromMapImage(
+            WzImage mapImage,
+            out int townMapId)
+        {
+            townMapId = -1;
             if (mapImage == null)
             {
                 return false;

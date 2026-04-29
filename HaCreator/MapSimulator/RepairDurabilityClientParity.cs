@@ -1276,7 +1276,9 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return success && remainingAfterSlot == 0;
+            // Result-first repair replies can echo an equip-inventory nPOS as a 32-bit
+            // positive slot and then carry only the compact byte/short reason tail.
+            return remainingAfterSlot is 0 or sizeof(byte) or sizeof(short);
         }
 
         private static bool TryReadIntEncodedSlotPosition(byte[] payload, ref int offset, out int? encodedSlotPosition)

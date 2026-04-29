@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.UI
         public string Footer { get; init; } = string.Empty;
         public IReadOnlyList<CollectionBookEntrySnapshot> Entries { get; init; } = Array.Empty<CollectionBookEntrySnapshot>();
         public IReadOnlyList<CollectionBookRecordSnapshot> Records { get; init; } = Array.Empty<CollectionBookRecordSnapshot>();
+        public IReadOnlyList<CollectionBookClientCtInfoBlockSnapshot> ClientCtInfoBlocks { get; init; } = Array.Empty<CollectionBookClientCtInfoBlockSnapshot>();
     }
 
     public sealed class CollectionBookSnapshot
@@ -155,6 +156,36 @@ namespace HaCreator.MapSimulator.UI
         Left = 0,
         Center = 1,
         Right = 2,
+    }
+
+    public enum CollectionBookClientCtInfoBlockKind
+    {
+        Text = 0,
+        Rule = 1,
+    }
+
+    public sealed class CollectionBookClientCtInfoBlockSnapshot
+    {
+        public int BlockIndex { get; init; }
+        public CollectionBookClientCtInfoBlockKind Kind { get; init; }
+        public CollectionBookRecordRole Role { get; init; }
+        public string SourceText { get; init; } = string.Empty;
+        public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
+        public int Left { get; init; }
+        public int Top { get; init; }
+        public int Width { get; init; }
+        public int Height { get; init; }
+        public int StyleIndex { get; init; }
+        public CollectionBookTextAlignment Alignment { get; init; }
+        public int AnalyzerMargin { get; init; }
+        public int AnalyzerWrapWidth { get; init; }
+        public int TextLineHeight { get; init; }
+        public int TextLineStep { get; init; }
+        public int VerticalCarryAfter { get; init; }
+        public int TextDrawBaseX { get; init; }
+        public int TextDrawBaseY { get; init; }
+        public int RuleDrawBaseX { get; init; }
+        public int RuleDrawBaseY { get; init; }
     }
 
     public sealed class CollectionBookRecordSnapshot

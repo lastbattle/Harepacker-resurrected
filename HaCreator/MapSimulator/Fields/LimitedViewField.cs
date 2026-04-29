@@ -1082,8 +1082,12 @@ namespace HaCreator.MapSimulator.Fields
                 viewrangeWidth,
                 viewrangeHeight));
 
-            if (!shareView && remoteMaskTopLefts != null && remoteMaskTopLefts.Count > 0)
+            if (!shareView && localMaskTopLeft.HasValue && remoteMaskTopLefts != null && remoteMaskTopLefts.Count > 0)
             {
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop,
+                    Vector2.Zero,
+                    -1));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled,
                     Vector2.Zero,

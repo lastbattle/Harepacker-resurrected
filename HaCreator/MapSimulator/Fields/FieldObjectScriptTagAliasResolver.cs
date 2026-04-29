@@ -888,6 +888,17 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (TryUnwrapImmediateCallbackInvocation(normalizedValue, out string immediateCallbackExpression))
+            {
+                foreach (string immediateCallbackAlias in ResolveAssignmentAliasCandidates(
+                             immediateCallbackExpression,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    AddAlias(immediateCallbackAlias);
+                }
+            }
+
             foreach (string conditionalBranch in EnumerateConditionalExpressionBranches(normalizedValue))
             {
                 foreach (string branchAlias in ResolveAssignmentAliasCandidates(
@@ -982,6 +993,18 @@ namespace HaCreator.MapSimulator.Fields
                 if (!string.IsNullOrWhiteSpace(callbackTargetAlias))
                 {
                     return callbackTargetAlias;
+                }
+            }
+
+            if (TryUnwrapImmediateCallbackInvocation(normalizedValue, out string immediateCallbackExpression))
+            {
+                string immediateCallbackAlias = ResolveAssignmentAliasCandidate(
+                    immediateCallbackExpression,
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (!string.IsNullOrWhiteSpace(immediateCallbackAlias))
+                {
+                    return immediateCallbackAlias;
                 }
             }
 
@@ -1668,8 +1691,9 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return value.StartsWith("function", StringComparison.OrdinalIgnoreCase)
-                || value.Contains("=>", StringComparison.Ordinal);
+            string normalizedValue = StripOuterBalancedParentheses(value.Trim());
+            return normalizedValue.StartsWith("function", StringComparison.OrdinalIgnoreCase)
+                || normalizedValue.Contains("=>", StringComparison.Ordinal);
         }
 
         private static string ResolveFunctionExpressionAliasCandidate(
@@ -1682,8 +1706,9 @@ namespace HaCreator.MapSimulator.Fields
                 return string.Empty;
             }
 
+            string normalizedValue = StripOuterBalancedParentheses(value.Trim());
             if (TryResolveFunctionBodyMemberInvocationAlias(
-                    value,
+                    normalizedValue,
                     localAliasMap,
                     objectMemberAliasMap,
                     out string memberAlias))
@@ -1692,7 +1717,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (TryResolveExpressionBodiedArrowAlias(
-                    value,
+                    normalizedValue,
                     localAliasMap,
                     objectMemberAliasMap,
                     out string arrowAlias))
@@ -1700,7 +1725,7 @@ namespace HaCreator.MapSimulator.Fields
                 return arrowAlias;
             }
 
-            foreach (string functionAliasName in EnumerateFunctionAliasNames(value))
+            foreach (string functionAliasName in EnumerateFunctionAliasNames(normalizedValue))
             {
                 if (IsPotentialFunctionAliasName(functionAliasName))
                 {
@@ -1708,7 +1733,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            foreach (Match match in FunctionBodyAliasInvocationPattern.Matches(value))
+            foreach (Match match in FunctionBodyAliasInvocationPattern.Matches(normalizedValue))
             {
                 string aliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
                 if (IsPotentialFunctionAliasName(aliasName))
@@ -1717,7 +1742,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            foreach (Match match in BracketMemberAliasInvocationPattern.Matches(value))
+            foreach (Match match in BracketMemberAliasInvocationPattern.Matches(normalizedValue))
             {
                 string aliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
                 if (IsPotentialFunctionAliasName(aliasName))
@@ -1726,7 +1751,7 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            foreach (Match match in BracketMemberAliasInvokerInvocationPattern.Matches(value))
+            foreach (Match match in BracketMemberAliasInvokerInvocationPattern.Matches(normalizedValue))
             {
                 string aliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
                 if (IsPotentialFunctionAliasName(aliasName))
@@ -1923,6 +1948,17 @@ namespace HaCreator.MapSimulator.Fields
                              objectMemberAliasMap))
                 {
                     yield return callbackTargetCandidate;
+                }
+            }
+
+            if (TryUnwrapImmediateCallbackInvocation(normalizedCandidate, out string immediateCallbackExpression))
+            {
+                foreach (string immediateCallbackCandidate in EnumerateCanonicalAliasCandidates(
+                             immediateCallbackExpression,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    yield return immediateCallbackCandidate;
                 }
             }
 
@@ -3071,7 +3107,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
-            int openIndex = normalizedValue.IndexOf('(');
+            int openIndex = FindTrailingCallOpenParenthesis(normalizedValue);
             if (openIndex <= 0)
             {
                 return false;
@@ -3096,6 +3132,70 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return !string.IsNullOrWhiteSpace(targetExpression);
+        }
+
+        private static int FindTrailingCallOpenParenthesis(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || !value.TrimEnd().EndsWith(")", StringComparison.Ordinal))
+            {
+                return -1;
+            }
+
+            int cursor = value.Length - 1;
+            while (cursor >= 0 && char.IsWhiteSpace(value[cursor]))
+            {
+                cursor--;
+            }
+
+            int openIndex = value.LastIndexOf('(', cursor);
+            while (openIndex > 0)
+            {
+                if (FindMatchingCloseParenthesis(value, openIndex) == cursor)
+                {
+                    return openIndex;
+                }
+
+                openIndex = value.LastIndexOf('(', openIndex - 1);
+            }
+
+            return -1;
+        }
+
+        private static bool TryUnwrapImmediateCallbackInvocation(string value, out string callbackExpression)
+        {
+            callbackExpression = string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue) || !normalizedValue.EndsWith(")", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int callOpenIndex = FindTrailingCallOpenParenthesis(normalizedValue);
+            if (callOpenIndex <= 0
+                || FindMatchingCloseParenthesis(normalizedValue, callOpenIndex) != normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string argumentText = normalizedValue[(callOpenIndex + 1)..^1];
+            if (!string.IsNullOrWhiteSpace(argumentText))
+            {
+                return false;
+            }
+
+            string invokedExpression = StripOuterBalancedParentheses(normalizedValue[..callOpenIndex].Trim());
+            if (!IsFunctionExpressionText(invokedExpression))
+            {
+                return false;
+            }
+
+            callbackExpression = invokedExpression;
+            return true;
         }
 
         private static IEnumerable<string> SplitFunctionArguments(string value)

@@ -1489,10 +1489,6 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             source = WzInfoTools.GetRealProperty(source);
-            if (source is WzSubProperty property1 && property1.WzProperties.Count == 1)
-            {
-                source = property1.WzProperties[0];
-            }
 
             if (source is WzCanvasProperty canvasProperty)
             {
@@ -1882,10 +1878,6 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             source = WzInfoTools.GetRealProperty(source);
-            if (source is WzSubProperty property1 && property1.WzProperties.Count == 1)
-            {
-                source = property1.WzProperties[0];
-            }
 
             if (TryResolveCanvasProperty(source, out WzCanvasProperty canvasProperty))
             {

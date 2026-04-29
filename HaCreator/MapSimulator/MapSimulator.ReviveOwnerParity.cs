@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator
         private const int ReviveOwnerUpgradeTombEffectOpcode = 58;
         private const int ReviveOwnerUpgradeTombItemId = 5510000;
         private const int ReviveOwnerPremiumSafetyCharmContextSlot = 2073;
+        private const int ReviveOwnerWheelOfFortuneResultStringPoolId = 0x1494;
+        private const int ReviveOwnerSoulStoneResultStringPoolId = 0x155A;
         private const byte ReviveOwnerSyntheticFieldKey = 0;
         private static readonly string[][] ReviveOwnerMapInfoPropertyAliases =
         {
@@ -284,12 +286,14 @@ namespace HaCreator.MapSimulator
                 Vector2 deathPoint = new(_playerManager.Player.DeathX, _playerManager.Player.DeathY);
                 Vector2 respawnPoint = ResolveCurrentFieldReviveRespawnPoint(request.Variant, deathPoint);
                 _playerManager.RespawnAt(respawnPoint.X, respawnPoint.Y);
+                ShowReviveOwnerClientResultNotice(request);
                 return;
             }
 
             Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(request));
             ApplyReviveOwnerClientReviveState(request, currentTick);
             _playerManager?.Respawn();
+            ShowReviveOwnerClientResultNotice(request);
         }
 
         private void ApplyReviveOwnerClientReviveState(ReviveOwnerTransferRequest request, int currentTick)
@@ -1019,6 +1023,48 @@ namespace HaCreator.MapSimulator
 
             ShowUtilityFeedbackMessage($"{ReviveOwnerRuntime.GetOwnerLabel(request.Variant)} was no longer available, so the revive owner fell back to the default branch.");
             return false;
+        }
+
+        private void ShowReviveOwnerClientResultNotice(ReviveOwnerTransferRequest request)
+        {
+            string notice = ResolveReviveOwnerClientResultNotice(
+                request,
+                ReviveOwnerRuntime.GetConsumableCashItemId(request.Variant) > 0
+                    ? GetInventoryWindowItemCount(ReviveOwnerRuntime.GetConsumableCashItemId(request.Variant))
+                    : 0);
+            if (!string.IsNullOrWhiteSpace(notice))
+            {
+                ShowUtilityFeedbackMessage(notice);
+            }
+        }
+
+        internal static string ResolveReviveOwnerClientResultNotice(
+            ReviveOwnerTransferRequest request,
+            int remainingConsumableCount)
+        {
+            if (request.TimedOut || !request.ClientPremiumFlag)
+            {
+                return string.Empty;
+            }
+
+            if (request.Variant == ReviveOwnerVariant.UpgradeTombChoice)
+            {
+                string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    ReviveOwnerWheelOfFortuneResultStringPoolId,
+                    "You have used 1 Wheel of Destiny in order to revive at the current map. ({0} left)",
+                    maxPlaceholderCount: 1,
+                    out _);
+                return string.Format(CultureInfo.InvariantCulture, format, Math.Max(0, remainingConsumableCount));
+            }
+
+            if (request.Variant == ReviveOwnerVariant.SoulStoneChoice)
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    ReviveOwnerSoulStoneResultStringPoolId,
+                    "You have revived on the current map through the effect of the Spirit Stone.");
+            }
+
+            return string.Empty;
         }
 
         private static string ResolveReviveOwnerDetailPrefix(ReviveOwnerVariant variant, string ownerLabel)

@@ -610,8 +610,8 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
-            if (TryResolveClientHitEventIndex(
-                transitions.Select(static transition => transition.EventType),
+            if (TryResolveClientHitEventOrder(
+                transitions,
                 hitOption,
                 reactorType,
                 out eventIndex))
@@ -652,9 +652,7 @@ namespace HaCreator.MapSimulator.Entities
                 return Array.Empty<int>();
             }
 
-            return transitions
-                .Select(static transition => transition.EventType)
-                .ToArray();
+            return ExpandAuthoredEventTypesByOrder(transitions);
         }
 
         internal IReadOnlyList<int> GetExactAuthoredEventTypes(int currentState)
@@ -665,9 +663,7 @@ namespace HaCreator.MapSimulator.Entities
                 return Array.Empty<int>();
             }
 
-            return transitions
-                .Select(static transition => transition.EventType)
-                .ToArray();
+            return ExpandAuthoredEventTypesByOrder(transitions);
         }
 
         private bool TryResolveHitAnimationDuration(int state, int properEventIndex, out int duration)
@@ -1014,7 +1010,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             return properEventIndex >= 0
                 && _stateTransitions.TryGetValue(state, out AuthoredStateTransition[] transitions)
-                && properEventIndex < transitions.Length;
+                && transitions.Any(transition => transition.Order == properEventIndex);
         }
 
         private bool HasRenderableState(int state)
@@ -1132,6 +1128,67 @@ namespace HaCreator.MapSimulator.Entities
         internal static bool TryResolveClientHitEventIndex(IEnumerable<int> eventTypes, ReactorType reactorType, out int eventIndex)
         {
             return TryResolveClientHitEventIndex(eventTypes, hitOption: -1, reactorType, out eventIndex);
+        }
+
+        private static bool TryResolveClientHitEventOrder(
+            IEnumerable<AuthoredStateTransition> transitions,
+            int hitOption,
+            ReactorType reactorType,
+            out int eventIndex)
+        {
+            eventIndex = -1;
+            if (transitions == null)
+            {
+                return false;
+            }
+
+            bool found = false;
+            int bestPriority = int.MaxValue;
+            foreach (AuthoredStateTransition transition in transitions)
+            {
+                int? priority = hitOption >= 0
+                    ? ResolveClientHitTypePriority(hitOption, transition.EventType)
+                    : null;
+                priority ??= TryResolveClientHitEventPriority(transition.EventType, reactorType);
+                if (priority.HasValue && priority.Value >= 0 && priority.Value < bestPriority)
+                {
+                    bestPriority = priority.Value;
+                    eventIndex = transition.Order;
+                    found = true;
+                    if (bestPriority == 0)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return found;
+        }
+
+        private static int[] ExpandAuthoredEventTypesByOrder(IEnumerable<AuthoredStateTransition> transitions)
+        {
+            if (transitions == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            AuthoredStateTransition[] orderedTransitions = transitions
+                .Where(static transition => transition.Order >= 0)
+                .ToArray();
+            if (orderedTransitions.Length == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int[] eventTypes = Enumerable
+                .Repeat(int.MinValue, orderedTransitions.Max(static transition => transition.Order) + 1)
+                .ToArray();
+            foreach (AuthoredStateTransition transition in orderedTransitions)
+            {
+                eventTypes[transition.Order] = transition.EventType;
+            }
+
+            return eventTypes;
         }
 
         public Rectangle GetCurrentBounds(int tickCount)
@@ -2221,7 +2278,7 @@ namespace HaCreator.MapSimulator.Entities
 
                 AuthoredStateTransition[] stateTransitions = eventProperty.WzProperties
                     .OfType<WzSubProperty>()
-                    .Select((eventNode, index) => TryCreateTransition(eventNode, index))
+                    .Select((eventNode, index) => TryCreateTransition(eventNode, ResolveAuthoredEventOrder(eventNode, index)))
                     .Where(static transition => transition.HasValue)
                     .Select(static transition => transition.Value)
                     .ToArray();
@@ -2537,6 +2594,13 @@ namespace HaCreator.MapSimulator.Entities
 
             int[] selectorValues = TryReadSelectorValues(eventNode);
             return new AuthoredStateTransition(eventType.Value, targetState.Value, selectorValues, order);
+        }
+
+        private static int ResolveAuthoredEventOrder(WzSubProperty eventNode, int fallbackOrder)
+        {
+            return int.TryParse(eventNode?.Name, out int authoredOrder)
+                ? authoredOrder
+                : fallbackOrder;
         }
 
         private static int[] TryReadSelectorValues(WzSubProperty eventNode)

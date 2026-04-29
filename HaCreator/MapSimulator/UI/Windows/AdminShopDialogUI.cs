@@ -541,6 +541,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<StorageExpansionResolution> StorageExpansionResolved { get; set; }
         internal Func<PacketOwnedNpcUtilityOutboundRequest, string> DispatchPacketOwnedAdminShopOutboundRequest { get; set; }
         public bool HasPendingStorageExpansionRequest => _pendingRequestEntry?.IsStorageExpansion == true;
+        internal IStorageRuntime StorageRuntime => _storageRuntime;
         private const int PacketOwnedAdminShopResultMode = PacketOwnedAdminShopOutboundMode.Reopen;
         private const int PacketOwnedAdminShopTradeRequestMode = PacketOwnedAdminShopOutboundMode.TradeRequest;
         private const int PacketOwnedAdminShopCloseMode = PacketOwnedAdminShopOutboundMode.Close;
@@ -745,7 +746,8 @@ namespace HaCreator.MapSimulator.UI
                     snapshot.NpcTemplateId,
                     snapshot.CommodityCount,
                     snapshot.TrailingByteCount,
-                    snapshot.TrailingPayloadSignature);
+                    snapshot.TrailingPayloadSignature,
+                    snapshot.TrailingPayload);
                 return true;
             }
 
@@ -935,7 +937,9 @@ namespace HaCreator.MapSimulator.UI
                 hasPendingRequestState: hasPendingRequestState,
                 ownerVisibilityState: _packetOwnedAdminShopSession.OwnerVisibilityState);
             AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible
-                ? AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                ? string.IsNullOrWhiteSpace(blockingOwner)
+                    ? AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                    : AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner
                 : _packetOwnedAdminShopSession.OwnerVisibilityState;
             string ownerState = string.IsNullOrWhiteSpace(blockingOwner)
                 ? keepSessionActive
@@ -1017,7 +1021,9 @@ namespace HaCreator.MapSimulator.UI
             bool keepSessionActive = _packetOwnedAdminShopSession.IsActive
                 && (_packetOwnedAdminShopRows.Count > 0 || _packetOwnedAdminShopSession.DecodedItemCount > 0);
             AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible
-                ? AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                ? string.IsNullOrWhiteSpace(blockingOwner)
+                    ? AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                    : AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner
                 : _packetOwnedAdminShopSession.OwnerVisibilityState;
             string ownerState = string.IsNullOrWhiteSpace(blockingOwner)
                 ? keepSessionActive
@@ -1095,7 +1101,8 @@ namespace HaCreator.MapSimulator.UI
             int npcTemplateId = 0,
             int decodedItemCount = 0,
             int trailingByteCount = 0,
-            string trailingPayloadSignature = null)
+            string trailingPayloadSignature = null,
+            byte[] trailingPayload = null)
         {
             _packetOwnedAdminShopRows.Clear();
             _packetOwnedAdminShopSellTemplates.Clear();
@@ -1107,7 +1114,8 @@ namespace HaCreator.MapSimulator.UI
                 rejectedNpcTemplateId: npcTemplateId,
                 rejectedDecodedItemCount: decodedItemCount,
                 rejectedTrailingByteCount: trailingByteCount,
-                rejectedTrailingPayloadSignature: trailingPayloadSignature);
+                rejectedTrailingPayloadSignature: trailingPayloadSignature,
+                rejectedTrailingPayload: trailingPayload);
             ClearPendingPacketOwnedUserSellSnapshot();
             ClearPendingPacketOwnedWishlistRegister();
             ClearPendingPacketOwnedWishlistSearchRequest();

@@ -470,8 +470,10 @@ namespace HaCreator.MapSimulator
 
             bool isClientResultNotice = packet.Kind == SocialListClientGuildResultKind.ResultNotice;
             bool isClientNoticeOnlyResult = IsClientGuildNoticeOnlyResult(packet);
+            bool isClientGuildQuestNoticeResult = IsClientGuildQuestNoticeResult(packet);
             bool shouldResolvePendingFromNotice = isClientResultNotice ||
                                                   isClientNoticeOnlyResult ||
+                                                  isClientGuildQuestNoticeResult ||
                                                   packet.UsesSharedResultNoticeFallback;
             if (shouldResolvePendingFromNotice)
             {
@@ -543,8 +545,35 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (packet.Kind == SocialListClientGuildResultKind.GuildQuestNotEnoughMembers)
+            {
+                noticeText = SocialListGuildResultClientText.GetGuildQuestNotEnoughMembersNotice();
+                return true;
+            }
+
+            if (packet.Kind == SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected)
+            {
+                noticeText = SocialListGuildResultClientText.GetGuildQuestRegistrantDisconnectedNotice();
+                return true;
+            }
+
+            if (packet.Kind == SocialListClientGuildResultKind.GuildQuestQueueNotice)
+            {
+                noticeText = SocialListGuildResultClientText.FormatGuildQuestQueueNotice(
+                    packet.GuildQuestChannel,
+                    packet.GuildQuestWaitStatus);
+                return true;
+            }
+
             noticeText = null;
             return false;
+        }
+
+        private static bool IsClientGuildQuestNoticeResult(SocialListClientGuildResultPacket packet)
+        {
+            return packet.Kind is SocialListClientGuildResultKind.GuildQuestNotEnoughMembers
+                or SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected
+                or SocialListClientGuildResultKind.GuildQuestQueueNotice;
         }
 
         private static bool IsClientGuildNoticeOnlyResult(SocialListClientGuildResultPacket packet)

@@ -557,31 +557,6 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            if (token.Equals("fieldfade", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("fade", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("fieldfadeinout", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("onfieldfadeinout", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = FieldFadeInOutClientPacketType;
-                return true;
-            }
-
-            if (token.Equals("fieldfadeoutforce", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("fadeoutforce", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("onfieldfadeoutforce", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = FieldFadeOutForceClientPacketType;
-                return true;
-            }
-
-            if (token.Equals("balloon", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("balloonmsg", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("onballoonmsg", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = BalloonMsgClientPacketType;
-                return true;
-            }
-
             if (token.Equals("directionmode", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("setdirectionmode", StringComparison.OrdinalIgnoreCase))
             {
@@ -1180,9 +1155,6 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == MesoGiveFailedPacketType
                 || packetType == RandomMesobagSucceededPacketType
                 || packetType == RandomMesobagFailedPacketType
-                || packetType == FieldFadeInOutClientPacketType
-                || packetType == FieldFadeOutForceClientPacketType
-                || packetType == BalloonMsgClientPacketType
                 || packetType == RandomEmotionPacketType
                 || packetType == DragonBoxClientPacketType
                 || packetType == AccountMoreInfoPacketType
@@ -1393,11 +1365,8 @@ namespace HaCreator.MapSimulator.Managers
                 MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",
                 RandomMesobagSucceededPacketType => "OnRandomMesobag_Succeeded(238)",
                 RandomMesobagFailedPacketType => "OnRandomMesobag_Failed(239)",
-                FieldFadeInOutClientPacketType => "OnFieldFadeInOut(240)",
-                FieldFadeOutForceClientPacketType => "OnFieldFadeOutForce(241)",
                 DragonBoxClientPacketType => "OnDragonBallBox(164)",
                 SkillLearnItemResultClientPacketType => "OnSkillLearnItemResult(50)",
-                BalloonMsgClientPacketType => "OnBalloonMsg(245)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 QuestResultPacketType => "OnQuestResult(242)",

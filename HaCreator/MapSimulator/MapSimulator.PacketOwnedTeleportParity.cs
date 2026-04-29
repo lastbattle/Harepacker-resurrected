@@ -450,7 +450,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedTeleportSetItemBackgroundActive = true;
             _playerManager?.ForceStand();
             CVecCtrl physics = _playerManager?.Player?.Physics;
-            physics?.SetMovePathAttribute(PacketOwnedTeleportForcedMovePathAttribute);
+            physics?.SetMovePathAttribute(PacketOwnedTeleportForcedMovePathAttribute, timeStampMs: currentTime);
             bool hasDynamicFoothold = IsPortalOwnedMovePathDynamicFootholdBranch(_mapBoard?.MapInfo?.fieldType);
             _lastPacketOwnedTeleportMovePathPayload = TryEncodePortalOwnedMovePathSnapshot(
                 physics,

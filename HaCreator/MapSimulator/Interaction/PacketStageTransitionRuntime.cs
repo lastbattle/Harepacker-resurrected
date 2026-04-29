@@ -108,6 +108,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int SetFieldServerFileTimeByteLength = sizeof(long);
         internal const int LogoutGiftEntryCount = 3;
         internal const int LogoutGiftConfigByteLength = sizeof(int) + (LogoutGiftEntryCount * sizeof(int));
+        private const int LogoutGiftConfigCandidateBaseScore = 100;
 
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
@@ -487,6 +488,11 @@ namespace HaCreator.MapSimulator.Interaction
                     candidateOffset,
                     candidatePredictQuitRawValue,
                     candidateCommoditySerialNumbers);
+                if (candidateScore < LogoutGiftConfigCandidateBaseScore)
+                {
+                    continue;
+                }
+
                 if (selectedOffset < 0 || candidateScore > selectedScore)
                 {
                     selectedOffset = candidateOffset;
@@ -580,7 +586,9 @@ namespace HaCreator.MapSimulator.Interaction
             int predictQuitRawValue,
             IReadOnlyList<int> commoditySerialNumbers)
         {
-            int score = IsLikelyLogoutGiftConfig(predictQuitRawValue, commoditySerialNumbers) ? 1000 : 0;
+            int score = IsLikelyLogoutGiftConfig(predictQuitRawValue, commoditySerialNumbers)
+                ? LogoutGiftConfigCandidateBaseScore
+                : 0;
             int trailingByteCount = payload.Length - (offset + LogoutGiftConfigByteLength);
             if (trailingByteCount == 0)
             {
@@ -1467,7 +1475,9 @@ namespace HaCreator.MapSimulator.Interaction
                 : snapshot.OpaqueInt16ValueRecordCountByteCount;
             int int16ValueRecordByteCount = snapshot.Int16ValueRecordRecordByteCount > 0
                 ? snapshot.Int16ValueRecordRecordByteCount
-                : snapshot.OpaqueInt16ValueRecordRecordByteCount;
+                : snapshot.OpaqueInt16ValueRecordRecordByteCount > 0
+                    ? snapshot.OpaqueInt16ValueRecordRecordByteCount
+                    : snapshot.OpaquePreMapTransferSectionByteCount;
             recordCountsByFlag[CharacterDataInt16ValueRecordFlag] = int16ValueRecordCount;
             countByteCountsByFlag[CharacterDataInt16ValueRecordFlag] = int16ValueCountByteCount;
             recordByteCountsByFlag[CharacterDataInt16ValueRecordFlag] = int16ValueRecordByteCount;
@@ -2966,6 +2976,10 @@ namespace HaCreator.MapSimulator.Interaction
                     OpaquePreMapTransferFlags = opaquePreMapTransferFlags,
                     OpaquePreMapTransferSectionByteCount = opaquePreMapTransferBytes?.Length ?? 0,
                     OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>(),
+                    OpaquePreMapTransferSectionFieldByteCounts = new Dictionary<string, int>(StringComparer.Ordinal)
+                    {
+                        ["RawBytes"] = opaquePreMapTransferBytes?.Length ?? 0
+                    },
                     OpaqueInt16ValueRecordByteCount = 0,
                     OpaqueInt16ValueRecordCountByteCount = 0,
                     OpaqueInt16ValueRecordRecordByteCount = 0,
@@ -4744,6 +4758,7 @@ namespace HaCreator.MapSimulator.Interaction
         ulong OpaquePreMapTransferFlags = 0,
         int OpaquePreMapTransferSectionByteCount = 0,
         byte[] OpaquePreMapTransferSectionBytes = null,
+        IReadOnlyDictionary<string, int> OpaquePreMapTransferSectionFieldByteCounts = null,
         int OpaqueInt16ValueRecordByteCount = 0,
         int OpaqueInt16ValueRecordCountByteCount = 0,
         int OpaqueInt16ValueRecordRecordByteCount = 0,

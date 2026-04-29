@@ -1639,7 +1639,7 @@ namespace HaCreator.MapSimulator.Physics
         /// <summary>
         /// Record a client-owned move-path attribute transition on the active path.
         /// </summary>
-        public void SetMovePathAttribute(int attribute, bool rebuildMovePath = true)
+        public void SetMovePathAttribute(int attribute, bool rebuildMovePath = true, int? timeStampMs = null)
         {
             CurrentMovePathAttribute = attribute;
             if (!rebuildMovePath || !IsRecordingPath)
@@ -1647,7 +1647,7 @@ namespace HaCreator.MapSimulator.Physics
                 return;
             }
 
-            int currentTimeMs = Environment.TickCount;
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
             if (_movePath.Count == 0)
             {
                 _movePath.Add(MakeNewMovePathElem(currentTimeMs));
@@ -1657,7 +1657,7 @@ namespace HaCreator.MapSimulator.Physics
 
             int lastIndex = _movePath.Count - 1;
             MovePathElement previous = _movePath[lastIndex];
-            int durationMs = Math.Max(0, currentTimeMs - previous.TimeStamp);
+            int durationMs = GetClientTickElapsed(currentTimeMs, previous.TimeStamp);
             previous.Duration = ClampPathDuration(durationMs);
             _movePath[lastIndex] = previous;
             _pathGatherDurationMs += durationMs;
@@ -1750,7 +1750,7 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             MovePathElement tail = _movePath[_movePath.Count - 1];
-            return _pathGatherDurationMs + Math.Max(0, currentTimeMs - tail.TimeStamp);
+            return _pathGatherDurationMs + GetClientTickElapsed(currentTimeMs, tail.TimeStamp);
         }
 
         private List<MovePathElement> BuildMovePathSnapshot(int currentTimeMs, bool appendLatestState)
@@ -1763,7 +1763,7 @@ namespace HaCreator.MapSimulator.Physics
             var path = new List<MovePathElement>(_movePath);
             int lastIndex = path.Count - 1;
             MovePathElement tail = path[lastIndex];
-            int tailDurationMs = Math.Max(0, currentTimeMs - tail.TimeStamp);
+            int tailDurationMs = GetClientTickElapsed(currentTimeMs, tail.TimeStamp);
             tail.Duration = ClampPathDuration(tailDurationMs);
             path[lastIndex] = tail;
 
@@ -1824,11 +1824,11 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             // Add path element at intervals
-            if (currentTimeMs - _lastPathFlushTime >= PathFlushInterval)
+            if (GetClientTickElapsed(currentTimeMs, _lastPathFlushTime) >= PathFlushInterval)
             {
                 int lastIndex = _movePath.Count - 1;
                 MovePathElement previous = _movePath[lastIndex];
-                int durationMs = Math.Max(0, currentTimeMs - previous.TimeStamp);
+                int durationMs = GetClientTickElapsed(currentTimeMs, previous.TimeStamp);
                 previous.Duration = ClampPathDuration(durationMs);
                 _movePath[lastIndex] = previous;
                 _pathGatherDurationMs += durationMs;
@@ -1920,6 +1920,12 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             _lastPathFlushTime = currentTimeMs;
+        }
+
+        internal static int GetClientTickElapsed(int currentTimeMs, int previousTimeMs)
+        {
+            int elapsed = unchecked(currentTimeMs - previousTimeMs);
+            return elapsed > 0 ? elapsed : 0;
         }
 
         internal bool RetainsPostGroundTailAfterClientFlush(

@@ -324,6 +324,9 @@ namespace HaCreator.MapSimulator.Pools
             public ItemEffectAnimationSet Effect { get; init; }
             public int SimulatedOwnerLayerHandleId { get; init; }
             public int SimulatedOwnerLayerHandleRefCount { get; private set; }
+            public bool VisibleLayerSuppressed { get; private set; }
+            public bool TerminateRequested { get; private set; }
+            public bool IsTerminated { get; private set; }
             public int AnimationStartTime { get; init; }
             public Vector2 WorldOrigin { get; init; }
             public string OwnerActionName { get; init; }
@@ -333,10 +336,33 @@ namespace HaCreator.MapSimulator.Pools
             public void CaptureRegisteredLayerReference()
             {
                 SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
+                VisibleLayerSuppressed = false;
+                TerminateRequested = false;
+                IsTerminated = false;
+            }
+
+            public void ReleaseVisibleLayerReference()
+            {
+                SimulatedOwnerLayerHandleRefCount = 0;
+                VisibleLayerSuppressed = true;
+            }
+
+            public void UpdateVisibleLayerAdmission(bool admitted)
+            {
+                if (admitted)
+                {
+                    CaptureRegisteredLayerReference();
+                    return;
+                }
+
+                ReleaseVisibleLayerReference();
             }
 
             public void MarkTerminated()
             {
+                TerminateRequested = true;
+                IsTerminated = true;
+                VisibleLayerSuppressed = true;
                 SimulatedOwnerLayerHandleRefCount = 0;
             }
         }
@@ -5053,6 +5079,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 UpdatePacketOwnedEmotionState(actor, currentTime);
                 UpdateRemoteActiveEffectMotionBlurState(actor, currentTime);
+                UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
                 UpdateTransientItemEffects(actor, currentTime);
                 UpdateTransientSkillUseAvatarEffects(actor, currentTime);
                 actor.UpdateMeleeAfterImage(currentTime);
@@ -8231,6 +8258,18 @@ namespace HaCreator.MapSimulator.Pools
                 ownerActionName,
                 ownerFacingRight,
                 out int restoredAnimationElapsedMs);
+            if (!hasRestoredAnimationElapsed
+                && TryResolveRemoteActiveEffectMotionBlurCurrentStateElapsed(
+                    actor.ActiveEffectMotionBlur,
+                    definition.ItemId,
+                    ownerActionName,
+                    ownerFacingRight,
+                    currentTime,
+                    out restoredAnimationElapsedMs))
+            {
+                hasRestoredAnimationElapsed = true;
+            }
+
             if (actor.ActiveEffectMotionBlur != null)
             {
                 StoreRemoteAuxiliaryLayerOwnerCounter(
@@ -8259,9 +8298,10 @@ namespace HaCreator.MapSimulator.Pools
                 ActiveItemId = definition.ItemId,
                 SimulatedAnimationStateId = NextRemoteActiveEffectMotionBlurStateId(),
                 SimulatedOverlayLayerHandleId = overlayLayerHandleId,
-                AnimationStartTime = hasRestoredAnimationElapsed
-                    ? unchecked(currentTime - restoredAnimationElapsedMs)
-                    : currentTime,
+                AnimationStartTime = ResolveRemoteActiveEffectMotionBlurAnimationStartTime(
+                    currentTime,
+                    hasRestoredAnimationElapsed,
+                    restoredAnimationElapsedMs),
                 OwnerActionName = ownerActionName,
                 OwnerFacingRight = ownerFacingRight,
                 SimulatedLayerHandleIds = layerHandleIds,
@@ -8269,6 +8309,39 @@ namespace HaCreator.MapSimulator.Pools
             };
             state.CaptureRegisteredLayerReferences();
             actor.ActiveEffectMotionBlur = state;
+        }
+
+        internal static bool TryResolveRemoteActiveEffectMotionBlurCurrentStateElapsed(
+            RemoteActiveEffectMotionBlurState existingState,
+            int itemId,
+            string ownerActionName,
+            bool ownerFacingRight,
+            int currentTime,
+            out int restoredAnimationElapsedMs)
+        {
+            restoredAnimationElapsedMs = 0;
+            if (existingState == null
+                || existingState.ActiveItemId != itemId
+                || existingState.OwnerFacingRight != ownerFacingRight
+                || !string.Equals(existingState.OwnerActionName, ownerActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            restoredAnimationElapsedMs = ResolveRemoteTemporaryStatTickElapsedMs(
+                currentTime,
+                existingState.AnimationStartTime);
+            return true;
+        }
+
+        internal static int ResolveRemoteActiveEffectMotionBlurAnimationStartTime(
+            int currentTime,
+            bool hasRestoredAnimationElapsed,
+            int restoredAnimationElapsedMs)
+        {
+            return hasRestoredAnimationElapsed
+                ? unchecked(currentTime - Math.Max(0, restoredAnimationElapsedMs))
+                : currentTime;
         }
 
         private bool TryApplyRemoteActiveEffectItemEffectState(
@@ -8347,7 +8420,7 @@ namespace HaCreator.MapSimulator.Pools
                 OwnerFacingRight = ownerFacingRight,
                 FollowOwner = followOwner
             };
-            actor.ActiveEffectItemEffect.CaptureRegisteredLayerReference();
+            UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
             return true;
         }
 
@@ -8384,6 +8457,20 @@ namespace HaCreator.MapSimulator.Pools
                 && state.Effect.OwnerLayers.Count > 0
                 && !hiddenLikeClient
                 && !hasMorphTemplate;
+        }
+
+        private static void UpdateRemoteActiveEffectItemEffectLayerAdmission(RemoteUserActor actor)
+        {
+            RemoteActiveEffectItemEffectState state = actor?.ActiveEffectItemEffect;
+            if (state == null)
+            {
+                return;
+            }
+
+            state.UpdateVisibleLayerAdmission(ShouldDrawRemoteActiveEffectItemEffectForParity(
+                state,
+                actor.HiddenLikeClient,
+                actor.HasMorphTemplate));
         }
 
         private void ClearRemoteActiveEffectMotionBlurState(RemoteUserActor actor, int currentTime = int.MinValue)
@@ -9182,6 +9269,12 @@ namespace HaCreator.MapSimulator.Pools
                     CharacterId = ownerCharacterId,
                     PairCharacterId = pairCharacterId
                 };
+                normalizedRecord = PreserveAvatarModifiedCanonicalRelationshipRecord(
+                    actor.CharacterId,
+                    relationshipType,
+                    normalizedRecord,
+                    recordTable);
+                ownerCharacterId = normalizedRecord.CharacterId.GetValueOrDefault(ownerCharacterId);
                 RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
                 recordTable[ownerCharacterId] = normalizedRecord;
                 RegisterRelationshipRecordDispatchKeys(
@@ -9206,6 +9299,68 @@ namespace HaCreator.MapSimulator.Pools
             RefreshRelationshipOverlays(relationshipType, currentTime);
             message = $"Remote user {actor.CharacterId} {relationshipType} relationship state refreshed.";
             return true;
+        }
+
+        private static RemoteUserRelationshipRecord PreserveAvatarModifiedCanonicalRelationshipRecord(
+            int packetActorCharacterId,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable)
+        {
+            if (relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !relationshipRecord.IsActive
+                || recordTable == null
+                || relationshipRecord.ItemSerial == null
+                || relationshipRecord.PairItemSerial == null)
+            {
+                return relationshipRecord;
+            }
+
+            int explicitOwnerCharacterId = relationshipRecord.CharacterId.GetValueOrDefault();
+            int explicitPairCharacterId = relationshipRecord.PairCharacterId.GetValueOrDefault();
+            if (explicitOwnerCharacterId > 0
+                && explicitOwnerCharacterId != packetActorCharacterId
+                && explicitPairCharacterId > 0)
+            {
+                return relationshipRecord;
+            }
+
+            foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable)
+            {
+                RemoteUserRelationshipRecord storedRecord = entry.Value;
+                if (!storedRecord.IsActive
+                    || storedRecord.ItemSerial == null
+                    || storedRecord.PairItemSerial == null
+                    || !DoAvatarModifiedRelationshipSerialPairsMatch(relationshipRecord, storedRecord))
+                {
+                    continue;
+                }
+
+                return relationshipRecord with
+                {
+                    ItemId = relationshipRecord.ItemId > 0 ? relationshipRecord.ItemId : storedRecord.ItemId,
+                    ItemSerial = storedRecord.ItemSerial,
+                    PairItemSerial = storedRecord.PairItemSerial,
+                    CharacterId = storedRecord.CharacterId.GetValueOrDefault(entry.Key),
+                    PairCharacterId = storedRecord.PairCharacterId.GetValueOrDefault(packetActorCharacterId)
+                };
+            }
+
+            return relationshipRecord;
+        }
+
+        private static bool DoAvatarModifiedRelationshipSerialPairsMatch(
+            RemoteUserRelationshipRecord incomingRecord,
+            RemoteUserRelationshipRecord storedRecord)
+        {
+            return incomingRecord.ItemSerial.HasValue
+                && incomingRecord.PairItemSerial.HasValue
+                && storedRecord.ItemSerial.HasValue
+                && storedRecord.PairItemSerial.HasValue
+                && ((incomingRecord.ItemSerial.Value == storedRecord.ItemSerial.Value
+                        && incomingRecord.PairItemSerial.Value == storedRecord.PairItemSerial.Value)
+                    || (incomingRecord.ItemSerial.Value == storedRecord.PairItemSerial.Value
+                        && incomingRecord.PairItemSerial.Value == storedRecord.ItemSerial.Value));
         }
 
         private static int ResolveAvatarModifiedRelationshipOwnerCharacterId(
@@ -11315,6 +11470,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int ResolveRemoteActiveEffectItemEffectCounterSkillIdForTesting(int itemId)
         {
             return ResolveRemoteActiveEffectItemEffectCounterSkillId(itemId);
+        }
+
+        internal static void UpdateRemoteActiveEffectItemEffectLayerAdmissionForTesting(RemoteUserActor actor)
+        {
+            UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
         }
 
         internal static int ResolveRemoteQuestDeliveryCounterSkillIdForTesting(int itemId)
@@ -16328,16 +16488,15 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (currentTime < MeleeAfterImage.ActivationStartTime)
-            {
-                MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
+            if (MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
                     currentTime,
                     MeleeAfterImage.ActivationStartTime,
                     ActionName,
                     MeleeAfterImage.ActionName,
                     MeleeAfterImage.AnimationStartTime,
                     MeleeAfterImage.ActionDuration,
-                    out bool shouldClear);
+                    out bool shouldClear))
+            {
                 if (shouldClear)
                 {
                     MeleeAfterImage = null;
@@ -16352,7 +16511,7 @@ namespace HaCreator.MapSimulator.Pools
                     MeleeAfterImage.AfterImageAction,
                     MeleeAfterImage.LastFrameIndex,
                     MeleeAfterImage.LastFrameElapsedMs,
-                    currentTime - MeleeAfterImage.FadeStartTime);
+                    RemoteUserActorPool.ResolveRemoteTemporaryStatTickElapsedMs(currentTime, MeleeAfterImage.FadeStartTime));
                 if (fadingLayers.Count == 0)
                 {
                     MeleeAfterImage = null;

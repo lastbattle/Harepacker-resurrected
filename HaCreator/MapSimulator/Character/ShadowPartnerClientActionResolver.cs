@@ -235,9 +235,7 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 1, 210),
                     ("alert", 2, 240)),
                 ["vampire"] = CreateIndexedPieces(
-                    ("alert", 0, -450),
-                    ("alert", 1, -450),
-                    ("alert", 2, -450)),
+                    ("alert", 1, -450)),
                 // `Skill/421.img/skill/4211006/action/0 = prone2`; the loader
                 // disassembly shows hidden piece entries carry source frame slots.
                 ["prone2"] = CreateIndexedPieces(
@@ -694,29 +692,20 @@ namespace HaCreator.MapSimulator.Character
                 ["snatch"] = CreateIndexedPieces(
                     ("alert", 0, -630),
                     ("alert", 1, 180)),
+                // CActionMan::Init switches raw actions 124..131 to child row "1".
+                // Keep fallback plans on that same row even when mounted rows are absent.
                 ["windspear"] = CreateIndexedPieces(
-                    ("alert", 0, -660),
                     ("alert", 1, 540)),
                 ["windshot"] = CreateIndexedPieces(
-                    ("alert", 0, -600),
                     ("alert", 1, 660)),
                 ["swingT2PoleArm"] = CreateIndexedPieces(
-                    ("swingT2", 0, -120),
-                    ("swingT2", 1, -60),
-                    ("swingT2", 2, 360)),
+                    ("swingT2", 1, -60)),
                 ["swingP1PoleArm"] = CreateIndexedPieces(
-                    ("swingP1", 0, -120),
-                    ("swingP1", 1, -60),
-                    ("swingP1", 2, 360)),
+                    ("swingP1", 1, -60)),
                 ["swingP2PoleArm"] = CreateIndexedPieces(
-                    ("swingP2", 0, -120),
-                    ("swingP2", 1, -60),
-                    ("swingP2", 2, 360)),
+                    ("swingP2", 1, -60)),
                 ["combatStep"] = CreateIndexedPieces(
-                    ("walk2", 0, 30),
-                    ("walk2", 1, 30),
-                    ("walk2", 2, 60),
-                    ("walk2", 3, 60)),
+                    ("walk2", 1, 30)),
                 ["finalCharge"] = new[]
                 {
                     CreateIndexedPiece(0, "stabTF", 2, -120, move: new Point(13, 14)),
@@ -2084,11 +2073,7 @@ namespace HaCreator.MapSimulator.Character
                 },
                 ["doubleSwing"] = new[]
                 {
-                    CreateIndexedPiece(0, "swingP2", 2, -90, move: new Point(11, -1)),
-                    CreateIndexedPiece(1, "swingPF", 0, 90, flip: true, move: new Point(-2, 0)),
-                    CreateIndexedPiece(2, "stabTF", 0, 60, flip: true, move: new Point(-53, 11)),
-                    CreateIndexedPiece(3, "stabTF", 2, 90, flip: true, move: new Point(-54, 11)),
-                    CreateIndexedPiece(4, "stabTF", 2, 90, flip: true, move: new Point(-56, 14))
+                    CreateIndexedPiece(1, "swingPF", 0, 90, flip: true, move: new Point(-2, 0))
                 },
                 ["tripleSwing"] = new[]
                 {
@@ -2402,6 +2387,7 @@ namespace HaCreator.MapSimulator.Character
                 ["ninjastorm"] = "ninjastorm",
                 ["vampire"] = "vampire",
                 ["dash"] = "dash",
+                ["darksight"] = "darksight",
                 // These client-only helper raw rows are still not authored directly in the
                 // mounted `action/0` WZ surface, so gate them through the nearest recovered
                 // family-specific raw row instead of letting every helper family claim them.
@@ -3011,12 +2997,9 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // CActionMan::Init switches raw actions 124..131 to child row "1" before
-            // reading action-piece metadata. The mounted export used by the simulator is
-            // sometimes already flattened, so only descend when "1" is a variant
-            // container rather than a piece row with its own `action` property.
-            return IsClientActionPieceNode(variantNode)
-                ? actionNode
-                : variantNode;
+            // reading action-piece metadata. In the mounted export, row "1" can itself
+            // be a single piece row; the parser handles that shape directly.
+            return variantNode;
         }
 
         private static bool TryResolveClientActionManInitNumericPieceOwnerNode(

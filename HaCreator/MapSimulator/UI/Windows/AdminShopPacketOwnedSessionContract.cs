@@ -19,7 +19,9 @@ namespace HaCreator.MapSimulator.UI
         Hidden,
         StagedButHidden,
         Visible,
-        HiddenByCashShopFamily
+        HiddenByCashShopFamily,
+        HiddenByUniqueModelessOwner,
+        HiddenByFieldRestriction
     }
 
     internal sealed class AdminShopPacketOwnedSessionContract
@@ -45,6 +47,7 @@ namespace HaCreator.MapSimulator.UI
         public int ResultTrailingByteCount { get; private set; }
         public string TrailingPayloadSignature { get; private set; } = "none";
         public string ResultTrailingPayloadSignature { get; private set; } = "none";
+        public IReadOnlyList<byte> TrailingPayload => _trailingPayload;
         public int OpenCount { get; private set; }
         public int CloseCount { get; private set; }
         public int BlockedByOwnerCount { get; private set; }
@@ -75,10 +78,14 @@ namespace HaCreator.MapSimulator.UI
         public bool ShouldRestoreOwnerSurfaceOnShow =>
             IsActive
             && (OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
-                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily);
+                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily
+                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner
+                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByFieldRestriction);
         public bool ShouldRestoreOwnerSurfaceAfterUniqueModelessBlockerClears =>
             IsActive
-            && OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
+            && (OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner
+                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByFieldRestriction);
         public bool ShouldRestoreOwnerSurfaceAfterCashShopFamilyVisible =>
             IsActive
             && OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily;
@@ -98,6 +105,7 @@ namespace HaCreator.MapSimulator.UI
         public bool HasDeferredOwnerGatedResult => _deferredOwnerGatedResult.HasValue;
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
             = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
+        private byte[] _trailingPayload = Array.Empty<byte>();
         private AdminShopPacketOwnedDeferredResultSnapshot? _deferredOwnerGatedResult;
 
         public void BeginOpen(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string ownerState = null)
@@ -116,6 +124,7 @@ namespace HaCreator.MapSimulator.UI
             NpcTemplateId = snapshot.NpcTemplateId;
             DecodedItemCount = snapshot.CommodityCount;
             TrailingByteCount = snapshot.TrailingByteCount;
+            _trailingPayload = NormalizeTrailingPayload(snapshot.TrailingPayload, TrailingByteCount);
             ResultTrailingByteCount = 0;
             TrailingPayloadSignature = NormalizePayloadSignature(snapshot.TrailingPayloadSignature);
             ResultTrailingPayloadSignature = "none";
@@ -178,7 +187,8 @@ namespace HaCreator.MapSimulator.UI
             int rejectedNpcTemplateId = 0,
             int rejectedDecodedItemCount = 0,
             int rejectedTrailingByteCount = 0,
-            string rejectedTrailingPayloadSignature = null)
+            string rejectedTrailingPayloadSignature = null,
+            byte[] rejectedTrailingPayload = null)
         {
             IsActive = false;
             IsWaitingForResult = false;
@@ -188,6 +198,7 @@ namespace HaCreator.MapSimulator.UI
             DecodedItemCount = Math.Max(0, rejectedDecodedItemCount);
             NpcTemplateId = Math.Max(0, rejectedNpcTemplateId);
             TrailingByteCount = Math.Max(0, rejectedTrailingByteCount);
+            _trailingPayload = NormalizeTrailingPayload(rejectedTrailingPayload, TrailingByteCount);
             ResultTrailingByteCount = 0;
             TrailingPayloadSignature = TrailingByteCount > 0
                 ? NormalizePayloadSignature(rejectedTrailingPayloadSignature)
@@ -222,6 +233,7 @@ namespace HaCreator.MapSimulator.UI
             WouldDisconnect = false;
             OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
             ResultTrailingByteCount = 0;
+            _trailingPayload = Array.Empty<byte>();
             ResultTrailingPayloadSignature = "none";
             LastSubtype = -1;
             LastResultCode = -1;
@@ -246,11 +258,12 @@ namespace HaCreator.MapSimulator.UI
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
-            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
+            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner;
             AskItemWishlist = snapshot.AskItemWishlist;
             NpcTemplateId = Math.Max(0, snapshot.NpcTemplateId);
             DecodedItemCount = Math.Max(0, snapshot.CommodityCount);
             TrailingByteCount = Math.Max(0, snapshot.TrailingByteCount);
+            _trailingPayload = NormalizeTrailingPayload(snapshot.TrailingPayload, TrailingByteCount);
             ResultTrailingByteCount = 0;
             TrailingPayloadSignature = NormalizePayloadSignature(snapshot.TrailingPayloadSignature);
             ResultTrailingPayloadSignature = "none";
@@ -878,6 +891,8 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopPacketOwnedOwnerVisibilityState.Visible => "owner surface visible",
                 AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden => "owner surface staged but hidden",
                 AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily => "owner surface hidden by Cash Shop family",
+                AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner => "owner surface hidden by another unique-modeless owner",
+                AdminShopPacketOwnedOwnerVisibilityState.HiddenByFieldRestriction => "owner surface hidden by field restriction",
                 _ => "owner surface hidden"
             };
         }
@@ -941,6 +956,24 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(signature)
                 ? "none"
                 : signature.Trim();
+        }
+
+        private static byte[] NormalizeTrailingPayload(byte[] payload, int expectedByteCount)
+        {
+            if (payload == null || expectedByteCount <= 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int retainedByteCount = Math.Min(payload.Length, expectedByteCount);
+            if (retainedByteCount <= 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte[] normalizedPayload = new byte[retainedByteCount];
+            Array.Copy(payload, normalizedPayload, retainedByteCount);
+            return normalizedPayload;
         }
 
         private string DescribeInboundSourceSummary()

@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Fields;
@@ -42,6 +43,8 @@ namespace HaCreator.MapSimulator
         private readonly Texture2D[] _remoteEvolRingFloatNoticeFrameTextures = new Texture2D[3];
         private bool _remoteEvolRingFloatNoticeFrameLoaded;
         private RemoteStatusBarEffectOwnerState _remoteStatusBarEffectOwnerState;
+        private readonly Dictionary<byte, PacketOwnedSummonEffectOwnerState> _packetOwnedSummonEffectOwnerStates = new();
+        private readonly Dictionary<byte, string> _packetOwnedSummonEffectSourceUols = new();
         private bool _packetFieldBossTimerAssetsLoaded;
         private const int PacketOwnedSummonEffectStringPoolId = 0x663;
         private const int PacketOwnedSummonSoundStringPoolId = 0x8BE;
@@ -135,6 +138,16 @@ namespace HaCreator.MapSimulator
             public int CharacterId { get; init; }
             public byte EffectType { get; init; }
             public string EffectName { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
+
+        private sealed class PacketOwnedSummonEffectOwnerState
+        {
+            public byte EffectId { get; init; }
+            public string SourceUol { get; init; }
+            public int X { get; init; }
+            public int Y { get; init; }
             public int AnimationStartTime { get; init; }
             public int DurationMs { get; init; }
         }
@@ -555,12 +568,56 @@ namespace HaCreator.MapSimulator
         private bool TryShowPacketOwnedSummonEffect(byte effectId, int x, int y)
         {
             string cacheKey = $"summon:{effectId}";
-            if (!TryGetOrCreatePacketOwnedAnimationFrames(cacheKey, () => ResolvePacketOwnedSummonEffectFrames(effectId), out List<PacketOwnedUiFrame> frames))
+            if (!TryGetOrCreatePacketOwnedAnimationFrames(
+                    cacheKey,
+                    () =>
+                    {
+                        List<PacketOwnedUiFrame> loadedFrames = ResolvePacketOwnedSummonEffectFrames(effectId, out string loadedSourceUol);
+                        if (loadedFrames?.Count > 0 && !string.IsNullOrWhiteSpace(loadedSourceUol))
+                        {
+                            _packetOwnedSummonEffectSourceUols[effectId] = loadedSourceUol;
+                        }
+
+                        return loadedFrames;
+                    },
+                    out List<PacketOwnedUiFrame> frames))
             {
                 return false;
             }
 
-            _animationEffects?.AddOneTime(frames.Select(static frame => frame.Sprite).ToList(), x, y, flip: false, currTickCount, zOrder: 1);
+            if (!_packetOwnedSummonEffectSourceUols.TryGetValue(effectId, out string sourceUol)
+                || string.IsNullOrWhiteSpace(sourceUol))
+            {
+                sourceUol = ResolvePacketOwnedSummonEffectSourceUol(effectId);
+                if (!string.IsNullOrWhiteSpace(sourceUol))
+                {
+                    _packetOwnedSummonEffectSourceUols[effectId] = sourceUol;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceUol))
+            {
+                sourceUol = $"Effect/Summon.img/{effectId.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            List<IDXObject> sprites = frames.Select(static frame => frame.Sprite).Where(static sprite => sprite != null).ToList();
+            int durationMs = ResolvePacketOwnedSummonEffectDurationMs(sprites);
+            int initialElapsedMs = ResolvePacketOwnedSummonEffectInitialElapsed(
+                effectId,
+                sourceUol,
+                x,
+                y,
+                currTickCount,
+                durationMs);
+
+            _animationEffects?.AddPacketOwnedSummonEffect(
+                sprites,
+                sourceUol,
+                x,
+                y,
+                currTickCount,
+                zOrder: 1,
+                initialElapsedMs);
             return true;
         }
 
@@ -1509,6 +1566,11 @@ namespace HaCreator.MapSimulator
 
         private List<PacketOwnedUiFrame> ResolvePacketOwnedSummonEffectFrames(byte effectId)
         {
+            return ResolvePacketOwnedSummonEffectFrames(effectId, out _);
+        }
+
+        private List<PacketOwnedUiFrame> ResolvePacketOwnedSummonEffectFrames(byte effectId, out string sourceUol)
+        {
             foreach ((string categoryName, string imageName, string propertyPath) in EnumeratePacketOwnedSummonEffectCandidates(effectId))
             {
                 WzImage image = Program.FindImage(categoryName, imageName);
@@ -1518,11 +1580,113 @@ namespace HaCreator.MapSimulator
                         propertyPath));
                 if (frames?.Count > 0)
                 {
+                    sourceUol = ComposePacketOwnedEffectUol(categoryName, imageName, propertyPath);
                     return frames;
                 }
             }
 
+            sourceUol = string.Empty;
             return null;
+        }
+
+        private string ResolvePacketOwnedSummonEffectSourceUol(byte effectId)
+        {
+            foreach ((string categoryName, string imageName, string propertyPath) in EnumeratePacketOwnedSummonEffectCandidates(effectId))
+            {
+                string sourceUol = ComposePacketOwnedEffectUol(categoryName, imageName, propertyPath);
+                if (!string.IsNullOrWhiteSpace(sourceUol))
+                {
+                    return sourceUol;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private int ResolvePacketOwnedSummonEffectInitialElapsed(
+            byte effectId,
+            string sourceUol,
+            int x,
+            int y,
+            int currentTime,
+            int durationMs)
+        {
+            if (string.IsNullOrWhiteSpace(sourceUol) || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_packetOwnedSummonEffectOwnerStates.TryGetValue(effectId, out PacketOwnedSummonEffectOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolvePacketOwnedSummonEffectRestoreElapsedCore(
+                    existingState.EffectId,
+                    existingState.SourceUol,
+                    existingState.X,
+                    existingState.Y,
+                    existingState.AnimationStartTime,
+                    effectId,
+                    sourceUol,
+                    x,
+                    y,
+                    currentTime,
+                    durationMs);
+            }
+
+            _packetOwnedSummonEffectOwnerStates[effectId] = new PacketOwnedSummonEffectOwnerState
+            {
+                EffectId = effectId,
+                SourceUol = sourceUol,
+                X = x,
+                Y = y,
+                AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                DurationMs = durationMs
+            };
+            return initialElapsedMs;
+        }
+
+        private static int ResolvePacketOwnedSummonEffectDurationMs(IReadOnlyList<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int durationMs = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                durationMs = unchecked(durationMs + Math.Max(0, frames[i]?.Delay ?? 0));
+            }
+
+            return durationMs;
+        }
+
+        private static int ResolvePacketOwnedSummonEffectRestoreElapsedCore(
+            byte previousEffectId,
+            string previousSourceUol,
+            int previousX,
+            int previousY,
+            int previousAnimationStartTime,
+            byte currentEffectId,
+            string currentSourceUol,
+            int currentX,
+            int currentY,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousEffectId != currentEffectId
+                || !string.Equals(previousSourceUol, currentSourceUol, StringComparison.OrdinalIgnoreCase)
+                || previousX != currentX
+                || previousY != currentY)
+            {
+                return 0;
+            }
+
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
+            return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
         private bool HasPacketOwnedSummonSoundAsset(byte effectId)
@@ -1621,9 +1785,16 @@ namespace HaCreator.MapSimulator
 
             for (int i = 0; ; i++)
             {
-                if (sourceProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+                WzImageProperty frameProperty = sourceProperty[i.ToString(CultureInfo.InvariantCulture)] as WzImageProperty;
+                if (frameProperty == null)
                 {
                     break;
+                }
+
+                WzCanvasProperty frameCanvas = frameProperty.GetLinkedWzImageProperty() as WzCanvasProperty;
+                if (frameCanvas == null)
+                {
+                    continue;
                 }
 
                 System.Drawing.Bitmap frameBitmap = frameCanvas.GetLinkedWzCanvasBitmap();
@@ -1914,6 +2085,23 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private static string ComposePacketOwnedEffectUol(string categoryName, string imageName, string propertyPath)
+        {
+            if (string.IsNullOrWhiteSpace(imageName) || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return string.Empty;
+            }
+
+            string normalizedCategory = string.IsNullOrWhiteSpace(categoryName)
+                ? "Effect"
+                : categoryName.Trim().Replace('\\', '/').Trim('/');
+            string normalizedImage = imageName.Trim().Replace('\\', '/').Trim('/');
+            string normalizedPath = propertyPath.Trim().Replace('\\', '/').Trim('/');
+            return string.IsNullOrWhiteSpace(normalizedCategory)
+                ? $"{normalizedImage}/{normalizedPath}"
+                : $"{normalizedCategory}/{normalizedImage}/{normalizedPath}";
+        }
+
         private IReadOnlyList<PacketFieldSwindleWarningEntry> GetPacketOwnedSwindleWarningEntries()
         {
             if (_packetFieldSwindleWarnings != null)
@@ -2120,6 +2308,38 @@ namespace HaCreator.MapSimulator
             return EnumeratePacketOwnedSummonEffectCandidates(effectId)
                 .Select(static candidate => $"{candidate.CategoryName}:{candidate.ImageName}:{candidate.PropertyPath}")
                 .ToArray();
+        }
+
+        internal static string BuildPacketOwnedSummonEffectOwnerSlotKeyForTest(byte effectId)
+        {
+            return effectId.ToString(CultureInfo.InvariantCulture);
+        }
+
+        internal static int ResolvePacketOwnedSummonEffectRestoreElapsedForTest(
+            byte previousEffectId,
+            string previousSourceUol,
+            int previousX,
+            int previousY,
+            int previousAnimationStartTime,
+            byte currentEffectId,
+            string currentSourceUol,
+            int currentX,
+            int currentY,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolvePacketOwnedSummonEffectRestoreElapsedCore(
+                previousEffectId,
+                previousSourceUol,
+                previousX,
+                previousY,
+                previousAnimationStartTime,
+                currentEffectId,
+                currentSourceUol,
+                currentX,
+                currentY,
+                currentTime,
+                durationMs);
         }
 
         private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteLayerSourcePaths()
@@ -3301,9 +3521,16 @@ namespace HaCreator.MapSimulator
 
             for (int i = 0; ; i++)
             {
-                if (sourceProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+                WzImageProperty frameProperty = sourceProperty[i.ToString(CultureInfo.InvariantCulture)] as WzImageProperty;
+                if (frameProperty == null)
                 {
                     break;
+                }
+
+                WzCanvasProperty frameCanvas = frameProperty.GetLinkedWzImageProperty() as WzCanvasProperty;
+                if (frameCanvas == null)
+                {
+                    continue;
                 }
 
                 int? frameZ = frameCanvas["z"]?.GetInt();

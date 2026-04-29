@@ -785,7 +785,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int claimId = _nextClaimId++;
-            foreach (MessengerLogEntryState entry in claimableEntries)
+            IEnumerable<MessengerLogEntryState> entriesToRetire = appliedLineCount <= 0
+                ? claimableEntries
+                : claimableEntries.TakeLast(appliedLineCount);
+            foreach (MessengerLogEntryState entry in entriesToRetire)
             {
                 entry.IsClaimed = true;
             }

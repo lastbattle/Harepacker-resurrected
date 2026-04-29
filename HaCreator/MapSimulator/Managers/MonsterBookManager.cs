@@ -541,10 +541,11 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            int normalizedRegisteredMobId = registeredMobId > 0
-                && record.CardCountsByMob.TryGetValue(registeredMobId, out int ownedCopies)
+            int normalizedRegisteredMobIdCandidate = ResolveOwnershipSyncMobId(registeredMobId, catalogByMobId);
+            int normalizedRegisteredMobId = normalizedRegisteredMobIdCandidate > 0
+                && record.CardCountsByMob.TryGetValue(normalizedRegisteredMobIdCandidate, out int ownedCopies)
                 && ownedCopies > 0
-                ? registeredMobId
+                ? normalizedRegisteredMobIdCandidate
                 : 0;
             int previousRegisteredMobId = ResolveRegisteredMobId(record);
             if (normalizedRegisteredMobId > 0)

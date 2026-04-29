@@ -26,6 +26,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsAlerting { get; set; }
         public bool UseTemporaryStatViewArtworkOnly { get; set; }
         public int TemporaryStatViewOwnerIdentity { get; set; }
+        public int TemporaryStatViewParentLayerIdentity { get; set; }
+        public int TemporaryStatViewMainLayerIdentity { get; set; }
+        public int TemporaryStatViewShadowLayerIdentity { get; set; }
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }
         public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;

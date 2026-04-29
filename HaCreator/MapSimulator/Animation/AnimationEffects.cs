@@ -366,6 +366,27 @@ namespace HaCreator.MapSimulator.Animation
             InsertOneTimeAnimation(anim);
         }
 
+        internal void AddPacketOwnedSummonEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedSummonEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
         internal void AddPacketOwnedBuffItemUse(
             List<IDXObject> frames,
             string sourceUol,
@@ -1160,7 +1181,10 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (_userStateAnimations[i].RegistrationKey == registrationKey)
                 {
-                    _userStateAnimations.RemoveAt(i);
+                    if (!_userStateAnimations[i].BeginEndPhase(currentTimeMs))
+                    {
+                        _userStateAnimations.RemoveAt(i);
+                    }
                 }
             }
 
@@ -2915,7 +2939,8 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedCombatFeedback = 5,
         PacketOwnedCatch = 6,
         PacketOwnedSquib = 7,
-        PacketOwnedTransformed = 8
+        PacketOwnedTransformed = 8,
+        PacketOwnedSummonEffect = 9
     }
 
     internal enum AnimationOneTimePlaybackMode
@@ -3120,6 +3145,36 @@ namespace HaCreator.MapSimulator.Animation
         bool AnimateUsesMissingStartTime = false,
         bool AnimateUsesMissingRepeatCount = false,
         bool RegisterOneTimeAnimationHasCallback = false);
+
+    internal enum OneTimeAnimationRecoveredNativeObjectRole
+    {
+        None = 0,
+        SourceUol = 1,
+        OriginVector = 2,
+        OverlayParent = 3,
+        LoadedLayer = 4,
+        MissingStartTimeVariant = 5,
+        MissingRepeatCountVariant = 6,
+        OneTimeAnimationManager = 7
+    }
+
+    /// <summary>
+    /// Per-operation managed snapshot of the recovered one-time animation-displayer COM lifetime sequence.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredNativeOperationState(
+        OneTimeAnimationRecoveredNativeOperation Operation,
+        int OperationIndex,
+        OneTimeAnimationRecoveredNativeObjectRole OperationObjectRole,
+        int SimulatedLoadedLayerHandleId,
+        int LoadedLayerReferenceCountAfterOperation,
+        int SimulatedSourceUolHandleId,
+        int SourceUolReferenceCountAfterOperation,
+        int SimulatedOriginVectorHandleId,
+        int OriginVectorReferenceCountAfterOperation,
+        int SimulatedOverlayParentHandleId,
+        int OverlayParentReferenceCountAfterOperation,
+        bool RegisterOneTimeAnimationHasRun,
+        bool LoadedLayerReleasedByOwnerAfterRegistration);
 
     /// <summary>
     /// Managed lifetime snapshot for COM objects touched by recovered one-time animation-displayer owners.
@@ -4257,6 +4312,8 @@ namespace HaCreator.MapSimulator.Animation
         public OneTimeAnimationRecoveredRegistrationTrace? RecoveredRegistrationTrace { get; private set; }
         internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
             = Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
+        internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperationState> RecoveredNativeOperationStates { get; private set; }
+            = Array.Empty<OneTimeAnimationRecoveredNativeOperationState>();
         internal OneTimeAnimationRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
         internal int CurrentFrameIndex => _currentFrame;
 
@@ -4329,6 +4386,9 @@ namespace HaCreator.MapSimulator.Animation
                 ?? (usesOverlayParent ? AnimationOneTimeOverlayParentKind.MobActionLayer : AnimationOneTimeOverlayParentKind.None);
             RecoveredRegistrationTrace = recoveredRegistrationTrace;
             RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(recoveredRegistrationTrace);
+            RecoveredNativeOperationStates = BuildRecoveredNativeOperationStates(
+                recoveredRegistrationTrace,
+                RecoveredNativeExecutionTrace);
             RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
                 recoveredRegistrationTrace,
                 RecoveredNativeExecutionTrace);
@@ -4637,6 +4697,110 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return operations.ToArray();
+        }
+
+        internal static OneTimeAnimationRecoveredNativeOperationState[] BuildRecoveredNativeOperationStates(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
+            IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> executionTrace = null,
+            int simulatedLoadedLayerHandleId = 1,
+            int simulatedSourceUolHandleId = 1,
+            int simulatedOriginVectorHandleId = 1,
+            int simulatedOverlayParentHandleId = 1)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredNativeOperationState>();
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            executionTrace ??= BuildRecoveredNativeExecutionTrace(registrationTrace);
+
+            int loadedLayerReferenceCount = 0;
+            int sourceUolReferenceCount = string.IsNullOrWhiteSpace(trace.SourceUol) ? 0 : 1;
+            int originVectorReferenceCount = 0;
+            int overlayParentReferenceCount = 0;
+            bool registerOneTimeAnimationHasRun = false;
+            bool loadedLayerReleasedByOwnerAfterRegistration = false;
+            var states = new OneTimeAnimationRecoveredNativeOperationState[executionTrace.Count];
+
+            for (int i = 0; i < executionTrace.Count; i++)
+            {
+                OneTimeAnimationRecoveredNativeOperation operation = executionTrace[i];
+                OneTimeAnimationRecoveredNativeObjectRole role = OneTimeAnimationRecoveredNativeObjectRole.None;
+
+                switch (operation.Kind)
+                {
+                    case OneTimeAnimationRecoveredNativeOperationKind.RetainOverlayParent:
+                        overlayParentReferenceCount++;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OverlayParent;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.RetainOriginVector:
+                        originVectorReferenceCount++;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OriginVector;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.LoadLayer:
+                        loadedLayerReferenceCount = Math.Max(loadedLayerReferenceCount, 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.CreateMissingStartTimeVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingStartTimeVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.CreateMissingRepeatCountVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingRepeatCountVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.Animate:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ClearMissingRepeatCountVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingRepeatCountVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ClearMissingStartTimeVariant:
+                        role = OneTimeAnimationRecoveredNativeObjectRole.MissingStartTimeVariant;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.RetainLoadedLayerForRegistration:
+                        loadedLayerReferenceCount++;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation:
+                        registerOneTimeAnimationHasRun = true;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OneTimeAnimationManager;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer:
+                        loadedLayerReferenceCount = Math.Max(0, loadedLayerReferenceCount - 1);
+                        loadedLayerReleasedByOwnerAfterRegistration = registerOneTimeAnimationHasRun;
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseSourceUol:
+                        sourceUolReferenceCount = Math.Max(0, sourceUolReferenceCount - 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.SourceUol;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseOriginVector:
+                        originVectorReferenceCount = Math.Max(0, originVectorReferenceCount - 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OriginVector;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.ReleaseOverlayParent:
+                        overlayParentReferenceCount = Math.Max(0, overlayParentReferenceCount - 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.OverlayParent;
+                        break;
+                }
+
+                states[i] = new OneTimeAnimationRecoveredNativeOperationState(
+                    operation,
+                    i,
+                    role,
+                    loadedLayerReferenceCount > 0 ? simulatedLoadedLayerHandleId : 0,
+                    loadedLayerReferenceCount,
+                    sourceUolReferenceCount > 0 ? simulatedSourceUolHandleId : 0,
+                    sourceUolReferenceCount,
+                    originVectorReferenceCount > 0 ? simulatedOriginVectorHandleId : 0,
+                    originVectorReferenceCount,
+                    overlayParentReferenceCount > 0 ? simulatedOverlayParentHandleId : 0,
+                    overlayParentReferenceCount,
+                    registerOneTimeAnimationHasRun,
+                    loadedLayerReleasedByOwnerAfterRegistration);
+            }
+
+            return states;
         }
 
         internal static OneTimeAnimationRecoveredNativeLifetimeState BuildRecoveredNativeLifetimeState(
@@ -5824,6 +5988,11 @@ namespace HaCreator.MapSimulator.Animation
                 return false;
             }
 
+            if (_phase == UserStatePhase.End)
+            {
+                return true;
+            }
+
             _phase = UserStatePhase.End;
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
@@ -5844,7 +6013,7 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             IDXObject frame = frames[_currentFrame];
-            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
             {
                 _currentFrame++;
                 _lastFrameTime = currentTimeMs;

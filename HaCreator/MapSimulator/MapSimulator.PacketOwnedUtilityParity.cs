@@ -190,6 +190,81 @@ namespace HaCreator.MapSimulator
             bool ReleasedTrackProperty,
             PacketOwnedRadioClientHandleStatus HandleStatus);
 
+        internal sealed class PacketOwnedRadioClientPlaybackHandle
+        {
+            private PacketOwnedRadioClientPlaybackHandle(PacketOwnedRadioMmsPlayPlan playPlan, int rawBufferLength)
+            {
+                TrackPropertyLoaded = playPlan.TrackPropertyLoaded;
+                SoundObjectLoaded = playPlan.SoundObjectLoaded;
+                RawBufferLoaded = playPlan.RawBufferLoaded;
+                RawBufferLength = Math.Max(0, rawBufferLength);
+                MsLength = Math.Max(0, playPlan.MsLength);
+                MsPosition = Math.Max(0, playPlan.MsPosition);
+                LastUpdateTick = playPlan.LastUpdateTick;
+                Status = playPlan.HandleStatus;
+                MmsPlaySucceeded = playPlan.Started;
+                MmsPlayFailureReason = string.IsNullOrWhiteSpace(playPlan.FailureReason)
+                    ? string.Empty
+                    : playPlan.FailureReason.Trim();
+            }
+
+            public bool TrackPropertyLoaded { get; }
+            public bool SoundObjectLoaded { get; }
+            public bool RawBufferLoaded { get; }
+            public int RawBufferLength { get; }
+            public int MsLength { get; }
+            public int MsPosition { get; private set; }
+            public int LastUpdateTick { get; }
+            public PacketOwnedRadioClientHandleStatus Status { get; private set; }
+            public bool MmsPlaySucceeded { get; }
+            public string MmsPlayFailureReason { get; }
+
+            public static PacketOwnedRadioClientPlaybackHandle Create(
+                PacketOwnedRadioMmsPlayPlan playPlan,
+                int rawBufferLength)
+            {
+                return new PacketOwnedRadioClientPlaybackHandle(playPlan, rawBufferLength);
+            }
+
+            public bool Update(
+                int sessionStartOffsetMs,
+                int sessionStartTick,
+                int currentTickCount)
+            {
+                MsPosition = ResolvePacketOwnedRadioClientPlaybackPositionMs(
+                    sessionStartOffsetMs,
+                    sessionStartTick,
+                    currentTickCount,
+                    MsLength);
+                bool stopped = IsPacketOwnedRadioClientHandleStopped(MsPosition, MsLength);
+                Status = ResolvePacketOwnedRadioClientHandleStatusAfterPoll(Status, stopped);
+                return stopped;
+            }
+
+            public PacketOwnedRadioMmsStopPlan Stop(
+                int sessionStartOffsetMs,
+                int sessionStartTick,
+                int currentTickCount)
+            {
+                Status = ResolvePacketOwnedRadioClientHandleStatusBeforeStop(
+                    Status,
+                    sessionStartOffsetMs,
+                    sessionStartTick,
+                    currentTickCount,
+                    MsLength,
+                    out int stopPlaybackPositionMs);
+                MsPosition = stopPlaybackPositionMs;
+
+                PacketOwnedRadioMmsStopPlan stopPlan = ResolvePacketOwnedRadioMmsStopPlan(
+                    TrackPropertyLoaded,
+                    SoundObjectLoaded,
+                    RawBufferLoaded,
+                    Status);
+                Status = stopPlan.HandleStatus;
+                return stopPlan;
+            }
+        }
+
         private readonly record struct PacketOwnedSkillLearnItemResult(
             bool OnExclusiveRequest,
             int CharacterId,
@@ -393,6 +468,7 @@ namespace HaCreator.MapSimulator
         private bool _lastPacketOwnedRadioClientMmsPlaySucceeded;
         private string _lastPacketOwnedRadioClientMmsPlayFailureReason = "idle";
         private PacketOwnedRadioMmsStopPlan _lastPacketOwnedRadioMmsStopPlan;
+        private PacketOwnedRadioClientPlaybackHandle _packetOwnedRadioClientHandle;
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -1315,7 +1391,7 @@ namespace HaCreator.MapSimulator
             string replacingOwner = ResolveWindowDisplayName(ownerWindowName);
             cashShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
                 $"CAdminShopDlg owner surface was hidden because {replacingOwner} took the unique-modeless slot.",
-                AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden);
+                AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashShop);
         }
 
@@ -4749,6 +4825,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.MarriageResultPacketType:
                     return TryApplyPacketOwnedMarriageResultPayload(payload, out message);
+
+                case WeddingWishListRuntime.WishListTransferPacketOpcode:
+                    return TryApplyWeddingWishListTransferResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.FuncKeyMapInitPacketType:
                     return TryApplyPacketOwnedFuncKeyInitPayload(payload, out message);
@@ -9362,6 +9441,13 @@ namespace HaCreator.MapSimulator
                 case "decline":
                 case "no":
                     return TryMirrorMessengerIncomingInviteRejectClientSeam(argument, out message);
+                case "claim":
+                case "claimauto":
+                case "claimnative":
+                case "report":
+                    return string.IsNullOrWhiteSpace(argument)
+                        ? TryMirrorMessengerNativeClaimClientRequest(out message)
+                        : TryMirrorMessengerClaimClientRequest(argument, out message);
                 case "q":
                 case "quit":
                 case "leave":
@@ -14982,7 +15068,12 @@ namespace HaCreator.MapSimulator
 
             if (TryParsePacketOwnedClientChatLogTypeMode(mode, out int explicitChatLogType))
             {
-                route = new PacketOwnedChatRoute(message, explicitChatLogType);
+                route = new PacketOwnedChatRoute(
+                    message,
+                    explicitChatLogType,
+                    IsPacketOwnedWhisperChatLogType(explicitChatLogType) && !string.IsNullOrWhiteSpace(primaryTarget)
+                        ? primaryTarget
+                        : null);
                 return true;
             }
 
@@ -15149,13 +15240,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (parsedType < 0 || parsedType > 26)
+            if (!IsRecoveredClientChatLogType(parsedType))
             {
                 return false;
             }
 
             chatLogType = parsedType;
             return true;
+        }
+
+        private static bool IsRecoveredClientChatLogType(int chatLogType)
+        {
+            return chatLogType >= 0 && chatLogType <= 26;
+        }
+
+        private static bool IsPacketOwnedWhisperChatLogType(int chatLogType)
+        {
+            return chatLogType == 14 || chatLogType == 16;
         }
 
         private static string FormatPacketOwnedChatLine(string message, string channel)
@@ -16900,6 +17001,13 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (IsPacketOwnedTypedChatPayloadWithOutOfRangeLogType(payload)
+                || IsPacketOwnedChannelChatPayloadWithOutOfRangeLogType(payload))
+            {
+                message = "Chat payload contained an out-of-range ChatLogAdd lType.";
+                return false;
+            }
+
             if (!TryDecodePacketOwnedStringPayload(payload, out chatText))
             {
                 return false;
@@ -16932,6 +17040,11 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                if (!IsRecoveredClientChatLogType(chatLogType))
+                {
+                    return false;
+                }
+
                 chatText = decodedText.Trim();
                 return true;
             }
@@ -16942,6 +17055,98 @@ namespace HaCreator.MapSimulator
         }
 
         private static bool TryDecodePacketOwnedChannelChatPayload(
+            byte[] payload,
+            out ushort chatLogType,
+            out int channelId,
+            out string chatText)
+        {
+            chatLogType = 0;
+            channelId = -1;
+            chatText = null;
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(int))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                chatLogType = reader.ReadUInt16();
+                channelId = reader.ReadInt32();
+                string decodedText = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Position != reader.BaseStream.Length || string.IsNullOrWhiteSpace(decodedText))
+                {
+                    return false;
+                }
+
+                if (!IsRecoveredClientChatLogType(chatLogType))
+                {
+                    return false;
+                }
+
+                chatText = decodedText.Trim();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsPacketOwnedTypedChatPayloadWithOutOfRangeLogType(byte[] payload)
+        {
+            if (!TryReadPacketOwnedTypedChatPayloadEnvelope(payload, out ushort chatLogType, out _))
+            {
+                return false;
+            }
+
+            return !IsRecoveredClientChatLogType(chatLogType);
+        }
+
+        private static bool IsPacketOwnedChannelChatPayloadWithOutOfRangeLogType(byte[] payload)
+        {
+            if (!TryReadPacketOwnedChannelChatPayloadEnvelope(payload, out ushort chatLogType, out _, out _))
+            {
+                return false;
+            }
+
+            return !IsRecoveredClientChatLogType(chatLogType);
+        }
+
+        private static bool TryReadPacketOwnedTypedChatPayloadEnvelope(
+            byte[] payload,
+            out ushort chatLogType,
+            out string chatText)
+        {
+            chatLogType = 0;
+            chatText = null;
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                chatLogType = reader.ReadUInt16();
+                string decodedText = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Position != reader.BaseStream.Length || string.IsNullOrWhiteSpace(decodedText))
+                {
+                    return false;
+                }
+
+                chatText = decodedText.Trim();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryReadPacketOwnedChannelChatPayloadEnvelope(
             byte[] payload,
             out ushort chatLogType,
             out int channelId,
@@ -19228,6 +19433,11 @@ namespace HaCreator.MapSimulator
                 return entries.Length > 0;
             }
 
+            if (TryDecodePacketOwnedRankingPageFormPayload(normalizedText, out entries, out hasOwnerState, out ownerState, out summary, out message))
+            {
+                return entries.Length > 0 || hasOwnerState;
+            }
+
             if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
             {
@@ -20576,6 +20786,17 @@ namespace HaCreator.MapSimulator
                     {
                         AppendPacketOwnedRankingJsonEntries(entryArray, parsedEntries);
                     }
+
+                    if (parsedEntries.Count == 0
+                        && TryResolvePacketOwnedRankingHtmlText(root, out string embeddedHtml)
+                        && TryDecodePacketOwnedRankingPageHtmlPayload(embeddedHtml, out RankingEntrySnapshot[] htmlEntries, out string htmlSummary, out _))
+                    {
+                        parsedEntries.AddRange(htmlEntries);
+                        if (string.IsNullOrWhiteSpace(summary))
+                        {
+                            summary = htmlSummary;
+                        }
+                    }
                 }
                 else if (root.ValueKind == JsonValueKind.Array)
                 {
@@ -21734,6 +21955,172 @@ namespace HaCreator.MapSimulator
                 entry = default;
                 return false;
             }
+        }
+
+        private static bool TryDecodePacketOwnedRankingPageFormPayload(
+            string payloadText,
+            out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState,
+            out string summary,
+            out string message)
+        {
+            entries = Array.Empty<RankingEntrySnapshot>();
+            hasOwnerState = false;
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            summary = string.Empty;
+            message = "Ranking-page form payload did not contain CWebWnd ranking HTML.";
+            if (string.IsNullOrWhiteSpace(payloadText)
+                || payloadText.IndexOf('=') < 0
+                || payloadText.IndexOf('&') < 0)
+            {
+                return false;
+            }
+
+            Dictionary<string, string> fields = ParsePacketOwnedFormFields(payloadText);
+            if (fields.Count == 0)
+            {
+                return false;
+            }
+
+            if (TryGetPacketOwnedFormField(fields, out string htmlText, "html", "page", "body", "document", "response", "responseText", "payload")
+                && TryDecodePacketOwnedRankingPageHtmlPayload(htmlText, out entries, out summary, out message))
+            {
+                ownerState = BuildPacketOwnedRankingOwnerStateFromForm(fields);
+                hasOwnerState = ownerState.HasAnyState;
+                return true;
+            }
+
+            if (TryGetPacketOwnedFormField(fields, out string navigateUrl, "navigateUrl", "url")
+                && ProgressionUtilityParityRules.TryParseRankingLandingRequest(navigateUrl, out string serverHost, out int worldId, out int characterId))
+            {
+                ownerState = new PacketOwnedRankingOwnerStateSnapshot
+                {
+                    NavigateUrl = navigateUrl,
+                    ServerHost = serverHost,
+                    WorldId = worldId,
+                    CharacterId = characterId
+                };
+                hasOwnerState = true;
+                summary = "Applied packet-authored CWebWnd ranking form owner state.";
+                message = summary;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static Dictionary<string, string> ParsePacketOwnedFormFields(string payloadText)
+        {
+            Dictionary<string, string> fields = new(StringComparer.OrdinalIgnoreCase);
+            string[] pairs = payloadText.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < pairs.Length; i++)
+            {
+                string pair = pairs[i];
+                int separator = pair.IndexOf('=');
+                if (separator <= 0)
+                {
+                    continue;
+                }
+
+                string key = Uri.UnescapeDataString(pair[..separator].Replace('+', ' ')).Trim();
+                string value = Uri.UnescapeDataString(pair[(separator + 1)..].Replace('+', ' ')).Trim();
+                if (!string.IsNullOrWhiteSpace(key))
+                {
+                    fields[key] = value;
+                }
+            }
+
+            return fields;
+        }
+
+        private static bool TryGetPacketOwnedFormField(
+            IReadOnlyDictionary<string, string> fields,
+            out string value,
+            params string[] names)
+        {
+            value = string.Empty;
+            if (fields == null)
+            {
+                return false;
+            }
+
+            foreach (string name in names ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(name)
+                    && fields.TryGetValue(name, out string fieldValue)
+                    && !string.IsNullOrWhiteSpace(fieldValue))
+                {
+                    value = fieldValue.Trim();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static PacketOwnedRankingOwnerStateSnapshot BuildPacketOwnedRankingOwnerStateFromForm(
+            IReadOnlyDictionary<string, string> fields)
+        {
+            string serverHost = TryGetPacketOwnedFormField(fields, out string host, "serverHost", "host", "get_server_string_0")
+                ? host
+                : string.Empty;
+            string navigateUrl = TryGetPacketOwnedFormField(fields, out string url, "navigateUrl", "url")
+                ? url
+                : string.Empty;
+            int? worldId = TryGetPacketOwnedFormInt(fields, out int parsedWorldId, "worldId", "worldid")
+                ? parsedWorldId
+                : null;
+            int? characterId = TryGetPacketOwnedFormInt(fields, out int parsedCharacterId, "characterId", "characterid")
+                ? parsedCharacterId
+                : null;
+            int templateId = TryGetPacketOwnedFormInt(fields, out int parsedTemplateId, "templateId", "stringPoolId")
+                ? parsedTemplateId
+                : 0;
+
+            return new PacketOwnedRankingOwnerStateSnapshot
+            {
+                NavigateUrl = navigateUrl,
+                ServerHost = serverHost,
+                WorldId = worldId,
+                CharacterId = characterId,
+                TemplateId = templateId
+            };
+        }
+
+        private static bool TryGetPacketOwnedFormInt(
+            IReadOnlyDictionary<string, string> fields,
+            out int value,
+            params string[] names)
+        {
+            value = 0;
+            return TryGetPacketOwnedFormField(fields, out string text, names)
+                && int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static bool TryResolvePacketOwnedRankingHtmlText(JsonElement root, out string htmlText)
+        {
+            htmlText = string.Empty;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (TryGetJsonStringProperty(root, out htmlText, "html", "pageHtml", "documentHtml", "bodyHtml", "responseHtml", "responseText"))
+            {
+                return !string.IsNullOrWhiteSpace(htmlText);
+            }
+
+            if (TryGetJsonNestedStringProperty(
+                    root,
+                    out htmlText,
+                    new[] { "ownerState", "web", "webOwner", "cwebwnd", "cWebWnd", "page", "payload", "data", "result", "body", "response" },
+                    new[] { "html", "pageHtml", "documentHtml", "bodyHtml", "responseHtml", "responseText" }))
+            {
+                return !string.IsNullOrWhiteSpace(htmlText);
+            }
+
+            return false;
         }
 
         private static bool TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(
@@ -23280,6 +23667,36 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private static bool TryGetJsonNestedStringProperty(
+            JsonElement element,
+            out string value,
+            string[] objectPropertyNames,
+            string[] stringPropertyNames)
+        {
+            value = string.Empty;
+            if (element.ValueKind != JsonValueKind.Object
+                || objectPropertyNames == null
+                || stringPropertyNames == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < objectPropertyNames.Length; i++)
+            {
+                if (!TryGetJsonObjectProperty(element, out JsonElement nestedObject, objectPropertyNames[i]))
+                {
+                    continue;
+                }
+
+                if (TryGetJsonStringProperty(nestedObject, out value, stringPropertyNames))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static int ResolvePacketOwnedRankingOwnerInt32(
             int defaultValue,
             JsonElement primaryElement,
@@ -24014,6 +24431,11 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private bool TryApplyWeddingWishListTransferResultPayload(byte[] payload, out string message)
+        {
+            return _weddingWishListController.TryApplyTransferResultPacket(payload, uiWindowManager, out message);
+        }
+
         private string DispatchWeddingWishListClientRequest(int opcode, IReadOnlyList<byte> payload, string source)
         {
             byte[] safePayload = payload?.ToArray() ?? Array.Empty<byte>();
@@ -24330,11 +24752,16 @@ namespace HaCreator.MapSimulator
                 case "weddinginvitation":
                     applied = TryApplyPacketOwnedMarriageResultPayload(payload, out message);
                     break;
+                case "weddingwishlist":
+                case "wishlisttransfer":
+                case "weddingwishlisttransfer":
+                    applied = TryApplyWeddingWishListTransferResultPayload(payload, out message);
+                    break;
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                ? "Usage: /localutility packetraw <sitresult|teleport|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|220|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
-                : "Usage: /localutility packet <sitresult|teleport|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|220|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
+                ? "Usage: /localutility packetraw <sitresult|teleport|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|weddingwishlist|repairresult|repairdurabilityresult|repairreply|162|193|220|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
+                : "Usage: /localutility packet <sitresult|teleport|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|weddingwishlist|repairresult|repairdurabilityresult|repairreply|162|193|220|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
             }
 
             return applied

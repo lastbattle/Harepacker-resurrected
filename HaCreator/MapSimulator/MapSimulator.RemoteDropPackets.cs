@@ -1887,7 +1887,7 @@ namespace HaCreator.MapSimulator
                 return packet.ActorId;
             }
 
-            int petIndex = Math.Max(0, packet.SecondaryActorId);
+            int petIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(packet.SecondaryActorId);
             if (packet.ActorId > 0 && packet.ActorId == localCharacterId)
             {
                 int localPetRuntimeId = localPetRuntimeIdResolver?.Invoke(petIndex) ?? 0;
@@ -1899,6 +1899,11 @@ namespace HaCreator.MapSimulator
             return packet.ActorId > 0
                 ? BuildRemotePetPickupActorId(packet.ActorId, petIndex)
                 : packet.ActorId;
+        }
+
+        internal static int NormalizeRemotePetPickupSlotIndexForPacketParity(int slotIndex)
+        {
+            return Math.Clamp(slotIndex, 0, RemotePetPickupPredictedSlotCount - 1);
         }
 
         private int ResolveLocalPetRuntimeIdByIndex(int petIndex)

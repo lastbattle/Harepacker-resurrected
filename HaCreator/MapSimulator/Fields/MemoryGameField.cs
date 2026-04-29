@@ -230,6 +230,10 @@ namespace HaCreator.MapSimulator.Fields
         private bool _clientOpponentLayersMaterialized;
         private int _clientReadyLayerReleaseCount;
         private int _clientScoreLayerReleaseCount;
+        private bool _clientPromptLayerMaterialized;
+        private int _clientPromptLayerCreateCount;
+        private int _clientPromptLayerReleaseCount;
+        private int _lastClientPromptResponseSubtype;
 
 
         public enum RoomStage
@@ -385,8 +389,12 @@ namespace HaCreator.MapSimulator.Fields
         public int LastClientDialogUpdateArgument => _lastClientDialogUpdateArgument;
         public int ClientReadyLayerReleaseCount => _clientReadyLayerReleaseCount;
         public int ClientScoreLayerReleaseCount => _clientScoreLayerReleaseCount;
+        public int ClientPromptLayerCreateCount => _clientPromptLayerCreateCount;
+        public int ClientPromptLayerReleaseCount => _clientPromptLayerReleaseCount;
+        public int LastClientPromptResponseSubtype => _lastClientPromptResponseSubtype;
         public bool ClientReadyLayerVisible => HasClientOpponentSeat();
         public bool ClientScoreLayerVisible => HasClientOpponentSeat();
+        public bool ClientPromptLayerVisible => _clientPromptLayerMaterialized;
         public bool ClientReadyButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex != 0;
         public bool ClientStartButtonEnabled => _stage != RoomStage.Playing
             && _localPlayerIndex == 0
@@ -1507,6 +1515,10 @@ namespace HaCreator.MapSimulator.Fields
             _clientOpponentLayersMaterialized = false;
             _clientReadyLayerReleaseCount = 0;
             _clientScoreLayerReleaseCount = 0;
+            _clientPromptLayerMaterialized = false;
+            _clientPromptLayerCreateCount = 0;
+            _clientPromptLayerReleaseCount = 0;
+            _lastClientPromptResponseSubtype = 0;
             SyncMiniRoomRuntime();
         }
 

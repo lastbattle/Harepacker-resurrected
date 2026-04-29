@@ -1445,6 +1445,14 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.CriticalDamageMin > 0
                    || levelData.CriticalDamageMax > 0
                    || levelData.Mastery > 0
+                   || levelData.EnhancedPAD > 0
+                   || levelData.EnhancedMAD > 0
+                   || levelData.EnhancedPDD > 0
+                   || levelData.EnhancedMDD > 0
+                   || levelData.EnhancedMaxHP > 0
+                   || levelData.EnhancedMaxMP > 0
+                   || levelData.IndieMaxHP > 0
+                   || levelData.IndieMaxMP > 0
                    || levelData.AllStat > 0
                    || levelData.ExperienceRate > 0
                    || levelData.DropRate > 0

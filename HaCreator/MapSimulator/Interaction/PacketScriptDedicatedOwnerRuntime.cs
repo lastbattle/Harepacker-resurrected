@@ -35,6 +35,8 @@ namespace HaCreator.MapSimulator.Interaction
             int selectedChoiceIndex = NormalizeChoiceIndex(_activeOwner, _selectedChoiceIndex);
             int pageSize = ResolvePageSize(_activeOwner);
             int currentPage = ResolveCurrentPage(selectedChoiceIndex, pageSize);
+            int pageStartIndex = ResolvePageStartIndex(selectedChoiceIndex, pageSize);
+            int pageChoiceCount = ResolvePageChoiceCount(_activeOwner.Choices.Count, pageStartIndex, pageSize);
             snapshot = new PacketScriptDedicatedOwnerSnapshot(
                 _activeOwner.Kind,
                 _activeOwner.Title,
@@ -45,7 +47,9 @@ namespace HaCreator.MapSimulator.Interaction
                 _activeOwner.InitialSelectionId,
                 selectedChoiceIndex,
                 pageSize,
-                currentPage);
+                currentPage,
+                pageStartIndex,
+                pageChoiceCount);
             return true;
         }
 
@@ -78,6 +82,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _selectedChoiceIndex = index;
+            return true;
+        }
+
+        internal bool SetSelectedPageOffset(int pageOffset)
+        {
+            if (_activeOwner?.Choices == null || _activeOwner.Choices.Count == 0)
+            {
+                return false;
+            }
+
+            int selectedChoiceIndex = NormalizeChoiceIndex(_activeOwner, _selectedChoiceIndex);
+            int pageSize = ResolvePageSize(_activeOwner);
+            int pageStartIndex = ResolvePageStartIndex(selectedChoiceIndex, pageSize);
+            int pageChoiceCount = ResolvePageChoiceCount(_activeOwner.Choices.Count, pageStartIndex, pageSize);
+            if (pageOffset < 0 || pageOffset >= pageChoiceCount)
+            {
+                return false;
+            }
+
+            _selectedChoiceIndex = pageStartIndex + pageOffset;
             return true;
         }
 
@@ -178,6 +202,28 @@ namespace HaCreator.MapSimulator.Interaction
                 : 0;
         }
 
+        private static int ResolvePageStartIndex(int selectedChoiceIndex, int pageSize)
+        {
+            return selectedChoiceIndex >= 0 && pageSize > 0
+                ? (selectedChoiceIndex / pageSize) * pageSize
+                : 0;
+        }
+
+        private static int ResolvePageChoiceCount(int choiceCount, int pageStartIndex, int pageSize)
+        {
+            if (choiceCount <= 0)
+            {
+                return 0;
+            }
+
+            if (pageSize <= 0)
+            {
+                return choiceCount;
+            }
+
+            return Math.Clamp(choiceCount - Math.Max(0, pageStartIndex), 0, pageSize);
+        }
+
         private static int ResolvePageCount(int choiceCount, int pageSize)
         {
             return choiceCount > 0 && pageSize > 0
@@ -207,5 +253,7 @@ namespace HaCreator.MapSimulator.Interaction
         int InitialSelectionId,
         int SelectedChoiceIndex,
         int PageSize,
-        int CurrentPage);
+        int CurrentPage,
+        int PageStartIndex,
+        int PageChoiceCount);
 }

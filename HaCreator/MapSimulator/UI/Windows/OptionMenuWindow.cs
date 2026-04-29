@@ -191,7 +191,7 @@ namespace HaCreator.MapSimulator.UI
             public int SliderStepCount { get; }
             public int ClientControlId { get; }
             public int ClientY { get; }
-            public bool IsClientCombo => ClientControlId >= JoypadClientComboFirstId;
+            public bool IsClientCombo => IsClientJoypadComboControl(ClientControlId, Action.HasValue);
         }
 
         private enum JoypadRowKind
@@ -360,7 +360,7 @@ namespace HaCreator.MapSimulator.UI
                 OptionMenuMode.Game => "CUIGameOpt-style social invite and chat toggles loaded from the client option owner.",
                 OptionMenuMode.System => "System launcher path now routes into the same CUIGameOpt checkbox roster and ids.",
                 OptionMenuMode.Extra => "Additional client option branch routed through the shared owner.",
-                OptionMenuMode.Joypad => "Joypad page now surfaces live pad state and constrained simulator bindings from the shared owner.",
+                OptionMenuMode.Joypad => "Joypad page now surfaces live pad state and constrains recovered CUIJoyPad combos to native Button 1..N entries.",
                 _ => string.Empty,
             };
             _statusMessage = string.IsNullOrWhiteSpace(_launchSource)
@@ -2544,7 +2544,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             // Client evidence: CUIJoyPad::OnCreate and CUIJoyPad::SetDefault both cap combo entries to
-            // zmin(12, m_nJoyBtnNum), where m_nJoyBtnNum is detected per connected pad.
+            // zmin(12, m_nJoyBtnNum), where m_nJoyBtnNum is the native button count. Trigger axes
+            // remain available only on the simulator extension rows below the recovered combo core.
             int detectedButtonCount = PlayerInput.GetDetectedClientJoypadSelectableButtonCount(session.GamepadIndex);
             return Math.Min(
                 JoypadClientSelectableButtonCount,
@@ -3417,6 +3418,18 @@ namespace HaCreator.MapSimulator.UI
         private static int GetJoypadClientCoreSlotIndex(InputAction action)
         {
             return Array.IndexOf(JoypadClientCoreBindingActions, action);
+        }
+
+        internal static bool IsClientJoypadComboControlForTests(int clientControlId, bool hasAction)
+        {
+            return IsClientJoypadComboControl(clientControlId, hasAction);
+        }
+
+        private static bool IsClientJoypadComboControl(int clientControlId, bool hasAction)
+        {
+            return hasAction
+                && clientControlId >= JoypadClientComboFirstId
+                && clientControlId < JoypadClientComboFirstId + JoypadClientComboCount;
         }
 
         private int GetJoypadExtensionRowCount()

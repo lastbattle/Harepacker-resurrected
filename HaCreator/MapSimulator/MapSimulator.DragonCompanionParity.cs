@@ -51,7 +51,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleDragonCompanionCommand(string[] args)
         {
-            const string usage = "Usage: /dragoncompanion [status|capture <payload|packet> <hex> [source...]]";
+            const string usage = "Usage: /dragoncompanion [status|capture <payload|packet|keypad|keypadpacked> <hex> [-- source...]]";
             DragonCompanionRuntime dragonRuntime = _playerManager?.Dragon;
             if (dragonRuntime == null)
             {
@@ -73,7 +73,9 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error(usage);
             }
 
-            bool opcodeFramed;
+            bool opcodeFramed = false;
+            bool keyPadCapture = false;
+            bool packedKeyPadCapture = false;
             if (string.Equals(args[1], "packet", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[1], "raw", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[1], "opcode", StringComparison.OrdinalIgnoreCase))
@@ -84,19 +86,46 @@ namespace HaCreator.MapSimulator
             {
                 opcodeFramed = false;
             }
+            else if (string.Equals(args[1], "keypad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "keypads", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "keypadraw", StringComparison.OrdinalIgnoreCase))
+            {
+                keyPadCapture = true;
+            }
+            else if (string.Equals(args[1], "keypadpacked", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "packedkeypad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "packedkeypads", StringComparison.OrdinalIgnoreCase))
+            {
+                keyPadCapture = true;
+                packedKeyPadCapture = true;
+            }
             else
             {
                 return ChatCommandHandler.CommandResult.Error(usage);
             }
 
-            if (!TryDecodeHexBytes(args[2], out byte[] bytes))
+            if (!TryDecodeDragonCaptureBytes(args, 2, out byte[] bytes, out string source))
             {
                 return ChatCommandHandler.CommandResult.Error("Dragon companion capture hex is invalid.");
             }
 
-            string source = args.Length > 3
-                ? string.Join(" ", args, 3, args.Length - 3)
-                : (opcodeFramed ? "opcode-framed capture" : "payload capture");
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                source = keyPadCapture
+                    ? packedKeyPadCapture ? "packed keypad capture" : "keypad capture"
+                    : opcodeFramed ? "opcode-framed capture" : "payload capture";
+            }
+
+            if (keyPadCapture)
+            {
+                return dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadStateCapture(
+                        bytes,
+                        packedKeyPadCapture,
+                        source,
+                        out string keyPadMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(keyPadMessage)
+                    : ChatCommandHandler.CommandResult.Error(keyPadMessage);
+            }
 
             return dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(
                     bytes,
@@ -105,6 +134,47 @@ namespace HaCreator.MapSimulator
                     out string message)
                 ? ChatCommandHandler.CommandResult.Ok(message)
                 : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private static bool TryDecodeDragonCaptureBytes(
+            string[] args,
+            int hexStartIndex,
+            out byte[] bytes,
+            out string source)
+        {
+            bytes = Array.Empty<byte>();
+            source = null;
+            if (args == null || hexStartIndex >= args.Length)
+            {
+                return false;
+            }
+
+            int sourceSeparatorIndex = Array.FindIndex(
+                args,
+                hexStartIndex,
+                arg => string.Equals(arg, "--", StringComparison.Ordinal));
+            int hexEndIndex = sourceSeparatorIndex >= 0 ? sourceSeparatorIndex : hexStartIndex + 1;
+            if (hexEndIndex <= hexStartIndex)
+            {
+                return false;
+            }
+
+            string hexText = string.Concat(args, hexStartIndex, hexEndIndex - hexStartIndex);
+            if (!TryDecodeHexBytes(hexText, out bytes))
+            {
+                return false;
+            }
+
+            if (sourceSeparatorIndex >= 0 && sourceSeparatorIndex + 1 < args.Length)
+            {
+                source = string.Join(" ", args, sourceSeparatorIndex + 1, args.Length - sourceSeparatorIndex - 1);
+            }
+            else if (sourceSeparatorIndex < 0 && args.Length > hexStartIndex + 1)
+            {
+                source = string.Join(" ", args, hexStartIndex + 1, args.Length - hexStartIndex - 1);
+            }
+
+            return true;
         }
 
         private DragonCompanionRuntime.OwnerPhaseContext ResolveDragonOwnerPhaseContextParity()

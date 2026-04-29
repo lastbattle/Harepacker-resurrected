@@ -1139,8 +1139,7 @@ namespace HaCreator.MapSimulator
             ushort entryCount = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
             int entriesOffset = offset + sizeof(ushort);
             int expectedLength = entriesOffset + (entryCount * (sizeof(int) + sizeof(byte)));
-            if (entryCount == 0
-                || entryCount > 1024
+            if (entryCount > 1024
                 || expectedLength != payload.Length)
             {
                 return false;
@@ -1161,17 +1160,19 @@ namespace HaCreator.MapSimulator
             }
 
             result = new MonsterBookOwnershipSyncPayload(
-                clearRequested: false,
+                clearRequested: entryCount == 0,
                 replaceExisting: true,
-                hasOwnershipSnapshot: counts.Count > 0 || registeredMobId.HasValue,
+                hasOwnershipSnapshot: entryCount == 0 || counts.Count > 0 || registeredMobId.HasValue,
                 saveAccepted: null,
                 requestId: null,
                 characterId: null,
                 characterName: string.Empty,
-                registeredMobId,
+                entryCount == 0 ? null : registeredMobId,
                 counts,
                 statusText: string.Empty);
-            detail = registeredMobId.HasValue
+            detail = entryCount == 0
+                ? "Decoded CMonsterBookMan::LoadBook empty raw ownership table as an authoritative clear."
+                : registeredMobId.HasValue
                 ? "Decoded CMonsterBookMan::LoadBook raw ownership table with registered cover."
                 : "Decoded CMonsterBookMan::LoadBook raw ownership table.";
             return true;

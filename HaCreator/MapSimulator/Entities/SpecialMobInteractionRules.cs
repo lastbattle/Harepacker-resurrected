@@ -61,6 +61,35 @@ namespace HaCreator.MapSimulator.Entities
                 : checked(removeAfter * 1000);
         }
 
+        public static int ResolveSelfDestructionRemoveAfterMilliseconds(MobData mobData)
+        {
+            if (mobData?.SelfDestruction == null)
+            {
+                return -1;
+            }
+
+            int selfDestructionRemoveAfter = NormalizeSelfDestructionRemoveAfterMilliseconds(
+                mobData.SelfDestruction.RemoveAfter);
+            if (selfDestructionRemoveAfter > 0)
+            {
+                return selfDestructionRemoveAfter;
+            }
+
+            return mobData.SelfDestruction.Action > 0
+                ? NormalizeRemoveAfterSecondsToMilliseconds(mobData.RemoveAfter)
+                : -1;
+        }
+
+        public static int ResolveGenericRemoveAfterMilliseconds(MobData mobData)
+        {
+            if (mobData == null || mobData.SelfDestruction != null)
+            {
+                return -1;
+            }
+
+            return NormalizeRemoveAfterSecondsToMilliseconds(mobData.RemoveAfter);
+        }
+
         public static int ResolveEncounterTargetPriority(int? sourceTeam, int? targetTeam)
         {
             int? normalizedSourceTeam = NormalizeEncounterTeam(sourceTeam);

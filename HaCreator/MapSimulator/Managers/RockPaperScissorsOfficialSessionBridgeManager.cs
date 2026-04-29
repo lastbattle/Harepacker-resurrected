@@ -525,7 +525,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} type={entry.RequestType} choice={entry.Choice} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} type={entry.RequestType} choice={entry.Choice} payloadLen={entry.PayloadLength} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -561,7 +561,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} subtype={entry.PacketType} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} subtype={entry.PacketType} payloadLen={entry.PayloadLength} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -1215,6 +1215,16 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsLiveProxiedSource(InboundPacketTrace trace)
         {
             return IsLiveProxiedSource(trace.Source);
+        }
+
+        private static string DescribeTraceEvidenceKind(OutboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace) ? "live-proxied" : "trace-only";
+        }
+
+        private static string DescribeTraceEvidenceKind(InboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace) ? "live-proxied" : "trace-only";
         }
 
         private static bool IsLiveProxiedSource(string source)

@@ -645,6 +645,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException($"Expected {length.ToString(CultureInfo.InvariantCulture)} MapleString byte(s), read {bytes.Length.ToString(CultureInfo.InvariantCulture)}.");
+            }
+
             return Encoding.Default.GetString(bytes);
         }
 

@@ -629,8 +629,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool HasAuthoredSupportOwnedNoActionPacketSkillBranch(SkillData skill)
         {
-            return !string.IsNullOrWhiteSpace(
-                ResolveNamedSummonBranch(skill, "heal", "support", "skill1", "skill2", "stand"));
+            return !string.IsNullOrWhiteSpace(ResolveNoActionSupportOwnedBranch(skill));
         }
 
         private static bool HasAuthoredSupportOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
@@ -696,15 +695,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (hasExplicitSummonCue != hasExplicitSupportCue)
             {
                 return hasExplicitSummonCue
-                    ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.SummonAction)
-                    : ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.Support);
+                    ? ResolveNoActionSummonOwnedBranch(skill)
+                    : ResolveNoActionSupportOwnedBranch(skill);
             }
 
             if (hasExplicitSummonCue)
             {
-                return assistType.HasValue
-                    ? ResolveAssistOwnedPacketSkillBranch(skill, assistType.Value)
-                    : null;
+                return assistType switch
+                {
+                    SummonAssistType.SummonAction => ResolveNoActionSummonOwnedBranch(skill),
+                    SummonAssistType.Support => ResolveNoActionSupportOwnedBranch(skill),
+                    _ => null
+                };
             }
 
             bool hasSummonMinionCue = HasSummonOwnedMinionAbilityCue(skill);
@@ -719,12 +721,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (hasSupportMinionCue)
             {
                 return HasAuthoredSupportOwnedNoActionPacketSkillBranch(skill)
-                    ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.Support)
+                    ? ResolveNoActionSupportOwnedBranch(skill)
                     : null;
             }
 
             return HasAuthoredSummonOwnedNoActionPacketSkillBranch(skill)
-                ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.SummonAction)
+                ? ResolveNoActionSummonOwnedBranch(skill)
                 : null;
         }
 
@@ -1018,6 +1020,23 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2")
                    ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
+        }
+
+        private static string ResolveNoActionSummonOwnedBranch(SkillData skill)
+        {
+            return ResolveNamedSummonBranch(skill, "subsummon");
+        }
+
+        private static string ResolveNoActionSupportOwnedBranch(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return null;
+            }
+
+            return HasMinionAbilityToken(skill.MinionAbility, "heal")
+                ? ResolveNamedSummonBranch(skill, "heal", "support", "stand")
+                : ResolveNamedSummonBranch(skill, "support", "heal", "stand");
         }
 
         internal static string ResolveStrictSubsummonActionBranch(SkillData skill)

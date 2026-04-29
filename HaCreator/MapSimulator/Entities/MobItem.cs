@@ -804,8 +804,8 @@ namespace HaCreator.MapSimulator.Entities
                     isEscortMob,
                     mobData.SelfDestruction?.Hp ?? -1,
                     mobData.SelfDestruction?.Action ?? -1,
-                    SpecialMobInteractionRules.NormalizeSelfDestructionRemoveAfterMilliseconds(mobData.SelfDestruction?.RemoveAfter ?? -1),
-                    SpecialMobInteractionRules.NormalizeRemoveAfterSecondsToMilliseconds(mobData.RemoveAfter));
+                    SpecialMobInteractionRules.ResolveSelfDestructionRemoveAfterMilliseconds(mobData),
+                    SpecialMobInteractionRules.ResolveGenericRemoveAfterMilliseconds(mobData));
                 AI.ConfigureAngerGauge(mobData.HasAngerGauge, mobData.ChargeCount);
 
                 // Set aggro range based on mob level/boss status
@@ -1307,8 +1307,15 @@ namespace HaCreator.MapSimulator.Entities
             if (_animationController == null)
                 return;
 
-            if (action == _animationController.CurrentAction)
+            bool isOneShot = IsClientOneShotMobAction(action);
+            if (ShouldSkipMobActionChange(
+                    action,
+                    _animationController.CurrentAction,
+                    _isPlayingOneShot,
+                    _animationController.IsAnimationComplete))
+            {
                 return;
+            }
 
             // If currently playing a one-shot animation (jump/hit) and it hasn't completed, don't interrupt
             if (_isPlayingOneShot && !_animationController.IsAnimationComplete)
@@ -1317,13 +1324,6 @@ namespace HaCreator.MapSimulator.Entities
                 if (action != AnimationKeys.Die1 && action != AnimationKeys.Die2 && action != AnimationKeys.Die)
                     return;
             }
-
-            // Determine if this is a one-shot animation
-            bool isOneShot = action == AnimationKeys.Jump ||
-                             action == AnimationKeys.Die1 || action == AnimationKeys.Die2 || action == AnimationKeys.Die ||
-                             action == AnimationKeys.Hit1 || action == AnimationKeys.Hit2 || action == AnimationKeys.Hit ||
-                             action.StartsWith("attack") ||
-                             action.StartsWith("skill");
 
             if (isOneShot)
             {
@@ -1357,6 +1357,44 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             TryStartActionSpeech(action, Environment.TickCount);
+        }
+
+        private static bool ShouldSkipMobActionChange(
+            string requestedAction,
+            string currentAction,
+            bool isPlayingOneShot,
+            bool isAnimationComplete)
+        {
+            if (!string.Equals(requestedAction, currentAction, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return !isPlayingOneShot || !isAnimationComplete || !IsClientOneShotMobAction(requestedAction);
+        }
+
+        internal static bool ShouldSkipMobActionChangeForTests(
+            string requestedAction,
+            string currentAction,
+            bool isPlayingOneShot,
+            bool isAnimationComplete)
+        {
+            return ShouldSkipMobActionChange(requestedAction, currentAction, isPlayingOneShot, isAnimationComplete);
+        }
+
+        private static bool IsClientOneShotMobAction(string action)
+        {
+            return action == AnimationKeys.Jump ||
+                   action == AnimationKeys.Die1 || action == AnimationKeys.Die2 || action == AnimationKeys.Die ||
+                   action == AnimationKeys.Hit1 || action == AnimationKeys.Hit2 || action == AnimationKeys.Hit ||
+                   (!string.IsNullOrEmpty(action) &&
+                    (action.StartsWith("attack", StringComparison.Ordinal) ||
+                     action.StartsWith("skill", StringComparison.Ordinal)));
+        }
+
+        internal static bool IsClientOneShotMobActionForTests(string action)
+        {
+            return IsClientOneShotMobAction(action);
         }
 
         internal void TryStartActionSpeech(string action, int currentTick)

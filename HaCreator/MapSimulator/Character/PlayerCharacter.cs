@@ -615,6 +615,7 @@ namespace HaCreator.MapSimulator.Character
         private int _attackFrame;
         private string _forcedActionName;
         private bool _sustainedSkillAnimation;
+        private int _clientOwnedOneTimeActionMinimumEndTime = int.MinValue;
         private SkillAvatarTransformState _activeSkillAvatarTransform;
         private SkillAvatarTransformState _activeExternalAvatarTransform;
         private int _activeExternalAvatarTransformExpiresAt = int.MaxValue;
@@ -2054,7 +2055,8 @@ namespace HaCreator.MapSimulator.Character
                 int attackDuration = ResolveCurrentClientActionLayerDuration();
                 if (attackDuration > 0)
                 {
-                    if (currentTime - _animationStartTime >= attackDuration)
+                    if (currentTime - _animationStartTime >= attackDuration
+                        && !ShouldHoldClientOwnedOneTimeAction(currentTime))
                     {
                         BeginMeleeAfterImageFade(currentTime);
                         ClearForcedActionName();
@@ -2065,7 +2067,8 @@ namespace HaCreator.MapSimulator.Character
                 else
                 {
                     // No animation found - return to standing after short delay
-                    if (currentTime - _animationStartTime >= 300)
+                    if (currentTime - _animationStartTime >= 300
+                        && !ShouldHoldClientOwnedOneTimeAction(currentTime))
                     {
                         ClearForcedActionName();
                         State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
@@ -4099,7 +4102,8 @@ namespace HaCreator.MapSimulator.Character
             string actionName,
             int skillId = 0,
             int currentTime = int.MinValue,
-            bool playEffectiveWeaponSfx = false)
+            bool playEffectiveWeaponSfx = false,
+            int minimumDurationMs = 0)
         {
             // Map action name to CharacterAction
             ClearPortableChair(standUp: false);
@@ -4124,6 +4128,9 @@ namespace HaCreator.MapSimulator.Character
             _animationStartTime = currentTime == int.MinValue
                 ? Environment.TickCount
                 : currentTime;
+            _clientOwnedOneTimeActionMinimumEndTime = ResolveClientOwnedOneTimeActionMinimumEndTime(
+                _animationStartTime,
+                minimumDurationMs);
             SyncAssemblerActionLayerContext();
             RefreshAvatarActionLayerState();
             RefreshMountedActionLayerState();
@@ -4158,6 +4165,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentActionName = actionName;
             CurrentSkillAnimationSkillId = skillId;
             CurrentSkillAnimationStartTime = currentTime;
+            _clientOwnedOneTimeActionMinimumEndTime = int.MinValue;
             StoreMeleeAfterImageOwnerCounter(currentTime == int.MinValue ? Environment.TickCount : currentTime);
             _activeMeleeAfterImage = null;
 
@@ -5897,19 +5905,18 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            if (currentTime < _activeMeleeAfterImage.ActivationStartTime)
-            {
-                string currentActionName = State == PlayerState.Attacking
-                    ? CurrentActionName
-                    : null;
-                MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
+            string currentActionName = State == PlayerState.Attacking
+                ? CurrentActionName
+                : null;
+            if (MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
                     currentTime,
                     _activeMeleeAfterImage.ActivationStartTime,
                     currentActionName,
                     _activeMeleeAfterImage.ActionName,
                     _activeMeleeAfterImage.AnimationStartTime,
                     _activeMeleeAfterImage.ActionDuration,
-                    out bool shouldClear);
+                    out bool shouldClear))
+            {
                 if (shouldClear)
                 {
                     StoreMeleeAfterImageOwnerCounter(currentTime);
@@ -7787,7 +7794,7 @@ namespace HaCreator.MapSimulator.Character
                 signature.Add((int)part.PartType);
                 signature.Add((int)part.RenderLayer);
                 signature.Add(part.ZLayer, StringComparer.Ordinal);
-                signature.Add(RuntimeHelpers.GetHashCode(part.SourcePortableChairLayer));
+                AddMirrorImagePortableChairLayerIdentity(ref signature, part.SourcePortableChairLayer);
                 AddMirrorImageSourcePartIdentity(ref signature, part.SourcePart);
                 IReadOnlyList<string> visibilityTokens = part.VisibilityTokens;
                 signature.Add(RuntimeHelpers.GetHashCode(visibilityTokens));
@@ -7953,6 +7960,21 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.TamingMobActionFrameOwner));
             signature.Add(RuntimeHelpers.GetHashCode(sourcePart.MorphActionFrameOwner));
             AddMirrorImageDerivedSourcePartIdentity(ref signature, sourcePart);
+        }
+
+        private static void AddMirrorImagePortableChairLayerIdentity(ref HashCode signature, PortableChairLayer layer)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(layer));
+            if (layer == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add(layer.Name, StringComparer.Ordinal);
+            signature.Add(layer.RelativeZ);
+            signature.Add(layer.PositionHint);
+            AddMirrorImageAnimationIdentity(ref signature, layer.Animation);
         }
 
         private static void AddMirrorImageDerivedSourcePartIdentity(ref HashCode signature, CharacterPart sourcePart)
@@ -11373,9 +11395,34 @@ namespace HaCreator.MapSimulator.Character
         {
             _sustainedSkillAnimation = false;
             _forcedActionName = null;
+            _clientOwnedOneTimeActionMinimumEndTime = int.MinValue;
             ClearMountedActionLayerState();
             _avatarActionLayerState = null;
             SetTransientTamingMobOverride(null);
+        }
+
+        private static int ResolveClientOwnedOneTimeActionMinimumEndTime(int startTime, int minimumDurationMs)
+        {
+            if (minimumDurationMs <= 0)
+            {
+                return int.MinValue;
+            }
+
+            long minimumEndTime = (long)startTime + minimumDurationMs;
+            if (minimumEndTime > int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            return minimumEndTime < int.MinValue
+                ? int.MinValue
+                : (int)minimumEndTime;
+        }
+
+        private bool ShouldHoldClientOwnedOneTimeAction(int currentTime)
+        {
+            return _clientOwnedOneTimeActionMinimumEndTime != int.MinValue
+                && currentTime < _clientOwnedOneTimeActionMinimumEndTime;
         }
 
         private void ClearMountedActionLayerState()

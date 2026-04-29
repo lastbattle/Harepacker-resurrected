@@ -79,7 +79,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly int[] CleanSlateScrollIds =
         {
             2049000, 2049001, 2049002, 2049003, 2049004, 2049005, 2049006,
-            2049007, 2049008, 2049009, 2049010, 2049011
+            2049007, 2049008, 2049009, 2049010, 2049011, 2049012, 2049013
         };
         private static readonly int[] InnocenceScrollIds = { 2049600, 2049601, 2049604 };
         private static readonly int[] GoldenHammerIds = { 2470000, 2470001, 2470002 };
@@ -3379,7 +3379,10 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryCreateDynamicConsumableDefinition(int itemId, out EnhancementConsumableDefinition definition)
         {
             definition = default;
-            if (CleanSlateScrollIds.Contains(itemId))
+            if (IsKnownSlotRecoveryScrollId(itemId) ||
+                IsWzAuthoredSlotRecoveryScrollText(
+                    ResolveCachedItemNameOrFallback(itemId),
+                    ResolveCachedItemDescription(itemId)))
             {
                 return TryCreateWzConsumeDefinition(itemId, ConsumableEffectType.SlotRecovery, out definition);
             }
@@ -4514,6 +4517,16 @@ namespace HaCreator.MapSimulator.UI
             return ResolveCashEquipmentBlockFromDescription(description);
         }
 
+        internal static bool IsKnownSlotRecoveryScrollIdForTesting(int itemId)
+        {
+            return IsKnownSlotRecoveryScrollId(itemId);
+        }
+
+        internal static bool IsWzAuthoredSlotRecoveryScrollTextForTesting(string itemName, string description)
+        {
+            return IsWzAuthoredSlotRecoveryScrollText(itemName, description);
+        }
+
         internal static int ResolveHammerSuccessRateFromDescriptionForTesting(string description)
         {
             if (string.IsNullOrWhiteSpace(description))
@@ -4919,6 +4932,30 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static bool IsKnownSlotRecoveryScrollId(int itemId)
+        {
+            return CleanSlateScrollIds.Contains(itemId);
+        }
+
+        private static bool IsWzAuthoredSlotRecoveryScrollText(string itemName, string description)
+        {
+            string normalizedName = itemName ?? string.Empty;
+            string normalizedDescription = description ?? string.Empty;
+            bool namedRecoveryScroll =
+                normalizedName.IndexOf("Clean Slate", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalizedName.IndexOf("Reverse Scroll", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!namedRecoveryScroll)
+            {
+                return false;
+            }
+
+            return normalizedDescription.IndexOf("upgrade", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                   (normalizedDescription.IndexOf("lost", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    normalizedDescription.IndexOf("recover", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    normalizedDescription.IndexOf("restore", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    normalizedDescription.IndexOf("reverse", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         private static string NormalizeAccessorySubsetLabel(string subsetText)

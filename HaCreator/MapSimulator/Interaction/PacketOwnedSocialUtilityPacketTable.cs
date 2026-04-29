@@ -415,6 +415,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static bool IsRecoveredTerminalResultOpcode(string ownerName, int requestOpcode, int inboundOpcode)
+        {
+            return string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase)
+                && requestOpcode == MapleTvOutboundConsumeCashItemOpcode
+                && inboundOpcode == MapleTvInboundSendResultOpcode;
+        }
+
         internal static bool TryDecodeRecoveredInboundBranch(
             string ownerName,
             int inboundOpcode,

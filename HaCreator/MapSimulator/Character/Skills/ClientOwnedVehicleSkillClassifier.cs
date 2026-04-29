@@ -285,6 +285,23 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static readonly string[] ClientConfirmedMechanicVehicleRenderableOneTimeActionNames =
             ResolveClientRawActionNames(
+                // IDA `IsAbleTamingMobOneTimeAction` admits these raw actions for
+                // vehicle id 1932016, and Character/TamingMob/01932016 publishes exact
+                // frame roots for them. Keep them in the explicit one-time renderable
+                // bucket instead of relying only on the broader current-action list.
+                218, // siege_pre
+                219, // siege
+                220, // siege_stand
+                222, // tank_pre
+                224, // tank_walk
+                225, // tank_stand
+                226, // tank_prone
+                228, // tank_laser
+                233, // tank_msummon
+                236, // tank_msummon2
+                238, // rbooster_pre
+                239, // rbooster
+                240, // rbooster_after
                 241, // gatlingshot2
                 235, // tank_rbooster_after
                 248, // drillrush

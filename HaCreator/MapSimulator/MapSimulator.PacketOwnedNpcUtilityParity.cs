@@ -621,7 +621,7 @@ namespace HaCreator.MapSimulator
                 ShowFieldRestrictionMessage(fieldRestrictionMessage);
                 adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
                     "CAdminShopDlg owner surface stayed hidden because current field metadata blocks shop owners.",
-                    AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden);
+                    AdminShopPacketOwnedOwnerVisibilityState.HiddenByFieldRestriction);
                 return $"{defaultMessage} Admin Shop stayed in status-only mode because current field metadata blocks shop owners.";
             }
 
@@ -630,7 +630,7 @@ namespace HaCreator.MapSimulator
             {
                 adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
                     $"CAdminShopDlg owner surface stayed hidden because {blockingOwner} already owned the unique-modeless slot.",
-                    AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden);
+                    AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner);
                 return $"{defaultMessage} Admin Shop stayed in status-only mode because {blockingOwner} is already visible.";
             }
 

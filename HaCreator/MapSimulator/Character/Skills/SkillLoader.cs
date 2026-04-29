@@ -164,18 +164,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 [4111002] = new[]
                 {
+                    4001003,
                     4101003, 4101004,
                     4111001, 4111003, 4111005, 4111007,
                     4121000, 4121003, 4121004, 4121008
                 },
                 [4211008] = new[]
                 {
-                    4201002, 4201003, 4201005,
+                    4001003,
+                    4201002, 4201003, 4201004, 4201005,
                     4211001, 4211002, 4211003, 4211005, 4211006, 4211007,
                     4221000, 4221001, 4221003, 4221004, 4221006, 4221007
                 },
                 [14111000] = new[]
                 {
+                    14001003, 14001005,
                     14101002, 14101003, 14101006,
                     14111001, 14111002, 14111006
                 }
@@ -6643,6 +6646,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             int skillId,
             string skillIdText)
         {
+            if (TryReadClientSummonedUolTableOwnerSkillId(tableNode, out int tableOwnerSkillId)
+                && tableOwnerSkillId == skillId)
+            {
+                yield return tableNode;
+            }
+
             WzImageProperty directEntry = tableNode[skillIdText];
             if (directEntry != null)
             {
@@ -6959,14 +6968,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("nskillid", StringComparison.Ordinal)
                    || normalizedName.Equals("currentskillid", StringComparison.Ordinal)
                    || normalizedName.Equals("sourceskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("currentskill", StringComparison.Ordinal)
+                   || normalizedName.Equals("sourceskill", StringComparison.Ordinal)
                    || normalizedName.Equals("summonedskillid", StringComparison.Ordinal)
+                   || normalizedName.Equals("summonedskill", StringComparison.Ordinal)
                    || normalizedName.Equals("skill", StringComparison.Ordinal)
                    || normalizedName.Equals("nskill", StringComparison.Ordinal)
+                   || normalizedName.Equals("skillpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("skillidpath", StringComparison.Ordinal)
                    || normalizedName.Equals("id", StringComparison.Ordinal)
                    || normalizedName.Equals("key", StringComparison.Ordinal)
                    || normalizedName.Equals("owner", StringComparison.Ordinal)
                    || normalizedName.Equals("ownerskill", StringComparison.Ordinal)
                    || normalizedName.Equals("ownerid", StringComparison.Ordinal)
+                   || normalizedName.Equals("ownerpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("sourceowner", StringComparison.Ordinal)
+                   || normalizedName.Equals("summonowner", StringComparison.Ordinal)
+                   || normalizedName.Equals("summonedowner", StringComparison.Ordinal)
                    || normalizedName.Equals("summonskillid", StringComparison.Ordinal)
                    || normalizedName.Equals("ownerskillid", StringComparison.Ordinal);
         }
@@ -6990,14 +7008,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                          "nskillid",
                          "currentskillid",
                          "sourceskillid",
+                         "currentskill",
+                         "sourceskill",
                          "summonedskillid",
+                         "summonedskill",
                          "skill",
                          "nskill",
+                         "skillpath",
+                         "skillidpath",
                          "id",
                          "key",
                          "owner",
                          "ownerskill",
                          "ownerid",
+                         "ownerpath",
+                         "sourceowner",
+                         "summonowner",
+                         "summonedowner",
                          "summonskillid",
                          "ownerskillid"
                      })
@@ -8381,6 +8408,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 char current = token[i];
                 if (current == '\\' && i < token.Length - 1)
                 {
+                    if (i < token.Length - 5
+                        && (token[i + 1] == 'u' || token[i + 1] == 'U')
+                        && TryParseClientSummonedUolUnicodeEscapedChar(
+                            token,
+                            i + 2,
+                            out char unicodeDecoded)
+                        && IsClientSummonedUolDecodedPathCharacter(unicodeDecoded))
+                    {
+                        builder.Append(unicodeDecoded == '\\' ? '/' : unicodeDecoded);
+                        i += 5;
+                        continue;
+                    }
+
                     char escaped = token[i + 1];
                     if (IsClientSummonedUolEscapedPathSyntaxCharacter(escaped))
                     {
@@ -8427,6 +8467,34 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return (character >= 0x20 && character <= 0x7E)
                    || char.IsWhiteSpace(character);
+        }
+
+        private static bool TryParseClientSummonedUolUnicodeEscapedChar(
+            string token,
+            int firstHexIndex,
+            out char decoded)
+        {
+            decoded = '\0';
+            if (string.IsNullOrEmpty(token)
+                || firstHexIndex < 0
+                || firstHexIndex + 3 >= token.Length)
+            {
+                return false;
+            }
+
+            int value = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                if (!TryParseClientSummonedUolHexDigit(token[firstHexIndex + i], out int digit))
+                {
+                    return false;
+                }
+
+                value = (value << 4) | digit;
+            }
+
+            decoded = (char)value;
+            return true;
         }
 
         private static bool TryParseClientSummonedUolPercentEncodedChar(
@@ -11477,6 +11545,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.Speed = PreferPrimaryStat(levelData.Speed, GetInt(node, "psdSpeed", 0, level));
             levelData.SpeedMax = PreferPrimaryStat(levelData.SpeedMax, GetInt(node, "speedMax", 0, level));
             levelData.Jump = PreferPrimaryStat(levelData.Jump, GetInt(node, "psdJump", 0, level));
+            levelData.AttackPercent = PreferPrimaryStat(levelData.AttackPercent, GetInt(node, "padR", 0, level));
+            levelData.AttackPercent = PreferPrimaryStat(levelData.AttackPercent, GetInt(node, "padRate", 0, level));
+            levelData.AttackPercent = PreferPrimaryStat(levelData.AttackPercent, GetInt(node, "indiePadR", 0, level));
+            levelData.MagicAttackPercent = PreferPrimaryStat(levelData.MagicAttackPercent, GetInt(node, "madR", 0, level));
+            levelData.MagicAttackPercent = PreferPrimaryStat(levelData.MagicAttackPercent, GetInt(node, "madRate", 0, level));
+            levelData.MagicAttackPercent = PreferPrimaryStat(levelData.MagicAttackPercent, GetInt(node, "indieMadR", 0, level));
+            levelData.SpeedPercent = PreferPrimaryStat(levelData.SpeedPercent, GetInt(node, "speedR", 0, level));
+            levelData.SpeedPercent = PreferPrimaryStat(levelData.SpeedPercent, GetInt(node, "speedRate", 0, level));
+            levelData.SpeedPercent = PreferPrimaryStat(levelData.SpeedPercent, GetInt(node, "indieSpeedR", 0, level));
+            levelData.StrengthPercent = PreferPrimaryStat(levelData.StrengthPercent, GetInt(node, "strR", 0, level));
+            levelData.StrengthPercent = PreferPrimaryStat(levelData.StrengthPercent, GetInt(node, "indieStrR", 0, level));
+            levelData.DexterityPercent = PreferPrimaryStat(levelData.DexterityPercent, GetInt(node, "dexR", 0, level));
+            levelData.DexterityPercent = PreferPrimaryStat(levelData.DexterityPercent, GetInt(node, "indieDexR", 0, level));
+            levelData.IntelligencePercent = PreferPrimaryStat(levelData.IntelligencePercent, GetInt(node, "intR", 0, level));
+            levelData.IntelligencePercent = PreferPrimaryStat(levelData.IntelligencePercent, GetInt(node, "indieIntR", 0, level));
+            levelData.LuckPercent = PreferPrimaryStat(levelData.LuckPercent, GetInt(node, "lukR", 0, level));
+            levelData.LuckPercent = PreferPrimaryStat(levelData.LuckPercent, GetInt(node, "indieLukR", 0, level));
+            levelData.AllStatPercent = PreferPrimaryStat(levelData.AllStatPercent, GetInt(node, "allStatR", 0, level));
+            levelData.AllStatPercent = PreferPrimaryStat(levelData.AllStatPercent, GetInt(node, "indieAllStatR", 0, level));
             levelData.StrengthToDexterityPercent = GetInt(node, "str2dex", 0, level);
             levelData.DexterityToStrengthPercent = GetInt(node, "dex2str", 0, level);
             levelData.IntelligenceToLuckPercent = GetInt(node, "int2luk", 0, level);

@@ -13,6 +13,8 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int PacketScriptDedicatedOwnerRowHeight = 30;
+        private const int PacketScriptSlideMenuGridColumns = 4;
+        private const int PacketScriptSlideMenuGridRows = 2;
         private const float PacketScriptDedicatedOwnerPromptScale = 0.42f;
         private const float PacketScriptDedicatedOwnerDetailScale = 0.36f;
         private const float PacketScriptDedicatedOwnerChoiceScale = 0.42f;
@@ -102,6 +104,12 @@ namespace HaCreator.MapSimulator
                 mouseState.LeftButton == ButtonState.Released &&
                 previousMouseState.LeftButton == ButtonState.Pressed)
             {
+                if (TryResolvePacketScriptDedicatedOwnerPageOffset(snapshot, layout.SelectionBounds, cursor, out int pageOffset) &&
+                    _packetScriptDedicatedOwnerRuntime.SetSelectedPageOffset(pageOffset))
+                {
+                    return true;
+                }
+
                 SubmitPacketScriptDedicatedOwnerSelection(confirm: true, showFeedback: true);
                 return true;
             }
@@ -310,7 +318,10 @@ namespace HaCreator.MapSimulator
             }
 
             DrawPacketScriptOwnerWrappedText(snapshot.PromptText, promptBounds, new Color(76, 46, 24), PacketScriptDedicatedOwnerPromptScale, maxLines: 3);
-            DrawPacketScriptOwnerWrappedText(ResolvePacketScriptDedicatedOwnerSelectionText(snapshot), layout.SelectionBounds, Color.Black, PacketScriptDedicatedOwnerChoiceScale, maxLines: 1);
+            if (!UsesPacketScriptSlideMenuGrid(snapshot))
+            {
+                DrawPacketScriptOwnerWrappedText(ResolvePacketScriptDedicatedOwnerSelectionText(snapshot), layout.SelectionBounds, Color.Black, PacketScriptDedicatedOwnerChoiceScale, maxLines: 1);
+            }
             if (!string.IsNullOrWhiteSpace(snapshot.DetailText))
             {
                 DrawPacketScriptOwnerWrappedText(snapshot.DetailText, detailBounds, new Color(92, 64, 38), PacketScriptDedicatedOwnerDetailScale, maxLines: 5);
@@ -378,7 +389,7 @@ namespace HaCreator.MapSimulator
             PacketScriptOwnerLayer choiceFrame = snapshot.Mode == 0 ? _packetScriptSlideMenuType0Choice : _packetScriptSlideMenuType1Choice;
             _ = TryDrawPacketScriptOwnerAnchoredLayer(ownerBounds, choiceFrame, allowZeroOriginAnchors, out _);
 
-            DrawPacketScriptSlideMenuMainChoiceButton(snapshot, coverBounds);
+            DrawPacketScriptSlideMenuMainChoiceButtons(snapshot, coverBounds);
 
             if (snapshot.Mode == 0 && _packetScriptSlideMenuType0Recommend?.Texture != null)
             {
@@ -386,17 +397,34 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void DrawPacketScriptSlideMenuMainChoiceButton(PacketScriptDedicatedOwnerSnapshot snapshot, Rectangle selectionBounds)
+        private void DrawPacketScriptSlideMenuMainChoiceButtons(PacketScriptDedicatedOwnerSnapshot snapshot, Rectangle selectionBounds)
         {
-            PacketScriptButtonVisuals choiceVisuals = ResolvePacketScriptSlideMenuMainChoiceVisuals(snapshot);
+            if (UsesPacketScriptSlideMenuGrid(snapshot))
+            {
+                for (int pageOffset = 0; pageOffset < snapshot.PageChoiceCount; pageOffset++)
+                {
+                    int choiceIndex = snapshot.PageStartIndex + pageOffset;
+                    Rectangle cellBounds = ResolvePacketScriptSlideMenuGridCellBounds(selectionBounds, pageOffset);
+                    DrawPacketScriptSlideMenuMainChoiceButton(snapshot, choiceIndex, cellBounds);
+                }
+
+                return;
+            }
+
+            DrawPacketScriptSlideMenuMainChoiceButton(snapshot, snapshot?.SelectedChoiceIndex ?? -1, selectionBounds);
+        }
+
+        private void DrawPacketScriptSlideMenuMainChoiceButton(PacketScriptDedicatedOwnerSnapshot snapshot, int choiceIndex, Rectangle selectionBounds)
+        {
+            PacketScriptButtonVisuals choiceVisuals = ResolvePacketScriptSlideMenuMainChoiceVisuals(snapshot, choiceIndex);
             if (choiceVisuals == null || selectionBounds == Rectangle.Empty)
             {
                 return;
             }
 
             bool enabled = snapshot?.Choices != null &&
-                           snapshot.SelectedChoiceIndex >= 0 &&
-                           snapshot.SelectedChoiceIndex < snapshot.Choices.Count;
+                           choiceIndex >= 0 &&
+                           choiceIndex < snapshot.Choices.Count;
             MouseState mouseState = Mouse.GetState();
             bool hovered = enabled && selectionBounds.Contains(mouseState.Position);
             bool pressed = hovered && mouseState.LeftButton == ButtonState.Pressed;
@@ -406,7 +434,9 @@ namespace HaCreator.MapSimulator
                     ? choiceVisuals.ResolveFrame(PacketScriptOwnerButtonVisualState.Pressed)
                     : hovered
                         ? choiceVisuals.ResolveFrame(PacketScriptOwnerButtonVisualState.Hover)
-                        : choiceVisuals.ResolveFocusedFrame();
+                        : choiceIndex == snapshot.SelectedChoiceIndex
+                            ? choiceVisuals.ResolveFocusedFrame()
+                            : choiceVisuals.ResolveFrame(PacketScriptOwnerButtonVisualState.Normal);
             if (frame?.Texture == null)
             {
                 return;
@@ -420,7 +450,7 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(frame.Texture, drawBounds, Color.White);
         }
 
-        private PacketScriptButtonVisuals ResolvePacketScriptSlideMenuMainChoiceVisuals(PacketScriptDedicatedOwnerSnapshot snapshot)
+        private PacketScriptButtonVisuals ResolvePacketScriptSlideMenuMainChoiceVisuals(PacketScriptDedicatedOwnerSnapshot snapshot, int choiceIndex)
         {
             IReadOnlyDictionary<int, PacketScriptButtonVisuals> visualsById = snapshot?.Mode == 0
                 ? _packetScriptSlideMenuType0MainButtonVisualsById
@@ -431,10 +461,10 @@ namespace HaCreator.MapSimulator
             }
 
             if (snapshot?.Choices != null &&
-                snapshot.SelectedChoiceIndex >= 0 &&
-                snapshot.SelectedChoiceIndex < snapshot.Choices.Count)
+                choiceIndex >= 0 &&
+                choiceIndex < snapshot.Choices.Count)
             {
-                NpcInteractionChoice selectedChoice = snapshot.Choices[snapshot.SelectedChoiceIndex];
+                NpcInteractionChoice selectedChoice = snapshot.Choices[choiceIndex];
                 if (selectedChoice?.SubmissionNumericValue is int selectionId &&
                     visualsById.TryGetValue(selectionId, out PacketScriptButtonVisuals bySelectionId))
                 {
@@ -442,8 +472,8 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (snapshot?.SelectedChoiceIndex >= 0 &&
-                visualsById.TryGetValue(snapshot.SelectedChoiceIndex, out PacketScriptButtonVisuals byIndex))
+            if (choiceIndex >= 0 &&
+                visualsById.TryGetValue(choiceIndex, out PacketScriptButtonVisuals byIndex))
             {
                 return byIndex;
             }
@@ -452,6 +482,58 @@ namespace HaCreator.MapSimulator
                 .OrderBy(static entry => entry.Key)
                 .Select(static entry => entry.Value)
                 .FirstOrDefault(static value => value != null);
+        }
+
+        internal static bool TryResolvePacketScriptDedicatedOwnerPageOffset(
+            PacketScriptDedicatedOwnerSnapshot snapshot,
+            Rectangle selectionBounds,
+            Point cursor,
+            out int pageOffset)
+        {
+            pageOffset = -1;
+            if (!UsesPacketScriptSlideMenuGrid(snapshot) || selectionBounds == Rectangle.Empty || !selectionBounds.Contains(cursor))
+            {
+                return false;
+            }
+
+            int column = Math.Clamp((cursor.X - selectionBounds.X) * PacketScriptSlideMenuGridColumns / Math.Max(1, selectionBounds.Width), 0, PacketScriptSlideMenuGridColumns - 1);
+            int row = Math.Clamp((cursor.Y - selectionBounds.Y) * PacketScriptSlideMenuGridRows / Math.Max(1, selectionBounds.Height), 0, PacketScriptSlideMenuGridRows - 1);
+            pageOffset = (row * PacketScriptSlideMenuGridColumns) + column;
+            return pageOffset >= 0 && pageOffset < snapshot.PageChoiceCount;
+        }
+
+        internal static Rectangle ResolvePacketScriptSlideMenuGridCellBounds(Rectangle selectionBounds, int pageOffset)
+        {
+            if (selectionBounds == Rectangle.Empty || pageOffset < 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int column = pageOffset % PacketScriptSlideMenuGridColumns;
+            int row = pageOffset / PacketScriptSlideMenuGridColumns;
+            if (row < 0 || row >= PacketScriptSlideMenuGridRows)
+            {
+                return Rectangle.Empty;
+            }
+
+            int cellWidth = Math.Max(1, selectionBounds.Width / PacketScriptSlideMenuGridColumns);
+            int cellHeight = Math.Max(1, selectionBounds.Height / PacketScriptSlideMenuGridRows);
+            int x = selectionBounds.X + (column * cellWidth);
+            int y = selectionBounds.Y + (row * cellHeight);
+            int width = column == PacketScriptSlideMenuGridColumns - 1
+                ? Math.Max(1, selectionBounds.Right - x)
+                : cellWidth;
+            int height = row == PacketScriptSlideMenuGridRows - 1
+                ? Math.Max(1, selectionBounds.Bottom - y)
+                : cellHeight;
+            return new Rectangle(x, y, width, height);
+        }
+
+        private static bool UsesPacketScriptSlideMenuGrid(PacketScriptDedicatedOwnerSnapshot snapshot)
+        {
+            return snapshot?.Kind == PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu &&
+                   snapshot.Mode == 0 &&
+                   snapshot.PageSize == PacketScriptSlideMenuGridColumns * PacketScriptSlideMenuGridRows;
         }
 
         private void DrawPacketScriptDedicatedOwnerButton(
