@@ -221,6 +221,17 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public static int ResolveClientShortcutButtonId(bool hasPremiumChoice, bool premiumModifier)
+        {
+            // The simulator exposes R as the local keyboard seam for the revive owner.
+            // Keep it on the same button ids recovered from CUIRevive::OnButtonClicked:
+            // single-button shells confirm through id 6, while two-button shells use
+            // id 7 unless the premium modifier requests the id 6 branch.
+            return premiumModifier || !hasPremiumChoice
+                ? ClientYesButtonId
+                : ClientNoButtonId;
+        }
+
         public static ReviveOwnerTransferRequest CreateTransferRequest(ReviveOwnerResolution resolution)
         {
             return new ReviveOwnerTransferRequest(

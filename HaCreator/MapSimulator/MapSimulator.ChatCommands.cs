@@ -3239,7 +3239,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "guildboss",
                 "Inspect or update guild boss healer and pulley state",
-                "/guildboss [status|transport [status]|session [status|verify|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
+                "/guildboss [status|transport [status]|session [status|verify|recent|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
                 args =>
                 {
                     GuildBossField guildBoss = _specialFieldRuntime.SpecialEffects.GuildBoss;
@@ -3292,6 +3292,11 @@ namespace HaCreator.MapSimulator
                             return verified
                                 ? ChatCommandHandler.CommandResult.Ok($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}")
                                 : ChatCommandHandler.CommandResult.Info($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(_guildBossOfficialSessionBridge.DescribeRecentPackets());
                         }
 
 
@@ -7197,9 +7202,9 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        massacre.OnClock(2, seconds, currTickCount);
-
-                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                        return massacre.TryApplyClock(2, seconds, currTickCount, out string clockMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus())
+                            : ChatCommandHandler.CommandResult.Error(clockMessage);
 
                     }
 
@@ -7230,9 +7235,9 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        massacre.OnMassacreIncGauge(incGauge, currTickCount);
-
-                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                        return massacre.TryApplyMassacreIncGauge(incGauge, currTickCount, out string incMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus())
+                            : ChatCommandHandler.CommandResult.Error(incMessage);
 
                     }
 
@@ -7259,9 +7264,9 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        massacre.SetMassacreInfo(hit, miss, cool, skill, currTickCount);
-
-                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                        return massacre.TryApplyMassacreInfo(hit, miss, cool, skill, currTickCount, out string infoMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus())
+                            : ChatCommandHandler.CommandResult.Error(infoMessage);
 
                     }
 
@@ -7275,9 +7280,9 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        massacre.ShowCountEffectPresentation(stage, currTickCount);
-
-                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                        return massacre.TryShowCountEffectPresentation(stage, currTickCount, out string stageMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus())
+                            : ChatCommandHandler.CommandResult.Error(stageMessage);
 
                     }
 
@@ -7312,8 +7317,9 @@ namespace HaCreator.MapSimulator
 
                     if (string.Equals(args[0], "bonus", StringComparison.OrdinalIgnoreCase))
                     {
-                        massacre.ShowBonusPresentation(currTickCount);
-                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                        return massacre.TryShowBonusPresentation(0, currTickCount, out string bonusMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus())
+                            : ChatCommandHandler.CommandResult.Error(bonusMessage);
                     }
 
 
@@ -7370,9 +7376,9 @@ namespace HaCreator.MapSimulator
 
 
 
-                        massacre.ShowResultPresentation(clear, currTickCount, scoreOverride, rankOverride);
-
-                        return ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus());
+                        return massacre.TryShowResultPresentation(clear, currTickCount, scoreOverride, rankOverride, out string resultMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(massacre.DescribeStatus())
+                            : ChatCommandHandler.CommandResult.Error(resultMessage);
 
                     }
 
@@ -8705,6 +8711,44 @@ namespace HaCreator.MapSimulator
                         return true;
                     }
 
+                    bool TrySendMerchantOpenRequest(out string packetMessage)
+                    {
+                        byte[] openPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildMerchantOpenOutboundPacket(runtime.RoomTitle);
+                        if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(openPacket, out string bridgeStatus))
+                        {
+                            packetMessage = bridgeStatus;
+                            return false;
+                        }
+
+                        packetMessage =
+                            $"{bridgeStatus} Mapped /socialroom {kind.ToString().ToLowerInvariant()} packet open to CPersonalShopDlg::SetRet(nRet=1) setup (opcode 144 subtype {SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeOpenRoom}).";
+                        return true;
+                    }
+
+                    bool TrySendMerchantPutItemRequest(int itemId, int quantity, int bundlePrice, out string packetMessage)
+                    {
+                        if (!InventoryItemMetadataResolver.TryResolveClientItemCrc(itemId, out uint itemCrc) || itemCrc == 0)
+                        {
+                            packetMessage = $"Could not resolve client item CRC for merchant row item {itemId}; unable to build CPersonalShopDlg::PutItem request subtype 15.";
+                            return false;
+                        }
+
+                        byte[] putItemPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildMerchantPutItemOutboundPacket(
+                            inventorySlot: 1,
+                            bundleCount: (short)Math.Clamp(quantity, 1, short.MaxValue),
+                            bundlePrice: Math.Max(0, bundlePrice),
+                            itemCrc);
+                        if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(putItemPacket, out string bridgeStatus))
+                        {
+                            packetMessage = bridgeStatus;
+                            return false;
+                        }
+
+                        packetMessage =
+                            $"{bridgeStatus} Mapped /socialroom {kind.ToString().ToLowerInvariant()} packet list to CPersonalShopDlg::PutItem (opcode 144 subtype {SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypePutItem}, inventory slot 1, bundle {Math.Max(1, quantity)}, price {Math.Max(0, bundlePrice)}, crc 0x{itemCrc:X8}).";
+                        return true;
+                    }
+
                     bool TrySendPersonalShopCloseRequest(out string packetMessage)
                     {
                         return TrySendMerchantSessionRequest(
@@ -8882,6 +8926,13 @@ namespace HaCreator.MapSimulator
                             switch (action)
                             {
                                 case "open":
+                                    if (packetMode)
+                                    {
+                                        return TrySendMerchantOpenRequest(out string personalOpenPacketMessage)
+                                            ? ChatCommandHandler.CommandResult.Ok(personalOpenPacketMessage)
+                                            : ChatCommandHandler.CommandResult.Error(personalOpenPacketMessage);
+                                    }
+
                                     if (!TryShowSocialRoomWindow(kind, out string personalShopRestriction))
                                     {
                                         return ChatCommandHandler.CommandResult.Error(personalShopRestriction ?? "Shop-room interactions are blocked in this map.");
@@ -8914,6 +8965,13 @@ namespace HaCreator.MapSimulator
 
                                     int shopQty = args.Length > actionIndex + 2 && int.TryParse(args[actionIndex + 2], out int parsedShopQty) ? parsedShopQty : 1;
                                     int shopPrice = args.Length > actionIndex + 3 && int.TryParse(args[actionIndex + 3], out int parsedShopPrice) ? parsedShopPrice : 0;
+                                    if (packetMode)
+                                    {
+                                        return TrySendMerchantPutItemRequest(shopItemId, shopQty, shopPrice, out string personalListPacketMessage)
+                                            ? ChatCommandHandler.CommandResult.Ok(personalListPacketMessage)
+                                            : ChatCommandHandler.CommandResult.Error(personalListPacketMessage);
+                                    }
+
                                     return Dispatch(SocialRoomPacketType.ListItem, out string listMessage, itemId: shopItemId, quantity: shopQty, meso: shopPrice)
                                         ? ChatCommandHandler.CommandResult.Ok(listMessage)
                                         : ChatCommandHandler.CommandResult.Error(listMessage);
@@ -8964,6 +9022,13 @@ namespace HaCreator.MapSimulator
                             switch (action)
                             {
                                 case "open":
+                                    if (packetMode)
+                                    {
+                                        return TrySendMerchantOpenRequest(out string entrustedOpenPacketMessage)
+                                            ? ChatCommandHandler.CommandResult.Ok(entrustedOpenPacketMessage)
+                                            : ChatCommandHandler.CommandResult.Error(entrustedOpenPacketMessage);
+                                    }
+
                                     if (!TryShowSocialRoomWindow(kind, out string entrustedShopRestriction))
                                     {
                                         return ChatCommandHandler.CommandResult.Error(entrustedShopRestriction ?? "Shop-room interactions are blocked in this map.");
@@ -9008,6 +9073,13 @@ namespace HaCreator.MapSimulator
 
                                     int entrustedQty = args.Length > actionIndex + 2 && int.TryParse(args[actionIndex + 2], out int parsedEntrustedQty) ? parsedEntrustedQty : 1;
                                     int entrustedPrice = args.Length > actionIndex + 3 && int.TryParse(args[actionIndex + 3], out int parsedEntrustedPrice) ? parsedEntrustedPrice : 0;
+                                    if (packetMode)
+                                    {
+                                        return TrySendMerchantPutItemRequest(entrustedItemId, entrustedQty, entrustedPrice, out string entrustedListPacketMessage)
+                                            ? ChatCommandHandler.CommandResult.Ok(entrustedListPacketMessage)
+                                            : ChatCommandHandler.CommandResult.Error(entrustedListPacketMessage);
+                                    }
+
                                     return Dispatch(SocialRoomPacketType.ListItem, out string entrustedListMessage, itemId: entrustedItemId, quantity: entrustedQty, meso: entrustedPrice)
                                         ? ChatCommandHandler.CommandResult.Ok(entrustedListMessage)
                                         : ChatCommandHandler.CommandResult.Error(entrustedListMessage);

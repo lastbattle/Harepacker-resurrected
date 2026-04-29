@@ -1366,6 +1366,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _season2SubDialogTimerSummary;
         private int _season2SubDialogSelectionChangeCount;
         private int _season2SubDialogOkClickCount;
+        private int _season2SubDialogSelectedOkRouteCount;
         private MonsterCarnivalTab? _season2SubDialogSelectedTab;
         private int _season2SubDialogSelectedIndex = -1;
         private string _season2SubDialogLastButtonRoute;
@@ -1433,6 +1434,7 @@ namespace HaCreator.MapSimulator.Fields
         public MonsterCarnivalSeason2SubDialogPhase Season2SubDialogPhase => _season2SubDialogPhase;
         public int Season2SubDialogSelectionChangeCount => _season2SubDialogSelectionChangeCount;
         public int Season2SubDialogOkClickCount => _season2SubDialogOkClickCount;
+        public int Season2SubDialogSelectedOkRouteCount => _season2SubDialogSelectedOkRouteCount;
         public MonsterCarnivalTab? Season2SubDialogSelectedTab => _season2SubDialogSelectedTab;
         public int Season2SubDialogSelectedIndex => _season2SubDialogSelectedIndex;
         public string Season2SubDialogRouteTrailSummary => BuildSeason2SubDialogRouteTrailSummary();
@@ -1790,9 +1792,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _season2SubDialogOkClickCount++;
-            string selectedText = _season2SubDialogSelectedTab.HasValue && _season2SubDialogSelectedIndex >= 0
-                ? $"selectedTab={(int)_season2SubDialogSelectedTab.Value},selectedIndex={_season2SubDialogSelectedIndex}"
-                : "selected=none";
+            string selectedText = BuildSeason2SubDialogSelectedRouteText(out MonsterCarnivalEntry selectedEntry);
+            if (selectedEntry != null)
+            {
+                _season2SubDialogSelectedOkRouteCount++;
+            }
+
             _season2SubDialogLastButtonRoute =
                 $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK click #{_season2SubDialogOkClickCount} ({selectedText})";
             RecordSeason2SubDialogRouteEvent($"btok(click={_season2SubDialogOkClickCount},{selectedText})");
@@ -2815,6 +2820,7 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogTimerSummary = null;
             _season2SubDialogSelectionChangeCount = 0;
             _season2SubDialogOkClickCount = 0;
+            _season2SubDialogSelectedOkRouteCount = 0;
             _season2SubDialogSelectedTab = null;
             _season2SubDialogSelectedIndex = -1;
             _season2SubDialogLastButtonRoute = null;
@@ -3736,10 +3742,6 @@ namespace HaCreator.MapSimulator.Fields
             out PendingLocalRequestToken consumedToken)
         {
             consumedToken = default;
-            if (!isLocalRequestOwner)
-            {
-                return false;
-            }
 
             if (isLocalRequestOwner
                 && TryConsumePendingLocalRequest(tab, entryIndex, ownershipPredicate: null, out consumedToken))
@@ -4977,10 +4979,28 @@ namespace HaCreator.MapSimulator.Fields
                 : $" {_season2SubDialogTimerSummary}";
             string timerTrail = BuildSeason2SubDialogTimerTrailSummary();
             string chatTrail = BuildSeason2ChatRouteTrailSummary();
+            string selectedRouteText = BuildSeason2SubDialogSelectedRouteText(out _);
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
-                ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"
-                : $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail},chatTrail={chatTrail}) {_season2SubDialogSummary}{timerSummary}";
+                ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},selected={selectedRouteText},okSelectedRoutes={_season2SubDialogSelectedOkRouteCount},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"
+                : $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},selected={selectedRouteText},okSelectedRoutes={_season2SubDialogSelectedOkRouteCount},timerTrail={timerTrail},chatTrail={chatTrail}) {_season2SubDialogSummary}{timerSummary}";
+        }
+
+        private string BuildSeason2SubDialogSelectedRouteText(out MonsterCarnivalEntry selectedEntry)
+        {
+            selectedEntry = null;
+            if (!_season2SubDialogSelectedTab.HasValue || _season2SubDialogSelectedIndex < 0)
+            {
+                return "none";
+            }
+
+            selectedEntry = GetEntry(_season2SubDialogSelectedTab.Value, _season2SubDialogSelectedIndex);
+            if (selectedEntry == null)
+            {
+                return $"staleTab={(int)_season2SubDialogSelectedTab.Value},staleIndex={_season2SubDialogSelectedIndex}";
+            }
+
+            return $"tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},cost={selectedEntry.Cost}";
         }
 
         private void InitializeClientOwnedUiWindowState(MonsterCarnivalFieldDefinition definition)

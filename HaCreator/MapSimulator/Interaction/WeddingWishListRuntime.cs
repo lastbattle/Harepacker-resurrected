@@ -924,10 +924,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            return entries
-                .OrderBy(slot => ResolveItemLabel(slot), StringComparer.OrdinalIgnoreCase)
-                .ThenBy(slot => slot.ItemId)
-                .ToList();
+            return entries;
         }
 
         private void ClampSelections()
@@ -1337,9 +1334,10 @@ namespace HaCreator.MapSimulator.Interaction
         private string TryCommitGiftPut(InventorySlotData selectedWish, InventorySlotData source, int quantity)
         {
             InventoryType type = ResolveInventoryTypeForSlot(source, ResolveSelectedInventoryType());
-            if (_inventory == null || !_inventory.TryConsumeItem(type, source.ItemId, quantity))
+            int sourceSlotIndex = Math.Max(0, _pendingPutSourceSlotIndex - 1);
+            if (_inventory == null || !_inventory.TryConsumeItemAtSlot(type, sourceSlotIndex, source.ItemId, quantity))
             {
-                return $"Unable to move {ResolveItemLabel(source)} out of the local inventory.";
+                return $"Unable to move {ResolveItemLabel(source)} out of client slot {_pendingPutSourceSlotIndex}.";
             }
 
             InventorySlotData gifted = CloneForDialog(source, type, quantity);
@@ -1370,7 +1368,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             InventoryType type = ResolveInventoryTypeForSlot(_putQuantityPromptSourceItem, ResolveSelectedInventoryType());
-            if (_inventory == null || _inventory.GetItemCount(type, _putQuantityPromptSourceItem.ItemId) < _putQuantityPromptQuantity)
+            if (!HasEnoughItemAtClientSlot(type, _putQuantityPromptSourceSlotIndex, _putQuantityPromptSourceItem.ItemId, _putQuantityPromptQuantity))
             {
                 ClearTransientActionState();
                 _statusMessage = $"Unable to move {_putQuantityPromptQuantity} of {ResolveItemLabel(_putQuantityPromptSourceItem)} out of the local inventory.";
@@ -1415,7 +1413,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             InventoryType type = ResolveInventoryTypeForSlot(_pendingPutSourceItem, ResolveSelectedInventoryType());
-            if (_inventory == null || _inventory.GetItemCount(type, _pendingPutSourceItem.ItemId) < _pendingPutQuantity)
+            if (!HasEnoughItemAtClientSlot(type, _pendingPutSourceSlotIndex, _pendingPutSourceItem.ItemId, _pendingPutQuantity))
             {
                 ClearTransientActionState();
                 _statusMessage = $"Unable to move {_pendingPutQuantity} of {ResolveItemLabel(_pendingPutSourceItem)} out of the local inventory.";
@@ -1428,6 +1426,27 @@ namespace HaCreator.MapSimulator.Interaction
         private int GetPendingPutQuantityMax()
         {
             return Math.Max(1, _putQuantityPromptSourceItem?.Quantity ?? 1);
+        }
+
+        private bool HasEnoughItemAtClientSlot(InventoryType type, int clientSlotIndex, int itemId, int quantity)
+        {
+            if (_inventory == null || clientSlotIndex <= 0 || itemId <= 0 || quantity <= 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(type);
+            int zeroBasedSlotIndex = clientSlotIndex - 1;
+            if (slots == null || zeroBasedSlotIndex < 0 || zeroBasedSlotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            InventorySlotData slot = slots[zeroBasedSlotIndex];
+            return slot != null
+                && !slot.IsDisabled
+                && slot.ItemId == itemId
+                && Math.Max(1, slot.Quantity) >= quantity;
         }
 
         private void UpdatePutQuantityPromptStatus()

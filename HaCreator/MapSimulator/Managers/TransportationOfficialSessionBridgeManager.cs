@@ -371,7 +371,8 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                StopInternal(clearPending: true);
+                bool preservePendingForPassiveHandoff = !HasAttachedClient && _pendingOutboundPackets.Count > 0;
+                StopInternal(clearPending: !preservePendingForPassiveHandoff);
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
@@ -446,11 +447,13 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                StopInternal(clearPending: true);
+                bool preservePendingForReconnectHandoff = !HasAttachedClient && _pendingOutboundPackets.Count > 0;
+                StopInternal(clearPending: !preservePendingForReconnectHandoff);
                 _passiveEstablishedSession = candidate;
 
                 if (!TryStartProxyListener(autoSelectListenPort ? 0 : requestedListenPort, resolvedRemoteHost, resolvedRemotePort, out string startStatus))
                 {
+                    _passiveEstablishedSession = candidate;
                     LastStatus = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
                     status = LastStatus;
                     return false;
@@ -473,6 +476,47 @@ namespace HaCreator.MapSimulator.Managers
 
             IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
             return DescribeDiscoveryCandidates(candidates, remotePort, owningProcessId, owningProcessName, localPort);
+        }
+
+        public bool TryVerifyPassiveEstablishedSession(out string status)
+        {
+            lock (_sync)
+            {
+                if (HasConnectedSession)
+                {
+                    status = "Transport official-session bridge owns a proxied Maple session; passive socket-pair verification is not needed.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                if (!_passiveEstablishedSession.HasValue)
+                {
+                    status = IsRunning
+                        ? $"Transport official-session bridge is armed on 127.0.0.1:{ListenPort}; no passive established socket pair is currently attached."
+                        : "Transport official-session bridge has no passive established socket pair to verify.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                SessionDiscoveryCandidate candidate = _passiveEstablishedSession.Value;
+                IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(
+                    candidate.RemoteEndpoint.Port,
+                    candidate.ProcessId,
+                    candidate.ProcessName);
+                if (ContainsMatchingEstablishedSession(candidates, candidate))
+                {
+                    status = $"Verified passive transport Maple socket pair is still established: {DescribeEstablishedSession(candidate)}. Proxy reconnect is still required for decrypt/inject ownership.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                _passiveEstablishedSession = null;
+                status = IsRunning
+                    ? $"Passive transport Maple socket pair is no longer established: {DescribeEstablishedSession(candidate)}. Keeping reconnect proxy armed on 127.0.0.1:{ListenPort} with {PendingPacketCount} queued transport packet(s)."
+                    : $"Passive transport Maple socket pair is no longer established: {DescribeEstablishedSession(candidate)}. Cleared passive ownership and retained {PendingPacketCount} queued transport packet(s) for the next reconnect-armed session.";
+                LastStatus = status;
+                return false;
+            }
         }
 
         public void Stop()
@@ -1091,6 +1135,26 @@ namespace HaCreator.MapSimulator.Managers
                     remoteEndpoint.Address.ToString(),
                     remoteEndpoint.Port,
                     ignoreListenPort);
+        }
+
+        internal static bool ContainsMatchingEstablishedSession(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            SessionDiscoveryCandidate expected)
+        {
+            if (candidates == null || expected.LocalEndpoint == null || expected.RemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            return candidates.Any(candidate => IsSameEstablishedSession(candidate, expected));
+        }
+
+        private static bool IsSameEstablishedSession(SessionDiscoveryCandidate left, SessionDiscoveryCandidate right)
+        {
+            return left.ProcessId == right.ProcessId
+                && string.Equals(left.ProcessName, right.ProcessName, StringComparison.OrdinalIgnoreCase)
+                && Equals(left.LocalEndpoint, right.LocalEndpoint)
+                && Equals(left.RemoteEndpoint, right.RemoteEndpoint);
         }
 
         private static string BuildDiscoveryAttachmentRequirementMessage(int listenPort)

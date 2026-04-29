@@ -3017,12 +3017,14 @@ namespace HaCreator.MapSimulator.Interaction
                     OpaqueInt16ValueRecordRecordByteCount = 0,
                     OpaqueInt16ValueRecordCount = 0,
                     OpaqueInt16ValueRecordEntries = null,
+                    OpaqueInt16ValueNativeRecordEntries = null,
                     OpaqueInt16ValueRecords = null,
                     Int16ValueRecordCount = 0,
                     Int16ValueRecordNativeCount = 0,
                     Int16ValueRecordCountByteCount = 0,
                     Int16ValueRecordRecordByteCount = 0,
                     Int16ValueRecordEntries = null,
+                    Int16ValueNativeRecordEntries = null,
                     Int16ValueRecords = null
                 };
 
@@ -3034,6 +3036,7 @@ namespace HaCreator.MapSimulator.Interaction
                         out int opaqueInt16ValueRecordRecordByteCount,
                         out int opaqueInt16ValueRecordNativeCount,
                         out IReadOnlyList<PacketCharacterDataInt16ValueRecord> opaqueInt16ValueRecordEntries,
+                        out IReadOnlyList<PacketCharacterDataInt16ValueRecord> opaqueInt16ValueNativeRecordEntries,
                         out IReadOnlyDictionary<int, int> opaqueInt16ValueRecords))
                 {
                     decoratedSnapshot = decoratedSnapshot with
@@ -3044,6 +3047,7 @@ namespace HaCreator.MapSimulator.Interaction
                         OpaqueInt16ValueRecordCount = opaqueInt16ValueRecordEntries.Count,
                         OpaqueInt16ValueRecordNativeCount = opaqueInt16ValueRecordNativeCount,
                         OpaqueInt16ValueRecordEntries = opaqueInt16ValueRecordEntries,
+                        OpaqueInt16ValueNativeRecordEntries = opaqueInt16ValueNativeRecordEntries,
                         OpaqueInt16ValueRecords = opaqueInt16ValueRecords
                     };
                 }
@@ -3057,7 +3061,8 @@ namespace HaCreator.MapSimulator.Interaction
                             out IReadOnlyDictionary<int, int> int16ValueRecords,
                             out int int16ValueRecordCountByteCount,
                             out int int16ValueRecordRecordByteCount,
-                            out int int16ValueRecordNativeCount);
+                            out int int16ValueRecordNativeCount,
+                            out IReadOnlyList<PacketCharacterDataInt16ValueRecord> int16ValueNativeRecordEntries);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         Int16ValueRecordCount = int16ValueRecordEntries.Count,
@@ -3065,6 +3070,7 @@ namespace HaCreator.MapSimulator.Interaction
                         Int16ValueRecordCountByteCount = int16ValueRecordCountByteCount,
                         Int16ValueRecordRecordByteCount = int16ValueRecordRecordByteCount,
                         Int16ValueRecordEntries = int16ValueRecordEntries,
+                        Int16ValueNativeRecordEntries = int16ValueNativeRecordEntries,
                         Int16ValueRecords = int16ValueRecords
                     };
                     decodedSectionFlags |= CharacterDataInt16ValueRecordFlag;
@@ -3306,6 +3312,7 @@ namespace HaCreator.MapSimulator.Interaction
             out int recordByteCount,
             out int nativeRecordCount,
             out IReadOnlyList<PacketCharacterDataInt16ValueRecord> recordEntries,
+            out IReadOnlyList<PacketCharacterDataInt16ValueRecord> nativeRecordEntries,
             out IReadOnlyDictionary<int, int> records)
         {
             consumedByteCount = 0;
@@ -3313,6 +3320,7 @@ namespace HaCreator.MapSimulator.Interaction
             recordByteCount = 0;
             nativeRecordCount = 0;
             recordEntries = null;
+            nativeRecordEntries = null;
             records = null;
             if (opaqueBytes == null || opaqueBytes.Length < sizeof(ushort))
             {
@@ -3328,7 +3336,8 @@ namespace HaCreator.MapSimulator.Interaction
                     out records,
                     out countByteCount,
                     out recordByteCount,
-                    out nativeRecordCount);
+                    out nativeRecordCount,
+                    out nativeRecordEntries);
                 consumedByteCount = checked((int)stream.Position);
                 return consumedByteCount >= sizeof(ushort);
             }
@@ -3339,6 +3348,7 @@ namespace HaCreator.MapSimulator.Interaction
                 recordByteCount = 0;
                 nativeRecordCount = 0;
                 recordEntries = null;
+                nativeRecordEntries = null;
                 records = null;
                 return false;
             }
@@ -3651,6 +3661,7 @@ namespace HaCreator.MapSimulator.Interaction
                 out records,
                 out _,
                 out _,
+                out _,
                 out _);
         }
 
@@ -3661,32 +3672,55 @@ namespace HaCreator.MapSimulator.Interaction
             out int recordByteCount,
             out int nativeRecordCount)
         {
+            return ReadCharacterDataInt16ValueRecords(
+                reader,
+                out records,
+                out countByteCount,
+                out recordByteCount,
+                out nativeRecordCount,
+                out _);
+        }
+
+        private static IReadOnlyList<PacketCharacterDataInt16ValueRecord> ReadCharacterDataInt16ValueRecords(
+            BinaryReader reader,
+            out IReadOnlyDictionary<int, int> records,
+            out int countByteCount,
+            out int recordByteCount,
+            out int nativeRecordCount,
+            out IReadOnlyList<PacketCharacterDataInt16ValueRecord> nativeRecordEntries)
+        {
             ushort count = reader.ReadUInt16();
             nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             recordByteCount = checked(count * (sizeof(int) + sizeof(ushort)));
             List<PacketCharacterDataInt16ValueRecord> entries = new(count);
+            List<PacketCharacterDataInt16ValueRecord> nativeEntries = new(count);
             Dictionary<int, int> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
             {
                 int key = reader.ReadInt32();
                 int value = reader.ReadUInt16();
+                int normalizedValue = Math.Max(0, value);
+                PacketCharacterDataInt16ValueRecord nativeEntry = new(
+                    key,
+                    normalizedValue,
+                    DecodedByteCount: sizeof(int) + sizeof(ushort),
+                    FieldByteCounts: new Dictionary<string, int>(StringComparer.Ordinal)
+                    {
+                        [nameof(PacketCharacterDataInt16ValueRecord.Key)] = sizeof(int),
+                        [nameof(PacketCharacterDataInt16ValueRecord.Value)] = sizeof(ushort)
+                    },
+                    NativeIndex: i,
+                    IsSemanticRecord: key > 0);
+                nativeEntries.Add(nativeEntry);
                 if (key > 0)
                 {
-                    int normalizedValue = Math.Max(0, value);
-                    entries.Add(new PacketCharacterDataInt16ValueRecord(
-                        key,
-                        normalizedValue,
-                        DecodedByteCount: sizeof(int) + sizeof(ushort),
-                        FieldByteCounts: new Dictionary<string, int>(StringComparer.Ordinal)
-                        {
-                            [nameof(PacketCharacterDataInt16ValueRecord.Key)] = sizeof(int),
-                            [nameof(PacketCharacterDataInt16ValueRecord.Value)] = sizeof(ushort)
-                        }));
+                    entries.Add(nativeEntry);
                     recordsByKey[key] = normalizedValue;
                 }
             }
 
+            nativeRecordEntries = nativeEntries;
             records = recordsByKey;
             return entries;
         }
@@ -4595,7 +4629,9 @@ namespace HaCreator.MapSimulator.Interaction
         int Key,
         int Value,
         int DecodedByteCount = 0,
-        IReadOnlyDictionary<string, int> FieldByteCounts = null);
+        IReadOnlyDictionary<string, int> FieldByteCounts = null,
+        int NativeIndex = -1,
+        bool IsSemanticRecord = true);
 
     internal readonly record struct PacketCharacterDataUInt16StringRecord(
         int Key,
@@ -4843,6 +4879,7 @@ namespace HaCreator.MapSimulator.Interaction
         int Int16ValueRecordCountByteCount = 0,
         int Int16ValueRecordRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataInt16ValueRecord> Int16ValueRecordEntries = null,
+        IReadOnlyList<PacketCharacterDataInt16ValueRecord> Int16ValueNativeRecordEntries = null,
         IReadOnlyDictionary<int, int> Int16ValueRecords = null,
         int QuestRecordCount = 0,
         int QuestRecordNativeCount = 0,
@@ -4866,6 +4903,7 @@ namespace HaCreator.MapSimulator.Interaction
         int OpaqueInt16ValueRecordCount = 0,
         int OpaqueInt16ValueRecordNativeCount = 0,
         IReadOnlyList<PacketCharacterDataInt16ValueRecord> OpaqueInt16ValueRecordEntries = null,
+        IReadOnlyList<PacketCharacterDataInt16ValueRecord> OpaqueInt16ValueNativeRecordEntries = null,
         IReadOnlyDictionary<int, int> OpaqueInt16ValueRecords = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,

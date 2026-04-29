@@ -583,10 +583,19 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (token.Equals("radio", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("radioschedule", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("onradioschedule", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("radioschedule", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = RadioSchedulePacketType;
+                return true;
+            }
+
+            if (token.Equals("clientradio", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radioscheduleclient", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("clientradioschedule", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onradioschedule", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuserlocalonradioschedule", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RadioScheduleClientPacketType;
                 return true;
             }
 
@@ -1401,7 +1410,7 @@ namespace HaCreator.MapSimulator.Managers
                 ChatMsgClientPacketType => "ChatMsg(264)",
                 BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",
                 GoToCommoditySnClientPacketType => "GoToCommoditySN(266)",
-                RadioScheduleClientPacketType => "RadioSchedule(261)",
+                RadioScheduleClientPacketType => "CUserLocal::OnRadioSchedule(261)",
                 OpenSkillGuideClientPacketType => "OpenSkillGuide(262)",
                 DamageMeterPacketType => "DamageMeter(267)",
                 TimeBombAttackPacketType => "OnTimeBombAttack(268)",

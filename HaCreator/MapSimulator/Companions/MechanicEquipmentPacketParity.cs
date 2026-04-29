@@ -591,66 +591,142 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (request.Kind != EquipmentChangeRequestKind.InventoryToCompanion
-                || request.TargetCompanionKind != EquipmentChangeCompanionKind.Mechanic
-                || !request.TargetMechanicSlot.HasValue)
+            if (request.Kind == EquipmentChangeRequestKind.InventoryToCompanion
+                && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.TargetMechanicSlot.HasValue)
             {
-                rejectReason = "Only mechanic equip-in requests can be recognized from live bridge state.";
-                return false;
-            }
-
-            if (currentEquipInventory == null)
-            {
-                rejectReason = "Live equip inventory state is unavailable.";
-                return false;
-            }
-
-            int resolvedTargetItemId = TryGetSnapshotItem(currentState, request.TargetMechanicSlot.Value);
-            if (resolvedTargetItemId != request.ItemId)
-            {
-                rejectReason = "The live mechanic target slot does not yet contain the requested machine part.";
-                return false;
-            }
-
-            if (beforeState != null)
-            {
-                foreach (MechanicEquipSlot slot in Enum.GetValues<MechanicEquipSlot>())
+                if (currentEquipInventory == null)
                 {
-                    if (slot == request.TargetMechanicSlot.Value)
-                    {
-                        continue;
-                    }
-
-                    int beforeItemId = TryGetSnapshotItem(beforeState, slot);
-                    int currentItemId = TryGetSnapshotItem(currentState, slot);
-                    if (beforeItemId != currentItemId)
-                    {
-                        rejectReason = "The live mechanic state changed outside the requested target slot.";
-                        return false;
-                    }
+                    rejectReason = "Live equip inventory state is unavailable.";
+                    return false;
                 }
+
+                int resolvedTargetItemId = TryGetSnapshotItem(currentState, request.TargetMechanicSlot.Value);
+                if (resolvedTargetItemId != request.ItemId)
+                {
+                    rejectReason = "The live mechanic target slot does not yet contain the requested machine part.";
+                    return false;
+                }
+
+                if (!TryValidateObservedLiveMechanicStateScope(
+                        beforeState,
+                        currentState,
+                        request.TargetMechanicSlot.Value,
+                        out rejectReason))
+                {
+                    return false;
+                }
+
+                if (request.SourceInventoryType != InventoryType.EQUIP
+                    || request.SourceInventoryIndex < 0)
+                {
+                    rejectReason = "The live equip inventory no longer exposes the requested source slot.";
+                    return false;
+                }
+
+                if (request.SourceInventoryIndex >= currentEquipInventory.Count)
+                {
+                    return true;
+                }
+
+                InventorySlotData liveSourceSlot = currentEquipInventory[request.SourceInventoryIndex];
+                if (liveSourceSlot?.ItemId == request.ItemId)
+                {
+                    rejectReason = "The requested machine part is still sitting in the source equip inventory slot.";
+                    return false;
+                }
+
+                return true;
             }
 
-            if (request.SourceInventoryType != InventoryType.EQUIP
-                || request.SourceInventoryIndex < 0)
+            if (request.Kind == EquipmentChangeRequestKind.CompanionToInventory
+                && request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.SourceMechanicSlot.HasValue)
             {
-                rejectReason = "The live equip inventory no longer exposes the requested source slot.";
-                return false;
+                MechanicEquipSlot sourceSlot = request.SourceMechanicSlot.Value;
+                if (beforeState != null && TryGetSnapshotItem(beforeState, sourceSlot) != request.ItemId)
+                {
+                    rejectReason = "The live mechanic source slot no longer matched the requested machine part before recovery.";
+                    return false;
+                }
+
+                if (TryGetSnapshotItem(currentState, sourceSlot) == request.ItemId)
+                {
+                    rejectReason = "The live mechanic source slot still contains the requested machine part.";
+                    return false;
+                }
+
+                if (!TryValidateObservedLiveMechanicStateScope(
+                        beforeState,
+                        currentState,
+                        sourceSlot,
+                        out rejectReason))
+                {
+                    return false;
+                }
+
+                if (!TryContainsInventoryItem(currentEquipInventory, request.ItemId))
+                {
+                    rejectReason = "The live equip inventory does not yet contain the dragged-out mechanic machine part.";
+                    return false;
+                }
+
+                return true;
             }
 
-            if (request.SourceInventoryIndex >= currentEquipInventory.Count)
+            rejectReason = "Only mechanic equip-in or drag-back-out requests can be recognized from live bridge state.";
+            return false;
+        }
+
+        private static bool TryValidateObservedLiveMechanicStateScope(
+            IReadOnlyDictionary<MechanicEquipSlot, int> beforeState,
+            IReadOnlyDictionary<MechanicEquipSlot, int> currentState,
+            MechanicEquipSlot allowedChangedSlot,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (beforeState == null)
             {
                 return true;
             }
 
-            InventorySlotData liveSourceSlot = currentEquipInventory[request.SourceInventoryIndex];
-            if (liveSourceSlot?.ItemId == request.ItemId)
+            foreach (MechanicEquipSlot slot in Enum.GetValues<MechanicEquipSlot>())
             {
-                rejectReason = "The requested machine part is still sitting in the source equip inventory slot.";
-                return false;
+                if (slot == allowedChangedSlot)
+                {
+                    continue;
+                }
+
+                int beforeItemId = TryGetSnapshotItem(beforeState, slot);
+                int currentItemId = TryGetSnapshotItem(currentState, slot);
+                if (beforeItemId != currentItemId)
+                {
+                    rejectReason = "The live mechanic state changed outside the requested mechanic slot.";
+                    return false;
+                }
             }
 
             return true;
+        }
+
+        private static bool TryContainsInventoryItem(
+            IReadOnlyList<InventorySlotData> inventorySlots,
+            int itemId)
+        {
+            if (inventorySlots == null || itemId <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < inventorySlots.Count; i++)
+            {
+                if (inventorySlots[i]?.ItemId == itemId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)

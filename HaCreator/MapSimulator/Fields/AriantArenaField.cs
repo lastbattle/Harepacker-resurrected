@@ -152,6 +152,18 @@ namespace HaCreator.MapSimulator.Fields
         {
             _localPlayerName = string.IsNullOrWhiteSpace(playerName) ? null : playerName.Trim();
             _localPlayerJob = Math.Max(0, jobId);
+            if (!_isActive)
+            {
+                return;
+            }
+
+            if (RemoveSuppressedLocalRankEntry())
+            {
+                SortAndAssignRankIcons();
+                _scoreRefreshSerial++;
+                _showScoreboard = true;
+                _showResult = false;
+            }
         }
         public void OnUserScore(string userName, int score)
         {
@@ -291,14 +303,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (changed)
             {
-                _entries.Sort(static (left, right) =>
-                {
-                    int scoreCompare = right.Score.CompareTo(left.Score);
-                    return scoreCompare != 0
-                        ? scoreCompare
-                        : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
-                });
-                ReassignRankIconIndexes();
+                SortAndAssignRankIcons();
             }
 
             _scoreRefreshSerial++;
@@ -559,6 +564,17 @@ namespace HaCreator.MapSimulator.Fields
         {
             int branch = Math.Abs(jobId) % 1000 / 100;
             return branch == 8 || branch == 9;
+        }
+        private void SortAndAssignRankIcons()
+        {
+            _entries.Sort(static (left, right) =>
+            {
+                int scoreCompare = right.Score.CompareTo(left.Score);
+                return scoreCompare != 0
+                    ? scoreCompare
+                    : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+            });
+            ReassignRankIconIndexes();
         }
         private void DrawScoreboard(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font)
         {

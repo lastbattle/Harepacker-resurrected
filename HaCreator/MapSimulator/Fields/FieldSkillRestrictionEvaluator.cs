@@ -279,6 +279,12 @@ namespace HaCreator.MapSimulator.Fields
                 return noSkillRestrictionMessage;
             }
 
+            string onlyUseSkillRestrictionMessage = GetOnlyUseSkillRestrictionMessage(mapInfo, skill);
+            if (!string.IsNullOrWhiteSpace(onlyUseSkillRestrictionMessage))
+            {
+                return onlyUseSkillRestrictionMessage;
+            }
+
             // Client evidence: CUserLocal::DoActiveSkill rejects Evan current jobs
             // in no-dragon fields before dispatching the requested skill family.
             if (!FieldInteractionRestrictionEvaluator.CanUseDragonCompanion(mapInfo)
@@ -373,6 +379,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static string GetOnlyUseSkillRestrictionMessage(MapInfo mapInfo, SkillData skill)
+        {
+            WzImageProperty onlyUseSkillProperty = FindInfoFieldProperty(mapInfo, "onlyUseSkill");
+            if (onlyUseSkillProperty == null || !HasClientIndexedIntValues(onlyUseSkillProperty))
+            {
+                return null;
+            }
+
+            return MatchesListedSkill(onlyUseSkillProperty, skill.SkillId)
+                ? null
+                : "Only field-authorized skills can be used in this field.";
         }
 
         private static bool MatchesAnyListedSkill(WzImageProperty noSkillProperty, int skillId)
@@ -485,6 +504,16 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        private static bool HasClientIndexedIntValues(WzImageProperty property)
+        {
+            foreach (int _ in EnumerateClientIndexedIntValues(property, defaultValue: 0))
+            {
+                return true;
             }
 
             return false;

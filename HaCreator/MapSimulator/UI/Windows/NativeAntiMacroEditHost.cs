@@ -103,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
         private string _lastKnownText = string.Empty;
         private bool _mouseSelecting;
         private int _mouseSelectionAnchor = -1;
+        private int _keyboardSelectionAnchor = -1;
 
         public NativeAntiMacroEditHost(int maxLength, Encoding clientEncoding = null)
         {
@@ -246,6 +247,7 @@ namespace HaCreator.MapSimulator.UI
             SendMessage(_editHandle, EmSetSel, IntPtr.Zero, IntPtr.Zero);
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
+            _keyboardSelectionAnchor = -1;
             _clientOwnedKeyDowns.Clear();
             SynchronizeState();
             UpdateImePlacement();
@@ -273,6 +275,7 @@ namespace HaCreator.MapSimulator.UI
 
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
+            _keyboardSelectionAnchor = -1;
             _clientOwnedKeyDowns.Clear();
             TryReleaseMouseCapture();
             ClearClientOwnedTransientFocusState(cancelImeComposition: true);
@@ -289,6 +292,7 @@ namespace HaCreator.MapSimulator.UI
             int caretIndex = ResolveCaretIndexFromPoint(pointInParentClientCoordinates);
             _mouseSelectionAnchor = caretIndex;
             _mouseSelecting = true;
+            _keyboardSelectionAnchor = -1;
             SetFocus(_editHandle);
             SendMessage(_editHandle, EmSetSel, new IntPtr(caretIndex), new IntPtr(caretIndex));
             UpdateImePlacement();
@@ -432,8 +436,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _parentHandle = IntPtr.Zero;
-            _lastKnownText = string.Empty;
+                _lastKnownText = string.Empty;
             _clientOwnedKeyDowns.Clear();
+            _keyboardSelectionAnchor = -1;
         }
 
         private void ApplyClientFont()
@@ -903,7 +908,7 @@ namespace HaCreator.MapSimulator.UI
                     CutSelectionToClipboard();
                     return true;
                 case VkLeft:
-                    MoveCaretHorizontally(moveRight: false);
+                    MoveCaretHorizontally(moveRight: false, extendSelection: shiftHeld);
                     if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
                     {
                         ForwardKeyToParent(WmKeyDown, wParam, lParam);
@@ -911,7 +916,7 @@ namespace HaCreator.MapSimulator.UI
 
                     return true;
                 case VkRight:
-                    MoveCaretHorizontally(moveRight: true);
+                    MoveCaretHorizontally(moveRight: true, extendSelection: shiftHeld);
                     if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
                     {
                         ForwardKeyToParent(WmKeyDown, wParam, lParam);
@@ -925,7 +930,7 @@ namespace HaCreator.MapSimulator.UI
                         return true;
                     }
 
-                    MoveCaretToBoundary(moveToEnd: false);
+                    MoveCaretToBoundary(moveToEnd: false, extendSelection: shiftHeld);
                     return true;
                 case VkEnd:
                     if (controlHeld)
@@ -934,7 +939,7 @@ namespace HaCreator.MapSimulator.UI
                         return true;
                     }
 
-                    MoveCaretToBoundary(moveToEnd: true);
+                    MoveCaretToBoundary(moveToEnd: true, extendSelection: shiftHeld);
                     return true;
                 case VkUp:
                 case VkDown:
@@ -1204,6 +1209,7 @@ namespace HaCreator.MapSimulator.UI
             _clientOwnedKeyDowns.Clear();
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
+            _keyboardSelectionAnchor = -1;
             TryReleaseMouseCapture();
             if (cancelImeComposition)
             {
@@ -1464,7 +1470,7 @@ namespace HaCreator.MapSimulator.UI
             return Math.Clamp(caretIndex, 0, GetWindowTextLength(_editHandle));
         }
 
-        private void MoveCaretHorizontally(bool moveRight)
+        private void MoveCaretHorizontally(bool moveRight, bool extendSelection)
         {
             if (!IsAttached)
             {
@@ -1473,20 +1479,58 @@ namespace HaCreator.MapSimulator.UI
 
             string currentText = GetControlText();
             GetSelection(out int selectionStart, out int selectionEnd);
-            int resolvedCaret = ResolveClientOwnedNavigationCaret(currentText, selectionStart, selectionEnd, moveRight);
-            SendMessage(_editHandle, EmSetSel, new IntPtr(resolvedCaret), new IntPtr(resolvedCaret));
+            if (extendSelection)
+            {
+                ResolveClientOwnedShiftNavigationSelection(
+                    currentText,
+                    selectionStart,
+                    selectionEnd,
+                    _keyboardSelectionAnchor,
+                    moveRight ? ClientOwnedSelectionTarget.Next : ClientOwnedSelectionTarget.Previous,
+                    out int anchor,
+                    out int caret);
+                _keyboardSelectionAnchor = anchor;
+                SendMessage(_editHandle, EmSetSel, new IntPtr(anchor), new IntPtr(caret));
+            }
+            else
+            {
+                _keyboardSelectionAnchor = -1;
+                int resolvedCaret = ResolveClientOwnedNavigationCaret(currentText, selectionStart, selectionEnd, moveRight);
+                SendMessage(_editHandle, EmSetSel, new IntPtr(resolvedCaret), new IntPtr(resolvedCaret));
+            }
+
             UpdateImePlacement();
         }
 
-        private void MoveCaretToBoundary(bool moveToEnd)
+        private void MoveCaretToBoundary(bool moveToEnd, bool extendSelection)
         {
             if (!IsAttached)
             {
                 return;
             }
 
-            int target = moveToEnd ? GetWindowTextLength(_editHandle) : 0;
-            SendMessage(_editHandle, EmSetSel, new IntPtr(target), new IntPtr(target));
+            if (extendSelection)
+            {
+                string currentText = GetControlText();
+                GetSelection(out int selectionStart, out int selectionEnd);
+                ResolveClientOwnedShiftNavigationSelection(
+                    currentText,
+                    selectionStart,
+                    selectionEnd,
+                    _keyboardSelectionAnchor,
+                    moveToEnd ? ClientOwnedSelectionTarget.End : ClientOwnedSelectionTarget.Home,
+                    out int anchor,
+                    out int caret);
+                _keyboardSelectionAnchor = anchor;
+                SendMessage(_editHandle, EmSetSel, new IntPtr(anchor), new IntPtr(caret));
+            }
+            else
+            {
+                _keyboardSelectionAnchor = -1;
+                int target = moveToEnd ? GetWindowTextLength(_editHandle) : 0;
+                SendMessage(_editHandle, EmSetSel, new IntPtr(target), new IntPtr(target));
+            }
+
             UpdateImePlacement();
         }
 
@@ -1511,6 +1555,7 @@ namespace HaCreator.MapSimulator.UI
 
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
             ReplaceSelection(string.Empty);
+            _keyboardSelectionAnchor = -1;
             UpdateImePlacement();
             return true;
         }
@@ -1657,6 +1702,58 @@ namespace HaCreator.MapSimulator.UI
                 currentCaret,
                 anchor,
                 moveRight);
+        }
+
+        internal enum ClientOwnedSelectionTarget
+        {
+            Previous,
+            Next,
+            Home,
+            End
+        }
+
+        internal static void ResolveClientOwnedShiftNavigationSelection(
+            string text,
+            int selectionStart,
+            int selectionEnd,
+            int existingAnchor,
+            ClientOwnedSelectionTarget target,
+            out int anchor,
+            out int caret)
+        {
+            string resolvedText = text ?? string.Empty;
+            int length = resolvedText.Length;
+            int resolvedStart = Math.Clamp(selectionStart, 0, length);
+            int resolvedEnd = Math.Clamp(selectionEnd, 0, length);
+            anchor = existingAnchor >= 0
+                ? Math.Clamp(existingAnchor, 0, length)
+                : ResolveClientOwnedShiftSelectionAnchor(resolvedStart, resolvedEnd, target);
+            int currentCaret = anchor == resolvedStart && resolvedStart != resolvedEnd
+                ? resolvedEnd
+                : resolvedStart;
+            caret = target switch
+            {
+                ClientOwnedSelectionTarget.Previous => ResolvePreviousTextElementBoundary(resolvedText, currentCaret),
+                ClientOwnedSelectionTarget.Next => ResolveNextTextElementBoundary(resolvedText, currentCaret),
+                ClientOwnedSelectionTarget.Home => 0,
+                ClientOwnedSelectionTarget.End => length,
+                _ => currentCaret
+            };
+        }
+
+        private static int ResolveClientOwnedShiftSelectionAnchor(
+            int selectionStart,
+            int selectionEnd,
+            ClientOwnedSelectionTarget target)
+        {
+            if (selectionStart == selectionEnd)
+            {
+                return selectionStart;
+            }
+
+            return target is ClientOwnedSelectionTarget.Next or ClientOwnedSelectionTarget.End
+                ? selectionStart
+                : selectionEnd;
         }
 
         internal static int ResolveClientBackspaceSelectionStart(string text, int caretIndex)

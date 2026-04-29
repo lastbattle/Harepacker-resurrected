@@ -1,6 +1,8 @@
 using Microsoft.Xna.Framework;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -51,6 +53,29 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestRewardRaiseWindowMode.PiecePlacement);
             RememberState(state);
             return state;
+        }
+
+        public QuestRewardRaiseState CreateWindowForItemOwner(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver,
+            Point defaultPosition)
+        {
+            QuestRewardChoicePrompt prompt = BuildItemOwnerPrompt(
+                ownerItemId,
+                questId,
+                ownerName,
+                ownerContext,
+                dropItemIds,
+                initialQrData,
+                itemNameResolver,
+                inventoryTypeResolver);
+            return CreateWindowForItemOwner(prompt, defaultPosition);
         }
 
         public QuestRewardRaiseState Open(QuestRewardChoicePrompt prompt, QuestRewardRaiseSourceKind source, Point defaultPosition)
@@ -667,6 +692,104 @@ namespace HaCreator.MapSimulator.Interaction
                 ActionLabel = string.Empty,
                 Groups = Array.Empty<QuestRewardChoiceGroup>()
             };
+        }
+
+        private static QuestRewardChoicePrompt BuildItemOwnerPrompt(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver)
+        {
+            ownerItemId = Math.Max(0, ownerItemId);
+            questId = Math.Max(0, questId);
+            if (ownerItemId <= 0 || questId <= 0 || ownerContext == null)
+            {
+                return null;
+            }
+
+            QuestRewardRaiseOwnerContext resolvedOwnerContext = new()
+            {
+                OwnerItemId = ownerItemId,
+                WindowMode = QuestRewardRaiseWindowMode.PiecePlacement,
+                ClientWindowKind = ownerContext.ClientWindowKind,
+                MaxDropCount = Math.Max(1, ownerContext.MaxDropCount),
+                InitialQrData = initialQrData,
+                UiData = ownerContext.UiData,
+                IncrementExpUnit = Math.Max(0, ownerContext.IncrementExpUnit),
+                Grade = Math.Max(0, ownerContext.Grade),
+                MessageLines = ownerContext.MessageLines ?? Array.Empty<string>()
+            };
+
+            return new QuestRewardChoicePrompt
+            {
+                QuestId = questId,
+                QuestName = string.IsNullOrWhiteSpace(ownerName)
+                    ? ResolveItemOwnerName(ownerItemId, itemNameResolver)
+                    : ownerName.Trim(),
+                CompletionPhase = false,
+                ActionLabel = "Raise",
+                OwnerContext = resolvedOwnerContext,
+                Groups = BuildItemOwnerGroups(ownerItemId, dropItemIds, resolvedOwnerContext.MessageLines, initialQrData, itemNameResolver, inventoryTypeResolver)
+            };
+        }
+
+        private static IReadOnlyList<QuestRewardChoiceGroup> BuildItemOwnerGroups(
+            int ownerItemId,
+            IReadOnlyList<int> dropItemIds,
+            IReadOnlyList<string> messageLines,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver)
+        {
+            string promptText = ResolveItemOwnerPromptText(messageLines, initialQrData);
+            IReadOnlyList<int> resolvedDropItemIds = dropItemIds ?? Array.Empty<int>();
+            QuestRewardChoiceOption[] options = resolvedDropItemIds
+                .Where(static itemId => itemId > 0)
+                .Distinct()
+                .Select(itemId => new QuestRewardChoiceOption
+                {
+                    ItemId = itemId,
+                    Label = ResolveItemOwnerName(itemId, itemNameResolver),
+                    DetailText = "WZ raise item list entry.",
+                    InventoryType = inventoryTypeResolver?.Invoke(itemId) ?? InventoryType.NONE
+                })
+                .ToArray();
+
+            return new[]
+            {
+                new QuestRewardChoiceGroup
+                {
+                    GroupKey = Math.Max(1, ownerItemId),
+                    PromptText = promptText,
+                    Options = options
+                }
+            };
+        }
+
+        private static string ResolveItemOwnerPromptText(IReadOnlyList<string> messageLines, int initialQrData)
+        {
+            if (messageLines?.Count > 0)
+            {
+                int messageIndex = Math.Clamp(initialQrData, 0, messageLines.Count - 1);
+                if (!string.IsNullOrWhiteSpace(messageLines[messageIndex]))
+                {
+                    return messageLines[messageIndex];
+                }
+            }
+
+            return "Drag qualifying items from the inventory into the raise surface. Right-click a placed row to release that local PutItem request.";
+        }
+
+        private static string ResolveItemOwnerName(int itemId, Func<int, string> itemNameResolver)
+        {
+            string resolvedName = itemNameResolver?.Invoke(itemId);
+            return string.IsNullOrWhiteSpace(resolvedName)
+                ? $"Item #{Math.Max(0, itemId)}"
+                : resolvedName.Trim();
         }
 
         private static int ResolveObservedMaxDropCount(

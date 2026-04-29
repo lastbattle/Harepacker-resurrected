@@ -110,7 +110,11 @@ namespace HaCreator.MapSimulator.Interaction
                             messageType,
                             param,
                             speakerTemplateId,
-                            speaker.NpcId);
+                            speaker.NpcId,
+                            ResolveInputKind(entry),
+                            ResolveInputMinValue(entry),
+                            ResolveInputMaxValue(entry),
+                            ResolveInputMaxLength(entry));
                     _statusMessage = decoded.StatusMessage ?? $"Ignored packet-authored script payload for {speaker.DisplayName}.";
                     message = _statusMessage;
                     return true;
@@ -150,7 +154,11 @@ namespace HaCreator.MapSimulator.Interaction
                     messageType,
                     param,
                     speakerTemplateId,
-                    speaker.NpcId);
+                    speaker.NpcId,
+                    ResolveInputKind(entry),
+                    ResolveInputMinValue(entry),
+                    ResolveInputMaxValue(entry),
+                    ResolveInputMaxLength(entry));
 
                 _statusMessage = $"Opened packet-authored script dialog: {entry.Title} for {speaker.DisplayName}.";
                 message = _statusMessage;
@@ -1222,6 +1230,12 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => submission.Value
             };
 
+            if (!ValidatePromptSubmission(_activePromptContext, submission, submittedValue, out string validationError))
+            {
+                message = validationError;
+                return false;
+            }
+
             if (!TryEncodeResponsePayload(_activePromptContext.MessageType, submission, submittedValue, out byte[] rawPacket, out string encodeError))
             {
                 message = encodeError ?? "Packet-owned script submission could not be encoded.";
@@ -1275,6 +1289,70 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _activePromptContext = null;
             }
+        }
+
+        private static bool ValidatePromptSubmission(
+            PacketScriptPromptContext context,
+            NpcInteractionInputSubmission submission,
+            string submittedValue,
+            out string error)
+        {
+            error = null;
+            if (context == null || submission == null)
+            {
+                return true;
+            }
+
+            if (context.MessageType != 4)
+            {
+                return true;
+            }
+
+            if (context.InputKind != NpcInteractionInputKind.Number)
+            {
+                return true;
+            }
+
+            if (!submission.NumericValue.HasValue)
+            {
+                return true;
+            }
+
+            int numericValue = submission.NumericValue.Value;
+            if (numericValue < context.MinValue || numericValue > context.MaxValue)
+            {
+                error = $"Number Input submissions require a value between {context.MinValue} and {context.MaxValue}.";
+                return false;
+            }
+
+            string digits = submittedValue?.TrimStart('-') ?? string.Empty;
+            if (context.MaxLength > 0 && digits.Length > context.MaxLength)
+            {
+                error = $"Number Input submissions cannot exceed the client digit limit of {context.MaxLength}.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static NpcInteractionInputKind ResolveInputKind(NpcInteractionEntry entry)
+        {
+            return entry?.Pages?.FirstOrDefault()?.InputRequest?.Kind ?? NpcInteractionInputKind.None;
+        }
+
+        private static int ResolveInputMinValue(NpcInteractionEntry entry)
+        {
+            return entry?.Pages?.FirstOrDefault()?.InputRequest?.MinValue ?? int.MinValue;
+        }
+
+        private static int ResolveInputMaxValue(NpcInteractionEntry entry)
+        {
+            return entry?.Pages?.FirstOrDefault()?.InputRequest?.MaxValue ?? int.MaxValue;
+        }
+
+        private static int ResolveInputMaxLength(NpcInteractionEntry entry)
+        {
+            return entry?.Pages?.FirstOrDefault()?.InputRequest?.MaxLength ?? int.MaxValue;
         }
 
         private static NpcInteractionChoice CreateResponseChoice(string label, string responseLabel, int responseValue)
@@ -1990,7 +2068,11 @@ namespace HaCreator.MapSimulator.Interaction
             int MessageType,
             byte Param,
             int SpeakerTemplateId,
-            int SpeakerNpcId);
+            int SpeakerNpcId,
+            NpcInteractionInputKind InputKind = NpcInteractionInputKind.None,
+            int MinValue = int.MinValue,
+            int MaxValue = int.MaxValue,
+            int MaxLength = int.MaxValue);
 
         private sealed record SlideMenuOption(int SelectionId, string Label);
         private sealed record PacketScriptPetPacketEntry(long PetSerialNumber, byte CashSlotHint);

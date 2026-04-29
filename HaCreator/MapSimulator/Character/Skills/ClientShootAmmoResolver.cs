@@ -242,10 +242,14 @@ public static class ClientShootAmmoResolver
             CashItemId = queuedSelection.CashItemId,
             QueuedUseSlotIndex = queuedSelection.QueuedUseSlotIndex > 0
                 ? queuedSelection.QueuedUseSlotIndex
-                : ToClientSlotPosition(queuedSelection.UseSlotIndex),
+                : ToClientSlotPosition(refreshedUseSlotIndex >= 0
+                    ? refreshedUseSlotIndex
+                    : queuedSelection.UseSlotIndex),
             QueuedCashSlotIndex = queuedSelection.QueuedCashSlotIndex > 0
                 ? queuedSelection.QueuedCashSlotIndex
-                : ToClientSlotPosition(queuedSelection.CashSlotIndex)
+                : ToClientSlotPosition(refreshedCashSlotIndex >= 0
+                    ? refreshedCashSlotIndex
+                    : queuedSelection.CashSlotIndex)
         };
     }
 

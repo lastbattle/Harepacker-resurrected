@@ -2174,6 +2174,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (IsClientPickupBlocked(drop))
                     continue;
 
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                    continue;
+
                 if (!CanMobPickup(drop))
                     continue;
 
@@ -2194,6 +2197,7 @@ namespace HaCreator.MapSimulator.Pools
             if (selectedDrop != null)
             {
                 int resolvedPickupActorId = pickupActorId > 0 ? pickupActorId : mobId;
+                MarkClientDropPickupAttempt(selectedDrop, currentTime);
                 return ResolveRemotePickup(
                     selectedDrop,
                     resolvedPickupActorId,

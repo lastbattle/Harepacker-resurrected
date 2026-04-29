@@ -154,6 +154,15 @@ namespace HaCreator.MapSimulator.UI
                 ShowFeedback(_premiumHandler?.Invoke());
             }
 
+            if (IsVisible && Pressed(keyboardState, Keys.R))
+            {
+                bool premiumModifier = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+                int buttonId = ReviveOwnerRuntime.ResolveClientShortcutButtonId(_snapshot.HasPremiumChoice, premiumModifier);
+                ShowFeedback(buttonId == ReviveOwnerRuntime.ClientYesButtonId
+                    ? _defaultButtonHandler?.Invoke()
+                    : _normalHandler?.Invoke());
+            }
+
             _previousKeyboardState = keyboardState;
         }
 

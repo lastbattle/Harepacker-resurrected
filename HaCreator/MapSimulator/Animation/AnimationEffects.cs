@@ -204,6 +204,60 @@ namespace HaCreator.MapSimulator.Animation
                 SimulatedLayerReferenceOperations = operations;
             }
 
+            internal void ReleaseSnapshotLayerReferences(SecondaryMotionBlurSnapshotTrace trace)
+            {
+                var operations = SimulatedLayerReferenceOperations?.ToList()
+                    ?? new List<SecondaryMotionBlurLayerReferenceOperation>();
+                if (trace.SimulatedOverlayLayerHandleId > 0
+                    && trace.SimulatedOverlayLayerHandleRefCount > 1)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                        layerCode: -1,
+                        trace.SimulatedOverlayLayerHandleId,
+                        SimulatedOverlayLayerHandleRefCount));
+                }
+
+                if (trace.SimulatedLayerHandleIdsByLayerCode != null)
+                {
+                    foreach ((int layerCode, int handleId) in trace.SimulatedLayerHandleIdsByLayerCode)
+                    {
+                        if (handleId <= 0
+                            || trace.SimulatedLayerHandleRefCountsByLayerCode == null
+                            || !trace.SimulatedLayerHandleRefCountsByLayerCode.TryGetValue(layerCode, out int refCount)
+                            || refCount <= 1)
+                        {
+                            continue;
+                        }
+
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                            layerCode,
+                            handleId,
+                            SimulatedLayerHandleRefCountsByLayerCode != null
+                                && SimulatedLayerHandleRefCountsByLayerCode.TryGetValue(layerCode, out int ownerRefCount)
+                                ? ownerRefCount
+                                : 0));
+                    }
+                }
+
+                if (trace.SimulatedSnapshotLayerHandleIdsByLayerCode != null)
+                {
+                    foreach ((int layerCode, int handleId) in trace.SimulatedSnapshotLayerHandleIdsByLayerCode)
+                    {
+                        if (handleId <= 0)
+                        {
+                            continue;
+                        }
+
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                    }
+                }
+
+                SimulatedLayerReferenceOperations = operations;
+            }
+
             internal void MarkTerminated()
             {
                 TerminateRequested = true;
@@ -254,7 +308,8 @@ namespace HaCreator.MapSimulator.Animation
             CaptureOwnerReference,
             CopySnapshotReference,
             RegisterRepeatAnimation,
-            ReleaseOwnerReference
+            ReleaseOwnerReference,
+            ReleaseSnapshotReference
         }
 
         internal readonly record struct SecondaryMotionBlurLayerReferenceOperation(
@@ -308,6 +363,18 @@ namespace HaCreator.MapSimulator.Animation
                     layerCode,
                     Math.Max(0, handleId),
                     0);
+            }
+
+            public static SecondaryMotionBlurLayerReferenceOperation ReleaseSnapshotReference(
+                int layerCode,
+                int handleId,
+                int refCount)
+            {
+                return new SecondaryMotionBlurLayerReferenceOperation(
+                    SecondaryMotionBlurLayerReferenceOperationKind.ReleaseSnapshotReference,
+                    layerCode,
+                    Math.Max(0, handleId),
+                    Math.Max(0, refCount));
             }
         }
 
@@ -2547,6 +2614,7 @@ namespace HaCreator.MapSimulator.Animation
                 if (retentionMs <= 0
                     || ResolveClientOwnedAvatarEffectElapsedMs(currentTimeMs, snapshot.StartTime) >= retentionMs)
                 {
+                    _state?.ReleaseSnapshotLayerReferences(snapshot.Trace);
                     DisposeFrameListIfOwned(snapshot.Frames);
                     _snapshots.RemoveAt(i);
                 }
@@ -3046,6 +3114,11 @@ namespace HaCreator.MapSimulator.Animation
 
         public void Dispose()
         {
+            for (int i = _snapshots.Count - 1; i >= 0; i--)
+            {
+                _state?.ReleaseSnapshotLayerReferences(_snapshots[i].Trace);
+            }
+
             _state?.MarkTerminated();
 
             if (!_ownsFrameTextures)
@@ -3296,7 +3369,11 @@ namespace HaCreator.MapSimulator.Animation
         int ItemEffectReferenceCountAfterOwnerRelease,
         int ItemEffectReferenceCountAfterManagerRelease,
         bool RegistersFollowInfo,
-        bool IsReleased);
+        bool IsReleased,
+        int AllocatedItemEffectCount,
+        int ManagerOwnedItemEffectCountAfterRetain,
+        int OwnerHeldItemEffectCountAfterOwnerRelease,
+        int ManagerOwnedItemEffectCountAfterRelease);
 
     /// <summary>
     /// Recovered native call shape for one-time animation-displayer owners that are still drawn through managed DX frames.
@@ -5667,6 +5744,7 @@ namespace HaCreator.MapSimulator.Animation
             int normalizedVariantCount = Math.Max(1, effectVariantCount);
             IReadOnlyList<int> normalizedVariantIndices =
                 NormalizeRecoveredNativeItemEffectVariantIndices(effectVariantIndices, normalizedVariantCount);
+            int allocatedItemEffectCount = normalizedVariantIndices.Count;
             return new FollowItemEffectRecoveredNativeOwnerState(
                 itemId,
                 clientEquipIndex,
@@ -5678,7 +5756,11 @@ namespace HaCreator.MapSimulator.Animation
                 ItemEffectReferenceCountAfterOwnerRelease: 1,
                 ItemEffectReferenceCountAfterManagerRelease: released ? 0 : 1,
                 RegistersFollowInfo: true,
-                IsReleased: released);
+                IsReleased: released,
+                AllocatedItemEffectCount: allocatedItemEffectCount,
+                ManagerOwnedItemEffectCountAfterRetain: allocatedItemEffectCount,
+                OwnerHeldItemEffectCountAfterOwnerRelease: 0,
+                ManagerOwnedItemEffectCountAfterRelease: released ? 0 : allocatedItemEffectCount);
         }
 
         internal static FollowItemEffectRecoveredNativeOperation[] BuildRecoveredNativeItemEffectTrace(
@@ -6494,8 +6576,8 @@ namespace HaCreator.MapSimulator.Animation
             Id = ++_nextId;
             _frames = frames;
             _area = area;
-            _effectiveWidth = Math.Max(1, area.Width * 5 / 6);
-            _effectiveHeight = Math.Max(1, area.Height / 3);
+            _effectiveWidth = ResolveAreaAnimationSpawnWidth(area);
+            _effectiveHeight = ResolveAreaAnimationSpawnHeight(area);
             _updateIntervalMs = Math.Max(1, updateIntervalMs);
             _remainingUpdates = Math.Max(0, updateCount);
             _nextUpdateAt = currentTimeMs + Math.Max(0, updateNextMs);
@@ -6538,6 +6620,16 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return _remainingUpdates > 0 && _nextUpdateAt <= _expiresAt;
+        }
+
+        internal static int ResolveAreaAnimationSpawnWidth(Rectangle area)
+        {
+            return Math.Max(1, area.Width);
+        }
+
+        internal static int ResolveAreaAnimationSpawnHeight(Rectangle area)
+        {
+            return Math.Max(1, area.Height);
         }
     }
 

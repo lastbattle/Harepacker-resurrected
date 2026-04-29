@@ -99,7 +99,8 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class QuestTraitRequirement
         {
             public QuestTraitType Trait { get; init; }
-            public int MinimumValue { get; init; }
+            public int? MinimumValue { get; init; }
+            public int? MaximumValue { get; init; }
         }
 
         internal sealed class QuestTraitReward
@@ -1529,6 +1530,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool HasUnmetCompletionLevelCap(int? maxLevel, int currentLevel)
         {
             return maxLevel.HasValue && currentLevel > maxLevel.Value;
+        }
+
+        internal static bool HasUnmetCompletionTraitDemandForTesting(int? minimumValue, int? maximumValue, int currentValue)
+        {
+            return !MeetsTraitRequirement(
+                new QuestTraitRequirement
+                {
+                    Trait = QuestTraitType.Charm,
+                    MinimumValue = minimumValue,
+                    MaximumValue = maximumValue
+                },
+                Math.Max(0, currentValue));
         }
 
         internal static int? ResolveCompletionLevelFloor(int? startLevelFloor, int? completionLevelFloor)
@@ -5418,7 +5431,9 @@ namespace HaCreator.MapSimulator.Interaction
                 GetUnmetQuestRequirementIds(questRequirements),
                 stopPages,
                 lostPages,
-                hasUnmetUserInteractRequirement: hasUnmetUserInteractRequirement);
+                hasUnmetUserInteractRequirement: hasUnmetUserInteractRequirement,
+                unmetMonsterBookStopBranchIds: GetUnmetMonsterBookCardRequirementIds(
+                    definition.EndMonsterBookCardRequirements));
         }
 
         internal static IReadOnlyList<NpcInteractionPage> SelectIssueConversationPagesCore(
@@ -5452,7 +5467,8 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<int> unmetQuestStopBranchIds,
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
             IReadOnlyList<NpcInteractionPage> lostPages,
-            bool hasUnmetUserInteractRequirement = false)
+            bool hasUnmetUserInteractRequirement = false,
+            IReadOnlyList<int> unmetMonsterBookStopBranchIds = null)
         {
             if (state == QuestStateType.Started &&
                 !isCompletionNpc &&
@@ -5722,6 +5738,15 @@ namespace HaCreator.MapSimulator.Interaction
                     "buffBlock"))
             {
                 return excludedBuffPages;
+            }
+
+            if (hasUnmetMonsterBookRequirement &&
+                TryGetTargetedNumericStopPages(
+                    stopPages,
+                    unmetMonsterBookStopBranchIds ?? Array.Empty<int>(),
+                    out IReadOnlyList<NpcInteractionPage> monsterBookSpecificPages))
+            {
+                return monsterBookSpecificPages;
             }
 
             if (hasUnmetMonsterBookRequirement &&
@@ -7588,12 +7613,12 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestTraitRequirement requirement = requirements[i];
                 if (build == null)
                 {
-                    details.Add($"{FormatTraitName(requirement.Trait)}: {requirement.MinimumValue}+");
+                    details.Add($"{FormatTraitName(requirement.Trait)}: {FormatTraitRequirementValueText(requirement)}");
                     continue;
                 }
 
-                int currentValue = Math.Min(GetCurrentTraitValue(build, requirement.Trait), requirement.MinimumValue);
-                details.Add($"{FormatTraitName(requirement.Trait)}: {currentValue}/{requirement.MinimumValue}");
+                int currentValue = GetCurrentTraitValue(build, requirement.Trait);
+                details.Add($"{FormatTraitName(requirement.Trait)}: {FormatTraitRequirementValueText(requirement, currentValue)}");
             }
         }
 
@@ -7605,13 +7630,13 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < requirements.Count; i++)
             {
                 QuestTraitRequirement requirement = requirements[i];
-                int currentValue = Math.Min(GetCurrentTraitValue(build, requirement.Trait), requirement.MinimumValue);
+                int currentValue = GetCurrentTraitValue(build, requirement.Trait);
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Trait",
                     Text = FormatTraitName(requirement.Trait),
-                    ValueText = $"{currentValue}/{requirement.MinimumValue}",
-                    IsComplete = currentValue >= requirement.MinimumValue
+                    ValueText = FormatTraitRequirementValueText(requirement, currentValue),
+                    IsComplete = MeetsTraitRequirement(requirement, currentValue)
                 });
             }
         }
@@ -7625,12 +7650,12 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestTraitRequirement requirement = requirements[i];
                 int currentValue = GetCurrentTraitValue(build, requirement.Trait);
-                if (currentValue >= requirement.MinimumValue)
+                if (MeetsTraitRequirement(requirement, currentValue))
                 {
                     continue;
                 }
 
-                issues.Add($"Raise {FormatTraitName(requirement.Trait)} to {requirement.MinimumValue}.");
+                issues.Add($"Set {FormatTraitName(requirement.Trait)} to {FormatTraitRequirementValueText(requirement)}.");
             }
         }
 
@@ -7647,13 +7672,50 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestTraitRequirement requirement = requirements[i];
                 if (requirement != null &&
-                    GetCurrentTraitValue(build, requirement.Trait) < requirement.MinimumValue)
+                    !MeetsTraitRequirement(requirement, GetCurrentTraitValue(build, requirement.Trait)))
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static bool MeetsTraitRequirement(QuestTraitRequirement requirement, int currentValue)
+        {
+            if (requirement == null)
+            {
+                return true;
+            }
+
+            if (requirement.MinimumValue.HasValue &&
+                currentValue < requirement.MinimumValue.Value)
+            {
+                return false;
+            }
+
+            return !requirement.MaximumValue.HasValue ||
+                   currentValue <= requirement.MaximumValue.Value;
+        }
+
+        private static string FormatTraitRequirementValueText(QuestTraitRequirement requirement, int? currentValue = null)
+        {
+            if (requirement == null)
+            {
+                return string.Empty;
+            }
+
+            string demandText = requirement.MinimumValue.HasValue && requirement.MaximumValue.HasValue
+                ? $"{requirement.MinimumValue.Value}-{requirement.MaximumValue.Value}"
+                : requirement.MinimumValue.HasValue
+                    ? $"{requirement.MinimumValue.Value}+"
+                    : requirement.MaximumValue.HasValue
+                        ? $"<={requirement.MaximumValue.Value}"
+                        : string.Empty;
+
+            return currentValue.HasValue && !string.IsNullOrWhiteSpace(demandText)
+                ? $"{currentValue.Value}/{demandText}"
+                : demandText;
         }
 
         private static void ApplyTraitReward(CharacterBuild build, QuestTraitReward reward, ICollection<string> messages)
@@ -8728,7 +8790,11 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                segments.Add($"{FormatTraitName(requirement.Trait)} {requirement.MinimumValue}+");
+                string valueText = FormatTraitRequirementValueText(requirement);
+                if (!string.IsNullOrWhiteSpace(valueText))
+                {
+                    segments.Add($"{FormatTraitName(requirement.Trait)} {valueText}");
+                }
             }
         }
 
@@ -10592,12 +10658,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             var requirements = new List<QuestTraitRequirement>();
-            AppendTraitRequirement(property["charismaMin"], QuestTraitType.Charisma, requirements);
-            AppendTraitRequirement(property["insightMin"], QuestTraitType.Insight, requirements);
-            AppendTraitRequirement(property["willMin"], QuestTraitType.Will, requirements);
-            AppendTraitRequirement(property["craftMin"], QuestTraitType.Craft, requirements);
-            AppendTraitRequirement(property["senseMin"], QuestTraitType.Sense, requirements);
-            AppendTraitRequirement(property["charmMin"], QuestTraitType.Charm, requirements);
+            AppendTraitRequirement(property["charismaMin"], property["charismaMax"], QuestTraitType.Charisma, requirements);
+            AppendTraitRequirement(property["insightMin"], property["insightMax"], QuestTraitType.Insight, requirements);
+            AppendTraitRequirement(property["willMin"], property["willMax"], QuestTraitType.Will, requirements);
+            AppendTraitRequirement(property["craftMin"], property["craftMax"], QuestTraitType.Craft, requirements);
+            AppendTraitRequirement(property["senseMin"], property["senseMax"], QuestTraitType.Sense, requirements);
+            AppendTraitRequirement(property["charmMin"], property["charmMax"], QuestTraitType.Charm, requirements);
             return requirements;
         }
 
@@ -10609,7 +10675,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             var requirements = new List<QuestTraitRequirement>(ParseTraitRequirements(property));
-            AppendTraitRequirement(property["charm"], QuestTraitType.Charm, requirements);
+            AppendTraitRequirement(property["charm"], null, QuestTraitType.Charm, requirements);
             return requirements;
         }
 
@@ -10667,10 +10733,15 @@ namespace HaCreator.MapSimulator.Interaction
             return requirements;
         }
 
-        private static void AppendTraitRequirement(WzImageProperty property, QuestTraitType trait, ICollection<QuestTraitRequirement> requirements)
+        private static void AppendTraitRequirement(
+            WzImageProperty minProperty,
+            WzImageProperty maxProperty,
+            QuestTraitType trait,
+            ICollection<QuestTraitRequirement> requirements)
         {
-            int minimumValue = ParsePositiveInt(property).GetValueOrDefault();
-            if (minimumValue <= 0)
+            int? minimumValue = ParsePositiveInt(minProperty);
+            int? maximumValue = ParsePositiveInt(maxProperty);
+            if (!minimumValue.HasValue && !maximumValue.HasValue)
             {
                 return;
             }
@@ -10678,7 +10749,8 @@ namespace HaCreator.MapSimulator.Interaction
             requirements.Add(new QuestTraitRequirement
             {
                 Trait = trait,
-                MinimumValue = minimumValue
+                MinimumValue = minimumValue,
+                MaximumValue = maximumValue
             });
         }
 
@@ -12790,6 +12862,46 @@ namespace HaCreator.MapSimulator.Interaction
 
                 progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
                 if (currentCount < requirement.RequiredCount)
+                {
+                    mobIds.Add(requirement.MobId);
+                }
+            }
+
+            return mobIds.Count > 0
+                ? mobIds
+                : Array.Empty<int>();
+        }
+
+        private IReadOnlyList<int> GetUnmetMonsterBookCardRequirementIds(
+            IReadOnlyList<QuestMonsterBookCardRequirement> requirements)
+        {
+            if (requirements == null || requirements.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var mobIds = new List<int>();
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestMonsterBookCardRequirement requirement = requirements[i];
+                if (requirement?.MobId <= 0 || mobIds.Contains(requirement.MobId))
+                {
+                    continue;
+                }
+
+                if (_monsterBookCardCountByMobIdProvider == null)
+                {
+                    mobIds.Add(requirement.MobId);
+                    continue;
+                }
+
+                int currentCount = Math.Max(0, _monsterBookCardCountByMobIdProvider(requirement.MobId));
+                if ((requirement.MinCount.HasValue &&
+                     requirement.MinCount.Value >= 0 &&
+                     currentCount < requirement.MinCount.Value) ||
+                    (requirement.MaxCount.HasValue &&
+                     requirement.MaxCount.Value >= 0 &&
+                     currentCount > requirement.MaxCount.Value))
                 {
                     mobIds.Add(requirement.MobId);
                 }

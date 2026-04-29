@@ -1185,15 +1185,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyObstacleReset(int currentTick, PacketFieldFeedbackCallbacks callbacks, out string message)
         {
+            int resetCount = _obstacleStates.Count;
             foreach (string tag in _obstacleStates.Keys.ToList())
             {
                 callbacks?.SetObjectTagState?.Invoke(tag, false, 0, currentTick);
-                _obstacleStates[tag] = false;
             }
 
-            _statusMessage = _obstacleStates.Count == 0
+            _obstacleStates.Clear();
+            _statusMessage = resetCount == 0
                 ? "No packet-owned obstacle states were active."
-                : $"Reset {_obstacleStates.Count} packet-owned obstacle state(s).";
+                : $"Reset {resetCount} packet-owned obstacle state(s).";
             message = _statusMessage;
             return true;
         }

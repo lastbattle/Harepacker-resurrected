@@ -2070,7 +2070,7 @@ namespace HaCreator.MapSimulator
             }
 
             int durationMs = Math.Max(1, metadata.DurationMs);
-            int elapsedMs = Math.Clamp(currentTime - registerTime, 0, durationMs);
+            int elapsedMs = ResolveAnimationDisplayerTickElapsedMs(currentTime, registerTime, durationMs);
             float t = elapsedMs / (float)durationMs;
             return new Vector2(
                 basePosition.X + (metadata.RelativeOffsetX * t),
@@ -2182,7 +2182,7 @@ namespace HaCreator.MapSimulator
                 Vector2 liveEndPosition = ResolveAnimationDisplayerMobSwallowTargetAnchor(
                     liveTargetPosition,
                     liveFacingRight);
-                int elapsedMs = Math.Clamp(currTickCount - registerTime, 0, travelDurationMs);
+                int elapsedMs = ResolveAnimationDisplayerTickElapsedMs(currTickCount, registerTime, travelDurationMs);
                 float t = travelDurationMs <= 0 ? 1f : elapsedMs / (float)travelDurationMs;
                 return Vector2.Lerp(startPosition, liveEndPosition, t);
             };
@@ -2830,7 +2830,7 @@ namespace HaCreator.MapSimulator
                    && state.TransitionEndAlpha <= 0f;
         }
 
-        private static int ResolveAnimationDisplayerTickElapsedMs(int currentTime, int startTime)
+        internal static int ResolveAnimationDisplayerTickElapsedMs(int currentTime, int startTime)
         {
             if (currentTime == int.MinValue || startTime == int.MinValue)
             {
@@ -2841,6 +2841,16 @@ namespace HaCreator.MapSimulator
             return elapsed >= int.MaxValue
                 ? int.MaxValue
                 : (int)elapsed;
+        }
+
+        internal static int ResolveAnimationDisplayerTickElapsedMs(int currentTime, int startTime, int maxElapsedMs)
+        {
+            if (maxElapsedMs <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Min(ResolveAnimationDisplayerTickElapsedMs(currentTime, startTime), maxElapsedMs);
         }
 
         internal static bool TryResolveAnimationDisplayerSpecificUserStateFrames(

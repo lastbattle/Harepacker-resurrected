@@ -2388,6 +2388,8 @@ namespace HaCreator.MapSimulator.Character
                 ["vampire"] = "vampire",
                 ["dash"] = "dash",
                 ["darksight"] = "darksight",
+                ["alert2"] = "alert2",
+                ["swingO2"] = "swingO2",
                 // These client-only helper raw rows are still not authored directly in the
                 // mounted `action/0` WZ surface, so gate them through the nearest recovered
                 // family-specific raw row instead of letting every helper family claim them.
@@ -2879,6 +2881,12 @@ namespace HaCreator.MapSimulator.Character
             string actionName,
             IReadOnlySet<string> supportedRawActionNames)
         {
+            if (!string.IsNullOrWhiteSpace(actionName)
+                && SupportedRawActionCanonicalNames.ContainsKey(actionName))
+            {
+                return IsSupportedRawActionName(actionName, supportedRawActionNames);
+            }
+
             if (IsGenericHelperSurfaceActionName(actionName))
             {
                 return true;
@@ -2889,9 +2897,7 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            return !string.IsNullOrWhiteSpace(actionName)
-                   && SupportedRawActionCanonicalNames.ContainsKey(actionName)
-                   && IsSupportedRawActionName(actionName, supportedRawActionNames);
+            return false;
         }
 
         internal static bool IsFamilyGatedMountedAliasActionName(string actionName)
@@ -4344,11 +4350,6 @@ namespace HaCreator.MapSimulator.Character
             if (string.IsNullOrWhiteSpace(actionName)
                 || supportedRawActionNames == null
                 || supportedRawActionNames.Count == 0)
-            {
-                return true;
-            }
-
-            if (IsGenericHelperSurfaceActionName(actionName))
             {
                 return true;
             }

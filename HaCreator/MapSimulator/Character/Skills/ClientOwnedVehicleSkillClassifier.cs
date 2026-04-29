@@ -307,7 +307,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 248, // drillrush
                 250, // mbooster
                 255, // earthslug
-                256  // rpunch
+                256, // rpunch
+                257, // msummon
+                258  // msummon2
             );
 
         private static readonly string[] ClientConfirmedMechanicVehicleOwnerOnlyOneTimeActionNames =

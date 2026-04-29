@@ -826,6 +826,7 @@ namespace HaCreator.MapSimulator.UI
                 row.ItemId,
                 row.ItemSerialNumber,
                 row.CashSerialNumber,
+                row.BaseExpirationTime,
                 row.Title ?? string.Empty);
         }
 

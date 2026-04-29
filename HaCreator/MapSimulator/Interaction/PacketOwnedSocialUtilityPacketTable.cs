@@ -247,6 +247,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return DescribeMapleTvRecoveredPacketTable();
             }
 
+            if (string.Equals(ownerName, "Family", StringComparison.OrdinalIgnoreCase))
+            {
+                return DescribeFamilyRecoveredPacketTable();
+            }
+
             return DescribeMessengerRecoveredPacketTable();
         }
 
@@ -278,6 +283,13 @@ namespace HaCreator.MapSimulator.Interaction
                 ", ",
                 MerchantOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
             return $"Recovered merchant packet table: inbound opcode {inboundSet} to CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket (subtypes {inboundSubtypes}); outbound opcode {MerchantOutboundOpcode} (subtypes {outboundSubtypes}).";
+        }
+
+        internal static string DescribeFamilyRecoveredPacketTable()
+        {
+            string inboundSet = string.Join("/", FamilyInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            string outboundSet = string.Join("/", FamilyOutboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            return $"Recovered family packet table: inbound opcodes {inboundSet} to CWvsContext family handlers (98: CUIFamilyChart::DecodeLocalChart, 99: OnFamilyInfoResult, 100: OnFamilyResult, 104: OnFamilyPrivilegeList, 107: OnFamilySetPrivilege); outbound opcode {outboundSet} via CWvsContext::SendUseFamilyPrivilege expects OnFamilyResult or OnFamilySetPrivilege (100/107). Broader family-management request opcodes remain intentionally unregistered until client proof is recovered.";
         }
 
         internal static bool TryBuildRecoveredResultExpectation(

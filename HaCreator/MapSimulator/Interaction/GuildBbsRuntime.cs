@@ -2351,6 +2351,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (TryDecodeCashOwnershipBitMask(payload, ownedItemIds, out detail))
+            {
+                return true;
+            }
+
             int byteCount = payload[0];
             if (byteCount > 0
                 && byteCount <= _cashEmoticonCount
@@ -2371,6 +2376,94 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private bool TryDecodeCashOwnershipBitMask(byte[] payload, HashSet<int> ownedItemIds, out string detail)
+        {
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (payload.Length == sizeof(byte)
+                && TryDecodeCashOwnershipBitMaskValue(payload[0], ownedItemIds))
+            {
+                detail = $"matched compact cash-emoticon ownership bitmask byte 0x{payload[0]:X2}";
+                return true;
+            }
+
+            if (payload.Length == sizeof(byte) + sizeof(byte)
+                && payload[0] == sizeof(byte)
+                && TryDecodeCashOwnershipBitMaskValue(payload[1], ownedItemIds))
+            {
+                detail = $"matched size-prefixed compact cash-emoticon ownership bitmask byte 0x{payload[1]:X2}";
+                return true;
+            }
+
+            if (payload.Length == sizeof(short))
+            {
+                ushort rawMask = BitConverter.ToUInt16(payload, 0);
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                {
+                    detail = $"matched compact cash-emoticon ownership bitmask ushort 0x{rawMask:X4}";
+                    return true;
+                }
+            }
+
+            if (payload.Length == sizeof(byte) + sizeof(short)
+                && payload[0] == sizeof(short))
+            {
+                ushort rawMask = BitConverter.ToUInt16(payload, 1);
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                {
+                    detail = $"matched size-prefixed compact cash-emoticon ownership bitmask ushort 0x{rawMask:X4}";
+                    return true;
+                }
+            }
+
+            if (payload.Length == sizeof(int))
+            {
+                uint rawMask = BitConverter.ToUInt32(payload, 0);
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                {
+                    detail = $"matched compact cash-emoticon ownership bitmask uint 0x{rawMask:X8}";
+                    return true;
+                }
+            }
+
+            if (payload.Length == sizeof(byte) + sizeof(int)
+                && payload[0] == sizeof(int))
+            {
+                uint rawMask = BitConverter.ToUInt32(payload, 1);
+                if (TryDecodeCashOwnershipBitMaskValue(rawMask, ownedItemIds))
+                {
+                    detail = $"matched size-prefixed compact cash-emoticon ownership bitmask uint 0x{rawMask:X8}";
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryDecodeCashOwnershipBitMaskValue(uint rawMask, HashSet<int> ownedItemIds)
+        {
+            uint supportedMask = (1u << Math.Min(_cashEmoticonCount, ClientInventoryCashEmoticonItemCount)) - 1u;
+            if ((rawMask & ~supportedMask) != 0)
+            {
+                return false;
+            }
+
+            ownedItemIds.Clear();
+            for (int slotIndex = 0; slotIndex < _cashEmoticonCount; slotIndex++)
+            {
+                if ((rawMask & (1u << slotIndex)) != 0)
+                {
+                    ownedItemIds.Add(CashEmoticonItemIdStart + slotIndex);
+                }
+            }
+
+            return true;
         }
 
         private bool TryDecodeCashOwnershipFlagVector(byte[] payload, int offset, HashSet<int> ownedItemIds)

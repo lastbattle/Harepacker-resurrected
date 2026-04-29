@@ -2896,8 +2896,75 @@ namespace HaCreator.MapSimulator.Managers
             catch (FormatException)
             {
                 bytes = Array.Empty<byte>();
+            }
+
+            return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
+        }
+
+        private static bool TryParseSg88PacketComparisonHexDumpBytes(string value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(value))
+            {
                 return false;
             }
+
+            List<byte> parsed = new();
+            string[] lines = value.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                int asciiGutterIndex = line.IndexOf('|');
+                if (asciiGutterIndex >= 0)
+                {
+                    line = line[..asciiGutterIndex];
+                }
+
+                Match offsetMatch = Regex.Match(
+                    line,
+                    @"^(?:0x)?[0-9A-Fa-f]{4,8}\s*[:\-]\s*(?<bytes>.+)$",
+                    RegexOptions.CultureInvariant);
+                if (offsetMatch.Success)
+                {
+                    line = offsetMatch.Groups["bytes"].Value;
+                }
+                else
+                {
+                    Match bareOffsetMatch = Regex.Match(
+                        line,
+                        @"^(?:0x)?[0-9A-Fa-f]{4,8}\s{2,}(?<bytes>.+)$",
+                        RegexOptions.CultureInvariant);
+                    if (bareOffsetMatch.Success)
+                    {
+                        line = bareOffsetMatch.Groups["bytes"].Value;
+                    }
+                }
+
+                foreach (Match tokenMatch in Regex.Matches(
+                             line,
+                             @"(?<![0-9A-Fa-f])(?:0x)?(?<byte>[0-9A-Fa-f]{2})(?![0-9A-Fa-f])",
+                             RegexOptions.CultureInvariant | RegexOptions.IgnoreCase))
+                {
+                    if (byte.TryParse(
+                            tokenMatch.Groups["byte"].Value,
+                            System.Globalization.NumberStyles.HexNumber,
+                            null,
+                            out byte parsedByte))
+                    {
+                        parsed.Add(parsedByte);
+                    }
+                }
+            }
+
+            bytes = parsed.ToArray();
+            return bytes.Length > 0;
         }
 
         private static bool TryNormalizeSg88MismatchPairJsonPropertyName(string propertyName, out string normalizedName)

@@ -195,8 +195,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private List<TradeVerificationEntry> BuildTradingRoomTradeRequestVerificationEntries()
         {
-            // IDA: CTradingRoomDlg::OnTrade (0x763F20) computes CRC rows from m_aaItem[1] only.
-            return BuildTradeVerificationEntries(isLocalParty: false);
+            // IDA: CTradingRoomDlg::Trade walks both 9-slot item arrays for subtype 17.
+            // The narrower peer-side m_aaItem[1] scan stays isolated to the subtype 20 CRC reply.
+            return BuildTradeRequestVerificationEntries();
         }
     }
 }

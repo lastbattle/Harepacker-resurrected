@@ -81,6 +81,18 @@ internal static class MobSkillSelectionParity
             && playerHitbox.Intersects(area);
     }
 
+    public static bool ShouldApplyMobSkillRuntimeProp(MobSkillRuntimeData runtimeData, int rollPercent)
+    {
+        int propPercent = runtimeData?.PropPercent ?? 0;
+        if (propPercent <= 0 || propPercent >= 100)
+        {
+            return true;
+        }
+
+        int normalizedRoll = System.Math.Clamp(rollPercent, 0, 99);
+        return normalizedRoll < propPercent;
+    }
+
     internal static bool ShouldApplyStatusToTarget(
         MobAI target,
         MobSkillStatusDefinition definition,

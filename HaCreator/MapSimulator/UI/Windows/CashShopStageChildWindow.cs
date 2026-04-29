@@ -57,7 +57,7 @@ namespace HaCreator.MapSimulator.UI
             public int WheelRange { get; init; }
             public bool HasNumberFont { get; init; }
             public int TabControlId { get; init; } = 1000;
-            public int TabItemCount { get; init; } = 5;
+            public int TabItemCount { get; init; } = 4;
             public int TabX { get; init; } = 17;
             public int TabY { get; init; } = 28;
             public int TabWidth { get; init; } = 156;

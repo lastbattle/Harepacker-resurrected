@@ -1549,7 +1549,7 @@ namespace HaCreator.MapSimulator.Effects
                 if (_participantActors.TryGetValue(packet.CharacterId, out WeddingRemoteParticipant participantWithoutLook))
                 {
                     packet = NormalizeRemoteAvatarModifiedStateForParticipant(participantWithoutLook, packet);
-                    StoreAvatarModifiedState(participantWithoutLook, packet);
+                    StoreRemoteAvatarModifiedStateFromPacket(participantWithoutLook, packet);
                     ApplyAvatarModifiedStateToBuild(participantWithoutLook.Build, packet);
                     return true;
                 }
@@ -1557,7 +1557,7 @@ namespace HaCreator.MapSimulator.Effects
                 if (TryGetAudienceActorById(packet.CharacterId, out WeddingRemoteParticipant audienceWithoutLook))
                 {
                     packet = NormalizeRemoteAvatarModifiedStateForParticipant(audienceWithoutLook, packet);
-                    StoreAvatarModifiedState(audienceWithoutLook, packet);
+                    StoreRemoteAvatarModifiedStateFromPacket(audienceWithoutLook, packet);
                     ApplyAvatarModifiedStateToBuild(audienceWithoutLook.Build, packet);
                     return true;
                 }
@@ -1592,7 +1592,7 @@ namespace HaCreator.MapSimulator.Effects
                 bool configured = TryConfigureParticipantActor(packet.CharacterId, position, build, facingRight, actionName, out errorMessage);
                 if (configured && _participantActors.TryGetValue(packet.CharacterId, out WeddingRemoteParticipant participant))
                 {
-                    StoreAvatarModifiedState(participant, packet);
+                    StoreRemoteAvatarModifiedStateFromPacket(participant, packet);
                 }
 
                 return configured;
@@ -1616,7 +1616,7 @@ namespace HaCreator.MapSimulator.Effects
             UpsertAudienceParticipant(audienceBuild, audienceSnapshot.Position, audienceSnapshot.FacingRight, audienceSnapshot.ActionName, packet.CharacterId);
             if (TryGetAudienceActorById(packet.CharacterId, out WeddingRemoteParticipant audienceParticipant))
             {
-                StoreAvatarModifiedState(audienceParticipant, packet);
+                StoreRemoteAvatarModifiedStateFromPacket(audienceParticipant, packet);
             }
 
             ApplyParticipantPortableChairState(packet.CharacterId, audienceSnapshot.PortableChairItemId ?? 0, audienceSnapshot.PortableChairPairCharacterId);
@@ -1688,6 +1688,51 @@ namespace HaCreator.MapSimulator.Effects
             };
         }
 
+        private void StoreRemoteAvatarModifiedStateFromPacket(
+            WeddingRemoteParticipant packetParticipant,
+            RemoteUserAvatarModifiedPacket packet)
+        {
+            StoreAvatarModifiedState(packetParticipant, packet);
+            ApplyRemoteAvatarModifiedRelationshipClearForCanonicalOwner(
+                packetParticipant,
+                RemoteRelationshipOverlayType.Couple,
+                packet.CoupleRecord);
+            ApplyRemoteAvatarModifiedRelationshipClearForCanonicalOwner(
+                packetParticipant,
+                RemoteRelationshipOverlayType.Friendship,
+                packet.FriendshipRecord);
+        }
+
+        private void ApplyRemoteAvatarModifiedRelationshipClearForCanonicalOwner(
+            WeddingRemoteParticipant packetParticipant,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord clearRecord)
+        {
+            if (packetParticipant == null
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || clearRecord.IsActive
+                || !TryFindWeddingRelationshipRecordByClear(
+                    relationshipType,
+                    packetParticipant.CharacterId,
+                    clearRecord,
+                    out WeddingRemoteParticipant ownerParticipant,
+                    out RemoteUserRelationshipRecord storedRecord)
+                || ownerParticipant == null
+                || ownerParticipant.CharacterId == packetParticipant.CharacterId)
+            {
+                return;
+            }
+
+            RemoteUserAvatarModifiedPacket ownerState = ownerParticipant.AvatarModifiedState
+                ?? CreateDefaultAvatarModifiedState(ownerParticipant.CharacterId);
+            ownerState = ApplyRelationshipRecordToAvatarModifiedState(
+                ownerState,
+                relationshipType,
+                storedRecord with { IsActive = false, ItemId = 0 });
+            StoreAvatarModifiedState(ownerParticipant, ownerState);
+            RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerParticipant.CharacterId);
+        }
+
         private bool TryFindWeddingRelationshipRecordBySerialPair(
             RemoteRelationshipOverlayType relationshipType,
             int packetCharacterId,
@@ -1728,6 +1773,74 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return false;
+        }
+
+        private bool TryFindWeddingRelationshipRecordByClear(
+            RemoteRelationshipOverlayType relationshipType,
+            int packetCharacterId,
+            RemoteUserRelationshipRecord clearRecord,
+            out WeddingRemoteParticipant ownerParticipant,
+            out RemoteUserRelationshipRecord relationshipRecord)
+        {
+            ownerParticipant = null;
+            relationshipRecord = default;
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                if (participant == null || !participant.AvatarModifiedState.HasValue)
+                {
+                    continue;
+                }
+
+                RemoteUserRelationshipRecord candidate = GetRelationshipRecord(
+                    participant.AvatarModifiedState.Value,
+                    relationshipType);
+                if (!candidate.IsActive
+                    || !DoesRemoteAvatarModifiedRelationshipClearMatch(packetCharacterId, clearRecord, participant.CharacterId, candidate))
+                {
+                    continue;
+                }
+
+                ownerParticipant = participant;
+                relationshipRecord = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool DoesRemoteAvatarModifiedRelationshipClearMatch(
+            int packetCharacterId,
+            RemoteUserRelationshipRecord clearRecord,
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord storedRecord)
+        {
+            if (packetCharacterId > 0
+                && (ownerCharacterId == packetCharacterId
+                    || storedRecord.CharacterId.GetValueOrDefault() == packetCharacterId
+                    || storedRecord.PairCharacterId.GetValueOrDefault() == packetCharacterId))
+            {
+                return true;
+            }
+
+            int clearOwnerCharacterId = clearRecord.CharacterId.GetValueOrDefault();
+            if (clearOwnerCharacterId > 0
+                && (ownerCharacterId == clearOwnerCharacterId
+                    || storedRecord.CharacterId.GetValueOrDefault() == clearOwnerCharacterId
+                    || storedRecord.PairCharacterId.GetValueOrDefault() == clearOwnerCharacterId))
+            {
+                return true;
+            }
+
+            int clearPairCharacterId = clearRecord.PairCharacterId.GetValueOrDefault();
+            if (clearPairCharacterId > 0
+                && (ownerCharacterId == clearPairCharacterId
+                    || storedRecord.CharacterId.GetValueOrDefault() == clearPairCharacterId
+                    || storedRecord.PairCharacterId.GetValueOrDefault() == clearPairCharacterId))
+            {
+                return true;
+            }
+
+            return DoWeddingRelationshipSerialsMatch(clearRecord.ItemSerial, clearRecord.PairItemSerial, storedRecord);
         }
 
         private static bool DoWeddingRelationshipSerialsMatch(

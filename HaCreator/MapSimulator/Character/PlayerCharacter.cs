@@ -380,6 +380,7 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasSourcePartsObjectId { get; set; }
             public int LastInsertCanvasSourceLayerObjectId { get; set; }
             public int LastInsertCanvasSourceLayerOriginSignature { get; set; }
+            public int LastInsertCanvasSourceCanvasObjectId { get; set; }
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -6706,7 +6707,9 @@ namespace HaCreator.MapSimulator.Character
                 ResolveMirrorImageSourceLayerObjectId(preparedLayer.RenderLayer, liveSourceParts),
                 preparedLayer.LastInsertCanvasSourceLayerObjectId,
                 ComputeMirrorImageSourceLayerOriginSignature(liveSourceParts),
-                preparedLayer.LastInsertCanvasSourceLayerOriginSignature);
+                preparedLayer.LastInsertCanvasSourceLayerOriginSignature,
+                ResolveMirrorImageSourceCanvasObjectId(liveSourceParts),
+                preparedLayer.LastInsertCanvasSourceCanvasObjectId);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -6957,6 +6960,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
             preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
             preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
+            preparedLayer.LastInsertCanvasSourceCanvasObjectId = 0;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -7039,6 +7043,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourceLayerOriginSignature = ResolveMirrorImageLastInsertCanvasSourceLayerOriginSignature(
                 preparedLayer.LastInsertCanvasSourceLayerOriginSignature,
                 ComputeMirrorImageSourceLayerOriginSignature(sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceCanvasObjectId = ResolveMirrorImageLastInsertCanvasSourceCanvasObjectId(
+                preparedLayer.LastInsertCanvasSourceCanvasObjectId,
+                ResolveMirrorImageSourceCanvasObjectId(sourceParts),
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
                 preparedLayer.LastInsertedLiveSourceParts,
@@ -7391,6 +7399,42 @@ namespace HaCreator.MapSimulator.Character
                 : existingOriginSignature;
         }
 
+        internal static int ResolveMirrorImageSourceCanvasObjectId(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return 0;
+            }
+
+            var identity = new HashCode();
+            identity.Add(sourceParts.Count);
+            bool hasCanvas = false;
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                IDXObject texture = sourceParts[partIndex]?.Texture;
+                identity.Add(RuntimeHelpers.GetHashCode(texture));
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                hasCanvas = true;
+                identity.Add(RuntimeHelpers.GetHashCode(texture.Texture));
+            }
+
+            return hasCanvas ? identity.ToHashCode() : 0;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceCanvasObjectId(
+            int existingSourceCanvasObjectId,
+            int currentSourceCanvasObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentSourceCanvasObjectId != 0
+                ? currentSourceCanvasObjectId
+                : existingSourceCanvasObjectId;
+        }
+
         internal static bool ShouldResetMirrorImageInsertCanvasMetadataForPreparedLayerRecreation(
             bool updatesFromLiveInsertCanvas,
             int preparedLayerObjectId,
@@ -7637,7 +7681,9 @@ namespace HaCreator.MapSimulator.Character
             int sourceLayerObjectId = 0,
             int lastInsertCanvasSourceLayerObjectId = 0,
             int sourceLayerOriginSignature = 0,
-            int lastInsertCanvasSourceLayerOriginSignature = 0)
+            int lastInsertCanvasSourceLayerOriginSignature = 0,
+            int sourceCanvasObjectId = 0,
+            int lastInsertCanvasSourceCanvasObjectId = 0)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -7716,6 +7762,9 @@ namespace HaCreator.MapSimulator.Character
             bool sourceLayerOriginChanged = sourceLayerOriginSignature != 0
                 && lastInsertCanvasSourceLayerOriginSignature != 0
                 && sourceLayerOriginSignature != lastInsertCanvasSourceLayerOriginSignature;
+            bool sourceCanvasObjectChanged = sourceCanvasObjectId != 0
+                && lastInsertCanvasSourceCanvasObjectId != 0
+                && sourceCanvasObjectId != lastInsertCanvasSourceCanvasObjectId;
             bool sourceSignatureChanged = sourceSignature != 0
                 && lastInsertedSourceSignature != 0
                 && sourceSignature != lastInsertedSourceSignature;
@@ -7725,6 +7774,7 @@ namespace HaCreator.MapSimulator.Character
             if (sourcePartsIdentityChanged
                 || sourceLayerObjectChanged
                 || sourceLayerOriginChanged
+                || sourceCanvasObjectChanged
                 || sourceSignatureChanged
                 || sourceCanvasSignatureChanged)
             {
@@ -7741,11 +7791,14 @@ namespace HaCreator.MapSimulator.Character
                 && (sourceLayerObjectId == 0 || lastInsertCanvasSourceLayerObjectId == 0);
             bool sourceLayerOriginMetadataMissing = (sourceLayerOriginSignature != 0 || lastInsertCanvasSourceLayerOriginSignature != 0)
                 && (sourceLayerOriginSignature == 0 || lastInsertCanvasSourceLayerOriginSignature == 0);
+            bool sourceCanvasObjectMetadataMissing = (sourceCanvasObjectId != 0 || lastInsertCanvasSourceCanvasObjectId != 0)
+                && (sourceCanvasObjectId == 0 || lastInsertCanvasSourceCanvasObjectId == 0);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
                 || sourceSignatureMetadataMissing
                 || sourceCanvasSignatureMetadataMissing
                 || sourceLayerObjectMetadataMissing
-                || sourceLayerOriginMetadataMissing;
+                || sourceLayerOriginMetadataMissing
+                || sourceCanvasObjectMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;

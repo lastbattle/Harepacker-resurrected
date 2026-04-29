@@ -149,6 +149,36 @@ namespace HaCreator.MapSimulator.Managers
             return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; {inboundHistory}; {outboundHistory}. {verification} {evidence} {LastStatus}";
         }
 
+        public string DescribeRecentPackets()
+        {
+            InboundPacketTrace[] inbound;
+            OutboundPacketTrace[] outbound;
+            lock (_sync)
+            {
+                inbound = _recentInboundPackets.ToArray();
+                outbound = _recentOutboundPackets.ToArray();
+            }
+
+            string inboundText = inbound.Length == 0
+                ? $"Inbound opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange}: none captured."
+                : "Inbound opcode traces:"
+                  + Environment.NewLine
+                  + string.Join(
+                      Environment.NewLine,
+                      inbound.Select((trace, index) =>
+                          $"{index + 1}. opcode={trace.Opcode} payload={trace.PayloadLength} source={trace.Source} summary={trace.Summary} raw={trace.RawPacketHex}"));
+            string outboundText = outbound.Length == 0
+                ? $"Outbound opcode {OutboundPulleyRequestOpcode}: none captured or queued."
+                : "Outbound opcode traces:"
+                  + Environment.NewLine
+                  + string.Join(
+                      Environment.NewLine,
+                      outbound.Select((trace, index) =>
+                          $"{index + 1}. opcode={trace.Opcode} sequence={trace.Sequence} payload={trace.PayloadLength} source={trace.Source} summary={trace.Summary} raw={trace.RawPacketHex}"));
+
+            return $"{inboundText}{Environment.NewLine}{outboundText}";
+        }
+
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
             int remotePort,
             int? owningProcessId = null,

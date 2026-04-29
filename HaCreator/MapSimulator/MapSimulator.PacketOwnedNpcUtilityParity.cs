@@ -579,7 +579,8 @@ namespace HaCreator.MapSimulator
                     snapshot.NpcTemplateId,
                     snapshot.CommodityCount,
                     snapshot.TrailingByteCount,
-                    snapshot.TrailingPayloadSignature);
+                    snapshot.TrailingPayloadSignature,
+                    snapshot.TrailingPayload);
                 HideCashShopOwnerFamilyWindows();
                 ShowPacketOwnedNoticeDialog(rejectionNotice);
                 return true;

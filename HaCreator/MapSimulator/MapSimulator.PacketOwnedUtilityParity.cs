@@ -2920,6 +2920,133 @@ namespace HaCreator.MapSimulator
                 }
 
                 JsonElement root = document.RootElement;
+                if (TryDecodePacketOwnedClassCompetitionRemotePageJsonObject(root, out remotePayload))
+                {
+                    return true;
+                }
+
+                foreach (string nestedPropertyName in EnumerateClassCompetitionRemoteNestedJsonPropertyNames())
+                {
+                    if (TryGetClassCompetitionRemoteProperty(root, nestedPropertyName, out JsonElement nested)
+                        && nested.ValueKind == JsonValueKind.Object
+                        && TryDecodePacketOwnedClassCompetitionRemotePageJsonObject(nested, out remotePayload))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedClassCompetitionRemotePageJsonObject(
+            JsonElement root,
+            out ClassCompetitionRemotePagePayload remotePayload)
+        {
+            remotePayload = null;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            string authKey = TryGetClassCompetitionRemoteStringProperty(root, "authKey")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "auth_key")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "auth")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "key")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "sessionKey")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "session_key")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "token");
+            string navigateUrl = TryGetClassCompetitionRemoteStringProperty(root, "navigateUrl")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "navigate_url")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "navigate")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "url")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "href")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "requestUrl")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "request_url");
+            string source = TryGetClassCompetitionRemoteStringProperty(root, "source")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "origin")
+                ?? TryGetClassCompetitionRemoteStringProperty(root, "provider");
+            IReadOnlyList<string> pageLines = NormalizeClassCompetitionRemoteLines(
+                TryGetClassCompetitionRemoteStringValues(root, "pageLines")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "page_lines")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "lines")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "page")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "line")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "body")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "html")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "content"),
+                PacketOwnedClassCompetitionMaxRemotePageLines);
+            IReadOnlyList<string> ladderLines = NormalizeClassCompetitionRemoteLines(
+                TryGetClassCompetitionRemoteStringValues(root, "ladderLines")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "ladder_lines")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "ladder")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "standings")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "rows")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "rankings")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "ranking")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "rankList")
+                    ?? TryGetClassCompetitionRemoteStringValues(root, "rank_list"),
+                PacketOwnedClassCompetitionMaxRemoteLadderLines);
+
+            if (string.IsNullOrWhiteSpace(authKey)
+                && TryExtractClassCompetitionAuthKeyFromNavigateUrl(navigateUrl, out string extractedAuthKey))
+            {
+                authKey = extractedAuthKey;
+            }
+
+            navigateUrl = HydrateClassCompetitionNavigateUrlWithAuthKey(navigateUrl, authKey);
+            if (string.IsNullOrWhiteSpace(authKey)
+                && string.IsNullOrWhiteSpace(navigateUrl)
+                && string.IsNullOrWhiteSpace(source)
+                && pageLines.Count == 0
+                && ladderLines.Count == 0)
+            {
+                return false;
+            }
+
+            remotePayload = new ClassCompetitionRemotePagePayload
+            {
+                AuthKey = authKey ?? string.Empty,
+                NavigateUrl = navigateUrl ?? string.Empty,
+                Source = source ?? string.Empty,
+                PageLines = pageLines,
+                LadderLines = ladderLines
+            };
+            return true;
+        }
+
+        private static IEnumerable<string> EnumerateClassCompetitionRemoteNestedJsonPropertyNames()
+        {
+            yield return "payload";
+            yield return "data";
+            yield return "web";
+            yield return "page";
+            yield return "result";
+            yield return "response";
+            yield return "snapshot";
+            yield return "classCompetition";
+            yield return "class_competition";
+        }
+
+        private static bool TryDecodePacketOwnedClassCompetitionRemotePageJsonPayload(
+            string text,
+            out ClassCompetitionRemotePagePayload remotePayload,
+            bool legacyFlatDecoder)
+        {
+            remotePayload = null;
+            if (!legacyFlatDecoder)
+            {
+                return TryDecodePacketOwnedClassCompetitionRemotePageJsonPayload(text, out remotePayload);
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(text);
+                JsonElement root = document.RootElement;
                 string authKey = TryGetClassCompetitionRemoteStringProperty(root, "authKey")
                     ?? TryGetClassCompetitionRemoteStringProperty(root, "auth_key")
                     ?? TryGetClassCompetitionRemoteStringProperty(root, "auth")
@@ -4440,6 +4567,35 @@ namespace HaCreator.MapSimulator
 
         private void DrainMessengerOfficialSessionBridge()
         {
+            while (_messengerOfficialSessionBridge.TryDequeueObservedOutbound(out MessengerOfficialSessionBridgeMessage observedOutbound))
+            {
+                if (observedOutbound == null)
+                {
+                    continue;
+                }
+
+                bool observed = _messengerRuntime.TryObserveOfficialClientRequest(
+                    observedOutbound.Opcode,
+                    observedOutbound.Payload,
+                    observedOutbound.Source,
+                    out string observedDetail);
+                _messengerOfficialSessionBridge.RecordDispatchResult(
+                    observedOutbound.Source,
+                    observed,
+                    $"CUIMessenger/CWvsContext outbound {observedOutbound.Opcode}: {observedDetail}");
+                if (!string.IsNullOrWhiteSpace(observedDetail))
+                {
+                    if (observed)
+                    {
+                        _chat?.AddSystemMessage(observedDetail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(observedDetail, currTickCount);
+                    }
+                }
+            }
+
             while (_messengerOfficialSessionBridge.TryDequeue(out MessengerOfficialSessionBridgeMessage message))
             {
                 if (message == null)
@@ -4617,6 +4773,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.UserInfoRemoteProfilePacketType:
                     return TryApplyCharacterInfoRemoteProfilePayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.UserInfoCollectionClaimResultPacketType:
+                    return TryApplyCharacterInfoCollectionClaimResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.BuffzoneEffectPacketType:
                 case LocalUtilityPacketInboxManager.BuffzoneEffectClientPacketType:
@@ -5087,6 +5246,45 @@ namespace HaCreator.MapSimulator
                 ? $"Applied packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} through the shared remote-user profile metadata seam and refreshed the inspected UserInfo owner."
                 : $"Applied packet-owned character-info remote profile payload for character {profilePacket.CharacterId.ToString(CultureInfo.InvariantCulture)} to the active UserInfo inspection owner while queuing it for the future remote actor.";
             return true;
+        }
+
+        private bool TryApplyCharacterInfoCollectionClaimResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!UserInfoCollectionClaimResultCodec.TryDecode(payload, out UserInfoCollectionClaimResult result, out string decodeError))
+            {
+                message = decodeError ?? "CUIUserInfo BtArrayGet result payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+
+            string claimKey = $"id:{result.CharacterId.ToString(CultureInfo.InvariantCulture)}";
+            string noticeText = string.IsNullOrWhiteSpace(result.NoticeText)
+                ? ResolveCharacterInfoCollectionClaimResultNotice(result.ResultCode)
+                : result.NoticeText.Trim();
+
+            if (result.ResultCode == UserInfoCollectionClaimResultCode.Success)
+            {
+                _characterInfoCollectionClaimFingerprints[claimKey] = result.SnapshotFingerprint;
+                message = $"Applied packet-owned CUIUserInfo BtArrayGet success for character {result.CharacterId.ToString(CultureInfo.InvariantCulture)} with collection fingerprint {result.SnapshotFingerprint.ToString(CultureInfo.InvariantCulture)}. {noticeText}";
+                return true;
+            }
+
+            message = $"Applied packet-owned CUIUserInfo BtArrayGet {result.ResultCode.ToString()} result for character {result.CharacterId.ToString(CultureInfo.InvariantCulture)} without changing the local collection fingerprint. {noticeText}";
+            return true;
+        }
+
+        private static string ResolveCharacterInfoCollectionClaimResultNotice(UserInfoCollectionClaimResultCode resultCode)
+        {
+            return resultCode switch
+            {
+                UserInfoCollectionClaimResultCode.Success => "Collection summary claim completed.",
+                UserInfoCollectionClaimResultCode.NoPendingSummary => "No collection summary is waiting to be claimed.",
+                UserInfoCollectionClaimResultCode.Unavailable => "Collection claim is unavailable for this profile.",
+                UserInfoCollectionClaimResultCode.Rejected => "Collection claim was rejected by the profile owner.",
+                _ => "Collection claim returned an unrecognized result."
+            };
         }
 
         private bool TryApplyPacketOwnedMesoGiveFailedPayload(byte[] payload, out string message)
@@ -7074,6 +7272,7 @@ namespace HaCreator.MapSimulator
 
             int appliedCount = questAlarmWindow.ApplyPacketRegistrationSync(
                 hasQuestRegistrationList ? questIds : null,
+                null,
                 effectiveAutoRegisterEnabled,
                 effectiveOpened,
                 effectiveMinimized,
@@ -15286,7 +15485,8 @@ namespace HaCreator.MapSimulator
                     explicitChatLogType,
                     IsPacketOwnedWhisperChatLogType(explicitChatLogType) && !string.IsNullOrWhiteSpace(primaryTarget)
                         ? primaryTarget
-                        : null);
+                        : null,
+                    explicitChatLogType == 19 ? secondaryChannelId : -1);
                 return true;
             }
 
@@ -19549,6 +19749,17 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryDecodePacketOwnedEventCalendarHtmlPayload(
+                    normalizedText,
+                    out entries,
+                    out alarmLines,
+                    out summary,
+                    out message))
+            {
+                hasAlarmLines = alarmLines.Length > 0;
+                return entries.Length > 0 || hasAlarmLines;
+            }
+
             List<EventEntrySnapshot> parsedEntries = new();
             string[] entryLines = normalizedText.Split(
                 new[] { "\r\n", "\n" },
@@ -19573,6 +19784,242 @@ namespace HaCreator.MapSimulator
             summary = $"Applied packet-authored event-calendar payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
             message = summary;
             return true;
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarHtmlPayload(
+            string payloadText,
+            out EventEntrySnapshot[] entries,
+            out EventAlarmLineSnapshot[] alarmLines,
+            out string summary,
+            out string message)
+        {
+            entries = Array.Empty<EventEntrySnapshot>();
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            summary = string.Empty;
+            message = "Event-calendar HTML payload did not contain a usable CUIEventAlarm owner table.";
+            if (string.IsNullOrWhiteSpace(payloadText)
+                || payloadText.IndexOf('<') < 0
+                || (payloadText.IndexOf("<tr", StringComparison.OrdinalIgnoreCase) < 0
+                    && payloadText.IndexOf("<li", StringComparison.OrdinalIgnoreCase) < 0
+                    && payloadText.IndexOf("<div", StringComparison.OrdinalIgnoreCase) < 0))
+            {
+                return false;
+            }
+
+            List<EventEntrySnapshot> parsedEntries = new();
+            List<string> headerCells = new();
+            MatchCollection rowMatches = Regex.Matches(
+                payloadText,
+                @"<tr\b[^>]*>(.*?)</tr>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            foreach (Match rowMatch in rowMatches)
+            {
+                string rowHtml = rowMatch.Groups[1].Value;
+                MatchCollection cellMatches = Regex.Matches(
+                    rowHtml,
+                    @"<t[dh]\b[^>]*>(.*?)</t[dh]>",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+                if (cellMatches.Count == 0)
+                {
+                    continue;
+                }
+
+                List<string> cells = cellMatches
+                    .Cast<Match>()
+                    .Select(match => NormalizePacketOwnedRankingHtmlCell(match.Groups[1].Value))
+                    .Where(cell => !string.IsNullOrWhiteSpace(cell))
+                    .ToList();
+                if (cells.Count == 0)
+                {
+                    continue;
+                }
+
+                if (Regex.IsMatch(rowHtml, @"<th\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                {
+                    headerCells = cells;
+                    continue;
+                }
+
+                if (TryCreatePacketOwnedEventCalendarEntryFromHtmlCells(cells, headerCells, parsedEntries.Count, out EventEntrySnapshot entry))
+                {
+                    parsedEntries.Add(entry);
+                }
+            }
+
+            if (parsedEntries.Count == 0)
+            {
+                AppendPacketOwnedEventCalendarHtmlListEntries(payloadText, parsedEntries);
+            }
+
+            if (parsedEntries.Count == 0)
+            {
+                return false;
+            }
+
+            entries = parsedEntries.ToArray();
+            alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+            summary = $"Applied packet-authored CUIEventAlarm HTML page with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
+            message = summary;
+            return true;
+        }
+
+        private static void AppendPacketOwnedEventCalendarHtmlListEntries(string payloadText, ICollection<EventEntrySnapshot> destination)
+        {
+            if (string.IsNullOrWhiteSpace(payloadText) || destination == null)
+            {
+                return;
+            }
+
+            MatchCollection rowMatches = Regex.Matches(
+                payloadText,
+                @"<(?:li|div)\b(?<attrs>[^>]*)>(?<body>.*?)</(?:li|div)>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            foreach (Match rowMatch in rowMatches)
+            {
+                string attrs = rowMatch.Groups["attrs"].Value;
+                string body = rowMatch.Groups["body"].Value;
+                string dateText = TryExtractPacketOwnedHtmlAttribute(attrs, "data-date")
+                    ?? TryExtractPacketOwnedHtmlAttribute(attrs, "data-day")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "date")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "day");
+                string title = TryExtractPacketOwnedHtmlAttribute(attrs, "data-title")
+                    ?? TryExtractPacketOwnedHtmlAttribute(attrs, "data-event")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "title")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "event")
+                    ?? NormalizePacketOwnedRankingHtmlCell(body);
+                string detail = TryExtractPacketOwnedHtmlAttribute(attrs, "data-detail")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "detail")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "desc");
+                string statusText = TryExtractPacketOwnedHtmlAttribute(attrs, "data-status")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "status");
+                string alarmText = TryExtractPacketOwnedHtmlAttribute(attrs, "data-alarm")
+                    ?? ExtractPacketOwnedHtmlClassText(body, "alarm");
+
+                if (string.IsNullOrWhiteSpace(dateText)
+                    || string.IsNullOrWhiteSpace(title)
+                    || !TryParsePacketOwnedEventDate(dateText, out DateTime scheduledAt))
+                {
+                    continue;
+                }
+
+                EventEntryStatus status = TryParsePacketOwnedEventEntryStatus(statusText, out EventEntryStatus parsedStatus)
+                    ? parsedStatus
+                    : EventEntryStatus.Upcoming;
+                destination.Add(CreatePacketOwnedEventCalendarEntry(
+                    scheduledAt,
+                    title.Trim(),
+                    detail?.Trim() ?? string.Empty,
+                    status,
+                    string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText.Trim(),
+                    int.MinValue,
+                    ResolvePacketOwnedEventEntrySortPriority(status),
+                    destination.Count,
+                    alarmText: alarmText?.Trim() ?? string.Empty));
+            }
+        }
+
+        private static bool TryCreatePacketOwnedEventCalendarEntryFromHtmlCells(
+            IReadOnlyList<string> cells,
+            IReadOnlyList<string> headerCells,
+            int sortOrder,
+            out EventEntrySnapshot entry)
+        {
+            entry = new EventEntrySnapshot();
+            if (cells == null || cells.Count == 0)
+            {
+                return false;
+            }
+
+            string dateText = GetPacketOwnedHtmlCell(cells, headerCells, "date", "day", "start", "event date") ?? cells[0];
+            if (!TryParsePacketOwnedEventDate(dateText, out DateTime scheduledAt))
+            {
+                return false;
+            }
+
+            string title = GetPacketOwnedHtmlCell(cells, headerCells, "title", "event", "name", "subject")
+                ?? (cells.Count > 1 ? cells[1] : string.Empty);
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return false;
+            }
+
+            string detail = GetPacketOwnedHtmlCell(cells, headerCells, "detail", "desc", "description", "reward") ?? string.Empty;
+            string statusText = GetPacketOwnedHtmlCell(cells, headerCells, "status", "state", "progress") ?? string.Empty;
+            string alarmText = GetPacketOwnedHtmlCell(cells, headerCells, "alarm", "ct", "message", "notice") ?? string.Empty;
+            EventEntryStatus status = TryParsePacketOwnedEventEntryStatus(statusText, out EventEntryStatus parsedStatus)
+                ? parsedStatus
+                : EventEntryStatus.Upcoming;
+
+            entry = CreatePacketOwnedEventCalendarEntry(
+                scheduledAt,
+                title.Trim(),
+                detail.Trim(),
+                status,
+                string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText.Trim(),
+                int.MinValue,
+                ResolvePacketOwnedEventEntrySortPriority(status),
+                sortOrder,
+                alarmText: alarmText.Trim());
+            return true;
+        }
+
+        private static string GetPacketOwnedHtmlCell(IReadOnlyList<string> cells, IReadOnlyList<string> headerCells, params string[] names)
+        {
+            if (cells == null || headerCells == null || names == null || headerCells.Count == 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < headerCells.Count && i < cells.Count; i++)
+            {
+                string header = headerCells[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(header))
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < names.Length; j++)
+                {
+                    if (header.IndexOf(names[j], StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return cells[i];
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string TryExtractPacketOwnedHtmlAttribute(string attrs, string name)
+        {
+            if (string.IsNullOrWhiteSpace(attrs) || string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            Match match = Regex.Match(
+                attrs,
+                $@"\b{Regex.Escape(name)}\s*=\s*(?:""(?<value>[^""]*)""|'(?<value>[^']*)'|(?<value>[^\s>]+))",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return match.Success
+                ? WebUtility.HtmlDecode(match.Groups["value"].Value).Trim()
+                : null;
+        }
+
+        private static string ExtractPacketOwnedHtmlClassText(string html, string className)
+        {
+            if (string.IsNullOrWhiteSpace(html) || string.IsNullOrWhiteSpace(className))
+            {
+                return null;
+            }
+
+            Match match = Regex.Match(
+                html,
+                $@"<[^>]*\bclass\s*=\s*(?:""[^""]*\b{Regex.Escape(className)}\b[^""]*""|'[^']*\b{Regex.Escape(className)}\b[^']*')[^>]*>(?<body>.*?)</[^>]+>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            return match.Success
+                ? NormalizePacketOwnedRankingHtmlCell(match.Groups["body"].Value)
+                : null;
         }
 
         internal static bool TryDecodePacketOwnedEventCalendarEntriesPayloadForTests(
@@ -19778,6 +20225,11 @@ namespace HaCreator.MapSimulator
 
             if (parsedEntries.Count == 0)
             {
+                AppendPacketOwnedRankingEmbeddedJsonEntries(payloadText, parsedEntries);
+            }
+
+            if (parsedEntries.Count == 0)
+            {
                 return false;
             }
 
@@ -19785,6 +20237,76 @@ namespace HaCreator.MapSimulator
             summary = $"Applied packet-authored CWebWnd ranking HTML page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
             message = summary;
             return true;
+        }
+
+        private static void AppendPacketOwnedRankingEmbeddedJsonEntries(string payloadText, ICollection<RankingEntrySnapshot> destination)
+        {
+            if (string.IsNullOrWhiteSpace(payloadText) || destination == null)
+            {
+                return;
+            }
+
+            MatchCollection scriptMatches = Regex.Matches(
+                payloadText,
+                @"<script\b[^>]*>(?<body>.*?)</script>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            foreach (Match scriptMatch in scriptMatches)
+            {
+                AppendPacketOwnedRankingEmbeddedJsonEntriesFromScript(scriptMatch.Groups["body"].Value, destination);
+                if (destination.Count > 0)
+                {
+                    return;
+                }
+            }
+
+            AppendPacketOwnedRankingEmbeddedJsonEntriesFromScript(payloadText, destination);
+        }
+
+        private static void AppendPacketOwnedRankingEmbeddedJsonEntriesFromScript(string scriptText, ICollection<RankingEntrySnapshot> destination)
+        {
+            if (string.IsNullOrWhiteSpace(scriptText) || destination == null)
+            {
+                return;
+            }
+
+            MatchCollection jsonMatches = Regex.Matches(
+                scriptText,
+                @"(?:(?:rankings?|rankingList|rankingRows|standings|rows|entries)\s*[:=]\s*)(?<json>\[[\s\S]*?\])",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            foreach (Match jsonMatch in jsonMatches)
+            {
+                string json = jsonMatch.Groups["json"].Value;
+                if (TryAppendPacketOwnedRankingEmbeddedJsonArray(json, destination)
+                    && destination.Count > 0)
+                {
+                    return;
+                }
+            }
+        }
+
+        private static bool TryAppendPacketOwnedRankingEmbeddedJsonArray(string json, ICollection<RankingEntrySnapshot> destination)
+        {
+            if (string.IsNullOrWhiteSpace(json) || destination == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json);
+                if (document.RootElement.ValueKind != JsonValueKind.Array)
+                {
+                    return false;
+                }
+
+                int beforeCount = destination.Count;
+                AppendPacketOwnedRankingJsonEntries(document.RootElement, destination);
+                return destination.Count > beforeCount;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
         }
 
         private static void AppendPacketOwnedRankingHtmlListEntries(string payloadText, ICollection<RankingEntrySnapshot> destination)

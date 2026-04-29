@@ -705,6 +705,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal int ApplyPacketRegistrationSync(
             IReadOnlyList<int> registeredQuestIds,
+            IReadOnlyList<int> hiddenAutoQuestIds,
             bool autoRegisterEnabled,
             bool opened,
             bool minimized,
@@ -737,6 +738,17 @@ namespace HaCreator.MapSimulator.UI
             if (clearHiddenAutoTombstones)
             {
                 _hiddenAutoQuestIds.Clear();
+            }
+
+            if (hiddenAutoQuestIds != null)
+            {
+                foreach (int questId in hiddenAutoQuestIds)
+                {
+                    if (questId > 0)
+                    {
+                        _hiddenAutoQuestIds.Add(questId);
+                    }
+                }
             }
 
             if (replaceRegistrations)

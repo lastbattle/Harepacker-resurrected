@@ -135,6 +135,10 @@ namespace HaCreator.MapSimulator.Companions
                 bool boundsMatch,
                 string simulatorKeyPadStates,
                 string capturedKeyPadStates,
+                string capturedSource,
+                bool capturedFromOfficialSession,
+                bool officialSessionKeyPadByteProven,
+                bool officialSessionFullTailByteProven,
                 Rectangle simulatorBounds,
                 Rectangle capturedBounds)
             {
@@ -145,6 +149,10 @@ namespace HaCreator.MapSimulator.Companions
                 BoundsMatch = boundsMatch;
                 SimulatorKeyPadStates = simulatorKeyPadStates;
                 CapturedKeyPadStates = capturedKeyPadStates;
+                CapturedSource = capturedSource;
+                CapturedFromOfficialSession = capturedFromOfficialSession;
+                OfficialSessionKeyPadByteProven = officialSessionKeyPadByteProven;
+                OfficialSessionFullTailByteProven = officialSessionFullTailByteProven;
                 SimulatorBounds = simulatorBounds;
                 CapturedBounds = capturedBounds;
             }
@@ -156,6 +164,10 @@ namespace HaCreator.MapSimulator.Companions
             public bool BoundsMatch { get; }
             public string SimulatorKeyPadStates { get; }
             public string CapturedKeyPadStates { get; }
+            public string CapturedSource { get; }
+            public bool CapturedFromOfficialSession { get; }
+            public bool OfficialSessionKeyPadByteProven { get; }
+            public bool OfficialSessionFullTailByteProven { get; }
             public Rectangle SimulatorBounds { get; }
             public Rectangle CapturedBounds { get; }
         }
@@ -214,6 +226,7 @@ namespace HaCreator.MapSimulator.Companions
         private ClientDragonFlushTail? _lastCapturedVecCtrlEndUpdateActiveFlushTail;
         private bool _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds;
         private string _lastCapturedVecCtrlEndUpdateActiveFlushSource;
+        private bool _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession;
         private string _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
@@ -550,6 +563,7 @@ namespace HaCreator.MapSimulator.Companions
             _lastCapturedVecCtrlEndUpdateActiveFlushTail = null;
             _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds = false;
             _lastCapturedVecCtrlEndUpdateActiveFlushSource = null;
+            _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession = false;
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
         }
 
@@ -1542,6 +1556,8 @@ namespace HaCreator.MapSimulator.Companions
             _lastCapturedVecCtrlEndUpdateActiveFlushTail = capturedTail;
             _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds = true;
             _lastCapturedVecCtrlEndUpdateActiveFlushSource = string.IsNullOrWhiteSpace(source) ? "manual capture" : source.Trim();
+            _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession =
+                IsClientDragonOfficialSessionCaptureSource(_lastCapturedVecCtrlEndUpdateActiveFlushSource);
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary =
                 $"Captured client dragon opcode {ClientVecCtrlDragonMovePacketOpcode} tail from {_lastCapturedVecCtrlEndUpdateActiveFlushSource}: keypad={FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates)}, bounds={FormatClientDragonFlushBounds(capturedTail)}.";
 
@@ -1570,6 +1586,8 @@ namespace HaCreator.MapSimulator.Companions
                 bottom: 0);
             _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds = false;
             _lastCapturedVecCtrlEndUpdateActiveFlushSource = string.IsNullOrWhiteSpace(source) ? "manual keypad capture" : source.Trim();
+            _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession =
+                IsClientDragonOfficialSessionCaptureSource(_lastCapturedVecCtrlEndUpdateActiveFlushSource);
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary =
                 $"Captured client dragon keypad states from {_lastCapturedVecCtrlEndUpdateActiveFlushSource}: keypad={FormatClientDragonFlushKeyPadStates(states)}, bounds unavailable.";
 
@@ -1599,7 +1617,8 @@ namespace HaCreator.MapSimulator.Companions
                     ? $"keypad {(comparison.KeyPadStatesMatch ? "match" : "mismatch")}, bounds {(comparison.BoundsMatch ? "match" : "mismatch")}"
                     : $"keypad {(comparison.KeyPadStatesMatch ? "match" : "mismatch")}, bounds waiting for full packet capture"
                 : "waiting for simulator tail";
-            return $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}; {matchText}.";
+            string proofText = ResolveClientDragonFlushTailProofText(comparison);
+            return $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}; {matchText}. {proofText}";
         }
 
         internal ClientDragonFlushTailComparison CompareLastClientDragonFlushTailCapture()
@@ -1610,19 +1629,71 @@ namespace HaCreator.MapSimulator.Companions
             ClientDragonFlushTail capturedTail = hasCapturedTail ? _lastCapturedVecCtrlEndUpdateActiveFlushTail.Value : default;
             Rectangle simulatorBounds = hasSimulatorTail ? ToBoundsRectangle(simulatorTail) : Rectangle.Empty;
             Rectangle capturedBounds = hasCapturedTail ? ToBoundsRectangle(capturedTail) : Rectangle.Empty;
+            bool keyPadStatesMatch = hasSimulatorTail
+                && hasCapturedTail
+                && AreClientDragonFlushKeyPadStatesEqual(simulatorTail.KeyPadStates, capturedTail.KeyPadStates);
+            bool boundsMatch = hasSimulatorTail
+                && hasCapturedTail
+                && _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds
+                && simulatorBounds == capturedBounds;
             return new ClientDragonFlushTailComparison(
                 hasSimulatorTail,
                 hasCapturedTail,
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds,
-                hasSimulatorTail && hasCapturedTail && AreClientDragonFlushKeyPadStatesEqual(simulatorTail.KeyPadStates, capturedTail.KeyPadStates),
-                hasSimulatorTail
-                    && hasCapturedTail
-                    && _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds
-                    && simulatorBounds == capturedBounds,
+                keyPadStatesMatch,
+                boundsMatch,
                 hasSimulatorTail ? FormatClientDragonFlushKeyPadStates(simulatorTail.KeyPadStates) : "none",
                 hasCapturedTail ? FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates) : "none",
+                _lastCapturedVecCtrlEndUpdateActiveFlushSource,
+                hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession,
+                hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession && keyPadStatesMatch,
+                hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession && keyPadStatesMatch && boundsMatch,
                 simulatorBounds,
                 capturedBounds);
+        }
+
+        internal static bool IsClientDragonOfficialSessionCaptureSource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return false;
+            }
+
+            string normalized = source.Trim();
+            return normalized.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Contains(" official-session:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ResolveClientDragonFlushTailProofText(ClientDragonFlushTailComparison comparison)
+        {
+            if (!comparison.HasCapturedTail)
+            {
+                return "Awaiting captured client tail.";
+            }
+
+            if (!comparison.CapturedFromOfficialSession)
+            {
+                return "Manual capture recorded; official-session byte proof still pending.";
+            }
+
+            if (!comparison.HasSimulatorTail)
+            {
+                return "Official-session capture recorded; waiting for simulator tail to compare.";
+            }
+
+            if (!comparison.KeyPadStatesMatch)
+            {
+                return "Official-session keypad byte proof failed; captured keypad tail differs from the simulator tail.";
+            }
+
+            if (!comparison.CapturedBoundsAvailable)
+            {
+                return "Official-session keypad byte proof matched; full move-bounds proof still pending a full opcode capture.";
+            }
+
+            return comparison.BoundsMatch
+                ? "Official-session keypad and move-bounds byte proof matched."
+                : "Official-session keypad byte proof matched; move-bounds byte proof differs.";
         }
 
         private static bool AreClientDragonFlushKeyPadStatesEqual(IReadOnlyList<byte> left, IReadOnlyList<byte> right)

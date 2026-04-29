@@ -161,6 +161,7 @@ namespace HaCreator.MapSimulator
             }
 
             BaseDXDrawableItem baseObject = objects[0];
+            _packetStageTransitionNamedObjectMetadata.TryGetValue(baseObject, out PacketOwnedNamedObjectStateMetadata metadata);
             if (stateIndex == 0)
             {
                 _packetStageTransitionObjectVisibility[baseObject] = true;
@@ -177,6 +178,8 @@ namespace HaCreator.MapSimulator
             }
 
             _packetStageTransitionObjectVisibility[baseObject] = false;
+            _packetStageTransitionNamedObjectMovingStates.Remove(baseObject);
+            baseObject.Position = Point.Zero;
             foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
             {
                 bool selected = branch.Key == stateIndex;
@@ -184,10 +187,10 @@ namespace HaCreator.MapSimulator
                 if (selected)
                 {
                     branch.Value.RestartAnimation(currentTick);
+                    ApplyPacketOwnedNamedObjectSelectedStateLifecycle(branch.Value, metadata, stateIndex);
                 }
             }
 
-            ApplyPacketOwnedNamedObjectSelectedStateLifecycle(baseObject, stateIndex);
             return true;
         }
 
@@ -205,6 +208,8 @@ namespace HaCreator.MapSimulator
                 if (branchObject != null)
                 {
                     _packetStageTransitionObjectVisibility[branchObject] = false;
+                    _packetStageTransitionNamedObjectMovingStates.Remove(branchObject);
+                    branchObject.Position = Point.Zero;
                 }
             }
         }
@@ -224,6 +229,30 @@ namespace HaCreator.MapSimulator
                 !_packetStageTransitionNamedObjectMetadata.TryGetValue(mapObject, out PacketOwnedNamedObjectStateMetadata metadata))
             {
                 return;
+            }
+
+            ApplyPacketOwnedNamedObjectSelectedStateLifecycle(mapObject, metadata, stateIndex);
+        }
+
+        private void ApplyPacketOwnedNamedObjectSelectedStateLifecycle(
+            BaseDXDrawableItem mapObject,
+            PacketOwnedNamedObjectStateMetadata metadata,
+            int stateIndex)
+        {
+            if (mapObject == null || metadata == null)
+            {
+                return;
+            }
+
+            if (TryBuildPacketOwnedNamedObjectMovingState(metadata, currTickCount, out PacketOwnedNamedObjectMovingState movingState))
+            {
+                _packetStageTransitionNamedObjectMovingStates[mapObject] = movingState;
+                movingState.Apply(mapObject, currTickCount);
+            }
+            else
+            {
+                _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
+                mapObject.Position = Point.Zero;
             }
 
             string stateSfx = metadata.ResolveStateSfx(stateIndex);

@@ -121,8 +121,9 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            // Check if effect has ended
-            if (currentTimeMs >= _trembleEndTime)
+            // Check if effect has ended using the same unsigned tick ordering
+            // used by client-owned time windows.
+            if (!IsTickBefore(currentTimeMs, _trembleEndTime))
             {
                 _trembleActive = false;
                 _trembleOffsetX = 0;
@@ -132,7 +133,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             // Check if effect hasn't started yet (delay period)
-            if (currentTimeMs < _trembleStartTime)
+            if (IsTickBefore(currentTimeMs, _trembleStartTime))
             {
                 _trembleOffsetX = 0;
                 _trembleOffsetY = 0;
@@ -140,7 +141,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             // Calculate elapsed time since tremble started
-            int elapsedMs = currentTimeMs - _trembleStartTime;
+            int elapsedMs = CalculateElapsedMilliseconds(currentTimeMs, _trembleStartTime);
 
             // Apply reduction over time
             // Each frame reduces the force multiplicatively

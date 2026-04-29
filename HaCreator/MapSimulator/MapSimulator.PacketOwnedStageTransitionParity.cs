@@ -650,6 +650,72 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal static bool TryResolvePacketOwnedNamedObjectMoveVector(
+            int objectX,
+            int objectY,
+            byte flow,
+            int? rx,
+            int? ry,
+            int? cx,
+            int? cy,
+            out int targetOffsetX,
+            out int targetOffsetY)
+        {
+            targetOffsetX = 0;
+            targetOffsetY = 0;
+            if (flow == 0)
+            {
+                return false;
+            }
+
+            if (rx.HasValue && ry.HasValue)
+            {
+                targetOffsetX = rx.Value - objectX;
+                targetOffsetY = ry.Value - objectY;
+                return targetOffsetX != 0 || targetOffsetY != 0;
+            }
+
+            if (cx.HasValue && cy.HasValue)
+            {
+                targetOffsetX = cx.Value - objectX;
+                targetOffsetY = cy.Value - objectY;
+                return targetOffsetX != 0 || targetOffsetY != 0;
+            }
+
+            return false;
+        }
+
+        private static bool TryBuildPacketOwnedNamedObjectMovingState(
+            PacketOwnedNamedObjectStateMetadata metadata,
+            int currentTick,
+            out PacketOwnedNamedObjectMovingState movingState)
+        {
+            movingState = null;
+            if (metadata == null ||
+                !TryResolvePacketOwnedNamedObjectMoveVector(
+                    metadata.X,
+                    metadata.Y,
+                    metadata.Flow,
+                    metadata.Rx,
+                    metadata.Ry,
+                    metadata.Cx,
+                    metadata.Cy,
+                    out int targetOffsetX,
+                    out int targetOffsetY))
+            {
+                return false;
+            }
+
+            movingState = new PacketOwnedNamedObjectMovingState(
+                currentTick,
+                PacketOwnedNamedObjectMovingState.DefaultDurationMs,
+                0,
+                0,
+                targetOffsetX,
+                targetOffsetY);
+            return true;
+        }
+
         private sealed record PacketOwnedNamedObjectMovingState(
             int StartTick,
             int DurationMs,
@@ -658,6 +724,8 @@ namespace HaCreator.MapSimulator
             int TargetX,
             int TargetY)
         {
+            public const int DefaultDurationMs = 4000;
+
             public void Apply(BaseDXDrawableItem item, int currentTick)
             {
                 if (item == null)
@@ -665,7 +733,19 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
-                _ = currentTick;
+                int duration = Math.Max(1, DurationMs);
+                float phase = ((currentTick - StartTick) % duration) / (float)duration;
+                if (phase < 0f)
+                {
+                    phase += 1f;
+                }
+
+                float pingPong = phase <= 0.5f
+                    ? phase * 2f
+                    : (1f - phase) * 2f;
+                int x = (int)Math.Round(StartX + ((TargetX - StartX) * pingPong));
+                int y = (int)Math.Round(StartY + ((TargetY - StartY) * pingPong));
+                item.Position = new Microsoft.Xna.Framework.Point(x, y);
             }
         }
 

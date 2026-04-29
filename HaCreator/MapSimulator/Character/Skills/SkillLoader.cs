@@ -3187,7 +3187,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
-                    || ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName)
+                    || (ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName)
+                        && !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(
+                            actionName,
+                            supportedRawActionNames))
                     || !ShadowPartnerClientActionResolver.ShouldSynthesizeClientInitializedFallbackAction(actionName))
                 {
                     continue;
@@ -6647,6 +6650,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return (child, relativePath, UseNameAsValue: true);
                 }
 
+                if (TryReadClientSummonedUolTableEntryValueNameFromFieldName(child.Name))
+                {
+                    yield return (child, relativePath, UseNameAsValue: true);
+                }
+
                 foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) nestedValue in EnumerateClientSummonedUolTableEntryValues(
                              child,
                              relativePath,
@@ -7077,6 +7085,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
 
+                string decodedName = NormalizeClientSummonedUolEncodedPathSyntax(name);
+                if (!string.Equals(decodedName, name, StringComparison.Ordinal))
+                {
+                    foreach (int linkedSkillId in ParseLinkedSkillIds(decodedName))
+                    {
+                        if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                        {
+                            skillId = linkedSkillId;
+                            return true;
+                        }
+                    }
+
+                    foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(decodedName, contextSkillId: 0))
+                    {
+                        if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                        {
+                            skillId = fallbackSkillId;
+                            return true;
+                        }
+                    }
+                }
+
                 return false;
             }
 
@@ -7106,6 +7136,28 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name.Substring(0, prefixLength));
             return !string.IsNullOrWhiteSpace(normalizedName);
+        }
+
+        private static bool TryReadClientSummonedUolTableEntryValueNameFromFieldName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string decodedName = NormalizeClientSummonedUolEncodedPathSyntax(name);
+            int prefixLength = 0;
+            while (prefixLength < decodedName.Length && char.IsLetterOrDigit(decodedName[prefixLength]))
+            {
+                prefixLength++;
+            }
+
+            if (prefixLength <= 0 || prefixLength >= decodedName.Length)
+            {
+                return false;
+            }
+
+            return IsClientSummonedUolTableEntryValueName(decodedName.Substring(0, prefixLength));
         }
 
         private static string BuildClientSummonedUolTableEntryRelativePath(
@@ -8449,6 +8501,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                     {
                         builder.Append(unicodeDecoded == '\\' ? '/' : unicodeDecoded);
                         i += 5;
+                        continue;
+                    }
+
+                    if (i < token.Length - 3
+                        && (token[i + 1] == 'x' || token[i + 1] == 'X')
+                        && TryParseClientSummonedUolPercentEncodedChar(
+                            token[i + 2],
+                            token[i + 3],
+                            out char hexDecoded)
+                        && IsClientSummonedUolDecodedPathCharacter(hexDecoded))
+                    {
+                        builder.Append(hexDecoded == '\\' ? '/' : hexDecoded);
+                        i += 3;
                         continue;
                     }
 
@@ -11130,7 +11195,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             while (stack.Count > 0)
             {
                 WzImageProperty node = stack.Pop();
-                if (string.Equals(node.Name, "action", StringComparison.OrdinalIgnoreCase))
+                if (IsMorphActionNodeName(node.Name))
                 {
                     yield return node;
                     continue;
@@ -11144,6 +11209,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                     stack.Push(child);
                 }
             }
+        }
+
+        private static bool IsMorphActionNodeName(string nodeName)
+        {
+            if (string.Equals(nodeName, "action", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(nodeName)
+                || !nodeName.StartsWith("action", StringComparison.OrdinalIgnoreCase)
+                || nodeName.Length == "action".Length)
+            {
+                return false;
+            }
+
+            for (int i = "action".Length; i < nodeName.Length; i++)
+            {
+                if (!char.IsDigit(nodeName[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         internal static IReadOnlyList<string> GetMorphTemplateRequestedActionNamesForTesting(

@@ -215,6 +215,13 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static bool ShouldDismissForKeyboard(Keys key)
+        {
+            return key == Keys.Enter
+                || key == Keys.Space
+                || key == Keys.Escape;
+        }
+
         internal static Point ResolveMessagePosition(int frameWidth, float measuredWidth, bool useAuthoredLayout)
         {
             return new Point(MessageOffsetX, MessageOffsetY);

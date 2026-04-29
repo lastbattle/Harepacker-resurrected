@@ -657,6 +657,18 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string currentDirectoryPath = HaCreator.Program.DataSource?.VersionInfo?.DirectoryPath;
+            if (!string.IsNullOrWhiteSpace(currentDirectoryPath)
+                && TryPopulateCountryNameCatalogFromImage(countryNameImage, areaGroups, areaDetails, areaDetailItemParams))
+            {
+                AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(currentDirectoryPath);
+                return;
+            }
+
+            if (TryPopulateCountryNameCatalogFromImage(countryNameImage, areaGroups, areaDetails, areaDetailItemParams))
+            {
+                return;
+            }
+
             string preferredDirectoryPath = AccountMoreInfoOwnerStringPoolText.GetPreferredAccountMoreInfoDataSourceDirectory();
             IReadOnlyList<string> fallbackDirectories = PrioritizePreferredDataSourceDirectory(
                 preferredDirectoryPath,
@@ -669,6 +681,7 @@ namespace HaCreator.MapSimulator.Managers
                     WzImage fallbackImage = fallbackDataSource.GetImage("Etc", "CountryName.img");
                     if (TryPopulateCountryNameCatalogFromImage(fallbackImage, areaGroups, areaDetails, areaDetailItemParams))
                     {
+                        AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(candidateDirectory);
                         return;
                     }
                 }

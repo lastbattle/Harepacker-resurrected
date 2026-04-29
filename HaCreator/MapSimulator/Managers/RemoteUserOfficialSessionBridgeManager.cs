@@ -131,6 +131,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<ushort, int> _packetMap = new(DefaultPacketMap);
         private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
         private readonly Dictionary<ushort, string> _portableChairRecordInferenceMap = new();
+        private readonly Dictionary<string, Dictionary<int, ushort>> _portableChairRecordAddOpcodeByCharacterByBuild = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Dictionary<ushort, LearnedOpcodeEntry>> _learnedTutorPacketMapByBuild = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<ushort, PendingTutorInferenceEvidence> _pendingTutorInferenceMap = new();
         private readonly Dictionary<ushort, string> _tutorInferenceConflictMap = new();
@@ -775,13 +776,31 @@ namespace HaCreator.MapSimulator.Managers
                             inferencePayload,
                             source,
                             out packetType,
-                            out string portableChairRecordReason))
+                            out string portableChairRecordReason,
+                            out int portableChairRecordCharacterId))
                     {
                         _packetMap[opcode] = packetType;
                         string learnedEvidence = $"auto:{portableChairRecordReason}; {OfficialRemoteOwnerEvidence}; {OfficialPortableChairRecordEvidence}";
                         _portableChairRecordInferenceMap[opcode] = portableChairRecordReason;
+                        RememberPortableChairRecordAddOwnerNoLock(source, portableChairRecordCharacterId, opcode);
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
                         LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from extended packet-owned couple-chair record-add capture ({portableChairRecordReason}). {OfficialPortableChairRecordEvidence}";
+                        hasMappedPacketType = true;
+                    }
+
+                    if (!hasMappedPacketType
+                        && TryResolvePortableChairRecordRemoveFromPriorAddCaptureNoLock(
+                            opcode,
+                            inferencePayload,
+                            source,
+                            out packetType,
+                            out string portableChairRecordRemoveReason))
+                    {
+                        _packetMap[opcode] = packetType;
+                        string learnedEvidence = $"auto:{portableChairRecordRemoveReason}; {OfficialRemoteOwnerEvidence}; {OfficialPortableChairRecordEvidence}";
+                        _portableChairRecordInferenceMap[opcode] = portableChairRecordRemoveReason;
+                        RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from packet-owned couple-chair record-remove capture paired with prior add evidence ({portableChairRecordRemoveReason}). {OfficialPortableChairRecordEvidence}";
                         hasMappedPacketType = true;
                     }
 
@@ -1521,10 +1540,12 @@ namespace HaCreator.MapSimulator.Managers
             byte[] payload,
             string source,
             out int packetType,
-            out string reason)
+            out string reason,
+            out int characterId)
         {
             packetType = 0;
             reason = string.Empty;
+            characterId = 0;
             if (!IsOfficialSessionSource(source)
                 || payload == null
                 || payload.Length != sizeof(int) * 4)
@@ -1548,8 +1569,60 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             packetType = (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd;
+            characterId = packet.CharacterId;
             reason = $"opcode {opcode} extended chair-record add for character {packet.CharacterId}, chair {packet.ChairItemId}, pair {packet.PairCharacterId.Value}, status {packet.Status.Value}";
             return true;
+        }
+
+        private bool TryResolvePortableChairRecordRemoveFromPriorAddCaptureNoLock(
+            ushort opcode,
+            byte[] payload,
+            string source,
+            out int packetType,
+            out string reason)
+        {
+            packetType = 0;
+            reason = string.Empty;
+            if (!IsOfficialSessionSource(source)
+                || payload == null
+                || payload.Length != sizeof(int)
+                || !Pools.RemoteUserPacketCodec.TryParsePortableChairRecordRemove(
+                    payload,
+                    out Pools.RemoteUserPortableChairRecordRemovePacket packet,
+                    out _)
+                || packet.CharacterId <= 0)
+            {
+                return false;
+            }
+
+            string buildTag = ResolveOfficialSessionBuildTag(source);
+            if (!_portableChairRecordAddOpcodeByCharacterByBuild.TryGetValue(buildTag, out Dictionary<int, ushort> addOpcodeByCharacter)
+                || !addOpcodeByCharacter.TryGetValue(packet.CharacterId, out ushort addOpcode)
+                || addOpcode == opcode)
+            {
+                return false;
+            }
+
+            packetType = (int)Pools.RemoteUserPacketType.UserCoupleChairRecordRemove;
+            reason = $"opcode {opcode} compact chair-record remove for character {packet.CharacterId}, paired with prior build {buildTag} add opcode {addOpcode}";
+            return true;
+        }
+
+        private void RememberPortableChairRecordAddOwnerNoLock(string source, int characterId, ushort opcode)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            string buildTag = ResolveOfficialSessionBuildTag(source);
+            if (!_portableChairRecordAddOpcodeByCharacterByBuild.TryGetValue(buildTag, out Dictionary<int, ushort> addOpcodeByCharacter))
+            {
+                addOpcodeByCharacter = new Dictionary<int, ushort>();
+                _portableChairRecordAddOpcodeByCharacterByBuild[buildTag] = addOpcodeByCharacter;
+            }
+
+            addOpcodeByCharacter[characterId] = opcode;
         }
 
         private void EnsureLearnedTutorOpcodeBuildProofNoLock(ushort opcode, int packetType, string buildTag, int proofCount)

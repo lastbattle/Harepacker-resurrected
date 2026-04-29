@@ -1212,21 +1212,38 @@ namespace HaCreator.MapSimulator
                 int candidateOffset = offset;
                 short? candidateOperationCode = null;
                 int? candidateEncodedSlotPosition = null;
+                int encodedSlotStartOffset = -1;
+                int encodedSlotEndOffset = -1;
 
                 if (opcodeFirst)
                 {
                     TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
+                    encodedSlotStartOffset = candidateOffset;
                     TryReadEncodedSlotPosition(payload, ref candidateOffset, out candidateEncodedSlotPosition);
+                    encodedSlotEndOffset = candidateOffset;
                 }
                 else
                 {
+                    encodedSlotStartOffset = candidateOffset;
                     TryReadEncodedSlotPosition(payload, ref candidateOffset, out candidateEncodedSlotPosition);
+                    encodedSlotEndOffset = candidateOffset;
                     TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
                 }
 
                 int remaining = payload.Length - candidateOffset;
                 if (remaining != 0 && remaining < sizeof(short))
                 {
+                    continue;
+                }
+
+                if (!candidateOperationCode.HasValue
+                    && candidateEncodedSlotPosition.HasValue
+                    && candidateEncodedSlotPosition.Value >= 0
+                    && encodedSlotEndOffset - encodedSlotStartOffset == sizeof(short))
+                {
+                    // A result-first [result][Int16 reason] failure body is more common
+                    // than a positive-slot echo encoded as Int16 without an opcode. Keep
+                    // int32 echoes valid, but leave this compact shape to the reason parser.
                     continue;
                 }
 

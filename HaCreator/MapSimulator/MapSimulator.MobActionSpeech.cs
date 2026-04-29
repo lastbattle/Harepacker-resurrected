@@ -1,11 +1,19 @@
 using System;
+using System.Collections.Generic;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Entities;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private readonly Dictionary<int, LocalOverlayBalloonSkin> _mobActionSpeechBalloonSkins = new();
+        private bool _mobActionSpeechBalloonSkinsLoaded;
+
         private void DrawMobActionSpeechFeedback(in Managers.RenderContext renderContext)
         {
             if (_fontChat == null ||
@@ -67,22 +75,175 @@ namespace HaCreator.MapSimulator
                 out Color borderColor,
                 out Color textColor);
 
+            LocalOverlayBalloonSkin skin = IsMobActionSpeechFloatNotice(mob.ActiveActionSpeechFloatNotice)
+                ? null
+                : ResolveMobActionSpeechBalloonSkin(mob.ActiveActionSpeechChatBalloon);
+            bool drewAuthoredSkin = DrawMobActionSpeechBalloonSkin(skin, bounds, remainingAlpha);
+            if (!drewAuthoredSkin)
+            {
+                DrawMobActionSpeechFallbackFrame(
+                    bounds,
+                    backgroundColor,
+                    borderColor,
+                    !IsMobActionSpeechScreenNotice(mob.ActiveActionSpeechChatBalloon, mob.ActiveActionSpeechFloatNotice));
+            }
+
+            DrawChatTextWithFallback(mob.ActiveActionSpeechText, new Vector2(bounds.Left + 9, bounds.Top + 6), textColor);
+        }
+
+        private LocalOverlayBalloonSkin ResolveMobActionSpeechBalloonSkin(int chatBalloon)
+        {
+            EnsureMobActionSpeechBalloonSkinsLoaded();
+            int normalizedChatBalloon = Math.Max(0, chatBalloon);
+            if (_mobActionSpeechBalloonSkins.TryGetValue(normalizedChatBalloon, out LocalOverlayBalloonSkin skin) &&
+                skin?.IsLoaded == true)
+            {
+                return skin;
+            }
+
+            return normalizedChatBalloon != 0 &&
+                   _mobActionSpeechBalloonSkins.TryGetValue(0, out LocalOverlayBalloonSkin fallback) &&
+                   fallback?.IsLoaded == true
+                ? fallback
+                : null;
+        }
+
+        private void EnsureMobActionSpeechBalloonSkinsLoaded()
+        {
+            if (_mobActionSpeechBalloonSkinsLoaded)
+            {
+                return;
+            }
+
+            _mobActionSpeechBalloonSkinsLoaded = true;
+            WzImage chatBalloonImage = Program.FindImage("UI", "ChatBalloon.img");
+            if (chatBalloonImage == null)
+            {
+                return;
+            }
+
+            chatBalloonImage.ParseImage();
+            if (chatBalloonImage["mob"] is not WzSubProperty mobBalloonRoot)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in mobBalloonRoot.WzProperties)
+            {
+                if (!int.TryParse(child?.Name, out int chatBalloonId) ||
+                    child is not WzSubProperty source)
+                {
+                    continue;
+                }
+
+                LocalOverlayBalloonSkin skin = LoadMobActionSpeechBalloonSkin(source);
+                if (skin?.IsLoaded == true)
+                {
+                    _mobActionSpeechBalloonSkins[chatBalloonId] = skin;
+                }
+            }
+        }
+
+        private LocalOverlayBalloonSkin LoadMobActionSpeechBalloonSkin(WzSubProperty source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new LocalOverlayBalloonSkin
+            {
+                NorthWest = LoadUiCanvasTexture(source["nw"] as WzCanvasProperty),
+                NorthEast = LoadUiCanvasTexture(source["ne"] as WzCanvasProperty),
+                SouthWest = LoadUiCanvasTexture(source["sw"] as WzCanvasProperty),
+                SouthEast = LoadUiCanvasTexture(source["se"] as WzCanvasProperty),
+                North = LoadUiCanvasTexture(source["n"] as WzCanvasProperty),
+                South = LoadUiCanvasTexture(source["s"] as WzCanvasProperty),
+                West = LoadUiCanvasTexture(source["w"] as WzCanvasProperty),
+                East = LoadUiCanvasTexture(source["e"] as WzCanvasProperty),
+                Center = LoadUiCanvasTexture(source["c"] as WzCanvasProperty),
+                Arrow = LoadUiArrowSprite(source["arrow"] as WzCanvasProperty),
+                TextColor = IsMobActionSpeechScreenChatSource(source) ? Color.White : Color.Black
+            };
+        }
+
+        private bool DrawMobActionSpeechBalloonSkin(LocalOverlayBalloonSkin skin, Rectangle bounds, float alpha)
+        {
+            if (skin?.IsLoaded != true)
+            {
+                return false;
+            }
+
+            Color tint = Color.White * MathHelper.Clamp(alpha, 0f, 1f);
+            DrawMobActionSpeechNineSlice(skin, bounds, tint);
+
+            LocalOverlayBalloonArrowSprite arrow = skin.Arrow;
+            if (arrow?.IsLoaded == true)
+            {
+                int arrowX = bounds.Left + (bounds.Width / 2) - arrow.Origin.X;
+                int arrowY = bounds.Bottom - arrow.Origin.Y;
+                _spriteBatch.Draw(arrow.Texture, new Vector2(arrowX, arrowY), tint);
+            }
+
+            return true;
+        }
+
+        private void DrawMobActionSpeechNineSlice(LocalOverlayBalloonSkin skin, Rectangle bounds, Color tint)
+        {
+            Texture2D northWest = skin.NorthWest;
+            Texture2D northEast = skin.NorthEast;
+            Texture2D southWest = skin.SouthWest;
+            Texture2D southEast = skin.SouthEast;
+            Texture2D north = skin.North;
+            Texture2D south = skin.South;
+            Texture2D west = skin.West;
+            Texture2D east = skin.East;
+            Texture2D center = skin.Center;
+
+            int leftWidth = northWest.Width;
+            int rightWidth = northEast.Width;
+            int topHeight = northWest.Height;
+            int bottomHeight = southWest.Height;
+            int centerWidth = Math.Max(0, bounds.Width - leftWidth - rightWidth);
+            int centerHeight = Math.Max(0, bounds.Height - topHeight - bottomHeight);
+
+            _spriteBatch.Draw(center, new Rectangle(bounds.X + leftWidth, bounds.Y + topHeight, centerWidth, centerHeight), tint);
+            _spriteBatch.Draw(northWest, new Vector2(bounds.X, bounds.Y), tint);
+            _spriteBatch.Draw(northEast, new Vector2(bounds.Right - rightWidth, bounds.Y), tint);
+            _spriteBatch.Draw(southWest, new Vector2(bounds.X, bounds.Bottom - bottomHeight), tint);
+            _spriteBatch.Draw(southEast, new Vector2(bounds.Right - rightWidth, bounds.Bottom - bottomHeight), tint);
+
+            if (centerWidth > 0)
+            {
+                _spriteBatch.Draw(north, new Rectangle(bounds.X + leftWidth, bounds.Y, centerWidth, north.Height), tint);
+                _spriteBatch.Draw(south, new Rectangle(bounds.X + leftWidth, bounds.Bottom - south.Height, centerWidth, south.Height), tint);
+            }
+
+            if (centerHeight > 0)
+            {
+                _spriteBatch.Draw(west, new Rectangle(bounds.X, bounds.Y + topHeight, west.Width, centerHeight), tint);
+                _spriteBatch.Draw(east, new Rectangle(bounds.Right - east.Width, bounds.Y + topHeight, east.Width, centerHeight), tint);
+            }
+        }
+
+        private void DrawMobActionSpeechFallbackFrame(Rectangle bounds, Color backgroundColor, Color borderColor, bool includeArrow)
+        {
             _spriteBatch.Draw(_debugBoundaryTexture, bounds, backgroundColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bounds.Left, bounds.Top, bounds.Width, 2), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bounds.Left, bounds.Bottom - 2, bounds.Width, 2), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bounds.Left, bounds.Top, 2, bounds.Height), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bounds.Right - 2, bounds.Top, 2, bounds.Height), borderColor);
 
-            if (!IsMobActionSpeechScreenNotice(mob.ActiveActionSpeechChatBalloon, mob.ActiveActionSpeechFloatNotice))
+            if (!includeArrow)
             {
-                int arrowX = bounds.Left + (bounds.Width / 2) - 5;
-                int arrowY = bounds.Bottom - 1;
-                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(arrowX, arrowY, 10, 4), borderColor);
-                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(arrowX + 2, arrowY + 4, 6, 3), borderColor);
-                _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(arrowX + 4, arrowY + 7, 2, 3), borderColor);
+                return;
             }
 
-            DrawChatTextWithFallback(mob.ActiveActionSpeechText, new Vector2(bounds.Left + 9, bounds.Top + 6), textColor);
+            int arrowX = bounds.Left + (bounds.Width / 2) - 5;
+            int arrowY = bounds.Bottom - 1;
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(arrowX, arrowY, 10, 4), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(arrowX + 2, arrowY + 4, 6, 3), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(arrowX + 4, arrowY + 7, 2, 3), borderColor);
         }
 
         internal static Rectangle ResolveMobActionSpeechBounds(
@@ -119,6 +280,16 @@ namespace HaCreator.MapSimulator
         {
             // UI/ChatBalloon.img/mob/1 carries screenChat=1; other mob balloons stay anchored to the owner.
             return chatBalloon == 1;
+        }
+
+        internal static string ResolveMobActionSpeechBalloonSkinPathForTests(int chatBalloon)
+        {
+            return $"UI/ChatBalloon.img/mob/{Math.Max(0, chatBalloon)}";
+        }
+
+        internal static bool IsMobActionSpeechScreenChatSource(WzImageProperty source)
+        {
+            return (source?["screenChat"] as WzIntProperty)?.Value != 0;
         }
 
         internal static bool IsMobActionSpeechFloatNotice(int floatNotice)

@@ -31,10 +31,52 @@ namespace HaCreator.MapSimulator
         {
             int? mobTeam = mob?.MobInstance?.Team;
             bool hasOwnerTeam = TryResolvePacketOwnedExpiryOwnerTeam(ownerCharacterId, out int ownerTeam);
-            return SummonedPool.ResolvePacketOwnedExpiryCandidateClientStateForParity(
+            int? mobPhase = mob?.PacketOwnedExpiryClientPhase;
+            int ownerPhase = default;
+            bool hasPhaseContext = mobPhase.HasValue
+                                   && TryResolvePacketOwnedExpiryOwnerPhase(ownerCharacterId, out ownerPhase);
+            return ResolvePacketOwnedExpiryCandidateClientStateForParity(
                 mobTeam,
                 hasOwnerTeam ? ownerTeam : null,
-                hasOwnerTeam);
+                hasOwnerTeam,
+                mob?.PacketOwnedExpiryClientSuspended == true,
+                mobPhase,
+                hasPhaseContext ? ownerPhase : null,
+                hasPhaseContext);
+        }
+
+        internal static PacketOwnedExpiryCandidateClientState ResolvePacketOwnedExpiryCandidateClientStateForParity(
+            int? mobTeam,
+            int? ownerTeam,
+            bool hasTeamContext,
+            bool isSuspended,
+            int? mobPhase,
+            int? ownerPhase,
+            bool hasPhaseContext)
+        {
+            return SummonedPool.ResolvePacketOwnedExpiryCandidateClientStateForParity(
+                mobTeam,
+                ownerTeam,
+                hasTeamContext,
+                isSuspended,
+                mobPhase,
+                ownerPhase,
+                hasPhaseContext);
+        }
+
+        private bool TryResolvePacketOwnedExpiryOwnerPhase(int ownerCharacterId, out int ownerPhase)
+        {
+            ownerPhase = default;
+            if (ownerCharacterId <= 0)
+            {
+                return false;
+            }
+
+            // The recovered client call compares candidate phase against the current user/field phase.
+            // Simulator packet-owned mob phase metadata is only admitted when present; the local field phase
+            // defaults to the ordinary phase-0 lane until a more specific packet owner supplies another one.
+            ownerPhase = 0;
+            return true;
         }
 
         private bool TryResolvePacketOwnedExpiryOwnerTeam(int ownerCharacterId, out int ownerTeam)

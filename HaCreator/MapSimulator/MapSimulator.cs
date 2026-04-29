@@ -2097,7 +2097,8 @@ namespace HaCreator.MapSimulator
         {
             // Transfer admission takes ownership from local passive retry replay:
             // once a map handoff is queued, native lifecycle clears this retry owner.
-            return hasPendingPassiveTransferRequest;
+            return PassiveTransferFieldReadinessEvaluator.ShouldConsumeQueuedRetryOnMapTransferAdmission(
+                hasPendingPassiveTransferRequest);
         }
 
         private PortalInstance ResolvePortalByNameOrIndex(IEnumerable<PortalInstance> portals, string portalName, int portalIndex)
@@ -21264,6 +21265,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!MobSkillSelectionParity.ShouldApplyMobSkillRuntimeProp(
+                    runtimeData,
+                    _mobSkillRandom.Next(100)))
+            {
+                return;
+            }
+
 
             if (definition.Operation == MobSkillOperation.Heal)
             {
@@ -32699,6 +32707,17 @@ namespace HaCreator.MapSimulator
             ClearPassiveTransferRequest();
         }
 
+        private void ConsumePassiveTransferRequestFromFieldInterfaceTeardown()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromFieldInterfaceTeardown(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
         private bool ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown()
         {
             PlayerInput input = _playerManager?.Input;
@@ -37204,6 +37223,9 @@ namespace HaCreator.MapSimulator
                 or QuestDetailInlineReferenceSource.RequirementLine
                 or QuestDetailInlineReferenceSource.HintText
                 or QuestDetailInlineReferenceSource.SummaryText
+                or QuestDetailInlineReferenceSource.DemandRect
+                or QuestDetailInlineReferenceSource.DeliveryAcceptRect
+                or QuestDetailInlineReferenceSource.DeliveryCompleteRect
                 or QuestDetailInlineReferenceSource.DeliveryInset
                 or QuestDetailInlineReferenceSource.Unknown;
         }
@@ -43504,15 +43526,14 @@ namespace HaCreator.MapSimulator
                 case MassacrePacketInboxMessageKind.Stage:
                     return field.TryShowCountEffectPresentation(message.Value1, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.Bonus:
-                    field.ShowBonusPresentation(currentTickCount);
-                    return true;
+                    return field.TryShowBonusPresentation(message.Value1, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.Result:
-                    field.ShowResultPresentation(
+                    return field.TryShowResultPresentation(
                         message.ClearResult,
                         currentTickCount,
                         message.HasScoreOverride ? message.Value1 : null,
-                        message.HasRankOverride ? message.Rank : null);
-                    return true;
+                        message.HasRankOverride ? message.Rank : null,
+                        out resultMessage);
                 case MassacrePacketInboxMessageKind.Packet:
                     return TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out resultMessage);
                 default:

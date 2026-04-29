@@ -833,6 +833,7 @@ namespace HaCreator.MapSimulator.UI
             string resultTrailingText = ResultTrailingByteCount > 0
                 ? $", result opaque tail {ResultTrailingByteCount} byte(s) ({ResultTrailingPayloadSignature})"
                 : string.Empty;
+            string packetRowShapeText = BuildPacketOwnedRowShapeSummary(rows);
             string waitText = IsWaitingForResult
                 ? ", waiting for packet 366"
                 : string.Empty;
@@ -860,7 +861,47 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string inboundSourceText = DescribeInboundSourceSummary();
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}{pendingWishlistSearchText}{deferredResultText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}{packetRowShapeText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}{pendingWishlistSearchText}{deferredResultText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
+        }
+
+        private static string BuildPacketOwnedRowShapeSummary(IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> rows)
+        {
+            if (rows == null || rows.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            int packetRowCount = 0;
+            int unavailableRowCount = 0;
+            int limitedRowCount = 0;
+            int maxPerSlot = 0;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot row = rows[i];
+                if (row == null)
+                {
+                    continue;
+                }
+
+                packetRowCount++;
+                if (row.SaleState != 0)
+                {
+                    unavailableRowCount++;
+                }
+
+                if (row.MaxPerSlot > 0)
+                {
+                    limitedRowCount++;
+                    maxPerSlot = Math.Max(maxPerSlot, row.MaxPerSlot);
+                }
+            }
+
+            if (packetRowCount <= 0)
+            {
+                return string.Empty;
+            }
+
+            return $", sale-state unavailable {unavailableRowCount}/{packetRowCount}, slot-limit rows {limitedRowCount}/{packetRowCount}, maxPerSlot {maxPerSlot}";
         }
 
         private string DescribeLastResultState()

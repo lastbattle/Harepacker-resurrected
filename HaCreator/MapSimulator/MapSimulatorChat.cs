@@ -195,17 +195,18 @@ namespace HaCreator.MapSimulator
 
         internal bool HandleCommittedText(string text)
         {
+            string committedText = NormalizeClientEditCommittedText(text);
             if (!_isActive
-                || string.IsNullOrEmpty(text)
+                || string.IsNullOrEmpty(committedText)
                 || IsWhisperTargetPickerModalFooterFocused()
-                || !CanInsertInputText(text))
+                || !CanInsertInputText(committedText))
             {
                 return false;
             }
 
             ActivateWhisperTargetPickerModalComboFocus();
             TryDeleteInputSelection();
-            InsertInputText(text);
+            InsertInputText(committedText);
             SyncWhisperTargetPickerSelectionFromInput();
             ResetHistoryNavigation();
             ResetKeyRepeat();
@@ -3434,6 +3435,29 @@ namespace HaCreator.MapSimulator
             catch (Exception)
             {
             }
+        }
+
+        internal static string NormalizeClientEditCommittedText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder normalized = null;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (char.IsControl(c))
+                {
+                    normalized ??= new StringBuilder(text.Length).Append(text, 0, i);
+                    continue;
+                }
+
+                normalized?.Append(c);
+            }
+
+            return normalized?.ToString() ?? text;
         }
 
         private static bool TryParseTargetModeCommand(

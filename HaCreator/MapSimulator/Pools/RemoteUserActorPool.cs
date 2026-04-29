@@ -268,9 +268,27 @@ namespace HaCreator.MapSimulator.Pools
         {
             public int ItemId { get; init; }
             public ItemEffectAnimationSet Effect { get; init; }
+            public int SimulatedOwnerLayerHandleId { get; init; }
+            public int SimulatedOwnerLayerHandleRefCount { get; private set; }
+            public bool TerminateRequested { get; private set; }
+            public bool IsTerminated { get; private set; }
             public int AnimationStartTime { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
+
+            public void CaptureRegisteredLayerReference()
+            {
+                SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
+                TerminateRequested = false;
+                IsTerminated = false;
+            }
+
+            public void ReleaseLayerReference()
+            {
+                TerminateRequested = true;
+                IsTerminated = true;
+                SimulatedOwnerLayerHandleRefCount = 0;
+            }
         }
 
         public sealed class RemoteActiveEffectMotionBlurState
@@ -333,6 +351,12 @@ namespace HaCreator.MapSimulator.Pools
             {
                 TerminateRequested = true;
                 IsTerminated = true;
+                for (int i = Snapshots.Count - 1; i >= 0; i--)
+                {
+                    ReleaseSnapshotLayerReferences(Snapshots[i]);
+                }
+
+                Snapshots.Clear();
                 var operations = SimulatedLayerReferenceOperations?.ToList()
                     ?? new List<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
                 if (SimulatedOverlayLayerHandleRefCount > 0 && SimulatedOverlayLayerHandleId > 0)
@@ -364,6 +388,58 @@ namespace HaCreator.MapSimulator.Pools
                 SimulatedLayerHandleRefCounts = SimulatedLayerHandleRefCounts?
                     .ToDictionary(static entry => entry.Key, static _ => 0)
                     ?? new Dictionary<AvatarRenderLayer, int>();
+                SimulatedLayerReferenceOperations = operations;
+            }
+
+            public void ReleaseSnapshotLayerReferences(RemoteActiveEffectMotionBlurSnapshot snapshot)
+            {
+                if (snapshot == null)
+                {
+                    return;
+                }
+
+                var operations = SimulatedLayerReferenceOperations?.ToList()
+                    ?? new List<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
+                if (snapshot.SimulatedOverlayLayerHandleId > 0
+                    && snapshot.SimulatedOverlayLayerHandleRefCount > 1)
+                {
+                    operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                        layerCode: -1,
+                        snapshot.SimulatedOverlayLayerHandleId,
+                        SimulatedOverlayLayerHandleRefCount));
+                }
+
+                if (snapshot.Layers != null)
+                {
+                    for (int i = 0; i < snapshot.Layers.Count; i++)
+                    {
+                        RemoteActiveEffectMotionBlurLayerSnapshot layer = snapshot.Layers[i];
+                        if (layer == null)
+                        {
+                            continue;
+                        }
+
+                        if (layer.SimulatedLayerHandleId > 0 && layer.SimulatedLayerHandleRefCount > 1)
+                        {
+                            operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                                (int)layer.SourceLayer,
+                                layer.SimulatedLayerHandleId,
+                                SimulatedLayerHandleRefCounts != null
+                                    && SimulatedLayerHandleRefCounts.TryGetValue(layer.SourceLayer, out int ownerRefCount)
+                                    ? ownerRefCount
+                                    : 0));
+                        }
+
+                        if (layer.SimulatedSnapshotLayerHandleId > 0)
+                        {
+                            operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
+                                (int)layer.SourceLayer,
+                                layer.SimulatedSnapshotLayerHandleId,
+                                refCount: 0));
+                        }
+                    }
+                }
+
                 SimulatedLayerReferenceOperations = operations;
             }
         }
@@ -2205,6 +2281,7 @@ namespace HaCreator.MapSimulator.Pools
                     existingState.OwnerFacingRight,
                     ResolveRemoteTemporaryStatTickElapsedMs(currentTime, existingState.AnimationStartTime),
                     currentTime);
+                existingState.ReleaseLayerReference();
                 actor.TransientItemEffects.RemoveAt(i);
             }
 
@@ -2212,12 +2289,14 @@ namespace HaCreator.MapSimulator.Pools
             {
                 ItemId = itemId,
                 Effect = effect,
+                SimulatedOwnerLayerHandleId = NextRemoteEffectByItemLayerHandleId(),
                 AnimationStartTime = hasRestoredAnimationElapsed
                     ? unchecked(currentTime - restoredAnimationElapsedMs)
                     : currentTime,
                 OwnerActionName = ownerActionName,
                 OwnerFacingRight = ownerFacingRight
             });
+            actor.TransientItemEffects[^1].CaptureRegisteredLayerReference();
             message = $"Remote user {actor.CharacterId} effect subtype {(byte)RemoteUserEffectSubtype.EffectByItem} registered Effect/ItemEff.img/{itemId} presentation.";
             return true;
         }
@@ -3415,25 +3494,32 @@ namespace HaCreator.MapSimulator.Pools
                 return snapshot;
             }
 
-            int priorChargeSkillId = priorSnapshot.KnownState.ChargeSkillId.GetValueOrDefault();
-            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(priorChargeSkillId))
+            int preferredChargeSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
+                preferredSkillId: 0,
+                snapshot.KnownState.WeaponChargeValue);
+            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredChargeSkillId))
             {
-                priorChargeSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
+                preferredChargeSkillId = priorSnapshot.KnownState.ChargeSkillId.GetValueOrDefault();
+            }
+
+            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredChargeSkillId))
+            {
+                preferredChargeSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
                     preferredSkillId: 0,
                     priorSnapshot.KnownState.WeaponChargeValue);
             }
 
-            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(priorChargeSkillId))
+            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredChargeSkillId))
             {
                 return snapshot;
             }
 
-            int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(snapshot, priorChargeSkillId);
+            int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(snapshot, preferredChargeSkillId);
             if (!resolvedChargeSkillId.HasValue)
             {
                 RemoteUserTemporaryStatKnownState noHintKnownState = snapshot.KnownState with
                 {
-                    ChargeSkillId = priorChargeSkillId
+                    ChargeSkillId = preferredChargeSkillId
                 };
 
                 return snapshot with
@@ -8684,6 +8770,7 @@ namespace HaCreator.MapSimulator.Pools
                         currentTime,
                         state.Definition))
                 {
+                    state.ReleaseSnapshotLayerReferences(state.Snapshots[i]);
                     state.Snapshots.RemoveAt(i);
                 }
             }
@@ -9035,6 +9122,11 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteEffectByItemLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         private static int NextRemoteDragonCompanionLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -9058,6 +9150,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteActiveEffectItemEffectLayerHandleIdForTesting()
         {
             return NextRemoteActiveEffectItemEffectLayerHandleId();
+        }
+
+        internal static int NextRemoteEffectByItemLayerHandleIdForTesting()
+        {
+            return NextRemoteEffectByItemLayerHandleId();
         }
 
         internal static int NextRemoteDragonCompanionLayerHandleIdForTesting()
@@ -9167,6 +9264,7 @@ namespace HaCreator.MapSimulator.Pools
                             state.OwnerFacingRight,
                             ResolveRemoteTemporaryStatTickElapsedMs(currentTime, state.AnimationStartTime),
                             currentTime);
+                        state.ReleaseLayerReference();
                     }
 
                     actor.TransientItemEffects.RemoveAt(i);

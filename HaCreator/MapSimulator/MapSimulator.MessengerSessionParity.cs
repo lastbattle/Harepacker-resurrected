@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|claimresult <success|fail> [text]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -97,6 +97,18 @@ namespace HaCreator.MapSimulator
                 return _messengerOfficialSessionBridge.TryReplayRecentOutboundPacket(historyIndex, out string replayStatus)
                     ? ChatCommandHandler.CommandResult.Ok(replayStatus)
                     : ChatCommandHandler.CommandResult.Error(replayStatus);
+            }
+
+            if (string.Equals(args[0], "claimresult", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "claimstatus", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !TryParseMessengerClaimResult(args[1], out bool succeeded))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session claimresult <success|fail> [text]");
+                }
+
+                string resultText = args.Length >= 3 ? string.Join(" ", args, 2, args.Length - 2) : null;
+                return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ResolveSessionOwnedClaimRequest(succeeded, resultText));
             }
 
             if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)
@@ -316,6 +328,40 @@ namespace HaCreator.MapSimulator
                 || string.Equals(normalizedToken, "default", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedToken, "auto", StringComparison.OrdinalIgnoreCase)
                 || ushort.TryParse(normalizedToken, out _);
+        }
+
+        private static bool TryParseMessengerClaimResult(string token, out bool succeeded)
+        {
+            succeeded = false;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "success":
+                case "succeeded":
+                case "ok":
+                case "accept":
+                case "accepted":
+                case "complete":
+                case "completed":
+                case "1":
+                    succeeded = true;
+                    return true;
+                case "fail":
+                case "failed":
+                case "failure":
+                case "reject":
+                case "rejected":
+                case "denied":
+                case "0":
+                    succeeded = false;
+                    return true;
+                default:
+                    return false;
+            }
         }
     }
 }

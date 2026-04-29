@@ -394,7 +394,7 @@ namespace HaCreator.MapSimulator.Loaders
             return ResolveReactorIndexedHitSourceProperty(property) != null;
         }
 
-        private static WzImageProperty ResolveReactorIndexedHitSourceProperty(WzImageProperty property)
+        internal static WzImageProperty ResolveReactorIndexedHitSourceProperty(WzImageProperty property)
         {
             WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
             if (resolvedProperty is not WzSubProperty)

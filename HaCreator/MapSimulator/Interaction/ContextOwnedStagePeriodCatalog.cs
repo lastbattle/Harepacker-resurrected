@@ -569,6 +569,14 @@ namespace HaCreator.MapSimulator.Interaction
             ContextOwnedStageBackImageEntry entry,
             WzImageProperty sourceProperty)
         {
+            return ResolveClientMakeBackPieceFields(entry, sourceProperty, null);
+        }
+
+        internal static ContextOwnedStageBackImageEntry ResolveClientMakeBackPieceFields(
+            ContextOwnedStageBackImageEntry entry,
+            WzImageProperty sourceProperty,
+            BackgroundInfoType? resolvedInfoType)
+        {
             if (entry == null || sourceProperty == null || !entry.UseSourceBackPieceFields)
             {
                 return entry;
@@ -580,7 +588,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? BackgroundInfoType.Spine
                 : animated
                     ? BackgroundInfoType.Animation
-                    : entry.InfoType;
+                    : resolvedInfoType ?? entry.InfoType;
             MapleBool flipValue = InfoTool.GetOptionalBool(GetChildProperty(sourceProperty, "f"));
             WzImageProperty frontProperty = GetChildProperty(sourceProperty, "front");
 

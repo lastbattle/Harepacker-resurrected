@@ -567,13 +567,9 @@ namespace HaCreator.MapSimulator.UI
             var textures = new List<Texture2D>(rewardItems.Count);
             for (int i = 0; i < rewardItems.Count; i++)
             {
-                if (!InventoryItemMetadataResolver.TryResolveRootCanvas(
-                        rewardItems[i].ItemId,
-                        "info/icon",
-                        out WzCanvasProperty iconCanvas)
-                    && !InventoryItemMetadataResolver.TryResolveEffectFirstCanvas(
-                        rewardItems[i].EffectPath,
-                        out iconCanvas))
+                if (!InventoryItemMetadataResolver.TryResolveRewardPreviewIconCanvas(
+                        rewardItems[i],
+                        out WzCanvasProperty iconCanvas))
                 {
                     continue;
                 }

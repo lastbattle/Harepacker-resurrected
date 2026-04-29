@@ -117,12 +117,7 @@ namespace HaCreator.MapSimulator.Managers
         public int PendingPacketCount => _pendingClientPackets.Count;
         internal bool HasObservedLiveOutboundOpcode160 => _hasObservedLiveOutboundOpcode160;
         internal bool HasObservedLiveInboundOpcode371 => _hasObservedLiveInboundOpcode371;
-        internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
-            HasConnectedSession,
-            HasPassiveEstablishedSocketPair,
-            IsRunning,
-            _hasObservedLiveOutboundOpcode160,
-            _hasObservedLiveInboundOpcode371);
+        internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveCurrentLiveOwnershipVerificationState();
         public int RecentInboundPacketCount
         {
             get
@@ -162,12 +157,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? "no opcode 371 inbound trace history"
                 : $"{RecentInboundPacketCount} opcode 371 inbound trace(s), {RecentLiveInboundPacketCount} live proxied";
             string guidance = DescribeSessionControlGuidance();
-            string verification = DescribeLiveOwnershipVerificationStatus(
-                HasConnectedSession,
-                HasPassiveEstablishedSocketPair,
-                IsRunning,
-                _hasObservedLiveOutboundOpcode160,
-                _hasObservedLiveInboundOpcode371);
+            string verification = DescribeCurrentLiveOwnershipVerificationStatus();
             string verificationEvidence = DescribeLiveOwnershipVerificationEvidence();
             return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}. {verification} {verificationEvidence} {LastStatus} {guidance}";
         }
@@ -600,12 +590,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             int normalizedCount = Math.Clamp(maxCount, 1, Math.Max(MaxRecentOutboundPackets, MaxRecentInboundPackets));
             LiveOwnershipVerificationState state = CurrentLiveOwnershipVerificationState;
-            string status = DescribeLiveOwnershipVerificationStatus(
-                HasConnectedSession,
-                HasPassiveEstablishedSocketPair,
-                IsRunning,
-                _hasObservedLiveOutboundOpcode160,
-                _hasObservedLiveInboundOpcode371);
+            string status = DescribeCurrentLiveOwnershipVerificationStatus();
 
             return $"Rock-Paper-Scissors live ownership verification state={state}."
                 + Environment.NewLine
@@ -996,7 +981,10 @@ namespace HaCreator.MapSimulator.Managers
             {
                 OutboundPacketTrace outbound = outboundEvidence.Value;
                 InboundPacketTrace inbound = inboundEvidence.Value;
-                return $"Live ownership verification evidence: paired proxied initialized capture outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} source={inbound.Source} raw={inbound.RawPacketHex}].";
+                string pairKind = IsSameInitializedSession(outbound, inbound)
+                    ? "paired proxied initialized capture"
+                    : "unpaired proxied initialized captures";
+                return $"Live ownership verification evidence: {pairKind} outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} source={inbound.Source} raw={inbound.RawPacketHex}].";
             }
 
             if (outboundEvidence.HasValue)
@@ -1012,6 +1000,63 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return "Live ownership verification evidence: none.";
+        }
+
+        private LiveOwnershipVerificationState ResolveCurrentLiveOwnershipVerificationState()
+        {
+            OutboundPacketTrace? outboundEvidence;
+            InboundPacketTrace? inboundEvidence;
+            lock (_sync)
+            {
+                outboundEvidence = _liveOutboundOpcode160Evidence;
+                inboundEvidence = _liveInboundOpcode371Evidence;
+            }
+
+            if (outboundEvidence.HasValue && inboundEvidence.HasValue)
+            {
+                return IsSameInitializedSession(outboundEvidence.Value, inboundEvidence.Value)
+                    ? LiveOwnershipVerificationState.Complete
+                    : LiveOwnershipVerificationState.WaitingForBothDirections;
+            }
+
+            return ResolveLiveOwnershipVerificationState(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                outboundEvidence.HasValue,
+                inboundEvidence.HasValue);
+        }
+
+        private string DescribeCurrentLiveOwnershipVerificationStatus()
+        {
+            OutboundPacketTrace? outboundEvidence;
+            InboundPacketTrace? inboundEvidence;
+            lock (_sync)
+            {
+                outboundEvidence = _liveOutboundOpcode160Evidence;
+                inboundEvidence = _liveInboundOpcode371Evidence;
+            }
+
+            if (outboundEvidence.HasValue
+                && inboundEvidence.HasValue
+                && !IsSameInitializedSession(outboundEvidence.Value, inboundEvidence.Value))
+            {
+                return $"Live ownership verification in progress: captured opcode {RockPaperScissorsField.ClientOpcode} outbound and opcode {RockPaperScissorsField.OwnerOpcode} inbound from different initialized proxy session versions; waiting for both directions from one proxied reconnect.";
+            }
+
+            return DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                outboundEvidence.HasValue,
+                inboundEvidence.HasValue);
+        }
+
+        private static bool IsSameInitializedSession(OutboundPacketTrace outbound, InboundPacketTrace inbound)
+        {
+            return outbound.SessionVersion.HasValue
+                && inbound.SessionVersion.HasValue
+                && outbound.SessionVersion.Value == inbound.SessionVersion.Value;
         }
 
         internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(

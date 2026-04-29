@@ -79,6 +79,14 @@ namespace HaCreator.MapSimulator.Fields
             ReplayHandleUpKeyDown = 2
         }
 
+        public enum QueuedRetryLifecycleClearOwner
+        {
+            None = 0,
+            MapTransferAdmission = 1,
+            TransferResponseLifecycle = 2,
+            FieldInterfaceTeardown = 3
+        }
+
         public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
         {
             return state.HasCollidingTransferPortal
@@ -194,12 +202,31 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool ShouldClearQueuedRetryFromTransferLifecycle(bool hasPendingRequest)
         {
-            return hasPendingRequest;
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.TransferResponseLifecycle);
         }
 
         public static bool ShouldConsumeQueuedRetryOnMapTransferAdmission(bool hasPendingRequest)
         {
-            return ShouldClearQueuedRetryFromTransferLifecycle(hasPendingRequest);
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.MapTransferAdmission);
+        }
+
+        public static bool ShouldClearQueuedRetryFromFieldInterfaceTeardown(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.FieldInterfaceTeardown);
+        }
+
+        public static bool ShouldClearQueuedRetryFromLifecycleOwner(
+            bool hasPendingRequest,
+            QueuedRetryLifecycleClearOwner owner)
+        {
+            return hasPendingRequest
+                   && owner != QueuedRetryLifecycleClearOwner.None;
         }
 
         public static bool ShouldClearQueuedRetryAfterFreshHandleUpKeyDown(

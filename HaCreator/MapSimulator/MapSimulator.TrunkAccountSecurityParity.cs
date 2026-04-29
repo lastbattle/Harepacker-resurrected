@@ -120,6 +120,22 @@ namespace HaCreator.MapSimulator
                     "Packet-owned trunk owner is not open; falling back to local trunk inventory mutation.");
             }
 
+            if (ShowPacketOwnedTrunkPutItemConfirmPrompt(inventoryType, inventoryRowIndex, slotData, requestedQuantity))
+            {
+                return TrunkUI.PacketOwnedTrunkRequestResult.Success(
+                    "CTrunkDlg::SendPutItemRequest opened the recovered CUtilDlg::YesNo confirmation owner; opcode 67 [05] waits for acceptance.");
+            }
+
+            return DispatchPacketOwnedTrunkPutItemRequest(inventoryType, inventoryRowIndex, slotData, requestedQuantity);
+        }
+
+        private TrunkUI.PacketOwnedTrunkRequestResult DispatchPacketOwnedTrunkPutItemRequest(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData,
+            int requestedQuantity)
+        {
+            PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
             bool built = dispatcher.TryBuildTrunkPutItemOutboundRequest(
                 inventoryType,
                 inventoryRowIndex,
@@ -137,6 +153,63 @@ namespace HaCreator.MapSimulator
                 ? message
                 : $"{message} {dispatchStatus}";
             return TrunkUI.PacketOwnedTrunkRequestResult.Success(status);
+        }
+
+        private bool ShowPacketOwnedTrunkPutItemConfirmPrompt(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData,
+            int requestedQuantity)
+        {
+            if (slotData == null ||
+                uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                return false;
+            }
+
+            if (TrunkDialogClientParityText.IsSharableOnceOwnershipBlocked(slotData))
+            {
+                return false;
+            }
+
+            int availableQuantity = System.Math.Max(1, slotData.Quantity);
+            bool treatSingly = inventoryType == InventoryType.EQUIP ||
+                InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData.MaxStackSize) <= 1;
+            string body = TrunkDialogClientParityText.BuildSendPutConfirmationBody(
+                slotData,
+                treatSingly,
+                availableQuantity,
+                mesoCost: 0,
+                includeAskCount: false);
+            ConfigureInGameConfirmDialog(
+                "Storage",
+                body,
+                "Recovered CTrunkDlg::SendPutItemRequest CUtilDlg::YesNo confirmation owner.",
+                onConfirm: () =>
+                {
+                    TrunkUI.PacketOwnedTrunkRequestResult result = DispatchPacketOwnedTrunkPutItemRequest(
+                        inventoryType,
+                        inventoryRowIndex,
+                        slotData,
+                        requestedQuantity);
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)
+                    {
+                        trunkWindow.RefreshSecurityStatus(result.Message);
+                    }
+                },
+                onCancel: () =>
+                {
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)
+                    {
+                        trunkWindow.RefreshSecurityStatus(
+                            "CTrunkDlg::SendPutItemRequest confirmation was cancelled before opcode 67 [05].");
+                    }
+                });
+            ShowWindow(
+                MapSimulatorWindowNames.InGameConfirmDialog,
+                confirmDialogWindow,
+                trackDirectionModeOwner: true);
+            return true;
         }
 
         private bool TryDispatchPacketOwnedTrunkOutboundRequest(

@@ -189,6 +189,7 @@ namespace HaCreator.MapSimulator.UI
         public int TextDrawBaseY { get; init; }
         public int RuleDrawBaseX { get; init; }
         public int RuleDrawBaseY { get; init; }
+        public int RuleHeight { get; init; }
     }
 
     public sealed class CollectionBookRecordSnapshot
@@ -1174,13 +1175,43 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<CollectionBookClientCtInfoBlockSnapshot>();
             }
 
-            return records
-                .Where(record => record?.Type == CollectionBookRecordType.Text && record.ClientTextBlockIndex >= 0)
-                .GroupBy(record => record.ClientTextBlockIndex)
-                .OrderBy(group => group.Key)
-                .Select(group => CreateClientTextCtInfoBlock(group.Key, group.OrderBy(record => record.ClientTextLineIndex).ToArray()))
-                .Where(block => block != null)
-                .ToArray();
+            List<CollectionBookClientCtInfoBlockSnapshot> blocks = new();
+            HashSet<int> emittedTextBlocks = new();
+            int blockIndex = 0;
+
+            foreach (CollectionBookRecordSnapshot record in records)
+            {
+                if (record == null)
+                {
+                    continue;
+                }
+
+                if (record.Type == CollectionBookRecordType.Rule)
+                {
+                    blocks.Add(CreateClientRuleCtInfoBlock(blockIndex++, record));
+                    continue;
+                }
+
+                if (record.Type != CollectionBookRecordType.Text
+                    || record.ClientTextBlockIndex < 0
+                    || !emittedTextBlocks.Add(record.ClientTextBlockIndex))
+                {
+                    continue;
+                }
+
+                CollectionBookRecordSnapshot[] lines = records
+                    .Where(candidate => candidate?.Type == CollectionBookRecordType.Text
+                        && candidate.ClientTextBlockIndex == record.ClientTextBlockIndex)
+                    .OrderBy(candidate => candidate.ClientTextLineIndex)
+                    .ToArray();
+                CollectionBookClientCtInfoBlockSnapshot block = CreateClientTextCtInfoBlock(blockIndex++, lines);
+                if (block != null)
+                {
+                    blocks.Add(block);
+                }
+            }
+
+            return blocks.ToArray();
         }
 
         private static CollectionBookClientCtInfoBlockSnapshot CreateClientTextCtInfoBlock(int blockIndex, IReadOnlyList<CollectionBookRecordSnapshot> lines)
@@ -1221,7 +1252,44 @@ namespace HaCreator.MapSimulator.UI
                 TextDrawBaseX = first.ClientTextDrawBaseX,
                 TextDrawBaseY = first.ClientTextDrawBaseY,
                 RuleDrawBaseX = ClientCollectionRuleDrawBaseX,
-                RuleDrawBaseY = ClientCollectionRuleDrawBaseY
+                RuleDrawBaseY = ClientCollectionRuleDrawBaseY,
+                RuleHeight = 0
+            };
+        }
+
+        private static CollectionBookClientCtInfoBlockSnapshot CreateClientRuleCtInfoBlock(int blockIndex, CollectionBookRecordSnapshot rule)
+        {
+            if (rule == null)
+            {
+                return null;
+            }
+
+            return new CollectionBookClientCtInfoBlockSnapshot
+            {
+                BlockIndex = blockIndex,
+                Kind = CollectionBookClientCtInfoBlockKind.Rule,
+                Role = CollectionBookRecordRole.Rule,
+                SourceText = string.Empty,
+                Lines = Array.Empty<string>(),
+                LineLefts = Array.Empty<int>(),
+                LineTops = Array.Empty<int>(),
+                LineWidths = Array.Empty<int>(),
+                Left = rule.Left,
+                Top = rule.Top,
+                Width = rule.Width,
+                Height = rule.Height,
+                StyleIndex = 0,
+                Alignment = CollectionBookTextAlignment.Left,
+                AnalyzerMargin = 0,
+                AnalyzerWrapWidth = 0,
+                TextLineHeight = 0,
+                TextLineStep = 0,
+                VerticalCarryAfter = ClientCollectionAnalyzedBlockCarry,
+                TextDrawBaseX = ClientCollectionTextDrawBaseX,
+                TextDrawBaseY = ClientCollectionTextDrawBaseY,
+                RuleDrawBaseX = ClientCollectionRuleDrawBaseX,
+                RuleDrawBaseY = ClientCollectionRuleDrawBaseY,
+                RuleHeight = rule.Height
             };
         }
 

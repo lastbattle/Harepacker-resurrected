@@ -304,7 +304,14 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                message = queueStatus;
+                if (_localUtilityPacketOutbox.TryQueueOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out string outboxQueueStatus))
+                {
+                    ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-generic-queue");
+                    message = $"Queued CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the MapleTV bridge queue was unavailable. Bridge queue: {queueStatus} Outbox queue: {outboxQueueStatus}";
+                    return true;
+                }
+
+                message = $"MapleTV consume request queueing failed for opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}]. Bridge queue: {queueStatus} Outbox queue: {outboxQueueStatus}";
                 return false;
             }
 
@@ -315,15 +322,31 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if ((_mapleTvOfficialSessionBridgeEnabled || _mapleTvOfficialSessionBridge.IsRunning)
-                && _mapleTvOfficialSessionBridge.TryQueueOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out string deferredStatus))
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out string outboxStatus))
             {
-                ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-deferred-queue");
-                message = $"Queued CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] after live dispatch was unavailable. Bridge: {sendStatus} Deferred bridge: {deferredStatus}";
+                ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-generic-send");
+                message = $"Dispatched CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the MapleTV bridge path was unavailable. Bridge: {sendStatus} Outbox: {outboxStatus}";
                 return true;
             }
 
-            message = sendStatus;
+            string deferredStatus = string.Empty;
+            if ((_mapleTvOfficialSessionBridgeEnabled || _mapleTvOfficialSessionBridge.IsRunning)
+                && _mapleTvOfficialSessionBridge.TryQueueOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out deferredStatus))
+            {
+                ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-deferred-queue");
+                message = $"Queued CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred official-session bridge delivery after immediate dispatch was unavailable. Bridge: {sendStatus} Outbox: {outboxStatus} Deferred bridge: {deferredStatus}";
+                return true;
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out string deferredOutboxStatus))
+            {
+                ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-deferred-generic-queue");
+                message = $"Queued CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate dispatch was unavailable. Bridge: {sendStatus} Outbox: {outboxStatus} Deferred bridge: {deferredStatus} Deferred outbox: {deferredOutboxStatus}";
+                return true;
+            }
+
+            ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-local-stage");
+            message = $"Staged CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] locally while waiting for authoritative CMapleTVMan::OnPacket set/result because neither the MapleTV bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {sendStatus} Outbox: {outboxStatus} Deferred bridge: {deferredStatus} Deferred outbox: {deferredOutboxStatus}";
             return false;
         }
 

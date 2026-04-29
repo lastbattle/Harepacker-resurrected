@@ -1167,6 +1167,30 @@ namespace HaCreator.MapSimulator.Effects
             (_resultKillRate, _resultCoolRate, _resultMissRate) = CalculateResultRates();
             _pendingResultOutcome = clear ? MassacreRoundOutcome.Clear : MassacreRoundOutcome.Fail;
         }
+        public bool TryShowResultPresentation(bool clear, int currentTimeMs, int? scoreOverride, char? rankOverride, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+
+            if (scoreOverride.HasValue && scoreOverride.Value < 0)
+            {
+                errorMessage = "Massacre result score must be non-negative.";
+                return false;
+            }
+
+            if (rankOverride.HasValue && !"SABCDsabcd".Contains(rankOverride.Value))
+            {
+                errorMessage = "Massacre result rank must be S, A, B, C, or D.";
+                return false;
+            }
+
+            ShowResultPresentation(clear, currentTimeMs, scoreOverride, rankOverride);
+            return true;
+        }
         public void ShowPacketOwnedResultPresentation(int currentTimeMs, int? scoreOverride = null, char? rankOverride = null)
         {
             (_resultPresentation, _resultPresentationOwner) = _pendingResultOutcome switch

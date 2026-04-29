@@ -45,6 +45,26 @@ namespace HaCreator.MapSimulator.UI
             MacroBinding
         }
 
+        private readonly struct ForwardedNonFunctionPhysicalKeyState
+        {
+            internal ForwardedNonFunctionPhysicalKeyState(
+                bool controlHeld,
+                bool shiftHeld,
+                bool imeCompositionActive,
+                bool imeCandidateWindowActive)
+            {
+                ControlHeld = controlHeld;
+                ShiftHeld = shiftHeld;
+                ImeCompositionActive = imeCompositionActive;
+                ImeCandidateWindowActive = imeCandidateWindowActive;
+            }
+
+            internal bool ControlHeld { get; }
+            internal bool ShiftHeld { get; }
+            internal bool ImeCompositionActive { get; }
+            internal bool ImeCandidateWindowActive { get; }
+        }
+
         #region Constants
         // Window dimensions from WZ data (pre-Big Bang style)
         // UI.wz/UIWindow.img/SkillMacro/backgrnd: 207x289
@@ -180,7 +200,7 @@ namespace HaCreator.MapSimulator.UI
         private int _softKeyboardPressedVisualUntil;
         private Point? _lastMousePosition;
         private readonly Dictionary<Keys, int> _forwardedNonFunctionHotkeySlotsByPhysicalKey = new();
-        private readonly HashSet<Keys> _forwardedNonFunctionPhysicalKeys = new();
+        private readonly Dictionary<Keys, ForwardedNonFunctionPhysicalKeyState> _forwardedNonFunctionPhysicalKeys = new();
         private readonly HashSet<Keys> _imeSuppressedNonFunctionHotkeyPhysicalKeys = new();
         private readonly HashSet<int> _forwardedFunctionKeyIndices = new();
 
@@ -2588,7 +2608,11 @@ namespace HaCreator.MapSimulator.UI
                     shiftHeld,
                     imeCompositionActive,
                     imeCandidateWindowActive);
-                _forwardedNonFunctionPhysicalKeys.Add(key);
+                _forwardedNonFunctionPhysicalKeys[key] = new ForwardedNonFunctionPhysicalKeyState(
+                    controlHeld,
+                    shiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
 
                 bool suppressImeOwnedHotkeyForwarding = SkillMacroOwnerKeyHandler.ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
                     key,
@@ -2619,7 +2643,9 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                bool hasTrackedPhysicalKey = _forwardedNonFunctionPhysicalKeys.Contains(key);
+                bool hasTrackedPhysicalKey = _forwardedNonFunctionPhysicalKeys.TryGetValue(
+                    key,
+                    out ForwardedNonFunctionPhysicalKeyState trackedPhysicalKeyState);
                 if (!hasTrackedPhysicalKey
                     && !SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyUpToParent(
                         key,
@@ -2635,10 +2661,10 @@ namespace HaCreator.MapSimulator.UI
                     OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
                         key,
                         false,
-                        controlHeld,
-                        shiftHeld,
-                        imeCompositionActive,
-                        imeCandidateWindowActive);
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ControlHeld : controlHeld,
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ShiftHeld : shiftHeld,
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ImeCompositionActive : imeCompositionActive,
+                        hasTrackedPhysicalKey ? trackedPhysicalKeyState.ImeCandidateWindowActive : imeCandidateWindowActive);
                 }
 
                 if (!hasHotkeySlotCallback)
@@ -2740,11 +2766,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Keys[] physicalKeys = _forwardedNonFunctionPhysicalKeys.ToArray();
+            KeyValuePair<Keys, ForwardedNonFunctionPhysicalKeyState>[] physicalKeys = _forwardedNonFunctionPhysicalKeys.ToArray();
             _forwardedNonFunctionPhysicalKeys.Clear();
             for (int i = 0; i < physicalKeys.Length; i++)
             {
-                OnClientForwardedNonFunctionPhysicalKeyStateChanged(physicalKeys[i], false, false, false, false, false);
+                ForwardedNonFunctionPhysicalKeyState state = physicalKeys[i].Value;
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged(
+                    physicalKeys[i].Key,
+                    false,
+                    state.ControlHeld,
+                    state.ShiftHeld,
+                    state.ImeCompositionActive,
+                    state.ImeCandidateWindowActive);
             }
         }
 

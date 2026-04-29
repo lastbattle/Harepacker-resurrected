@@ -3258,6 +3258,11 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool LooksLikePublishedMorphActionFrameContainer(WzImageProperty actionNode)
         {
+            if (actionNode is WzCanvasProperty)
+            {
+                return true;
+            }
+
             foreach (KeyValuePair<string, WzImageProperty> frameEntry in EnumerateMorphFrameNodes(actionNode as WzSubProperty))
             {
                 if (TryResolveMorphFrameCanvas(frameEntry.Value, out _))

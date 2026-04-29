@@ -714,16 +714,17 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             HashSet<int> objectIds = new();
+            List<int> orderedObjectIds = new();
             while (_pendingPacketTouchRequestRemovalObjectIds.Count > 0)
             {
                 int objectId = _pendingPacketTouchRequestRemovalObjectIds.Dequeue();
-                if (objectId > 0)
+                if (objectId > 0 && objectIds.Add(objectId))
                 {
-                    objectIds.Add(objectId);
+                    orderedObjectIds.Add(objectId);
                 }
             }
 
-            return objectIds.ToList();
+            return orderedObjectIds;
         }
 
         /// <summary>

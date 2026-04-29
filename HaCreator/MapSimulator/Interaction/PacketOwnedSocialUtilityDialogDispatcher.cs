@@ -633,7 +633,7 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new(payload, 1, payload.Length - 1, writable: false);
             using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
 
-            string sender = string.Empty;
+            string sender = expectsSender ? string.Empty : _lastAlarmSender;
             if (expectsSender)
             {
                 if (!TryReadPacketString(reader, out sender))
@@ -660,7 +660,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _noticeCount++;
-            _lastAlarmSender = sender ?? string.Empty;
+            if (expectsSender || !string.IsNullOrWhiteSpace(sender))
+            {
+                _lastAlarmSender = sender ?? string.Empty;
+            }
             _lastAlarmWasQuickDelivery = hasAttachment;
             if (requiresFadeOwner)
             {

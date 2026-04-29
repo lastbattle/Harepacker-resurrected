@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator.Fields
         internal const int ClientOwnedCanvasClassStringPoolId = 0x3D0;
         internal const int ClientOwnedViewrangePathStringPoolId = 0xE6E;
         internal const int ClientOwnedDarkLayerColorArgb = unchecked((int)0xC006060A);
+        internal const string ClientOwnedCanvasCopyFunctionName = "IWzCanvas::Copy";
+        internal const string ClientOwnedRemoveAlphaCopyModeName = "CA_REMOVEALPHA";
 
         internal enum ClientOwnedInitOperationKind
         {
@@ -111,7 +113,9 @@ namespace HaCreator.MapSimulator.Fields
                 int destinationY = 0,
                 int destinationWidth = 0,
                 int destinationHeight = 0,
-                bool usesRemoveAlphaCopy = false)
+                bool usesRemoveAlphaCopy = false,
+                string copyFunctionName = null,
+                string copyModeName = null)
             {
                 Kind = kind;
                 TopLeft = topLeft;
@@ -125,6 +129,16 @@ namespace HaCreator.MapSimulator.Fields
                 DestinationWidth = Math.Max(0, destinationWidth);
                 DestinationHeight = Math.Max(0, destinationHeight);
                 UsesRemoveAlphaCopy = usesRemoveAlphaCopy;
+                CopyFunctionName = usesRemoveAlphaCopy
+                    ? string.IsNullOrWhiteSpace(copyFunctionName)
+                        ? ClientOwnedCanvasCopyFunctionName
+                        : copyFunctionName.Trim()
+                    : string.Empty;
+                CopyModeName = usesRemoveAlphaCopy
+                    ? string.IsNullOrWhiteSpace(copyModeName)
+                        ? ClientOwnedRemoveAlphaCopyModeName
+                        : copyModeName.Trim()
+                    : string.Empty;
             }
 
             public ClientOwnedDrawViewrangeOperationKind Kind { get; }
@@ -139,6 +153,8 @@ namespace HaCreator.MapSimulator.Fields
             public int DestinationWidth { get; }
             public int DestinationHeight { get; }
             public bool UsesRemoveAlphaCopy { get; }
+            public string CopyFunctionName { get; }
+            public string CopyModeName { get; }
         }
 
         #region View Mode

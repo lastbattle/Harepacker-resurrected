@@ -249,6 +249,11 @@ namespace HaCreator.MapSimulator.Fields
         private void UpdateHorizontalMovement(DynamicPlatform platform, float deltaSeconds)
         {
             float movement = platform.Speed * deltaSeconds;
+            if (HasPacketOwnedHorizontalEndpointOrder(platform))
+            {
+                UpdatePacketOwnedHorizontalMovement(platform, movement);
+                return;
+            }
 
             if (platform.MovingRight)
             {
@@ -286,6 +291,11 @@ namespace HaCreator.MapSimulator.Fields
         private void UpdateVerticalMovement(DynamicPlatform platform, float deltaSeconds)
         {
             float movement = platform.Speed * deltaSeconds;
+            if (HasPacketOwnedVerticalEndpointOrder(platform))
+            {
+                UpdatePacketOwnedVerticalMovement(platform, movement);
+                return;
+            }
 
             if (platform.MovingDown)
             {
@@ -317,6 +327,76 @@ namespace HaCreator.MapSimulator.Fields
                     }
                 }
             }
+        }
+
+        private static void UpdatePacketOwnedHorizontalMovement(DynamicPlatform platform, float movement)
+        {
+            const int maxEndpointTurnsPerFrame = 8;
+            int turnCount = 0;
+            while (movement > 0f && turnCount <= maxEndpointTurnsPerFrame)
+            {
+                float target = platform.MovingRight ? platform.RightBound : platform.LeftBound;
+                float distanceToTarget = Math.Abs(target - platform.X);
+                if (distanceToTarget <= 0f || movement >= distanceToTarget)
+                {
+                    platform.X = target;
+                    platform.MovingRight = !platform.MovingRight;
+                    RefreshPacketOwnedHorizontalReverseFlag(platform);
+                    movement -= distanceToTarget;
+                    turnCount++;
+                    if (platform.PauseDelay > 0)
+                    {
+                        platform.IsPaused = true;
+                        platform.PauseStartTime = Environment.TickCount;
+                        return;
+                    }
+
+                    continue;
+                }
+
+                platform.X += platform.MovingRight ? movement : -movement;
+                return;
+            }
+        }
+
+        private static void UpdatePacketOwnedVerticalMovement(DynamicPlatform platform, float movement)
+        {
+            const int maxEndpointTurnsPerFrame = 8;
+            int turnCount = 0;
+            while (movement > 0f && turnCount <= maxEndpointTurnsPerFrame)
+            {
+                float target = platform.MovingDown ? platform.BottomBound : platform.TopBound;
+                float distanceToTarget = Math.Abs(target - platform.Y);
+                if (distanceToTarget <= 0f || movement >= distanceToTarget)
+                {
+                    platform.Y = target;
+                    platform.MovingDown = !platform.MovingDown;
+                    RefreshPacketOwnedVerticalReverseFlag(platform);
+                    movement -= distanceToTarget;
+                    turnCount++;
+                    if (platform.PauseDelay > 0)
+                    {
+                        platform.IsPaused = true;
+                        platform.PauseStartTime = Environment.TickCount;
+                        return;
+                    }
+
+                    continue;
+                }
+
+                platform.Y += platform.MovingDown ? movement : -movement;
+                return;
+            }
+        }
+
+        private static bool HasPacketOwnedHorizontalEndpointOrder(DynamicPlatform platform)
+        {
+            return platform?.PacketOwnedMovingX1 != null && platform.PacketOwnedMovingX2 != null;
+        }
+
+        private static bool HasPacketOwnedVerticalEndpointOrder(DynamicPlatform platform)
+        {
+            return platform?.PacketOwnedMovingY1 != null && platform.PacketOwnedMovingY2 != null;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

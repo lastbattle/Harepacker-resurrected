@@ -1106,6 +1106,11 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (HasExplicitHostilePlayerStatusMetadata(skill, levelData, includeNumericStatFallback: false))
+            {
+                return true;
+            }
+
             if (!string.IsNullOrWhiteSpace(skill.DebuffMessageToken))
             {
                 return true;

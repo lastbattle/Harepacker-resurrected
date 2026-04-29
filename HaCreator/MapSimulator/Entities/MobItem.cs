@@ -120,6 +120,10 @@ namespace HaCreator.MapSimulator.Entities
 
         public int ActiveActionSpeechFloatNotice => _activeActionSpeechFloatNotice;
 
+        internal bool PacketOwnedExpiryClientSuspended { get; private set; }
+
+        internal int? PacketOwnedExpiryClientPhase { get; private set; }
+
         /// <summary>
         /// Whether the death animation has completed (all frames played)
         /// </summary>
@@ -200,6 +204,14 @@ namespace HaCreator.MapSimulator.Entities
         {
             CharDam1SE = charDam1SE;
             CharDam2SE = charDam2SE;
+        }
+
+        internal void SetPacketOwnedExpiryClientStateForParity(bool isSuspended, int? phase)
+        {
+            PacketOwnedExpiryClientSuspended = isSuspended;
+            PacketOwnedExpiryClientPhase = phase.HasValue && phase.Value >= 0
+                ? phase.Value
+                : null;
         }
 
         /// <summary>

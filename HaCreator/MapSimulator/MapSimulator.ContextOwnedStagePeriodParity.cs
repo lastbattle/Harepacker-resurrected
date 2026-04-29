@@ -188,7 +188,10 @@ namespace HaCreator.MapSimulator
                 }
 
                 ContextOwnedStageBackImageEntry resolvedEntry =
-                    ContextOwnedStageSystemCatalog.ResolveClientMakeBackPieceFields(entry, sourceProperty);
+                    ContextOwnedStageSystemCatalog.ResolveClientMakeBackPieceFields(
+                        entry,
+                        sourceProperty,
+                        backgroundInfo.Type);
                 if (!ShouldRenderContextOwnedStageBackForCurrentScreen(resolvedEntry.ScreenMode))
                 {
                     continue;

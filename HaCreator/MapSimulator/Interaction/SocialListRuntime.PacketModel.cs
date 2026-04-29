@@ -486,6 +486,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildBoardAuthKey(string authKey)
         {
+            if (!ResolveEffectiveGuildMembership(null))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildBoardAuthKey}) guild-board auth key because no packet-owned guild context is active.";
+            }
+
             _packetGuildBoardAuthKey = authKey?.Trim() ?? string.Empty;
             _packetOwnedRosterByTab[SocialListTab.Guild] = true;
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =

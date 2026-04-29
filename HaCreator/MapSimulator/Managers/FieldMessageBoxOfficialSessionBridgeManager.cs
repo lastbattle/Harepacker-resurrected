@@ -37,12 +37,14 @@ namespace HaCreator.MapSimulator.Managers
         public const ushort CreateFailedOpcode = 325;
         public const ushort EnterFieldOpcode = 326;
         public const ushort LeaveFieldOpcode = 327;
+        public const ushort ConsumeCashItemUseRequestOpcode = 0x55;
         private const int MaxRecentOutboundPackets = 32;
         private const string DefaultProcessName = "MapleStory";
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
 
         private readonly ConcurrentQueue<FieldMessageBoxPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<FieldMessageBoxPacketInboxMessage> _observedOutboundMessages = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
@@ -229,6 +231,11 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TryDequeueObservedOutbound(out FieldMessageBoxPacketInboxMessage message)
+        {
+            return _observedOutboundMessages.TryDequeue(out message);
+        }
+
         public void RecordDispatchResult(string source, bool success, string message)
         {
             string summary = string.IsNullOrWhiteSpace(message) ? "message-box payload" : message;
@@ -402,6 +409,14 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             ForwardedOutboundCount++;
+            if (opcode == ConsumeCashItemUseRequestOpcode)
+            {
+                _observedOutboundMessages.Enqueue(new FieldMessageBoxPacketInboxMessage(
+                    (ushort)opcode,
+                    payload,
+                    source,
+                    $"packetsend {opcode} {Convert.ToHexString(payload)}"));
+            }
 
             lock (_sync)
             {
@@ -433,6 +448,10 @@ namespace HaCreator.MapSimulator.Managers
             if (clearPending)
             {
                 while (_pendingMessages.TryDequeue(out _))
+                {
+                }
+
+                while (_observedOutboundMessages.TryDequeue(out _))
                 {
                 }
             }

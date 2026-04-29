@@ -537,9 +537,15 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (_stage != RoomStage.Lobby)
+            if (_stage == RoomStage.Hidden)
             {
-                message = "Ready requests are only valid from the Match Cards lobby.";
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (!ClientReadyButtonEnabled)
+            {
+                message = "Ready requests are only valid for a seated non-owner while Match Cards is not in play.";
                 return false;
             }
 
@@ -557,9 +563,15 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (_stage != RoomStage.Lobby)
+            if (_stage == RoomStage.Hidden)
             {
-                message = "Start requests are only valid from the Match Cards lobby.";
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (!ClientStartButtonEnabled)
+            {
+                message = "Start requests are only valid for the Match Cards room owner while Match Cards is not in play.";
                 return false;
             }
 

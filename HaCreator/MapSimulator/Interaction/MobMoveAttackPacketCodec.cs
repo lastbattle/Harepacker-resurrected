@@ -438,10 +438,15 @@ namespace HaCreator.MapSimulator.Interaction
                         case >= 20 and <= 30:
                             break;
                         default:
-                            elementX = 0f;
-                            elementY = 0f;
-                            elementVelocityX = 0f;
-                            elementVelocityY = 0f;
+                            ResolveUnsupportedMovePathElementState(
+                                currentX,
+                                currentY,
+                                currentVelocityX,
+                                currentVelocityY,
+                                out elementX,
+                                out elementY,
+                                out elementVelocityX,
+                                out elementVelocityY);
                             break;
                     }
 
@@ -503,6 +508,24 @@ namespace HaCreator.MapSimulator.Interaction
                 movePathElements.Clear();
                 return false;
             }
+        }
+
+        internal static void ResolveUnsupportedMovePathElementState(
+            float currentX,
+            float currentY,
+            float currentVelocityX,
+            float currentVelocityY,
+            out float elementX,
+            out float elementY,
+            out float elementVelocityX,
+            out float elementVelocityY)
+        {
+            // Best-effort packet replay should preserve the live CMovePath tail
+            // for uncommon attributes instead of injecting a synthetic origin.
+            elementX = currentX;
+            elementY = currentY;
+            elementVelocityX = currentVelocityX;
+            elementVelocityY = currentVelocityY;
         }
 
         private static bool TryDecodeMovePathFlushTail(PacketReader reader, out DecodedMovePathTailInfo movePathTailInfo)

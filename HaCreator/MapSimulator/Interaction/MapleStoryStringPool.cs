@@ -435,6 +435,7 @@ namespace HaCreator.MapSimulator.Interaction
             // revive seam can report the same client text after the mirrored
             // transfer-field request instead of using only simulator summaries.
             [0x0BC2] = "The EXP did not drop after using the Safety Charm once.(%d days/%d times left)",
+            [0x0BC3] = "The EXP did not drop after using %s item.",
             [0x1494] = "You have used 1 Wheel of Destiny in order to revive at the current map. (%d left)",
             [0x155A] = "You have revived on the current map through the effect of the Spirit Stone.",
             // Recovered from MapleStory.exe v95 `CField_CookieHouse::Init`,

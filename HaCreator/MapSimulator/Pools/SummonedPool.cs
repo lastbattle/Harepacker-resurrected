@@ -9003,6 +9003,19 @@ namespace HaCreator.MapSimulator.Pools
                         continue;
                     }
 
+                    if (i < token.Length - 3
+                        && (token[i + 1] == 'x' || token[i + 1] == 'X')
+                        && TryParsePacketMobAttackGeneralEffectPercentEncodedChar(
+                            token[i + 2],
+                            token[i + 3],
+                            out char hexDecoded)
+                        && IsPacketMobAttackGeneralEffectPercentDecodedPathCharacter(hexDecoded))
+                    {
+                        normalizedBuilder.Append(hexDecoded == '\\' ? '/' : hexDecoded);
+                        i += 3;
+                        continue;
+                    }
+
                     char escaped = token[i + 1];
                     if (IsPacketMobAttackGeneralEffectEscapedSyntaxCharacter(escaped))
                     {

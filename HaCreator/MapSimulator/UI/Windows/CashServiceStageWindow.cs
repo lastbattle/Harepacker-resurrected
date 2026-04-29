@@ -1308,6 +1308,22 @@ namespace HaCreator.MapSimulator.UI
                 {
                     summary += $" {recoveredSummary}";
                 }
+                else
+                {
+                    string retainedTailMessage = AppendCashRawTailPacketEntryIfNeeded(
+                        packetPayload,
+                        startOffset: 1,
+                        decodedRowCount: 0,
+                        paneLabel: "Packet decode failures",
+                        browseModeLabel: "Decode",
+                        title: $"{subtypeLabel} decode-failed body",
+                        seller: "CCashShop",
+                        stateLabel: "Decode body");
+                    if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                    {
+                        summary += $" {retainedTailMessage}";
+                    }
+                }
 
                 AppendCashDecodeFailurePacketEntry(subtypeLabel, packetPayload, summary);
             }
@@ -2811,6 +2827,22 @@ namespace HaCreator.MapSimulator.UI
             {
                 failureMessage += $" {trailingSummary}";
             }
+            else
+            {
+                string retainedTailMessage = AppendCashRawTailPacketEntryIfNeeded(
+                    payload,
+                    startOffset: 2,
+                    decodedRowCount: 0,
+                    paneLabel: paneLabel,
+                    browseModeLabel: browseModeLabel,
+                    title: $"{ownerName} failure body",
+                    seller: seller,
+                    stateLabel: "Failed body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    failureMessage += $" {retainedTailMessage}";
+                }
+            }
 
             AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, new PacketCatalogEntry
             {
@@ -3149,6 +3181,82 @@ namespace HaCreator.MapSimulator.UI
             });
         }
 
+        private string AppendCashRawTailPacketEntryIfNeeded(
+            byte[] payload,
+            int startOffset,
+            int decodedRowCount,
+            string paneLabel,
+            string browseModeLabel,
+            string title,
+            string seller,
+            string stateLabel)
+        {
+            if (decodedRowCount > 0 || payload == null)
+            {
+                return string.Empty;
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            if (offset >= payload.Length)
+            {
+                return string.Empty;
+            }
+
+            int byteLength = payload.Length - offset;
+            string entryTitle = string.IsNullOrWhiteSpace(title) ? "Cash-item packet body" : title.Trim();
+            AppendCashPacketCatalogEntry(
+                string.IsNullOrWhiteSpace(paneLabel) ? "Packet raw body" : paneLabel,
+                string.IsNullOrWhiteSpace(browseModeLabel) ? "Raw" : browseModeLabel,
+                new PacketCatalogEntry
+                {
+                    Title = entryTitle,
+                    Detail = $"{entryTitle} retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw trailing byte(s) for the packet-owned Cash Shop stage row.",
+                    Seller = string.IsNullOrWhiteSpace(seller) ? "CCashShop" : seller,
+                    PriceLabel = $"Offset {offset.ToString(CultureInfo.InvariantCulture)}",
+                    StateLabel = string.IsNullOrWhiteSpace(stateLabel) ? "Raw body" : stateLabel,
+                    PacketSource = entryTitle,
+                    PacketFieldSummary = BuildCashRawTailFieldSummary(payload, offset),
+                    PacketRawByteLength = byteLength,
+                    PacketPayloadRawHex = BuildCashRawTailHexSummary(payload, offset)
+                });
+            return $"Retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw trailing Cash Shop byte(s) at offset {offset.ToString(CultureInfo.InvariantCulture)} for packet-owned result fallback.";
+        }
+
+        private static string BuildCashRawTailFieldSummary(byte[] payload, int startOffset)
+        {
+            if (payload == null)
+            {
+                return string.Empty;
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            int byteLength = Math.Max(0, payload.Length - offset);
+            return byteLength > 0
+                ? $"Raw trailing Cash Shop packet body: offset {offset.ToString(CultureInfo.InvariantCulture)}, {byteLength.ToString(CultureInfo.InvariantCulture)} byte(s)."
+                : string.Empty;
+        }
+
+        private static string BuildCashRawTailHexSummary(byte[] payload, int startOffset)
+        {
+            if (payload == null)
+            {
+                return string.Empty;
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            int byteLength = Math.Max(0, payload.Length - offset);
+            if (byteLength <= 0)
+            {
+                return string.Empty;
+            }
+
+            int previewLength = Math.Min(byteLength, 64);
+            byte[] preview = new byte[previewLength];
+            Buffer.BlockCopy(payload, offset, preview, 0, previewLength);
+            string suffix = byteLength > previewLength ? "..." : string.Empty;
+            return $"Cash Shop raw tail[{byteLength.ToString(CultureInfo.InvariantCulture)}]={Convert.ToHexString(preview)}{suffix}";
+        }
+
         private static bool IsPacketDecodeFailureSummary(string summary)
         {
             return !string.IsNullOrWhiteSpace(summary)
@@ -3172,6 +3280,22 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(trailingSummary))
             {
                 summary += $" {trailingSummary}";
+            }
+            else
+            {
+                string retainedTailMessage = AppendCashRawTailPacketEntryIfNeeded(
+                    normalizedPayload,
+                    startOffset: 1,
+                    decodedRowCount: 0,
+                    paneLabel: "Packet unknown",
+                    browseModeLabel: "Unknown",
+                    title: $"{subtypeLabel} body",
+                    seller: "CCashShop",
+                    stateLabel: "Unknown body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    summary += $" {retainedTailMessage}";
+                }
             }
 
             AppendCashPacketCatalogEntry("Packet unknown", "Unknown", new PacketCatalogEntry

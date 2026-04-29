@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         long ItemSerialNumber,
         long CashSerialNumber,
+        long BaseExpirationTime,
         int NativeItemTypeIndex,
         string Title,
         int ClientStock,
@@ -71,6 +72,7 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         long ItemSerialNumber,
         long CashSerialNumber,
+        long BaseExpirationTime,
         string Title);
 
     internal sealed class PacketOwnedShopDialogRuntime
@@ -1329,6 +1331,7 @@ namespace HaCreator.MapSimulator.Interaction
                     item.ItemId,
                     item.ItemSerialNumber,
                     item.CashSerialNumber,
+                    item.BaseExpirationTime,
                     item.NativeItemTypeIndex,
                     item.Title,
                     item.ClientStock,
@@ -1429,6 +1432,20 @@ namespace HaCreator.MapSimulator.Interaction
                     && row.ItemId == anchor.ItemId)
                 {
                     return i;
+                }
+            }
+
+            if (anchor.BaseExpirationTime > 0)
+            {
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    StoreBankOwnerRowSnapshot row = rows[i];
+                    if (row.ItemId == anchor.ItemId
+                        && row.BaseExpirationTime == anchor.BaseExpirationTime
+                        && row.PacketGroupInventoryType == anchor.PacketGroupInventoryType)
+                    {
+                        return i;
+                    }
                 }
             }
 
@@ -1564,6 +1581,7 @@ namespace HaCreator.MapSimulator.Interaction
                 item.ItemId,
                 item.ItemSerialNumber,
                 item.CashSerialNumber,
+                item.BaseExpirationTime,
                 item.Title ?? string.Empty);
             return true;
         }

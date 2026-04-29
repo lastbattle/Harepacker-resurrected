@@ -1820,6 +1820,11 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(_searchResultSessionServiceSignature)
                 && !string.Equals(_searchResultSessionServiceSignature, liveServiceSignature, StringComparison.Ordinal))
             {
+                if (TryRefreshWishlistSearchResultSessionFromPacketOwnedSnapshot())
+                {
+                    return GetLiveWishlistSearchResultSessionResults();
+                }
+
                 ResetWishlistSearchResultSessionForServiceTransition();
                 return new List<AdminShopDialogUI.WishlistSearchResult>();
             }
@@ -1909,6 +1914,43 @@ namespace HaCreator.MapSimulator.UI
             ClearWishlistSearchResultSession();
             _statusMessage = "SearchItemName invalidated the staged result session after the packet-authored admin-shop owner changed state.";
             UpdatePopupButtons();
+        }
+
+        private bool TryRefreshWishlistSearchResultSessionFromPacketOwnedSnapshot()
+        {
+            if (_sourceDialog == null || string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                return false;
+            }
+
+            string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery.Trim());
+            if (string.IsNullOrWhiteSpace(clientSearchQuery)
+                || !_sourceDialog.HasPacketOwnedWishlistSearchResultPayload(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex))
+            {
+                return false;
+            }
+
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> packetResults = _sourceDialog.SearchWishlistEntries(
+                clientSearchQuery,
+                _selectedCategoryKey,
+                _selectedPriceRangeIndex,
+                out string message);
+            if (packetResults.Count == 0)
+            {
+                return false;
+            }
+
+            _searchQuery = clientSearchQuery;
+            _searchResults = packetResults.ToList();
+            _selectedResultIndex = -1;
+            _resultScrollOffset = 0;
+            BeginWishlistSearchResultSession(
+                _searchResults,
+                _searchResultSessionIsCategoryResult,
+                _searchResultSessionCategoryLabel);
+            _statusMessage = $"Packet 366 subtype 4 rebound the open SearchItemName result owner to {packetResults.Count} packet-authored row(s). {message}";
+            UpdatePopupButtons();
+            return true;
         }
 
         private void RefreshWishlistSearchResultSessionState()

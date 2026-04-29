@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private LocalOverlayBalloonMessage _avatarMessage;
         private readonly List<LocalOverlayBalloonMessage> _fieldMessages = new();
+        private int _nextOwnerIdentity = 1;
 
         public bool HasAvatarMessage => _avatarMessage != null;
         public int FieldMessageCount => _fieldMessages.Count;
@@ -47,7 +48,8 @@ namespace HaCreator.MapSimulator.Interaction
                 currentTickCount,
                 LocalOverlayBalloonAnchorMode.Avatar,
                 Point.Zero,
-                avatarOriginOffset);
+                avatarOriginOffset,
+                AllocateOwnerIdentity());
             return _avatarMessage;
         }
 
@@ -60,7 +62,8 @@ namespace HaCreator.MapSimulator.Interaction
                 currentTickCount,
                 LocalOverlayBalloonAnchorMode.World,
                 worldAnchor,
-                Point.Zero);
+                Point.Zero,
+                AllocateOwnerIdentity());
             if (message == null)
             {
                 return null;
@@ -100,6 +103,11 @@ namespace HaCreator.MapSimulator.Interaction
             _fieldMessages.Clear();
         }
 
+        public int LastOwnerIdentityForClientParity =>
+            _fieldMessages.Count > 0
+                ? _fieldMessages[^1].OwnerIdentity
+                : _avatarMessage?.OwnerIdentity ?? 0;
+
         public LocalOverlayBalloonMessage GetAvatarMessage(int currentTickCount)
         {
             return _avatarMessage?.IsActive(currentTickCount) == true
@@ -134,19 +142,24 @@ namespace HaCreator.MapSimulator.Interaction
             int currentTickCount,
             LocalOverlayBalloonAnchorMode anchorMode,
             Point worldAnchor,
-            Point anchorOffset)
+            Point anchorOffset,
+            int ownerIdentity)
         {
             string sanitizedText = SanitizeText(text);
-            int expiresAt = currentTickCount + Math.Max(0, lifetimeMs);
+            int normalizedLifetimeMs = Math.Max(0, lifetimeMs);
+            int expiresAt = currentTickCount + normalizedLifetimeMs;
             return string.IsNullOrEmpty(sanitizedText) || expiresAt <= currentTickCount
                 ? null
                 : new LocalOverlayBalloonMessage(
                     sanitizedText,
                     Math.Max(0, requestedWidth),
+                    currentTickCount,
+                    normalizedLifetimeMs,
                     expiresAt,
                     anchorMode,
                     worldAnchor,
-                    anchorOffset);
+                    anchorOffset,
+                    ownerIdentity);
         }
 
         private static string SanitizeText(string text)
@@ -160,6 +173,18 @@ namespace HaCreator.MapSimulator.Interaction
         {
             message?.DisposeVisual();
         }
+
+        private int AllocateOwnerIdentity()
+        {
+            int ownerIdentity = _nextOwnerIdentity;
+            _nextOwnerIdentity++;
+            if (_nextOwnerIdentity <= 0)
+            {
+                _nextOwnerIdentity = 1;
+            }
+
+            return ownerIdentity;
+        }
     }
 
     internal sealed class LocalOverlayBalloonMessage
@@ -169,22 +194,37 @@ namespace HaCreator.MapSimulator.Interaction
         private int _cachedBodyWidth;
         private int _cachedBodyHeight;
 
-        public LocalOverlayBalloonMessage(string text, int requestedWidth, int expiresAt, LocalOverlayBalloonAnchorMode anchorMode, Point worldAnchor, Point anchorOffset)
+        public LocalOverlayBalloonMessage(
+            string text,
+            int requestedWidth,
+            int startedAt,
+            int lifetimeMs,
+            int expiresAt,
+            LocalOverlayBalloonAnchorMode anchorMode,
+            Point worldAnchor,
+            Point anchorOffset,
+            int ownerIdentity)
         {
             Text = text ?? string.Empty;
             RequestedWidth = requestedWidth;
+            StartedAt = startedAt;
+            LifetimeMs = lifetimeMs;
             ExpiresAt = expiresAt;
             AnchorMode = anchorMode;
             WorldAnchor = worldAnchor;
             AnchorOffset = anchorOffset;
+            OwnerIdentity = ownerIdentity;
         }
 
         public string Text { get; }
         public int RequestedWidth { get; }
+        public int StartedAt { get; }
+        public int LifetimeMs { get; }
         public int ExpiresAt { get; }
         public LocalOverlayBalloonAnchorMode AnchorMode { get; }
         public Point WorldAnchor { get; }
         public Point AnchorOffset { get; }
+        public int OwnerIdentity { get; }
         public Texture2D CachedBodyTexture => _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed ? _cachedBodyTexture : null;
 
         public bool IsActive(int currentTickCount) =>

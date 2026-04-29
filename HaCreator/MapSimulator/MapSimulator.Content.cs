@@ -706,6 +706,7 @@ namespace HaCreator.MapSimulator
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
+            _engagementProposalController.ClientPacketDispatcher = DispatchEngagementProposalClientRequest;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingWishListController.ClientPacketDispatcher = DispatchWeddingWishListClientRequest;
@@ -1418,7 +1419,7 @@ namespace HaCreator.MapSimulator
                 _pendingMapSpawnTarget = null;
             }
             ClearPendingPortalSessionValueImpacts();
-            ConsumePassiveTransferRequestFromTransferLifecycle();
+            ConsumePassiveTransferRequestFromFieldInterfaceTeardown();
 
 
             // Deactivate chat input (but preserve message history)
@@ -1841,6 +1842,7 @@ namespace HaCreator.MapSimulator
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
+            _engagementProposalController.ClientPacketDispatcher = DispatchEngagementProposalClientRequest;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingWishListController.ClientPacketDispatcher = DispatchWeddingWishListClientRequest;

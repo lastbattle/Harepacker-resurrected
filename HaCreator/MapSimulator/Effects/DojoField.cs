@@ -480,11 +480,20 @@ namespace HaCreator.MapSimulator.Effects
         public void Configure(MapInfo mapInfo, IEnumerable<PortalInstance> portals, bool hasNextFloorPortal = false)
         {
             Configure(mapInfo, hasNextFloorPortal);
-            (_nextFloorMapId, _nextFloorPortalName) = ResolveNextFloorDestinationFromPortals(portals);
-            (_hasExitPortal, _exitPortalName, _exitPortalTargetMapId) = ResolveExitPortalContractFromPortals(portals);
-            if (_nextFloorMapId > 0)
+            (int portalNextFloorMapId, string portalNextFloorPortalName) = ResolveNextFloorDestinationFromPortals(portals);
+            if (portalNextFloorMapId > 0)
             {
+                _nextFloorMapId = portalNextFloorMapId;
+                _nextFloorPortalName = portalNextFloorPortalName ?? string.Empty;
                 _hasNextFloorPortal = true;
+            }
+
+            (bool hasPortalExitContract, string portalExitName, int portalExitTargetMapId) = ResolveExitPortalContractFromPortals(portals);
+            if (hasPortalExitContract)
+            {
+                _hasExitPortal = true;
+                _exitPortalName = portalExitName ?? string.Empty;
+                _exitPortalTargetMapId = portalExitTargetMapId;
             }
         }
         public void OnClock(int clockType, int durationSec, int currentTimeMs)

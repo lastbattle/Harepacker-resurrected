@@ -2705,9 +2705,18 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             RemoteTownPortalFieldMetadata cachedMetadata = metadata.Value;
-            return cachedMetadata.SourceMapId != refreshedDestination.MapId
+            if (cachedMetadata.SourceMapId != refreshedDestination.MapId
                 || Math.Abs(cachedMetadata.SourceX - refreshedDestination.X) >= 0.01f
-                || Math.Abs(cachedMetadata.SourceY - refreshedDestination.Y) >= 0.01f;
+                || Math.Abs(cachedMetadata.SourceY - refreshedDestination.Y) >= 0.01f)
+            {
+                return true;
+            }
+
+            return CompareRemoteTownPortalSameSourceCoordinateAuthority(
+                cachedMetadata.ObservationSource,
+                cachedMetadata.RecordedAt,
+                observation.ObservationSource,
+                observation.RecordedAt) < 0;
         }
 
         private static bool ShouldReplaceRemoteTownPortalOwnerObservation(

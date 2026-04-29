@@ -1129,34 +1129,9 @@ namespace HaCreator.MapSimulator
         {
             result = default;
             detail = null;
-            if (payload == null
-                || offset < 0
-                || payload.Length - offset < sizeof(ushort))
+            if (!TryDecodeMonsterBookLoadBookRawRows(payload, offset, out ushort entryCount, out Dictionary<int, int> counts))
             {
                 return false;
-            }
-
-            ushort entryCount = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
-            int entriesOffset = offset + sizeof(ushort);
-            int expectedLength = entriesOffset + (entryCount * (sizeof(int) + sizeof(byte)));
-            if (entryCount > 1024
-                || expectedLength != payload.Length)
-            {
-                return false;
-            }
-
-            Dictionary<int, int> counts = new();
-            for (int i = 0; i < entryCount; i++)
-            {
-                int entryOffset = entriesOffset + (i * (sizeof(int) + sizeof(byte)));
-                int ownershipKey = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset, sizeof(int)));
-                int count = payload[entryOffset + sizeof(int)];
-                if (ownershipKey <= 0 || count <= 0)
-                {
-                    return false;
-                }
-
-                counts[ownershipKey] = Math.Clamp(count, 0, 5);
             }
 
             result = new MonsterBookOwnershipSyncPayload(
@@ -1175,6 +1150,66 @@ namespace HaCreator.MapSimulator
                 : registeredMobId.HasValue
                 ? "Decoded CMonsterBookMan::LoadBook raw ownership table with registered cover."
                 : "Decoded CMonsterBookMan::LoadBook raw ownership table.";
+            return true;
+        }
+
+        private static bool TryDecodeMonsterBookLoadBookRawRows(
+            byte[] payload,
+            int offset,
+            out ushort entryCount,
+            out Dictionary<int, int> counts)
+        {
+            entryCount = 0;
+            counts = new Dictionary<int, int>();
+            if (payload == null
+                || offset < 0
+                || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            entryCount = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
+            int entriesOffset = offset + sizeof(ushort);
+            if (entryCount > 1024)
+            {
+                return false;
+            }
+
+            if (entryCount == 0)
+            {
+                return entriesOffset == payload.Length;
+            }
+
+            int remaining = payload.Length - entriesOffset;
+            int rowStride;
+            if (remaining == entryCount * (sizeof(int) + sizeof(byte)))
+            {
+                rowStride = sizeof(int) + sizeof(byte);
+            }
+            else if (remaining == entryCount * (sizeof(int) + sizeof(int)))
+            {
+                rowStride = sizeof(int) + sizeof(int);
+            }
+            else
+            {
+                return false;
+            }
+
+            for (int i = 0; i < entryCount; i++)
+            {
+                int entryOffset = entriesOffset + (i * rowStride);
+                int ownershipKey = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset, sizeof(int)));
+                int count = rowStride == sizeof(int) + sizeof(byte)
+                    ? payload[entryOffset + sizeof(int)]
+                    : BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset + sizeof(int), sizeof(int)));
+                if (ownershipKey <= 0 || count <= 0)
+                {
+                    return false;
+                }
+
+                counts[ownershipKey] = Math.Clamp(count, 0, 5);
+            }
+
             return true;
         }
 

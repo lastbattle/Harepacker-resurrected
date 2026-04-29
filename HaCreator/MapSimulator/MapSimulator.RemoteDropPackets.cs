@@ -1457,7 +1457,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int[] linkedActorIds = actorParents.Keys.ToArray();
+            int[] linkedActorIds = EnumerateObservedDropPartyActorIds(actorParents);
             foreach (int linkedActorId in linkedActorIds)
             {
                 int linkedRoot = FindObservedDropPartyActorRoot(actorParents, linkedActorId);
@@ -1520,7 +1520,7 @@ namespace HaCreator.MapSimulator
 
             if (partyActorOwnerResolver != null)
             {
-                int[] linkedActorIds = actorParents.Keys.ToArray();
+                int[] linkedActorIds = EnumerateObservedDropPartyActorIds(actorParents);
                 for (int i = 0; i < linkedActorIds.Length; i++)
                 {
                     int linkedActorId = linkedActorIds[i];
@@ -1554,6 +1554,31 @@ namespace HaCreator.MapSimulator
                     || trackedPartyActorEvaluator?.Invoke(actorId) == true
                     || legacyTrackedActorEvaluator?.Invoke(actorId) == true
                     || persistedPartyAnchorEvaluator?.Invoke(actorId) == true);
+        }
+
+        private static int[] EnumerateObservedDropPartyActorIds(
+            System.Collections.Generic.IDictionary<int, int> actorParents)
+        {
+            if (actorParents == null || actorParents.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> actorIds = new();
+            foreach (KeyValuePair<int, int> entry in actorParents)
+            {
+                if (entry.Key != 0)
+                {
+                    actorIds.Add(entry.Key);
+                }
+
+                if (entry.Value != 0)
+                {
+                    actorIds.Add(entry.Value);
+                }
+            }
+
+            return actorIds.ToArray();
         }
 
         private static int FindObservedDropPartyActorRoot(
@@ -1621,7 +1646,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int[] linkedActorIds = actorParents.Keys.ToArray();
+            int[] linkedActorIds = EnumerateObservedDropPartyActorIds(actorParents);
 
             if (TryDecodeRemotePetPickupActorId(actorId, out int requestedOwnerCharacterId, out int requestedSlotIndex))
             {

@@ -1014,6 +1014,22 @@ namespace HaCreator.MapSimulator.UI
             return canvas != null;
         }
 
+        public static bool TryResolveRewardPreviewIconCanvas(InventoryRewardPreviewItem rewardItem, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (rewardItem == null)
+            {
+                return false;
+            }
+
+            if (TryResolveTooltipIconCanvas(rewardItem.ItemId, out canvas))
+            {
+                return true;
+            }
+
+            return TryResolveEffectFirstCanvas(rewardItem.EffectPath, out canvas);
+        }
+
         public static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequence(int itemId, string groupName, int limit = 8)
         {
             if (itemId <= 0 || string.IsNullOrWhiteSpace(groupName))
@@ -1732,6 +1748,10 @@ namespace HaCreator.MapSimulator.UI
         {
             return TryResolveNpcReference(itemProperty, out _)
                    || TryResolveSpecScripts(
+                       itemProperty?["spec"] as WzSubProperty,
+                       itemProperty?["specEx"] as WzSubProperty,
+                       out _)
+                   || TryResolveSpecScriptPublications(
                        itemProperty?["spec"] as WzSubProperty,
                        itemProperty?["specEx"] as WzSubProperty,
                        out _);

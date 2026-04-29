@@ -303,7 +303,7 @@ namespace HaCreator.MapSimulator.Character
                     _teleportToSpawn?.Invoke();
                     return ApplyStatus(PlayerMobStatusEffect.Banish, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs) || teleported;
                 case 128:
-                    return ApplyStatus(PlayerMobStatusEffect.Attract, runtimeData.DurationMs, currentTime, ResolveSeduceDirection(sourceX), recastLeadTimeMs: recastLeadTimeMs);
+                    return ApplyStatus(PlayerMobStatusEffect.Attract, runtimeData.DurationMs, currentTime, ResolveSeduceDirection(runtimeData, sourceX), recastLeadTimeMs: recastLeadTimeMs);
                 case 131:
                     return ApplyStatus(PlayerMobStatusEffect.Freeze, runtimeData.DurationMs, currentTime, 1, recastLeadTimeMs: recastLeadTimeMs);
                 case 132:
@@ -634,7 +634,7 @@ namespace HaCreator.MapSimulator.Character
                         PlayerMobStatusEffect.Attract,
                         runtimeData.DurationMs,
                         currentTime,
-                        ResolveSeduceDirection(sourceX),
+                        ResolveSeduceDirection(runtimeData, sourceX),
                         refreshLeadTimeMs);
                 case 129:
                     return WouldStatusApplicationChangeState(
@@ -1027,8 +1027,14 @@ namespace HaCreator.MapSimulator.Character
             return remainingDurationMs <= refreshLeadTimeMs;
         }
 
-        private int ResolveSeduceDirection(float sourceX)
+        private int ResolveSeduceDirection(MobSkillRuntimeData runtimeData, float sourceX)
         {
+            int authoredDirection = ResolveAuthoredSeduceDirection(runtimeData);
+            if (authoredDirection != 0)
+            {
+                return authoredDirection;
+            }
+
             if (sourceX < _player.X)
             {
                 return -1;
@@ -1041,6 +1047,17 @@ namespace HaCreator.MapSimulator.Character
 
             return _player.FacingRight ? 1 : -1;
         }
+
+        internal static int ResolveAuthoredSeduceDirection(MobSkillRuntimeData runtimeData)
+        {
+            if (runtimeData == null || runtimeData.X == 0)
+            {
+                return 0;
+            }
+
+            return runtimeData.X < 0 ? -1 : 1;
+        }
+
         private void RemoveExpiredEffects(int currentTime)
         {
             if (_entries.Count == 0)

@@ -744,9 +744,12 @@ namespace HaCreator.MapSimulator
             bool authoritativeRoundTrip,
             bool hasPendingAuthoritativeSubmitTransport)
         {
+            // A local/synthetic 1011 result can still drive the visible notice/chat
+            // branch, but it must not validate the SetRet-shaped submit. Completion
+            // requires the bridge-correlated official-session result; otherwise keep
+            // the submit wait alive until the same timeout budget expires.
             return wasAwaitingResult
-                && !authoritativeRoundTrip
-                && hasPendingAuthoritativeSubmitTransport;
+                && !authoritativeRoundTrip;
         }
 
         internal static bool ShouldExpirePacketOwnedAntiMacroAwaitingResult(int remainingMs)

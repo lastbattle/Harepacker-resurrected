@@ -1847,12 +1847,27 @@ namespace HaCreator.MapSimulator.Physics
         /// Get and clear the current movement path.
         /// Client: CMovePath::Flush
         /// </summary>
-        public List<MovePathElement> FlushMovePath(int? timeStampMs = null)
+        public List<MovePathElement> FlushMovePath(
+            int? timeStampMs = null,
+            bool applyClientRetention = false,
+            bool isFlying = false,
+            bool hasDynamicFoothold = false)
         {
             int currentTimeMs = timeStampMs ?? Environment.TickCount;
             var path = BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
-            _movePath.Clear();
-            _pathGatherDurationMs = 0;
+            if (applyClientRetention)
+            {
+                ApplyClientFlushRetentionAfterPacketSnapshot(
+                    currentTimeMs,
+                    isFlying,
+                    hasDynamicFoothold);
+            }
+            else
+            {
+                _movePath.Clear();
+                _pathGatherDurationMs = 0;
+            }
+
             return path;
         }
 

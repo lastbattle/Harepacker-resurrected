@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizTimerDigitUolStringPoolId = 0x0F73;
         private const int InitialQuizTimerCommaUolStringPoolId = 0x0F74;
         private const int InitialQuizOkButtonUolStringPoolId = 0x0512;
+        private const int InitialQuizOwnerOkButtonStringPoolId = InitialQuizOkButtonUolStringPoolId;
         private const int InitialQuizQuestionLabelStringPoolId = 0x0F75;
         private const int InitialQuizHintLabelStringPoolId = 3958;
         private const int InitialQuizAnswerLabelStringPoolId = 3959;
@@ -96,6 +97,8 @@ namespace HaCreator.MapSimulator
         private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
         private InitialQuizOwnerCaptureState _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
         private InitialQuizOwnerChildControlState _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
+        private InitialQuizOwnerControlStackSnapshot _initialQuizOwnerControlStackSnapshot = InitialQuizOwnerControlStackSnapshot.Destroyed;
+        private int _initialQuizOwnerControlStackGeneration;
         private bool UsingInitialQuizOwnerNativeEditHost => _initialQuizOwnerNativeEditHost?.IsAttached == true;
 
         private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
@@ -135,6 +138,31 @@ namespace HaCreator.MapSimulator
         {
             internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
             internal static InitialQuizOwnerChildControlState Inactive { get; } = new(false, false, false);
+        }
+
+        internal readonly record struct InitialQuizOwnerControlStackSnapshot(
+            bool Created,
+            int Generation,
+            int EditControlId,
+            int OkButtonControlId,
+            bool EditVisible,
+            bool EditEnabled,
+            bool EditFocused,
+            bool OkButtonVisible,
+            bool OkButtonEnabled,
+            bool OkButtonFocused)
+        {
+            internal static InitialQuizOwnerControlStackSnapshot Destroyed { get; } = new(
+                Created: false,
+                Generation: 0,
+                EditControlId: 0,
+                OkButtonControlId: 0,
+                EditVisible: false,
+                EditEnabled: false,
+                EditFocused: false,
+                OkButtonVisible: false,
+                OkButtonEnabled: false,
+                OkButtonFocused: false);
         }
 
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
@@ -232,6 +260,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerHasDisplayedRemainingSeconds = false;
             _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
             _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
+            _initialQuizOwnerControlStackSnapshot = InitialQuizOwnerControlStackSnapshot.Destroyed;
         }
 
         private void UpdateInitialQuizOwner(int currentTickCount)
@@ -900,6 +929,12 @@ namespace HaCreator.MapSimulator
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
             editControl?.Reset();
             _initialQuizOwnerNativeEditHost?.Reset();
+            _initialQuizOwnerControlStackGeneration++;
+            _initialQuizOwnerControlStackSnapshot = BuildInitialQuizOwnerControlStackSnapshot(
+                created: true,
+                generation: _initialQuizOwnerControlStackGeneration,
+                childState: _initialQuizOwnerChildControlState,
+                focusTarget: _initialQuizOwnerFocusTarget);
             SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
         }
 
@@ -912,6 +947,8 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerInputTextRasterizer.Dispose();
                 _initialQuizOwnerInputTextRasterizer = null;
             }
+
+            _initialQuizOwnerControlStackSnapshot = InitialQuizOwnerControlStackSnapshot.Destroyed;
         }
 
         private void DisposeInitialQuizOwnerParityResources()
@@ -1568,6 +1605,11 @@ namespace HaCreator.MapSimulator
 
         private void SyncInitialQuizOwnerEditControlState(bool ownerActive, InitialQuizOwnerChildControlState controlState)
         {
+            _initialQuizOwnerControlStackSnapshot = BuildInitialQuizOwnerControlStackSnapshot(
+                created: ownerActive && _initialQuizOwnerControlStackSnapshot.Created,
+                generation: _initialQuizOwnerControlStackSnapshot.Generation,
+                childState: ownerActive ? controlState : InitialQuizOwnerChildControlState.Inactive,
+                focusTarget: ownerActive ? _initialQuizOwnerFocusTarget : InitialQuizOwnerFocusTarget.Owner);
             NativeAntiMacroEditHost nativeEditHost = EnsureInitialQuizOwnerNativeEditHost();
             if (nativeEditHost != null && nativeEditHost.IsAttached)
             {
@@ -1600,6 +1642,33 @@ namespace HaCreator.MapSimulator
             {
                 editControl.EndMouseSelection();
             }
+        }
+
+        internal static InitialQuizOwnerControlStackSnapshot BuildInitialQuizOwnerControlStackSnapshot(
+            bool created,
+            int generation,
+            InitialQuizOwnerChildControlState childState,
+            InitialQuizOwnerFocusTarget focusTarget)
+        {
+            if (!created)
+            {
+                return InitialQuizOwnerControlStackSnapshot.Destroyed;
+            }
+
+            bool editVisible = childState.EditVisible;
+            bool editEnabled = childState.EditEnabled;
+            bool okButtonEnabled = childState.OkButtonEnabled;
+            return new InitialQuizOwnerControlStackSnapshot(
+                Created: true,
+                Generation: Math.Max(1, generation),
+                EditControlId: AntiMacroEditControl.ClientControlId,
+                OkButtonControlId: InitialQuizOwnerOkButtonStringPoolId,
+                EditVisible: editVisible,
+                EditEnabled: editEnabled,
+                EditFocused: editVisible && editEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input,
+                OkButtonVisible: editVisible,
+                OkButtonEnabled: okButtonEnabled,
+                OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton);
         }
 
         private Texture2D[] LoadInitialQuizOwnerDigits(WzSubProperty preferred, WzSubProperty fallback, out Texture2D commaTexture)

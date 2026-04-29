@@ -876,6 +876,18 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (TryResolveInlineAssignmentAliasCandidates(
+                    normalizedValue,
+                    localAliasMap,
+                    objectMemberAliasMap,
+                    out IReadOnlyList<string> inlineAssignmentAliases))
+            {
+                for (int i = 0; i < inlineAssignmentAliases.Count; i++)
+                {
+                    AddAlias(inlineAssignmentAliases[i]);
+                }
+            }
+
             if (TryTrimCallbackInvokerTargetExpression(normalizedValue, out string callbackTargetExpression)
                 && !string.Equals(callbackTargetExpression, normalizedValue, StringComparison.OrdinalIgnoreCase))
             {
@@ -981,6 +993,16 @@ namespace HaCreator.MapSimulator.Fields
             if (string.IsNullOrWhiteSpace(normalizedValue))
             {
                 return string.Empty;
+            }
+
+            if (TryResolveInlineAssignmentAliasCandidates(
+                    normalizedValue,
+                    localAliasMap,
+                    objectMemberAliasMap,
+                    out IReadOnlyList<string> inlineAssignmentAliases)
+                && inlineAssignmentAliases.Count > 0)
+            {
+                return inlineAssignmentAliases[0];
             }
 
             if (TryTrimCallbackInvokerTargetExpression(normalizedValue, out string callbackTargetExpression)
@@ -1433,6 +1455,117 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return flattenedArguments;
+        }
+
+        private static bool TryResolveInlineAssignmentAliasCandidates(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            out IReadOnlyList<string> aliasNames)
+        {
+            aliasNames = Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = StripOuterBalancedParentheses(value.Trim());
+            int assignmentIndex = FindTopLevelAssignmentOperator(normalizedValue);
+            if (assignmentIndex <= 0 || assignmentIndex >= normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string leftExpression = NormalizeOptionalChainingAliasAccess(
+                NormalizeFunctionAliasArgument(normalizedValue[..assignmentIndex])).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(leftExpression)
+                || (!IsPotentialFunctionAliasName(leftExpression)
+                    && !TryParseIndexedObjectAccess(leftExpression, out _, out _)
+                    && !TryParseDottedObjectAccess(leftExpression, out _, out _)))
+            {
+                return false;
+            }
+
+            string rightExpression = normalizedValue[(assignmentIndex + 1)..].Trim();
+            IReadOnlyList<string> resolvedAliases = ResolveAssignmentAliasCandidates(
+                rightExpression,
+                localAliasMap,
+                objectMemberAliasMap);
+            if (resolvedAliases.Count == 0)
+            {
+                return false;
+            }
+
+            aliasNames = resolvedAliases;
+            return true;
+        }
+
+        private static int FindTopLevelAssignmentOperator(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return -1;
+            }
+
+            int groupingDepth = 0;
+            char quote = '\0';
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '(' || current == '[' || current == '{')
+                {
+                    groupingDepth++;
+                    continue;
+                }
+
+                if (current == ')' || current == ']' || current == '}')
+                {
+                    if (groupingDepth > 0)
+                    {
+                        groupingDepth--;
+                    }
+
+                    continue;
+                }
+
+                if (groupingDepth > 0 || current != '=')
+                {
+                    continue;
+                }
+
+                char previous = i > 0 ? value[i - 1] : '\0';
+                char next = i + 1 < value.Length ? value[i + 1] : '\0';
+                if (previous is '=' or '!' or '<' or '>' || next is '=' or '>')
+                {
+                    continue;
+                }
+
+                return i;
+            }
+
+            return -1;
         }
 
         private static bool TryParseSpreadAliasMember(string value, out string sourceName)
@@ -1946,6 +2079,18 @@ namespace HaCreator.MapSimulator.Fields
             if (string.IsNullOrWhiteSpace(normalizedCandidate))
             {
                 yield break;
+            }
+
+            if (TryResolveInlineAssignmentAliasCandidates(
+                    normalizedCandidate,
+                    localAliasMap,
+                    objectMemberAliasMap,
+                    out IReadOnlyList<string> inlineAssignmentAliases))
+            {
+                for (int i = 0; i < inlineAssignmentAliases.Count; i++)
+                {
+                    yield return inlineAssignmentAliases[i];
+                }
             }
 
             if (TryTrimCallbackInvokerTargetExpression(normalizedCandidate, out string callbackTargetExpression)

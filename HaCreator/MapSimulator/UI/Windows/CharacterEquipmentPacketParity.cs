@@ -2235,27 +2235,42 @@ namespace HaCreator.MapSimulator.UI
         {
             value = string.Empty;
             rejectReason = null;
-            if (!TryEnsureRemaining(reader.BaseStream, sizeof(ushort), out rejectReason))
+            Stream stream = reader.BaseStream;
+            if (!TryEnsureRemaining(stream, sizeof(short), out rejectReason))
             {
                 return false;
             }
 
-            // Client CInPacket::DecodeStr (via CIOBufferManipulator::DecodeStr) decodes
-            // a ushort byte length followed by raw bytes.
-            ushort lengthToken = reader.ReadUInt16();
+            // Client CInPacket::DecodeStr carries signed string lengths: positive
+            // tokens are raw bytes, negative tokens are UTF-16 character counts.
+            short lengthToken = reader.ReadInt16();
             if (lengthToken == 0)
             {
                 value = string.Empty;
                 return true;
             }
 
-            int byteLength = lengthToken;
-            if (!TryEnsureRemaining(reader.BaseStream, byteLength, out rejectReason))
+            if (lengthToken > 0)
             {
+                int byteLength = lengthToken;
+                if (!TryEnsureRemaining(stream, byteLength, out rejectReason))
+                {
+                    return false;
+                }
+
+                value = Encoding.ASCII.GetString(reader.ReadBytes(byteLength));
+                return true;
+            }
+
+            int charLength = -lengthToken;
+            int unicodeByteLength = charLength * sizeof(char);
+            if (charLength <= 0 || !TryEnsureRemaining(stream, unicodeByteLength, out rejectReason))
+            {
+                rejectReason = "Inventory-operation add entry maple string length is invalid.";
                 return false;
             }
 
-            value = Encoding.ASCII.GetString(reader.ReadBytes(byteLength));
+            value = Encoding.Unicode.GetString(reader.ReadBytes(unicodeByteLength));
             return true;
         }
 

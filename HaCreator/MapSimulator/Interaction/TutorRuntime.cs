@@ -700,7 +700,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal IReadOnlyList<TutorVariantSnapshot> SnapshotDisplayTutorVariants()
         {
-            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwnersForVariantLookup();
             IReadOnlyList<TutorVariantSnapshot> registeredVariants = ownerSnapshots.Count > 0
                 ? ExtractTutorVariants(ownerSnapshots)
                 : SnapshotSharedRegisteredTutorVariants();
@@ -769,7 +769,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwnersForVariantLookup();
             if (ownerSnapshots.Count > 0)
             {
                 for (int i = 0; i < ownerSnapshots.Count; i++)
@@ -894,7 +894,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryGetSharedActiveVariantForCharacter(int runtimeCharacterId, out TutorVariantSnapshot variant)
         {
-            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwnersForVariantLookup();
             IReadOnlyList<TutorVariantSnapshot> variants = ownerSnapshots.Count > 0
                 ? ExtractTutorVariants(ownerSnapshots)
                 : SnapshotSharedRegisteredTutorVariants();
@@ -931,7 +931,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryGetSharedTutorVariantForCharacter(int skillId, int runtimeCharacterId, out TutorVariantSnapshot variant)
         {
-            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwnersForVariantLookup();
             IReadOnlyList<TutorVariantSnapshot> variants = ownerSnapshots.Count > 0
                 ? ExtractTutorVariants(ownerSnapshots)
                 : SnapshotSharedRegisteredTutorVariants();
@@ -1248,10 +1248,29 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static IReadOnlyList<TutorOwnerSnapshot> SnapshotSharedTutorOwners()
         {
+            return SnapshotSharedTutorOwners(Environment.TickCount);
+        }
+
+        private static IReadOnlyList<TutorOwnerSnapshot> SnapshotSharedTutorOwners(int currentTick)
+        {
             lock (SharedTutorStateSync)
             {
-                PruneExpiredSharedTutorMessagesUnsafe(Environment.TickCount);
-                SynchronizeSharedTutorOwnerMessagesUnsafe();
+                PruneExpiredSharedTutorMessagesUnsafe(currentTick);
+                SynchronizeSharedTutorOwnerMessagesUnsafe(currentTick);
+                TutorOwnerSnapshot[] snapshots = new TutorOwnerSnapshot[SharedTutorOwners.Count];
+                for (int i = 0; i < SharedTutorOwners.Count; i++)
+                {
+                    snapshots[i] = SharedTutorOwners[i].ToOwnerSnapshot();
+                }
+
+                return snapshots;
+            }
+        }
+
+        private static IReadOnlyList<TutorOwnerSnapshot> SnapshotSharedTutorOwnersForVariantLookup()
+        {
+            lock (SharedTutorStateSync)
+            {
                 TutorOwnerSnapshot[] snapshots = new TutorOwnerSnapshot[SharedTutorOwners.Count];
                 for (int i = 0; i < SharedTutorOwners.Count; i++)
                 {
@@ -1559,13 +1578,17 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.LastMutationTick);
         }
 
-        private static void SynchronizeSharedTutorOwnerMessagesUnsafe()
+        private static void SynchronizeSharedTutorOwnerMessagesUnsafe(int currentTick)
         {
             for (int i = 0; i < SharedTutorOwners.Count; i++)
             {
                 ClientTutorOwnerState owner = SharedTutorOwners[i];
                 int messageIndex = FindSharedTutorMessageIndexUnsafe(owner.SkillId, owner.BoundCharacterId);
-                if (messageIndex >= 0 && IsSharedTutorMessageVisibleForDisplayVariant(SharedTutorMessages[messageIndex], owner.ToVariantSnapshot()))
+                if (messageIndex >= 0
+                    && IsSharedTutorMessageVisibleForDisplayVariant(
+                        SharedTutorMessages[messageIndex],
+                        owner.ToVariantSnapshot(),
+                        currentTick))
                 {
                     owner.ApplyMessage(SharedTutorMessages[messageIndex]);
                 }
@@ -1613,6 +1636,16 @@ namespace HaCreator.MapSimulator.Interaction
                 && (displayVariant.BoundCharacterId <= 0
                     || snapshot.BoundCharacterId <= 0
                     || snapshot.BoundCharacterId == displayVariant.BoundCharacterId);
+        }
+
+        private static bool IsSharedTutorMessageVisibleForDisplayVariant(
+            TutorMessageSnapshot snapshot,
+            TutorVariantSnapshot displayVariant,
+            int currentTick)
+        {
+            return IsSharedTutorMessageVisibleForDisplayVariant(snapshot, displayVariant)
+                && snapshot.MessageExpiresAt != int.MinValue
+                && currentTick < snapshot.MessageExpiresAt;
         }
 
         private static void PruneExpiredSharedTutorMessagesUnsafe(int currentTick)

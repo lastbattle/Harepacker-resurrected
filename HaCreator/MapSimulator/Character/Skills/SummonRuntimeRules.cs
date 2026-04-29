@@ -285,6 +285,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     "heal");
             }
 
+            if (normalizedAction >= PacketSkillActionSkillBranchMin
+                && normalizedAction <= PacketSkillActionSkillBranchMax
+                && HasSupportOwnedMinionAbilityCue(skill))
+            {
+                return ResolveSupportOwnedIndexedPacketSkillBranch(skill, normalizedAction);
+            }
+
             if (normalizedAction == PacketSkillActionHealingRobotHeal)
             {
                 if (!IsSitdownHealingSupportSummon(skill))
@@ -661,20 +668,30 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string indexedBranch = $"skill{normalizedAction}";
             return !string.IsNullOrWhiteSpace(
-                ResolveNamedSummonBranch(
-                    skill,
-                    indexedBranch,
-                    "heal",
-                    "support",
-                    "skill1",
-                    "skill2",
-                    "skill3",
-                    "skill4",
-                    "skill5",
-                    "skill6",
-                    "stand"));
+                ResolveSupportOwnedIndexedPacketSkillBranch(skill, normalizedAction));
+        }
+
+        private static string ResolveSupportOwnedIndexedPacketSkillBranch(SkillData skill, byte normalizedAction)
+        {
+            if (normalizedAction < PacketSkillActionSkillBranchMin
+                || normalizedAction > PacketSkillActionSkillBranchMax)
+            {
+                return null;
+            }
+
+            string indexedBranch = $"skill{normalizedAction}";
+            return ResolveNamedSummonBranch(
+                skill,
+                indexedBranch,
+                "heal",
+                "support",
+                "skill1",
+                "skill2",
+                "skill3",
+                "skill4",
+                "skill5",
+                "skill6");
         }
 
         private static string ResolveNoActionFamilyPacketSkillBranch(
