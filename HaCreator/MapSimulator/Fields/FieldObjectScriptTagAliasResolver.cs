@@ -945,6 +945,14 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(
+                    normalizedValue,
+                    objectMemberAliasMap,
+                    out string dottedNoArgumentCallAlias))
+            {
+                AddAlias(dottedNoArgumentCallAlias);
+            }
+
             if (IsFunctionExpressionText(normalizedValue))
             {
                 foreach (string returnExpression in EnumerateFunctionReturnExpressions(normalizedValue))
@@ -1065,6 +1073,14 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     return sequenceAlias;
                 }
+            }
+
+            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(
+                    normalizedValue,
+                    objectMemberAliasMap,
+                    out string dottedNoArgumentCallAlias))
+            {
+                return dottedNoArgumentCallAlias;
             }
 
             if (TryResolveNoArgumentFunctionCallAliasCandidate(
@@ -2164,6 +2180,15 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(
+                    normalizedCandidate,
+                    objectMemberAliasMap,
+                    out string dottedNoArgumentCallAlias))
+            {
+                yield return dottedNoArgumentCallAlias;
+                yield break;
+            }
+
             if (TryResolveNoArgumentFunctionCallAliasCandidate(
                     normalizedCandidate,
                     localAliasMap,
@@ -2373,6 +2398,12 @@ namespace HaCreator.MapSimulator.Fields
             if (TryResolveDottedObjectAliasCandidate(value, objectMemberAliasMap, out string dottedAlias))
             {
                 aliasName = dottedAlias;
+                return true;
+            }
+
+            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(value, objectMemberAliasMap, out string dottedCallAlias))
+            {
+                aliasName = dottedCallAlias;
                 return true;
             }
 
@@ -4265,6 +4296,44 @@ namespace HaCreator.MapSimulator.Fields
         {
             aliasName = string.Empty;
             if (!TryParseDottedObjectAccess(value, out string objectName, out string memberKey))
+            {
+                return false;
+            }
+
+            return TryResolveObjectMemberAlias(objectName, memberKey, objectMemberAliasMap, out aliasName);
+        }
+
+        private static bool TryResolveDottedObjectNoArgumentCallAliasCandidate(
+            string value,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            out string aliasName)
+        {
+            aliasName = string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (!normalizedValue.EndsWith(")", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int openIndex = FindTrailingCallOpenParenthesis(normalizedValue);
+            if (openIndex <= 0 || FindMatchingCloseParenthesis(normalizedValue, openIndex) != normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string argumentText = normalizedValue[(openIndex + 1)..^1];
+            if (!string.IsNullOrWhiteSpace(argumentText))
+            {
+                return false;
+            }
+
+            string calleeExpression = NormalizeOptionalChainingAliasAccess(normalizedValue[..openIndex].Trim());
+            if (!TryParseDottedObjectAccess(calleeExpression, out string objectName, out string memberKey))
             {
                 return false;
             }

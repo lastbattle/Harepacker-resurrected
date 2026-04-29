@@ -423,7 +423,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             short encodedLength = BitConverter.ToInt16(rawStream, offset);
-            if (encodedLength == 0 || encodedLength < -32 || encodedLength > 32)
+            if (encodedLength < -32 || encodedLength > 32)
             {
                 return false;
             }

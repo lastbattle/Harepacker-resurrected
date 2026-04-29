@@ -2390,8 +2390,14 @@ namespace HaCreator.MapSimulator.Character
                 ["darksight"] = "darksight",
                 ["alert2"] = "alert2",
                 ["shoot1"] = "shoot1",
+                ["shoot2"] = "shoot1",
+                ["shootF"] = "shoot1",
                 ["stabO1"] = "stabO1",
+                ["stabO2"] = "stabO1",
+                ["stabOF"] = "stabO1",
                 ["swingO2"] = "swingO2",
+                ["swingO3"] = "swingO1",
+                ["swingOF"] = "swingO1",
                 // These client-only helper raw rows are still not authored directly in the
                 // mounted `action/0` WZ surface, so gate them through the nearest recovered
                 // family-specific raw row instead of letting every helper family claim them.

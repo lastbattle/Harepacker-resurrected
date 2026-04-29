@@ -310,6 +310,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte TradingRoomTradePacketType = 17;
         private const byte TradingRoomItemCrcPacketType = 20;
         private const byte TradingRoomExceedLimitPacketType = 21;
+        private const byte MerchantShopRowRefreshPacketType = 15;
         private const byte PersonalShopBuyResultPacketType = 24;
         private const byte PersonalShopBasePacketType = 25;
         private const byte PersonalShopSoldItemResultPacketType = 26;
@@ -689,6 +690,7 @@ namespace HaCreator.MapSimulator.Interaction
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
         public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
         public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
+        public Func<byte[], string, bool> EntrustedChildDialogOutboundPacketRequested { get; set; }
         public Func<byte[], string, bool> EntrustedBlacklistOutboundPacketRequested { get; set; }
         public string EntrustedBlacklistLastOutboundPacketSummary => _entrustedBlacklistLastOutboundPacketSummary;
         public string EntrustedBlacklistPendingMutationName => _entrustedBlacklistPendingMutationName;
@@ -1955,6 +1957,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             switch (packetType)
             {
+                case MerchantShopRowRefreshPacketType:
+                    return TryApplyMerchantShopRowRefreshPacket(reader, out message);
                 case PersonalShopBuyResultPacketType:
                     ApplyPersonalShopBuyResult(reader.ReadByte());
                     message = StatusMessage;
@@ -4366,6 +4370,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
             byte oneByteRoomType = nestedPayload[0];
             if (nestedPayload.Length >= 2 && IsMiniRoomSubtype6ForwardablePacket(nestedPayload[1]))
             {
@@ -4438,6 +4447,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopePayload(nestedPayload, tickCount, out result))
             {
                 return true;
             }
@@ -4770,6 +4784,119 @@ namespace HaCreator.MapSimulator.Interaction
                 handledCount > 0,
                 entryCount == 1 ? lastOwnerName : "CMiniRoomBaseDlg::OnPacketBase batch forwarding",
                 $"Counted subtype-6 batch {handledText}; packet types [{string.Join(", ", packetTypes)}]. {detailText}",
+                firstPacketType,
+                remainingBytes,
+                trailingLength > 0
+                    ? $"{envelopeLabel} count={entryCount} trailing={trailingLength}B"
+                    : $"{envelopeLabel} count={entryCount}",
+                firstForwardedPayload ?? Array.Empty<byte>());
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 3)
+            {
+                return false;
+            }
+
+            return TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 0, "count+fixed-stream envelope", tickCount, out result)
+                || TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 1, $"room-type+count+fixed-stream envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || (nestedPayload.Length >= 4 && TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 2, $"opcode+count+fixed-stream envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 3, $"room-type+opcode+count+fixed-stream envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(nestedPayload, 3, $"opcode+room-type+count+fixed-stream envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result));
+        }
+
+        private bool TryDispatchMiniRoomSubtype6CountedFixedStreamEnvelopeCandidate(
+            byte[] nestedPayload,
+            int countOffset,
+            string envelopeLabel,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || countOffset < 0 || countOffset >= nestedPayload.Length)
+            {
+                return false;
+            }
+
+            int entryCount = nestedPayload[countOffset];
+            if (entryCount <= 1 || entryCount > 16)
+            {
+                return false;
+            }
+
+            int offset = countOffset + 1;
+            int handledCount = 0;
+            int unhandledCount = 0;
+            int remainingBytes = 0;
+            byte firstPacketType = 0;
+            byte[] firstForwardedPayload = null;
+            List<string> packetTypes = new();
+            List<string> details = new();
+            string lastOwnerName = "room-specific owner";
+
+            for (int entryIndex = 0; entryIndex < entryCount; entryIndex++)
+            {
+                if (!TryMeasureMiniRoomSubtype6ForwardedPacketLength(nestedPayload, offset, out int payloadLength))
+                {
+                    return false;
+                }
+
+                if (payloadLength <= 0 || offset + payloadLength > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                byte[] forwardedPayload = nestedPayload.Skip(offset).Take(payloadLength).ToArray();
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult entryResult))
+                {
+                    return false;
+                }
+
+                if (firstForwardedPayload == null)
+                {
+                    firstPacketType = entryResult.PacketType;
+                    firstForwardedPayload = forwardedPayload;
+                }
+
+                lastOwnerName = entryResult.OwnerName;
+                remainingBytes += Math.Max(0, entryResult.RemainingBytes);
+                packetTypes.Add(entryResult.PacketType.ToString(CultureInfo.InvariantCulture));
+                if (entryResult.Handled)
+                {
+                    handledCount++;
+                }
+                else
+                {
+                    unhandledCount++;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entryResult.Message))
+                {
+                    details.Add($"entry {entryIndex + 1}: {entryResult.Message}");
+                }
+
+                offset += payloadLength;
+            }
+
+            int trailingLength = nestedPayload.Length - offset;
+            remainingBytes += Math.Max(0, trailingLength);
+            string handledText = unhandledCount == 0
+                ? $"handled all {entryCount} entries"
+                : $"handled {handledCount} and retained {unhandledCount} unmodeled entries on the owner seam";
+            string detailText = details.Count == 0
+                ? "No nested owner detail was produced."
+                : string.Join(" ", details);
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handledCount > 0,
+                entryCount == 1 ? lastOwnerName : "CMiniRoomBaseDlg::OnPacketBase counted fixed-stream forwarding",
+                $"Counted subtype-6 fixed stream {handledText}; packet types [{string.Join(", ", packetTypes)}]. {detailText}",
                 firstPacketType,
                 remainingBytes,
                 trailingLength > 0
@@ -6062,6 +6189,73 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        private bool TryApplyMerchantShopRowRefreshPacket(PacketReader reader, out string message)
+        {
+            int packetSlotIndex = reader.ReadByte();
+            int itemId = reader.ReadInt();
+            int bundleQuantity = reader.ReadShort();
+            int bundlePrice = reader.ReadInt();
+            if (itemId <= 0)
+            {
+                message = $"Merchant shop-row refresh packet carried invalid item id {itemId} for packet slot {packetSlotIndex}.";
+                return false;
+            }
+
+            int normalizedSlotIndex = Math.Max(0, packetSlotIndex);
+            int normalizedQuantity = Math.Max(1, bundleQuantity);
+            int normalizedPrice = Math.Max(0, bundlePrice);
+            NormalizeActiveMerchantPacketSlots();
+            int entryListIndex = _items.FindIndex(item =>
+                IsClientVisibleMerchantPacketEntry(item) &&
+                item.PacketSlotIndex == normalizedSlotIndex);
+            SocialRoomItemEntry entry = entryListIndex >= 0 ? _items[entryListIndex] : null;
+            string itemName = ResolveItemName(itemId);
+            string detail = $"Packet row {normalizedSlotIndex} | CMiniRoomBaseDlg::OnPacketBase subtype 6 authoritative row refresh";
+            if (entry == null)
+            {
+                entry = new SocialRoomItemEntry(
+                    OwnerName,
+                    itemName,
+                    normalizedQuantity,
+                    normalizedPrice,
+                    detail,
+                    itemId: itemId,
+                    packetSlotIndex: normalizedSlotIndex);
+                _items.Add(entry);
+            }
+            else if (entry.ItemId != itemId)
+            {
+                _items.RemoveAt(entryListIndex);
+                _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+                entry = new SocialRoomItemEntry(
+                    OwnerName,
+                    itemName,
+                    normalizedQuantity,
+                    normalizedPrice,
+                    detail,
+                    itemId: itemId,
+                    packetSlotIndex: normalizedSlotIndex);
+                _items.Insert(Math.Clamp(entryListIndex, 0, _items.Count), entry);
+            }
+            else
+            {
+                entry.UpdatePacketIdentity(itemId, normalizedSlotIndex);
+                entry.Update(detail, normalizedQuantity, normalizedPrice, isLocked: false, isClaimed: false);
+            }
+
+            _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+            NormalizeActiveMerchantPacketSlots();
+            RoomState = Kind == SocialRoomKind.EntrustedShop ? "Updating sale list" : "Closed for setup";
+            ModeName = Kind == SocialRoomKind.EntrustedShop ? "Restock" : "Repricing";
+            EnsureMerchantPacketNotes();
+            _notes[0] = $"Authoritative merchant subtype 25/base subtype 6 row refresh applied packet slot {normalizedSlotIndex}.";
+            _notes[1] = $"{itemName} x{normalizedQuantity} is now listed for {normalizedPrice:N0} meso from the packet-owned row array.";
+            StatusMessage = $"CPersonalShopDlg::OnPacket applied subtype 15 shop-row refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: slot {normalizedSlotIndex}, {itemName} x{normalizedQuantity}, price {normalizedPrice:N0}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
         private bool TryApplyPersonalShopMoveItemPacket(PacketReader reader, out string message)
         {
             int remainingItemCount = reader.ReadByte();
@@ -6226,6 +6420,68 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        public bool TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind kind, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Entrusted-shop child dialogs only apply to the entrusted shop shell.";
+                return false;
+            }
+
+            if (_miniRoomLocalSeatIndex != 0)
+            {
+                message = $"{ResolveEntrustedChildDialogOwnerName(kind)} is only available while the local seat owns the entrusted shop.";
+                return false;
+            }
+
+            byte[] rawPacket = kind == EntrustedShopChildDialogKind.VisitList
+                ? SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopVisitListOutboundPacket()
+                : SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistOutboundPacket();
+            string childOwner = ResolveEntrustedChildDialogOwnerName(kind);
+            byte requestSubtype = kind == EntrustedShopChildDialogKind.VisitList
+                ? SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopVisitList
+                : SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklist;
+            byte expectedResultSubtype = kind == EntrustedShopChildDialogKind.VisitList
+                ? EntrustedShopVisitListResultPacketType
+                : EntrustedShopBlackListResultPacketType;
+            string actionName = kind == EntrustedShopChildDialogKind.VisitList ? "OnVisitList" : "OnBlackList";
+            string summary =
+                $"CEntrustedShopDlg::{actionName} prepared opcode {SocialRoomMerchantOfficialSessionBridgeManager.OutboundMiniRoomOpcode} subtype {requestSubtype} to summon {childOwner} and expects server subtype {expectedResultSubtype} before opening the child owner (raw {Convert.ToHexString(rawPacket)}).";
+
+            if (EntrustedChildDialogOutboundPacketRequested != null)
+            {
+                bool accepted = false;
+                try
+                {
+                    accepted = EntrustedChildDialogOutboundPacketRequested.Invoke((byte[])rawPacket.Clone(), summary);
+                }
+                catch
+                {
+                    accepted = false;
+                }
+
+                if (accepted)
+                {
+                    _entrustedChildDialogStatus = $"{summary} Waiting for authoritative server subtype {expectedResultSubtype}.";
+                    StatusMessage = _entrustedChildDialogStatus;
+                    PersistState();
+                    message = StatusMessage;
+                    return true;
+                }
+            }
+
+            bool opened = TryOpenEntrustedChildDialog(kind, out string openMessage);
+            string offlineMessage = $"{summary} No live merchant bridge accepted it, so the simulator reopened the cached child snapshot as an offline preview.";
+            _entrustedChildDialogStatus = opened
+                ? $"{openMessage} {offlineMessage}"
+                : offlineMessage;
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return opened;
         }
 
         public bool TryRequestPersonalShopOwnerInfo(out string message)

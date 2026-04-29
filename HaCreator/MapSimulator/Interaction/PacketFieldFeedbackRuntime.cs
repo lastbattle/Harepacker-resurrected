@@ -1818,7 +1818,7 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] normalized = sourceBytes.ToArray();
             for (int index = 0; index < normalized.Length;)
             {
-                if (isDbcsLeadByte(normalized[index])
+                if (IsDbcsLeadByte(normalized[index], isDbcsLeadByte)
                     && index + 1 < normalized.Length)
                 {
                     index += 2;
@@ -2547,11 +2547,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return 1;
             }
 
-            return isDbcsLeadByte != null
-                && isDbcsLeadByte(bytes[index])
+            return IsDbcsLeadByte(bytes[index], isDbcsLeadByte)
                 && index + 1 < bytes.Length
                 ? 2
                 : 1;
+        }
+
+        private static bool IsDbcsLeadByte(byte value, Func<byte, bool> isDbcsLeadByte)
+        {
+            return isDbcsLeadByte?.Invoke(value) == true;
         }
 
         internal static string BuildSwindleWarningForTest(
@@ -2625,6 +2629,12 @@ namespace HaCreator.MapSimulator.Interaction
                 value => Array.IndexOf(dbcsLeadBytes ?? Array.Empty<byte>(), value) >= 0) >= 0;
         }
 
+        internal static bool IsDbcsLeadByteForCodePageForTest(int codePage, byte value)
+        {
+            return codePage > 0
+                && IsDbcsLeadByteForCodePage(unchecked((uint)codePage), value);
+        }
+
         internal static string BuildWhisperFindMessageForTest(
             byte subtype,
             string target,
@@ -2690,7 +2700,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return IsDBCSLeadByteEx(SwindleCodePage, value);
+            return IsDbcsLeadByteForCodePage(SwindleCodePage, value);
+        }
+
+        private static bool IsDbcsLeadByteForCodePage(uint codePage, byte value)
+        {
+            return codePage != 0 && IsDBCSLeadByteEx(codePage, value);
         }
 
         internal static int GetSwindleEncodingCodePageForTest()

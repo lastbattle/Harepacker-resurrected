@@ -104,6 +104,8 @@ namespace HaCreator.MapSimulator.UI
         private bool _showNpcMarkers;
         private SpriteFont _tooltipFont;
         private Texture2D _tooltipPixelTexture;
+        private Texture2D[] _tooltipFrames = Array.Empty<Texture2D>();
+        private Point[] _tooltipFrameOrigins = Array.Empty<Point>();
         private Point? _hoverTooltipAnchorPoint;
         private string _hoverTooltipText;
         private readonly List<string> _hoverTooltipLines = new();
@@ -341,8 +343,19 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetTooltipResources(SpriteFont tooltipFont, Texture2D tooltipPixelTexture)
         {
+            SetTooltipResources(tooltipFont, tooltipPixelTexture, null, null);
+        }
+
+        public void SetTooltipResources(
+            SpriteFont tooltipFont,
+            Texture2D tooltipPixelTexture,
+            Texture2D[] tooltipFrames,
+            Point[] tooltipFrameOrigins)
+        {
             _tooltipFont = tooltipFont;
             _tooltipPixelTexture = tooltipPixelTexture;
+            _tooltipFrames = tooltipFrames ?? Array.Empty<Texture2D>();
+            _tooltipFrameOrigins = tooltipFrameOrigins ?? Array.Empty<Point>();
         }
 
         public void ResetTransientHoverState()
@@ -1882,23 +1895,84 @@ namespace HaCreator.MapSimulator.UI
             int renderWidth,
             int renderHeight)
         {
+            return ResolveTooltipRectangleForTesting(
+                tooltipAnchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                ReadOnlySpan<SkillTooltipFrameLayout.FrameGeometry>.Empty);
+        }
+
+        internal static Rectangle ResolveTooltipRectangleForTesting(
+            Point tooltipAnchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            ReadOnlySpan<SkillTooltipFrameLayout.FrameGeometry> frameGeometries)
+        {
+            return ResolveTooltipRectangleAndFrame(
+                tooltipAnchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                frameGeometries,
+                out _);
+        }
+
+        private static Rectangle ResolveTooltipRectangleAndFrame(
+            Point tooltipAnchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            ReadOnlySpan<SkillTooltipFrameLayout.FrameGeometry> frameGeometries,
+            out int tooltipFrameIndex)
+        {
             int resolvedTooltipWidth = Math.Max(1, tooltipWidth);
             int resolvedTooltipHeight = Math.Max(1, tooltipHeight);
-            int tooltipX = tooltipAnchorPoint.X;
-            int tooltipY = tooltipAnchorPoint.Y;
 
-            if (tooltipX + resolvedTooltipWidth > renderWidth - TOOLTIP_MARGIN)
+            if (HasTooltipFrameGeometry(frameGeometries))
             {
-                tooltipX = Math.Max(TOOLTIP_MARGIN, renderWidth - resolvedTooltipWidth - TOOLTIP_MARGIN);
+                return SkillTooltipFrameLayout.ResolveTooltipRect(
+                    tooltipAnchorPoint,
+                    resolvedTooltipWidth,
+                    resolvedTooltipHeight,
+                    renderWidth,
+                    renderHeight,
+                    frameGeometries,
+                    stackalloc[] { 1, 0, 2 },
+                    TOOLTIP_MARGIN,
+                    out tooltipFrameIndex);
             }
 
-            if (tooltipX < TOOLTIP_MARGIN)
-            {
-                tooltipX = TOOLTIP_MARGIN;
-            }
+            tooltipFrameIndex = 1;
+            return ResolvePlainTooltipRectangleForTesting(
+                tooltipAnchorPoint,
+                resolvedTooltipWidth,
+                resolvedTooltipHeight,
+                renderWidth,
+                renderHeight);
+        }
 
-            tooltipY = Math.Clamp(
-                tooltipY,
+        internal static Rectangle ResolvePlainTooltipRectangleForTesting(
+            Point tooltipAnchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight)
+        {
+            int resolvedTooltipWidth = Math.Max(1, tooltipWidth);
+            int resolvedTooltipHeight = Math.Max(1, tooltipHeight);
+            int tooltipX = Math.Clamp(
+                tooltipAnchorPoint.X,
+                TOOLTIP_MARGIN,
+                Math.Max(TOOLTIP_MARGIN, renderWidth - resolvedTooltipWidth - TOOLTIP_MARGIN));
+
+            int tooltipY = Math.Clamp(
+                tooltipAnchorPoint.Y,
                 TOOLTIP_MARGIN,
                 Math.Max(TOOLTIP_MARGIN, renderHeight - resolvedTooltipHeight - TOOLTIP_MARGIN));
 
@@ -2014,15 +2088,18 @@ namespace HaCreator.MapSimulator.UI
             _hoverTooltipMaxWidth = ResolveTooltipMaxWidth(sprite?.GraphicsDevice);
             int tooltipWidth = (int)Math.Ceiling(_hoverTooltipMaxWidth) + (TOOLTIP_PADDING * 2);
             int tooltipHeight = (_hoverTooltipVisibleLineCount * lineHeight) + ((_hoverTooltipVisibleLineCount - 1) * TOOLTIP_LINE_GAP) + (TOOLTIP_PADDING * 2);
-            Rectangle tooltipRect = ResolveTooltipRectangleForTesting(
+            SkillTooltipFrameLayout.FrameGeometry[] frameGeometries =
+                SkillTooltipFrameLayout.BuildFrameGeometries(_tooltipFrames, _tooltipFrameOrigins);
+            Rectangle tooltipRect = ResolveTooltipRectangleAndFrame(
                 tooltipAnchorPoint,
                 tooltipWidth,
                 tooltipHeight,
                 renderWidth,
-                renderHeight);
+                renderHeight,
+                frameGeometries,
+                out int tooltipFrameIndex);
 
-            sprite.Draw(_tooltipPixelTexture, tooltipRect, new Color(18, 18, 26, 235));
-            DrawTooltipBorder(sprite, tooltipRect);
+            DrawTooltipBackground(sprite, tooltipRect, frameGeometries, tooltipFrameIndex);
 
             Vector2 textPosition = ResolveTooltipTextPositionForTesting(tooltipRect);
             float drawY = textPosition.Y;
@@ -2072,6 +2149,41 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_tooltipPixelTexture, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), borderColor);
             sprite.Draw(_tooltipPixelTexture, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), borderColor);
             sprite.Draw(_tooltipPixelTexture, new Rectangle(rect.Right, rect.Y, 1, rect.Height), borderColor);
+        }
+
+        private void DrawTooltipBackground(
+            SpriteBatch sprite,
+            Rectangle tooltipRect,
+            ReadOnlySpan<SkillTooltipFrameLayout.FrameGeometry> frameGeometries,
+            int tooltipFrameIndex)
+        {
+            if (HasTooltipFrameGeometry(frameGeometries))
+            {
+                SkillTooltipFrameLayout.DrawTooltipFrameOrPlainBackground(
+                    sprite,
+                    _tooltipFrames,
+                    tooltipFrameIndex,
+                    _tooltipPixelTexture,
+                    tooltipRect);
+                return;
+            }
+
+            sprite.Draw(_tooltipPixelTexture, tooltipRect, new Color(18, 18, 26, 235));
+            DrawTooltipBorder(sprite, tooltipRect);
+        }
+
+        private static bool HasTooltipFrameGeometry(ReadOnlySpan<SkillTooltipFrameLayout.FrameGeometry> frameGeometries)
+        {
+            for (int i = 0; i < frameGeometries.Length; i++)
+            {
+                SkillTooltipFrameLayout.FrameGeometry geometry = frameGeometries[i];
+                if (geometry.Width > 0 && geometry.Height > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         #endregion
     }

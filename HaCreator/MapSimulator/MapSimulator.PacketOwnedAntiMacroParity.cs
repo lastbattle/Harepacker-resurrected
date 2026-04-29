@@ -120,6 +120,19 @@ namespace HaCreator.MapSimulator
                 && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
         }
 
+        internal static bool ShouldClearPacketOwnedAntiMacroSubmitSnapshotOnTerminalResult(
+            int mode,
+            bool wasAwaitingResult,
+            bool authoritativeRoundTrip)
+        {
+            // Terminal server ownership has resolved the SetRet-shaped submit. Modes
+            // 7/9 clear through the teardown branch; mode 11 reaches the notice-only
+            // branch and needs the same submit snapshot cleanup there.
+            return wasAwaitingResult
+                && authoritativeRoundTrip
+                && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
+        }
+
         internal static bool ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(int mode)
         {
             // `CWvsContext::OnAntiMacroResult` zeroes m_tRemainAntiMacroQuestion only
@@ -538,17 +551,7 @@ namespace HaCreator.MapSimulator
 
             if (!preserveAuthoritativeSubmitAwaitingState)
             {
-                _packetOwnedAntiMacroAwaitingResult = false;
-                _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
-                _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
-                _packetOwnedAntiMacroCurrentRemainingMs = 0;
-                _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
-                _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
-                _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
-                _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
-                _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
-                _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
-                _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
+                ClearPacketOwnedAntiMacroSubmitSnapshot(resetRemainingQuestion: true);
             }
 
             _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
@@ -559,6 +562,25 @@ namespace HaCreator.MapSimulator
                 ? "Closed packet-owned anti-macro owner while keeping pending official-session submit tracking."
                 : "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private void ClearPacketOwnedAntiMacroSubmitSnapshot(bool resetRemainingQuestion)
+        {
+            _packetOwnedAntiMacroAwaitingResult = false;
+            _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+            if (resetRemainingQuestion)
+            {
+                _packetOwnedAntiMacroCurrentRemainingMs = 0;
+            }
+
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
         }
 
         internal static int ResolvePacketOwnedAntiMacroSubmittedTickAfterClearForTests(
@@ -1548,6 +1570,15 @@ namespace HaCreator.MapSimulator
                     resolvedSource,
                     noticeAuthoritativeRoundTrip,
                     awaitingTerminalResult: shouldKeepAwaitingNoticeAuthoritativeResult);
+                if (ShouldClearPacketOwnedAntiMacroSubmitSnapshotOnTerminalResult(
+                    mode,
+                    wasAwaitingResult,
+                    noticeAuthoritativeRoundTrip))
+                {
+                    ClearPacketOwnedAntiMacroSubmitSnapshot(
+                        resetRemainingQuestion: ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(mode));
+                }
+
                 return true;
             }
             catch (Exception ex)

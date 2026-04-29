@@ -69,6 +69,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static void RememberPreferredAccountMoreInfoDataSourceDirectory(string directoryPath)
         {
             string normalized = NormalizeExistingDirectoryPathOrNull(directoryPath);
+            if (!HasCountryNameCatalogInDirectory(normalized))
+            {
+                normalized = null;
+            }
+
             lock (PreferredDataSourceSync)
             {
                 _preferredAccountMoreInfoDataSourceDirectory = normalized;

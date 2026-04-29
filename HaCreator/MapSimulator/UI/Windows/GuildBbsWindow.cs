@@ -223,7 +223,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.GuildBbs;
         public override bool CapturesKeyboardInput => IsVisible && _activeInputTarget != InputTarget.None;
         internal int BasicEmoticonSlotCount => _basicEmoticonTextures.Length;
-        internal int CashEmoticonSlotCount => _cashEmoticonTextures.Length;
+        internal int CashEmoticonSlotCount => Math.Min(_cashEmoticonTextures.Length, GuildBbsRuntime.ClientVisibleCashEmoticonCount);
 
         public override void SetFont(SpriteFont font)
         {
@@ -1676,12 +1676,16 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D texture = globalSlotIndex >= 0 && globalSlotIndex < _cashEmoticonTextures.Length
                     ? _cashEmoticonTextures[globalSlotIndex]
                     : null;
+                bool isOwned = globalSlotIndex >= 0
+                    && cashOwnership != null
+                    && globalSlotIndex < cashOwnership.Count
+                    && cashOwnership[globalSlotIndex];
                 DrawEmoticonSlot(
                     sprite,
                     texture,
                     GetCashEmoticonBounds(i),
                     selectedEmoticon?.Kind == GuildBbsEmoticonKind.Cash && selectedEmoticon.SlotIndex == globalSlotIndex && selectedEmoticon.CashPageIndex == cashPageIndex,
-                    globalSlotIndex >= 0);
+                    isOwned);
             }
 
             Rectangle cashRow = GetCashEmoticonRowBounds();
@@ -3239,24 +3243,10 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<int>();
             }
 
-            List<int> ownedSlots = new();
-            for (int slotIndex = 0; slotIndex < cashOwnership.Count; slotIndex++)
-            {
-                if (cashOwnership[slotIndex])
-                {
-                    ownedSlots.Add(slotIndex);
-                }
-            }
-
-            if (ownedSlots.Count == 0)
-            {
-                return Array.Empty<int>();
-            }
-
-            int maxPageIndex = Math.Max(0, (ownedSlots.Count - 1) / visibleSlotCount);
+            int maxPageIndex = Math.Max(0, (cashOwnership.Count - 1) / visibleSlotCount);
             int resolvedPageIndex = Math.Clamp(cashPageIndex, 0, maxPageIndex);
-            return ownedSlots
-                .Skip(resolvedPageIndex * visibleSlotCount)
+            int firstSlotIndex = resolvedPageIndex * visibleSlotCount;
+            return Enumerable.Range(firstSlotIndex, Math.Max(0, cashOwnership.Count - firstSlotIndex))
                 .Take(visibleSlotCount)
                 .ToArray();
         }

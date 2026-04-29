@@ -39,6 +39,20 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TrySendEntrustedShopChildDialogOutboundPacket(byte[] rawPacket, string summary)
+        {
+            if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string bridgeStatus))
+            {
+                return false;
+            }
+
+            PushFieldRuleMessage(
+                string.IsNullOrWhiteSpace(summary) ? bridgeStatus : $"{summary} {bridgeStatus}",
+                Environment.TickCount,
+                showOverlay: false);
+            return true;
+        }
+
         private void DrainSocialRoomMerchantPacketInbox(int currentTickCount)
         {
             while (_socialRoomMerchantPacketInbox.TryDequeue(out SocialRoomMerchantPacketInboxMessage message))

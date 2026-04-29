@@ -393,6 +393,7 @@ namespace HaCreator.MapSimulator.Pools
             _reactorIndicesByPacketObjectId.Clear();
             _reactorsOnLocalUser.Clear();
             _pendingPacketTouchStateChanges.Clear();
+            _pendingPacketTouchRequestRemovalObjectIds.Clear();
             _spawnPoints.Clear();
             _nextPoolId = 1;
         }

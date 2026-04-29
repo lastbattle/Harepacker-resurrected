@@ -418,7 +418,44 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedLocalUtilityContext.ObserveRevivePremiumSafetyCharmRuntimeCharacterId(runtimeCharacterId);
-            return _packetOwnedLocalUtilityContext.ResolveRevivePremiumSafetyCharmContextValue(fallbackArmed);
+            bool inventoryFallbackArmed = ShouldUseRevivePremiumSafetyCharmInventoryFallback(
+                _localUtilityOfficialSessionBridge.HasConnectedSession,
+                _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved,
+                _packetOwnedLocalUtilityContext.HasRevivePremiumSafetyCharmContextValue,
+                _packetOwnedLocalUtilityContext.RevivePremiumSafetyCharmLastMutationSource)
+                    && fallbackArmed;
+            return _packetOwnedLocalUtilityContext.ResolveRevivePremiumSafetyCharmContextValue(inventoryFallbackArmed);
+        }
+
+        internal static bool ShouldUseRevivePremiumSafetyCharmInventoryFallback(
+            bool officialSessionConnected,
+            bool officialMutationHistoryObserved,
+            bool hasContextValue,
+            string lastMutationSource)
+        {
+            // Client evidence: CUIRevive::OnCreate reads the premium safety-charm
+            // arm gate from CWvsContext slot 2073. Inventory ownership is only a
+            // simulator fallback while no packet/official session owns that context slot.
+            if (officialSessionConnected || officialMutationHistoryObserved)
+            {
+                return false;
+            }
+
+            return !hasContextValue
+                || IsSimulatorOwnedRevivePremiumSafetyCharmInventorySource(lastMutationSource);
+        }
+
+        private static bool IsSimulatorOwnedRevivePremiumSafetyCharmInventorySource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return true;
+            }
+
+            string normalizedSource = source.Trim();
+            return normalizedSource.Equals("fallback", StringComparison.OrdinalIgnoreCase)
+                || normalizedSource.Equals("runtime-character-reset", StringComparison.OrdinalIgnoreCase)
+                || normalizedSource.StartsWith("revive-owner-", StringComparison.OrdinalIgnoreCase);
         }
 
         private void SyncRevivePremiumSafetyCharmOfficialSessionLifecycle(int currentTick)
@@ -468,7 +505,11 @@ namespace HaCreator.MapSimulator
                 _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved = false;
             }
 
-            if (_packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved)
+            if (!ShouldUseRevivePremiumSafetyCharmInventoryFallback(
+                    _localUtilityOfficialSessionBridge.HasConnectedSession,
+                    _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved,
+                    _packetOwnedLocalUtilityContext.HasRevivePremiumSafetyCharmContextValue,
+                    _packetOwnedLocalUtilityContext.RevivePremiumSafetyCharmLastMutationSource))
             {
                 return;
             }
@@ -499,6 +540,15 @@ namespace HaCreator.MapSimulator
             }
 
             if (_packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved)
+            {
+                return;
+            }
+
+            if (!ShouldUseRevivePremiumSafetyCharmInventoryFallback(
+                    _localUtilityOfficialSessionBridge.HasConnectedSession,
+                    _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved,
+                    _packetOwnedLocalUtilityContext.HasRevivePremiumSafetyCharmContextValue,
+                    _packetOwnedLocalUtilityContext.RevivePremiumSafetyCharmLastMutationSource))
             {
                 return;
             }

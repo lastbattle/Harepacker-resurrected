@@ -104,6 +104,7 @@ namespace HaCreator.MapSimulator.UI
         private string _searchResultSessionServiceSignature = string.Empty;
         private bool _searchResultSessionIsCategoryResult;
         private string _searchResultSessionCategoryLabel = string.Empty;
+        private string _observedWishlistSearchServiceSignature = string.Empty;
         private PopupMode _popupMode;
 
         public AdminShopWishListUI(
@@ -582,6 +583,7 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardActive = false;
             _childAddOnRestoreSearchFieldFocused = false;
             _childAddOnRestoreSoftKeyboardActive = false;
+            _observedWishlistSearchServiceSignature = sourceDialog?.GetWishlistSearchServiceStateSignature() ?? string.Empty;
             _popupMode = PopupMode.None;
             _statusMessage = $"CUIAdminShopWishList::OnCreate focused the search edit for {sourceDialog?.GetWishlistServiceName() ?? "cash-service"} browsing.";
             HideCategoryAddOnRequested?.Invoke();
@@ -611,6 +613,7 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardActive = false;
             _childAddOnRestoreSearchFieldFocused = false;
             _childAddOnRestoreSoftKeyboardActive = false;
+            _observedWishlistSearchServiceSignature = string.Empty;
             _searchResults.Clear();
             ClearWishlistSearchResultSession();
             _categoryRows.Clear();
@@ -707,6 +710,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            RefreshPacketOwnedWishlistSearchAfterServiceStateChange();
             RefreshWishlistSearchResultSessionState();
 
             KeyboardState keyboardState = Keyboard.GetState();
@@ -1913,6 +1917,71 @@ namespace HaCreator.MapSimulator.UI
 
             ClearWishlistSearchResultSession();
             _statusMessage = "SearchItemName invalidated the staged result session after the packet-authored admin-shop owner changed state.";
+            UpdatePopupButtons();
+        }
+
+        private void RefreshPacketOwnedWishlistSearchAfterServiceStateChange()
+        {
+            if (_sourceDialog == null)
+            {
+                _observedWishlistSearchServiceSignature = string.Empty;
+                return;
+            }
+
+            string liveServiceSignature = _sourceDialog.GetWishlistSearchServiceStateSignature();
+            string previousServiceSignature = _observedWishlistSearchServiceSignature;
+            if (string.Equals(previousServiceSignature, liveServiceSignature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _observedWishlistSearchServiceSignature = liveServiceSignature;
+            string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery?.Trim());
+            bool hasSearchQuery = !string.IsNullOrWhiteSpace(clientSearchQuery);
+            bool hasPacketAuthoredPayload = hasSearchQuery
+                && _sourceDialog.HasPacketOwnedWishlistSearchResultPayload(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex);
+            if (!AdminShopPacketOwnedWishlistSearchSessionParity.ShouldRebindSearchResultOnServiceStateChange(
+                    previousServiceStateSignature: previousServiceSignature,
+                    liveServiceStateSignature: liveServiceSignature,
+                    categoryOwnerVisible: IsCategoryAddOnOpen(),
+                    hasSearchQuery: hasSearchQuery,
+                    hasPacketAuthoredPayloadForQuery: hasPacketAuthoredPayload))
+            {
+                return;
+            }
+
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> packetResults = _sourceDialog.SearchWishlistEntries(
+                clientSearchQuery,
+                _selectedCategoryKey,
+                _selectedPriceRangeIndex,
+                out string message);
+            _searchQuery = clientSearchQuery;
+            _searchResults = packetResults.ToList();
+            _selectedResultIndex = -1;
+            _resultScrollOffset = 0;
+            BeginWishlistSearchResultSession(
+                _searchResults,
+                isCategoryResult: false,
+                categoryLabel: string.Empty);
+            _statusMessage = packetResults.Count > 0
+                ? $"Packet 366 subtype 4 populated SearchItemName with {packetResults.Count} packet-authored row(s). {message}"
+                : message;
+
+            if (ShowSearchResultAddOnRequested != null)
+            {
+                if (!IsSearchResultAddOnOpen())
+                {
+                    CaptureOwnerKeyboardStateForChildAddOn();
+                    ShowSearchResultAddOnRequested(this, _searchResults);
+                }
+
+                _popupMode = PopupMode.None;
+            }
+            else
+            {
+                _popupMode = _searchResults.Count > 0 ? PopupMode.Results : PopupMode.None;
+            }
+
             UpdatePopupButtons();
         }
 

@@ -146,6 +146,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"CAdminShopDlg::OnPacket received unmodeled result code {resultCode}.";
         }
 
+        internal static string BuildUnmodeledResultCodeMessage(byte resultCode)
+        {
+            return $"CAdminShopDlg::OnPacket received unrecovered subtype 4 result code {resultCode}; the simulator preserved the selected row instead of inventing a local trade outcome.";
+        }
+
         internal static string BuildResultStateLabel(byte resultCode)
         {
             return resultCode switch

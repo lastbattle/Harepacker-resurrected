@@ -160,11 +160,29 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation OverlaySecondaryAnimation { get; set; }
             public SkillAnimation UnderFaceAnimation { get; set; }
             public SkillAnimation UnderFaceSecondaryAnimation { get; set; }
+            public int SimulatedAffectedLayerHandleId { get; set; }
+            public int SimulatedAffectedLayerHandleRefCount { get; private set; }
+            public bool TerminateRequested { get; private set; }
+            public bool IsTerminated { get; private set; }
             public int AnimationStartTime { get; set; }
             public int TransitionStartTime { get; set; } = int.MinValue;
             public int TransitionDurationMs { get; set; }
             public float TransitionStartAlpha { get; set; } = 1f;
             public float TransitionEndAlpha { get; set; } = 1f;
+
+            public void CaptureAffectedLayerReference()
+            {
+                SimulatedAffectedLayerHandleRefCount = SimulatedAffectedLayerHandleId > 0 ? 1 : 0;
+                TerminateRequested = false;
+                IsTerminated = false;
+            }
+
+            public void ReleaseAffectedLayerReference()
+            {
+                TerminateRequested = true;
+                IsTerminated = true;
+                SimulatedAffectedLayerHandleRefCount = 0;
+            }
         }
 
         private sealed class RemoteAuxiliaryLayerOwnerCounterState
@@ -9226,6 +9244,11 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteTemporaryStatAffectedLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         private static int NextRemoteDragonCompanionLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -12831,7 +12854,7 @@ namespace HaCreator.MapSimulator.Pools
                     ownerFacingRight,
                     out int restoredAnimationElapsedMs))
             {
-                return new RemoteTemporaryStatAvatarEffectState
+                RemoteTemporaryStatAvatarEffectState restoredState = new RemoteTemporaryStatAvatarEffectState
                 {
                     SkillId = nextState.SkillId,
                     Skill = nextState.Skill,
@@ -12839,12 +12862,15 @@ namespace HaCreator.MapSimulator.Pools
                     OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
                     UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
+                    SimulatedAffectedLayerHandleId = nextState.SimulatedAffectedLayerHandleId,
                     AnimationStartTime = unchecked(currentTime - restoredAnimationElapsedMs),
                     TransitionStartTime = int.MinValue,
                     TransitionDurationMs = 0,
                     TransitionStartAlpha = 1f,
                     TransitionEndAlpha = 1f
                 };
+                restoredState.CaptureAffectedLayerReference();
+                return restoredState;
             }
 
             if (existingState?.SkillId == skillId.Value)
@@ -12856,7 +12882,7 @@ namespace HaCreator.MapSimulator.Pools
                     return existingState;
                 }
 
-                return new RemoteTemporaryStatAvatarEffectState
+                RemoteTemporaryStatAvatarEffectState reseededState = new RemoteTemporaryStatAvatarEffectState
                 {
                     SkillId = nextState.SkillId,
                     Skill = nextState.Skill,
@@ -12864,6 +12890,7 @@ namespace HaCreator.MapSimulator.Pools
                     OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
                     UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
+                    SimulatedAffectedLayerHandleId = existingState.SimulatedAffectedLayerHandleId,
                     AnimationStartTime = ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
                         existingState.SkillId,
                         nextState.SkillId,
@@ -12875,6 +12902,8 @@ namespace HaCreator.MapSimulator.Pools
                     TransitionStartAlpha = 1f,
                     TransitionEndAlpha = 1f
                 };
+                reseededState.CaptureAffectedLayerReference();
+                return reseededState;
             }
 
             if (existingState != null)
@@ -12929,7 +12958,7 @@ namespace HaCreator.MapSimulator.Pools
                     return existingState;
                 }
 
-                return new RemoteTemporaryStatAvatarEffectState
+                RemoteTemporaryStatAvatarEffectState reseededState = new RemoteTemporaryStatAvatarEffectState
                 {
                     SkillId = nextState.SkillId,
                     Skill = nextState.Skill,
@@ -12937,6 +12966,7 @@ namespace HaCreator.MapSimulator.Pools
                     OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
                     UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
+                    SimulatedAffectedLayerHandleId = existingState.SimulatedAffectedLayerHandleId,
                     AnimationStartTime = ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
                         existingState.SkillId,
                         nextState.SkillId,
@@ -12948,6 +12978,8 @@ namespace HaCreator.MapSimulator.Pools
                     TransitionStartAlpha = 1f,
                     TransitionEndAlpha = 1f
                 };
+                reseededState.CaptureAffectedLayerReference();
+                return reseededState;
             }
 
             if (existingState != null)
@@ -13084,7 +13116,7 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            return new RemoteTemporaryStatAvatarEffectState
+            RemoteTemporaryStatAvatarEffectState clone = new RemoteTemporaryStatAvatarEffectState
             {
                 SkillId = source.SkillId,
                 Skill = source.Skill,
@@ -13092,12 +13124,15 @@ namespace HaCreator.MapSimulator.Pools
                 OverlaySecondaryAnimation = source.OverlaySecondaryAnimation,
                 UnderFaceAnimation = source.UnderFaceAnimation,
                 UnderFaceSecondaryAnimation = source.UnderFaceSecondaryAnimation,
+                SimulatedAffectedLayerHandleId = source.SimulatedAffectedLayerHandleId,
                 AnimationStartTime = source.AnimationStartTime,
                 TransitionStartTime = source.TransitionStartTime,
                 TransitionDurationMs = source.TransitionDurationMs,
                 TransitionStartAlpha = source.TransitionStartAlpha,
                 TransitionEndAlpha = source.TransitionEndAlpha
             };
+            clone.CaptureAffectedLayerReference();
+            return clone;
         }
 
         private static bool TryCreateRemoteTemporaryStatAvatarEffectTailState(
@@ -13128,6 +13163,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             tailState = CloneRemoteTemporaryStatAvatarEffectState(previousState);
+            previousState.ReleaseAffectedLayerReference();
             ConfigureRemoteTemporaryStatAvatarEffectTransition(
                 tailState,
                 currentTime,
@@ -13226,6 +13262,11 @@ namespace HaCreator.MapSimulator.Pools
             // `m_lpLayerAffected` handoff continuity keeps a single active tail-owner in this seam.
             if (tailStates.Count > 1)
             {
+                for (int i = 0; i < tailStates.Count - 1; i++)
+                {
+                    tailStates[i]?.ReleaseAffectedLayerReference();
+                }
+
                 tailStates.RemoveRange(0, tailStates.Count - 1);
             }
         }
@@ -13286,6 +13327,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if (IsRemoteTemporaryStatAvatarEffectTransitionExpired(tailStates[i], currentTime))
                 {
+                    tailStates[i]?.ReleaseAffectedLayerReference();
                     tailStates.RemoveAt(i);
                 }
             }
@@ -13580,8 +13622,10 @@ namespace HaCreator.MapSimulator.Pools
                 OverlaySecondaryAnimation = overlaySecondaryAnimation,
                 UnderFaceAnimation = underFaceAnimation,
                 UnderFaceSecondaryAnimation = underFaceSecondaryAnimation,
+                SimulatedAffectedLayerHandleId = NextRemoteTemporaryStatAffectedLayerHandleId(),
                 AnimationStartTime = animationStartTime
             };
+            state.CaptureAffectedLayerReference();
             return true;
         }
 

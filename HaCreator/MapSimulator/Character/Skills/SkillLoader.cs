@@ -3292,6 +3292,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(pieceOwnerNode.WzProperties.Count);
+            int? ownerEventDelayMs = ResolveShadowPartnerClientActionPieceEventDelayMs(pieceOwnerNode);
             int fallbackSlotIndex = 0;
             foreach (WzImageProperty pieceNode in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(pieceOwnerNode))
             {
@@ -3316,7 +3317,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetInt(pieceNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
                     IsClientActionManInitPiece: true,
-                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceNode),
+                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceNode)
+                        ?? (pieces.Count == 0 ? ownerEventDelayMs : null),
                     InlineCanvasChildNames: EnumerateShadowPartnerClientActionPieceInlineCanvasChildNames(pieceNode)));
             }
 
@@ -3332,7 +3334,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetInt(pieceOwnerNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
                     IsClientActionManInitPiece: true,
-                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceOwnerNode),
+                    EventDelayOverrideMs: ownerEventDelayMs,
                     InlineCanvasChildNames: EnumerateShadowPartnerClientActionPieceInlineCanvasChildNames(pieceOwnerNode)));
             }
 
@@ -6662,6 +6664,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return new ClientSummonedUolCandidateValue(value, entryPathParts);
                 }
 
+                foreach (string nameCandidateValue in EnumerateClientSummonedUolTableEntryNameCandidateValues(
+                             tableEntry,
+                             skillId))
+                {
+                    yield return new ClientSummonedUolCandidateValue(nameCandidateValue, entryPathParts);
+                }
+
                 foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) tableValue in EnumerateClientSummonedUolTableEntryValues(
                              tableEntry,
                              relativePathPrefix: string.Empty,
@@ -6679,6 +6688,35 @@ namespace HaCreator.MapSimulator.Character.Skills
                         value,
                         BuildResolvedClientSummonedUolNestedPathParts(entryPathParts, tableValue.RelativePath));
                 }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolTableEntryNameCandidateValues(
+            WzImageProperty tableEntry,
+            int skillId)
+        {
+            if (tableEntry == null || skillId <= 0 || string.IsNullOrWhiteSpace(tableEntry.Name))
+            {
+                yield break;
+            }
+
+            bool yieldedStructuredRecordCandidate = false;
+            foreach (string recordValue in EnumerateClientSummonedUolStructuredTableRecordValues(tableEntry.Name, skillId))
+            {
+                yieldedStructuredRecordCandidate = true;
+                yield return recordValue;
+            }
+
+            if (yieldedStructuredRecordCandidate || IsClientSummonedUolStructuredTableRecord(tableEntry.Name))
+            {
+                yield break;
+            }
+
+            string skillIdText = skillId.ToString(CultureInfo.InvariantCulture);
+            if (ContainsClientSummonedUolTableSkillIdToken(tableEntry.Name, skillIdText)
+                && LooksLikeClientSummonedUolHeuristicCandidateValue(tableEntry.Name))
+            {
+                yield return tableEntry.Name;
             }
         }
 
@@ -7015,8 +7053,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (current == '=')
                 {
-                    separatorLength = i > 0 && segment[i - 1] == '>' ? 2 : 1;
-                    return separatorLength == 2 ? i - 1 : i;
+                    separatorLength = i + 1 < segment.Length && segment[i + 1] == '>' ? 2 : 1;
+                    return i;
+                }
+
+                if (current == '-' && i + 1 < segment.Length && segment[i + 1] == '>')
+                {
+                    separatorLength = 2;
+                    return i;
                 }
 
                 if (current == ':' && i + 1 < segment.Length && segment[i + 1] != '/' && segment[i + 1] != '\\')
@@ -8964,6 +9008,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return character == '/'
                    || character == '\\'
                    || character == ':'
+                   || character == '='
+                   || character == '+'
+                   || character == '-'
+                   || character == '.'
+                   || character == '_'
                    || character == '"'
                    || character == '\''
                    || character == '('
@@ -9780,12 +9829,50 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             yield return value;
+            foreach (string arrowSuffixToken in EnumerateClientSummonedUolArrowAssignmentSuffixTokens(value))
+            {
+                string trimmedToken = ExtractEmbeddedClientSummonedUolPathToken(arrowSuffixToken);
+                if (!string.IsNullOrWhiteSpace(trimmedToken))
+                {
+                    yield return trimmedToken;
+                }
+            }
+
             foreach (string token in value.Split(new[] { '&', '|', ',', ';', '=', ':', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string trimmedToken = ExtractEmbeddedClientSummonedUolPathToken(token);
                 if (!string.IsNullOrWhiteSpace(trimmedToken))
                 {
                     yield return trimmedToken;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolArrowAssignmentSuffixTokens(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (string delimiter in new[] { "=>", "->" })
+            {
+                int searchStart = 0;
+                while (searchStart < value.Length)
+                {
+                    int delimiterIndex = value.IndexOf(delimiter, searchStart, StringComparison.Ordinal);
+                    if (delimiterIndex < 0)
+                    {
+                        break;
+                    }
+
+                    int suffixStart = delimiterIndex + delimiter.Length;
+                    if (delimiterIndex > 0 && suffixStart < value.Length)
+                    {
+                        yield return value.Substring(suffixStart);
+                    }
+
+                    searchStart = suffixStart;
                 }
             }
         }

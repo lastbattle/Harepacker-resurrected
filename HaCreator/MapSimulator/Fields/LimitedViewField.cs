@@ -76,7 +76,9 @@ namespace HaCreator.MapSimulator.Fields
         internal enum ClientOwnedDrawViewrangeOperationKind
         {
             AcquireDarkLayerCanvas,
+            QueryDarkLayerCanvasDimensions,
             AcquireSmallDarkCanvas,
+            QuerySmallDarkCanvasDimensions,
             AcquireViewrangeCanvas,
             ResolvePreviousSmallDarkPatchRectangle,
             RestorePreviousSmallDarkPatch,
@@ -90,6 +92,7 @@ namespace HaCreator.MapSimulator.Fields
             ClipViewrangeCopyRectangles,
             SkipViewrangeCopyOutsideDarkLayer,
             CaptureCurrentSmallDarkPatch,
+            AcquireCopyDestinationCanvas,
             PrepareRemoveAlphaViewrangeCopy,
             CopyLocalViewrange,
             EvaluateShareViewRemoteLoop,
@@ -1186,8 +1189,14 @@ namespace HaCreator.MapSimulator.Fields
                 ClientOwnedDrawViewrangeOperationKind.AcquireDarkLayerCanvas,
                 Vector2.Zero,
                 -1,
-                sourceWidth: sourceWidth,
-                sourceHeight: sourceHeight));
+                destinationWidth: ClientOwnedDarkCanvasWidth,
+                destinationHeight: ClientOwnedDarkCanvasHeight));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.QueryDarkLayerCanvasDimensions,
+                Vector2.Zero,
+                -1,
+                destinationWidth: ClientOwnedDarkCanvasWidth,
+                destinationHeight: ClientOwnedDarkCanvasHeight));
 
             if (previousMaskTopLefts != null)
             {
@@ -1195,6 +1204,12 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.AcquireSmallDarkCanvas,
+                        Vector2.Zero,
+                        -1,
+                        sourceWidth: sourceWidth,
+                        sourceHeight: sourceHeight));
+                    operations.Add(new ClientOwnedDrawViewrangeOperation(
+                        ClientOwnedDrawViewrangeOperationKind.QuerySmallDarkCanvasDimensions,
                         Vector2.Zero,
                         -1,
                         sourceWidth: sourceWidth,
@@ -1342,6 +1357,18 @@ namespace HaCreator.MapSimulator.Fields
                     destinationWidth: effectiveDestinationRect.Width,
                     destinationHeight: effectiveDestinationRect.Height));
 
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.AcquireCopyDestinationCanvas,
+                    normalizedTopLeft,
+                    i,
+                    sourceX: effectiveSourceRect.X,
+                    sourceY: effectiveSourceRect.Y,
+                    sourceWidth: effectiveSourceRect.Width,
+                    sourceHeight: effectiveSourceRect.Height,
+                    destinationX: effectiveDestinationRect.X,
+                    destinationY: effectiveDestinationRect.Y,
+                    destinationWidth: effectiveDestinationRect.Width,
+                    destinationHeight: effectiveDestinationRect.Height));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy,
                     normalizedTopLeft,
@@ -1563,7 +1590,9 @@ namespace HaCreator.MapSimulator.Fields
                 switch (operation.Kind)
                 {
                     case ClientOwnedDrawViewrangeOperationKind.AcquireDarkLayerCanvas:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryDarkLayerCanvasDimensions:
                     case ClientOwnedDrawViewrangeOperationKind.AcquireSmallDarkCanvas:
+                    case ClientOwnedDrawViewrangeOperationKind.QuerySmallDarkCanvasDimensions:
                     case ClientOwnedDrawViewrangeOperationKind.AcquireViewrangeCanvas:
                     case ClientOwnedDrawViewrangeOperationKind.ResolvePreviousSmallDarkPatchRectangle:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveLocalUserPosition:
@@ -1574,6 +1603,7 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.ClipViewrangeCopyRectangles:
                     case ClientOwnedDrawViewrangeOperationKind.SkipViewrangeCopyOutsideDarkLayer:
                     case ClientOwnedDrawViewrangeOperationKind.CaptureCurrentSmallDarkPatch:
+                    case ClientOwnedDrawViewrangeOperationKind.AcquireCopyDestinationCanvas:
                     case ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy:
                     case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:

@@ -92,6 +92,8 @@ namespace HaCreator.MapSimulator
             public bool PacketOwnedOutcomeSuccess { get; set; }
             public bool PacketOwnedUpgradeStateObserved { get; set; }
             public int PacketOwnedUpgradeState { get; set; } = int.MinValue;
+            public bool PacketOwnedEquipItemTokenObserved { get; set; }
+            public int PacketOwnedEquipItemToken { get; set; }
         }
 
         private sealed class PendingVegaPromptState
@@ -829,9 +831,7 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.Result = result;
                 _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
                 ApplyVegaResultPrelude(result, allowSoundWithoutWindow: true);
-                string stateNote = decodeState.HasOutcomeState
-                    ? $" with packet-authored upgrade state {decodeState.OutcomeUpgradeState}"
-                    : string.Empty;
+                string stateNote = BuildPacketOwnedVegaResultStateNote(decodeState);
                 message = $"Observed packet-owned Vega prelude result code {resultCode}{stateNote} through CUIVega::OnVegaResult ownership and deferred equipment mutation until the terminal result packet.";
                 return true;
             }
@@ -879,9 +879,7 @@ namespace HaCreator.MapSimulator
                     currTickCount,
                     _pendingVegaCastState.PacketOwnedPreludeStartedAtTick ?? currTickCount,
                     _pendingVegaCastState.PacketOwnedPreludeDurationMs);
-                string stateNote = decodeState.HasOutcomeState
-                    ? $" with packet-authored upgrade state {decodeState.OutcomeUpgradeState}"
-                    : string.Empty;
+                string stateNote = BuildPacketOwnedVegaResultStateNote(decodeState);
                 message = $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}){stateNote} and deferred equipment mutation until the recovered prelude handoff.";
                 return true;
             }
@@ -905,8 +903,27 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.PacketOwnedOutcomeSuccess = outcomeSuccess;
             }
 
+            if (decodeState.HasEquipItemToken)
+            {
+                _pendingVegaCastState.PacketOwnedEquipItemTokenObserved = true;
+                _pendingVegaCastState.PacketOwnedEquipItemToken = decodeState.EquipItemToken;
+            }
+
             _pendingVegaCastState.PacketOwnedUpgradeStateObserved = true;
             _pendingVegaCastState.PacketOwnedUpgradeState = decodeState.OutcomeUpgradeState;
+        }
+
+        private static string BuildPacketOwnedVegaResultStateNote(VegaResultDecodeState decodeState)
+        {
+            if (!decodeState.HasOutcomeState)
+            {
+                return string.Empty;
+            }
+
+            string tokenNote = decodeState.HasEquipItemToken
+                ? $" and equip TI {decodeState.EquipItemToken}"
+                : string.Empty;
+            return $" with packet-authored upgrade state {decodeState.OutcomeUpgradeState}{tokenNote}";
         }
 
         private void HandleUnknownPacketOwnedVegaResult()
@@ -1698,6 +1715,25 @@ namespace HaCreator.MapSimulator
         internal static bool TryDecodeVegaResultPayloadStateForTests(
             byte[] payload,
             out byte resultCode,
+            out bool hasEquipItemToken,
+            out int equipItemToken,
+            out bool hasOutcomeState,
+            out int outcomeResultValue,
+            out int outcomeUpgradeState)
+        {
+            bool decoded = TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState, out _);
+            resultCode = decodeState.ResultCode;
+            hasEquipItemToken = decodeState.HasEquipItemToken;
+            equipItemToken = decodeState.EquipItemToken;
+            hasOutcomeState = decodeState.HasOutcomeState;
+            outcomeResultValue = decodeState.OutcomeResultValue;
+            outcomeUpgradeState = decodeState.OutcomeUpgradeState;
+            return decoded;
+        }
+
+        internal static bool TryDecodeVegaResultPayloadStateForTests(
+            byte[] payload,
+            out byte resultCode,
             out bool hasOutcomeState,
             out int outcomeResultValue,
             out int outcomeUpgradeState,
@@ -1836,7 +1872,34 @@ namespace HaCreator.MapSimulator
                     _pendingVegaCastState.PacketOwnedUpgradeState);
             }
 
+            if (_pendingVegaCastState.PacketOwnedEquipItemTokenObserved)
+            {
+                ApplyPacketOwnedVegaEquipItemTokenState(
+                    _pendingVegaCastState.Request.Slot,
+                    _pendingVegaCastState.Request.EquipItemId,
+                    _pendingVegaCastState.PacketOwnedEquipItemToken);
+            }
+
             return true;
+        }
+
+        private void ApplyPacketOwnedVegaEquipItemTokenState(EquipSlot slot, int itemId, int itemToken)
+        {
+            if (slot == EquipSlot.None || itemId <= 0 || itemToken == 0)
+            {
+                return;
+            }
+
+            if (_playerManager?.Player?.Build?.Equipment == null ||
+                !_playerManager.Player.Build.Equipment.TryGetValue(slot, out CharacterPart equippedPart) ||
+                equippedPart == null ||
+                equippedPart.ItemId != itemId)
+            {
+                return;
+            }
+
+            equippedPart.ClientItemToken = itemToken;
+            RememberObservedVegaEquipItemToken(slot, itemId, itemToken, isClientAuthored: true);
         }
 
         private static ItemUpgradeUI.ItemUpgradeAttemptResult BuildPacketOwnedVegaPreludeResult(
@@ -2085,6 +2148,8 @@ namespace HaCreator.MapSimulator
 
         private readonly record struct VegaResultDecodeState(
             byte ResultCode,
+            bool HasEquipItemToken,
+            int EquipItemToken,
             bool HasOutcomeState,
             int OutcomeResultValue,
             int OutcomeUpgradeState);
@@ -2111,6 +2176,25 @@ namespace HaCreator.MapSimulator
 
             byte resultCode = payload[0];
             int outcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
+            int equipTokenAndOutcomePayloadLength = sizeof(byte) + (sizeof(int) * 3);
+            if (payload.Length == equipTokenAndOutcomePayloadLength)
+            {
+                int equipItemToken = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte), sizeof(int)));
+                int outcomeResultValue = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte) + sizeof(int), sizeof(int)));
+                int outcomeUpgradeState = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte) + (sizeof(int) * 2), sizeof(int)));
+                decodeState = new VegaResultDecodeState(
+                    resultCode,
+                    HasEquipItemToken: equipItemToken != 0,
+                    EquipItemToken: equipItemToken,
+                    HasOutcomeState: true,
+                    outcomeResultValue,
+                    outcomeUpgradeState);
+                return true;
+            }
+
             if (payload.Length == outcomePayloadLength)
             {
                 int outcomeResultValue = BinaryPrimitives.ReadInt32LittleEndian(
@@ -2119,6 +2203,8 @@ namespace HaCreator.MapSimulator
                     payload.AsSpan(sizeof(byte) + sizeof(int), sizeof(int)));
                 decodeState = new VegaResultDecodeState(
                     resultCode,
+                    HasEquipItemToken: false,
+                    EquipItemToken: 0,
                     HasOutcomeState: true,
                     outcomeResultValue,
                     outcomeUpgradeState);
@@ -2129,17 +2215,21 @@ namespace HaCreator.MapSimulator
             {
                 decodeState = new VegaResultDecodeState(
                     resultCode,
+                    HasEquipItemToken: false,
+                    EquipItemToken: 0,
                     HasOutcomeState: false,
                     OutcomeResultValue: 0,
                     OutcomeUpgradeState: int.MinValue);
-                decodeError = payload.Length > outcomePayloadLength
+                decodeError = payload.Length > equipTokenAndOutcomePayloadLength
                     ? $"Packet-owned Vega result code {resultCode} contains unexpected trailing bytes after the optional outcome-state payload fields."
-                    : $"Packet-owned Vega result code {resultCode} must be either the result byte alone or result plus outcome-state payload fields.";
+                    : $"Packet-owned Vega result code {resultCode} must be either the result byte alone, result plus outcome-state payload fields, or result plus equip-token and outcome-state payload fields.";
                 return false;
             }
 
             decodeState = new VegaResultDecodeState(
                 resultCode,
+                HasEquipItemToken: false,
+                EquipItemToken: 0,
                 HasOutcomeState: false,
                 OutcomeResultValue: 0,
                 OutcomeUpgradeState: int.MinValue);

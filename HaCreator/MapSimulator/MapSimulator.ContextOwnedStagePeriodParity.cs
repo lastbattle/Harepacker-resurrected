@@ -214,7 +214,9 @@ namespace HaCreator.MapSimulator
                     resolvedEntry.ScreenMode,
                     resolvedEntry.SpineAnimation,
                     resolvedEntry.SpineRandomStart);
-                TryAppendContextOwnedStageBackground(backgroundInstance, sourceProperty);
+                TryAppendContextOwnedStageBackground(
+                    backgroundInstance,
+                    resolvedEntry.SourceBackPieceObject ?? sourceProperty);
             }
 
             return backgrounds_back.Count > 0 || backgrounds_front.Count > 0;

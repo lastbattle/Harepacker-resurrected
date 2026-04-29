@@ -54,6 +54,11 @@ namespace HaCreator.MapSimulator.Interaction
             [0x14D9] = "You cannot acquire any items.",
             [0x1542] = "You have gained a(n) %s (%s) x %d.",
             [0x1543] = "You have gained a(n) %s (%s).",
+            // Recovered from MapleStory.exe v95 `CUIQuestInfoDetail::OnCreate`.
+            // The quest-detail owner requests its IWzFont face and bold-style token
+            // from these StringPool ids before drawing detail CT rows.
+            [0x05AF] = "Canvas#Font",
+            [0x05B0] = "BA",
             // Recovered from MapleStory.exe v95 StringPool::GetString. The generated table
             // in this workspace uses the decoded storage order, not the client key lookup,
             // so direct index resolution for these MapleTV result ids is incorrect.

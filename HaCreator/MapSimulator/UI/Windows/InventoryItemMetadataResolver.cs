@@ -145,7 +145,12 @@ namespace HaCreator.MapSimulator.UI
             (new[] { "padRate" }, "Weapon ATT"),
             (new[] { "madRate" }, "Magic ATT"),
             (new[] { "speedRate" }, "Speed"),
-            (new[] { "asrR", "indieAsrR" }, "Status Resistance")
+            (new[] { "asrR", "indieAsrR" }, "Status Resistance"),
+            (new[] { "strR", "indieStrR" }, "STR"),
+            (new[] { "dexR", "indieDexR" }, "DEX"),
+            (new[] { "intR", "indieIntR" }, "INT"),
+            (new[] { "lukR", "indieLukR" }, "LUK"),
+            (new[] { "allStatR", "indieAllStatR" }, "All Stats")
         };
         private static readonly (string[] Keys, string Label)[] PrimaryFlatEffectKeys =
         {
@@ -1059,7 +1064,7 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<InventoryRewardPreviewItem>();
             }
 
-            List<WzSubProperty> entries = GetNumericNamedChildren(rewardProperty);
+            List<RewardEntryMetadata> entries = GetNumericNamedRewardEntries(rewardProperty);
             if (entries.Count == 0)
             {
                 return Array.Empty<InventoryRewardPreviewItem>();
@@ -1069,20 +1074,19 @@ namespace HaCreator.MapSimulator.UI
             List<InventoryRewardPreviewItem> items = new(Math.Min(entries.Count, maxItems));
             for (int i = 0; i < entries.Count && items.Count < maxItems; i++)
             {
-                WzSubProperty entry = entries[i];
-                int rewardItemId = ResolveRewardEntryItemId(entry);
-                if (rewardItemId <= 0)
+                RewardEntryMetadata entry = entries[i];
+                if (entry.ItemId <= 0)
                 {
                     continue;
                 }
 
                 items.Add(new InventoryRewardPreviewItem
                 {
-                    ItemId = rewardItemId,
-                    Count = Math.Max(1, GetIntOrStringValue(entry["count"])),
-                    Probability = Math.Max(0, GetIntOrStringValue(entry["prob"])),
-                    PeriodMinutes = Math.Max(0, GetIntOrStringValue(entry["period"])),
-                    EffectPath = GetStringValue(entry["Effect"]) ?? string.Empty
+                    ItemId = entry.ItemId,
+                    Count = entry.Count,
+                    Probability = entry.Probability,
+                    PeriodMinutes = entry.PeriodMinutes,
+                    EffectPath = entry.EffectPath
                 });
             }
 
@@ -4879,7 +4883,7 @@ namespace HaCreator.MapSimulator.UI
                 return lines;
             }
 
-            List<WzSubProperty> entries = GetNumericNamedChildren(rewardProperty);
+            List<RewardEntryMetadata> entries = GetNumericNamedRewardEntries(rewardProperty);
             if (entries.Count == 0)
             {
                 return lines;
@@ -4889,24 +4893,20 @@ namespace HaCreator.MapSimulator.UI
             int visibleCount = Math.Min(entries.Count, maxLines);
             for (int i = 0; i < visibleCount; i++)
             {
-                WzSubProperty entry = entries[i];
-                int itemId = ResolveRewardEntryItemId(entry);
-                if (itemId <= 0)
+                RewardEntryMetadata entry = entries[i];
+                if (entry.ItemId <= 0)
                 {
                     continue;
                 }
 
-                string itemLabel = ResolveTooltipItemLabel(itemId);
-                int count = Math.Max(1, GetIntOrStringValue(entry["count"]));
-                int probability = GetIntOrStringValue(entry["prob"]);
-                string chanceSuffix = probability > 0
-                    ? $" ({probability.ToString(CultureInfo.InvariantCulture)}%)"
+                string itemLabel = ResolveTooltipItemLabel(entry.ItemId);
+                string chanceSuffix = entry.Probability > 0
+                    ? $" ({entry.Probability.ToString(CultureInfo.InvariantCulture)}%)"
                     : string.Empty;
-                int periodMinutes = GetIntOrStringValue(entry["period"]);
-                string periodSuffix = periodMinutes > 0
-                    ? $", expires after {FormatMinuteDuration(periodMinutes)}"
+                string periodSuffix = entry.PeriodMinutes > 0
+                    ? $", expires after {FormatMinuteDuration(entry.PeriodMinutes)}"
                     : string.Empty;
-                lines.Add($"Reward: {itemLabel} x{count.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}{periodSuffix}");
+                lines.Add($"Reward: {itemLabel} x{entry.Count.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}{periodSuffix}");
             }
 
             int remaining = entries.Count - visibleCount;
@@ -4916,6 +4916,74 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines;
+        }
+
+        private static List<RewardEntryMetadata> GetNumericNamedRewardEntries(WzSubProperty rewardProperty)
+        {
+            List<(int Index, RewardEntryMetadata Entry)> indexedEntries = new();
+            if (rewardProperty?.WzProperties == null)
+            {
+                return new List<RewardEntryMetadata>();
+            }
+
+            foreach (WzImageProperty child in rewardProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                WzImageProperty linkedChild = child.GetLinkedWzImageProperty();
+                RewardEntryMetadata entry = linkedChild is WzSubProperty structuredEntry
+                    ? BuildRewardEntryMetadata(structuredEntry)
+                    : BuildRewardEntryMetadata(linkedChild ?? child);
+                if (entry.ItemId <= 0)
+                {
+                    continue;
+                }
+
+                indexedEntries.Add((index, entry));
+            }
+
+            indexedEntries.Sort((left, right) => left.Index.CompareTo(right.Index));
+            List<RewardEntryMetadata> sortedEntries = new(indexedEntries.Count);
+            for (int i = 0; i < indexedEntries.Count; i++)
+            {
+                sortedEntries.Add(indexedEntries[i].Entry);
+            }
+
+            return sortedEntries;
+        }
+
+        private static RewardEntryMetadata BuildRewardEntryMetadata(WzImageProperty property)
+        {
+            int itemId = GetIntOrStringValue(property);
+            return itemId > 0
+                ? new RewardEntryMetadata { ItemId = itemId }
+                : RewardEntryMetadata.Empty;
+        }
+
+        private static RewardEntryMetadata BuildRewardEntryMetadata(WzSubProperty entry)
+        {
+            if (entry == null)
+            {
+                return RewardEntryMetadata.Empty;
+            }
+
+            int itemId = ResolveRewardEntryItemId(entry);
+            if (itemId <= 0)
+            {
+                return RewardEntryMetadata.Empty;
+            }
+
+            return new RewardEntryMetadata
+            {
+                ItemId = itemId,
+                Count = Math.Max(1, GetIntOrStringValue(entry["count"])),
+                Probability = Math.Max(0, GetIntOrStringValue(entry["prob"])),
+                PeriodMinutes = Math.Max(0, GetIntOrStringValue(entry["period"])),
+                EffectPath = GetStringValue(entry["Effect"]) ?? string.Empty
+            };
         }
 
         private static int ResolveRewardEntryItemId(WzSubProperty entry)
@@ -5501,6 +5569,17 @@ namespace HaCreator.MapSimulator.UI
             public int ItemId { get; init; }
             public int Count { get; init; } = 1;
             public int Rate { get; init; }
+        }
+
+        private sealed class RewardEntryMetadata
+        {
+            public static readonly RewardEntryMetadata Empty = new();
+
+            public int ItemId { get; init; }
+            public int Count { get; init; } = 1;
+            public int Probability { get; init; }
+            public int PeriodMinutes { get; init; }
+            public string EffectPath { get; init; } = string.Empty;
         }
     }
 }

@@ -132,11 +132,13 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
         private readonly Dictionary<ushort, string> _portableChairRecordInferenceMap = new();
         private readonly Dictionary<string, Dictionary<int, ushort>> _portableChairRecordAddOpcodeByCharacterByBuild = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<PortableChairRecordCaptureEntry> _portableChairRecordCaptureOrder = new();
         private readonly Dictionary<string, Dictionary<ushort, LearnedOpcodeEntry>> _learnedTutorPacketMapByBuild = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<ushort, PendingTutorInferenceEvidence> _pendingTutorInferenceMap = new();
         private readonly Dictionary<ushort, string> _tutorInferenceConflictMap = new();
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private const int MaxPortableChairRecordCaptureOrderEntries = 16;
 
         private sealed class LearnedOpcodeEntry
         {
@@ -150,7 +152,7 @@ namespace HaCreator.MapSimulator.Managers
                 LastPayloadPreviewHex = FormatPayloadPreviewHex(payload);
                 Count = 1;
                 OfficialSessionProofCount = IsOfficialSessionSource(source) ? 1 : 0;
-                RememberOfficialSessionBuildProof(source);
+                RememberOfficialSessionBuildProof(source, payload);
             }
 
             public int PacketType { get; private set; }
@@ -163,6 +165,7 @@ namespace HaCreator.MapSimulator.Managers
             public int OfficialSessionProofCount { get; private set; }
             public string OfficialSessionBuildProofSummary => DescribeOfficialSessionBuildProofs();
             private readonly Dictionary<string, int> _officialSessionProofCountByBuild = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, HashSet<int>> _officialSessionOwnerIdsByBuild = new(StringComparer.OrdinalIgnoreCase);
 
             public void Update(int packetType, string evidence, string source, byte[] payload)
             {
@@ -175,7 +178,7 @@ namespace HaCreator.MapSimulator.Managers
                 if (IsOfficialSessionSource(source))
                 {
                     OfficialSessionProofCount++;
-                    RememberOfficialSessionBuildProof(source);
+                    RememberOfficialSessionBuildProof(source, payload);
                 }
             }
 
@@ -210,7 +213,42 @@ namespace HaCreator.MapSimulator.Managers
                 OfficialSessionProofCount += addedProofCount;
             }
 
-            private void RememberOfficialSessionBuildProof(string source)
+            public IReadOnlyCollection<int> ResolveOfficialSessionOwnerIds(string buildTag)
+            {
+                string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+                if (_officialSessionOwnerIdsByBuild.TryGetValue(normalizedBuildTag, out HashSet<int> ownerIds))
+                {
+                    return ownerIds.ToArray();
+                }
+
+                return Array.Empty<int>();
+            }
+
+            public void ImportOfficialSessionOwnerIds(string buildTag, IEnumerable<int> ownerIds)
+            {
+                string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+                int[] normalizedOwnerIds = ownerIds?
+                    .Where(static ownerId => ownerId > 0)
+                    .Distinct()
+                    .ToArray() ?? Array.Empty<int>();
+                if (normalizedOwnerIds.Length == 0)
+                {
+                    return;
+                }
+
+                if (!_officialSessionOwnerIdsByBuild.TryGetValue(normalizedBuildTag, out HashSet<int> storedOwnerIds))
+                {
+                    storedOwnerIds = new HashSet<int>();
+                    _officialSessionOwnerIdsByBuild[normalizedBuildTag] = storedOwnerIds;
+                }
+
+                foreach (int ownerId in normalizedOwnerIds)
+                {
+                    storedOwnerIds.Add(ownerId);
+                }
+            }
+
+            private void RememberOfficialSessionBuildProof(string source, byte[] payload)
             {
                 if (!TryResolveOfficialSessionBuildTag(source, out string buildTag))
                 {
@@ -224,6 +262,11 @@ namespace HaCreator.MapSimulator.Managers
                 else
                 {
                     _officialSessionProofCountByBuild[buildTag] = 1;
+                }
+
+                if (TryResolveTutorInferenceOwnerCharacterId(PacketType, payload, out int ownerCharacterId))
+                {
+                    ImportOfficialSessionOwnerIds(buildTag, new[] { ownerCharacterId });
                 }
             }
 
@@ -258,7 +301,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private sealed class PendingTutorInferenceEvidence
         {
-            public PendingTutorInferenceEvidence(int packetType, string reason, string source, string payloadSignature)
+            public PendingTutorInferenceEvidence(int packetType, string reason, string source, string payloadSignature, int ownerCharacterId)
             {
                 PacketType = packetType;
                 Reason = reason ?? string.Empty;
@@ -269,7 +312,7 @@ namespace HaCreator.MapSimulator.Managers
                 OfficialSessionObservationCount = IsOfficialSessionSource(source) ? 1 : 0;
                 OfficialSessionUniqueObservationCount = 0;
                 _uniqueObservationSignatures.Add(LastPayloadSignature);
-                RememberOfficialSessionBuildObservation(source, LastPayloadSignature);
+                RememberOfficialSessionBuildObservation(source, LastPayloadSignature, ownerCharacterId);
             }
 
             public int PacketType { get; private set; }
@@ -284,9 +327,10 @@ namespace HaCreator.MapSimulator.Managers
             public string OfficialSessionBuildUniqueObservationSummary => DescribeOfficialSessionBuildUniqueObservations();
             private readonly Dictionary<string, int> _officialSessionObservationCountByBuild = new(StringComparer.OrdinalIgnoreCase);
             private readonly Dictionary<string, HashSet<string>> _officialSessionPayloadSignaturesByBuild = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, HashSet<int>> _officialSessionOwnerIdsByBuild = new(StringComparer.OrdinalIgnoreCase);
             private readonly HashSet<string> _uniqueObservationSignatures = new(StringComparer.Ordinal);
 
-            public void Update(int packetType, string reason, string source, string payloadSignature)
+            public void Update(int packetType, string reason, string source, string payloadSignature, int ownerCharacterId)
             {
                 PacketType = packetType;
                 Reason = reason ?? string.Empty;
@@ -300,7 +344,7 @@ namespace HaCreator.MapSimulator.Managers
                 if (IsOfficialSessionSource(source))
                 {
                     OfficialSessionObservationCount++;
-                    RememberOfficialSessionBuildObservation(source, LastPayloadSignature);
+                    RememberOfficialSessionBuildObservation(source, LastPayloadSignature, ownerCharacterId);
                 }
             }
 
@@ -343,7 +387,18 @@ namespace HaCreator.MapSimulator.Managers
                 return 0;
             }
 
-            private void RememberOfficialSessionBuildObservation(string source, string payloadSignature)
+            public IReadOnlyCollection<int> ResolveOfficialSessionOwnerIds(string buildTag)
+            {
+                string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+                if (_officialSessionOwnerIdsByBuild.TryGetValue(normalizedBuildTag, out HashSet<int> ownerIds))
+                {
+                    return ownerIds.ToArray();
+                }
+
+                return Array.Empty<int>();
+            }
+
+            private void RememberOfficialSessionBuildObservation(string source, string payloadSignature, int ownerCharacterId)
             {
                 if (!TryResolveOfficialSessionBuildTag(source, out string buildTag))
                 {
@@ -368,6 +423,17 @@ namespace HaCreator.MapSimulator.Managers
                 if (signatures.Add(string.IsNullOrWhiteSpace(payloadSignature) ? "none" : payloadSignature))
                 {
                     OfficialSessionUniqueObservationCount++;
+                }
+
+                if (ownerCharacterId > 0)
+                {
+                    if (!_officialSessionOwnerIdsByBuild.TryGetValue(buildTag, out HashSet<int> ownerIds))
+                    {
+                        ownerIds = new HashSet<int>();
+                        _officialSessionOwnerIdsByBuild[buildTag] = ownerIds;
+                    }
+
+                    ownerIds.Add(ownerCharacterId);
                 }
             }
 
@@ -400,6 +466,16 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private readonly record struct PortableChairRecordCaptureEntry(
+            string BuildTag,
+            int Sequence,
+            string Operation,
+            ushort Opcode,
+            int CharacterId,
+            int PayloadLength,
+            string Source,
+            string Reason);
+
         public RemoteUserOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
         {
             _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
@@ -425,7 +501,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected Maple session {RemoteHost}:{RemotePort}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; portableChairRecordInference={DescribePortableChairRecordInferences()}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; portableChairRecordInference={DescribePortableChairRecordInferences()}; portableChairRecordOrder={DescribePortableChairRecordCaptureOrder()}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -473,6 +549,22 @@ namespace HaCreator.MapSimulator.Managers
                     _portableChairRecordInferenceMap
                         .OrderBy(entry => entry.Key)
                         .Select(entry => $"{entry.Key}:{entry.Value}"));
+            }
+        }
+
+        private string DescribePortableChairRecordCaptureOrder()
+        {
+            lock (_sync)
+            {
+                if (_portableChairRecordCaptureOrder.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    ", ",
+                    _portableChairRecordCaptureOrder.Select(entry =>
+                        $"{entry.BuildTag}#{entry.Sequence}:{entry.Operation}@{entry.Opcode}:{entry.CharacterId}({entry.PayloadLength}b; source={entry.Source}; reason={entry.Reason})"));
             }
         }
 
@@ -767,6 +859,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
                     RememberMappedPortableChairRecordEvidenceNoLock(opcode, packetType, inferencePayload, source);
+                    RememberPortableChairRecordCaptureNoLock(opcode, packetType, inferencePayload, source, "mapped dispatch");
                 }
 
                 if (!hasMappedPacketType)
@@ -791,6 +884,7 @@ namespace HaCreator.MapSimulator.Managers
                         _portableChairRecordInferenceMap[opcode] = portableChairRecordReason;
                         RememberPortableChairRecordAddOwnerNoLock(source, portableChairRecordCharacterId, opcode);
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        RememberPortableChairRecordCaptureNoLock(opcode, packetType, inferencePayload, source, portableChairRecordReason);
                         LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from extended packet-owned couple-chair record-add capture ({portableChairRecordReason}). {OfficialPortableChairRecordEvidence}";
                         hasMappedPacketType = true;
                     }
@@ -807,6 +901,7 @@ namespace HaCreator.MapSimulator.Managers
                         string learnedEvidence = $"auto:{portableChairRecordRemoveReason}; {OfficialRemoteOwnerEvidence}; {OfficialPortableChairRecordEvidence}";
                         _portableChairRecordInferenceMap[opcode] = portableChairRecordRemoveReason;
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        RememberPortableChairRecordCaptureNoLock(opcode, packetType, inferencePayload, source, portableChairRecordRemoveReason);
                         LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from packet-owned couple-chair record-remove capture paired with prior add evidence ({portableChairRecordRemoveReason}). {OfficialPortableChairRecordEvidence}";
                         hasMappedPacketType = true;
                     }
@@ -918,7 +1013,7 @@ namespace HaCreator.MapSimulator.Managers
                         string inferenceBuildTag = ResolveOfficialSessionBuildTag(source);
                         int inferenceBuildProof = pendingEvidence.ResolveOfficialSessionBuildUniqueObservationCount(inferenceBuildTag);
                         if (!trustV95LocalOwnerTable
-                            && !HasBuildScopedCompanionTutorOwnerProofNoLock(opcode, packetType, inferenceBuildTag, out string companionReason))
+                            && !HasBuildScopedCompanionTutorOwnerProofNoLock(opcode, packetType, pendingEvidence, inferenceBuildTag, out string companionReason))
                         {
                             LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); build {inferenceBuildTag} has distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}, but awaits companion tutor-owner opcode proof ({companionReason}) before mapping. {OfficialRemoteOwnerEvidence}";
                             return false;
@@ -1215,6 +1310,7 @@ namespace HaCreator.MapSimulator.Managers
             inferenceConfirmed = false;
             conflictReason = null;
             string payloadSignature = BuildTutorInferencePayloadSignature(packetType, payload);
+            TryResolveTutorInferenceOwnerCharacterId(packetType, payload, out int ownerCharacterId);
 
             if (_pendingTutorInferenceMap.TryGetValue(opcode, out PendingTutorInferenceEvidence existing))
             {
@@ -1229,11 +1325,11 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
                 
-                existing.Update(packetType, reason, source, payloadSignature);
+                existing.Update(packetType, reason, source, payloadSignature, ownerCharacterId);
             }
             else
             {
-                _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source, payloadSignature);
+                _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source, payloadSignature, ownerCharacterId);
             }
 
             evidence = _pendingTutorInferenceMap[opcode];
@@ -1302,6 +1398,7 @@ namespace HaCreator.MapSimulator.Managers
         private bool HasBuildScopedCompanionTutorOwnerProofNoLock(
             ushort opcode,
             int packetType,
+            PendingTutorInferenceEvidence currentEvidence,
             string buildTag,
             out string reason)
         {
@@ -1330,6 +1427,16 @@ namespace HaCreator.MapSimulator.Managers
                     int proof = learnedEntry.ResolveOfficialSessionBuildProofCount(buildTag);
                     if (proof >= MinOfficialSessionTutorInferenceProofCount)
                     {
+                        if (!HasMatchingTutorOwnerProof(
+                                currentEvidence?.ResolveOfficialSessionOwnerIds(buildTag),
+                                learnedEntry.ResolveOfficialSessionOwnerIds(buildTag),
+                                learnedEntry.IsManual,
+                                out string ownerProofReason))
+                        {
+                            reason = $"learned opcode {learnedOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(oppositePacketType)} has build proof {proof}/{MinOfficialSessionTutorInferenceProofCount} but lacks paired owner proof ({ownerProofReason})";
+                            continue;
+                        }
+
                         reason = $"learned opcode {learnedOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(oppositePacketType)} with build proof {proof}/{MinOfficialSessionTutorInferenceProofCount}";
                         return true;
                     }
@@ -1347,11 +1454,60 @@ namespace HaCreator.MapSimulator.Managers
                 int buildProof = pendingEvidence.ResolveOfficialSessionBuildUniqueObservationCount(buildTag);
                 if (buildProof >= MinOfficialSessionTutorInferenceProofCount)
                 {
+                    if (!HasMatchingTutorOwnerProof(
+                            currentEvidence?.ResolveOfficialSessionOwnerIds(buildTag),
+                            pendingEvidence.ResolveOfficialSessionOwnerIds(buildTag),
+                            allowMissingCompanionOwnerProof: false,
+                            out string ownerProofReason))
+                    {
+                        reason = $"pending opcode {pendingOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(oppositePacketType)} has distinct wrapper proof {buildProof}/{MinOfficialSessionTutorInferenceProofCount} but lacks paired owner proof ({ownerProofReason})";
+                        continue;
+                    }
+
                     reason = $"pending opcode {pendingOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(oppositePacketType)} with distinct wrapper proof {buildProof}/{MinOfficialSessionTutorInferenceProofCount}";
                     return true;
                 }
             }
 
+            return false;
+        }
+
+        private static bool HasMatchingTutorOwnerProof(
+            IReadOnlyCollection<int> currentOwnerIds,
+            IReadOnlyCollection<int> companionOwnerIds,
+            bool allowMissingCompanionOwnerProof,
+            out string reason)
+        {
+            int[] currentIds = currentOwnerIds?
+                .Where(static ownerId => ownerId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            int[] companionIds = companionOwnerIds?
+                .Where(static ownerId => ownerId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+
+            if (currentIds.Length == 0)
+            {
+                reason = "current tutor owner id is unavailable";
+                return false;
+            }
+
+            if (companionIds.Length == 0)
+            {
+                reason = allowMissingCompanionOwnerProof
+                    ? "companion owner proof unavailable but mapping is manual"
+                    : "companion tutor owner id is unavailable";
+                return allowMissingCompanionOwnerProof;
+            }
+
+            if (currentIds.Any(ownerId => companionIds.Contains(ownerId)))
+            {
+                reason = $"shared owner id {currentIds.First(ownerId => companionIds.Contains(ownerId))}";
+                return true;
+            }
+
+            reason = $"current owners [{string.Join(",", currentIds)}] do not overlap companion owners [{string.Join(",", companionIds)}]";
             return false;
         }
 
@@ -1385,6 +1541,7 @@ namespace HaCreator.MapSimulator.Managers
                 if (!HasBuildScopedCompanionTutorOwnerProofNoLock(
                         pendingOpcode,
                         pendingPacketType,
+                        pendingEvidence,
                         buildTag,
                         out _))
                 {
@@ -1396,12 +1553,45 @@ namespace HaCreator.MapSimulator.Managers
                 string evidence = $"auto:{pendingEvidence.Reason}; inferenceDistinctWrapperProof={buildProof}/{MinOfficialSessionTutorInferenceProofCount}@{buildTag}; pairedBuildTutorOwnerTable=1; {OfficialRemoteOwnerEvidence}";
                 RememberLearnedOpcodeNoLock(pendingOpcode, pendingPacketType, evidence, isManual: false, source, payload: null);
                 EnsureLearnedTutorOpcodeBuildProofNoLock(pendingOpcode, pendingPacketType, buildTag, buildProof);
+                ImportPendingTutorOwnerIdsIntoLearnedMappingNoLock(pendingOpcode, pendingPacketType, buildTag, pendingEvidence);
                 (promotedMappings ??= new List<string>()).Add($"{pendingOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(pendingPacketType)}");
             }
 
             return promotedMappings == null || promotedMappings.Count == 0
                 ? string.Empty
                 : string.Join(", ", promotedMappings);
+        }
+
+        private void ImportPendingTutorOwnerIdsIntoLearnedMappingNoLock(
+            ushort opcode,
+            int packetType,
+            string buildTag,
+            PendingTutorInferenceEvidence pendingEvidence)
+        {
+            if (pendingEvidence == null)
+            {
+                return;
+            }
+
+            IReadOnlyCollection<int> ownerIds = pendingEvidence.ResolveOfficialSessionOwnerIds(buildTag);
+            if (ownerIds.Count == 0)
+            {
+                return;
+            }
+
+            if (_learnedPacketMap.TryGetValue(opcode, out LearnedOpcodeEntry learnedEntry)
+                && learnedEntry.PacketType == packetType)
+            {
+                learnedEntry.ImportOfficialSessionOwnerIds(buildTag, ownerIds);
+            }
+
+            string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+            if (_learnedTutorPacketMapByBuild.TryGetValue(normalizedBuildTag, out Dictionary<ushort, LearnedOpcodeEntry> buildMap)
+                && buildMap.TryGetValue(opcode, out LearnedOpcodeEntry buildEntry)
+                && buildEntry.PacketType == packetType)
+            {
+                buildEntry.ImportOfficialSessionOwnerIds(normalizedBuildTag, ownerIds);
+            }
         }
 
         private static string BuildTutorInferencePayloadSignature(int packetType, byte[] payload)
@@ -1450,6 +1640,39 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return $"packet:{packetType}:{payload?.Length ?? 0}";
+        }
+
+        private static bool TryResolveTutorInferenceOwnerCharacterId(int packetType, byte[] payload, out int ownerCharacterId)
+        {
+            ownerCharacterId = 0;
+            if (payload == null)
+            {
+                return false;
+            }
+
+            if (packetType == (int)Pools.RemoteUserPacketType.UserTutorHire)
+            {
+                return HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorHirePayload(
+                    payload,
+                    out ownerCharacterId,
+                    out _,
+                    out _);
+            }
+
+            if (packetType == (int)Pools.RemoteUserPacketType.UserTutorMessage)
+            {
+                return HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorMessagePayload(
+                    payload,
+                    out ownerCharacterId,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _);
+            }
+
+            return false;
         }
 
         private bool ShouldRevalidateTutorOpcodeMappingForSourceNoLock(
@@ -1517,25 +1740,104 @@ namespace HaCreator.MapSimulator.Managers
             byte[] payload,
             string source)
         {
-            if (packetType != (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd)
+            if (packetType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd)
+            {
+                if (!TryResolveExtendedPortableChairRecordAddFromCaptureNoLock(
+                        opcode,
+                        payload,
+                        source,
+                        out int resolvedPacketType,
+                        out string reason,
+                        out int characterId)
+                    || resolvedPacketType != packetType)
+                {
+                    return;
+                }
+
+                _portableChairRecordInferenceMap[opcode] = reason;
+                RememberPortableChairRecordAddOwnerNoLock(source, characterId, opcode);
+                return;
+            }
+
+            if (packetType != (int)Pools.RemoteUserPacketType.UserCoupleChairRecordRemove)
             {
                 return;
             }
 
-            if (!TryResolveExtendedPortableChairRecordAddFromCaptureNoLock(
+            if (!TryResolvePortableChairRecordRemoveFromPriorAddCaptureNoLock(
                     opcode,
                     payload,
                     source,
-                    out int resolvedPacketType,
-                    out string reason,
-                    out int characterId)
-                || resolvedPacketType != packetType)
+                    out int resolvedRemovePacketType,
+                    out string removeReason)
+                || resolvedRemovePacketType != packetType)
             {
                 return;
             }
 
-            _portableChairRecordInferenceMap[opcode] = reason;
-            RememberPortableChairRecordAddOwnerNoLock(source, characterId, opcode);
+            _portableChairRecordInferenceMap[opcode] = removeReason;
+        }
+
+        private void RememberPortableChairRecordCaptureNoLock(
+            ushort opcode,
+            int packetType,
+            byte[] payload,
+            string source,
+            string reason)
+        {
+            string operation;
+            int characterId;
+            if (packetType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd)
+            {
+                if (!Pools.RemoteUserPacketCodec.TryParsePortableChairRecordAdd(
+                        payload,
+                        out Pools.RemoteUserPortableChairRecordAddPacket addPacket,
+                        out _))
+                {
+                    return;
+                }
+
+                operation = "add";
+                characterId = addPacket.CharacterId;
+            }
+            else if (packetType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordRemove)
+            {
+                if (!Pools.RemoteUserPacketCodec.TryParsePortableChairRecordRemove(
+                        payload,
+                        out Pools.RemoteUserPortableChairRecordRemovePacket removePacket,
+                        out _))
+                {
+                    return;
+                }
+
+                operation = "remove";
+                characterId = removePacket.CharacterId;
+            }
+            else
+            {
+                return;
+            }
+
+            string buildTag = ResolveOfficialSessionBuildTag(source);
+            int sequence = _portableChairRecordCaptureOrder.Count == 0
+                ? 1
+                : _portableChairRecordCaptureOrder[_portableChairRecordCaptureOrder.Count - 1].Sequence + 1;
+            _portableChairRecordCaptureOrder.Add(new PortableChairRecordCaptureEntry(
+                buildTag,
+                sequence,
+                operation,
+                opcode,
+                characterId,
+                payload?.Length ?? 0,
+                string.IsNullOrWhiteSpace(source) ? "unknown-source" : source,
+                string.IsNullOrWhiteSpace(reason) ? "captured dispatch" : reason));
+
+            if (_portableChairRecordCaptureOrder.Count > MaxPortableChairRecordCaptureOrderEntries)
+            {
+                _portableChairRecordCaptureOrder.RemoveRange(
+                    0,
+                    _portableChairRecordCaptureOrder.Count - MaxPortableChairRecordCaptureOrderEntries);
+            }
         }
 
         private void RememberLearnedTutorOpcodeByBuildNoLock(

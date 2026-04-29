@@ -398,6 +398,10 @@ namespace HaCreator.MapSimulator.Character
             float variance = 0.9f + (float)_random.NextDouble() * 0.2f;
             damage = (int)(damage * variance);
             damage = ResolveIncomingDamage(damage, currentTime);
+            if (currentAttack?.DeadlyAttack == true)
+            {
+                damage = ResolveDeadlyAttackDamage(_player.HP, damage);
+            }
 
             // Calculate knockback direction (away from mob)
             Vector2 knockback = GetPlayerKnockbackVelocity(mob.MovementInfo.X);
@@ -408,6 +412,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Apply damage and knockback (KNOCKBACK_FORCE_Y is negative for upward motion)
             _player.TakeDamage(damage, knockback.X, knockback.Y);
+            ApplyMobAttackVitalSideEffects(_player, currentAttack);
 
             OnDamageReceived?.Invoke(_player, damage, mob);
 
@@ -474,6 +479,47 @@ namespace HaCreator.MapSimulator.Character
 
             float hitChance = GetMobHitChance(mob.AI);
             return _random.NextDouble() > hitChance;
+        }
+
+        internal static int ResolveDeadlyAttackDamage(int currentHp, int calculatedDamage)
+        {
+            if (currentHp <= 1)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(calculatedDamage, 1, currentHp - 1);
+        }
+
+        internal static int ResolveMpBurnAmount(MobAttackEntry attack, int currentMp)
+        {
+            if (attack == null || attack.MpBurn <= 0 || attack.ConMP <= 0 || currentMp <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Min(currentMp, attack.ConMP);
+        }
+
+        private static void ApplyMobAttackVitalSideEffects(PlayerCharacter player, MobAttackEntry attack)
+        {
+            if (player == null || attack == null || !player.IsAlive || player.GodMode)
+            {
+                return;
+            }
+
+            if (attack.DeadlyAttack)
+            {
+                player.HP = Math.Min(player.HP, 1);
+                player.MP = Math.Min(player.MP, 1);
+                return;
+            }
+
+            int mpBurnAmount = ResolveMpBurnAmount(attack, player.MP);
+            if (mpBurnAmount > 0)
+            {
+                player.MP -= mpBurnAmount;
+            }
         }
 
         private float GetMobHitChance(MobAI mobAI)

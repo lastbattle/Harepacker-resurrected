@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator.Fields
             _isActive = true;
             _showScoreboard = true;
             _showResult = false;
+            _entries.Clear();
             _resultFrameIndex = 0;
             _resultStartedAt = 0;
             _resultFrameStartedAt = 0;
@@ -301,10 +302,7 @@ namespace HaCreator.MapSimulator.Fields
                 changed = true;
             }
 
-            if (changed)
-            {
-                SortAndAssignRankIcons();
-            }
+            SortAndAssignRankIcons();
 
             _scoreRefreshSerial++;
             _showScoreboard = true;

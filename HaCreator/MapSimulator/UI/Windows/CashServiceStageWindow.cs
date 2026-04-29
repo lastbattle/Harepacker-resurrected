@@ -6152,6 +6152,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Stream stream = reader.BaseStream;
+            int sourceOffset = (int)Math.Min(int.MaxValue, Math.Max(0L, stream.Position));
             int trailingLength = (int)Math.Max(0L, stream.Length - stream.Position);
             if (trailingLength <= 0)
             {
@@ -6179,7 +6180,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 return decodedOffset == 0
                     ? decodedSummary
-                    : $"{decodedSummary} Recovered at trailing offset {decodedOffset.ToString(CultureInfo.InvariantCulture)}.";
+                    : $"{decodedSummary} Recovered at packet offset {(sourceOffset + decodedOffset).ToString(CultureInfo.InvariantCulture)}.";
             }
 
             AppendRawCashPacketTailEntry(
@@ -6189,12 +6190,12 @@ namespace HaCreator.MapSimulator.UI
                 titlePrefix,
                 seller,
                 stateLabel,
-                sourceOffset: 0);
+                sourceOffset);
             int previewLength = Math.Min(trailingPayload.Length, 24);
             byte[] preview = new byte[previewLength];
             Buffer.BlockCopy(trailingPayload, 0, preview, 0, previewLength);
             string suffix = trailingPayload.Length > previewLength ? "..." : string.Empty;
-            return $"Trailing packet tail ({trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)) was retained as packet-owned raw state after primary decode: {Convert.ToHexString(preview)}{suffix}.";
+            return $"Trailing packet tail ({trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)) at packet offset {sourceOffset.ToString(CultureInfo.InvariantCulture)} was retained as packet-owned raw state after primary decode: {Convert.ToHexString(preview)}{suffix}.";
         }
 
         private static List<CashItemInfoPacketSnapshot> TryDecodeEmbeddedCashItemInfoSnapshots(byte[] payload, int startOffset, int maxCount)

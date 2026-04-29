@@ -191,6 +191,7 @@ namespace HaCreator.MapSimulator.Interaction
             EmployeeTemplateProfile profile = ResolveProfile(snapshot);
             int elapsedMs = (int)Math.Max(0d, gameTime.ElapsedGameTime.TotalMilliseconds);
 
+            TouchActiveEmployeeTemplate(snapshot);
             EnsureMiniRoomBalloonAssets(device);
             _activeNameTagAssets = ResolveNameTagAssets(snapshot, device);
             _activeMiniRoomBoardAssets = ResolveMiniRoomBoardAssets(snapshot, device);
@@ -408,6 +409,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_cashActionCatalogCache.TryGetValue(templateId, out EmployeeActionCatalog cachedCatalog))
             {
+                TouchEmployeeImageEntryCacheEntry(templateId);
                 return cachedCatalog;
             }
 
@@ -853,6 +855,29 @@ namespace HaCreator.MapSimulator.Interaction
 
             entry.LastAccessTickMs = GetClientTickCountMs();
             _cashEmployeeImgEntryCache[entry.TemplateId] = entry;
+        }
+
+        private void TouchActiveEmployeeTemplate(SocialRoomFieldActorSnapshot snapshot)
+        {
+            if (snapshot?.Template != SocialRoomFieldActorTemplate.CashEmployee || snapshot.TemplateId <= 0)
+            {
+                return;
+            }
+
+            TouchEmployeeImageEntryCacheEntry(snapshot.TemplateId);
+        }
+
+        private void TouchEmployeeImageEntryCacheEntry(int templateId)
+        {
+            if (templateId <= 0)
+            {
+                return;
+            }
+
+            if (_cashEmployeeImgEntryCache.TryGetValue(templateId, out EmployeeImageEntry cachedEntry))
+            {
+                TouchEmployeeImageEntryCacheEntry(cachedEntry);
+            }
         }
 
         private void TrimEmployeeImageEntryCacheIfNeeded()
@@ -1489,6 +1514,21 @@ namespace HaCreator.MapSimulator.Interaction
             return 1f;
         }
 
+        internal static SD.Color ResolveNativeEmployeeCanvasCopyPixelForTesting(SD.Color destination, SD.Color source)
+        {
+            using var bitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            bitmap.SetPixel(0, 0, destination);
+            using (SDG graphics = SDG.FromImage(bitmap))
+            using (var sourceBitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                sourceBitmap.SetPixel(0, 0, source);
+                ApplyNativeEmployeeCanvasCopySettings(graphics);
+                DrawEmployeeCanvasCopyAlpha255(graphics, sourceBitmap, 0, 0);
+            }
+
+            return bitmap.GetPixel(0, 0);
+        }
+
         private static void ApplyNativeEmployeeCanvasCopySettings(SDG graphics)
         {
             if (graphics == null)
@@ -1688,12 +1728,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static Vector2? GetAuthoredCanvasOriginVector(WzCanvasProperty canvasProperty)
         {
-            if (canvasProperty == null)
+            return GetAuthoredPropertyOriginVector(canvasProperty);
+        }
+
+        private static Vector2? GetAuthoredPropertyOriginVector(WzImageProperty property)
+        {
+            if (property == null)
             {
                 return null;
             }
 
-            if (canvasProperty["origin"] is WzVectorProperty origin)
+            if (property["origin"] is WzVectorProperty origin)
             {
                 return new Vector2(origin.X.Value, origin.Y.Value);
             }
@@ -1725,6 +1770,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_cashEmployeeNameTagCache.TryGetValue(templateId, out NameTagAssets cachedAssets))
             {
+                TouchEmployeeImageEntryCacheEntry(templateId);
                 return cachedAssets;
             }
 
@@ -1765,6 +1811,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_cashEmployeeMiniRoomBoardCache.TryGetValue(templateId, out EmployeeMiniRoomBoardAssets cachedAssets))
             {
+                TouchEmployeeImageEntryCacheEntry(templateId);
                 return cachedAssets;
             }
 
@@ -1853,6 +1900,7 @@ namespace HaCreator.MapSimulator.Interaction
             List<EmployeeMiniRoomBoardEffectFrame> frames = new();
             foreach (WzImageProperty child in source.WzProperties.OrderBy(GetFrameOrder))
             {
+                WzImageProperty resolvedFrame = ResolveLinkedProperty(child);
                 WzCanvasProperty canvas = ResolveCanvasProperty(child);
                 Texture2D texture = LoadUiCanvasTexture(canvas, device);
                 if (texture == null)
@@ -1860,11 +1908,24 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                int delayMs = Math.Max(1, GetIntValue(canvas?["delay"]) ?? ClientEmployeeDefaultFrameDelayMs);
-                frames.Add(new EmployeeMiniRoomBoardEffectFrame(texture, delayMs, GetAuthoredCanvasOriginVector(canvas)));
+                int delayMs = ResolveMiniRoomBoardEffectFrameDelay(
+                    GetIntValue(resolvedFrame?["delay"]),
+                    GetIntValue(canvas?["delay"]));
+                Vector2? origin = GetAuthoredPropertyOriginVector(resolvedFrame) ?? GetAuthoredCanvasOriginVector(canvas);
+                frames.Add(new EmployeeMiniRoomBoardEffectFrame(texture, delayMs, origin));
             }
 
             return frames.ToArray();
+        }
+
+        private static int ResolveMiniRoomBoardEffectFrameDelay(int? frameDelay, int? canvasDelay)
+        {
+            return Math.Max(1, frameDelay ?? canvasDelay ?? ClientEmployeeDefaultFrameDelayMs);
+        }
+
+        internal static int ResolveMiniRoomBoardEffectFrameDelayForTesting(int? frameDelay, int? canvasDelay)
+        {
+            return ResolveMiniRoomBoardEffectFrameDelay(frameDelay, canvasDelay);
         }
 
         private void EnsureDefaultEmployeeNameTagAssets(GraphicsDevice device)

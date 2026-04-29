@@ -62,5 +62,18 @@ namespace HaCreator.MapSimulator.UI
         {
             return packetAuthoredState || locallyAcceptedRegister;
         }
+
+        internal static bool ShouldRebindSearchResultOnServiceStateChange(
+            string previousServiceStateSignature,
+            string liveServiceStateSignature,
+            bool categoryOwnerVisible,
+            bool hasSearchQuery,
+            bool hasPacketAuthoredPayloadForQuery)
+        {
+            return !string.Equals(previousServiceStateSignature ?? string.Empty, liveServiceStateSignature ?? string.Empty, System.StringComparison.Ordinal)
+                && !categoryOwnerVisible
+                && hasSearchQuery
+                && hasPacketAuthoredPayloadForQuery;
+        }
     }
 }

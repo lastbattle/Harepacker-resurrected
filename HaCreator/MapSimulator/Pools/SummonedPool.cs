@@ -3951,7 +3951,7 @@ namespace HaCreator.MapSimulator.Pools
             List<PacketOwnedExpiryTargetCandidate> candidateList = candidates
                 .Where(static candidate => candidate.MobObjectId > 0 && HasPacketOwnedExpiryCandidateHitbox(candidate))
                 .GroupBy(static candidate => candidate.MobObjectId)
-                .Select(static group => group.First())
+                .Select(static group => SelectPacketOwnedExpiryCandidateForMobObjectId(group))
                 .ToList();
             Dictionary<int, PacketOwnedExpiryTargetCandidate> candidatesById = candidateList
                 .ToDictionary(static candidate => candidate.MobObjectId);
@@ -4028,6 +4028,28 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return orderedTargetIds.ToArray();
+        }
+
+        private static PacketOwnedExpiryTargetCandidate SelectPacketOwnedExpiryCandidateForMobObjectId(
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates)
+        {
+            PacketOwnedExpiryTargetCandidate firstCandidate = default;
+            bool hasFirstCandidate = false;
+            foreach (PacketOwnedExpiryTargetCandidate candidate in candidates)
+            {
+                if (!hasFirstCandidate)
+                {
+                    firstCandidate = candidate;
+                    hasFirstCandidate = true;
+                }
+
+                if (IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return hasFirstCandidate ? firstCandidate : default;
         }
 
         internal static int[] ResolvePacketOwnedExpiryFindHitMobInRectTargetOrder(

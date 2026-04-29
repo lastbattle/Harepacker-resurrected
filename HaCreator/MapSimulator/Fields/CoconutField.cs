@@ -105,7 +105,8 @@ namespace HaCreator.MapSimulator.Fields
             DrawTimer,
             RestorePreviousRenderTarget,
             PresentBoardLayer,
-            DrawDirectBoardContents
+            DrawDirectBoardContents,
+            ReleaseBoardLayerCanvas
         }
         internal readonly record struct ClientBoardLayerOperation(
             ClientBoardLayerOperationKind Kind,
@@ -337,6 +338,14 @@ namespace HaCreator.MapSimulator.Fields
                 FormatClientBoardTimer(boardTimeRemaining));
         }
 
+        internal IReadOnlyList<ClientBoardLayerOperation> BuildClientBoardLayerResetOperationPlanForParity()
+        {
+            return BuildClientBoardLayerResetOperationPlan(
+                CanUseBoardLayerCache(),
+                _boardLayerRenderTarget != null,
+                _boardLayerSpriteBatch != null);
+        }
+
         internal static IReadOnlyList<ClientBoardLayerOperation> BuildClientBoardLayerOperationPlan(
             int screenWidth,
             bool canUseBoardLayerCache,
@@ -384,6 +393,24 @@ namespace HaCreator.MapSimulator.Fields
                     : ClientBoardLayerOperationKind.DrawDirectBoardContents,
                 boardPosition));
             return operations;
+        }
+
+        internal static IReadOnlyList<ClientBoardLayerOperation> BuildClientBoardLayerResetOperationPlan(
+            bool canUseBoardLayerCache,
+            bool hasBoardLayerRenderTarget,
+            bool hasBoardLayerSpriteBatch)
+        {
+            if (!canUseBoardLayerCache || (!hasBoardLayerRenderTarget && !hasBoardLayerSpriteBatch))
+            {
+                return Array.Empty<ClientBoardLayerOperation>();
+            }
+
+            return new[]
+            {
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.ReleaseBoardLayerCanvas,
+                    Point.Zero)
+            };
         }
 
         private static void AddClientBoardLayerContentOperations(
@@ -457,6 +484,11 @@ namespace HaCreator.MapSimulator.Fields
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
+            if (!ReferenceEquals(_graphicsDevice, graphicsDevice))
+            {
+                ReleaseBoardLayerResources();
+            }
+
             _graphicsDevice = graphicsDevice;
             _soundManager = soundManager;
         }
@@ -1537,6 +1569,15 @@ namespace HaCreator.MapSimulator.Fields
             _boardLayerDirty = true;
         }
 
+        private void ReleaseBoardLayerResources()
+        {
+            _boardLayerSpriteBatch?.Dispose();
+            _boardLayerSpriteBatch = null;
+            _boardLayerRenderTarget?.Dispose();
+            _boardLayerRenderTarget = null;
+            _boardLayerDirty = true;
+        }
+
         private void RefreshBoardLayerOnClientCadence(int tickCount)
         {
             if (_lastBoardLayerRedrawTick == 0)
@@ -1869,6 +1910,7 @@ namespace HaCreator.MapSimulator.Fields
         #region Utility
         public void Reset()
         {
+            ReleaseBoardLayerResources();
             _runtimeActive = false;
             _gameActive = false;
             _awaitingFinalScore = false;

@@ -712,7 +712,7 @@ namespace HaCreator.MapSimulator
                 : DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest.CreatePutItemConfirm(activeRaise));
         }
 
-        private static void MarkQuestRewardRaiseOwnerDestroyPending(QuestRewardRaiseState activeRaise)
+        private void MarkQuestRewardRaiseOwnerDestroyPending(QuestRewardRaiseState activeRaise)
         {
             if (activeRaise == null)
             {
@@ -720,8 +720,8 @@ namespace HaCreator.MapSimulator
             }
 
             activeRaise.AwaitingOwnerDestroyAck = true;
-            activeRaise.OpenDispatchSummary =
-                $"Client-shaped raise owner destroy requested for owner #{Math.Max(0, activeRaise.OwnerItemId)} quest #{Math.Max(0, activeRaise.Prompt?.QuestId ?? 0)} session #{Math.Max(0, activeRaise.ManagerSessionId)}.";
+            activeRaise.OpenDispatchSummary = DescribeQuestRewardRaiseOutboundDispatch(
+                QuestRewardRaiseOutboundRequest.CreateCloseOwner(activeRaise));
         }
 
         private string DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest request)
@@ -790,6 +790,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!isVisible)
+            {
+                QuestRewardRaiseState activeBeforeClose = _questRewardRaiseManager.ActiveRaise;
+                QuestRewardRaiseState destroyed = _questRewardRaiseManager.DestroyWindowWithOwnerItemId(ownerItemId);
+                if (activeBeforeClose != null && ReferenceEquals(activeBeforeClose, destroyed))
+                {
+                    ClearQuestRewardRaiseWindow();
+                }
+
+                message = destroyed != null
+                    ? $"Client raise create-window visibility closed owner #{ownerItemId} for quest #{Math.Max(0, destroyed.Prompt?.QuestId ?? 0)} through the owner-item index."
+                    : $"Client raise create-window visibility requested close for owner #{ownerItemId}, but no live or retained owner was open.";
+                return true;
+            }
+
             if (!InventoryItemMetadataResolver.TryResolveRaiseOwnerContextForItem(
                     ownerItemId,
                     out QuestRewardRaiseOwnerContext ownerContext,
@@ -802,21 +817,6 @@ namespace HaCreator.MapSimulator
             }
 
             int questId = Math.Max(0, metadata.QuestId);
-            if (!isVisible)
-            {
-                QuestRewardRaiseState activeBeforeClose = _questRewardRaiseManager.ActiveRaise;
-                QuestRewardRaiseState destroyed = _questRewardRaiseManager.DestroyWindowWithQuestId(questId);
-                if (activeBeforeClose != null && ReferenceEquals(activeBeforeClose, destroyed))
-                {
-                    ClearQuestRewardRaiseWindow();
-                }
-
-                message = destroyed != null
-                    ? $"Client raise create-window visibility closed owner #{ownerItemId} for quest #{questId}."
-                    : $"Client raise create-window visibility requested close for owner #{ownerItemId} quest #{questId}, but no live or retained owner was open.";
-                return true;
-            }
-
             int initialQrData = ResolveQuestRewardRaiseInitialQrData(questId);
             QuestRewardChoicePrompt prompt = BuildQuestRewardRaiseItemOwnerPrompt(
                 metadata,

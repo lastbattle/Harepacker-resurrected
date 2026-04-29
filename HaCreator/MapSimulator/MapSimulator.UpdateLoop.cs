@@ -330,7 +330,15 @@ namespace HaCreator.MapSimulator
             }
             if (!_gameState.PendingMapChange)
             {
-                if (_specialFieldRuntime.TryConsumePendingTransfer(out int specialFieldTransferMapId, out string specialFieldTransferPortalName)
+                if (_specialFieldRuntime.TryPeekPendingDojoTransfer(out int dojoTransferMapId, out string dojoTransferPortalName)
+                    && dojoTransferMapId > 0)
+                {
+                    if (QueueFieldTransfer(dojoTransferMapId, dojoTransferPortalName))
+                    {
+                        _specialFieldRuntime.TryConsumePendingDojoTransfer(out _, out _);
+                    }
+                }
+                else if (_specialFieldRuntime.TryConsumePendingTransfer(out int specialFieldTransferMapId, out string specialFieldTransferPortalName)
                     && specialFieldTransferMapId > 0)
                 {
                     QueueFieldTransfer(specialFieldTransferMapId, specialFieldTransferPortalName);

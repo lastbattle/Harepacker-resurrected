@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMapleTvSessionCommand(string[] args)
         {
-            const string usage = "Usage: /mapletv session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send consume <inventoryPosition> [itemId]|queue consume <inventoryPosition> [itemId]|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /mapletv session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send consume <inventoryPosition> [itemId]|queue consume <inventoryPosition> [itemId]|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMapleTvOfficialSessionBridgeStatus());
@@ -18,6 +18,16 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "table", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(_mapleTvOfficialSessionBridge.DescribeRecoveredPacketTable());
+            }
+
+            if (string.Equals(args[0], "verify", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(_mapleTvOfficialSessionBridge.DescribeRecoveredParityVerification());
+            }
+
+            if (string.Equals(args[0], "clearverify", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_mapleTvOfficialSessionBridge.ClearRecoveredParityVerification());
             }
 
             if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))

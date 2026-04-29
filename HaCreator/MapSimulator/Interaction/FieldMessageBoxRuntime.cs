@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, string> _itemNameCache = new();
         private readonly ManagedOneTimeAnimationDisplayer _oneTimeAnimationDisplayer = new();
         private readonly Random _random = new();
+        private CompletedConsumeRequestEntry _lastConsumeRequestCompletion;
         private GraphicsDevice _graphicsDevice;
         private Texture2D _pixelTexture;
         private SpriteBatch _snapshotSpriteBatch;
@@ -104,6 +105,7 @@ namespace HaCreator.MapSimulator.Interaction
             _entries.Clear();
             _leavingEntries.Clear();
             _pendingConsumeRequests.Clear();
+            _lastConsumeRequestCompletion = null;
             _oneTimeAnimationDisplayer.Clear();
             _statusMessage = "Field message-box pool cleared.";
         }
@@ -214,8 +216,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyCreateFailed(int currentTick)
         {
-            if (TryResolvePendingConsumeRequestFailure(out PendingConsumeRequestEntry failedRequest))
+            if (TryResolvePendingConsumeRequestFailure(currentTick, out PendingConsumeRequestEntry failedRequest))
             {
+                _lastConsumeRequestCompletion = new CompletedConsumeRequestEntry(
+                    failedRequest.Request,
+                    ConsumeRequestCompletionKind.CreateFailed,
+                    currentTick,
+                    MessageBoxId: null);
                 _statusMessage = $"{ResolveCreateFailedNoticeText()} [client notice StringPool 0x{CreateFailedStringPoolId:X}]. Pending consume request for item {failedRequest.Request.ItemId} from slot {failedRequest.Request.InventoryPosition} failed at CMessageBoxPool::OnCreateFailed.";
                 return _statusMessage;
             }
@@ -278,8 +285,21 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void PruneExpiredPendingConsumeRequests(int currentTick)
         {
-            _pendingConsumeRequests.RemoveAll(entry =>
-                unchecked(currentTick - entry.RequestedAtTick) > PendingConsumeRequestTimeoutMs);
+            for (int index = _pendingConsumeRequests.Count - 1; index >= 0; index--)
+            {
+                PendingConsumeRequestEntry entry = _pendingConsumeRequests[index];
+                if (unchecked(currentTick - entry.RequestedAtTick) <= PendingConsumeRequestTimeoutMs)
+                {
+                    continue;
+                }
+
+                _lastConsumeRequestCompletion = new CompletedConsumeRequestEntry(
+                    entry.Request,
+                    ConsumeRequestCompletionKind.TimedOut,
+                    currentTick,
+                    MessageBoxId: null);
+                _pendingConsumeRequests.RemoveAt(index);
+            }
         }
 
         private static bool IsSamePendingConsumeRequest(
@@ -406,6 +426,11 @@ namespace HaCreator.MapSimulator.Interaction
                     : string.Empty;
                 if (resolvedRequest != null)
                 {
+                    _lastConsumeRequestCompletion = new CompletedConsumeRequestEntry(
+                        resolvedRequest.Request,
+                        ConsumeRequestCompletionKind.EnterFieldConfirmed,
+                        currentTick,
+                        messageBoxId);
                     PendingConsumeRequestConfirmed?.Invoke(resolvedRequest, currentTick);
                 }
 
@@ -772,15 +797,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            CreateLocalMessageBox(
-                request.ItemId,
-                request.MessageText,
-                characterName,
+            bool registered = TryRegisterPendingConsumeCashItemUseRequest(
+                payload,
                 hostPosition,
                 currentTick,
-                source: MessageBoxEntrySource.LocalConsumeRequest);
-            message = $"Applied CUserLocal::ConsumeCashItem chalkboard request for item {request.ItemId} from slot {request.InventoryPosition}. {_statusMessage}";
-            return true;
+                out string registrationMessage);
+            message = registered
+                ? $"Staged CUserLocal::ConsumeCashItem chalkboard request for item {request.ItemId} from slot {request.InventoryPosition}; waiting for authoritative CMessageBoxPool packet 326 enter-field or packet 325 create-failed completion for {ResolveCharacterNameForRequest(characterName)}. {registrationMessage}"
+                : registrationMessage;
+            return registered;
         }
 
         internal bool TryRegisterPendingConsumeCashItemUseRequest(
@@ -834,6 +859,23 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal int PendingConsumeRequestCountForTest => _pendingConsumeRequests.Count;
+
+        internal (int ItemId, int InventoryPosition, string CompletionKind, int? MessageBoxId)? LastConsumeRequestCompletionForTest
+        {
+            get
+            {
+                if (_lastConsumeRequestCompletion == null)
+                {
+                    return null;
+                }
+
+                return (
+                    _lastConsumeRequestCompletion.Request.ItemId,
+                    _lastConsumeRequestCompletion.Request.InventoryPosition,
+                    _lastConsumeRequestCompletion.CompletionKind.ToString(),
+                    _lastConsumeRequestCompletion.MessageBoxId);
+            }
+        }
 
         internal static bool TryDecodeConsumeCashItemUseRequestPayload(
             byte[] payload,
@@ -947,6 +989,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool IsKnownChalkboardConsumeRequestItem(int itemId)
         {
             return KnownConsumeCashItemUseRequestItemIds.Contains(itemId);
+        }
+
+        private static string ResolveCharacterNameForRequest(string characterName)
+        {
+            return string.IsNullOrWhiteSpace(characterName)
+                ? "Player"
+                : characterName.Trim();
         }
 
         private bool TryLoadItemProperty(string category, string imagePath, int itemId, out WzSubProperty itemProperty)
@@ -3024,6 +3073,19 @@ namespace HaCreator.MapSimulator.Interaction
         MessageBoxConsumeCashItemUseRequest Request,
         Point HostPosition,
         int RequestedAtTick);
+
+    internal enum ConsumeRequestCompletionKind
+    {
+        EnterFieldConfirmed,
+        CreateFailed,
+        TimedOut
+    }
+
+    internal sealed record CompletedConsumeRequestEntry(
+        MessageBoxConsumeCashItemUseRequest Request,
+        ConsumeRequestCompletionKind CompletionKind,
+        int CompletedAtTick,
+        int? MessageBoxId);
 
     internal static class GraphicsDeviceServiceForTests
     {

@@ -175,7 +175,7 @@ namespace HaCreator.MapSimulator
             return args[0].ToLowerInvariant() switch
             {
                 "status" => ChatCommandHandler.CommandResult.Info(
-                    $"{_remoteUserPool.DescribeStatus()}{Environment.NewLine}{_packetOwnedRelationshipRecordRuntime.DescribeStatus()}"),
+                    $"{_remoteUserPool.DescribeStatus()}{Environment.NewLine}{_packetOwnedRelationshipRecordRuntime.DescribeStatus()}{Environment.NewLine}{_packetOwnedPortableChairRecordRuntime.DescribeStatus()}"),
                 "clear" => HandleRemoteUserClearCommand(),
                 "clone" => HandleRemoteUserCloneCommand(args),
                 "avatar" => HandleRemoteUserAvatarCommand(args),

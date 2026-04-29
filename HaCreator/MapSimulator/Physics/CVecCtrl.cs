@@ -1888,7 +1888,7 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             List<MovePathElement> snapshot = new(
-                CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(
+                CMovePathClientPacketCodec.NormalizeForPortalOwnedClientFlushRetention(
                     BuildMovePathSnapshot(currentTimeMs, appendLatestState: false)));
             bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
             if (shortUpdate || isFlying)

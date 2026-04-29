@@ -18,7 +18,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         public static string GetLevelLimitEntryMessage(MapInfo mapInfo)
         {
-            int requiredLevel = mapInfo?.lvLimit ?? 0;
+            int requiredLevel = GetLevelLimit(mapInfo);
             return requiredLevel > 0
                 ? $"Field admission requires level {requiredLevel}."
                 : null;
@@ -43,7 +43,7 @@ namespace HaCreator.MapSimulator.Fields
             FieldEntryRestrictionType restrictionType = GetRestrictionType(mapInfo, context);
             return restrictionType switch
             {
-                FieldEntryRestrictionType.LevelLimit => $"This map requires level {mapInfo?.lvLimit ?? 0}.",
+                FieldEntryRestrictionType.LevelLimit => $"This map requires level {GetLevelLimit(mapInfo)}.",
                 FieldEntryRestrictionType.PartyOnly => "This map can only be entered while in a party.",
                 FieldEntryRestrictionType.ExpeditionOnly => "This map can only be entered while in an expedition.",
                 _ => null
@@ -58,7 +58,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int playerLevel = context.PlayerLevel;
-            int requiredLevel = mapInfo.lvLimit ?? 0;
+            int requiredLevel = GetLevelLimit(mapInfo);
             if (requiredLevel > 0 && playerLevel < requiredLevel)
             {
                 return FieldEntryRestrictionType.LevelLimit;
@@ -95,6 +95,11 @@ namespace HaCreator.MapSimulator.Fields
                    || IsInfoFlagSet(mapInfo, "ExpeditionOnly");
         }
 
+        public static int GetLevelLimit(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.lvLimit ?? GetInfoInt(mapInfo, "lvLimit") ?? 0);
+        }
+
         private static bool IsInfoFlagSet(MapInfo mapInfo, string propertyName)
         {
             if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
@@ -126,6 +131,32 @@ namespace HaCreator.MapSimulator.Fields
                 ?? FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName);
 
             return property ?? mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+        }
+
+        private static int? GetInfoInt(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            if (property == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return property.GetInt();
+            }
+            catch
+            {
+                return property is WzStringProperty stringProperty
+                       && int.TryParse(stringProperty.Value, out int value)
+                    ? value
+                    : null;
+            }
         }
 
         private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)

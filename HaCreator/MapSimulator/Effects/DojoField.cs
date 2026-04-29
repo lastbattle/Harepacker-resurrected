@@ -634,6 +634,17 @@ namespace HaCreator.MapSimulator.Effects
         }
         public bool TryConsumePendingTransfer(out int mapId, out string portalName)
         {
+            if (!TryPeekPendingTransfer(out mapId, out portalName))
+            {
+                return false;
+            }
+
+            _pendingTransferMapId = -1;
+            _pendingTransferPortalName = string.Empty;
+            return true;
+        }
+        public bool TryPeekPendingTransfer(out int mapId, out string portalName)
+        {
             mapId = -1;
             portalName = null;
             if (_pendingTransferMapId <= 0 || _pendingTransferAtTick != int.MinValue)
@@ -645,8 +656,6 @@ namespace HaCreator.MapSimulator.Effects
             portalName = string.IsNullOrWhiteSpace(_pendingTransferPortalName)
                 ? null
                 : _pendingTransferPortalName;
-            _pendingTransferMapId = -1;
-            _pendingTransferPortalName = string.Empty;
             return true;
         }
         public int PendingTransferMapId => _pendingTransferMapId;

@@ -170,6 +170,10 @@ namespace HaCreator.MapSimulator.UI
         public CollectionBookClientCtInfoBlockKind Kind { get; init; }
         public CollectionBookRecordRole Role { get; init; }
         public string SourceText { get; init; } = string.Empty;
+        public string SourcePayloadText { get; init; } = string.Empty;
+        public string SourcePayloadPartText { get; init; } = string.Empty;
+        public int SourcePayloadPartIndex { get; init; } = -1;
+        public int SourcePayloadPartCount { get; init; }
         public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<int> LineLefts { get; init; } = Array.Empty<int>();
         public IReadOnlyList<int> LineTops { get; init; } = Array.Empty<int>();
@@ -200,6 +204,10 @@ namespace HaCreator.MapSimulator.UI
         public CollectionBookRecordRole Role { get; init; }
         public string Text { get; init; } = string.Empty;
         public string ClientSourceText { get; init; } = string.Empty;
+        public string ClientSourcePayloadText { get; init; } = string.Empty;
+        public string ClientSourcePayloadPartText { get; init; } = string.Empty;
+        public int ClientSourcePayloadPartIndex { get; init; } = -1;
+        public int ClientSourcePayloadPartCount { get; init; }
         public int ClientTextBlockIndex { get; init; } = -1;
         public int ClientTextLineIndex { get; init; } = -1;
         public int Left { get; init; }

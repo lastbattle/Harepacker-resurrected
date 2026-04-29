@@ -1018,7 +1018,7 @@ namespace HaCreator.MapSimulator.Managers
             if (matchIndex >= 0)
             {
                 PendingResultExpectation expectation = _pendingResultExpectations[matchIndex];
-                if (TryRecordMultiOpcodeExpectationMatch(expectation, opcode, out PendingResultExpectation updatedExpectation, out string partialSummary))
+                if (TryRecordMultiOpcodeExpectationMatch(_ownerName, expectation, opcode, out PendingResultExpectation updatedExpectation, out string partialSummary))
                 {
                     _pendingResultExpectations[matchIndex] = updatedExpectation;
                     return $"{branchText}; {partialSummary}";
@@ -1043,6 +1043,7 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private static bool TryRecordMultiOpcodeExpectationMatch(
+            string ownerName,
             PendingResultExpectation expectation,
             int inboundOpcode,
             out PendingResultExpectation updatedExpectation,
@@ -1050,6 +1051,11 @@ namespace HaCreator.MapSimulator.Managers
         {
             updatedExpectation = expectation;
             summary = string.Empty;
+
+            if (PacketOwnedSocialUtilityPacketTable.IsRecoveredTerminalResultOpcode(ownerName, expectation.RequestOpcode, inboundOpcode))
+            {
+                return false;
+            }
 
             int[] expectedOpcodes = expectation.ExpectedInboundOpcodes?
                 .Where(opcode => opcode > 0)
@@ -1209,7 +1215,7 @@ namespace HaCreator.MapSimulator.Managers
                     .Select(group =>
                     {
                         OutboundPacketTrace entry = group.First();
-                        return $"opcode {entry.Opcode} type {entry.RequestType} payload={entry.PayloadHex} raw={entry.RawPacketHex}";
+                        return $"opcode {entry.Opcode} type {entry.RequestType} summary={entry.Summary} payload={entry.PayloadHex} raw={entry.RawPacketHex}";
                     }));
         }
 
@@ -1229,7 +1235,7 @@ namespace HaCreator.MapSimulator.Managers
                     .Select(group =>
                     {
                         InboundPacketTrace entry = group.First();
-                        return $"opcode {entry.Opcode} type {entry.ResultType} payload={entry.PayloadHex} raw={entry.RawPacketHex}";
+                        return $"opcode {entry.Opcode} type {entry.ResultType} summary={entry.Summary} payload={entry.PayloadHex} raw={entry.RawPacketHex}";
                     }));
         }
 

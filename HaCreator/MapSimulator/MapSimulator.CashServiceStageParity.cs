@@ -508,15 +508,21 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> BuildCashShopOneADayHistoryEntryStates(CashServiceStageWindow stageWindow)
+        internal static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> BuildCashShopOneADayHistoryEntryStates(CashServiceStageWindow stageWindow)
         {
-            if (stageWindow?.CashOneADayHistoryEntries == null || stageWindow.CashOneADayHistoryEntries.Count == 0)
+            return BuildCashShopOneADayHistoryEntryStates(stageWindow?.CashOneADayHistoryEntries);
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> BuildCashShopOneADayHistoryEntryStates(
+            IReadOnlyList<CashServiceStageWindow.OneADayHistoryEntry> historyEntries)
+        {
+            if (historyEntries == null || historyEntries.Count == 0)
             {
                 return Array.Empty<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState>();
             }
 
-            List<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> entries = new(stageWindow.CashOneADayHistoryEntries.Count);
-            foreach (CashServiceStageWindow.OneADayHistoryEntry entry in stageWindow.CashOneADayHistoryEntries)
+            List<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> entries = new(historyEntries.Count);
+            foreach (CashServiceStageWindow.OneADayHistoryEntry entry in historyEntries)
             {
                 int commoditySerialNumber = Math.Max(0, entry.CommoditySerialNumber);
                 entries.Add(new CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState
@@ -524,7 +530,10 @@ namespace HaCreator.MapSimulator
                     CommoditySerialNumber = commoditySerialNumber,
                     OriginalCommoditySerialNumber = Math.Max(0, entry.OriginalCommoditySerialNumber),
                     ItemLabel = ResolveCashShopOneADayCommodityLabel(commoditySerialNumber),
-                    DateLabel = FormatCashShopOneADayDate(entry.RawDate)
+                    DateLabel = FormatCashShopOneADayDate(entry.RawDate),
+                    HasPacketStateByte = entry.HasPacketStateByte,
+                    PacketStateByte = entry.PacketStateByte & 0xFF,
+                    PacketStateByteOffset = entry.PacketStateByteOffset
                 });
             }
 

@@ -389,7 +389,7 @@ namespace HaCreator.MapSimulator.Fields
                         return false;
                     }
 
-                    bool removedTownPortal = ApplyRemoteTownPortalRemove(townRemove, currentTime);
+                    bool removedTownPortal = ApplyRemoteTownPortalRemove(townRemove, currentMapId, currentTime);
                     result = removedTownPortal
                         ? $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {townRemove.OwnerCharacterId}."
                         : $"Ignored {RemotePortalPacketCodec.DescribePacketType(packetType)} for unknown owner {townRemove.OwnerCharacterId}.";
@@ -413,7 +413,7 @@ namespace HaCreator.MapSimulator.Fields
                         return false;
                     }
 
-                    bool removedOpenGate = ApplyRemoteOpenGateRemove(openGateRemove, currentTime);
+                    bool removedOpenGate = ApplyRemoteOpenGateRemove(openGateRemove, currentMapId, currentTime);
                     SyncRemoteOpenGateVisuals();
                     result = removedOpenGate
                         ? $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {openGateRemove.OwnerCharacterId} slot {(openGateRemove.IsFirstSlot ? 1 : 2)}."
@@ -644,9 +644,10 @@ namespace HaCreator.MapSimulator.Fields
             SyncRemoteTownPortalVisuals();
         }
 
-        private bool ApplyRemoteTownPortalRemove(RemoteTownPortalRemovedPacket packet, int currentTime)
+        private bool ApplyRemoteTownPortalRemove(RemoteTownPortalRemovedPacket packet, int currentMapId, int currentTime)
         {
-            if (!_remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState state))
+            if (!_remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState state)
+                || !ShouldApplyRemoteTownPortalRemove(state.MapId, currentMapId))
             {
                 return false;
             }
@@ -743,10 +744,11 @@ namespace HaCreator.MapSimulator.Fields
                 : (packetState, RemoteOpenGateVisualPhase.Stable, currentTime);
         }
 
-        private bool ApplyRemoteOpenGateRemove(RemoteOpenGateRemovedPacket packet, int currentTime)
+        private bool ApplyRemoteOpenGateRemove(RemoteOpenGateRemovedPacket packet, int currentMapId, int currentTime)
         {
             RemoteOpenGateKey key = new(packet.OwnerCharacterId, packet.IsFirstSlot);
-            if (!_remoteOpenGates.TryGetValue(key, out RemoteOpenGateState state))
+            if (!_remoteOpenGates.TryGetValue(key, out RemoteOpenGateState state)
+                || !ShouldApplyRemoteOpenGateRemove(state.MapId, currentMapId))
             {
                 return false;
             }
@@ -2670,6 +2672,20 @@ namespace HaCreator.MapSimulator.Fields
                 && Math.Abs(left.Value.Y - right.Value.Y) < 0.01f;
         }
 
+        private static bool ShouldApplyRemoteTownPortalRemove(int stateMapId, int currentMapId)
+        {
+            return stateMapId > 0
+                   && currentMapId > 0
+                   && stateMapId == currentMapId;
+        }
+
+        private static bool ShouldApplyRemoteOpenGateRemove(int stateMapId, int currentMapId)
+        {
+            return stateMapId > 0
+                   && currentMapId > 0
+                   && stateMapId == currentMapId;
+        }
+
         private static bool ShouldLinkRemoteTownPortal(RemoteTownPortalState state)
         {
             return state.Destination.HasValue
@@ -4459,8 +4475,30 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalVisualPhase phase,
             bool hasDestination)
         {
-            return hasDestination
-                   && phase != RemoteTownPortalVisualPhase.Removing;
+            RemoteTownPortalState state = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: 100000000,
+                X: 0,
+                Y: 0,
+                Destination: hasDestination
+                    ? new RemoteTownPortalResolvedDestination(101000000, 0, 0)
+                    : null,
+                Phase: phase,
+                PhaseStartedAt: 0,
+                RemovalState: null,
+                RemovalSnapshot: null);
+            return ShouldLinkRemoteTownPortal(state);
+        }
+
+        internal static bool ShouldApplyRemoteTownPortalRemoveForTesting(int stateMapId, int currentMapId)
+        {
+            return ShouldApplyRemoteTownPortalRemove(stateMapId, currentMapId);
+        }
+
+        internal static bool ShouldApplyRemoteOpenGateRemoveForTesting(int stateMapId, int currentMapId)
+        {
+            return ShouldApplyRemoteOpenGateRemove(stateMapId, currentMapId);
         }
 
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)

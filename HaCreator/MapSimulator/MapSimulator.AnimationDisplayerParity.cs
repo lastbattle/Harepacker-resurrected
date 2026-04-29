@@ -1066,8 +1066,9 @@ namespace HaCreator.MapSimulator
             float centerX = profile.StartArea.Left + (profile.StartArea.Width / 2f) + profile.OffsetX;
             float endY = profile.StartArea.Bottom + profile.OffsetY;
             float startY = endY - profile.EffectiveFallDistance;
-            _animationEffects.AddFallingBurst(
+            _animationEffects.AddPacketOwnedFallingBurst(
                 frames,
+                effectUol,
                 centerX,
                 startY,
                 endY,
@@ -1106,8 +1107,9 @@ namespace HaCreator.MapSimulator
                 ReadAnimationDisplayerIntProperty(property, "delay"),
                 ReadAnimationDisplayerIntProperty(property, "end"),
                 ReadAnimationDisplayerNullableIntProperty(property, "z"));
-            int registrationId = _animationEffects.RegisterAreaAnimation(
+            int registrationId = _animationEffects.RegisterPacketOwnedAreaAnimation(
                 frames,
+                effectUol,
                 profile.EffectiveArea,
                 profile.EffectiveUpdateIntervalMs,
                 profile.EffectiveUpdateCount,
@@ -2002,18 +2004,7 @@ namespace HaCreator.MapSimulator
                 return currentTime;
             }
 
-            long delayed = (long)currentTime + startDelayMs;
-            if (delayed > int.MaxValue)
-            {
-                return int.MaxValue;
-            }
-
-            if (delayed < int.MinValue)
-            {
-                return int.MinValue;
-            }
-
-            return (int)delayed;
+            return unchecked(currentTime + startDelayMs);
         }
 
         internal static bool ShouldConsumeAnimationDisplayerReservedTypeWithoutVisualFallback(int type)
@@ -3962,14 +3953,31 @@ namespace HaCreator.MapSimulator
             int registerTime,
             int startDelayMs)
         {
-            return startDelayMs > 0 && currentTime <= registerTime;
+            return startDelayMs > 0
+                && !HasAnimationDisplayerReservedUpdateTimePassed(currentTime, registerTime);
         }
 
         internal static bool ShouldApplyAnimationDisplayerPendingReservedOwnerEffect(
             int currentTime,
             int registerTime)
         {
-            return currentTime > registerTime;
+            return HasAnimationDisplayerReservedUpdateTimePassed(currentTime, registerTime);
+        }
+
+        internal static bool HasAnimationDisplayerReservedUpdateTimeReached(
+            int currentTime,
+            int targetTime)
+        {
+            return currentTime == targetTime
+                || unchecked((uint)(currentTime - targetTime)) < int.MaxValue;
+        }
+
+        internal static bool HasAnimationDisplayerReservedUpdateTimePassed(
+            int currentTime,
+            int targetTime)
+        {
+            return currentTime != targetTime
+                && unchecked((uint)(currentTime - targetTime)) < int.MaxValue;
         }
 
         private static AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext ResolveAnimationDisplayerDelayedReservedOwnerContext(
@@ -4813,7 +4821,8 @@ namespace HaCreator.MapSimulator
             {
                 int characterId = entry.Key;
                 AnimationDisplayerReservedRemoteUtilityActionOwnerState state = entry.Value;
-                if (state == null || currentTime < state.RestoreAtTime)
+                if (state == null
+                    || !HasAnimationDisplayerReservedUpdateTimeReached(currentTime, state.RestoreAtTime))
                 {
                     continue;
                 }
@@ -5740,28 +5749,42 @@ namespace HaCreator.MapSimulator
         private static string BuildAnimationDisplayerLocalPacketOwnedBuffItemUseOwnerSlotKey(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
-                "buffItemUse",
+                "aux.packetOwnedBuffItemUse.oneTime",
                 effectUol);
         }
 
         private static string BuildAnimationDisplayerLocalPacketOwnedItemUnreleaseOwnerSlotKey(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
-                "itemUnrelease",
+                "aux.packetOwnedItemUnrelease.oneTime",
                 effectUol);
         }
 
         private static string BuildAnimationDisplayerLocalPacketOwnedCombatFeedbackOwnerSlotKey(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
-                "combatFeedback",
+                "aux.packetOwnedCombatFeedback.oneTime",
                 effectUol);
         }
 
         private static string BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKey(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
-                "cool",
+                "aux.packetOwnedCool.oneTime",
+                effectUol);
+        }
+
+        private static string BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKey(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
+                "aux.packetOwnedFalling.oneTime",
+                effectUol);
+        }
+
+        private static string BuildAnimationDisplayerPacketOwnedExplosionOwnerSlotKey(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
+                "aux.packetOwnedExplosion.oneTime",
                 effectUol);
         }
 
@@ -6402,6 +6425,16 @@ namespace HaCreator.MapSimulator
         internal static string BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKeyForTesting(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKey(effectUol);
+        }
+
+        internal static string BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKeyForTesting(string effectUol)
+        {
+            return BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKey(effectUol);
+        }
+
+        internal static string BuildAnimationDisplayerPacketOwnedExplosionOwnerSlotKeyForTesting(string effectUol)
+        {
+            return BuildAnimationDisplayerPacketOwnedExplosionOwnerSlotKey(effectUol);
         }
 
         internal static int ResolveAnimationDisplayerLocalPacketOwnedBasicOneTimeRestoreElapsedForTesting(

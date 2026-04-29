@@ -2898,7 +2898,17 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
+                if (TryParseSg88PacketComparisonBase64Bytes(trimmed, out bytes))
+                {
+                    return true;
+                }
+
                 return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
+            }
+
+            if (TryParseSg88PacketComparisonBase64Bytes(trimmed, out bytes))
+            {
+                return true;
             }
 
             if (hex.Length == 0 || (hex.Length % 2) != 0)
@@ -2917,6 +2927,42 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
+        }
+
+        private static bool TryParseSg88PacketComparisonBase64Bytes(string value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalized = value.Trim().Trim('"', '\'');
+            if (normalized.StartsWith("base64:", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring("base64:".Length).Trim();
+            }
+            else if (normalized.StartsWith("b64:", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring("b64:".Length).Trim();
+            }
+
+            normalized = Regex.Replace(normalized, @"\s+", string.Empty, RegexOptions.CultureInvariant);
+            if (normalized.Length < 4 || (normalized.Length % 4) != 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                bytes = Convert.FromBase64String(normalized);
+                return bytes.Length > 0;
+            }
+            catch (FormatException)
+            {
+                bytes = Array.Empty<byte>();
+                return false;
+            }
         }
 
         private static bool TryParseSg88PacketComparisonHexDumpBytes(string value, out byte[] bytes)
@@ -2998,6 +3044,15 @@ namespace HaCreator.MapSimulator.Managers
                 .Replace("-", string.Empty, StringComparison.Ordinal)
                 .Replace(" ", string.Empty, StringComparison.Ordinal)
                 .ToLowerInvariant();
+            if (normalized.EndsWith("base64", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(0, normalized.Length - "base64".Length);
+            }
+            else if (normalized.EndsWith("b64", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(0, normalized.Length - "b64".Length);
+            }
+
             switch (normalized)
             {
                 case "byte":

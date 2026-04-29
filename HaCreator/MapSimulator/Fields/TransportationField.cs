@@ -596,6 +596,24 @@ namespace HaCreator.MapSimulator.Fields
             return TryApplyStartShipMovePacket(value, null, out message);
         }
 
+        public bool TryApplyContiMovePacket(int subtype, int value, string owner, out string message)
+        {
+            return subtype switch
+            {
+                8 => TryApplyStartShipMovePacket(value, owner, out message),
+                10 => TryApplyMoveFieldPacket(value, owner, out message),
+                12 => TryApplyEndShipMovePacket(value, owner, out message),
+                _ => TryRecordUnhandledContiMovePacket(subtype, value, owner, out message)
+            };
+        }
+
+        private bool TryRecordUnhandledContiMovePacket(int subtype, int value, string owner, out string message)
+        {
+            RecordTransportPacketOwner(owner, $"OnContiMove({subtype},{value})");
+            message = $"Ignored OnContiMove subtype {subtype} value {value}; client switch has no handler outside 8, 10, and 12.";
+            return false;
+        }
+
         public bool TryApplyStartShipMovePacket(int value, string owner, out string message)
         {
             RecordTransportPacketOwner(owner, $"OnStartShipMoveField({value})");

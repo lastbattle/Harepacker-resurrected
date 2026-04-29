@@ -335,6 +335,11 @@ namespace HaCreator.MapSimulator.Fields
         {
             foreach (WzImageProperty noSkillProperty in EnumerateAdditionalFieldProperties(mapInfo, "noSkill"))
             {
+                if (!HasMeaningfulNoSkillRule(noSkillProperty))
+                {
+                    continue;
+                }
+
                 if (MatchesAnyListedSkillClass(noSkillProperty, currentJobId, skill))
                 {
                     return "This field forbids skills for your job branch.";
@@ -344,6 +349,8 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     return "This skill is forbidden in this field.";
                 }
+
+                break;
             }
 
             return null;
@@ -426,7 +433,28 @@ namespace HaCreator.MapSimulator.Fields
             foreach (WzImageProperty mobMassacreProperty in EnumerateAdditionalFieldProperties(mapInfo, "mobMassacre"))
             {
                 WzImageProperty disableSkillProperty = mobMassacreProperty?["disableSkill"] as WzImageProperty;
-                if (TryReadInt(disableSkillProperty, out int value) && value != 0)
+                if (TryReadInt(disableSkillProperty, out int value))
+                {
+                    return value != 0;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasMeaningfulNoSkillRule(WzImageProperty noSkillProperty)
+        {
+            foreach (WzImageProperty skillProperty in EnumerateNamedChildren(noSkillProperty, "skill"))
+            {
+                if (HasClientIndexedIntValues(skillProperty))
+                {
+                    return true;
+                }
+            }
+
+            foreach (WzImageProperty classProperty in EnumerateNamedChildren(noSkillProperty, "class"))
+            {
+                if (HasClientIndexedIntValues(classProperty))
                 {
                     return true;
                 }

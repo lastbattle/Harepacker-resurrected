@@ -555,6 +555,16 @@ namespace HaCreator.MapSimulator.Fields
             return _specialEffects.Dojo.TryConsumePendingTransfer(out mapId, out portalName);
         }
 
+        public bool TryPeekPendingDojoTransfer(out int mapId, out string portalName)
+        {
+            return _specialEffects.Dojo.TryPeekPendingTransfer(out mapId, out portalName);
+        }
+
+        public bool TryConsumePendingDojoTransfer(out int mapId, out string portalName)
+        {
+            return _specialEffects.Dojo.TryConsumePendingTransfer(out mapId, out portalName);
+        }
+
         public void Draw(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,

@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.UI
         private const int WmSetFocus = 0x0007;
         private const int WmKillFocus = 0x0008;
         private const int WmGetDlgCode = 0x0087;
+        private const int WmImeComposition = 0x010F;
         private const int WmChar = 0x0102;
         private const int WmKeyDown = 0x0100;
         private const int WmKeyUp = 0x0101;
@@ -41,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         private const int WmUndo = 0x0304;
         private const int WmPaste = 0x0302;
         private const int GcsCompStr = 0x0008;
+        private const int GcsResultStr = 0x0800;
         private const int NiCompositionStr = 0x0015;
         private const int CpsCancel = 0x0004;
         private const int EmGetSel = 0x00B0;
@@ -669,6 +671,16 @@ namespace HaCreator.MapSimulator.UI
                 return setTextResult;
             }
 
+            if (msg == WmImeComposition && ShouldHandleClientOwnedImeResultComposition(ExtractLowInt32(lParam)))
+            {
+                if (TryApplyClientOwnedImeResultComposition())
+                {
+                    UpdateImePlacement();
+                    SynchronizeState();
+                    return IntPtr.Zero;
+                }
+            }
+
             int virtualKey = ExtractLowInt32(wParam);
             if (msg == WmGetDlgCode)
             {
@@ -984,6 +996,37 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool TryApplyClientOwnedImeResultComposition()
+        {
+            if (!IsAttached)
+            {
+                return false;
+            }
+
+            if (!TryReadImeCompositionString(GcsResultStr, out string resultText)
+                || string.IsNullOrEmpty(resultText))
+            {
+                return false;
+            }
+
+            GetSelection(out int selectionStart, out int selectionEnd);
+            string replacementText = ResolveClientLimitedReplacementText(
+                resultText,
+                GetControlText(),
+                selectionStart,
+                selectionEnd,
+                _maxLength,
+                _clientEncoding);
+            if (replacementText.Length == 0)
+            {
+                return true;
+            }
+
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            ReplaceSelection(replacementText);
+            return true;
+        }
+
         private void HandleClientOwnedEditCommand(uint msg)
         {
             switch (msg)
@@ -1168,6 +1211,15 @@ namespace HaCreator.MapSimulator.UI
             // append control characters to the edit buffer through a generic
             // desktop `WM_CHAR` fallback path.
             return char.IsControl((char)charCode);
+        }
+
+        internal static bool ShouldHandleClientOwnedImeResultComposition(int compositionLParam)
+        {
+            // IME result strings can enter a hosted Win32 EDIT without WM_CHAR,
+            // bypassing the byte-oriented `nHorzMax` path recovered from
+            // `CCtrlEdit`. Keep committed IME text on the same replacement seam
+            // as key, paste, and programmatic text insertion.
+            return (((uint)compositionLParam) & GcsResultStr) != 0;
         }
 
         internal static bool ShouldHandleClientOwnedEditCommand(uint msg)
@@ -1366,6 +1418,51 @@ namespace HaCreator.MapSimulator.UI
             }
             finally
             {
+                ImmReleaseContext(_editHandle, inputContext);
+            }
+        }
+
+        private bool TryReadImeCompositionString(int stringType, out string text)
+        {
+            text = string.Empty;
+            if (!IsAttached)
+            {
+                return false;
+            }
+
+            IntPtr inputContext = ImmGetContext(_editHandle);
+            if (inputContext == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            IntPtr buffer = IntPtr.Zero;
+            try
+            {
+                int byteLength = ImmGetCompositionStringUnicode(inputContext, stringType, IntPtr.Zero, 0);
+                if (byteLength <= 0)
+                {
+                    return false;
+                }
+
+                buffer = Marshal.AllocHGlobal(byteLength + sizeof(char));
+                int copiedByteLength = ImmGetCompositionStringUnicode(inputContext, stringType, buffer, byteLength);
+                if (copiedByteLength <= 0)
+                {
+                    return false;
+                }
+
+                Marshal.WriteInt16(buffer, copiedByteLength, 0);
+                text = Marshal.PtrToStringUni(buffer, copiedByteLength / sizeof(char)) ?? string.Empty;
+                return text.Length > 0;
+            }
+            finally
+            {
+                if (buffer != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+
                 ImmReleaseContext(_editHandle, inputContext);
             }
         }
@@ -2047,6 +2144,9 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("imm32.dll")]
         private static extern int ImmGetCompositionString(IntPtr hIMC, int dwIndex, IntPtr lpBuf, int dwBufLen);
+
+        [DllImport("imm32.dll", EntryPoint = "ImmGetCompositionStringW")]
+        private static extern int ImmGetCompositionStringUnicode(IntPtr hIMC, int dwIndex, IntPtr lpBuf, int dwBufLen);
 
         [DllImport("imm32.dll", EntryPoint = "ImmGetCandidateListCountW")]
         private static extern int ImmGetCandidateListCount(IntPtr hIMC, out int lpdwListCount);

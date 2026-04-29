@@ -185,6 +185,20 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static bool ShouldReleaseActiveForwardedNonFunctionKeyForImeOwnership(
+            Keys key,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            // When the edit/IME path takes ownership after a key-down was already
+            // parent-forwarded, mirror the client owner split by ending any mirrored
+            // hotkey/cast state immediately instead of waiting for physical key-up.
+            return ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                key,
+                imeCompositionActive,
+                imeCandidateWindowActive);
+        }
+
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)
         {
             // `CCtrlEdit::OnKey` forwards Ctrl+Home/Ctrl+End to the parent owner path

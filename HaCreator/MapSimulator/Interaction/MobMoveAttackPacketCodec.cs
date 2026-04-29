@@ -586,6 +586,7 @@ namespace HaCreator.MapSimulator.Interaction
             switch (moveAction)
             {
                 case 0:
+                    moveType = MobMoveType.Stand;
                     jumpState = MobJumpState.None;
                     break;
                 case 1:

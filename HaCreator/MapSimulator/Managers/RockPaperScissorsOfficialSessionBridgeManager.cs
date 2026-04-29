@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Managers
             RockPaperScissorsChoice Choice,
             int PayloadLength,
             short? SessionVersion,
+            long? ProxySessionId,
             string Source,
             string Summary,
             string PayloadHex,
@@ -60,6 +61,7 @@ namespace HaCreator.MapSimulator.Managers
             int PacketType,
             int PayloadLength,
             short? SessionVersion,
+            long? ProxySessionId,
             string Source,
             string Summary,
             string PayloadHex,
@@ -521,7 +523,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} type={entry.RequestType} choice={entry.Choice} payloadLen={entry.PayloadLength} sessionVersion={DescribeSessionVersion(entry.SessionVersion)} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} type={entry.RequestType} choice={entry.Choice} payloadLen={entry.PayloadLength} sessionVersion={DescribeSessionVersion(entry.SessionVersion)} proxySessionId={DescribeProxySessionId(entry.ProxySessionId)} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -557,7 +559,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} subtype={entry.PacketType} payloadLen={entry.PayloadLength} sessionVersion={DescribeSessionVersion(entry.SessionVersion)} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} subtype={entry.PacketType} payloadLen={entry.PayloadLength} sessionVersion={DescribeSessionVersion(entry.SessionVersion)} proxySessionId={DescribeProxySessionId(entry.ProxySessionId)} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -890,7 +892,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (TryBuildInboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out InboundPacketTrace inboundTrace, e.SessionVersion))
+            if (TryBuildInboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out InboundPacketTrace inboundTrace, e.SessionVersion, e.ProxySessionId))
             {
                 RecordInboundTrace(inboundTrace);
             }
@@ -908,7 +910,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (TryBuildOutboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out OutboundPacketTrace trace, e.SessionVersion))
+            if (TryBuildOutboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out OutboundPacketTrace trace, e.SessionVersion, e.ProxySessionId))
             {
                 RecordOutboundTrace(trace);
                 ForwardedOutboundCount++;
@@ -988,19 +990,19 @@ namespace HaCreator.MapSimulator.Managers
                 string pairKind = IsSameInitializedSession(outbound, inbound)
                     ? "paired proxied initialized capture"
                     : "unpaired proxied initialized captures";
-                return $"Live ownership verification evidence: {pairKind} outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} source={inbound.Source} raw={inbound.RawPacketHex}].";
+                return $"Live ownership verification evidence: {pairKind} outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} proxySessionId={DescribeProxySessionId(outbound.ProxySessionId)} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} proxySessionId={DescribeProxySessionId(inbound.ProxySessionId)} source={inbound.Source} raw={inbound.RawPacketHex}].";
             }
 
             if (outboundEvidence.HasValue)
             {
                 OutboundPacketTrace outbound = outboundEvidence.Value;
-                return $"Live ownership verification evidence: outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} source={outbound.Source} raw={outbound.RawPacketHex}], waiting for inbound opcode {RockPaperScissorsField.OwnerOpcode}.";
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} proxySessionId={DescribeProxySessionId(outbound.ProxySessionId)} source={outbound.Source} raw={outbound.RawPacketHex}], waiting for inbound opcode {RockPaperScissorsField.OwnerOpcode}.";
             }
 
             if (inboundEvidence.HasValue)
             {
                 InboundPacketTrace inbound = inboundEvidence.Value;
-                return $"Live ownership verification evidence: inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} source={inbound.Source} raw={inbound.RawPacketHex}], waiting for outbound opcode {RockPaperScissorsField.ClientOpcode}.";
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} proxySessionId={DescribeProxySessionId(inbound.ProxySessionId)} source={inbound.Source} raw={inbound.RawPacketHex}], waiting for outbound opcode {RockPaperScissorsField.ClientOpcode}.";
             }
 
             return "Live ownership verification evidence: none.";
@@ -1060,7 +1062,7 @@ namespace HaCreator.MapSimulator.Managers
                 && inboundEvidence.HasValue
                 && !IsSameInitializedSession(outboundEvidence.Value, inboundEvidence.Value))
             {
-                return $"Live ownership verification in progress: captured opcode {RockPaperScissorsField.ClientOpcode} outbound and opcode {RockPaperScissorsField.OwnerOpcode} inbound from different initialized proxy session versions; waiting for both directions from one proxied reconnect.";
+                return $"Live ownership verification in progress: captured opcode {RockPaperScissorsField.ClientOpcode} outbound and opcode {RockPaperScissorsField.OwnerOpcode} inbound from different initialized proxy sessions; waiting for both directions from one proxied reconnect.";
             }
 
             return DescribeLiveOwnershipVerificationStatus(
@@ -1075,7 +1077,10 @@ namespace HaCreator.MapSimulator.Managers
         {
             return outbound.SessionVersion.HasValue
                 && inbound.SessionVersion.HasValue
-                && outbound.SessionVersion.Value == inbound.SessionVersion.Value;
+                && outbound.SessionVersion.Value == inbound.SessionVersion.Value
+                && outbound.ProxySessionId.HasValue
+                && inbound.ProxySessionId.HasValue
+                && outbound.ProxySessionId.Value == inbound.ProxySessionId.Value;
         }
 
         internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
@@ -1113,7 +1118,7 @@ namespace HaCreator.MapSimulator.Managers
             return LiveOwnershipVerificationState.Idle;
         }
 
-        internal static bool TryBuildInboundTrace(byte[] rawPacket, string source, out InboundPacketTrace trace, short? sessionVersion = null)
+        internal static bool TryBuildInboundTrace(byte[] rawPacket, string source, out InboundPacketTrace trace, short? sessionVersion = null, long? proxySessionId = null)
         {
             trace = default;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort) + sizeof(byte))
@@ -1147,6 +1152,7 @@ namespace HaCreator.MapSimulator.Managers
                 packetType,
                 payloadLength,
                 sessionVersion,
+                proxySessionId,
                 NormalizeTraceSource(source, "unknown-remote"),
                 summary,
                 Convert.ToHexString(payload),
@@ -1154,7 +1160,7 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        internal static bool TryBuildOutboundTrace(byte[] rawPacket, string source, out OutboundPacketTrace trace, short? sessionVersion = null)
+        internal static bool TryBuildOutboundTrace(byte[] rawPacket, string source, out OutboundPacketTrace trace, short? sessionVersion = null, long? proxySessionId = null)
         {
             trace = default;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort) + sizeof(byte))
@@ -1206,6 +1212,7 @@ namespace HaCreator.MapSimulator.Managers
                 choice,
                 payloadLength,
                 sessionVersion,
+                proxySessionId,
                 NormalizeTraceSource(source, "unknown-client"),
                 summary,
                 Convert.ToHexString(payload),
@@ -1277,12 +1284,12 @@ namespace HaCreator.MapSimulator.Managers
 
         private static bool IsLiveProxiedSource(OutboundPacketTrace trace)
         {
-            return IsLiveProxiedSource(trace.Source, trace.SessionVersion);
+            return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId);
         }
 
         private static bool IsLiveProxiedSource(InboundPacketTrace trace)
         {
-            return IsLiveProxiedSource(trace.Source, trace.SessionVersion);
+            return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId);
         }
 
         private static string DescribeTraceEvidenceKind(OutboundPacketTrace trace)
@@ -1295,10 +1302,11 @@ namespace HaCreator.MapSimulator.Managers
             return IsLiveProxiedSource(trace) ? "live-proxied" : "trace-only";
         }
 
-        private static bool IsLiveProxiedSource(string source, short? sessionVersion)
+        private static bool IsLiveProxiedSource(string source, short? sessionVersion, long? proxySessionId)
         {
             const string officialSessionPrefix = "official-session:";
             return sessionVersion.HasValue
+                && proxySessionId.HasValue
                 && !string.IsNullOrWhiteSpace(source)
                 && source.StartsWith(officialSessionPrefix, StringComparison.OrdinalIgnoreCase)
                 && source.Length > officialSessionPrefix.Length
@@ -1314,6 +1322,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             return sessionVersion.HasValue ? sessionVersion.Value.ToString() : "none";
         }
+
+        private static string DescribeProxySessionId(long? proxySessionId)
+        {
+            return proxySessionId.HasValue ? proxySessionId.Value.ToString() : "none";
+        }
+
         private static string NormalizeRemoteHost(string remoteHost)
         {
             return string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();

@@ -295,6 +295,10 @@ namespace HaCreator.MapSimulator
                     pendingRequest.PacketOwnedResultAckReturnCode,
                     pendingRequest.PacketOwnedResultAckValue,
                     currTickCount);
+                TryDispatchReadyItemUpgradeResultAckOnIngress(
+                    pendingRequest.PacketOwnedResultAckReturnCode,
+                    pendingRequest.PacketOwnedResultAckValue,
+                    currTickCount);
             }
 
             return true;
@@ -336,6 +340,10 @@ namespace HaCreator.MapSimulator
                 if (decodeState.HasOutcomeState)
                 {
                     StageItemUpgradeResultAck(decodeState.ResultCode, decodeState.OutcomeResultValue, currTickCount);
+                    TryDispatchReadyItemUpgradeResultAckOnIngress(
+                        decodeState.ResultCode,
+                        decodeState.OutcomeResultValue,
+                        currTickCount);
                 }
 
                 if (TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
@@ -985,6 +993,14 @@ namespace HaCreator.MapSimulator
             _itemUpgradeOwnerPendingResultAckReadyTick = unchecked(currentTick + ResolveItemUpgradeResultAckDispatchDelayMs(returnResultCode, resultValue));
         }
 
+        private void TryDispatchReadyItemUpgradeResultAckOnIngress(byte returnResultCode, int resultValue, int currentTick)
+        {
+            if (ShouldDispatchItemUpgradeResultAckOnIngress(returnResultCode, resultValue))
+            {
+                TryDispatchPendingItemUpgradeResultAck(currentTick);
+            }
+        }
+
         private void TryDispatchPendingItemUpgradeResultAck(int currentTick)
         {
             if (_itemUpgradeOwnerPendingResultAckReadyTick == int.MinValue ||
@@ -1027,6 +1043,11 @@ namespace HaCreator.MapSimulator
             return returnResultCode == ItemUpgradePacketResultCodeViciousHammer && resultValue == ItemUpgradePacketOutcomeStateFail
                 ? ItemUpgradeOwnerResultAckViciousHammerDelayMs
                 : 0;
+        }
+
+        private static bool ShouldDispatchItemUpgradeResultAckOnIngress(byte returnResultCode, int resultValue)
+        {
+            return ResolveItemUpgradeResultAckDispatchDelayMs(returnResultCode, resultValue) == 0;
         }
 
         private void TryPlayItemUpgradeViciousHammerStartSound()
@@ -1281,6 +1302,11 @@ namespace HaCreator.MapSimulator
         internal static int ResolveItemUpgradeResultAckDispatchDelayMsForTests(byte returnResultCode, int resultValue)
         {
             return ResolveItemUpgradeResultAckDispatchDelayMs(returnResultCode, resultValue);
+        }
+
+        internal static bool ShouldDispatchItemUpgradeResultAckOnIngressForTests(byte returnResultCode, int resultValue)
+        {
+            return ShouldDispatchItemUpgradeResultAckOnIngress(returnResultCode, resultValue);
         }
 
         internal static string ResolveItemUpgradeViciousHammerStartSoundDescriptorForTests(string stringPoolText)

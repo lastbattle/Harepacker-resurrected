@@ -148,9 +148,17 @@ namespace HaCreator.MapSimulator
             bool EditVisible,
             bool EditEnabled,
             bool EditFocused,
+            int EditX,
+            int EditY,
+            int EditWidth,
+            int EditHeight,
+            int EditMaxHorzUnits,
             bool OkButtonVisible,
             bool OkButtonEnabled,
-            bool OkButtonFocused)
+            bool OkButtonFocused,
+            int OkButtonX,
+            int OkButtonY,
+            string OkButtonResourcePath)
         {
             internal static InitialQuizOwnerControlStackSnapshot Destroyed { get; } = new(
                 Created: false,
@@ -160,9 +168,17 @@ namespace HaCreator.MapSimulator
                 EditVisible: false,
                 EditEnabled: false,
                 EditFocused: false,
+                EditX: 0,
+                EditY: 0,
+                EditWidth: 0,
+                EditHeight: 0,
+                EditMaxHorzUnits: 0,
                 OkButtonVisible: false,
                 OkButtonEnabled: false,
-                OkButtonFocused: false);
+                OkButtonFocused: false,
+                OkButtonX: 0,
+                OkButtonY: 0,
+                OkButtonResourcePath: null);
         }
 
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
@@ -934,7 +950,8 @@ namespace HaCreator.MapSimulator
                 created: true,
                 generation: _initialQuizOwnerControlStackGeneration,
                 childState: _initialQuizOwnerChildControlState,
-                focusTarget: _initialQuizOwnerFocusTarget);
+                focusTarget: _initialQuizOwnerFocusTarget,
+                editMaxHorzUnits: _initialQuizOwnerEditTextElementLimit);
             SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
         }
 
@@ -1609,7 +1626,8 @@ namespace HaCreator.MapSimulator
                 created: ownerActive && _initialQuizOwnerControlStackSnapshot.Created,
                 generation: _initialQuizOwnerControlStackSnapshot.Generation,
                 childState: ownerActive ? controlState : InitialQuizOwnerChildControlState.Inactive,
-                focusTarget: ownerActive ? _initialQuizOwnerFocusTarget : InitialQuizOwnerFocusTarget.Owner);
+                focusTarget: ownerActive ? _initialQuizOwnerFocusTarget : InitialQuizOwnerFocusTarget.Owner,
+                editMaxHorzUnits: ownerActive ? _initialQuizOwnerEditTextElementLimit : 0);
             NativeAntiMacroEditHost nativeEditHost = EnsureInitialQuizOwnerNativeEditHost();
             if (nativeEditHost != null && nativeEditHost.IsAttached)
             {
@@ -1648,7 +1666,8 @@ namespace HaCreator.MapSimulator
             bool created,
             int generation,
             InitialQuizOwnerChildControlState childState,
-            InitialQuizOwnerFocusTarget focusTarget)
+            InitialQuizOwnerFocusTarget focusTarget,
+            int editMaxHorzUnits = InitialQuizOwnerInputMaxLength)
         {
             if (!created)
             {
@@ -1667,9 +1686,19 @@ namespace HaCreator.MapSimulator
                 EditVisible: editVisible,
                 EditEnabled: editEnabled,
                 EditFocused: editVisible && editEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input,
+                EditX: InitialQuizOwnerEditOrigin.X,
+                EditY: InitialQuizOwnerEditOrigin.Y,
+                EditWidth: 150,
+                EditHeight: 13,
+                EditMaxHorzUnits: Math.Max(1, editMaxHorzUnits),
                 OkButtonVisible: okButtonVisible,
                 OkButtonEnabled: okButtonEnabled,
-                OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton);
+                OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton,
+                OkButtonX: InitialQuizOwnerOkButtonLeft,
+                OkButtonY: InitialQuizOwnerOkButtonTop,
+                OkButtonResourcePath: MapleStoryStringPool.GetOrFallback(
+                    InitialQuizOwnerOkButtonStringPoolId,
+                    "UI/UIWindow2.img/InitialQuiz/BtOK"));
         }
 
         private Texture2D[] LoadInitialQuizOwnerDigits(WzSubProperty preferred, WzSubProperty fallback, out Texture2D commaTexture)

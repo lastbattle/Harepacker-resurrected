@@ -606,7 +606,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ScreenMode = ReadIntWithFallback(sourceProperty, "screenMode", entry.ScreenMode),
                 Z = ReadIntWithFallback(sourceProperty, "z", entry.Z),
                 SpineAnimation = string.IsNullOrWhiteSpace(spineAnimation) ? entry.SpineAnimation : spineAnimation,
-                SpineRandomStart = ReadBoolWithFallback(sourceProperty, "spineRandomStart", entry.SpineRandomStart)
+                SpineRandomStart = ReadBoolWithFallback(sourceProperty, "spineRandomStart", entry.SpineRandomStart),
+                SourceBackPieceObject = sourceProperty
             };
         }
 
@@ -1665,7 +1666,8 @@ namespace HaCreator.MapSimulator.Interaction
         string SpineAnimation,
         bool SpineRandomStart,
         bool UseSourceBackPieceFields = false,
-        WzImageProperty SourceStageBackObject = null);
+        WzImageProperty SourceStageBackObject = null,
+        WzImageProperty SourceBackPieceObject = null);
 
     internal sealed class ContextOwnedStageUnitEnableState
     {

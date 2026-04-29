@@ -543,7 +543,10 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.IncrementExpRate,
                 snapshot.IncrementDropRate,
                 "packet privilege state");
-            return $"Applied packet-authored family privilege state for {GetEntitlementLabel(entitlementType)} (+{snapshot.IncrementExpRate}% EXP, +{snapshot.IncrementDropRate}% drop, index {snapshot.Index}) through `CWvsContext::OnFamilySetPrivilege` (opcode 107).";
+            string completionMessage = TryCompletePendingBuffPrivilege(entitlementType, out string pendingCompletionMessage)
+                ? $" {pendingCompletionMessage}"
+                : string.Empty;
+            return $"Applied packet-authored family privilege state for {GetEntitlementLabel(entitlementType)} (+{snapshot.IncrementExpRate}% EXP, +{snapshot.IncrementDropRate}% drop, index {snapshot.Index}) through `CWvsContext::OnFamilySetPrivilege` (opcode 107).{completionMessage}";
         }
 
         internal string ApplyLocalChartPacketSnapshot(FamilyLocalChartPacketSnapshot snapshot)
@@ -943,6 +946,23 @@ namespace HaCreator.MapSimulator.Interaction
                 case FamilyEntitlementType.DropBuff:
                 case FamilyEntitlementType.ExpBuff:
                 case FamilyEntitlementType.DropAndExpBuff:
+                    if (RequiresPacketOwnedPrivilegeCompletion())
+                    {
+                        _pendingPrivilegeRequest = new PendingFamilyPrivilegeRequest(
+                            _entitlementType,
+                            localPlayer?.Id ?? LocalPlayerId,
+                            localPlayer?.Name ?? "Player",
+                            localLocation,
+                            localPlayerPosition,
+                            localLocation,
+                            localPlayerPosition,
+                            requiresCrossMapTransfer: false);
+                        return new FamilyEntitlementUseResult(
+                            $"Sent a packet-shaped family privilege request for {GetEntitlementLabel(_entitlementType)}. Await `CWvsContext::OnFamilyResult` or `CWvsContext::OnFamilySetPrivilege` before updating family reputation, daily use, or active buff state.",
+                            DispatchClientPrivilegeRequest: true,
+                            PrivilegeRequestIndex: GetSelectedEntitlementIndex());
+                    }
+
                     ConsumeEntitlementUse(localPlayer, specialCost);
                     _activePrivilege = new FamilyPrivilegeState(_entitlementType, currentTick + EntitlementDurationMs);
                     string privilegeMessage = $"Applied {GetEntitlementLabel(_entitlementType)} for the current simulator family session.";
@@ -1595,6 +1615,11 @@ namespace HaCreator.MapSimulator.Interaction
             return !_authorityState.IsSimulatorLocal;
         }
 
+        private bool RequiresPacketOwnedPrivilegeCompletion()
+        {
+            return !_authorityState.IsSimulatorLocal;
+        }
+
         private string BuildAuthorityBlockedMessage(string action)
         {
             return $"Family authority does not permit this client seam to {action}. Current profile: {_authorityState.SourceLabel}.";
@@ -1721,10 +1746,20 @@ namespace HaCreator.MapSimulator.Interaction
             if (packet.Type == 1)
             {
                 FamilyMemberState localPlayer = GetMember(LocalPlayerId);
-                int specialCost = GetSpecialReputationCost(localPlayer);
+                int specialCost = GetSpecialReputationCost(localPlayer, pendingRequest.Type);
 
                 switch (pendingRequest.Type)
                 {
+                    case FamilyEntitlementType.DropBuff:
+                    case FamilyEntitlementType.ExpBuff:
+                    case FamilyEntitlementType.DropAndExpBuff:
+                        ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
+                        _activePrivilege = new FamilyPrivilegeState(pendingRequest.Type, Environment.TickCount + EntitlementDurationMs);
+                        NotifySocialChatObserved($"{GetEntitlementLabel(pendingRequest.Type)} request completed.");
+                        message = $"Applied packet-owned family privilege completion for {GetEntitlementLabel(pendingRequest.Type)}.";
+                        _pendingPrivilegeRequest = null;
+                        return true;
+
                     case FamilyEntitlementType.MoveToMember:
                         if (localPlayer != null)
                         {
@@ -1734,7 +1769,7 @@ namespace HaCreator.MapSimulator.Interaction
                         QueuePrivilegeTeleport(
                             pendingRequest.TargetPosition,
                             $"Completed packet-owned family move transfer to {pendingRequest.TargetName} ({pendingRequest.TargetLocation}).");
-                        ConsumeEntitlementUse(localPlayer, specialCost);
+                        ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
                         NotifySocialChatObserved($"{pendingRequest.TargetName} move request completed.");
                         message = $"Applied packet-owned move completion for {pendingRequest.TargetName}.";
                         _pendingPrivilegeRequest = null;
@@ -1751,7 +1786,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 pendingRequest.RequesterPosition.Y);
                         }
 
-                        ConsumeEntitlementUse(localPlayer, specialCost);
+                        ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
                         NotifySocialChatObserved($"Summoned {pendingRequest.TargetName}.");
                         message = $"Applied packet-owned summon completion for {pendingRequest.TargetName}.";
                         _pendingPrivilegeRequest = null;
@@ -1767,6 +1802,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private bool TryCompletePendingBuffPrivilege(FamilyEntitlementType entitlementType, out string message)
+        {
+            message = string.Empty;
+            PendingFamilyPrivilegeRequest pendingRequest = _pendingPrivilegeRequest;
+            if (pendingRequest == null || pendingRequest.Type != entitlementType)
+            {
+                return false;
+            }
+
+            if (pendingRequest.Type is not (FamilyEntitlementType.DropBuff or FamilyEntitlementType.ExpBuff or FamilyEntitlementType.DropAndExpBuff))
+            {
+                return false;
+            }
+
+            FamilyMemberState localPlayer = GetMember(LocalPlayerId);
+            ConsumeEntitlementUse(localPlayer, GetSpecialReputationCost(localPlayer, pendingRequest.Type), pendingRequest.Type);
+            NotifySocialChatObserved($"{GetEntitlementLabel(pendingRequest.Type)} state arrived.");
+            _pendingPrivilegeRequest = null;
+            message = $"Completed pending family privilege request for {GetEntitlementLabel(entitlementType)}.";
+            return true;
         }
 
         private void QueuePrivilegeTeleport(Vector2 position, string message)
@@ -1806,12 +1863,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int GetSpecialReputationCost(FamilyMemberState selectedMember)
         {
-            if (TryGetPrivilegeMetadata(_entitlementType, out FamilyPrivilegeMetadata metadata))
+            return GetSpecialReputationCost(selectedMember, _entitlementType);
+        }
+
+        private int GetSpecialReputationCost(FamilyMemberState selectedMember, FamilyEntitlementType entitlementType)
+        {
+            if (TryGetPrivilegeMetadata(entitlementType, out FamilyPrivilegeMetadata metadata))
             {
                 return Math.Max(0, metadata.FameCost);
             }
 
-            int baseCost = _entitlementType switch
+            int baseCost = entitlementType switch
             {
                 FamilyEntitlementType.MoveToMember => 300,
                 FamilyEntitlementType.SummonMember => 500,
@@ -1854,12 +1916,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void ConsumeEntitlementUse(FamilyMemberState localPlayer, int specialCost)
         {
+            ConsumeEntitlementUse(localPlayer, specialCost, _entitlementType);
+        }
+
+        private void ConsumeEntitlementUse(FamilyMemberState localPlayer, int specialCost, FamilyEntitlementType entitlementType)
+        {
             if (localPlayer != null)
             {
                 localPlayer.CurrentReputation = Math.Max(0, localPlayer.CurrentReputation - Math.Max(0, specialCost));
             }
 
-            _entitlementUseCounts[_entitlementType] = GetEntitlementUseCount(_entitlementType) + 1;
+            _entitlementUseCounts[entitlementType] = GetEntitlementUseCount(entitlementType) + 1;
         }
 
         private int CountDescendants(int memberId)

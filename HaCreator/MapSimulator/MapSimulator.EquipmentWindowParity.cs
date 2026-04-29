@@ -355,10 +355,12 @@ namespace HaCreator.MapSimulator
             const int simulatorOpcode = LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
             int bridgeOpcode = simulatorOpcode;
             byte[] bridgePayload = simulatorPayload;
+            int dragBackTargetInventoryIndex = ResolveMechanicDragBackOutTargetInventoryIndex(request);
             if (MechanicEquipmentPacketParity.TryEncodeClientChangeSlotPositionRequest(
                     request,
                     out byte[] clientPayload,
-                    out _))
+                    out _,
+                    dragBackTargetInventoryIndex))
             {
                 bridgeOpcode = MechanicEquipmentPacketParity.ClientChangeSlotPositionRequestOpcode;
                 bridgePayload = clientPayload;
@@ -376,6 +378,38 @@ namespace HaCreator.MapSimulator
                 _localUtilityOfficialSessionBridge.TryQueueOutboundPacket,
                 _localUtilityPacketOutbox.TryQueueOutboundPacket);
             return outcome.Accepted;
+        }
+
+        private int ResolveMechanicDragBackOutTargetInventoryIndex(EquipmentChangeRequest request)
+        {
+            if (request?.Kind != EquipmentChangeRequestKind.CompanionToInventory
+                || request.SourceCompanionKind != EquipmentChangeCompanionKind.Mechanic
+                || request.ItemId <= 0
+                || uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                return -1;
+            }
+
+            const InventoryType targetInventoryType = InventoryType.EQUIP;
+            int slotLimit = inventoryWindow.GetSlotLimit(targetInventoryType);
+            if (slotLimit <= 0)
+            {
+                return -1;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(targetInventoryType);
+            int visibleSlotCount = slots?.Count ?? 0;
+            for (int i = 0; i < Math.Min(visibleSlotCount, slotLimit); i++)
+            {
+                if (slots[i] == null)
+                {
+                    return i;
+                }
+            }
+
+            return visibleSlotCount < slotLimit
+                ? visibleSlotCount
+                : -1;
         }
 
         private byte[] BuildMechanicEquipmentAuthorityRequestPayload(EquipmentChangeRequest request)

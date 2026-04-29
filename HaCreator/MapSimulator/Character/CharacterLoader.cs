@@ -325,7 +325,8 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (morphPart.Animations.Count == 0)
+            if (morphPart.Animations.Count == 0
+                && morphPart.AvailableAnimations.Count == 0)
             {
                 return null;
             }
@@ -5391,6 +5392,9 @@ namespace HaCreator.MapSimulator.Character
             _faceCache.Clear();
             _hairCache.Clear();
             _equipCache.Clear();
+            _morphCache.Clear();
+            _morphImageEntryCache.Clear();
+            _morphActionCache.Clear();
             _starterAvatarCatalogCache.Clear();
         }
 

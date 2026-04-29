@@ -703,28 +703,60 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            const string prefix = "platform-";
-            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && int.TryParse(name[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int platformId))
+            foreach (string candidateName in BuildPacketOwnedDynamicObjectNameLookupCandidatesForPacketParity(name))
             {
-                platform = _dynamicFootholds.GetPlatform(platformId);
-                if (platform != null)
+                const string prefix = "platform-";
+                if (candidateName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(candidateName[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int platformId))
                 {
-                    return true;
+                    platform = _dynamicFootholds.GetPlatform(platformId);
+                    if (platform != null)
+                    {
+                        return true;
+                    }
                 }
-            }
 
-            if (_dynamicFootholdField != null
-                && _dynamicFootholdField.TryResolveAuthoredDynamicObjectPlatformId(name, out int authoredPlatformId))
-            {
-                platform = _dynamicFootholds.GetPlatform(authoredPlatformId);
-                if (platform != null)
+                if (_dynamicFootholdField != null
+                    && _dynamicFootholdField.TryResolveAuthoredDynamicObjectPlatformId(candidateName, out int authoredPlatformId))
                 {
-                    return true;
+                    platform = _dynamicFootholds.GetPlatform(authoredPlatformId);
+                    if (platform != null)
+                    {
+                        return true;
+                    }
                 }
             }
 
             return platform != null;
+        }
+
+        internal static IReadOnlyList<string> BuildPacketOwnedDynamicObjectNameLookupCandidatesForPacketParity(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return Array.Empty<string>();
+            }
+
+            HashSet<string> candidates = new(StringComparer.OrdinalIgnoreCase);
+            AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, name);
+
+            foreach (string token in name.Split(new[] { ',', ';', '|', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, token);
+            }
+
+            return candidates.ToArray();
+        }
+
+        private static void AddPacketOwnedDynamicObjectNameLookupCandidate(ISet<string> candidates, string name)
+        {
+            string normalized = string.IsNullOrWhiteSpace(name)
+                ? string.Empty
+                : name.Trim().Replace('\\', '/');
+            if (normalized.Length > 0)
+            {
+                candidates.Add(normalized);
+            }
         }
 
         private string HandlePacketOwnedFootholdInfoRequest()

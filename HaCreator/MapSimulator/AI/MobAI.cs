@@ -164,6 +164,9 @@ namespace HaCreator.MapSimulator.AI
         public bool Tremble { get; set; }           // attackN/info/tremble or info/attack/N/tremble
         public bool IsAngerAttack { get; set; }     // attackN/info/AngerAttack
         public bool IsSpecialAttack { get; set; }   // attackN/info/specialAttack
+        public bool DeadlyAttack { get; set; }      // info/attack/N/deadlyAttack
+        public int MpBurn { get; set; }             // info/attack/N/mpBurn flag/value
+        public int ConMP { get; set; }              // info/attack/N/conMP player MP burn amount
         public int DiseaseSkillId { get; set; }     // info/attack/N/disease -> MobSkill.img id
         public int DiseaseLevel { get; set; }       // info/attack/N/level -> MobSkill.img level
         public int EffectTriggerRecovery { get; set; } // Latest authored effect spawn time from action start
@@ -538,6 +541,8 @@ namespace HaCreator.MapSimulator.AI
             _hasAngerGauge = hasAngerGauge && chargeTarget > 0;
             _angerChargeTarget = _hasAngerGauge ? chargeTarget : 0;
             _angerChargeCount = 0;
+            _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
+            _fullChargeEffectStartTime = int.MinValue;
         }
 
         public void AddAttack(int attackId, string animName, int damage, int range, int cooldown = 1500, bool isRanged = false)
@@ -2348,7 +2353,10 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            if (_selfDestructHpThreshold >= 0 && _currentHp > 0 && _currentHp <= _selfDestructHpThreshold)
+            if (SpecialMobInteractionRules.ShouldTriggerSelfDestructionHpThreshold(
+                    _currentHp,
+                    _maxHp,
+                    _selfDestructHpThreshold))
             {
                 TriggerSelfDestruction(currentTick);
                 return;

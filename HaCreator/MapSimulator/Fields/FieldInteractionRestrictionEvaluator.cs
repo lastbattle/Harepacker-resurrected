@@ -90,7 +90,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetFollowCharacterRestrictionMessage(MapInfo mapInfo)
         {
-            return mapInfo?.nofollowCharacter == true
+            return mapInfo?.nofollowCharacter == true || IsInfoFlagSet(mapInfo, "nofollowCharacter")
                 ? "Follow-character requests are disabled in this map."
                 : null;
         }
@@ -181,6 +181,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON
                    || mapInfo?.vanishDragon == true
+                   || IsInfoFlagSet(mapInfo, "vanishDragon")
                 ? "Dragon companion features are disabled in this map."
                 : null;
         }
@@ -199,6 +200,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             return FieldLimitType.Unable_To_Change_Party_Boss.Check(fieldLimit)
                 || mapInfo?.blockPBossChange == true
+                || IsInfoFlagSet(mapInfo, "blockPBossChange")
                 ? "Party leader changes are disabled in this map."
                 : null;
         }
@@ -383,7 +385,7 @@ namespace HaCreator.MapSimulator.Fields
                 return fieldLimitRestrictionMessage;
             }
 
-            return mapInfo?.damageCheckFree == true
+            return mapInfo?.damageCheckFree == true || IsInfoFlagSet(mapInfo, "damageCheckFree")
                 ? "Local damage checks are disabled in this map."
                 : null;
         }
@@ -976,7 +978,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            int requiredLevel = mapInfo.lvLimit ?? 0;
+            int requiredLevel = FieldEntryRestrictionEvaluator.GetLevelLimit(mapInfo);
             return requiredLevel >= 7 && context.PlayerLevel < 7;
         }
 

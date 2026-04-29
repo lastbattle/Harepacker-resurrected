@@ -330,6 +330,7 @@ namespace HaCreator.MapSimulator.Interaction
         public LocalOverlayBalloonArrowSprite NorthWestLongArrow { get; init; }
         public LocalOverlayBalloonArrowSprite NorthEastLongArrow { get; init; }
         public Color TextColor { get; init; } = Color.Black;
+        public bool IsScreenChat { get; init; }
 
         public bool IsLoaded =>
             NorthWest != null &&

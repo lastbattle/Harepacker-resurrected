@@ -285,6 +285,12 @@ namespace HaCreator.MapSimulator
             string allianceOpcodeText = _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode > 0
                 ? _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode.ToString()
                 : "unset";
+            string requestOpcodeText =
+                $"request opcodes friend={FormatSocialListOpcode(_socialListOfficialSessionBridgeConfiguredFriendRequestOpcode)}, " +
+                $"party={FormatSocialListOpcode(_socialListOfficialSessionBridgeConfiguredPartyRequestOpcode)}, " +
+                $"guild={FormatSocialListOpcode(_socialListOfficialSessionBridgeConfiguredGuildRequestOpcode)}, " +
+                $"alliance={FormatSocialListOpcode(_socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode)}, " +
+                $"blacklist={FormatSocialListOpcode(_socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode)}";
             string configuredTarget = _socialListOfficialSessionBridgeUseDiscovery
                 ? _socialListOfficialSessionBridgeConfiguredLocalPort.HasValue
                     ? $"discover remote port {_socialListOfficialSessionBridgeConfiguredRemotePort} with local port {_socialListOfficialSessionBridgeConfiguredLocalPort.Value}"
@@ -296,7 +302,12 @@ namespace HaCreator.MapSimulator
             string listeningText = _socialListOfficialSessionBridge.IsRunning
                 ? $"listening on 127.0.0.1:{_socialListOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_socialListOfficialSessionBridgeConfiguredListenPort}";
-            return $"Social-list session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, friend-result opcode {friendOpcodeText}, party-result opcode {partyOpcodeText}, guild-result opcode {guildOpcodeText}, alliance-result opcode {allianceOpcodeText}. {_socialListOfficialSessionBridge.DescribeStatus()}";
+            return $"Social-list session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, friend-result opcode {friendOpcodeText}, party-result opcode {partyOpcodeText}, guild-result opcode {guildOpcodeText}, alliance-result opcode {allianceOpcodeText}, {requestOpcodeText}. {_socialListOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private static string FormatSocialListOpcode(ushort opcode)
+        {
+            return opcode > 0 ? opcode.ToString() : "unset";
         }
 
         private void EnsureSocialListOfficialSessionBridgeState(bool shouldRun)
@@ -654,6 +665,11 @@ namespace HaCreator.MapSimulator
                     ushort discoverPartyOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
                     ushort discoverGuildOpcode = discoverOpcodeDefault;
                     ushort discoverAllianceOpcode = discoverOpcodeDefault;
+                    ushort discoverFriendRequestOpcode = 0;
+                    ushort discoverPartyRequestOpcode = 0;
+                    ushort discoverGuildRequestOpcode = 0;
+                    ushort discoverAllianceRequestOpcode = 0;
+                    ushort discoverBlacklistRequestOpcode = 0;
                     for (int i = 3; i < args.Length; i++)
                     {
                         if (args[i].StartsWith("process=", StringComparison.OrdinalIgnoreCase))
@@ -671,6 +687,11 @@ namespace HaCreator.MapSimulator
                                      ref discoverPartyOpcode,
                                      ref discoverGuildOpcode,
                                      ref discoverAllianceOpcode,
+                                     ref discoverFriendRequestOpcode,
+                                     ref discoverPartyRequestOpcode,
+                                     ref discoverGuildRequestOpcode,
+                                     ref discoverAllianceRequestOpcode,
+                                     ref discoverBlacklistRequestOpcode,
                                      out string opcodeOverrideError))
                         {
                             return ChatCommandHandler.CommandResult.Error(opcodeOverrideError);
@@ -688,6 +709,11 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = discoverPartyOpcode;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = discoverGuildOpcode;
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = discoverAllianceOpcode;
+                    _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode = discoverFriendRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode = discoverPartyRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode = discoverGuildRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode = discoverAllianceRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode = discoverBlacklistRequestOpcode;
                     _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt = 0;
                     return _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                         discoverListenPort,
@@ -717,6 +743,11 @@ namespace HaCreator.MapSimulator
                     ushort startPartyOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
                     ushort startGuildOpcode = startOpcodeDefault;
                     ushort startAllianceOpcode = startOpcodeDefault;
+                    ushort startFriendRequestOpcode = 0;
+                    ushort startPartyRequestOpcode = 0;
+                    ushort startGuildRequestOpcode = 0;
+                    ushort startAllianceRequestOpcode = 0;
+                    ushort startBlacklistRequestOpcode = 0;
                     for (int i = 5; i < args.Length; i++)
                     {
                         if (!TryApplySocialListOpcodeOverrideToken(
@@ -725,6 +756,11 @@ namespace HaCreator.MapSimulator
                                 ref startPartyOpcode,
                                 ref startGuildOpcode,
                                 ref startAllianceOpcode,
+                                ref startFriendRequestOpcode,
+                                ref startPartyRequestOpcode,
+                                ref startGuildRequestOpcode,
+                                ref startAllianceRequestOpcode,
+                                ref startBlacklistRequestOpcode,
                                 out string opcodeOverrideError))
                         {
                             return ChatCommandHandler.CommandResult.Error(opcodeOverrideError);
@@ -742,6 +778,11 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = startPartyOpcode;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = startGuildOpcode;
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = startAllianceOpcode;
+                    _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode = startFriendRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode = startPartyRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode = startGuildRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode = startAllianceRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode = startBlacklistRequestOpcode;
                     EnsureSocialListOfficialSessionBridgeState(shouldRun: true);
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 
@@ -755,6 +796,11 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = 0;
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = 0;
+                    _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode = 0;
+                    _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode = 0;
+                    _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode = 0;
+                    _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode = 0;
+                    _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode = 0;
                     _socialListOfficialSessionBridge.Stop();
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 
@@ -868,6 +914,11 @@ namespace HaCreator.MapSimulator
             ref ushort partyResultOpcode,
             ref ushort guildResultOpcode,
             ref ushort allianceResultOpcode,
+            ref ushort friendRequestOpcode,
+            ref ushort partyRequestOpcode,
+            ref ushort guildRequestOpcode,
+            ref ushort allianceRequestOpcode,
+            ref ushort blacklistRequestOpcode,
             out string error)
         {
             error = null;
@@ -905,10 +956,67 @@ namespace HaCreator.MapSimulator
                 case "alliance":
                     allianceResultOpcode = parsedOpcode;
                     return true;
+                case "friendrequestopcode":
+                case "friendrequest":
+                    friendRequestOpcode = parsedOpcode;
+                    return true;
+                case "partyrequestopcode":
+                case "partyrequest":
+                    partyRequestOpcode = parsedOpcode;
+                    return true;
+                case "guildrequestopcode":
+                case "guildrequest":
+                    guildRequestOpcode = parsedOpcode;
+                    return true;
+                case "alliancerequestopcode":
+                case "alliancerequest":
+                    allianceRequestOpcode = parsedOpcode;
+                    return true;
+                case "blacklistrequestopcode":
+                case "blacklistrequest":
+                    blacklistRequestOpcode = parsedOpcode;
+                    return true;
                 default:
                     error = $"Unsupported social-list session opcode override key '{key}' in '{token}'.";
                     return false;
             }
+        }
+
+        private string DispatchSocialListPacketOwnedRequest(SocialListPacketOwnedRequest request)
+        {
+            ushort opcode = ResolveSocialListRequestOpcode(request.Tab);
+            if (!SocialListOutboundPacketCodec.TryBuildOutboundRequest(
+                    request.OutboundRequest,
+                    opcode,
+                    out SocialListOutboundRequest outboundRequest,
+                    out string error))
+            {
+                return $"Outbound {request.RequestKind} request stayed staged without native injection: {error}";
+            }
+
+            if (!_socialListOfficialSessionBridgeEnabled || !_socialListOfficialSessionBridge.HasAttachedClient)
+            {
+                return $"{outboundRequest.Describe()}. Bridge is not connected, so the request remains a staged preview.";
+            }
+
+            return _socialListOfficialSessionBridge.TrySendOutboundRawPacket(outboundRequest.RawPacket, out string sendStatus)
+                ? $"{outboundRequest.Describe()}. {sendStatus}"
+                : $"{outboundRequest.Describe()}. {sendStatus}";
+        }
+
+        private ushort ResolveSocialListRequestOpcode(SocialListTab tab)
+        {
+            return tab switch
+            {
+                SocialListTab.Friend => _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode,
+                SocialListTab.Party => _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode,
+                SocialListTab.Guild => _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode,
+                SocialListTab.Alliance => _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode,
+                SocialListTab.Blacklist => _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode > 0
+                    ? _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode
+                    : _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode,
+                _ => 0
+            };
         }
 
         private static bool TrySplitSocialListOpcodeOverride(string token, out string key, out string value)

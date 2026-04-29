@@ -4603,7 +4603,11 @@ namespace HaCreator.MapSimulator.Loaders
             window.BindButton(LoadButton(entrustedShopProperty, "BtArrange", clickSound, overSound, device), runtime.ArrangeEntrustedShop);
             window.BindButton(LoadButton(entrustedShopProperty, "BtCoin", clickSound, overSound, device), runtime.ClaimEntrustedShopEarnings);
             window.BindButton(LoadButton(entrustedShopProperty, "BtItem", clickSound, overSound, device), () => runtime.TryAutoListEntrustedShopItem(out _));
+            window.BindButton(LoadButton(entrustedShopProperty, "BtVisit", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.VisitList, out _));
+            window.BindButton(LoadButton(entrustedShopProperty, "BtBlackList", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.Blacklist, out _));
             window.BindButton(LoadButton(memberShopProperty, "BtTested", clickSound, overSound, device), () => runtime.TryRenewEntrustedPermit(24 * 60, out _));
+            window.BindButton(LoadButton(memberShopProperty, "BtVisit", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.VisitList, out _));
+            window.BindButton(LoadButton(memberShopProperty, "BtBlackList", clickSound, overSound, device), () => runtime.TryRequestEntrustedChildDialog(EntrustedShopChildDialogKind.Blacklist, out _));
             window.BindButton(LoadButton(memberShopProperty, "BtOK", clickSound, overSound, device), runtime.ToggleEntrustedLedgerMode);
             window.BindButton(LoadButton(memberShopProperty, "BtCancel", clickSound, overSound, device), window.Hide);
             ConfigureEntrustedChildDialog(
@@ -8190,7 +8194,9 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadGuildBbsEmoticonSet(basicEmoticonProperty, GetPropertyChildCount(basicEmoticonProperty, 3), device),
                 LoadGuildBbsEmoticonSet(
                     cashEmoticonProperty,
-                    GetPropertyChildCount(cashEmoticonProperty, 8),
+                    Math.Min(
+                        GetPropertyChildCount(cashEmoticonProperty, 8),
+                        GuildBbsRuntime.ClientVisibleCashEmoticonCount),
                     device),
                 LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
                 device)

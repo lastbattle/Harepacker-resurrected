@@ -1248,7 +1248,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return hasAuthoredDrawOrder
-                ? rowEntries.OrderBy(entry => entry.DrawOrder)
+                ? rowEntries
+                    .OrderBy(entry => entry.DrawOrder)
+                    .ThenBy(ResolveCtEntryKindDrawPriority)
                 : rowEntries;
         }
 

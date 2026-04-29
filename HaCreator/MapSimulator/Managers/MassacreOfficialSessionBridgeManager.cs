@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly object _sync = new();
         private readonly MassacreSessionValueInfoState _sessionValueInfoState = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private InboundPacketTrace? _liveRecoveredInboundEvidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public MassacreOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -76,6 +77,9 @@ namespace HaCreator.MapSimulator.Managers
             int PacketType,
             MassacrePacketInboxMessageKind Kind,
             int PayloadLength,
+            bool IsDecodedOwner,
+            short? SessionVersion,
+            long? ProxySessionId,
             string PayloadHex,
             string RawPacketHex,
             string Source);
@@ -145,6 +149,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
         public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
+        internal bool HasLiveRecoveredInboundEvidence => _liveRecoveredInboundEvidence.HasValue;
         public int ReceivedCount { get; private set; }
         public int UndecodedInboundCount { get; private set; }
         public string LastStatus { get; private set; } = "Massacre official-session bridge inactive.";
@@ -159,7 +164,10 @@ namespace HaCreator.MapSimulator.Managers
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}. {LastStatus}";
+            string liveEvidence = HasLiveRecoveredInboundEvidence
+                ? "live recovered inbound evidence present"
+                : "no live recovered inbound evidence";
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -717,14 +725,14 @@ namespace HaCreator.MapSimulator.Managers
                     _sessionValueInfoState,
                     out MassacrePacketInboxMessage message))
             {
-                RecordInboundPacket(e.RawPacket, null, $"official-session:{e.SourceEndpoint}");
+                RecordInboundPacket(e.RawPacket, null, $"official-session:{e.SourceEndpoint}", e.SessionVersion, e.ProxySessionId);
                 UndecodedInboundCount++;
                 LastStatus = $"Captured undecoded Massacre live-session packet opcode 0x{TryDecodePacketOpcode(e.RawPacket):X4} from {e.SourceEndpoint}; use /massacre session recent to map or recover it.";
                 return;
             }
 
             _pendingMessages.Enqueue(message);
-            RecordInboundPacket(e.RawPacket, message, $"official-session:{e.SourceEndpoint}");
+            RecordInboundPacket(e.RawPacket, message, $"official-session:{e.SourceEndpoint}", e.SessionVersion, e.ProxySessionId);
             ReceivedCount++;
             LastStatus = $"Queued {DescribeMessage(message)} from live session {e.SourceEndpoint}.";
         }
@@ -1222,11 +1230,16 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = $"Captured undecoded Massacre live-session packet opcode 0x{TryDecodePacketOpcode(rawPacket):X4} from {source}; use /massacre session recent to map or recover it.";
         }
 
-        private void RecordInboundPacket(byte[] rawPacket, MassacrePacketInboxMessage message, string source)
+        private void RecordInboundPacket(
+            byte[] rawPacket,
+            MassacrePacketInboxMessage message,
+            string source,
+            short? sessionVersion = null,
+            long? proxySessionId = null)
         {
             lock (_sync)
             {
-                _recentInboundPackets.Enqueue(BuildInboundPacketTrace(rawPacket, message, source));
+                _recentInboundPackets.Enqueue(BuildInboundPacketTrace(rawPacket, message, source, sessionVersion, proxySessionId));
                 while (_recentInboundPackets.Count > MaxRecentInboundPackets)
                 {
                     _recentInboundPackets.Dequeue();
@@ -1234,7 +1247,12 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        internal static InboundPacketTrace BuildInboundPacketTrace(byte[] rawPacket, MassacrePacketInboxMessage message, string source)
+        internal static InboundPacketTrace BuildInboundPacketTrace(
+            byte[] rawPacket,
+            MassacrePacketInboxMessage message,
+            string source,
+            short? sessionVersion = null,
+            long? proxySessionId = null)
         {
             int opcode = TryDecodePacketOpcode(rawPacket);
             byte[] payload = rawPacket != null && rawPacket.Length > sizeof(ushort)
@@ -1245,6 +1263,9 @@ namespace HaCreator.MapSimulator.Managers
                 message?.PacketType ?? opcode,
                 message?.Kind ?? MassacrePacketInboxMessageKind.Packet,
                 message?.Payload?.Length ?? payload.Length,
+                message != null,
+                sessionVersion,
+                proxySessionId,
                 Convert.ToHexString(message?.Payload ?? payload),
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                 source ?? string.Empty);

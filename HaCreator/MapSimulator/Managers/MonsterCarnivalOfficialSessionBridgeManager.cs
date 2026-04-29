@@ -606,21 +606,14 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (HasPassiveEstablishedSocketPair && !IsRunning)
-            {
-                status =
-                    $"Monster Carnival official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. " +
-                    $"It cannot inject opcode {OutboundRequestOpcode} into an already-established Maple socket pair after the handshake; " +
-                    "run /mcarnival session attachproxy <listenPort|0> <remotePort> ... to arm reconnect before queueing requests.";
-                LastStatus = status;
-                return false;
-            }
-
             if (!IsRunning && !HasAttachedClient)
             {
-                status = "Monster Carnival official-session bridge is not armed for deferred live-session injection.";
-                LastStatus = status;
-                return false;
+                if (!HasPassiveEstablishedSocketPair)
+                {
+                    status = "Monster Carnival official-session bridge is not armed for deferred live-session injection.";
+                    LastStatus = status;
+                    return false;
+                }
             }
 
             byte[] rawPacket = BuildRequestPacket(tab, entryIndex);
@@ -628,7 +621,7 @@ namespace HaCreator.MapSimulator.Managers
             QueuedCount++;
             RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"queue-request tab={(int)tab} index={entryIndex}");
             status = HasPassiveEstablishedSocketPair
-                ? $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for the proxied reconnect handshake."
+                ? $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) while {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Arm /mcarnival session attachproxy ... or /mcarnival session startauto ... and reconnect through localhost to flush it after the proxied handshake initializes."
                 : $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for deferred live-session injection.";
             LastStatus = status;
             return true;

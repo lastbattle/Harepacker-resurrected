@@ -786,7 +786,17 @@ namespace HaCreator.MapSimulator
                 int? requestId = NormalizePositiveInt(ReadInt(payloadRoot, "requestId", "requestToken", "requestSeq", "sequence", "request_id", "requestID", "reqId", "requestNo"));
                 int? characterId = NormalizePositiveInt(ReadInt(payloadRoot, "characterId", "charId", "id", "character_id", "ownerId", "owner_id"));
                 string characterName = ReadString(payloadRoot, "characterName", "charName", "name", "ownerName", "character_name", "owner_name");
-                int? registeredMobId = NormalizePositiveInt(ReadInt(payloadRoot, "registeredMobId", "registeredMob", "selectedMobId", "registered_mob_id", "selected_mob_id", "registerMobId"));
+                bool registeredCoverSpecified = TryReadInt(
+                    payloadRoot,
+                    out int registeredMobValue,
+                    "registeredMobId",
+                    "registeredMob",
+                    "selectedMobId",
+                    "registered_mob_id",
+                    "selected_mob_id",
+                    "registerMobId");
+                registeredCoverSpecified = registeredCoverSpecified && registeredMobValue >= 0;
+                int? registeredMobId = NormalizePositiveInt(registeredMobValue);
                 string statusText = ReadString(payloadRoot, "statusText", "message", "text", "notice", "status_text", "status", "detail");
                 if (string.IsNullOrWhiteSpace(statusText) && usedNestedRoot)
                 {
@@ -842,7 +852,19 @@ namespace HaCreator.MapSimulator
                         characterName = ReadString(ownerElement, "characterName", "charName", "name", "character_name", "owner_name");
                     }
 
-                    registeredMobId ??= NormalizePositiveInt(ReadInt(ownerElement, "registeredMobId", "registeredMob", "selectedMobId", "registered_mob_id", "selected_mob_id", "registerMobId"));
+                    if (TryReadInt(
+                            ownerElement,
+                            out int ownerRegisteredMobValue,
+                            "registeredMobId",
+                            "registeredMob",
+                            "selectedMobId",
+                            "registered_mob_id",
+                            "selected_mob_id",
+                            "registerMobId"))
+                    {
+                        registeredMobId = NormalizePositiveInt(ownerRegisteredMobValue);
+                        registeredCoverSpecified = ownerRegisteredMobValue >= 0;
+                    }
                 }
                 else if (usedNestedRoot
                     && root.TryGetProperty("owner", out JsonElement outerOwnerElement)
@@ -854,7 +876,19 @@ namespace HaCreator.MapSimulator
                         characterName = ReadString(outerOwnerElement, "characterName", "charName", "name", "character_name", "owner_name");
                     }
 
-                    registeredMobId ??= NormalizePositiveInt(ReadInt(outerOwnerElement, "registeredMobId", "registeredMob", "selectedMobId", "registered_mob_id", "selected_mob_id", "registerMobId"));
+                    if (TryReadInt(
+                            outerOwnerElement,
+                            out int ownerRegisteredMobValue,
+                            "registeredMobId",
+                            "registeredMob",
+                            "selectedMobId",
+                            "registered_mob_id",
+                            "selected_mob_id",
+                            "registerMobId"))
+                    {
+                        registeredMobId = NormalizePositiveInt(ownerRegisteredMobValue);
+                        registeredCoverSpecified = ownerRegisteredMobValue >= 0;
+                    }
                 }
 
                 Dictionary<int, int> counts = new();
@@ -871,10 +905,11 @@ namespace HaCreator.MapSimulator
                     replaceExisting = true;
                 }
 
+                bool hasOwnershipSnapshot = clearRequested || hasCountsPayload || registeredMobId.HasValue || registeredCoverSpecified;
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
-                    hasOwnershipSnapshot: clearRequested || hasCountsPayload || registeredMobId.HasValue,
+                    hasOwnershipSnapshot,
                     saveAccepted: saveAccepted,
                     requestId,
                     characterId,
@@ -1364,9 +1399,9 @@ namespace HaCreator.MapSimulator
             }
 
             int cardId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
-            if (cardId <= 0)
+            if (cardId < 0)
             {
-                detail = "Monster Book SetCover payload contained a non-positive card id.";
+                detail = "Monster Book SetCover payload contained a negative card id.";
                 return false;
             }
 
@@ -1378,10 +1413,12 @@ namespace HaCreator.MapSimulator
                 requestId: null,
                 characterId: null,
                 characterName: string.Empty,
-                registeredMobId: cardId,
+                registeredMobId: cardId > 0 ? cardId : null,
                 cardCountsByMob: new Dictionary<int, int>(),
                 statusText: string.Empty);
-            detail = "Decoded Monster Book SetCover raw payload.";
+            detail = cardId > 0
+                ? "Decoded Monster Book SetCover raw payload."
+                : "Decoded Monster Book SetCover raw cover-clear payload.";
             return true;
         }
 
@@ -2486,6 +2523,19 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        private static bool TryReadInt(JsonElement root, out int result, params string[] names)
+        {
+            result = 0;
+            int? value = ReadInt(root, names);
+            if (!value.HasValue)
+            {
+                return false;
+            }
+
+            result = value.Value;
+            return true;
         }
 
         private static int? ReadMonsterBookSaveResultCode(JsonElement root)

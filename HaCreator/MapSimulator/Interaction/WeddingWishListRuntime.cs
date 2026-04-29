@@ -87,6 +87,12 @@ namespace HaCreator.MapSimulator.Interaction
         private int _selectedCandidateIndex;
         private bool _hasPendingTransferRequest;
         private bool _hasPendingInputRequest;
+        private byte _pendingTransferSubtype;
+        private InventorySlotData _pendingTransferItem;
+        private InventoryType _pendingTransferInventoryType = InventoryType.NONE;
+        private int _pendingTransferTabIndex;
+        private int _pendingTransferSlotIndex;
+        private int _pendingTransferWishItemId;
         private bool _isGetConfirmationArmed;
         private bool _isPutQuantityPromptOpen;
         private bool _isPutConfirmationArmed;
@@ -395,6 +401,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _inventory.AddItem(type, CloneForDialog(selected, type, 1));
             StageGetItemRequestPacket(selected, type, ResolvePacketSlotIndex(_selectedGiftIndex));
+            TrackPendingGetTransfer(selected, type, _selectedTabIndex, _selectedGiftIndex);
             giftList.RemoveAt(_selectedGiftIndex);
             _isGetConfirmationArmed = false;
             _hasPendingTransferRequest = true;
@@ -648,6 +655,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _hasPendingTransferRequest = false;
+            ClearPendingTransferState();
             ClearTransientActionState();
             RefreshCandidateEntries();
             ClampSelections();
@@ -670,7 +678,18 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _hasPendingInputRequest = false;
                 ClearTransientActionState();
-                _statusMessage = "Applied wedding wish-list input completion from opcode 162 subtype 9 and cleared the pending SendWishListInput request.";
+                byte resultCode = payload.Count > 1 ? payload[1] : (byte)0;
+                if (resultCode == 0)
+                {
+                    _statusMessage = "Applied wedding wish-list input completion from opcode 162 subtype 9 and cleared the pending SendWishListInput request.";
+                }
+                else
+                {
+                    _isOpen = true;
+                    _mode = WeddingWishListDialogMode.Input;
+                    _statusMessage = $"Wedding wish-list input request failed from opcode 162 subtype 9 with result {resultCode}; reopened input mode for correction.";
+                }
+
                 message = _statusMessage;
                 return true;
             }
@@ -685,6 +704,19 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 message = "Wedding wish-list transfer result arrived, but no Get/Put request is pending.";
                 return false;
+            }
+
+            if (_pendingTransferSubtype != 0 && subtype != _pendingTransferSubtype)
+            {
+                message = $"Wedding wish-list transfer result subtype {subtype} does not match the pending subtype {_pendingTransferSubtype}.";
+                return false;
+            }
+
+            byte transferResultCode = payload.Count > 1 ? payload[1] : (byte)0;
+            if (transferResultCode != 0)
+            {
+                message = RejectPendingTransferRequest(subtype, transferResultCode);
+                return true;
             }
 
             message = CompletePendingTransferRequest();
@@ -707,6 +739,7 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery = string.Empty;
             _hasPendingTransferRequest = false;
             _hasPendingInputRequest = false;
+            ClearPendingTransferState();
             ClearTransientActionState();
             _paneStartIndices.Clear();
             _statusMessage = "Cleared wedding wish-list dialog state.";
@@ -1371,6 +1404,7 @@ namespace HaCreator.MapSimulator.Interaction
             InventorySlotData gifted = CloneForDialog(source, type, quantity);
             StagePutItemRequestPacket(selectedWish, gifted, type, _pendingPutSourceSlotIndex);
             _giftByWishItemId[selectedWish.ItemId] = gifted;
+            TrackPendingPutTransfer(gifted, type, selectedWish.ItemId, _pendingPutSourceSlotIndex);
             _hasPendingTransferRequest = true;
             ClearTransientActionState();
             RefreshCandidateEntries();
@@ -1555,6 +1589,99 @@ namespace HaCreator.MapSimulator.Interaction
             _lastOutboundPacketSummary = string.IsNullOrWhiteSpace(dispatchSummary)
                 ? localSummary
                 : dispatchSummary;
+        }
+
+        private void TrackPendingGetTransfer(InventorySlotData item, InventoryType type, int tabIndex, int giftIndex)
+        {
+            _pendingTransferSubtype = SendGetItemRequestSubtype;
+            _pendingTransferItem = CloneForDialog(item, type, 1);
+            _pendingTransferInventoryType = type;
+            _pendingTransferTabIndex = Math.Clamp(tabIndex, 0, TabInventoryTypes.Length - 1);
+            _pendingTransferSlotIndex = Math.Max(0, giftIndex);
+            _pendingTransferWishItemId = 0;
+        }
+
+        private void TrackPendingPutTransfer(InventorySlotData item, InventoryType type, int wishItemId, int sourceSlotIndex)
+        {
+            _pendingTransferSubtype = SendPutItemRequestSubtype;
+            _pendingTransferItem = CloneForDialog(item, type, item?.Quantity ?? 1);
+            _pendingTransferInventoryType = type;
+            _pendingTransferTabIndex = _selectedTabIndex;
+            _pendingTransferSlotIndex = Math.Max(1, sourceSlotIndex);
+            _pendingTransferWishItemId = wishItemId;
+        }
+
+        private string RejectPendingTransferRequest(byte subtype, byte resultCode)
+        {
+            if (subtype == SendGetItemRequestSubtype)
+            {
+                RestoreRejectedGetTransfer();
+            }
+            else if (subtype == SendPutItemRequestSubtype)
+            {
+                RestoreRejectedPutTransfer();
+            }
+
+            _hasPendingTransferRequest = false;
+            ClearPendingTransferState();
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            NormalizeViewportState();
+            _statusMessage = $"Wedding wish-list transfer request subtype {subtype} failed from opcode 162 with result {resultCode}; restored the optimistic local item state and reopened Get/Put actions.";
+            return _statusMessage;
+        }
+
+        private void RestoreRejectedGetTransfer()
+        {
+            if (_pendingTransferItem == null)
+            {
+                return;
+            }
+
+            if (_inventory != null && _pendingTransferInventoryType != InventoryType.NONE)
+            {
+                _inventory.TryConsumeItem(_pendingTransferInventoryType, _pendingTransferItem.ItemId, Math.Max(1, _pendingTransferItem.Quantity));
+            }
+
+            if (!_giftListByTab.TryGetValue(_pendingTransferTabIndex, out List<InventorySlotData> giftList))
+            {
+                giftList = new List<InventorySlotData>();
+                _giftListByTab[_pendingTransferTabIndex] = giftList;
+            }
+
+            int insertIndex = Math.Clamp(_pendingTransferSlotIndex, 0, giftList.Count);
+            giftList.Insert(insertIndex, CloneForDialog(_pendingTransferItem, _pendingTransferInventoryType, Math.Max(1, _pendingTransferItem.Quantity)));
+            _selectedTabIndex = _pendingTransferTabIndex;
+            _selectedGiftIndex = insertIndex;
+        }
+
+        private void RestoreRejectedPutTransfer()
+        {
+            if (_pendingTransferItem == null)
+            {
+                return;
+            }
+
+            if (_pendingTransferWishItemId > 0)
+            {
+                _giftByWishItemId.Remove(_pendingTransferWishItemId);
+            }
+
+            if (_inventory != null && _pendingTransferInventoryType != InventoryType.NONE)
+            {
+                _inventory.AddItem(_pendingTransferInventoryType, CloneForDialog(_pendingTransferItem, _pendingTransferInventoryType, Math.Max(1, _pendingTransferItem.Quantity)));
+            }
+        }
+
+        private void ClearPendingTransferState()
+        {
+            _pendingTransferSubtype = 0;
+            _pendingTransferItem = null;
+            _pendingTransferInventoryType = InventoryType.NONE;
+            _pendingTransferTabIndex = 0;
+            _pendingTransferSlotIndex = 0;
+            _pendingTransferWishItemId = 0;
         }
 
         private static void WritePacketString(BinaryWriter writer, string value)

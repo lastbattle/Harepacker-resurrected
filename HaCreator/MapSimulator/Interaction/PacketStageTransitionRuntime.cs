@@ -516,7 +516,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 leadingOpaqueBytes = new byte[leadingOpaqueByteCount];
                 Buffer.BlockCopy(trailingPayload, 0, leadingOpaqueBytes, 0, leadingOpaqueByteCount);
-                leadingOpaqueInt32Values = DecodeOpaqueAlignedInt32Values(leadingOpaqueBytes);
+                leadingOpaqueInt32Values = DecodeLeadingOpaqueAlignedInt32Values(leadingOpaqueBytes);
             }
 
             int trailingOpaqueOffset = selectedOffset + LogoutGiftConfigByteLength;
@@ -525,7 +525,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 trailingOpaqueBytes = new byte[trailingOpaqueByteCount];
                 Buffer.BlockCopy(trailingPayload, trailingOpaqueOffset, trailingOpaqueBytes, 0, trailingOpaqueByteCount);
-                trailingOpaqueInt32Values = DecodeOpaqueAlignedInt32Values(trailingOpaqueBytes);
+                trailingOpaqueInt32Values = DecodeTrailingOpaqueAlignedInt32Values(trailingOpaqueBytes);
             }
 
             return true;
@@ -592,11 +592,11 @@ namespace HaCreator.MapSimulator.Interaction
             int trailingByteCount = payload.Length - (offset + LogoutGiftConfigByteLength);
             if (trailingByteCount == 0)
             {
-                score += 20;
+                score += 60;
             }
             else if (TryReadPositiveInt64Suffix(payload, offset + LogoutGiftConfigByteLength, trailingByteCount, out _))
             {
-                score += trailingByteCount == sizeof(long) ? 40 : 30;
+                score += trailingByteCount == sizeof(long) ? 70 : 30;
             }
 
             if (offset % sizeof(int) == 0)
@@ -630,7 +630,7 @@ namespace HaCreator.MapSimulator.Interaction
             return value > 0;
         }
 
-        private static int[] DecodeOpaqueAlignedInt32Values(byte[] bytes)
+        private static int[] DecodeLeadingOpaqueAlignedInt32Values(byte[] bytes)
         {
             if (bytes == null || bytes.Length < sizeof(int))
             {
@@ -646,6 +646,24 @@ namespace HaCreator.MapSimulator.Interaction
             int startOffset = bytes.Length - alignedByteLength;
             int[] values = new int[alignedByteLength / sizeof(int)];
             Buffer.BlockCopy(bytes, startOffset, values, 0, alignedByteLength);
+            return values;
+        }
+
+        private static int[] DecodeTrailingOpaqueAlignedInt32Values(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length < sizeof(int))
+            {
+                return Array.Empty<int>();
+            }
+
+            int alignedByteLength = bytes.Length - (bytes.Length % sizeof(int));
+            if (alignedByteLength < sizeof(int))
+            {
+                return Array.Empty<int>();
+            }
+
+            int[] values = new int[alignedByteLength / sizeof(int)];
+            Buffer.BlockCopy(bytes, 0, values, 0, alignedByteLength);
             return values;
         }
 
@@ -3184,14 +3202,16 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out int newYearCardRecordCountByteCount,
                         out int newYearCardRecordByteCount,
-                        out int newYearCardRecordNativeCount);
+                        out int newYearCardRecordNativeCount,
+                        out IReadOnlyList<PacketCharacterDataNewYearCardRecord> newYearCardNativeRecords);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         NewYearCardRecordCount = newYearCardRecords.Count,
                         NewYearCardRecordNativeCount = newYearCardRecordNativeCount,
                         NewYearCardRecordCountByteCount = newYearCardRecordCountByteCount,
                         NewYearCardRecordByteCount = newYearCardRecordByteCount,
-                        NewYearCardRecords = newYearCardRecords
+                        NewYearCardRecords = newYearCardRecords,
+                        NewYearCardNativeRecords = newYearCardNativeRecords
                     };
                     decodedSectionFlags |= CharacterDataNewYearCardRecordFlag;
                     decodedSectionByteCounts[CharacterDataNewYearCardRecordFlag] =
@@ -4293,7 +4313,9 @@ namespace HaCreator.MapSimulator.Interaction
                     new Dictionary<string, int>(StringComparer.Ordinal)
                     {
                         [nameof(PacketCharacterDataFixedClientRecord.RawBytes)] = recordByteLength
-                    });
+                    },
+                    i,
+                    true);
             }
 
             return records;
@@ -4320,7 +4342,8 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out int countByteCount,
             out int recordByteCount,
-            out int nativeRecordCount)
+            out int nativeRecordCount,
+            out IReadOnlyList<PacketCharacterDataNewYearCardRecord> nativeRecords)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
@@ -4344,10 +4367,13 @@ namespace HaCreator.MapSimulator.Interaction
                     ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.ReceivedFileTime), static fieldReader => fieldReader.ReadInt64()),
                     TruncateClientAnsiBufferString(ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataNewYearCardRecord.Content), ReadMapleString), 121),
                     checked((int)(reader.BaseStream.Position - recordStart)),
-                    fieldByteCounts));
+                    fieldByteCounts,
+                    i,
+                    true));
             }
 
             recordByteCount = checked((int)(reader.BaseStream.Position - sectionStart) - countByteCount);
+            nativeRecords = records;
             return records;
         }
 
@@ -4711,7 +4737,9 @@ namespace HaCreator.MapSimulator.Interaction
         int ClientByteLength,
         byte[] RawBytes,
         int DecodedByteCount = 0,
-        IReadOnlyDictionary<string, int> FieldByteCounts = null)
+        IReadOnlyDictionary<string, int> FieldByteCounts = null,
+        int NativeIndex = -1,
+        bool IsSemanticRecord = true)
     {
         internal const string MiniGameOwner = "GW_MiniGameRecord::Decode";
         internal const string CoupleOwner = "GW_CoupleRecord::Decode";
@@ -4745,7 +4773,9 @@ namespace HaCreator.MapSimulator.Interaction
         long ReceivedFileTime,
         string Content,
         int DecodedByteCount = 0,
-        IReadOnlyDictionary<string, int> FieldByteCounts = null)
+        IReadOnlyDictionary<string, int> FieldByteCounts = null,
+        int NativeIndex = -1,
+        bool IsSemanticRecord = true)
     {
         internal const string ClientDiscardStateKept = "X";
         internal const string ClientDiscardStateDiscarded = "O";
@@ -5004,6 +5034,7 @@ namespace HaCreator.MapSimulator.Interaction
         int NewYearCardRecordCountByteCount = 0,
         int NewYearCardRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataNewYearCardRecord> NewYearCardRecords = null,
+        IReadOnlyList<PacketCharacterDataNewYearCardRecord> NewYearCardNativeRecords = null,
         int QuestExRecordCount = 0,
         int QuestExRecordNativeCount = 0,
         int QuestExRecordCountByteCount = 0,

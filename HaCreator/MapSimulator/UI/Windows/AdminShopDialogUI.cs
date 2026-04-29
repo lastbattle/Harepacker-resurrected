@@ -1082,20 +1082,47 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            bool applied = TryApplyPacketOwnedAdminShopResult(
-                stagedResult.Subtype,
-                stagedResult.ResultCode,
-                stagedResult.TrailingByteCount,
-                stagedResult.TrailingPayloadSignature,
-                stagedResult.TrailingPayload,
-                stagedResult.HasResultCode,
-                false,
-                out string resultMessage,
-                out noticeText,
-                out _);
-            summary = applied
+            List<AdminShopPacketOwnedDeferredResultSnapshot> stagedResults = new() { stagedResult };
+            while (_packetOwnedAdminShopSession.TryConsumeDeferredOwnerGatedResult(out stagedResult))
+            {
+                stagedResults.Add(stagedResult);
+            }
+
+            string resultMessage = string.Empty;
+            int appliedCount = 0;
+            for (int i = 0; i < stagedResults.Count; i++)
+            {
+                stagedResult = stagedResults[i];
+                bool applied = TryApplyPacketOwnedAdminShopResult(
+                    stagedResult.Subtype,
+                    stagedResult.ResultCode,
+                    stagedResult.TrailingByteCount,
+                    stagedResult.TrailingPayloadSignature,
+                    stagedResult.TrailingPayload,
+                    stagedResult.HasResultCode,
+                    false,
+                    out resultMessage,
+                    out string stagedNoticeText,
+                    out _);
+                if (!string.IsNullOrWhiteSpace(stagedNoticeText))
+                {
+                    noticeText = stagedNoticeText;
+                }
+
+                if (!applied)
+                {
+                    summary = appliedCount == 0
+                        ? "Deferred packet 366 replay failed after CAdminShopDlg became visible again."
+                        : $"Replayed {appliedCount.ToString(CultureInfo.InvariantCulture)} deferred packet 366 result(s) after CAdminShopDlg became visible again; a later deferred result failed.";
+                    return true;
+                }
+
+                appliedCount++;
+            }
+
+            summary = appliedCount == 1
                 ? $"Replayed deferred packet 366 after CAdminShopDlg became visible again. {resultMessage}".Trim()
-                : "Deferred packet 366 replay failed after CAdminShopDlg became visible again.";
+                : $"Replayed {appliedCount.ToString(CultureInfo.InvariantCulture)} deferred packet 366 result(s) after CAdminShopDlg became visible again. {resultMessage}".Trim();
             return true;
         }
 
@@ -1280,6 +1307,19 @@ namespace HaCreator.MapSimulator.UI
                 _packetOwnedAdminShopSession.MarkDisconnectHazard();
                 _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the admin-shop owner had already cleared m_bShopRequestSent.");
                 message = "Packet 366 arrived without a pending admin-shop request. The v95 client throws CDisconnectException when m_bShopRequestSent is clear.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
+            }
+
+            if (!AdminShopDialogClientParityText.IsModeledResultCode(resultCode))
+            {
+                RestorePendingRequestState(entry);
+                ResetPendingRequestState();
+                ClearPendingPacketOwnedUserSellSnapshot();
+                _packetOwnedAdminShopSession.ClearLastNotice();
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype 4 returned an unrecovered result code, so the simulator preserved the selected admin-shop row and surfaced the packet-authored code without fabricating a local rejection or reopen.");
+                message = AdminShopDialogClientParityText.BuildUnmodeledResultCodeMessage(resultCode);
                 _footerMessage = message;
                 UpdateActionButtonStates();
                 return true;
@@ -10151,18 +10191,34 @@ namespace HaCreator.MapSimulator.UI
             selectedPaymentOption = ResolveCashShopIncTrunkCountSelectedPaymentOption(availablePaymentOptions);
             bool mapPointOnly = selectedPaymentOption == 2;
             confirmPromptSummary = BuildCashShopIncTrunkCountConfirmPrompt();
-            using PacketWriter writer = new();
-            writer.WriteByte(CashShopIncTrunkCountMode);
-            writer.WriteByte(mapPointOnly ? 1 : 0);
-            writer.WriteInt(selectedPaymentOption);
-            writer.WriteByte(0);
-            byte[] payload = writer.ToArray();
+            byte[] payload = BuildCashShopIncTrunkCountOutboundPayload(selectedPaymentOption);
 
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 CashShopOutboundOpcode,
                 payload,
                 $"Mirrored CCashShop::OnIncTrunkCount outbound body (opcode {CashShopOutboundOpcode.ToString(CultureInfo.InvariantCulture)}, mode {CashShopIncTrunkCountMode.ToString(CultureInfo.InvariantCulture)}, optionMask 0x{selectedPaymentOption.ToString("X", CultureInfo.InvariantCulture)}, mapPointOnly {(mapPointOnly ? 1 : 0)}).");
             return true;
+        }
+
+        internal static byte[] BuildCashShopIncTrunkCountOutboundPayloadForTesting(int selectedPaymentOption)
+        {
+            return BuildCashShopIncTrunkCountOutboundPayload(selectedPaymentOption);
+        }
+
+        private static byte[] BuildCashShopIncTrunkCountOutboundPayload(int selectedPaymentOption)
+        {
+            bool mapPointOnly = selectedPaymentOption == 2;
+            using PacketWriter writer = new();
+            writer.WriteByte(CashShopIncTrunkCountMode);
+            writer.WriteByte(mapPointOnly ? 1 : 0);
+            writer.WriteInt(selectedPaymentOption);
+            writer.WriteByte(0);
+            return writer.ToArray();
+        }
+
+        internal static int ResolveCashShopIncTrunkCountSelectedPaymentOptionForTesting(int availablePaymentOptions)
+        {
+            return ResolveCashShopIncTrunkCountSelectedPaymentOption(availablePaymentOptions);
         }
 
         private static int ResolveCashShopIncTrunkCountSelectedPaymentOption(int availablePaymentOptions)

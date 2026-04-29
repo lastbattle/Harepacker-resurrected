@@ -969,6 +969,9 @@ namespace HaCreator.MapSimulator.Entities
                     Tremble = tremble,
                     IsAngerAttack = attackInfo?.IsAngerAttack == true,
                     IsSpecialAttack = attackInfo?.IsSpecialAttack == true,
+                    DeadlyAttack = (attackMeta?.DeadlyAttack ?? 0) > 0,
+                    MpBurn = Math.Max(0, attackMeta?.MpBurn ?? 0),
+                    ConMP = Math.Max(0, attackMeta?.ConMP ?? 0),
                     DiseaseSkillId = attackMeta?.Disease ?? 0,
                     DiseaseLevel = Math.Max(1, attackMeta?.Level ?? 1)
                 });
@@ -1475,8 +1478,9 @@ namespace HaCreator.MapSimulator.Entities
 
             if (metadata.HpThreshold > 0)
             {
+                int effectiveThreshold = ResolveActionSpeakHpThreshold(metadata.HpThreshold, maxHp);
                 int effectiveHp = maxHp > 0 ? Math.Clamp(currentHp, 0, maxHp) : currentHp;
-                if (effectiveHp > metadata.HpThreshold)
+                if (effectiveHp > effectiveThreshold)
                 {
                     return false;
                 }
@@ -1484,6 +1488,21 @@ namespace HaCreator.MapSimulator.Entities
 
             int probability = Math.Clamp(metadata.Probability, 0, 100);
             return probability > 0 && Math.Clamp(probabilityRoll, 0, 99) < probability;
+        }
+
+        internal static int ResolveActionSpeakHpThreshold(int authoredThreshold, int maxHp)
+        {
+            if (authoredThreshold <= 0)
+            {
+                return 0;
+            }
+
+            if (maxHp <= 0 || authoredThreshold > 100)
+            {
+                return authoredThreshold;
+            }
+
+            return Math.Max(1, (int)Math.Floor(maxHp * (authoredThreshold / 100d)));
         }
 
         internal static string SelectActionSpeakMessage(MobAnimationSet.ActionSpeakMetadata metadata, int messageRoll)

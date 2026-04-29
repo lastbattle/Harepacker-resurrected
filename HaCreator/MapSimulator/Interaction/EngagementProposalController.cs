@@ -315,21 +315,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            byte[] payload = WeddingInvitationRuntime.BuildMarriageResultOpenPayload(
+            message = weddingInvitationController.OpenInvitation(
                 handoff.GroomName,
                 handoff.BrideName,
-                handoff.ClientDialogType);
-
-            return weddingInvitationController.TryOpenFromMarriageResultPacket(
-                payload,
                 handoff.Style,
+                handoff.ClientDialogType,
                 handoff.SourceDescription,
                 windowManager,
                 build,
                 font,
                 feedbackHandler,
-                showWindow,
-                out message);
+                showWindow);
+            return true;
         }
 
         internal bool TryOpenWeddingWishListFromAcceptedProposal(

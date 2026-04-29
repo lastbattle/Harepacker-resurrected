@@ -978,7 +978,7 @@ namespace HaCreator.MapSimulator.Fields
                 _ => AssignPromptMissing(out message)
             };
 
-            // Outbound prompt-bound packets clear prompt state through TryConsumePendingPromptForOutgoingPacket.
+            // Outbound prompt-bound packets clear prompt state only after the client send branch succeeds.
             // Non-packet prompt paths (remote-seat resolution) clear it here after a successful confirm.
             if (handled
                 && _pendingPrompt.IsActive
@@ -1129,11 +1129,21 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             byte packetType = packetBytes[0];
+            bool clearPromptAfterHandled = false;
             if (_pendingPrompt.IsActive && IsLocalRequestPacketSubtype(packetType))
             {
-                if (!TryConsumePendingPromptForOutgoingPacket(packetBytes, out message))
+                if (!TryValidatePendingPromptForOutgoingPacket(packetBytes, out message))
                 {
                     return false;
+                }
+
+                if (packetType == MiniRoomBaseLeavePacketType)
+                {
+                    RecordAndClearPendingPromptResponse(packetType);
+                }
+                else
+                {
+                    clearPromptAfterHandled = true;
                 }
             }
             else if (enforcePromptFlow
@@ -1158,6 +1168,11 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameStartPacketType => TryApplyOutgoingStartRequest(out message),
                 _ => FailOfficialClientPacket(packetType, out message)
             };
+
+            if (handled && clearPromptAfterHandled)
+            {
+                RecordAndClearPendingPromptResponse(packetType);
+            }
 
             if (handled && relayOutboundTransport && _officialClientRelayEnabled)
             {
@@ -3231,7 +3246,7 @@ namespace HaCreator.MapSimulator.Fields
             _clientPromptLayerReleaseCount++;
         }
 
-        private bool TryConsumePendingPromptForOutgoingPacket(byte[] packetBytes, out string message)
+        private bool TryValidatePendingPromptForOutgoingPacket(byte[] packetBytes, out string message)
         {
             message = null;
             if (!_pendingPrompt.IsActive)
@@ -3251,9 +3266,13 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            _lastClientPromptResponseSubtype = packetBytes[0];
-            ClearPendingPrompt();
             return true;
+        }
+
+        private void RecordAndClearPendingPromptResponse(byte packetType)
+        {
+            _lastClientPromptResponseSubtype = packetType;
+            ClearPendingPrompt();
         }
 
         private static bool IsPromptResponsePacket(MemoryGamePromptType promptType, byte[] packetBytes)

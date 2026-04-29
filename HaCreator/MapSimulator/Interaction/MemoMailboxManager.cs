@@ -907,7 +907,8 @@ namespace HaCreator.MapSimulator.Interaction
                 recipient,
                 attachment,
                 isQuickDelivery: true,
-                quickDeliveryMemo: body);
+                quickDeliveryMemo: body,
+                quickDeliveryCouponPosition: 0);
             _showTaxInfo = false;
 
             message = MapleStoryStringPool.GetOrFallback(
@@ -1553,7 +1554,8 @@ namespace HaCreator.MapSimulator.Interaction
             string recipient,
             MemoAttachmentState attachment,
             bool isQuickDelivery,
-            string quickDeliveryMemo)
+            string quickDeliveryMemo,
+            short quickDeliveryCouponPosition = 0)
         {
             string normalizedRecipient = recipient?.Trim() ?? string.Empty;
             string normalizedQuickMemo = isQuickDelivery ? quickDeliveryMemo?.Trim() ?? string.Empty : string.Empty;
@@ -1568,6 +1570,7 @@ namespace HaCreator.MapSimulator.Interaction
                 attachment,
                 meso,
                 feeMeso,
+                isQuickDelivery ? Math.Max(0, (int)quickDeliveryCouponPosition) : 0,
                 normalizedQuickMemo);
 
             return new ParcelDialogOutboundRequestSnapshot
@@ -1584,6 +1587,7 @@ namespace HaCreator.MapSimulator.Interaction
                 FeeMeso = feeMeso,
                 Recipient = normalizedRecipient,
                 IsQuickDelivery = isQuickDelivery,
+                QuickDeliveryCouponPosition = isQuickDelivery ? Math.Max(0, (int)quickDeliveryCouponPosition) : 0,
                 QuickDeliveryMemo = normalizedQuickMemo,
                 Payload = payload
             };
@@ -1595,6 +1599,7 @@ namespace HaCreator.MapSimulator.Interaction
             MemoAttachmentState attachment,
             int meso,
             int feeMeso,
+            int quickDeliveryCouponPosition,
             string quickDeliveryMemo)
         {
             using var stream = new MemoryStream();
@@ -1608,10 +1613,13 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write((byte)(hasItem ? 1 : 0));
             if (hasItem)
             {
+                writer.Write((byte)Math.Clamp((int)attachment.InventoryType, 0, byte.MaxValue));
+                writer.Write(attachment.InventoryPosition);
                 writer.Write(Math.Max(0, attachment.ItemId));
                 writer.Write((short)Math.Clamp(attachment.Quantity, 1, short.MaxValue));
             }
 
+            writer.Write((short)Math.Clamp(quickDeliveryCouponPosition, 0, short.MaxValue));
             WriteMapleString(writer, quickDeliveryMemo);
             writer.Flush();
             return stream.ToArray();

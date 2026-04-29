@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextManagerSessionId = 1;
         private int _nextOwnerRequestId = 1;
         private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseOwnerSnapshot> _ownerSnapshotsByQuestId = new();
+        private readonly System.Collections.Generic.Dictionary<int, int> _questIdsByOwnerItemId = new();
         private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseState> _retainedClosedRaisesByQuestId = new();
         private readonly System.Collections.Generic.Dictionary<int, Point> _windowPositionsByOwnerItemId = new();
 
@@ -295,6 +296,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot))
             {
                 _ownerSnapshotsByQuestId[questId] = snapshot with { QrData = qrData };
+                RememberOwnerQuestMapping(questId, snapshot.OwnerItemId);
             }
 
             QuestRewardRaiseState observedRaise = GetObservedRaiseByQuestId(questId);
@@ -372,6 +374,7 @@ namespace HaCreator.MapSimulator.Interaction
                 isActiveQuest
                     ? ActiveRaise.LastInboundSummary ?? string.Empty
                     : snapshot?.LastInboundSummary ?? string.Empty);
+            RememberOwnerQuestMapping(questId, ownerItemId);
             ObserveIdentityCounters(
                 isActiveQuest ? ActiveRaise.ManagerSessionId : snapshot?.ManagerSessionId ?? 0,
                 isActiveQuest ? ActiveRaise.RequestId : snapshot?.OwnerRequestId ?? 0);
@@ -408,6 +411,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ObserveIdentityCounters(state.ManagerSessionId, state.RequestId);
+            RememberOwnerQuestMapping(questId, state.OwnerItemId);
 
             if (!state.IsWindowDismissedLocally)
             {
@@ -439,6 +443,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (packet.Kind == QuestRewardRaiseInboundPacketKind.OwnerDestroyResult)
             {
+                ForgetQuestOwnerMapping(questId);
                 _retainedClosedRaisesByQuestId.Remove(questId);
                 _ownerSnapshotsByQuestId.Remove(questId);
                 return;
@@ -498,6 +503,11 @@ namespace HaCreator.MapSimulator.Interaction
                     : isActiveQuest ? ActiveRaise.AwaitingConfirmAck : snapshot?.AwaitingConfirmAck ?? false,
                 isActiveQuest ? ActiveRaise.AwaitingOwnerDestroyAck : snapshot?.AwaitingOwnerDestroyAck ?? false,
                 summary ?? string.Empty);
+            RememberOwnerQuestMapping(questId, ResolvePositiveObservedValue(
+                payload.OwnerItemId,
+                isActiveQuest ? ActiveRaise.OwnerItemId : 0,
+                retainedState?.OwnerItemId ?? 0,
+                snapshot?.OwnerItemId ?? 0));
             ObserveIdentityCounters(payload.ManagerSessionId, payload.OwnerRequestId);
         }
 
@@ -615,15 +625,29 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (ActiveRaise?.Prompt?.QuestId == questId)
             {
-                return DestroyActiveRaise();
+                QuestRewardRaiseState destroyed = DestroyActiveRaise();
+                ForgetQuestOwnerMapping(questId);
+                _ownerSnapshotsByQuestId.Remove(questId);
+                return destroyed;
             }
 
-            return ClearRetainedRaiseByQuestId(questId);
+            QuestRewardRaiseState retained = ClearRetainedRaiseByQuestId(questId);
+            ForgetQuestOwnerMapping(questId);
+            _ownerSnapshotsByQuestId.Remove(questId);
+            return retained;
         }
 
         public QuestRewardRaiseState DestroyWindowWithQuestId(int questId)
         {
             return DestroyByQuestId(questId);
+        }
+
+        public QuestRewardRaiseState DestroyWindowWithOwnerItemId(int ownerItemId)
+        {
+            int questId = ItemToQuest(ownerItemId);
+            return questId > 0
+                ? DestroyByQuestId(questId)
+                : null;
         }
 
         public int QuestToItem(int questId)
@@ -650,6 +674,40 @@ namespace HaCreator.MapSimulator.Interaction
                 : 0;
         }
 
+        public int ItemToQuest(int ownerItemId)
+        {
+            ownerItemId = Math.Max(0, ownerItemId);
+            if (ownerItemId <= 0)
+            {
+                return 0;
+            }
+
+            if (ActiveRaise?.OwnerItemId == ownerItemId)
+            {
+                return Math.Max(0, ActiveRaise.Prompt?.QuestId ?? 0);
+            }
+
+            foreach ((int questId, QuestRewardRaiseState retainedState) in _retainedClosedRaisesByQuestId)
+            {
+                if (retainedState?.OwnerItemId == ownerItemId)
+                {
+                    return Math.Max(0, questId);
+                }
+            }
+
+            return _questIdsByOwnerItemId.TryGetValue(ownerItemId, out int mappedQuestId)
+                ? Math.Max(0, mappedQuestId)
+                : 0;
+        }
+
+        public QuestRewardRaiseState GetObservedRaiseByOwnerItemId(int ownerItemId)
+        {
+            int questId = ItemToQuest(ownerItemId);
+            return questId > 0
+                ? GetObservedRaiseByQuestId(questId)
+                : null;
+        }
+
         public QuestRewardRaiseState ClearRetainedRaiseByQuestId(int questId)
         {
             questId = Math.Max(0, questId);
@@ -660,6 +718,37 @@ namespace HaCreator.MapSimulator.Interaction
 
             _retainedClosedRaisesByQuestId.Remove(questId);
             return retainedState;
+        }
+
+        private void RememberOwnerQuestMapping(int questId, int ownerItemId)
+        {
+            questId = Math.Max(0, questId);
+            ownerItemId = Math.Max(0, ownerItemId);
+            if (questId <= 0 || ownerItemId <= 0)
+            {
+                return;
+            }
+
+            ForgetQuestOwnerMapping(questId);
+            _questIdsByOwnerItemId[ownerItemId] = questId;
+        }
+
+        private void ForgetQuestOwnerMapping(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0 || _questIdsByOwnerItemId.Count == 0)
+            {
+                return;
+            }
+
+            int[] ownerItemIds = _questIdsByOwnerItemId
+                .Where(pair => pair.Value == questId)
+                .Select(pair => pair.Key)
+                .ToArray();
+            for (int i = 0; i < ownerItemIds.Length; i++)
+            {
+                _questIdsByOwnerItemId.Remove(ownerItemIds[i]);
+            }
         }
 
         private void BackupWindowPosition(QuestRewardRaiseState state)

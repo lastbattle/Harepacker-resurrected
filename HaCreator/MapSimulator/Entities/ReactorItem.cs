@@ -861,9 +861,12 @@ namespace HaCreator.MapSimulator.Entities
             int properEventIndex,
             WzImageProperty sourceProperty)
         {
+            int sourceDuration = ResolveApproximateLoadLayerDuration(sourceKind, sourceProperty);
             int duration = sourceKind switch
             {
-                HitAnimationSourceKind.StateLayer => GetExactStateDuration(state),
+                HitAnimationSourceKind.StateLayer => sourceDuration > 0
+                    ? sourceDuration
+                    : GetExactStateDuration(state),
                 HitAnimationSourceKind.IndexedHit => _stateIndexedHitDurations.TryGetValue((state, properEventIndex), out int indexedDuration)
                     ? indexedDuration
                     : 0,
@@ -876,7 +879,7 @@ namespace HaCreator.MapSimulator.Entities
 
             return duration > 0
                 ? duration
-                : ResolveApproximateLoadLayerDuration(sourceKind, sourceProperty);
+                : sourceDuration;
         }
 
         internal static int ResolveApproximateLoadLayerDurationForTesting(

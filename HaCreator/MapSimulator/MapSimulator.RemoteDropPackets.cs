@@ -1180,9 +1180,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            ForgetObservedRemotePetPickupOwner(actorId);
             ForgetObservedDropPartyActor(actorId);
             ForgetObservedDropPartyActorOwner(actorId);
-            ForgetObservedRemotePetPickupOwner(actorId);
         }
 
         private void ForgetObservedDropPartyActor(int actorId)
@@ -1222,7 +1222,11 @@ namespace HaCreator.MapSimulator
                 _observedDropPartyActorParents,
                 _observedDropPartyActorOwners,
                 ownerCharacterId);
-            RemoveObservedRemotePetPickupOwner(_observedRemotePetPickupActorPositions, ownerCharacterId);
+            RemoveObservedRemotePetPickupOwner(
+                _observedRemotePetPickupActorPositions,
+                ownerCharacterId,
+                _observedDropPartyActorParents,
+                _observedDropPartyActorOwners);
         }
 
         internal static void RetainPredictedRemotePetPickupActorPositionsFromObservedOwner(
@@ -1316,7 +1320,9 @@ namespace HaCreator.MapSimulator
 
         internal static void RemoveObservedRemotePetPickupOwner(
             IDictionary<int, Vector2> observedPetActorPositions,
-            int ownerCharacterId)
+            int ownerCharacterId,
+            IDictionary<int, int> actorParents = null,
+            IReadOnlyDictionary<int, int> actorOwners = null)
         {
             if (observedPetActorPositions == null || ownerCharacterId <= 0)
             {
@@ -1324,8 +1330,16 @@ namespace HaCreator.MapSimulator
             }
 
             int[] actorIdsToRemove = observedPetActorPositions.Keys
-                .Where(petActorId => TryDecodeRemotePetPickupActorId(petActorId, out int decodedOwnerId, out _)
-                    && decodedOwnerId == ownerCharacterId)
+                .Where(petActorId =>
+                    (TryDecodeRemotePetPickupActorId(petActorId, out int decodedOwnerId, out _)
+                        && decodedOwnerId == ownerCharacterId)
+                    || (TryResolveObservedDropPartyLinkedOwnerAlias(
+                        actorParents,
+                        actorOwners,
+                        petActorId,
+                        out int linkedOwnerCharacterId,
+                        out _)
+                        && linkedOwnerCharacterId == ownerCharacterId))
                 .ToArray();
             for (int i = 0; i < actorIdsToRemove.Length; i++)
             {
@@ -1818,6 +1832,29 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        internal static bool ShouldSurfaceDropPickupNotice(
+            DropItem drop,
+            int currentTime,
+            int localCharacterId,
+            Func<int, int, bool> partyMembershipEvaluator)
+        {
+            if (drop == null)
+            {
+                return false;
+            }
+
+            if (!IsPickupOwnershipWindowActive(drop.OwnerId, drop.OwnerExpireTime, drop.SourceId, currentTime))
+            {
+                return true;
+            }
+
+            return ShouldSurfacePickupNotice(
+                drop.OwnershipType,
+                drop.OwnerId,
+                localCharacterId,
+                partyMembershipEvaluator);
+        }
+
         internal static bool ShouldSurfaceRecentPickupNotice(
             RecentPickupRecord recentPickup,
             int localCharacterId,
@@ -1828,11 +1865,27 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!recentPickup.OwnershipWindowActive)
+            {
+                return true;
+            }
+
             return ShouldSurfacePickupNotice(
                 recentPickup.OwnershipType,
                 recentPickup.OwnerId,
                 localCharacterId,
                 partyMembershipEvaluator);
+        }
+
+        internal static bool IsPickupOwnershipWindowActive(
+            int ownerId,
+            int ownerExpireTime,
+            int sourceId,
+            int currentTime)
+        {
+            return ownerId > 0
+                && currentTime < ownerExpireTime
+                && sourceId != 0;
         }
 
         internal static bool IsClientPartyHelperMarker(MinimapUI.HelperMarkerType? markerType)

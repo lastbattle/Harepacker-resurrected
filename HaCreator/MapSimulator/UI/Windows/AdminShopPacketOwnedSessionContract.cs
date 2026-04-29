@@ -925,6 +925,11 @@ namespace HaCreator.MapSimulator.UI
                 return $"subtype {LastSubtype}, no result code";
             }
 
+            if (!AdminShopDialogClientParityText.IsModeledResultCode((byte)Math.Max(0, LastResultCode)))
+            {
+                return $"subtype {LastSubtype}, unrecovered result code {LastResultCode}";
+            }
+
             string label = AdminShopDialogClientParityText.BuildResultStateLabel((byte)Math.Max(0, LastResultCode));
             return $"subtype {LastSubtype}, code {LastResultCode} ({label})";
         }

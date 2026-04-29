@@ -1654,6 +1654,21 @@ namespace HaCreator.MapSimulator.Companions
             return 1f;
         }
 
+        internal static SD.Color ResolveNativeCanvasCopyPixelForTesting(SD.Color destination, SD.Color source)
+        {
+            using var bitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            bitmap.SetPixel(0, 0, destination);
+            using (SDG graphics = SDG.FromImage(bitmap))
+            using (var sourceBitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                sourceBitmap.SetPixel(0, 0, source);
+                ApplyNativeCanvasCopySettings(graphics);
+                DrawCanvasCopyAlpha255(graphics, sourceBitmap, 0, 0);
+            }
+
+            return bitmap.GetPixel(0, 0);
+        }
+
         private static void ApplyNativeCanvasCopySettings(SDG graphics)
         {
             if (graphics == null)

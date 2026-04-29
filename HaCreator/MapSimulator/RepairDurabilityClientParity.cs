@@ -375,7 +375,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (legacySlotPosition > 0 && legacySlotPosition <= byte.MaxValue)
+            if (IsClientEncodableBodyPart(legacySlotPosition))
             {
                 encodedPosition = -legacySlotPosition;
                 return true;
@@ -1166,14 +1166,14 @@ namespace HaCreator.MapSimulator
             int headerOffset = 1;
             short? operationCode = null;
             int? encodedSlotPosition = null;
-            if (!TryReadResultFirstHeader(payload, ref headerOffset, out operationCode, out encodedSlotPosition))
+            bool success = payload[0] == 0;
+            if (!TryReadResultFirstHeader(payload, ref headerOffset, success, out operationCode, out encodedSlotPosition))
             {
                 // A plain [result + reason] body is handled by the generic result/reason parser.
                 // Only this branch owns the optional result-first echoed opcode/slot header.
                 return false;
             }
 
-            bool success = payload[0] == 0;
             if (!TryDecodeReasonAndStatusTail(
                     payload,
                     headerOffset,
@@ -1197,6 +1197,7 @@ namespace HaCreator.MapSimulator
         private static bool TryReadResultFirstHeader(
             byte[] payload,
             ref int offset,
+            bool success,
             out short? operationCode,
             out int? encodedSlotPosition)
         {
@@ -1220,13 +1221,13 @@ namespace HaCreator.MapSimulator
                 {
                     TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
                     encodedSlotStartOffset = candidateOffset;
-                    TryReadEncodedSlotPosition(payload, ref candidateOffset, out candidateEncodedSlotPosition);
+                    TryReadResultFirstEncodedSlotPosition(payload, ref candidateOffset, success, out candidateEncodedSlotPosition);
                     encodedSlotEndOffset = candidateOffset;
                 }
                 else
                 {
                     encodedSlotStartOffset = candidateOffset;
-                    TryReadEncodedSlotPosition(payload, ref candidateOffset, out candidateEncodedSlotPosition);
+                    TryReadResultFirstEncodedSlotPosition(payload, ref candidateOffset, success, out candidateEncodedSlotPosition);
                     encodedSlotEndOffset = candidateOffset;
                     TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
                 }
@@ -1289,6 +1290,11 @@ namespace HaCreator.MapSimulator
             int candidateEncodedSlotPosition,
             int remainingAfterSlot)
         {
+            if (!success && candidateEncodedSlotPosition >= 0 && remainingAfterSlot == 0)
+            {
+                return false;
+            }
+
             if (remainingAfterSlot >= sizeof(int))
             {
                 return true;
@@ -1320,6 +1326,51 @@ namespace HaCreator.MapSimulator
 
             encodedSlotPosition = candidateEncodedSlotPosition;
             offset += sizeof(int);
+            return true;
+        }
+
+        private static bool TryReadResultFirstEncodedSlotPosition(byte[] payload, ref int offset, bool success, out int? encodedSlotPosition)
+        {
+            encodedSlotPosition = null;
+            if (payload == null || payload.Length - offset < sizeof(short))
+            {
+                return false;
+            }
+
+            if (payload.Length - offset >= sizeof(int))
+            {
+                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                int remainingAfterSlot = payload.Length - (offset + sizeof(int));
+                if (!success
+                    && candidateEncodedSlotPosition >= 0
+                    && remainingAfterSlot == sizeof(int)
+                    && TryResolveRepairResultStringPoolStatusText(
+                        BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset + sizeof(int), sizeof(int))),
+                        out _))
+                {
+                    return false;
+                }
+
+                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
+                    && ShouldTreatResultFirstIntAsEncodedSlot(success, candidateEncodedSlotPosition, remainingAfterSlot))
+                {
+                    encodedSlotPosition = candidateEncodedSlotPosition;
+                    offset += sizeof(int);
+                    return true;
+                }
+            }
+
+            short candidateShortSlotPosition = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            int remainingAfterShortSlot = payload.Length - (offset + sizeof(short));
+            if (!LooksLikeEncodedSlotPosition(candidateShortSlotPosition)
+                || LooksLikeRepairOpcode(candidateShortSlotPosition)
+                || (remainingAfterShortSlot > 0 && remainingAfterShortSlot < sizeof(short)))
+            {
+                return false;
+            }
+
+            encodedSlotPosition = candidateShortSlotPosition;
+            offset += sizeof(short);
             return true;
         }
 

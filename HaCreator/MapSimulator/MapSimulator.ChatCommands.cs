@@ -9941,7 +9941,7 @@ namespace HaCreator.MapSimulator
 
                 "Drive Messenger state, invite, claim, and remote social lifecycle flows",
 
-                "/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]]",
+                "/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|claimnotice|claimcategory <chat|personal>|claimconfirm|claimcancel|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -9986,6 +9986,17 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Ok(_messengerRuntime.RejectIncomingInvite());
                         case "claim":
                             return ChatCommandHandler.CommandResult.Ok(TryHandleMessengerClaimActionThroughClientSeam());
+                        case "claimnotice":
+                            return _messengerRuntime.TryOpenClaimDialogFromChat(out string claimNoticeMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(claimNoticeMessage)
+                                : ChatCommandHandler.CommandResult.Error(claimNoticeMessage);
+                        case "claimcategory":
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _messengerRuntime.SelectClaimDialogCategory(args.Length >= 2 ? string.Join(" ", args.Skip(1)) : "chat"));
+                        case "claimconfirm":
+                            return ChatCommandHandler.CommandResult.Ok(TryHandleMessengerClaimActionThroughClientSeam());
+                        case "claimcancel":
+                            return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.CancelClaimDialog());
                         case "leave":
                             return ChatCommandHandler.CommandResult.Ok(TryHandleMessengerLeaveActionThroughClientSeam());
                         case "state":
@@ -11855,7 +11866,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "scriptmsg",
                 "Inspect or drive packet-authored CScriptMan script-message dialogs",
-                "/scriptmsg [status|clear|transport <status>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
+                "/scriptmsg [status|clear|transport <status>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|accept <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -11916,6 +11927,20 @@ namespace HaCreator.MapSimulator
                                 out string yesNoMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(yesNoMessage)
                                 : ChatCommandHandler.CommandResult.Error(yesNoMessage);
+
+
+                        case "accept":
+                            if (args.Length < 3 || !int.TryParse(args[1], out int acceptNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg accept <npcId> <text>");
+                            }
+
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageAcceptPacket(acceptNpcId, string.Join(" ", args.Skip(2))),
+                                out string acceptMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(acceptMessage)
+                                : ChatCommandHandler.CommandResult.Error(acceptMessage);
 
 
 
@@ -12260,7 +12285,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|accept <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
                     }
                 });
 
@@ -12732,6 +12757,18 @@ namespace HaCreator.MapSimulator
             writer.Write((byte)4);
             writer.Write(npcId);
             writer.Write((byte)2);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, text);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageAcceptPacket(int npcId, string text)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)12);
             writer.Write((byte)0);
             WritePacketOwnedMapleString(writer, text);
             return stream.ToArray();

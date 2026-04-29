@@ -307,6 +307,10 @@ namespace HaCreator.MapSimulator.Companions
             _actionLoader = new DragonActionLoader(device);
         }
 
+        internal DragonCompanionRuntime()
+        {
+        }
+
         public void SetCurrentMapInfoProvider(Func<MapInfo> currentMapInfoProvider)
         {
             _currentMapInfoProvider = currentMapInfoProvider;
@@ -1151,10 +1155,7 @@ namespace HaCreator.MapSimulator.Companions
         private void EnqueueClientVecCtrlEndUpdateActiveFlushPacketPayload(byte[] payload)
         {
             payload ??= Array.Empty<byte>();
-            if (TryDecodeClientDragonEndUpdateActiveFlushTail(payload, out ClientDragonFlushTail tail, out _))
-            {
-                _lastSimulatorVecCtrlEndUpdateActiveFlushTail = tail;
-            }
+            TryRecordSimulatorClientDragonEndUpdateActiveFlushTail(payload, out _);
 
             while (_pendingVecCtrlEndUpdateActiveFlushPayloads.Count >= MaxPendingClientVecCtrlFlushPackets)
             {
@@ -1162,6 +1163,19 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _pendingVecCtrlEndUpdateActiveFlushPayloads.Enqueue(payload);
+        }
+
+        internal bool TryRecordSimulatorClientDragonEndUpdateActiveFlushTail(
+            IReadOnlyList<byte> payload,
+            out string error)
+        {
+            if (!TryDecodeClientDragonEndUpdateActiveFlushTail(payload, out ClientDragonFlushTail tail, out error))
+            {
+                return false;
+            }
+
+            _lastSimulatorVecCtrlEndUpdateActiveFlushTail = tail;
+            return true;
         }
 
         private void UpdateFollowState(PlayerCharacter owner)
@@ -1506,7 +1520,20 @@ namespace HaCreator.MapSimulator.Companions
                 && ReadUInt16LittleEndian(capture, 0) == ClientVecCtrlDragonMovePacketOpcode)
             {
                 opcodeFramed = true;
-                return TryDecodeClientDragonEndUpdateActiveFlushTailFromRawPacket(capture, out tail, out error);
+                if (TryDecodeClientDragonEndUpdateActiveFlushTailFromRawPacket(capture, out tail, out error))
+                {
+                    return true;
+                }
+
+                string opcodeError = error;
+                opcodeFramed = false;
+                if (TryDecodeClientDragonEndUpdateActiveFlushTail(capture, out tail, out error))
+                {
+                    return true;
+                }
+
+                error = $"{opcodeError} Payload-only fallback also failed: {error}";
+                return false;
             }
 
             return TryDecodeClientDragonEndUpdateActiveFlushTail(capture, out tail, out error);

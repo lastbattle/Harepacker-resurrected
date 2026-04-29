@@ -1852,11 +1852,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            Rectangle contentBounds = new(
-                0,
-                PacketOwnedBalloonVerticalPadding,
-                contentWidth,
-                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
+            Rectangle contentBounds = ResolvePacketOwnedBalloonContentBounds(
+                new Rectangle(0, 0, bodyWidth, bodyHeight),
+                contentWidth);
             if (TryCreatePacketOwnedBalloonBodyTexture(lines, lineHeight, bodyWidth, bodyHeight, contentBounds, out Texture2D bodyTexture))
             {
                 message.SetCachedBodyTexture(bodyTexture, bodyWidth, bodyHeight);
@@ -2017,11 +2015,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            Rectangle localContentBounds = new(
-                localBodyBounds.X,
-                localBodyBounds.Y + PacketOwnedBalloonVerticalPadding,
-                Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth),
-                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
+            Rectangle localContentBounds = ResolvePacketOwnedBalloonContentBounds(
+                localBodyBounds,
+                Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth));
             RenderTargetBinding[] previousTargets = GraphicsDevice.GetRenderTargets();
             Viewport previousViewport = GraphicsDevice.Viewport;
             var renderTarget = new RenderTarget2D(
@@ -2210,11 +2206,7 @@ namespace HaCreator.MapSimulator
                 canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
             }
 
-            Rectangle contentBounds = new(
-                bodyBounds.X,
-                bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
-                contentWidth,
-                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
+            Rectangle contentBounds = ResolvePacketOwnedBalloonContentBounds(bodyBounds, contentWidth);
             visualTexture = GetOrCreatePacketOwnedBalloonVisualTexture(
                 message,
                 lines,
@@ -2225,6 +2217,24 @@ namespace HaCreator.MapSimulator
                 arrowSprite);
             layout = new PacketOwnedBalloonLayout(message, anchor, canvasBounds, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite, arrowBounds, visualTexture);
             return true;
+        }
+
+        private static Rectangle ResolvePacketOwnedBalloonContentBounds(Rectangle bodyBounds, int contentWidth)
+        {
+            return new Rectangle(
+                bodyBounds.X + PacketOwnedBalloonHorizontalPadding,
+                bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
+                Math.Max(0, contentWidth),
+                Math.Max(0, bodyBounds.Height - (PacketOwnedBalloonVerticalPadding * 2)));
+        }
+
+        internal static Rectangle ResolvePacketOwnedBalloonContentBoundsForTests(Rectangle bodyBounds, int contentWidth) =>
+            ResolvePacketOwnedBalloonContentBounds(bodyBounds, contentWidth);
+
+        internal static int ResolvePacketOwnedBalloonBodyWidthForTests(int requestedWidth)
+        {
+            int contentWidth = Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            return contentWidth + PacketOwnedBalloonBodyExtraWidth;
         }
 
         private void ResolvePacketOwnedBalloonOverlap(

@@ -300,8 +300,11 @@ namespace HaCreator.MapSimulator.Managers
                             requirePositiveOutputItemId: true,
                             out hiddenEntries))
                     {
-                        error = "Maker-session hidden recipe entries are truncated or invalid.";
-                        return false;
+                        if (!TryReadRemainingCompactHiddenRecipeRoster(reader, out hiddenEntries))
+                        {
+                            error = "Maker-session hidden recipe entries are truncated or invalid.";
+                            return false;
+                        }
                     }
                 }
             }
@@ -458,7 +461,10 @@ namespace HaCreator.MapSimulator.Managers
                             requirePositiveOutputItemId: true,
                             out hiddenEntries))
                     {
-                        continue;
+                        if (!TryReadRemainingCompactHiddenRecipeRoster(reader, out hiddenEntries))
+                        {
+                            continue;
+                        }
                     }
                 }
 
@@ -2008,6 +2014,55 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
             catch (OverflowException)
+            {
+                entries = null;
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+        }
+
+        private static bool TryReadRemainingCompactHiddenRecipeRoster(
+            BinaryReader reader,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            entries = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                long remainingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
+                if (remainingBytes <= 0 || remainingBytes > int.MaxValue)
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                byte[] payload = reader.ReadBytes((int)remainingBytes);
+                if (!TryDecodeCompactHiddenTail(
+                        payload,
+                        out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
+                        out List<PacketOwnedItemMakerSessionHiddenEntry> removals,
+                        out _,
+                        out _))
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                if (removals != null && removals.Count > 0)
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                entries = additions ?? new List<PacketOwnedItemMakerSessionHiddenEntry>();
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException or OverflowException)
             {
                 entries = null;
                 reader.BaseStream.Position = startPosition;

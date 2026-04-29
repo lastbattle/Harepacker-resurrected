@@ -62,6 +62,18 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Open raise owner quest #{Math.Max(0, state?.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, state?.OwnerItemId ?? 0)} session #{Math.Max(0, state?.ManagerSessionId ?? 0)} with client create-window visibility signal");
         }
 
+        internal static QuestRewardRaiseOutboundRequest CreateCloseOwner(QuestRewardRaiseState state)
+        {
+            byte[] payload = BuildOpenOwnerPayload(state?.Prompt?.QuestId ?? 0);
+            return new QuestRewardRaiseOutboundRequest(
+                QuestRewardRaiseOutboundRequestKind.OpenOwner,
+                OpenOwnerOpcode,
+                Array.AsReadOnly(payload),
+                ClientOpenOwnerOpcode,
+                Array.AsReadOnly(BuildClientOpenOwnerPayload(state?.OwnerItemId ?? 0, isVisible: false)),
+                $"Close raise owner quest #{Math.Max(0, state?.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, state?.OwnerItemId ?? 0)} session #{Math.Max(0, state?.ManagerSessionId ?? 0)} with client create-window hidden visibility signal");
+        }
+
         internal static bool TryDecodeClientOpenOwnerPayload(
             byte[] payload,
             out int ownerItemId,
@@ -327,12 +339,12 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
-        private static byte[] BuildClientOpenOwnerPayload(int ownerItemId)
+        private static byte[] BuildClientOpenOwnerPayload(int ownerItemId, bool isVisible = true)
         {
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
             writer.Write(Math.Max(0, ownerItemId));
-            writer.Write((byte)1);
+            writer.Write((byte)(isVisible ? 1 : 0));
             writer.Flush();
             return stream.ToArray();
         }

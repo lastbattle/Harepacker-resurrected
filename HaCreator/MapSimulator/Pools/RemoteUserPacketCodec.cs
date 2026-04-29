@@ -3397,19 +3397,23 @@ namespace HaCreator.MapSimulator.Pools
         {
             markerType = null;
             appliesTrackedUserState = true;
-            if (Enum.IsDefined(typeof(MinimapUI.HelperMarkerType), (int)markerRaw))
+            if (TryResolveDefaultHelperChildIndexMarkerName(markerRaw.ToString(CultureInfo.InvariantCulture), out string indexedMarkerName))
             {
-                markerType = (MinimapUI.HelperMarkerType)markerRaw;
-                return true;
+                if (TryResolveHelperMarkerName(indexedMarkerName, out markerType)
+                    && markerType.HasValue)
+                {
+                    return true;
+                }
+
+                return false;
             }
 
-            if (!TryResolveDefaultHelperChildIndexMarkerName(markerRaw.ToString(CultureInfo.InvariantCulture), out string indexedMarkerName)
-                || !TryResolveHelperMarkerName(indexedMarkerName, out markerType)
-                || !markerType.HasValue)
+            if (!Enum.IsDefined(typeof(MinimapUI.HelperMarkerType), (int)markerRaw))
             {
                 return false;
             }
 
+            markerType = (MinimapUI.HelperMarkerType)markerRaw;
             return true;
         }
 

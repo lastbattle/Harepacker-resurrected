@@ -58,7 +58,8 @@ namespace HaCreator.MapSimulator.Fields
 
     public readonly record struct PassiveTransferFieldHorizontalOnKeyDownDecision(
         bool ShouldStopSkillMacro,
-        bool ShouldClearQueuedRetry);
+        bool ShouldClearQueuedRetry,
+        PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
 
     public readonly record struct PassiveTransferFieldQueuedReplayDecision(
         bool ShouldStopSkillMacro,
@@ -84,7 +85,12 @@ namespace HaCreator.MapSimulator.Fields
             None = 0,
             MapTransferAdmission = 1,
             TransferResponseLifecycle = 2,
-            FieldInterfaceTeardown = 3
+            FieldInterfaceTeardown = 3,
+            HorizontalOnKeyDown = 4,
+            FreshHandleUpKeyDownPortalHandled = 5,
+            ChairGetUp = 6,
+            FollowCharacterFailure = 7,
+            SameMapTeleport = 8
         }
 
         public enum QueuedRetryWriterOwner
@@ -240,7 +246,9 @@ namespace HaCreator.MapSimulator.Fields
             bool hasPendingRequest,
             bool handledPortalInteraction)
         {
-            return hasPendingRequest && handledPortalInteraction;
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromFreshHandleUpKeyDown(handledPortalInteraction));
         }
 
         public static bool ShouldCancelQueuedRetryOnHorizontalKeyDown(
@@ -256,12 +264,33 @@ namespace HaCreator.MapSimulator.Fields
             bool leftKeyPressed,
             bool rightKeyPressed)
         {
+            QueuedRetryLifecycleClearOwner clearOwner =
+                ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed);
+
             return new PassiveTransferFieldHorizontalOnKeyDownDecision(
                 ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(leftKeyPressed, rightKeyPressed),
                 ShouldClearQueuedRetry: ShouldCancelQueuedRetryOnHorizontalKeyDown(
                     hasPendingRequest,
                     leftKeyPressed,
-                    rightKeyPressed));
+                    rightKeyPressed),
+                ClearOwner: clearOwner);
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromHorizontalOnKeyDown(
+            bool leftKeyPressed,
+            bool rightKeyPressed)
+        {
+            return leftKeyPressed || rightKeyPressed
+                ? QueuedRetryLifecycleClearOwner.HorizontalOnKeyDown
+                : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFreshHandleUpKeyDown(
+            bool handledPortalInteraction)
+        {
+            return handledPortalInteraction
+                ? QueuedRetryLifecycleClearOwner.FreshHandleUpKeyDownPortalHandled
+                : QueuedRetryLifecycleClearOwner.None;
         }
 
         public static bool ShouldStopSkillMacroForHorizontalQueuedCancel(bool shouldCancelQueuedRetry)
@@ -423,14 +452,34 @@ namespace HaCreator.MapSimulator.Fields
             bool hasPendingRequest,
             bool clearsPendingFollowRequest)
         {
-            return hasPendingRequest && clearsPendingFollowRequest;
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterFailure(clearsPendingFollowRequest));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterFailure(
+            bool clearsPendingFollowRequest)
+        {
+            return clearsPendingFollowRequest
+                ? QueuedRetryLifecycleClearOwner.FollowCharacterFailure
+                : QueuedRetryLifecycleClearOwner.None;
         }
 
         public static bool ShouldClearQueuedRetryOnChairGetUp(
             bool hasPendingRequest,
             bool consumedChairGetUpBranch)
         {
-            return hasPendingRequest && consumedChairGetUpBranch;
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromChairGetUp(consumedChairGetUpBranch));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromChairGetUp(
+            bool consumedChairGetUpBranch)
+        {
+            return consumedChairGetUpBranch
+                ? QueuedRetryLifecycleClearOwner.ChairGetUp
+                : QueuedRetryLifecycleClearOwner.None;
         }
 
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)

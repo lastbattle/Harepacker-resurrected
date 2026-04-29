@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.UI
                 using MemoryStream stream = new(buffer, writable: false);
                 using BinaryReader reader = new(stream);
                 bool sawMatchingAddEntry = false;
+                bool sawMatchingDecodedAddEntry = false;
                 bool sawMatchingSwap = false;
                 bool sawMatchingRemoveOnly = false;
                 bool sawDisplacedAddEntry = false;
@@ -214,6 +215,7 @@ namespace HaCreator.MapSimulator.UI
                                     reservedTrailerBytes: requiresSecondaryStatChangedPointTrailer ? sizeof(byte) : 0,
                                     out int addedItemId,
                                     out bool matchedByHeader,
+                                    out bool decodedFullBody,
                                     out bool hasCashSerial,
                                     out long cashItemSerialNumber,
                                     out rejectReason))
@@ -253,6 +255,7 @@ namespace HaCreator.MapSimulator.UI
                                 }
 
                                 sawMatchingAddEntry = true;
+                                sawMatchingDecodedAddEntry = sawMatchingDecodedAddEntry || decodedFullBody;
                             }
                             else if (TryMatchesExpectedCharacterDisplacedAdd(
                                          request,
@@ -321,6 +324,7 @@ namespace HaCreator.MapSimulator.UI
                         request,
                         operationContext,
                         matchedCharacterInventoryType,
+                        sawMatchingDecodedAddEntry,
                         out rejectReason);
                 }
 
@@ -972,6 +976,7 @@ namespace HaCreator.MapSimulator.UI
             EquipmentChangeRequest request,
             CharacterInventoryOperationContext operationContext,
             byte matchedCharacterInventoryType,
+            bool sawMatchingDecodedAddEntry,
             out string rejectReason)
         {
             rejectReason = null;
@@ -992,6 +997,11 @@ namespace HaCreator.MapSimulator.UI
 
                     if (!operationContext.SawExpectedPositiveEquipRemove)
                     {
+                        if (sawMatchingDecodedAddEntry)
+                        {
+                            return true;
+                        }
+
                         rejectReason = "Inventory-operation add entry is missing source-slot removal for the requested equip-in operation.";
                         return false;
                     }
@@ -2013,12 +2023,14 @@ namespace HaCreator.MapSimulator.UI
             int reservedTrailerBytes,
             out int itemId,
             out bool matchedByHeader,
+            out bool decodedFullBody,
             out bool hasCashSerial,
             out long cashItemSerialNumber,
             out string rejectReason)
         {
             itemId = 0;
             matchedByHeader = false;
+            decodedFullBody = false;
             hasCashSerial = false;
             cashItemSerialNumber = 0;
             rejectReason = null;
@@ -2068,6 +2080,7 @@ namespace HaCreator.MapSimulator.UI
                     case ItemSlotTypeEquip:
                         if (TryReadClientEquipAddEntryBody(reader, hasCashSerial, out rejectReason))
                         {
+                            decodedFullBody = true;
                             return true;
                         }
 
@@ -2075,6 +2088,7 @@ namespace HaCreator.MapSimulator.UI
                     case ItemSlotTypeBundle:
                         if (TryReadClientBundleAddEntryBody(reader, itemId, out rejectReason))
                         {
+                            decodedFullBody = true;
                             return true;
                         }
 
@@ -2082,6 +2096,7 @@ namespace HaCreator.MapSimulator.UI
                     case ItemSlotTypePet:
                         if (TryReadClientPetAddEntryBody(reader, out rejectReason))
                         {
+                            decodedFullBody = true;
                             return true;
                         }
 

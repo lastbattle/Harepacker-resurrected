@@ -649,6 +649,11 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     if (!TryVerifyPassiveEstablishedSession(out status))
                     {
+                        if (IsRunning)
+                        {
+                            return TryQueuePulleyRequest(request, out status);
+                        }
+
                         return false;
                     }
 

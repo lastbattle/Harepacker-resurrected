@@ -296,6 +296,32 @@ namespace HaCreator.MapSimulator.Managers
                 && normalizedPath.EndsWith("/utildlgex/notice", StringComparison.OrdinalIgnoreCase);
         }
 
+        internal static string NormalizeClientAssetPath(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string normalized = value.Trim().Replace('\\', '/');
+            int resourcePrefixIndex = normalized.IndexOf("#f", StringComparison.OrdinalIgnoreCase);
+            if (resourcePrefixIndex >= 0)
+            {
+                int resourceStartIndex = resourcePrefixIndex + 2;
+                int resourceEndIndex = normalized.IndexOf('#', resourceStartIndex);
+                if (resourceEndIndex > resourceStartIndex)
+                {
+                    normalized = normalized[resourceStartIndex..resourceEndIndex];
+                }
+                else
+                {
+                    normalized = normalized[resourceStartIndex..];
+                }
+            }
+
+            return normalized.Trim().Trim('#').Replace('\\', '/');
+        }
+
         internal static int NormalizeRandomMesoBagClientRank(int rank)
         {
             return rank switch
@@ -434,7 +460,7 @@ namespace HaCreator.MapSimulator.Managers
                 return fallbackPath;
             }
 
-            return resolved.Replace('\\', '/');
+            return NormalizeClientAssetPath(resolved);
         }
 
         private static string FormatInvariant(string format, params object[] values)
@@ -455,9 +481,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private static string NormalizeAssetPath(string value)
         {
-            return string.IsNullOrWhiteSpace(value)
-                ? string.Empty
-                : value.Replace('\\', '/');
+            return NormalizeClientAssetPath(value);
         }
     }
 }

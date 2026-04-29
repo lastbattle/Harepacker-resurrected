@@ -19,6 +19,13 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClaimRequestStageLifetimeMs = 30000;
         private const byte MessengerChatClaimType = 3;
         private const string MessengerChatClaimContext = "Messenger";
+        private const string ClaimDialogAssetRoot = "UI/UIWindow.img/Claim";
+        private const string ClaimDialogNoticeAsset = "UI/UIWindow.img/Claim/notice";
+        private const string ClaimDialogReportAsset = "UI/UIWindow.img/Report/backgrnd";
+        private const string ClaimDialogConfirmButtonAsset = "UI/UIWindow.img/Claim/BtClaim";
+        private const string ClaimDialogCancelButtonAsset = "UI/UIWindow.img/Claim/BtCancel";
+        private const string ClaimDialogCharacterButtonAsset = "UI/UIWindow.img/Claim/BtCClaim";
+        private const string ClaimDialogPersonalButtonAsset = "UI/UIWindow.img/Claim/BtPClaim";
         private static readonly MessengerContactDefinition[] ContactDefinitions =
         {
             new("Rondo", "Lith Harbor", 4, "Ready to board.", "Boarding soon. Meet me at the dock.", "Pirate", 34),
@@ -50,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _windowCloseReady;
         private bool _exitPromptActive;
         private bool _sessionOwnedLeaveRequestInFlight;
+        private PendingMessengerClaimDialogState _claimDialog;
         private int _deleteRequestedTick = int.MinValue;
         private int _deleteDestroyReadyTick = int.MinValue;
         private int _sessionOwnedLeaveRequestTick = int.MinValue;
@@ -164,6 +172,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PendingInviteSummary = BuildPendingInviteSummary(),
                 PendingClaimSummary = BuildPendingClaimSummary(),
                 PendingClaimCount = _pendingClaimRequests.Count,
+                ClaimDialog = BuildClaimDialogSnapshot(),
                 LastActionSummary = _lastActionSummary,
                 LastPacketSummary = _lastPacketSummary,
                 StatusBarText = statusBarText,
@@ -808,6 +817,8 @@ namespace HaCreator.MapSimulator.Interaction
                 queuedOnly,
                 retiredEntries));
 
+            MarkClaimDialogSubmitted(targetCharacterName, claimType, context, appliedLineCount);
+
             string modeLabel = queuedOnly ? "Queued live" : "Submitted live";
             _lastActionSummary =
                 $"{modeLabel} Messenger claim #{claimId} for {appliedLineCount} line(s) targeting {targetCharacterName}; waiting for the server-owned claim lifecycle.";
@@ -815,6 +826,162 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary(
                 $"Mirrored CWvsContext::SendClaimRequest claim #{claimId} target={targetCharacterName} type={claimType} context={context} chatLines={appliedLineCount}.");
             StartBlink(Environment.TickCount);
+            return _lastActionSummary;
+        }
+
+        internal bool TryOpenClaimDialogFromChat(out string message)
+        {
+            if (!TryBuildClientChatClaimRequestPayload(
+                    out byte[] payload,
+                    out string targetCharacterName,
+                    out byte claimType,
+                    out string context,
+                    out int chatLineCount,
+                    out message))
+            {
+                return false;
+            }
+
+            string chatLog = ExtractClaimChatLog(payload);
+            _claimDialog = new PendingMessengerClaimDialogState(
+                MessengerClaimDialogStage.Notice,
+                targetCharacterName,
+                claimType,
+                context,
+                chatLineCount,
+                chatLog,
+                ClaimDialogNoticeAsset,
+                ClaimDialogReportAsset,
+                ClaimDialogConfirmButtonAsset,
+                ClaimDialogCancelButtonAsset,
+                string.Empty);
+            _lastActionSummary = $"Opened WZ-backed Messenger claim notice for {targetCharacterName} with {chatLineCount} chat line(s).";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary(
+                $"Opened Messenger claim owner at {ClaimDialogAssetRoot} using notice={ClaimDialogNoticeAsset}, report={ClaimDialogReportAsset}, buttons=BtClaim/BtCancel/BtCClaim/BtPClaim.");
+            StartBlink(Environment.TickCount);
+            message = _lastActionSummary;
+            return true;
+        }
+
+        internal string AdvanceClaimDialogNotice()
+        {
+            if (_claimDialog == null)
+            {
+                return "No Messenger claim dialog is open.";
+            }
+
+            if (_claimDialog.Stage != MessengerClaimDialogStage.Notice)
+            {
+                return $"Messenger claim dialog is already at {_claimDialog.Stage}.";
+            }
+
+            _claimDialog = _claimDialog with
+            {
+                Stage = MessengerClaimDialogStage.Category,
+                SelectedButtonAsset = ClaimDialogCharacterButtonAsset
+            };
+            _lastActionSummary = "Messenger claim notice accepted; WZ-backed category buttons are active.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Messenger claim owner advanced from notice to category selection using {ClaimDialogCharacterButtonAsset} and {ClaimDialogPersonalButtonAsset}.");
+            return _lastActionSummary;
+        }
+
+        internal string SelectClaimDialogCategory(string categoryToken)
+        {
+            if (_claimDialog == null)
+            {
+                return "No Messenger claim dialog is open.";
+            }
+
+            if (_claimDialog.Stage is MessengerClaimDialogStage.PendingResult or MessengerClaimDialogStage.Completed)
+            {
+                return $"Messenger claim dialog is {_claimDialog.Stage}; wait for completion or start a new claim.";
+            }
+
+            string token = string.IsNullOrWhiteSpace(categoryToken) ? "chat" : categoryToken.Trim();
+            string buttonAsset = token.Equals("personal", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("p", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("btpclaim", StringComparison.OrdinalIgnoreCase)
+                    ? ClaimDialogPersonalButtonAsset
+                    : ClaimDialogCharacterButtonAsset;
+
+            _claimDialog = _claimDialog with
+            {
+                Stage = MessengerClaimDialogStage.Report,
+                SelectedButtonAsset = buttonAsset
+            };
+            _lastActionSummary = $"Messenger claim category selected through {buttonAsset}; report text is staged.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Messenger claim owner advanced to report stage using {buttonAsset} and report asset {ClaimDialogReportAsset}.");
+            return _lastActionSummary;
+        }
+
+        internal bool TryBuildClaimDialogRequestPayload(
+            out byte[] payload,
+            out string targetCharacterName,
+            out byte claimType,
+            out string context,
+            out int chatLineCount,
+            out string message)
+        {
+            payload = null;
+            targetCharacterName = null;
+            claimType = MessengerChatClaimType;
+            context = MessengerChatClaimContext;
+            chatLineCount = 0;
+            message = null;
+
+            if (_claimDialog?.Stage == MessengerClaimDialogStage.Completed)
+            {
+                _claimDialog = null;
+            }
+
+            if (_claimDialog == null && !TryOpenClaimDialogFromChat(out message))
+            {
+                return false;
+            }
+
+            if (_claimDialog.Stage == MessengerClaimDialogStage.Notice)
+            {
+                AdvanceClaimDialogNotice();
+            }
+
+            if (_claimDialog.Stage == MessengerClaimDialogStage.Category)
+            {
+                SelectClaimDialogCategory("chat");
+            }
+
+            if (_claimDialog.Stage != MessengerClaimDialogStage.Report)
+            {
+                message = $"Messenger claim dialog cannot submit from {_claimDialog.Stage}.";
+                return false;
+            }
+
+            targetCharacterName = _claimDialog.TargetCharacterName;
+            claimType = _claimDialog.ClaimType;
+            context = _claimDialog.Context;
+            chatLineCount = _claimDialog.ChatLineCount;
+            payload = MessengerPacketCodec.BuildClaimRequestPayload(
+                targetCharacterName,
+                claimType,
+                context,
+                _claimDialog.ChatLog);
+            message = $"Built CWvsContext::SendClaimRequest payload from the WZ-backed Messenger claim report for {targetCharacterName}.";
+            return true;
+        }
+
+        internal string CancelClaimDialog()
+        {
+            if (_claimDialog == null)
+            {
+                return "No Messenger claim dialog is open.";
+            }
+
+            _claimDialog = null;
+            _lastActionSummary = "Cancelled the Messenger claim dialog.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary("Closed Messenger claim owner through BtCancel without emitting CWvsContext::SendClaimRequest.");
             return _lastActionSummary;
         }
 
@@ -832,6 +999,10 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 RestoreRetiredClaimEntries(pendingClaim);
             }
+            else if (_claimDialog?.Stage == MessengerClaimDialogStage.PendingResult)
+            {
+                _claimDialog = _claimDialog with { Stage = MessengerClaimDialogStage.Completed };
+            }
 
             string normalizedResult = string.IsNullOrWhiteSpace(resultText)
                 ? (succeeded ? "server accepted the claim" : "server rejected the claim")
@@ -842,6 +1013,15 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             RecordPacketSummary(
                 $"Resolved server-owned Messenger claim #{pendingClaim.ClaimId} success={(succeeded ? 1 : 0)} target={pendingClaim.TargetCharacterName} type={pendingClaim.ClaimType} context={pendingClaim.Context} chatLines={pendingClaim.ChatLineCount}.");
+            if (!succeeded && _claimDialog?.Stage == MessengerClaimDialogStage.PendingResult)
+            {
+                _claimDialog = _claimDialog with
+                {
+                    Stage = MessengerClaimDialogStage.Report,
+                    SelectedButtonAsset = ClaimDialogConfirmButtonAsset
+                };
+            }
+
             StartBlink(Environment.TickCount);
             return _lastActionSummary;
         }
@@ -951,6 +1131,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal int CountClaimableChatLines()
         {
             return GetClaimableLogEntries().Length;
+        }
+
+        private static string ExtractClaimChatLog(byte[] payload)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return MessengerPacketCodec.TryParseClientClaimRequest(payload, out MessengerClientClaimRequestPacket packet, out _)
+                ? packet.ChatLog
+                : string.Empty;
         }
 
         private static int CountClaimChatLogLines(string chatLog)
@@ -1782,6 +1974,54 @@ namespace HaCreator.MapSimulator.Interaction
                 ? string.Empty
                 : $" (+{_pendingClaimRequests.Count - 1})";
             return $"claim #{firstClaim.ClaimId} target={firstClaim.TargetCharacterName} lines={firstClaim.ChatLineCount}{suffix}";
+        }
+
+        private MessengerClaimDialogSnapshot BuildClaimDialogSnapshot()
+        {
+            if (_claimDialog == null)
+            {
+                return MessengerClaimDialogSnapshot.Hidden;
+            }
+
+            return new MessengerClaimDialogSnapshot
+            {
+                IsOpen = true,
+                Stage = _claimDialog.Stage,
+                TargetCharacterName = _claimDialog.TargetCharacterName,
+                ClaimType = _claimDialog.ClaimType,
+                Context = _claimDialog.Context,
+                ChatLineCount = _claimDialog.ChatLineCount,
+                ChatLog = _claimDialog.ChatLog,
+                AssetRoot = ClaimDialogAssetRoot,
+                NoticeAsset = _claimDialog.NoticeAsset,
+                ReportAsset = _claimDialog.ReportAsset,
+                ConfirmButtonAsset = _claimDialog.ConfirmButtonAsset,
+                CancelButtonAsset = _claimDialog.CancelButtonAsset,
+                SelectedButtonAsset = _claimDialog.SelectedButtonAsset
+            };
+        }
+
+        private void MarkClaimDialogSubmitted(string targetCharacterName, byte claimType, string context, int chatLineCount)
+        {
+            if (_claimDialog == null)
+            {
+                return;
+            }
+
+            string normalizedTarget = NormalizeParticipantName(targetCharacterName) ?? targetCharacterName ?? string.Empty;
+            if (!string.Equals(_claimDialog.TargetCharacterName, normalizedTarget, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _claimDialog = _claimDialog with
+            {
+                Stage = MessengerClaimDialogStage.PendingResult,
+                ClaimType = claimType,
+                Context = string.IsNullOrWhiteSpace(context) ? string.Empty : context.Trim(),
+                ChatLineCount = Math.Max(0, chatLineCount),
+                SelectedButtonAsset = ClaimDialogConfirmButtonAsset
+            };
         }
 
         private void ExpirePendingClaimRequests(int tickCount)
@@ -3115,6 +3355,19 @@ namespace HaCreator.MapSimulator.Interaction
             bool QueuedOnly,
             IReadOnlyList<MessengerLogEntryState> RetiredEntries);
 
+        private sealed record PendingMessengerClaimDialogState(
+            MessengerClaimDialogStage Stage,
+            string TargetCharacterName,
+            byte ClaimType,
+            string Context,
+            int ChatLineCount,
+            string ChatLog,
+            string NoticeAsset,
+            string ReportAsset,
+            string ConfirmButtonAsset,
+            string CancelButtonAsset,
+            string SelectedButtonAsset);
+
         private PendingMessengerInviteState BuildIncomingInviteState(MessengerContactState contact, MessengerInvitePacket packet, int tickCount)
         {
             return new PendingMessengerInviteState(
@@ -3269,6 +3522,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string PendingInviteSummary { get; init; } = string.Empty;
         public string PendingClaimSummary { get; init; } = string.Empty;
         public int PendingClaimCount { get; init; }
+        public MessengerClaimDialogSnapshot ClaimDialog { get; init; } = MessengerClaimDialogSnapshot.Hidden;
         public string LastActionSummary { get; init; } = string.Empty;
         public string LastPacketSummary { get; init; } = string.Empty;
         public string StatusBarText { get; init; } = string.Empty;
@@ -3278,6 +3532,35 @@ namespace HaCreator.MapSimulator.Interaction
         public string ExitPromptText { get; init; } = string.Empty;
         public bool ShouldCloseWindow { get; init; }
         public string WindowCloseSummary { get; init; } = string.Empty;
+    }
+
+    internal enum MessengerClaimDialogStage
+    {
+        Hidden,
+        Notice,
+        Category,
+        Report,
+        PendingResult,
+        Completed
+    }
+
+    internal sealed class MessengerClaimDialogSnapshot
+    {
+        public static MessengerClaimDialogSnapshot Hidden { get; } = new();
+
+        public bool IsOpen { get; init; }
+        public MessengerClaimDialogStage Stage { get; init; } = MessengerClaimDialogStage.Hidden;
+        public string TargetCharacterName { get; init; } = string.Empty;
+        public byte ClaimType { get; init; }
+        public string Context { get; init; } = string.Empty;
+        public int ChatLineCount { get; init; }
+        public string ChatLog { get; init; } = string.Empty;
+        public string AssetRoot { get; init; } = string.Empty;
+        public string NoticeAsset { get; init; } = string.Empty;
+        public string ReportAsset { get; init; } = string.Empty;
+        public string ConfirmButtonAsset { get; init; } = string.Empty;
+        public string CancelButtonAsset { get; init; } = string.Empty;
+        public string SelectedButtonAsset { get; init; } = string.Empty;
     }
 
     internal sealed record MessengerIncomingInvitePromptState(

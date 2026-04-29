@@ -5098,9 +5098,10 @@ namespace HaCreator.MapSimulator
                 return $"No new local collection summary is waiting on BtArrayGet for {context.CharacterName}.";
             }
 
+            string dispatchStatus = DispatchCharacterInfoCollectionClaimRequest(context, build, fingerprint);
             _characterInfoCollectionClaimFingerprints[claimKey] = fingerprint;
             int totalRecipes = progression.DiscoveredRecipeCount + progression.UnlockedHiddenRecipeCount;
-            return $"Claimed the local collection summary for {context.CharacterName}: Monster Book {snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}, crafts {progression.SuccessfulCrafts}, recipes {totalRecipes}.";
+            return $"Claimed the local collection summary for {context.CharacterName}: Monster Book {snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}, crafts {progression.SuccessfulCrafts}, recipes {totalRecipes}. {dispatchStatus}";
         }
 
         private bool IsCharacterInfoCollectionClaimAvailable(UserInfoUI.UserInfoActionContext context)
@@ -5219,6 +5220,52 @@ namespace HaCreator.MapSimulator
             }
 
             return $"name:{(!string.IsNullOrWhiteSpace(context.CharacterName) ? context.CharacterName : build?.Name ?? string.Empty).Trim()}";
+        }
+
+        private const int CharacterInfoCollectionClaimRequestOpcode = LocalUtilityPacketInboxManager.UserInfoCollectionClaimResultPacketType;
+
+        internal static byte[] BuildCharacterInfoCollectionClaimRequestPayload(int characterId, int snapshotFingerprint)
+        {
+            byte[] payload = new byte[sizeof(int) + sizeof(int)];
+            WriteInt32LittleEndian(payload, 0, characterId);
+            WriteInt32LittleEndian(payload, sizeof(int), snapshotFingerprint);
+            return payload;
+        }
+
+        private string DispatchCharacterInfoCollectionClaimRequest(
+            UserInfoUI.UserInfoActionContext context,
+            CharacterBuild build,
+            int snapshotFingerprint)
+        {
+            int characterId = context.CharacterId > 0 ? context.CharacterId : build?.Id ?? 0;
+            if (characterId <= 0)
+            {
+                return "CUIUserInfo BtArrayGet stayed simulator-local because the local character id is unavailable.";
+            }
+
+            byte[] payload = BuildCharacterInfoCollectionClaimRequestPayload(characterId, snapshotFingerprint);
+            string payloadHex = Convert.ToHexString(payload);
+            string source = "CUIUserInfo::OnButtonClicked -> BtArrayGet packet-owned collection claim";
+            string outboxStatus = "packet outbox unavailable";
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(CharacterInfoCollectionClaimRequestOpcode, payload, out outboxStatus))
+            {
+                return $"{source} emitted packet-owned opcode {CharacterInfoCollectionClaimRequestOpcode} [{payloadHex}] through the generic local-utility outbox. Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(CharacterInfoCollectionClaimRequestOpcode, payload, out string queuedStatus))
+            {
+                return $"{source} queued packet-owned opcode {CharacterInfoCollectionClaimRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Outbox: {outboxStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"{source} kept packet-owned opcode {CharacterInfoCollectionClaimRequestOpcode} [{payloadHex}] simulator-local because the generic outbox and deferred queue did not accept it. Outbox: {outboxStatus} Deferred outbox: {queuedStatus}";
+        }
+
+        private static void WriteInt32LittleEndian(byte[] payload, int offset, int value)
+        {
+            payload[offset] = (byte)(value & 0xFF);
+            payload[offset + 1] = (byte)((value >> 8) & 0xFF);
+            payload[offset + 2] = (byte)((value >> 16) & 0xFF);
+            payload[offset + 3] = (byte)((value >> 24) & 0xFF);
         }
 
         private string HandleCharacterInfoWishPresentRequest(UserInfoUI.UserInfoActionContext context, string wishEntry)
@@ -6557,6 +6604,7 @@ namespace HaCreator.MapSimulator
             {
                 roomWindow.Runtime.EntrustedBlacklistPromptRequested = ShowEntrustedShopBlacklistPrompt;
                 roomWindow.Runtime.EntrustedBlacklistNoticeRequested = ShowEntrustedShopBlacklistNotice;
+                roomWindow.Runtime.EntrustedChildDialogOutboundPacketRequested = TrySendEntrustedShopChildDialogOutboundPacket;
                 roomWindow.Runtime.EntrustedBlacklistOutboundPacketRequested = TrySendEntrustedShopBlacklistOutboundPacket;
             }
 
@@ -18967,6 +19015,7 @@ namespace HaCreator.MapSimulator
             _packetFieldOfficialSessionBridge = new PacketFieldOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _rockPaperScissorsOfficialSessionBridge = new RockPaperScissorsOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _socialListOfficialSessionBridge = new SocialListOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
+            _socialListRuntime.PacketOwnedRequestDispatcher = DispatchSocialListPacketOwnedRequest;
             _socialRoomMerchantOfficialSessionBridge = new SocialRoomMerchantOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _mobMirrorBoundaryResolver = ResolveMobMirrorBoundary;
             _npcMirrorBoundaryResolver = ResolveNpcMirrorBoundary;
@@ -24786,12 +24835,12 @@ namespace HaCreator.MapSimulator
 
         private void HandleDropPickedUpByMob(DropItem drop, int mobId, string mobName)
         {
-            if (drop == null || !ShouldSurfaceMobPickupNotice(drop))
+            int currentTime = Environment.TickCount;
+            if (drop == null || !ShouldSurfaceMobPickupNotice(drop, currentTime))
             {
                 return;
             }
 
-            int currentTime = Environment.TickCount;
             if (!TryReserveRemotePickupNotice(
                     drop.PoolId,
                     mobId,
@@ -24929,7 +24978,7 @@ namespace HaCreator.MapSimulator
 
 
 
-        private bool ShouldSurfaceMobPickupNotice(DropItem drop)
+        private bool ShouldSurfaceMobPickupNotice(DropItem drop, int currentTime)
         {
             if (drop == null)
             {
@@ -24937,9 +24986,9 @@ namespace HaCreator.MapSimulator
             }
 
             int localPlayerId = _playerManager?.Player?.Build?.Id ?? 0;
-            return ShouldSurfacePickupNotice(
-                drop.OwnershipType,
-                drop.OwnerId,
+            return ShouldSurfaceDropPickupNotice(
+                drop,
+                currentTime,
                 localPlayerId,
                 AreDropActorsInSameParty);
         }
@@ -24953,7 +25002,7 @@ namespace HaCreator.MapSimulator
             int currentTime,
             int fallbackOwnerId = 0)
         {
-            if (!ShouldSurfaceMobPickupNotice(drop))
+            if (!ShouldSurfaceMobPickupNotice(drop, currentTime))
             {
                 return false;
             }
@@ -24986,7 +25035,12 @@ namespace HaCreator.MapSimulator
             Func<int, int, bool> partyMembershipEvaluator,
             int fallbackOwnerId = 0)
         {
-            if (drop == null || drop.OwnerId <= 0 || currentTime >= drop.OwnerExpireTime || drop.SourceId == 0)
+            if (drop == null
+                || !IsPickupOwnershipWindowActive(
+                    drop.OwnerId,
+                    drop.OwnerExpireTime,
+                    drop.SourceId,
+                    currentTime))
             {
                 return true;
             }
@@ -25546,6 +25600,11 @@ namespace HaCreator.MapSimulator
             public int AccuracyPercent { get; init; }
             public int AvoidabilityPercent { get; init; }
             public int SpeedPercent { get; init; }
+            public int StrengthPercent { get; init; }
+            public int DexterityPercent { get; init; }
+            public int IntelligencePercent { get; init; }
+            public int LuckPercent { get; init; }
+            public int AllStatPercent { get; init; }
             public int AbnormalStatusResistance { get; init; }
             public int ExperienceRate { get; init; }
             public int DropRate { get; init; }
@@ -25648,6 +25707,11 @@ namespace HaCreator.MapSimulator
                  AccuracyPercent != 0 ||
                  AvoidabilityPercent != 0 ||
                  SpeedPercent != 0 ||
+                 StrengthPercent != 0 ||
+                 DexterityPercent != 0 ||
+                 IntelligencePercent != 0 ||
+                 LuckPercent != 0 ||
+                 AllStatPercent != 0 ||
                  AbnormalStatusResistance != 0 ||
                  ExperienceRate != 0 ||
                  DropRate != 0 ||
@@ -26318,6 +26382,11 @@ namespace HaCreator.MapSimulator
                 AccuracyPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "accRate", "accR"),
                 AvoidabilityPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "evaRate", "evaR"),
                 SpeedPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "speedRate"),
+                StrengthPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "strR", "indieStrR"),
+                DexterityPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "dexR", "indieDexR"),
+                IntelligencePercent = ResolveConsumablePercentValue(specProperty, specExProperty, "intR", "indieIntR"),
+                LuckPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "lukR", "indieLukR"),
+                AllStatPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "allStatR", "indieAllStatR"),
                 AbnormalStatusResistance = ResolveConsumablePercentValue(specProperty, specExProperty, "asrR", "indieAsrR"),
                 ExperienceRate = ResolveConsumablePercentValue(specProperty, specExProperty, "expBuff", "expR", "plusExpRate"),
                 DropRate = ResolveConsumablePercentValue(specProperty, specExProperty, "dropRate", "dropR"),
@@ -26709,6 +26778,11 @@ namespace HaCreator.MapSimulator
                 AccuracyPercent = effect.AccuracyPercent,
                 AvoidabilityPercent = effect.AvoidabilityPercent,
                 SpeedPercent = effect.SpeedPercent,
+                StrengthPercent = effect.StrengthPercent,
+                DexterityPercent = effect.DexterityPercent,
+                IntelligencePercent = effect.IntelligencePercent,
+                LuckPercent = effect.LuckPercent,
+                AllStatPercent = effect.AllStatPercent,
                 AbnormalStatusResistance = effect.AbnormalStatusResistance,
                 ExperienceRate = effect.ExperienceRate,
                 DropRate = effect.DropRate,
@@ -26721,13 +26795,23 @@ namespace HaCreator.MapSimulator
         internal static SkillLevelData CreateConsumableBuffLevelDataForTests(
             int durationMs,
             int damageReductionRate,
-            string damageReductionAuthoredKey)
+            string damageReductionAuthoredKey,
+            int strengthPercent = 0,
+            int dexterityPercent = 0,
+            int intelligencePercent = 0,
+            int luckPercent = 0,
+            int allStatPercent = 0)
         {
             return CreateConsumableBuffLevelData(new ConsumableItemEffect
             {
                 DurationMs = durationMs,
                 DamageReductionRate = damageReductionRate,
-                DamageReductionAuthoredKey = damageReductionAuthoredKey
+                DamageReductionAuthoredKey = damageReductionAuthoredKey,
+                StrengthPercent = strengthPercent,
+                DexterityPercent = dexterityPercent,
+                IntelligencePercent = intelligencePercent,
+                LuckPercent = luckPercent,
+                AllStatPercent = allStatPercent
             });
         }
 
@@ -27838,7 +27922,11 @@ namespace HaCreator.MapSimulator
             }
 
 
-            miniMapUi.SetTooltipResources(_fontChat, _minimapTooltipPixelTexture);
+            miniMapUi.SetTooltipResources(
+                _fontChat,
+                _minimapTooltipPixelTexture,
+                UILoader.LoadSkillTooltipTextures(GraphicsDevice),
+                UILoader.LoadSkillTooltipOrigins());
 
         }
 
@@ -30341,10 +30429,16 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            int authoredDurationSeconds = ResolveLocalOwnedAffectedAreaDurationSeconds(
+                skill,
+                levelData,
+                skillLevel,
+                ownerLane);
             LocalOwnedAffectedAreaCreateMetadata createMetadata = ResolveLocalOwnedAffectedAreaCreateMetadata(
                 skill,
                 levelData,
-                ownerLane);
+                ownerLane,
+                authoredDurationSeconds);
             if (ShouldGateLocalOwnedAffectedAreaByClientExclusiveInsert(skillId, ownerLane, createMetadata.Type)
                 && !_affectedAreaPool.IsAbleToInsertExclusiveArea(worldHitbox, currentTime))
             {
@@ -30373,7 +30467,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (createMetadata.DurationOverrideMs <= 0
-                && ResolveLocalOwnedAffectedAreaDurationSeconds(skill, levelData, skillLevel, ownerLane) <= 0)
+                && authoredDurationSeconds <= 0)
             {
                 _affectedAreaPool.Remove(objectId, currentTime);
             }
@@ -30510,11 +30604,27 @@ namespace HaCreator.MapSimulator
             SkillLevelData levelData,
             SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
+            return ResolveLocalOwnedAffectedAreaCreateMetadata(
+                skill,
+                levelData,
+                ownerLane,
+                ResolveLocalOwnedAffectedAreaMetadataDurationSeconds(levelData));
+        }
+
+        internal static LocalOwnedAffectedAreaCreateMetadata ResolveLocalOwnedAffectedAreaCreateMetadata(
+            SkillData skill,
+            SkillLevelData levelData,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
+            int authoredDurationSeconds)
+        {
             int type = ResolveLocalOwnedAffectedAreaType(skill, ownerLane);
             int phase = ResolveLocalOwnedAffectedAreaPhase(skill, ownerLane);
             int elementAttribute = ResolveLocalOwnedAffectedAreaElementAttribute(skill, ownerLane);
             short startDelayUnits = ResolveLocalOwnedAffectedAreaStartDelayUnits(skill, levelData, ownerLane);
-            int durationOverrideMs = ResolveLocalOwnedAffectedAreaDurationOverrideMs(skill, levelData, ownerLane);
+            int durationOverrideMs = ResolveLocalOwnedAffectedAreaDurationOverrideMs(
+                skill,
+                authoredDurationSeconds,
+                ownerLane);
             return new LocalOwnedAffectedAreaCreateMetadata(
                 type,
                 startDelayUnits,
@@ -31237,7 +31347,18 @@ namespace HaCreator.MapSimulator
             SkillLevelData levelData,
             SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
-            if (skill == null || ResolveLocalOwnedAffectedAreaMetadataDurationSeconds(levelData) > 0)
+            return ResolveLocalOwnedAffectedAreaDurationOverrideMs(
+                skill,
+                ResolveLocalOwnedAffectedAreaMetadataDurationSeconds(levelData),
+                ownerLane);
+        }
+
+        internal static int ResolveLocalOwnedAffectedAreaDurationOverrideMs(
+            SkillData skill,
+            int authoredDurationSeconds,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            if (skill == null || Math.Max(0, authoredDurationSeconds) > 0)
             {
                 return 0;
             }
@@ -42483,6 +42604,16 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerIdentity = buffEntry.TemporaryStatViewParentLayerIdentity;
             renderData.TemporaryStatViewMainLayerIdentity = buffEntry.TemporaryStatViewMainLayerIdentity;
             renderData.TemporaryStatViewShadowLayerIdentity = buffEntry.TemporaryStatViewShadowLayerIdentity;
+            renderData.TemporaryStatViewParentLayerReferenceCount = buffEntry.TemporaryStatViewParentLayerReferenceCount;
+            renderData.TemporaryStatViewMainLayerReferenceCount = buffEntry.TemporaryStatViewMainLayerReferenceCount;
+            renderData.TemporaryStatViewShadowLayerReferenceCount = buffEntry.TemporaryStatViewShadowLayerReferenceCount;
+            renderData.TemporaryStatViewOwnerName = buffEntry.TemporaryStatViewOwnerName;
+            renderData.TemporaryStatViewParentLayerName = buffEntry.TemporaryStatViewParentLayerName;
+            renderData.TemporaryStatViewMainLayerName = buffEntry.TemporaryStatViewMainLayerName;
+            renderData.TemporaryStatViewShadowLayerName = buffEntry.TemporaryStatViewShadowLayerName;
+            renderData.TemporaryStatViewParentLayerOrdinal = buffEntry.TemporaryStatViewParentLayerOrdinal;
+            renderData.TemporaryStatViewMainLayerOrdinal = buffEntry.TemporaryStatViewMainLayerOrdinal;
+            renderData.TemporaryStatViewShadowLayerOrdinal = buffEntry.TemporaryStatViewShadowLayerOrdinal;
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
@@ -42496,6 +42627,9 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasAlphaStart = buffEntry.ShadowCanvasAlphaStart;
             renderData.ShadowCanvasAlphaEnd = buffEntry.ShadowCanvasAlphaEnd;
             renderData.ShadowCanvasLastUpdatedTime = buffEntry.ShadowCanvasLastUpdatedTime;
+            renderData.ShadowCanvasReferenceCount = buffEntry.ShadowCanvasReferenceCount;
+            renderData.ShadowCanvasRemoveSequence = buffEntry.ShadowCanvasRemoveSequence;
+            renderData.ShadowCanvasInsertSequence = buffEntry.ShadowCanvasInsertSequence;
             renderData.AlertLayerAnimationMode = buffEntry.AlertLayerAnimationMode;
             renderData.AlertLayerAnimationSequence = buffEntry.AlertLayerAnimationSequence;
         }

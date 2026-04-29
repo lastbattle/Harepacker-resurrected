@@ -56,6 +56,23 @@ namespace HaCreator.MapSimulator.Physics
         internal static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientMakeMovePath(
             IReadOnlyList<MovePathElement> path)
         {
+            return NormalizeForPortalOwnedClientMakeMovePath(
+                path,
+                normalizePortalOwnedImpactDuration: true);
+        }
+
+        internal static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientFlushRetention(
+            IReadOnlyList<MovePathElement> path)
+        {
+            return NormalizeForPortalOwnedClientMakeMovePath(
+                path,
+                normalizePortalOwnedImpactDuration: false);
+        }
+
+        private static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientMakeMovePath(
+            IReadOnlyList<MovePathElement> path,
+            bool normalizePortalOwnedImpactDuration)
+        {
             if (path == null || path.Count <= 1)
             {
                 return path ?? Array.Empty<MovePathElement>();
@@ -64,7 +81,9 @@ namespace HaCreator.MapSimulator.Physics
             List<MovePathElement> normalized = new(path.Count);
             for (int i = 0; i < path.Count; i++)
             {
-                MovePathElement current = NormalizePortalOwnedClientMakeMovePathElement(path[i]);
+                MovePathElement current = NormalizePortalOwnedClientMakeMovePathElement(
+                    path[i],
+                    normalizePortalOwnedImpactDuration);
                 if (normalized.Count == 0)
                 {
                     normalized.Add(current);
@@ -161,7 +180,17 @@ namespace HaCreator.MapSimulator.Physics
 
         private static MovePathElement NormalizePortalOwnedClientMakeMovePathElement(MovePathElement element)
         {
-            if (!IsPortalOwnedImpactAttribute(element.MovePathAttribute))
+            return NormalizePortalOwnedClientMakeMovePathElement(
+                element,
+                normalizePortalOwnedImpactDuration: true);
+        }
+
+        private static MovePathElement NormalizePortalOwnedClientMakeMovePathElement(
+            MovePathElement element,
+            bool normalizePortalOwnedImpactDuration)
+        {
+            if (!normalizePortalOwnedImpactDuration
+                || !IsPortalOwnedImpactAttribute(element.MovePathAttribute))
             {
                 return element;
             }

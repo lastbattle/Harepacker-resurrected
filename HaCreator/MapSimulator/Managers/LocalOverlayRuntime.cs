@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator.Managers
                 return 0;
             }
 
-            int remainingMs = DamageMeterExpiresAt - currentTickCount;
+            int remainingMs = GetPositiveRemainingMs(currentTickCount, DamageMeterExpiresAt);
             return remainingMs <= 0 ? 0 : (remainingMs + 999) / 1000;
         }
 
@@ -73,9 +73,11 @@ namespace HaCreator.MapSimulator.Managers
                 return 0f;
             }
 
-            int durationMs = DamageMeterDurationSeconds * 1000;
-            int remainingMs = Math.Max(0, DamageMeterExpiresAt - currentTickCount);
-            return Math.Clamp(remainingMs / (float)durationMs, 0f, 1f);
+            long durationMs = DamageMeterDurationSeconds * 1000L;
+            int remainingMs = GetPositiveRemainingMs(currentTickCount, DamageMeterExpiresAt);
+            return durationMs <= 0
+                ? 0f
+                : Math.Clamp(remainingMs / (float)durationMs, 0f, 1f);
         }
 
         public int GetDamageMeterSharedTimingAgeMs(int currentTickCount)
@@ -85,7 +87,7 @@ namespace HaCreator.MapSimulator.Managers
                 return 0;
             }
 
-            return Math.Max(0, unchecked(currentTickCount - DamageMeterSharedTimingUpdatedAt));
+            return GetNonNegativeElapsedMs(DamageMeterSharedTimingUpdatedAt, currentTickCount);
         }
 
         public void OnDamageMeter(int durationSeconds, int currentTickCount)
@@ -139,7 +141,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             const int fadeDurationMs = 260;
-            int remainingMs = LastFieldHazardNoticeExpiresAt - currentTickCount;
+            int remainingMs = GetPositiveRemainingMs(currentTickCount, LastFieldHazardNoticeExpiresAt);
             if (remainingMs >= fadeDurationMs)
             {
                 return 1f;
@@ -218,6 +220,28 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private static int GetPositiveRemainingMs(int currentTickCount, int expiresAt)
+        {
+            if (expiresAt == int.MinValue)
+            {
+                return 0;
+            }
+
+            int remainingMs = unchecked(expiresAt - currentTickCount);
+            return remainingMs > 0 ? remainingMs : 0;
+        }
+
+        private static int GetNonNegativeElapsedMs(int startedAt, int currentTickCount)
+        {
+            if (startedAt == int.MinValue)
+            {
+                return 0;
+            }
+
+            int elapsedMs = unchecked(currentTickCount - startedAt);
+            return elapsedMs > 0 ? elapsedMs : 0;
+        }
+
         private int AllocateStatusBarFloatNoticeOwnerIdentity()
         {
             int ownerIdentity = _nextStatusBarFloatNoticeOwnerIdentity;
@@ -264,7 +288,7 @@ namespace HaCreator.MapSimulator.Managers
                     : "Field hazard notice inactive.";
             }
 
-            int remainingMs = Math.Max(0, LastFieldHazardNoticeExpiresAt - currentTickCount);
+            int remainingMs = GetPositiveRemainingMs(currentTickCount, LastFieldHazardNoticeExpiresAt);
             return string.Format(
                 CultureInfo.InvariantCulture,
                 "Field hazard notice active. damage={0} remaining={1}ms message=\"{2}\"{3}{4}",

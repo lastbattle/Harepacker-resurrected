@@ -827,7 +827,8 @@ namespace HaCreator.MapSimulator.UI
                 row.ItemSerialNumber,
                 row.CashSerialNumber,
                 row.BaseExpirationTime,
-                row.Title ?? string.Empty);
+                row.Title ?? string.Empty,
+                row.RawEncodedHex ?? string.Empty);
         }
 
         private Texture2D ResolvePrevTexture(bool canScroll, bool hover)

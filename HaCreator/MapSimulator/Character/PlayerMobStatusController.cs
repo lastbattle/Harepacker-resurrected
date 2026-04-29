@@ -1147,6 +1147,12 @@ namespace HaCreator.MapSimulator.Character
 
         internal static int ResolvePeriodicTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)
         {
+            int authoredIntervalMs = ResolveTickInterval(runtimeData, 0);
+            if (authoredIntervalMs > 0)
+            {
+                return authoredIntervalMs;
+            }
+
             if (runtimeData?.Count > 0 && runtimeData.DurationMs > 0)
             {
                 return Math.Max(1, (int)Math.Ceiling(runtimeData.DurationMs / (runtimeData.Count + 1d)));

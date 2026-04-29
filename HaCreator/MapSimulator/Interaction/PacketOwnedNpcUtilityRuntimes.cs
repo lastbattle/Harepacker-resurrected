@@ -79,7 +79,8 @@ namespace HaCreator.MapSimulator.Interaction
         long ItemSerialNumber,
         long CashSerialNumber,
         long BaseExpirationTime,
-        string Title);
+        string Title,
+        string RawEncodedHex);
 
     internal sealed class PacketOwnedShopDialogRuntime
     {
@@ -1425,6 +1426,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return -1;
             }
 
+            if (!string.IsNullOrWhiteSpace(anchor.RawEncodedHex))
+            {
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    StoreBankOwnerRowSnapshot row = rows[i];
+                    if (row.ItemId == anchor.ItemId
+                        && row.PacketGroupInventoryType == anchor.PacketGroupInventoryType
+                        && string.Equals(row.RawEncodedHex, anchor.RawEncodedHex, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i;
+                    }
+                }
+            }
+
             for (int i = 0; i < rows.Count; i++)
             {
                 StoreBankOwnerRowSnapshot row = rows[i];
@@ -1594,7 +1609,8 @@ namespace HaCreator.MapSimulator.Interaction
                 item.ItemSerialNumber,
                 item.CashSerialNumber,
                 item.BaseExpirationTime,
-                item.Title ?? string.Empty);
+                item.Title ?? string.Empty,
+                Convert.ToHexString(item.RawEncodedBytes ?? Array.Empty<byte>()));
             return true;
         }
 

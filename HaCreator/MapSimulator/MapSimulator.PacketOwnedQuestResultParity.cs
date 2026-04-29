@@ -1104,6 +1104,9 @@ namespace HaCreator.MapSimulator
         {
             outcome = string.Empty;
             int ownershipIndex;
+            int latestPhaseHintIndex = FindLatestPendingQuestDeliveryResultPhaseHintIndex(
+                _pendingQuestDeliveryResultPhaseHints,
+                questId);
             if (TryFindPendingQuestDeliveryResultOwnershipIndexFromPhaseHints(
                     _pendingQuestDeliveryResultPhaseHints,
                     _pendingQuestDeliveryResults,
@@ -1112,6 +1115,10 @@ namespace HaCreator.MapSimulator
                     out ownershipIndex))
             {
                 _pendingQuestDeliveryResultPhaseHints.RemoveAt(phaseHintIndex);
+            }
+            else if (latestPhaseHintIndex >= 0)
+            {
+                return false;
             }
             else
             {
@@ -1738,6 +1745,9 @@ namespace HaCreator.MapSimulator
             }
 
             int ownershipIndex;
+            int latestPhaseHintIndex = FindLatestPendingQuestDeliveryResultPhaseHintIndex(
+                pendingHints,
+                questId);
             if (TryFindPendingQuestDeliveryResultOwnershipIndexFromPhaseHints(
                     pendingHints,
                     pendingResults,
@@ -1746,6 +1756,10 @@ namespace HaCreator.MapSimulator
                     out ownershipIndex))
             {
                 pendingHints.RemoveAt(phaseHintIndex);
+            }
+            else if (latestPhaseHintIndex >= 0)
+            {
+                ownershipIndex = -1;
             }
             else
             {

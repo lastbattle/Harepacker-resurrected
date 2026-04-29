@@ -2881,6 +2881,7 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogTimerTrail.Clear();
             _season2ChatRouteTrail.Clear();
             _season2SubDialogRouteTrail.Clear();
+            _season2SubDialogSendRouteTrail.Clear();
             _variantTransportPacketCount = 0;
             _variantEnterPacketCount = 0;
             _variantRequestPacketCount = 0;
@@ -4892,6 +4893,7 @@ namespace HaCreator.MapSimulator.Fields
                 ? $"Season 2 sub dialog timer armed for {messageSeconds}s from monsterCarnival/timeMessage after request routing."
                 : "Season 2 sub dialog timer unavailable because monsterCarnival/timeMessage was not authored.";
             RecordSeason2SubDialogTimerEvent($"request-arm(success={success},reason={Math.Max(0, reasonCode ?? 0)},timeMessage={messageSeconds}s,deadline={(_season2SubDialogDeadlineTick.HasValue ? "armed" : "none")})");
+            ClearSeason2SubDialogSelection();
             if (success)
             {
                 string entryLabel = entry == null
@@ -4933,6 +4935,7 @@ namespace HaCreator.MapSimulator.Fields
                 ? $"Season 2 sub dialog death lock timer armed for {messageSeconds}s from monsterCarnival/timeMessage."
                 : "Season 2 sub dialog death lock has no local timer because monsterCarnival/timeMessage was not authored.";
             RecordSeason2SubDialogTimerEvent($"death-arm(timeMessage={messageSeconds}s,deadline={(_season2SubDialogDeadlineTick.HasValue ? "armed" : "none")})");
+            ClearSeason2SubDialogSelection();
             string actor = string.IsNullOrWhiteSpace(characterName) ? "unknown-member" : characterName.Trim();
             SetSeason2SubDialogState(
                 visible: true,
@@ -4997,6 +5000,12 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _season2SubDialogTimerSummary = null;
             }
+        }
+
+        private void ClearSeason2SubDialogSelection()
+        {
+            _season2SubDialogSelectedTab = null;
+            _season2SubDialogSelectedIndex = -1;
         }
 
         private string DescribeSeason2SubDialogState()

@@ -83,7 +83,7 @@ namespace HaCreator.MapSimulator.Interaction
                     9 => DecodeAskAvatar(reader, speaker, param, true),
                     10 => DecodeAskPet(reader, speaker, param, false, resolveSelectablePet),
                     11 => DecodeAskPet(reader, speaker, param, true, resolveSelectablePet),
-                    12 => DecodeIgnoredUnsupportedMessage(reader, speaker, messageType, param),
+                    12 => CreateDecodedResult(DecodeAskAccept(reader, speaker, param)),
                     13 => CreateDecodedResult(DecodeAskYesNo(reader, speaker, param, true)),
                     14 => CreateDecodedResult(DecodeAskBoxText(reader, speaker, param)),
                     15 => DecodeAskSlideMenu(reader, speaker, param),
@@ -251,6 +251,26 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     "Client path shows dedicated Yes / No buttons for this prompt."),
+                choices,
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
+        }
+
+        private static NpcInteractionEntry DecodeAskAccept(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        {
+            string rawText = ReadMapleString(reader);
+            List<NpcInteractionChoice> choices = new()
+            {
+                CreateResponseChoice("Accept", "Accept", 1),
+                CreateResponseChoice("Decline", "Decline", 0)
+            };
+
+            return CreateEntry(
+                "Accept / Decline",
+                BuildSpeakerSubtitle(speaker, "AskAccept", param),
+                rawText,
+                AppendMetadata(
+                    NpcDialogueTextFormatter.Format(rawText),
+                    "Client `CScriptMan::OnScriptMessage` routes message type 12 through the packet-owned accept prompt family."),
                 choices,
                 flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
@@ -1831,10 +1851,11 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 2:
                 case 13:
+                case 12:
                 {
                     if (!submission.NumericValue.HasValue)
                     {
-                        // Client `CScriptMan::OnAskYesNo` encodes cancel/close as -1.
+                        // Client yes/no-style script prompts encode cancel/close as -1.
                         writer.WriteByte(0xFF);
                         break;
                     }

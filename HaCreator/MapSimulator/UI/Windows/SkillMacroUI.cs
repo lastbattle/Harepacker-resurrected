@@ -2640,6 +2640,10 @@ namespace HaCreator.MapSimulator.UI
 
             bool imeCompositionActive = _compositionText.Length > 0;
             bool imeCandidateWindowActive = _candidateListState.HasCandidates;
+            ReleaseActiveForwardedNonFunctionKeysTakenByIme(
+                keyboardState,
+                imeCompositionActive,
+                imeCandidateWindowActive);
 
             Keys[] pressedKeys = keyboardState.GetPressedKeys();
             for (int i = 0; i < pressedKeys.Length; i++)
@@ -2755,6 +2759,44 @@ namespace HaCreator.MapSimulator.UI
 
                 _forwardedNonFunctionHotkeySlotsByPhysicalKey.Remove(key);
                 OnClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, false);
+            }
+        }
+
+        private void ReleaseActiveForwardedNonFunctionKeysTakenByIme(
+            KeyboardState keyboardState,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (_forwardedNonFunctionPhysicalKeys.Count == 0)
+            {
+                return;
+            }
+
+            KeyValuePair<Keys, ForwardedNonFunctionPhysicalKeyState>[] trackedKeys =
+                _forwardedNonFunctionPhysicalKeys.ToArray();
+            for (int i = 0; i < trackedKeys.Length; i++)
+            {
+                Keys key = trackedKeys[i].Key;
+                if (keyboardState.IsKeyUp(key)
+                    || !SkillMacroOwnerKeyHandler.ShouldReleaseActiveForwardedNonFunctionKeyForImeOwnership(
+                        key,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
+                {
+                    continue;
+                }
+
+                ForwardedNonFunctionPhysicalKeyState state = trackedKeys[i].Value;
+                _forwardedNonFunctionPhysicalKeys.Remove(key);
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Remove(key);
+                _imeSuppressedNonFunctionHotkeyPhysicalKeys.Add(key);
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
+                    key,
+                    false,
+                    state.ControlHeld,
+                    state.ShiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
             }
         }
 

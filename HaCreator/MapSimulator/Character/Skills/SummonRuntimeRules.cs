@@ -322,6 +322,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return clientActionBranch;
             }
 
+            if (IsStrictClientSummonedPacketSkillAction(normalizedAction))
+            {
+                return null;
+            }
+
             if (assistType.HasValue)
             {
                 string assistOwnedBranch = ResolveAssistOwnedPacketSkillBranch(skill, assistType.Value);
@@ -353,7 +358,18 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsStrictPacketSkillBranchAction(byte packetAction)
         {
-            return (packetAction & 0x7F) == PacketSkillActionSubsummon;
+            byte normalizedAction = (byte)(packetAction & 0x7F);
+            return normalizedAction == PacketSkillActionSubsummon
+                   || IsStrictClientSummonedPacketSkillAction(normalizedAction);
+        }
+
+        private static bool IsStrictClientSummonedPacketSkillAction(byte normalizedAction)
+        {
+            // CSummoned::SetAttackAction consumes the decoded client action family.
+            // Hit/say/prepare are direct action slots, not assist-family fallbacks.
+            return normalizedAction == 15
+                   || normalizedAction == 17
+                   || normalizedAction == 18;
         }
 
         internal static SummonAssistType ResolvePacketSkillAssistTypeForRuntimeOwnership(

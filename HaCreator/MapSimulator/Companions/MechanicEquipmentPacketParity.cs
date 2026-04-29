@@ -71,7 +71,8 @@ namespace HaCreator.MapSimulator.Companions
         internal static bool TryEncodeClientChangeSlotPositionRequest(
             EquipmentChangeRequest request,
             out byte[] payload,
-            out string rejectReason)
+            out string rejectReason,
+            int targetInventoryIndex = -1)
         {
             payload = Array.Empty<byte>();
             rejectReason = null;
@@ -81,37 +82,51 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (request.Kind != EquipmentChangeRequestKind.InventoryToCompanion
-                || request.TargetCompanionKind != EquipmentChangeCompanionKind.Mechanic
-                || !request.TargetMechanicSlot.HasValue)
+            bool isEquipInRequest = request.Kind == EquipmentChangeRequestKind.InventoryToCompanion
+                                    && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                                    && request.TargetMechanicSlot.HasValue;
+            bool isDragBackOutRequest = request.Kind == EquipmentChangeRequestKind.CompanionToInventory
+                                        && request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                                        && request.SourceMechanicSlot.HasValue;
+            if (!isEquipInRequest && !isDragBackOutRequest)
             {
-                rejectReason = "Only mechanic equip-in requests have a recovered retail ChangeSlotPosition body.";
+                rejectReason = "Only mechanic equip-in or drag-back-out requests have a recovered retail ChangeSlotPosition body.";
                 return false;
             }
 
-            if (request.SourceInventoryIndex < 0)
+            if (isEquipInRequest && request.SourceInventoryIndex < 0)
             {
                 rejectReason = "Mechanic retail ChangeSlotPosition request is missing a source inventory slot.";
                 return false;
             }
 
-            if (request.SourceInventoryType != InventoryType.EQUIP)
+            if (isEquipInRequest && request.SourceInventoryType != InventoryType.EQUIP)
             {
                 rejectReason = "Mechanic retail ChangeSlotPosition request only supports the equip inventory.";
                 return false;
             }
 
-            int sourceSlotPosition = request.SourceInventoryIndex + 1;
+            if (isDragBackOutRequest && targetInventoryIndex < 0)
+            {
+                rejectReason = "Mechanic drag-back-out retail ChangeSlotPosition request is missing a target equip inventory slot.";
+                return false;
+            }
+
+            int sourceSlotPosition = isEquipInRequest
+                ? request.SourceInventoryIndex + 1
+                : -MechanicEquipmentSlotMap.GetBodyPart(request.SourceMechanicSlot.Value);
+            int targetSlotPosition = isEquipInRequest
+                ? -MechanicEquipmentSlotMap.GetBodyPart(request.TargetMechanicSlot.Value)
+                : targetInventoryIndex + 1;
             if (sourceSlotPosition > ushort.MaxValue)
             {
                 rejectReason = "Mechanic retail ChangeSlotPosition source slot is outside the client packet range.";
                 return false;
             }
 
-            int bodyPart = MechanicEquipmentSlotMap.GetBodyPart(request.TargetMechanicSlot.Value);
-            if (bodyPart < 1100 || bodyPart > 1104)
+            if (targetSlotPosition > ushort.MaxValue)
             {
-                rejectReason = "Mechanic retail ChangeSlotPosition target body part is invalid.";
+                rejectReason = "Mechanic retail ChangeSlotPosition target slot is outside the client packet range.";
                 return false;
             }
 
@@ -119,8 +134,8 @@ namespace HaCreator.MapSimulator.Companions
             using BinaryWriter writer = new(stream);
             writer.Write(request.RequestedAtTick);
             writer.Write(ClientEquipInventoryType);
-            writer.Write((ushort)sourceSlotPosition);
-            writer.Write(ToClientEquipPosition(bodyPart));
+            writer.Write(unchecked((ushort)sourceSlotPosition));
+            writer.Write(unchecked((ushort)targetSlotPosition));
             writer.Write(ClientChangeSlotPositionCountAll);
             payload = stream.ToArray();
             return true;

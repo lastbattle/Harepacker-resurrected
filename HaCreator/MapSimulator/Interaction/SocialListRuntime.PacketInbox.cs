@@ -179,9 +179,7 @@ namespace HaCreator.MapSimulator.Interaction
                     or SocialListClientGuildResultKind.Notice55
                     or SocialListClientGuildResultKind.Notice56
                     or SocialListClientGuildResultKind.Notice57
-                    or SocialListClientGuildResultKind.Notice58 => SetPacketSyncSummary(
-                    SocialListTab.Guild,
-                    BuildClientGuildDirectNoticeSummary(packet)),
+                    or SocialListClientGuildResultKind.Notice58 => ApplyClientGuildDirectNoticeResult(packet),
                 _ => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildResultFallbackNoticeSummary(packet))
@@ -322,6 +320,21 @@ namespace HaCreator.MapSimulator.Interaction
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildQuestDirectNoticeSummary(packet));
+        }
+
+        private string ApplyClientGuildDirectNoticeResult(SocialListClientGuildResultPacket packet)
+        {
+            if (TryBuildNoGuildContextOwnedResultIgnore(
+                    packet.RawSubtype,
+                    "guild notice",
+                    out string ignoredMessage))
+            {
+                return ignoredMessage;
+            }
+
+            return SetPacketSyncSummary(
+                SocialListTab.Guild,
+                BuildClientGuildDirectNoticeSummary(packet));
         }
 
         private string ApplyClientGuildQuestQueueNoticeResult(SocialListClientGuildResultPacket packet)

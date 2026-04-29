@@ -174,6 +174,10 @@ namespace HaCreator.MapSimulator
             bool TrackPropertyLoaded,
             bool SoundObjectLoaded,
             bool RawBufferLoaded,
+            bool AilQuickLoadMemAttempted,
+            bool AilQuickMsLengthAttempted,
+            bool AilQuickSetMsPositionAttempted,
+            bool AilQuickPlayAttempted,
             bool Started,
             int MsLength,
             int MsPosition,
@@ -3424,49 +3428,68 @@ namespace HaCreator.MapSimulator
             {
                 if (TryParseClassCompetitionPrefixedValue(line, "auth", out string authValue)
                     || TryParseClassCompetitionPrefixedValue(line, "authkey", out authValue)
-                    || TryParseClassCompetitionPrefixedValue(line, "key", out authValue))
+                    || TryParseClassCompetitionPrefixedValue(line, "auth_key", out authValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "key", out authValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "sessionkey", out authValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "session_key", out authValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "token", out authValue))
                 {
-                    authKey = authValue;
+                    authKey = DecodeClassCompetitionStructuredTextValue(authValue);
                     continue;
                 }
 
                 if (TryParseClassCompetitionPrefixedValue(line, "url", out string navigateValue)
-                    || TryParseClassCompetitionPrefixedValue(line, "navigate", out navigateValue))
+                    || TryParseClassCompetitionPrefixedValue(line, "navigate", out navigateValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "href", out navigateValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "requesturl", out navigateValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "request_url", out navigateValue))
                 {
-                    navigateUrl = navigateValue;
+                    navigateUrl = DecodeClassCompetitionStructuredTextValue(navigateValue);
                     continue;
                 }
 
-                if (TryParseClassCompetitionPrefixedValue(line, "navigateurl", out string navigateUrlValue))
+                if (TryParseClassCompetitionPrefixedValue(line, "navigateurl", out string navigateUrlValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "navigate_url", out navigateUrlValue))
                 {
-                    navigateUrl = navigateUrlValue;
+                    navigateUrl = DecodeClassCompetitionStructuredTextValue(navigateUrlValue);
                     continue;
                 }
 
-                if (TryParseClassCompetitionPrefixedValue(line, "source", out string sourceValue))
+                if (TryParseClassCompetitionPrefixedValue(line, "source", out string sourceValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "origin", out sourceValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "provider", out sourceValue))
                 {
-                    source = sourceValue;
+                    source = DecodeClassCompetitionStructuredTextValue(sourceValue);
                     continue;
                 }
 
                 if (TryParseClassCompetitionPrefixedValue(line, "line", out string pageLineValue)
-                    || TryParseClassCompetitionPrefixedValue(line, "page", out pageLineValue))
+                    || TryParseClassCompetitionPrefixedValue(line, "page", out pageLineValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "lines", out pageLineValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "pagelines", out pageLineValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "page_lines", out pageLineValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "body", out pageLineValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "html", out pageLineValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "content", out pageLineValue))
                 {
-                    if (!string.IsNullOrWhiteSpace(pageLineValue))
-                    {
-                        pageLines.Add(pageLineValue);
-                    }
-
+                    AppendClassCompetitionStructuredTextLines(pageLines, pageLineValue);
                     continue;
                 }
 
-                if (TryParseClassCompetitionPrefixedValue(line, "ladder", out string ladderValue))
+                if (TryParseClassCompetitionPrefixedValue(line, "ladder", out string ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "ladderline", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "ladderlines", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "ladder_lines", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "row", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "rows", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "rank", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "ranking", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "rankings", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "ranklist", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "rank_list", out ladderValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "standings", out ladderValue))
                 {
-                    if (!string.IsNullOrWhiteSpace(ladderValue))
-                    {
-                        ladderLines.Add(ladderValue);
-                    }
-
+                    AppendClassCompetitionStructuredTextLines(ladderLines, ladderValue);
                     continue;
                 }
 
@@ -3761,6 +3784,35 @@ namespace HaCreator.MapSimulator
             return Uri.UnescapeDataString((rawValue ?? string.Empty).Replace('+', ' ')).Trim();
         }
 
+        private static string DecodeClassCompetitionStructuredTextValue(string rawValue)
+        {
+            string decoded = WebUtility.HtmlDecode(rawValue ?? string.Empty).Trim();
+            return Uri.UnescapeDataString(decoded).Trim();
+        }
+
+        private static void AppendClassCompetitionStructuredTextLines(List<string> lines, string rawValue)
+        {
+            if (lines == null || string.IsNullOrWhiteSpace(rawValue))
+            {
+                return;
+            }
+
+            string decodedValue = DecodeClassCompetitionStructuredTextValue(rawValue);
+            if (string.IsNullOrWhiteSpace(decodedValue))
+            {
+                return;
+            }
+
+            string[] splitLines = SplitClassCompetitionRemoteTextLines(decodedValue);
+            if (splitLines.Length == 0)
+            {
+                lines.Add(decodedValue.Trim());
+                return;
+            }
+
+            lines.AddRange(splitLines);
+        }
+
         private static bool TryParseClassCompetitionPrefixedValue(string line, string key, out string value)
         {
             value = string.Empty;
@@ -3891,14 +3943,41 @@ namespace HaCreator.MapSimulator
 
             return TryParseClassCompetitionPrefixedValue(line, "auth", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "authkey", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "auth_key", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "key", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "sessionkey", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "session_key", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "token", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "url", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "navigate", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "navigateurl", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "navigate_url", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "href", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "requesturl", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "request_url", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "line", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "page", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "lines", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "pagelines", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "page_lines", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "body", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "html", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "content", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "source", out _)
-                || TryParseClassCompetitionPrefixedValue(line, "ladder", out _);
+                || TryParseClassCompetitionPrefixedValue(line, "origin", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "provider", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "ladder", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "ladderline", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "ladderlines", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "ladder_lines", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "row", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "rows", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "rank", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "ranking", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "rankings", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "ranklist", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "rank_list", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "standings", out _);
         }
 
         private static string HydrateClassCompetitionNavigateUrlWithAuthKey(string navigateUrl, string authKey)
@@ -6451,7 +6530,12 @@ namespace HaCreator.MapSimulator
             string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
             if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
             {
-                TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
+                TryPlayPacketOwnedWzSound(
+                    noticeSoundDescriptor,
+                    "UI.img",
+                    out _,
+                    out _,
+                    strictClientSoundFamily: true);
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow)
@@ -7279,6 +7363,7 @@ namespace HaCreator.MapSimulator
                     out bool clearHiddenAutoTombstones,
                     out bool hasQuestRegistrationList,
                     out int[] questIds,
+                    out int[] hiddenAutoQuestIds,
                     out string decodeError))
             {
                 message = decodeError ?? "Quest-alarm registration-sync payload could not be decoded.";
@@ -7298,7 +7383,7 @@ namespace HaCreator.MapSimulator
 
             int appliedCount = questAlarmWindow.ApplyPacketRegistrationSync(
                 hasQuestRegistrationList ? questIds : null,
-                null,
+                hiddenAutoQuestIds,
                 effectiveAutoRegisterEnabled,
                 effectiveOpened,
                 effectiveMinimized,
@@ -7334,6 +7419,7 @@ namespace HaCreator.MapSimulator
                 out clearHiddenAutoTombstones,
                 out _,
                 out questIds,
+                out _,
                 out error);
             ResolveQuestAlarmRegistrationDirectiveForTests(
                 openedDirective,
@@ -7362,6 +7448,7 @@ namespace HaCreator.MapSimulator
                 out clearHiddenAutoTombstones,
                 out _,
                 out questIds,
+                out _,
                 out error);
         }
 
@@ -7373,6 +7460,7 @@ namespace HaCreator.MapSimulator
             out bool clearHiddenAutoTombstones,
             out bool hasQuestRegistrationList,
             out int[] questIds,
+            out int[] hiddenAutoQuestIds,
             out string error)
         {
             return TryDecodeQuestAlarmRegistrationSyncPayload(
@@ -7383,6 +7471,7 @@ namespace HaCreator.MapSimulator
                 out clearHiddenAutoTombstones,
                 out hasQuestRegistrationList,
                 out questIds,
+                out hiddenAutoQuestIds,
                 out error);
         }
 
@@ -7408,6 +7497,7 @@ namespace HaCreator.MapSimulator
             out bool clearHiddenAutoTombstones,
             out bool hasQuestRegistrationList,
             out int[] questIds,
+            out int[] hiddenAutoQuestIds,
             out string error)
         {
             opened = null;
@@ -7416,6 +7506,7 @@ namespace HaCreator.MapSimulator
             clearHiddenAutoTombstones = false;
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
+            hiddenAutoQuestIds = Array.Empty<int>();
             error = "Quest-alarm registration-sync payload is missing.";
 
             if (payload == null || payload.Length == 0)
@@ -7440,6 +7531,7 @@ namespace HaCreator.MapSimulator
                     out clearHiddenAutoTombstones,
                     out hasQuestRegistrationList,
                     out questIds,
+                    out hiddenAutoQuestIds,
                     out error))
             {
                 return true;
@@ -7455,6 +7547,7 @@ namespace HaCreator.MapSimulator
                     out clearHiddenAutoTombstones,
                     out hasQuestRegistrationList,
                     out questIds,
+                    out hiddenAutoQuestIds,
                     out error))
             {
                 return true;
@@ -7476,6 +7569,7 @@ namespace HaCreator.MapSimulator
                     out clearHiddenAutoTombstones,
                     out hasQuestRegistrationList,
                     out questIds,
+                    out hiddenAutoQuestIds,
                     out error))
             {
                 return true;
@@ -7489,6 +7583,7 @@ namespace HaCreator.MapSimulator
                 out clearHiddenAutoTombstones,
                 out hasQuestRegistrationList,
                 out questIds,
+                out hiddenAutoQuestIds,
                 out error);
         }
 
@@ -7500,6 +7595,7 @@ namespace HaCreator.MapSimulator
             out bool clearHiddenAutoTombstones,
             out bool hasQuestRegistrationList,
             out int[] questIds,
+            out int[] hiddenAutoQuestIds,
             out string error)
         {
             opened = null;
@@ -7508,6 +7604,7 @@ namespace HaCreator.MapSimulator
             clearHiddenAutoTombstones = false;
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
+            hiddenAutoQuestIds = Array.Empty<int>();
             error = null;
 
             if (payload == null || payload.Length < 2)
@@ -7667,6 +7764,7 @@ namespace HaCreator.MapSimulator
             out bool clearHiddenAutoTombstones,
             out bool hasQuestRegistrationList,
             out int[] questIds,
+            out int[] hiddenAutoQuestIds,
             out string error)
         {
             opened = null;
@@ -7675,6 +7773,7 @@ namespace HaCreator.MapSimulator
             clearHiddenAutoTombstones = false;
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
+            hiddenAutoQuestIds = Array.Empty<int>();
             error = "Quest-alarm registration-sync JSON payload did not contain any usable quest registration rows.";
             if (string.IsNullOrWhiteSpace(payloadText))
             {
@@ -7763,6 +7862,23 @@ namespace HaCreator.MapSimulator
                         hasQuestRegistrationList = true;
                         questIds = clientOptionQuestIds;
                     }
+
+                    if (TryGetJsonArrayProperty(
+                            working,
+                            out JsonElement hiddenAutoArray,
+                            "hiddenAutoQuestIds",
+                            "hiddenAuto",
+                            "hiddenAutoRows",
+                            "hiddenAutoTombstones",
+                            "deletedAutoQuestIds")
+                        || TryGetJsonNestedArrayProperty(
+                            working,
+                            out hiddenAutoArray,
+                            new[] { "registration", "sync", "tracker", "state" },
+                            new[] { "hiddenAutoQuestIds", "hiddenAuto", "hiddenAutoRows", "hiddenAutoTombstones", "deletedAutoQuestIds" }))
+                    {
+                        hiddenAutoQuestIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(hiddenAutoArray);
+                    }
                 }
                 else if (working.ValueKind == JsonValueKind.Array)
                 {
@@ -7786,11 +7902,12 @@ namespace HaCreator.MapSimulator
                     clearHiddenAutoTombstones = true;
                     hasQuestRegistrationList = true;
                     questIds = Array.Empty<int>();
+                    hiddenAutoQuestIds = Array.Empty<int>();
                     error = null;
                     return true;
                 }
 
-                if (hasQuestRegistrationList)
+                if (hasQuestRegistrationList || hiddenAutoQuestIds.Length > 0)
                 {
                     error = null;
                     return true;
@@ -7920,6 +8037,7 @@ namespace HaCreator.MapSimulator
             out bool clearHiddenAutoTombstones,
             out bool hasQuestRegistrationList,
             out int[] questIds,
+            out int[] hiddenAutoQuestIds,
             out string error)
         {
             opened = null;
@@ -7928,6 +8046,7 @@ namespace HaCreator.MapSimulator
             clearHiddenAutoTombstones = false;
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
+            hiddenAutoQuestIds = Array.Empty<int>();
             error = "Quest-alarm registration-sync payload did not contain any usable quest registration rows.";
             if (string.IsNullOrWhiteSpace(payloadText))
             {
@@ -7948,6 +8067,7 @@ namespace HaCreator.MapSimulator
             }
 
             List<int> parsedQuestIds = new();
+            List<int> parsedHiddenAutoQuestIds = new();
             bool sawDirective = false;
             bool sawQuestRegistrationListDirective = false;
             string[] segments = normalizedText.Split(
@@ -8003,6 +8123,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (TryParseQuestAlarmHiddenAutoSyncListDirective(segment, parsedHiddenAutoQuestIds))
+                {
+                    sawDirective = true;
+                    continue;
+                }
+
                 if (TryParseQuestAlarmRegistrationSyncClientOptionDirective(segment, parsedQuestIds, out bool isClientQuestSlotDirective))
                 {
                     sawQuestRegistrationListDirective |= isClientQuestSlotDirective;
@@ -8034,8 +8160,9 @@ namespace HaCreator.MapSimulator
             }
 
             questIds = parsedQuestIds.ToArray();
+            hiddenAutoQuestIds = parsedHiddenAutoQuestIds.ToArray();
             hasQuestRegistrationList = sawQuestRegistrationListDirective || questIds.Length > 0;
-            if (hasQuestRegistrationList || sawDirective)
+            if (hasQuestRegistrationList || hiddenAutoQuestIds.Length > 0 || sawDirective)
             {
                 error = null;
                 return true;
@@ -8124,6 +8251,57 @@ namespace HaCreator.MapSimulator
                 && !string.Equals(candidateKey, "entries", StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(candidateKey, "rows", StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(candidateKey, "quests", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string value = text[(separatorIndex + 1)..].Trim();
+            if (value.Length == 0)
+            {
+                return true;
+            }
+
+            string[] tokens = value.Split(
+                QuestAlarmRegistrationSyncListTokenSeparators,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            bool parsedAnyQuestId = false;
+            for (int i = 0; i < tokens.Length && destination.Count < QuestAlarmRegistrationSyncMaxQuestCount; i++)
+            {
+                if (int.TryParse(tokens[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId)
+                    && questId > 0)
+                {
+                    parsedAnyQuestId = true;
+                    AddQuestAlarmRegistrationSyncQuestId(destination, questId);
+                }
+            }
+
+            return parsedAnyQuestId;
+        }
+
+        private static bool TryParseQuestAlarmHiddenAutoSyncListDirective(string text, List<int> destination)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            int separatorIndex = text.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                separatorIndex = text.IndexOf(':');
+            }
+
+            if (separatorIndex <= 0)
+            {
+                return false;
+            }
+
+            string candidateKey = text[..separatorIndex].Trim();
+            if (!string.Equals(candidateKey, "hiddenAutoQuestIds", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "hiddenAuto", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "hiddenAutoRows", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "hiddenAutoTombstones", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "deletedAutoQuestIds", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
@@ -9627,7 +9805,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryMirrorMessengerNativeClaimClientRequest(out string message, bool queueOnly = false)
         {
-            if (!_messengerRuntime.TryBuildClientChatClaimRequestPayload(
+            if (!_messengerRuntime.TryBuildClaimDialogRequestPayload(
                     out byte[] payload,
                     out string targetCharacterName,
                     out byte claimType,
@@ -10341,6 +10519,22 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (payload.Length == sizeof(int) * 2)
+            {
+                int contextSlot = BitConverter.ToInt32(payload, 0);
+                int contextSlotValue = BitConverter.ToInt32(payload, sizeof(int));
+                if (contextSlot != ReviveOwnerPremiumSafetyCharmContextSlot)
+                {
+                    message = $"Revive premium safety charm context slot payload targeted CWvsContext[{contextSlot}], expected [{ReviveOwnerPremiumSafetyCharmContextSlot}].";
+                    return false;
+                }
+
+                hasOverride = true;
+                armed = contextSlotValue != 0;
+                message = $"Decoded packet-authored CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}] slot/value DWORD armed={(armed ? 1 : 0)}.";
+                return true;
+            }
+
             if (payload.Length == sizeof(int))
             {
                 // CUIRevive::OnCreate reads CWvsContext slot 2073 as a DWORD gate.
@@ -10353,7 +10547,7 @@ namespace HaCreator.MapSimulator
 
             if (payload.Length > 2)
             {
-                message = "Revive premium safety charm context payload must be [0] to clear, [1,<armed>] to set, or a 4-byte CWvsContext[2073] DWORD value.";
+                message = "Revive premium safety charm context payload must be [0] to clear, [1,<armed>] to set, a 4-byte CWvsContext[2073] DWORD value, or an 8-byte [slot,value] DWORD pair for slot 2073.";
                 return false;
             }
 
@@ -10913,6 +11107,10 @@ namespace HaCreator.MapSimulator
                     TrackPropertyLoaded: false,
                     SoundObjectLoaded: false,
                     RawBufferLoaded: false,
+                    AilQuickLoadMemAttempted: false,
+                    AilQuickMsLengthAttempted: false,
+                    AilQuickSetMsPositionAttempted: false,
+                    AilQuickPlayAttempted: false,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -10927,6 +11125,10 @@ namespace HaCreator.MapSimulator
                     TrackPropertyLoaded: true,
                     SoundObjectLoaded: false,
                     RawBufferLoaded: false,
+                    AilQuickLoadMemAttempted: false,
+                    AilQuickMsLengthAttempted: false,
+                    AilQuickSetMsPositionAttempted: false,
+                    AilQuickPlayAttempted: false,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -10944,6 +11146,10 @@ namespace HaCreator.MapSimulator
                     TrackPropertyLoaded: true,
                     SoundObjectLoaded: true,
                     RawBufferLoaded: false,
+                    AilQuickLoadMemAttempted: false,
+                    AilQuickMsLengthAttempted: false,
+                    AilQuickSetMsPositionAttempted: false,
+                    AilQuickPlayAttempted: false,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -10958,6 +11164,10 @@ namespace HaCreator.MapSimulator
                     TrackPropertyLoaded: true,
                     SoundObjectLoaded: true,
                     RawBufferLoaded: true,
+                    AilQuickLoadMemAttempted: true,
+                    AilQuickMsLengthAttempted: true,
+                    AilQuickSetMsPositionAttempted: false,
+                    AilQuickPlayAttempted: false,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -10976,6 +11186,10 @@ namespace HaCreator.MapSimulator
                 TrackPropertyLoaded: true,
                 SoundObjectLoaded: true,
                 RawBufferLoaded: true,
+                AilQuickLoadMemAttempted: true,
+                AilQuickMsLengthAttempted: true,
+                AilQuickSetMsPositionAttempted: true,
+                AilQuickPlayAttempted: true,
                 Started: true,
                 MsLength: normalizedLength,
                 MsPosition: normalizedPosition,
@@ -11839,9 +12053,20 @@ namespace HaCreator.MapSimulator
                     yield return templateDescriptor;
                 }
 
+                string normalizedDefaultImage = NormalizePacketOwnedSoundImageName(defaultImageName);
+                if (TrySplitPacketOwnedClientSoundDescriptor(normalized, out string strictImageName, out string strictPropertyPath)
+                    && string.Equals(strictImageName, normalizedDefaultImage, StringComparison.OrdinalIgnoreCase))
+                {
+                    string directDescriptor = $"{strictImageName}/{strictPropertyPath}";
+                    if (yieldedDescriptors.Add(directDescriptor))
+                    {
+                        yield return directDescriptor;
+                    }
+                }
+
                 if (!string.IsNullOrWhiteSpace(defaultImageName))
                 {
-                    string defaultDescriptor = $"{NormalizePacketOwnedSoundImageName(defaultImageName)}/{normalized}";
+                    string defaultDescriptor = $"{normalizedDefaultImage}/{normalized}";
                     if (yieldedDescriptors.Add(defaultDescriptor))
                     {
                         yield return defaultDescriptor;
@@ -11851,9 +12076,9 @@ namespace HaCreator.MapSimulator
                 yield break;
             }
 
-            if (TrySplitPacketOwnedClientSoundDescriptor(normalized, out string imageName, out string propertyPath))
+            if (TrySplitPacketOwnedClientSoundDescriptor(normalized, out string splitImageName, out string splitPropertyPath))
             {
-                string directDescriptor = $"{imageName}/{propertyPath}";
+                string directDescriptor = $"{splitImageName}/{splitPropertyPath}";
                 if (yieldedDescriptors.Add(directDescriptor))
                 {
                     yield return directDescriptor;
@@ -15516,6 +15741,15 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolvePacketOwnedGroupFamilyChatChannel(
+                    mode,
+                    segments,
+                    message,
+                    out route))
+            {
+                return true;
+            }
+
             switch (mode)
             {
                 case "all":
@@ -15539,6 +15773,7 @@ namespace HaCreator.MapSimulator
                     return true;
 
                 case "friend":
+                case "buddy":
                     route = new PacketOwnedChatRoute(
                         FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Friend]"),
                         3);
@@ -15670,6 +15905,67 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private static bool TryResolvePacketOwnedGroupFamilyChatChannel(
+            string mode,
+            string[] segments,
+            string message,
+            out PacketOwnedChatRoute route)
+        {
+            route = default;
+            if (string.IsNullOrWhiteSpace(mode))
+            {
+                return false;
+            }
+
+            string familyToken = null;
+            string sender = string.Empty;
+            if (mode == "group")
+            {
+                if (segments.Length < 2)
+                {
+                    return false;
+                }
+
+                familyToken = segments[1].Trim();
+                sender = segments.Length >= 3 ? segments[2].Trim() : string.Empty;
+            }
+            else if (mode.StartsWith("group", StringComparison.Ordinal) && mode.Length > "group".Length)
+            {
+                familyToken = mode["group".Length..].Trim();
+                sender = segments.Length >= 2 ? segments[1].Trim() : string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(familyToken)
+                || !PacketFieldFeedbackRuntime.TryResolveGroupFamilyToken(familyToken, out byte family)
+                || !TryResolvePacketOwnedGroupFamilyRoute(family, out int chatLogType, out string fallbackPrefix))
+            {
+                return false;
+            }
+
+            route = new PacketOwnedChatRoute(
+                FormatPacketOwnedGroupChatLine(message, sender, fallbackPrefix),
+                chatLogType);
+            return true;
+        }
+
+        private static bool TryResolvePacketOwnedGroupFamilyRoute(
+            byte family,
+            out int chatLogType,
+            out string fallbackPrefix)
+        {
+            (chatLogType, fallbackPrefix) = family switch
+            {
+                0 => (3, "[Friend]"),
+                1 => (2, "[Party]"),
+                2 => (4, "[Guild]"),
+                3 => (5, "[Association]"),
+                6 => (26, "[Expedition]"),
+                _ => (-1, string.Empty)
+            };
+
+            return chatLogType >= 0;
+        }
+
         private static bool TryParsePacketOwnedClientChatLogTypeMode(string mode, out int chatLogType)
         {
             chatLogType = -1;
@@ -15737,7 +16033,7 @@ namespace HaCreator.MapSimulator
                 "notice" => $"[Notice] {message}",
                 "system" => $"[System] {message}",
                 "party" => $"[Party] {message}",
-                "friend" => $"[Friend] {message}",
+                "friend" or "buddy" => $"[Friend] {message}",
                 "guild" => $"[Guild] {message}",
                 "alliance" or "association" => $"[Alliance] {message}",
                 "couple" => $"[Couple] {message}",
@@ -19784,7 +20080,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (item.ValueKind != JsonValueKind.Object
-                    || !TryGetJsonStringProperty(item, out string lineText, "text", "message", "line", "caption", "label", "ct", "m_aCT")
+                    || !TryGetJsonStringProperty(item, out string lineText, "text", "message", "line", "caption", "label", "ct", "m_aCT", "sText", "ctText")
                     || string.IsNullOrWhiteSpace(lineText))
                 {
                     continue;
@@ -19793,8 +20089,8 @@ namespace HaCreator.MapSimulator
                 destination.Add(new EventAlarmLineSnapshot
                 {
                     Text = lineText.Trim(),
-                    Left = TryGetJsonInt32(item, "left", out int left) ? left : 0,
-                    Top = TryGetJsonInt32(item, "top", out int top) ? top : index * 13,
+                    Left = TryGetJsonInt32Property(item, out int left, "left", "x", "nX", "ctLeft", "drawLeft") ? left : 0,
+                    Top = TryGetJsonInt32Property(item, out int top, "top", "y", "nY", "ctTop", "drawTop") ? top : index * 13,
                     FontIndex = TryGetPacketOwnedEventAlarmLineFontIndex(item, out int fontIndex) ? fontIndex : null,
                     IsHighlighted = TryGetJsonBoolean(item, "highlight", out bool highlight) && highlight,
                     TextColorArgb = TryGetPacketOwnedEventAlarmLineColor(item, out int colorArgb) ? colorArgb : null
@@ -19811,7 +20107,11 @@ namespace HaCreator.MapSimulator
                        "fontIndex",
                        "font",
                        "fontId",
-                       "fontType")
+                       "fontType",
+                       "nFont",
+                       "style",
+                       "styleIndex",
+                       "textStyle")
                    && fontIndex >= 0;
         }
 
@@ -19825,7 +20125,10 @@ namespace HaCreator.MapSimulator
                     "colorArgb",
                     "argb",
                     "fontColor",
-                    "color"))
+                    "color",
+                    "cr",
+                    "nColor",
+                    "textColor"))
             {
                 return true;
             }
@@ -19838,7 +20141,10 @@ namespace HaCreator.MapSimulator
                     "colorArgb",
                     "argb",
                     "fontColor",
-                    "color"))
+                    "color",
+                    "cr",
+                    "nColor",
+                    "textColor"))
             {
                 return TryParsePacketOwnedEventAlarmLineColor(colorText, out colorArgb);
             }
@@ -20579,7 +20885,16 @@ namespace HaCreator.MapSimulator
             string normalizedText = decodedText.Trim();
             if (TryDecodePacketOwnedRankingPageHtmlPayload(normalizedText, out entries, out summary, out message))
             {
-                return entries.Length > 0;
+                hasOwnerState = TryExtractPacketOwnedRankingHtmlOwnerState(normalizedText, out ownerState);
+                return entries.Length > 0 || hasOwnerState;
+            }
+
+            if (TryExtractPacketOwnedRankingHtmlOwnerState(normalizedText, out ownerState))
+            {
+                hasOwnerState = true;
+                summary = "Applied packet-authored CWebWnd ranking HTML owner request state.";
+                message = summary;
+                return true;
             }
 
             if (TryDecodePacketOwnedRankingPageFormPayload(normalizedText, out entries, out hasOwnerState, out ownerState, out summary, out message))
@@ -20691,15 +21006,198 @@ namespace HaCreator.MapSimulator
                 AppendPacketOwnedRankingEmbeddedJsonEntries(payloadText, parsedEntries);
             }
 
-            if (parsedEntries.Count == 0)
+            bool hasOwnerState = TryExtractPacketOwnedRankingHtmlOwnerState(payloadText, out _);
+            if (parsedEntries.Count == 0 && !hasOwnerState)
             {
                 return false;
             }
 
             entries = parsedEntries.ToArray();
-            summary = $"Applied packet-authored CWebWnd ranking HTML page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+            summary = hasOwnerState
+                ? $"Applied packet-authored CWebWnd ranking HTML page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s) and recovered owner request state."
+                : $"Applied packet-authored CWebWnd ranking HTML page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
             message = summary;
             return true;
+        }
+
+        private static bool TryExtractPacketOwnedRankingHtmlOwnerState(
+            string payloadText,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState)
+        {
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                return false;
+            }
+
+            foreach (string json in EnumeratePacketOwnedEmbeddedJsonValues(
+                         payloadText,
+                         "ownerState",
+                         "web",
+                         "webOwner",
+                         "cwebwnd",
+                         "cWebWnd",
+                         "rankingOwner",
+                         "rankingPage",
+                         "ranking"))
+            {
+                if (TryCreatePacketOwnedRankingOwnerStateFromJson(json, out ownerState))
+                {
+                    return true;
+                }
+            }
+
+            foreach (string navigateUrl in EnumeratePacketOwnedRankingHtmlNavigateUrls(payloadText))
+            {
+                if (TryCreatePacketOwnedRankingOwnerStateFromNavigateUrl(navigateUrl, out ownerState))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryCreatePacketOwnedRankingOwnerStateFromJson(
+            string json,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState)
+        {
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json);
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    return false;
+                }
+
+                JsonElement ownerStateElement = root;
+                if (TryGetJsonObjectProperty(root, out JsonElement nestedOwnerState, "ownerState", "web", "webOwner", "cwebwnd", "cWebWnd"))
+                {
+                    ownerStateElement = nestedOwnerState;
+                }
+
+                return TryParsePacketOwnedRankingOwnerState(ownerStateElement, out ownerState);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedRankingHtmlNavigateUrls(string payloadText)
+        {
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                yield break;
+            }
+
+            foreach (Match match in Regex.Matches(
+                         payloadText,
+                         @"<link\b(?<attrs>[^>]*)>",
+                         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant))
+            {
+                string attrs = match.Groups["attrs"].Value;
+                string rel = TryExtractPacketOwnedHtmlAttribute(attrs, "rel");
+                string href = TryExtractPacketOwnedHtmlAttribute(attrs, "href");
+                if (!string.IsNullOrWhiteSpace(href)
+                    && (string.IsNullOrWhiteSpace(rel)
+                        || rel.IndexOf("canonical", StringComparison.OrdinalIgnoreCase) >= 0
+                        || rel.IndexOf("alternate", StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    yield return href;
+                }
+            }
+
+            foreach (Match match in Regex.Matches(
+                         payloadText,
+                         @"<meta\b(?<attrs>[^>]*)>",
+                         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant))
+            {
+                string attrs = match.Groups["attrs"].Value;
+                string httpEquiv = TryExtractPacketOwnedHtmlAttribute(attrs, "http-equiv");
+                string content = TryExtractPacketOwnedHtmlAttribute(attrs, "content");
+                if (string.IsNullOrWhiteSpace(content)
+                    || (!string.IsNullOrWhiteSpace(httpEquiv)
+                        && httpEquiv.IndexOf("refresh", StringComparison.OrdinalIgnoreCase) < 0))
+                {
+                    continue;
+                }
+
+                Match refreshUrlMatch = Regex.Match(
+                    content,
+                    @"(?:^|[;\s])url\s*=\s*(?<url>[^;]+)$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (refreshUrlMatch.Success)
+                {
+                    yield return refreshUrlMatch.Groups["url"].Value.Trim().Trim('\'', '"');
+                }
+            }
+
+            foreach (Match match in Regex.Matches(
+                         payloadText,
+                         @"\b(?:location(?:\.href)?|navigateUrl)\s*=\s*(?:""(?<url>[^""]+)""|'(?<url>[^']+)')",
+                         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                yield return WebUtility.HtmlDecode(match.Groups["url"].Value).Trim();
+            }
+        }
+
+        private static bool TryCreatePacketOwnedRankingOwnerStateFromNavigateUrl(
+            string navigateUrl,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState)
+        {
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            if (!TryResolvePacketOwnedRankingNavigateUrlParts(
+                    navigateUrl,
+                    out string serverHost,
+                    out int? worldId,
+                    out int? characterId))
+            {
+                return false;
+            }
+
+            const int templateId = 0xAA2;
+            string resolvedNavigateUrl = navigateUrl?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(resolvedNavigateUrl)
+                && !string.IsNullOrWhiteSpace(serverHost)
+                && worldId.HasValue
+                && characterId.HasValue)
+            {
+                resolvedNavigateUrl = ProgressionUtilityParityRules.ResolveRankingLandingUrl(
+                    serverHost,
+                    templateId,
+                    worldId.Value,
+                    characterId.Value,
+                    out _);
+            }
+
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot
+            {
+                NavigationCaption = ProgressionUtilityParityRules.FormatRankingLandingTemplateSeed(templateId, out _),
+                NavigationSeedText = string.IsNullOrWhiteSpace(resolvedNavigateUrl)
+                    ? string.Empty
+                    : $"NavigateUrl => {resolvedNavigateUrl}",
+                NavigateUrl = resolvedNavigateUrl,
+                NavigationHostText = string.IsNullOrWhiteSpace(serverHost)
+                    ? string.Empty
+                    : $"get_server_string_0 => {serverHost}",
+                NavigationRequestText = worldId.HasValue && characterId.HasValue
+                    ? ProgressionUtilityParityRules.FormatRankingRequestParameters(worldId.Value, characterId.Value)
+                    : string.Empty,
+                NavigationStateText = "Packet-authored CWebWnd owner resolved the ranking landing request from HTML navigation metadata.",
+                ServerHost = serverHost,
+                TemplateId = templateId,
+                WorldId = worldId,
+                CharacterId = characterId
+            };
+            return ownerState.HasAnyState;
         }
 
         private static void AppendPacketOwnedRankingEmbeddedJsonEntries(string payloadText, ICollection<RankingEntrySnapshot> destination)
@@ -25658,6 +26156,15 @@ namespace HaCreator.MapSimulator
             {
                 message = $"{decodeMessage} The packet-owned owner is now wired, but the simulator still defaults the invitation skin to {WeddingInvitationRuntime.DefaultPacketOpenStyle} because subtype {WeddingInvitationRuntime.ClientOpenResultSubtype} only carries groom, bride, and dialog-type fields.";
                 return false;
+            }
+
+            if (_engagementProposalController.TryApplyMarriageResultPayload(
+                    payload,
+                    uiWindowManager,
+                    out string engagementMessage))
+            {
+                message = $"Applied packet-owned CWvsContext::OnMarriageResult payload through {EngagementProposalRuntime.ClientOwnerTypeName}. {engagementMessage}";
+                return true;
             }
 
             message = invitationMessage;

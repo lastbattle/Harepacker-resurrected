@@ -78,6 +78,38 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly int[] QuestDetailAllNonBeginnerJobs = { 100, 200, 300, 400, 500 };
         private static readonly int[] QuestDetailCygnusBaseJobs = { 1100, 1200, 1300, 1400, 1500 };
         private static readonly int[] QuestDetailResistanceBaseJobs = { 3100, 3200, 3300 };
+        private static readonly string[] CompletionSideChannelDemandKeys =
+        {
+            "premium",
+            "dressChanged",
+            "pvpGradeMin",
+            "pvpGradeMax",
+            "completeVIPGradeMin",
+            "completeVIPGradeMax",
+            "completeVIPAccount",
+            "deathCount",
+            "matchingExp",
+            "randomGroupHost",
+            "multiKill",
+            "multiKillCount",
+            "comboKill",
+            "damageOnFalling",
+            "hpRate",
+            "toadCount",
+            "personalShopBuy",
+            "mobDropMesoPickup",
+            "breakTimeField",
+            "runeAct",
+            "dailyCommitment",
+            "skinSelectNeed",
+            "marriaged",
+            "noMarriaged",
+            "notInTeleportItemLimitedField",
+            "questRecordAndOption",
+            "questOrOption",
+            "itemOrOption",
+            "lvOptinumMob"
+        };
 
         private sealed class QuestStateRequirement
         {
@@ -356,6 +388,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string EndTimeKeepFieldSet { get; init; } = string.Empty;
             public int? EndTimeKeepFieldSetKeepTime { get; init; }
             public int? EndPvpGradeRequirement { get; init; }
+            public int? EndGenderRequirement { get; init; }
             public IReadOnlyList<string> EndUnresolvedSideChannelDemandKeys { get; init; } = Array.Empty<string>();
             public int? EndInfoNumber { get; init; }
             public int? EndFakeQuestId { get; init; }
@@ -1091,6 +1124,11 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Completion PvP-grade demand owner is unavailable.");
             }
 
+            if (build != null && HasUnmetCompletionGenderDemand(definition.EndGenderRequirement, build.Gender))
+            {
+                issues.Add("Completion gender demand is still unmet.");
+            }
+
             if (HasUnresolvedCompletionSideChannelDemands(definition.EndUnresolvedSideChannelDemandKeys))
             {
                 issues.Add("Completion demand includes unresolved side-channel state owners.");
@@ -1106,9 +1144,10 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.ActionMaxLevel,
                     definition.EndActions?.AllowedJobs,
                     definition.EndFameRequirement,
-                    hasTraitRequirements: definition.EndTraitRequirements.Count > 0))
+                    hasTraitRequirements: definition.EndTraitRequirements.Count > 0,
+                    genderRequirement: definition.EndGenderRequirement))
             {
-                issues.Add("Completion demand includes build-scoped level/job/fame/trait gates, but character build context is unavailable.");
+                issues.Add("Completion demand includes build-scoped level/job/fame/trait/gender gates, but character build context is unavailable.");
             }
 
             if (build != null &&
@@ -1500,6 +1539,26 @@ namespace HaCreator.MapSimulator.Interaction
             return demandKeys != null && demandKeys.Count > 0;
         }
 
+        internal static bool HasUnmetCompletionGenderDemand(int? requiredGender, CharacterGender currentGender)
+        {
+            if (!requiredGender.HasValue || requiredGender.Value == (int)CharacterGenderType.Both)
+            {
+                return false;
+            }
+
+            if (requiredGender.Value == (int)CharacterGenderType.Male)
+            {
+                return currentGender != CharacterGender.Male;
+            }
+
+            if (requiredGender.Value == (int)CharacterGenderType.Female)
+            {
+                return currentGender != CharacterGender.Female;
+            }
+
+            return true;
+        }
+
         internal static bool HasUnresolvedCompletionBuildContextDemand(
             int? minLevel,
             int? maxLevel,
@@ -1509,7 +1568,8 @@ namespace HaCreator.MapSimulator.Interaction
             int? actionMaxLevel,
             IReadOnlyList<int> actionAllowedJobs,
             int? fameRequirement = null,
-            bool hasTraitRequirements = false)
+            bool hasTraitRequirements = false,
+            int? genderRequirement = null)
         {
             return minLevel.HasValue
                    || maxLevel.HasValue
@@ -1519,7 +1579,14 @@ namespace HaCreator.MapSimulator.Interaction
                    || actionMaxLevel.HasValue
                    || (actionAllowedJobs?.Count ?? 0) > 0
                    || fameRequirement.HasValue
-                   || hasTraitRequirements;
+                   || hasTraitRequirements
+                   || HasAuthoredCompletionGenderDemand(genderRequirement);
+        }
+
+        private static bool HasAuthoredCompletionGenderDemand(int? genderRequirement)
+        {
+            return genderRequirement.HasValue &&
+                   genderRequirement.Value != (int)CharacterGenderType.Both;
         }
 
         internal static bool HasUnmetCompletionActionJobDemand(IReadOnlyList<int> actionAllowedJobs, int currentJob)
@@ -5410,6 +5477,9 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetCompletionUserInteractDemand(
                     definition.EndUserInteractDemand,
                     TryResolveCompletionUserInteractDemandRecordValue(definition));
+            IReadOnlyList<string> unresolvedSideChannelDemandKeys = state == QuestStateType.Started
+                ? definition.EndUnresolvedSideChannelDemandKeys
+                : Array.Empty<string>();
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -5444,7 +5514,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lostPages,
                 hasUnmetUserInteractRequirement: hasUnmetUserInteractRequirement,
                 unmetMonsterBookStopBranchIds: GetUnmetMonsterBookCardRequirementIds(
-                    definition.EndMonsterBookCardRequirements));
+                    definition.EndMonsterBookCardRequirements),
+                unresolvedSideChannelDemandKeys: unresolvedSideChannelDemandKeys);
         }
 
         internal static IReadOnlyList<NpcInteractionPage> SelectIssueConversationPagesCore(
@@ -5479,7 +5550,8 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
             IReadOnlyList<NpcInteractionPage> lostPages,
             bool hasUnmetUserInteractRequirement = false,
-            IReadOnlyList<int> unmetMonsterBookStopBranchIds = null)
+            IReadOnlyList<int> unmetMonsterBookStopBranchIds = null,
+            IReadOnlyList<string> unresolvedSideChannelDemandKeys = null)
         {
             if (state == QuestStateType.Started &&
                 !isCompletionNpc &&
@@ -5823,6 +5895,14 @@ namespace HaCreator.MapSimulator.Interaction
                     "info"))
             {
                 return userInteractPages;
+            }
+
+            if (TryGetSideChannelDemandStopPages(
+                    stopPages,
+                    unresolvedSideChannelDemandKeys,
+                    out IReadOnlyList<NpcInteractionPage> sideChannelDemandPages))
+            {
+                return sideChannelDemandPages;
             }
 
             if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
@@ -6986,6 +7066,11 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Completion PvP-grade demand owner is unavailable.");
             }
 
+            if (build != null && HasUnmetCompletionGenderDemand(definition.EndGenderRequirement, build.Gender))
+            {
+                issues.Add("Completion gender demand is still unmet.");
+            }
+
             if (HasUnresolvedCompletionSideChannelDemands(definition.EndUnresolvedSideChannelDemandKeys))
             {
                 issues.Add("Completion demand includes unresolved side-channel state owners.");
@@ -7001,9 +7086,10 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.ActionMaxLevel,
                     definition.EndActions?.AllowedJobs,
                     definition.EndFameRequirement,
-                    hasTraitRequirements: definition.EndTraitRequirements.Count > 0))
+                    hasTraitRequirements: definition.EndTraitRequirements.Count > 0,
+                    genderRequirement: definition.EndGenderRequirement))
             {
-                issues.Add("Completion demand includes build-scoped level/job/fame/trait gates, but character build context is unavailable.");
+                issues.Add("Completion demand includes build-scoped level/job/fame/trait/gender gates, but character build context is unavailable.");
             }
 
             if (build != null &&
@@ -9466,6 +9552,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
                 EndTimeKeepFieldSetKeepTime = ParseInt(endCheck?["fieldsetkeeptime"] ?? endCheck?["fieldSetKeepTime"]),
                 EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
+                EndGenderRequirement = ParseInt(endCheck?["gender"]),
                 EndUnresolvedSideChannelDemandKeys = ParseUnresolvedCompletionSideChannelDemandKeys(endCheck),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndFakeQuestId = ParsePositiveInt(endCheck?["fakeQuestID"]),
@@ -10478,44 +10565,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<string>();
             }
 
-            string[] candidateKeys =
-            {
-                "premium",
-                "dressChanged",
-                "pvpGradeMin",
-                "pvpGradeMax",
-                "completeVIPGradeMin",
-                "completeVIPGradeMax",
-                "completeVIPAccount",
-                "deathCount",
-                "matchingExp",
-                "randomGroupHost",
-                "multiKill",
-                "multiKillCount",
-                "comboKill",
-                "damageOnFalling",
-                "hpRate",
-                "toadCount",
-                "personalShopBuy",
-                "mobDropMesoPickup",
-                "breakTimeField",
-                "runeAct",
-                "dailyCommitment",
-                "gender",
-                "skinSelectNeed",
-                "marriaged",
-                "noMarriaged",
-                "notInTeleportItemLimitedField",
-                "questRecordAndOption",
-                "questOrOption",
-                "itemOrOption",
-                "lvOptinumMob"
-            };
-
             var demandKeys = new List<string>();
-            for (int i = 0; i < candidateKeys.Length; i++)
+            for (int i = 0; i < CompletionSideChannelDemandKeys.Length; i++)
             {
-                string key = candidateKeys[i];
+                string key = CompletionSideChannelDemandKeys[i];
                 if (HasAuthoredCompletionSideChannelDemand(property[key]))
                 {
                     demandKeys.Add(key);
@@ -12674,7 +12727,27 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("message", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("illustration", StringComparison.OrdinalIgnoreCase) ||
                    IsConversationVariantMetadataPropertyName(propertyName) ||
+                   IsCompletionSideChannelDemandPropertyName(propertyName) ||
                    IsQuestActionDataPropertyName(propertyName);
+        }
+
+        private static bool IsCompletionSideChannelDemandPropertyName(string propertyName)
+        {
+            string normalized = NormalizeConversationMetadataKey(propertyName);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < CompletionSideChannelDemandKeys.Length; i++)
+            {
+                if (NormalizeConversationMetadataKey(CompletionSideChannelDemandKeys[i]) == normalized)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsConversationVariantMetadataPropertyName(string propertyName)
@@ -12800,6 +12873,32 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int i = 0; i < keys.Length; i++)
                 {
                     if (TryGetStopPages(stopPages, keys[i], out pages))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            pages = Array.Empty<NpcInteractionPage>();
+            return false;
+        }
+
+        private static bool TryGetSideChannelDemandStopPages(
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
+            IReadOnlyList<string> demandKeys,
+            out IReadOnlyList<NpcInteractionPage> pages)
+        {
+            if (demandKeys != null)
+            {
+                for (int i = 0; i < demandKeys.Count; i++)
+                {
+                    string demandKey = demandKeys[i];
+                    if (string.IsNullOrWhiteSpace(demandKey))
+                    {
+                        continue;
+                    }
+
+                    if (TryGetStopPages(stopPages, demandKey, out pages))
                     {
                         return true;
                     }
