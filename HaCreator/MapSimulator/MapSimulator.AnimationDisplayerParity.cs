@@ -148,6 +148,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, Dictionary<string, AnimationDisplayerRemoteSkillUseOwnerState>> _animationDisplayerRemoteSkillUseOwnerStates = new();
         private readonly Dictionary<int, Dictionary<int, AnimationDisplayerPacketOwnedMonsterBookCardGetOwnerState>> _animationDisplayerPacketOwnedMonsterBookCardGetOwnerStates = new();
         private readonly Dictionary<int, Dictionary<string, AnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerState>> _animationDisplayerLocalPacketOwnedBasicOneTimeOwnerStates = new();
+        private readonly Dictionary<string, AnimationDisplayerPacketOwnedMobOneTimeOwnerState> _animationDisplayerPacketOwnedMobOneTimeOwnerStates = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private readonly List<AnimationDisplayerPendingReservedOwnerEffect> _animationDisplayerPendingReservedOwnerEffects = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
@@ -307,6 +308,17 @@ namespace HaCreator.MapSimulator
             public int DurationMs { get; init; }
         }
 
+        private sealed class AnimationDisplayerPacketOwnedMobOneTimeOwnerState
+        {
+            public string OwnerKind { get; init; }
+            public int MobTemplateId { get; init; }
+            public string AttackAction { get; init; }
+            public string EffectUol { get; init; }
+            public bool OwnerFacingRight { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
+
         private sealed class AnimationDisplayerPendingReservedOwnerEffect
         {
             public RemoteUserActorPool.RemoteStringEffectPresentation Presentation { get; init; }
@@ -392,15 +404,24 @@ namespace HaCreator.MapSimulator
 
         internal readonly record struct AnimationDisplayerAreaRegistrationProfile(
             Rectangle Area,
+            int OffsetX,
+            int OffsetY,
             int UpdateIntervalMs,
             int UpdateCount,
             int UpdateNextMs,
-            int DurationMs)
+            int DurationMs,
+            int? LayerZ)
         {
+            public Rectangle EffectiveArea => new(
+                Area.X + OffsetX,
+                Area.Y + OffsetY,
+                Area.Width,
+                Area.Height);
             public int EffectiveUpdateIntervalMs => Math.Max(1, UpdateIntervalMs > 0 ? UpdateIntervalMs : AnimationDisplayerExplosionFallbackIntervalMs);
             public int EffectiveUpdateCount => Math.Max(1, UpdateCount > 0 ? UpdateCount : AnimationDisplayerExplosionFallbackCount);
             public int EffectiveUpdateNextMs => Math.Max(0, UpdateNextMs);
             public int EffectiveDurationMs => Math.Max(1, DurationMs > 0 ? DurationMs : AnimationDisplayerExplosionFallbackDurationMs);
+            public int EffectiveLayerZ => LayerZ ?? 1;
         }
 
         internal readonly record struct AnimationDisplayerReservedEffectMetadata(
@@ -807,6 +828,7 @@ namespace HaCreator.MapSimulator
             _animationDisplayerRemoteSkillUseOwnerStates.Clear();
             _animationDisplayerPacketOwnedMonsterBookCardGetOwnerStates.Clear();
             _animationDisplayerLocalPacketOwnedBasicOneTimeOwnerStates.Clear();
+            _animationDisplayerPacketOwnedMobOneTimeOwnerStates.Clear();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             _animationDisplayerPendingReservedOwnerEffects.Clear();
             _animationDisplayerRemoteGrenadeActors.Clear();
@@ -1077,18 +1099,22 @@ namespace HaCreator.MapSimulator
 
             AnimationDisplayerAreaRegistrationProfile profile = BuildAnimationDisplayerAreaRegistrationProfile(
                 area,
+                ReadAnimationDisplayerIntProperty(property, "x"),
+                ReadAnimationDisplayerIntProperty(property, "y"),
                 ReadAnimationDisplayerIntProperty(property, "interval"),
                 ReadAnimationDisplayerIntProperty(property, "count"),
                 ReadAnimationDisplayerIntProperty(property, "delay"),
-                ReadAnimationDisplayerIntProperty(property, "end"));
+                ReadAnimationDisplayerIntProperty(property, "end"),
+                ReadAnimationDisplayerNullableIntProperty(property, "z"));
             int registrationId = _animationEffects.RegisterAreaAnimation(
                 frames,
-                profile.Area,
+                profile.EffectiveArea,
                 profile.EffectiveUpdateIntervalMs,
                 profile.EffectiveUpdateCount,
                 profile.EffectiveUpdateNextMs,
                 profile.EffectiveDurationMs,
-                currTickCount);
+                currTickCount,
+                zOrder: profile.EffectiveLayerZ);
             if (registrationId < 0)
             {
                 message = $"Explosion animation-displayer effect from {effectUol} could not be registered.";
@@ -2188,14 +2214,24 @@ namespace HaCreator.MapSimulator
             };
 
             Vector2 fallbackPosition = getPosition();
-            _animationEffects.AddOneTimeAttached(
+            int initialElapsedMs = ResolveAnimationDisplayerPacketOwnedMobOneTimeInitialElapsed(
+                "mobSwallow",
+                target.MobId,
+                AnimationDisplayerMobSwallowPrimaryAction,
+                resolvedEffectUol,
+                ownerFacingRight: fallbackFacingRight,
+                registerTime,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+            _animationEffects.AddPacketOwnedMobSwallow(
                 frames,
+                resolvedEffectUol,
                 getPosition,
                 getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
                 fallbackFlip: false,
-                registerTime);
+                registerTime,
+                initialElapsedMs: initialElapsedMs);
             message =
                 $"Registered mob-swallow animation-displayer owner frames from {resolvedEffectUol} (targetMob={request.TargetMobId}).";
             return true;
@@ -2342,17 +2378,45 @@ namespace HaCreator.MapSimulator
                 ? null
                 : () => !request.GetFacingRight();
             bool fallbackFlip = request.GetFacingRight != null && !request.GetFacingRight();
+            bool ownerFacingRight = request.GetFacingRight?.Invoke() ?? !fallbackFlip;
             int registerTime = ResolveAnimationDisplayerMobProjectileRegistrationTime(
                 request.CurrentTime,
                 request.AttackAfterMs);
-            _animationEffects.AddOneTimeAttached(
-                frames,
-                request.GetPosition,
-                getFlip,
-                fallbackPosition.X,
-                fallbackPosition.Y,
-                fallbackFlip,
-                registerTime);
+            string ownerKind = isMobSwallowOwner ? "mobSwallowBullet" : "mobBullet";
+            int initialElapsedMs = ResolveAnimationDisplayerPacketOwnedMobOneTimeInitialElapsed(
+                ownerKind,
+                request.MobId,
+                request.AttackAction,
+                resolvedEffectUol,
+                ownerFacingRight,
+                registerTime,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+            if (isMobSwallowOwner)
+            {
+                _animationEffects.AddPacketOwnedMobSwallow(
+                    frames,
+                    resolvedEffectUol,
+                    request.GetPosition,
+                    getFlip,
+                    fallbackPosition.X,
+                    fallbackPosition.Y,
+                    fallbackFlip,
+                    registerTime,
+                    initialElapsedMs: initialElapsedMs);
+            }
+            else
+            {
+                _animationEffects.AddPacketOwnedMobBullet(
+                    frames,
+                    resolvedEffectUol,
+                    request.GetPosition,
+                    getFlip,
+                    fallbackPosition.X,
+                    fallbackPosition.Y,
+                    fallbackFlip,
+                    registerTime,
+                    initialElapsedMs: initialElapsedMs);
+            }
 
             message = $"Registered {ownerName} animation-displayer owner frames from {resolvedEffectUol}.";
             return true;
@@ -2561,17 +2625,23 @@ namespace HaCreator.MapSimulator
 
         internal static AnimationDisplayerAreaRegistrationProfile BuildAnimationDisplayerAreaRegistrationProfile(
             Rectangle area,
+            int offsetX,
+            int offsetY,
             int updateIntervalMs,
             int updateCount,
             int updateNextMs,
-            int durationMs)
+            int durationMs,
+            int? layerZ = null)
         {
             return new AnimationDisplayerAreaRegistrationProfile(
                 area,
+                offsetX,
+                offsetY,
                 updateIntervalMs,
                 updateCount,
                 updateNextMs,
-                durationMs);
+                durationMs,
+                layerZ);
         }
 
         private static string CombineAnimationDisplayerEffectUol(string baseEffectUol, string childName)
@@ -2594,6 +2664,12 @@ namespace HaCreator.MapSimulator
         private static int ReadAnimationDisplayerIntProperty(WzImageProperty property, string name)
         {
             return property?[name]?.GetInt() ?? 0;
+        }
+
+        private static int? ReadAnimationDisplayerNullableIntProperty(WzImageProperty property, string name)
+        {
+            WzImageProperty value = property?[name];
+            return value == null ? null : value.GetInt();
         }
 
         private int TryRegisterAnimationDisplayerAreaAnimation(
@@ -5495,6 +5571,70 @@ namespace HaCreator.MapSimulator
             return initialElapsedMs;
         }
 
+        private int ResolveAnimationDisplayerPacketOwnedMobOneTimeInitialElapsed(
+            string ownerKind,
+            int mobTemplateId,
+            string attackAction,
+            string effectUol,
+            bool ownerFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (string.IsNullOrWhiteSpace(ownerKind)
+                || mobTemplateId <= 0
+                || string.IsNullOrWhiteSpace(attackAction)
+                || string.IsNullOrWhiteSpace(effectUol)
+                || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            string ownerSlotKey = BuildAnimationDisplayerPacketOwnedMobOneTimeOwnerSlotKey(
+                ownerKind,
+                mobTemplateId,
+                attackAction,
+                effectUol);
+            if (string.IsNullOrWhiteSpace(ownerSlotKey))
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_animationDisplayerPacketOwnedMobOneTimeOwnerStates.TryGetValue(
+                    ownerSlotKey,
+                    out AnimationDisplayerPacketOwnedMobOneTimeOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerPacketOwnedMobOneTimeRestoreElapsedCore(
+                    existingState.OwnerKind,
+                    existingState.MobTemplateId,
+                    existingState.AttackAction,
+                    existingState.EffectUol,
+                    existingState.OwnerFacingRight,
+                    existingState.AnimationStartTime,
+                    ownerKind,
+                    mobTemplateId,
+                    attackAction,
+                    effectUol,
+                    ownerFacingRight,
+                    currentTime,
+                    durationMs);
+            }
+
+            _animationDisplayerPacketOwnedMobOneTimeOwnerStates[ownerSlotKey] =
+                new AnimationDisplayerPacketOwnedMobOneTimeOwnerState
+                {
+                    OwnerKind = ownerKind,
+                    MobTemplateId = mobTemplateId,
+                    AttackAction = attackAction,
+                    EffectUol = effectUol,
+                    OwnerFacingRight = ownerFacingRight,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                    DurationMs = durationMs
+                };
+            return initialElapsedMs;
+        }
+
         private int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsed(
             int characterId,
             byte effectType,
@@ -5632,6 +5772,20 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(ownerFamily) || string.IsNullOrWhiteSpace(effectUol)
                 ? string.Empty
                 : $"{ownerFamily.Trim()}:{effectUol.Trim()}";
+        }
+
+        private static string BuildAnimationDisplayerPacketOwnedMobOneTimeOwnerSlotKey(
+            string ownerKind,
+            int mobTemplateId,
+            string attackAction,
+            string effectUol)
+        {
+            return string.IsNullOrWhiteSpace(ownerKind)
+                   || mobTemplateId <= 0
+                   || string.IsNullOrWhiteSpace(attackAction)
+                   || string.IsNullOrWhiteSpace(effectUol)
+                ? string.Empty
+                : $"{ownerKind.Trim()}:{mobTemplateId.ToString(CultureInfo.InvariantCulture)}:{attackAction.Trim()}:{effectUol.Trim()}";
         }
 
         internal static bool ShouldRegisterAnimationDisplayerPacketOwnedMonsterBookCardGetForChangedPickup(
@@ -5924,6 +6078,36 @@ namespace HaCreator.MapSimulator
                 || previousAnimationStartTime == int.MinValue
                 || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
+                || previousFacingRight != currentFacingRight)
+            {
+                return 0;
+            }
+
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
+        private static int ResolveAnimationDisplayerPacketOwnedMobOneTimeRestoreElapsedCore(
+            string previousOwnerKind,
+            int previousMobTemplateId,
+            string previousAttackAction,
+            string previousEffectUol,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            string currentOwnerKind,
+            int currentMobTemplateId,
+            string currentAttackAction,
+            string currentEffectUol,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousMobTemplateId != currentMobTemplateId
+                || !string.Equals(previousOwnerKind, currentOwnerKind, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(previousAttackAction, currentAttackAction, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase)
                 || previousFacingRight != currentFacingRight)
             {
                 return 0;
@@ -6241,6 +6425,50 @@ namespace HaCreator.MapSimulator
                 currentFacingRight,
                 currentTime,
                 durationMs);
+        }
+
+        internal static int ResolveAnimationDisplayerPacketOwnedMobOneTimeRestoreElapsedForTesting(
+            string previousOwnerKind,
+            int previousMobTemplateId,
+            string previousAttackAction,
+            string previousEffectUol,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            string currentOwnerKind,
+            int currentMobTemplateId,
+            string currentAttackAction,
+            string currentEffectUol,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveAnimationDisplayerPacketOwnedMobOneTimeRestoreElapsedCore(
+                previousOwnerKind,
+                previousMobTemplateId,
+                previousAttackAction,
+                previousEffectUol,
+                previousFacingRight,
+                previousAnimationStartTime,
+                currentOwnerKind,
+                currentMobTemplateId,
+                currentAttackAction,
+                currentEffectUol,
+                currentFacingRight,
+                currentTime,
+                durationMs);
+        }
+
+        internal static string BuildAnimationDisplayerPacketOwnedMobOneTimeOwnerSlotKeyForTesting(
+            string ownerKind,
+            int mobTemplateId,
+            string attackAction,
+            string effectUol)
+        {
+            return BuildAnimationDisplayerPacketOwnedMobOneTimeOwnerSlotKey(
+                ownerKind,
+                mobTemplateId,
+                attackAction,
+                effectUol);
         }
 
         private bool TryGetAnimationDisplayerFrames(string cacheKey, string effectUol, out List<IDXObject> frames)

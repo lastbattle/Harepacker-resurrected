@@ -2673,7 +2673,7 @@ namespace HaCreator.MapSimulator.Fields
         private static bool ShouldLinkRemoteTownPortal(RemoteTownPortalState state)
         {
             return state.Destination.HasValue
-                   && state.Phase != RemoteTownPortalVisualPhase.Removing;
+                   && state.Phase == RemoteTownPortalVisualPhase.Stable;
         }
 
         private static bool ShouldRefreshRemoteTownPortalInferredMetadata(

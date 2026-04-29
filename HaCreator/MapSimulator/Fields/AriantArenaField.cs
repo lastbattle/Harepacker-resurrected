@@ -92,7 +92,6 @@ namespace HaCreator.MapSimulator.Fields
         private const int FirstTextY = 2;
         private const int RowSpacing = 17;
         private const int ResultOffsetY = 100;
-        private const int ResultHoldDurationMs = 1200;
         private readonly List<AriantArenaScoreEntry> _entries = new();
         private readonly List<IDXObject> _resultFrames = new();
         private readonly List<IDXObject> _rankIcons = new();
@@ -102,8 +101,8 @@ namespace HaCreator.MapSimulator.Fields
         private bool _showScoreboard;
         private bool _showResult;
         private int _resultFrameIndex;
+        private int _resultStartedAt;
         private int _resultFrameStartedAt;
-        private int _resultVisibleUntil;
         private int _scoreRefreshSerial;
         private int _localPlayerJob;
         private RemoteUserActorPool _remoteUserPool;
@@ -120,6 +119,7 @@ namespace HaCreator.MapSimulator.Fields
         internal static Rectangle ScoreLayerBoundsForTesting => new(ScoreLayerScreenX, ScoreLayerScreenY, ScoreLayerWidth, ScoreLayerHeight);
         internal bool IsScoreLayerVisibleForTesting => _showScoreboard;
         internal bool IsResultLayerVisibleForTesting => _showResult;
+        internal int ResultFrameIndexForTesting => _resultFrameIndex;
         public void Initialize(
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
@@ -140,8 +140,8 @@ namespace HaCreator.MapSimulator.Fields
             _showScoreboard = true;
             _showResult = false;
             _resultFrameIndex = 0;
+            _resultStartedAt = 0;
             _resultFrameStartedAt = 0;
-            _resultVisibleUntil = 0;
             _scoreRefreshSerial = 0;
             _lastResultMessage = null;
             _lastPacketType = null;
@@ -320,8 +320,8 @@ namespace HaCreator.MapSimulator.Fields
             _showScoreboard = false;
             _showResult = _resultFrames.Count > 0;
             _resultFrameIndex = 0;
+            _resultStartedAt = currentTimeMs;
             _resultFrameStartedAt = currentTimeMs;
-            _resultVisibleUntil = currentTimeMs + GetResultDuration() + ResultHoldDurationMs;
             _lastResultMessage = null;
             if (!string.IsNullOrWhiteSpace(_resultSoundKey))
             {
@@ -334,8 +334,8 @@ namespace HaCreator.MapSimulator.Fields
             _showScoreboard = false;
             _showResult = false;
             _resultFrameIndex = 0;
+            _resultStartedAt = 0;
             _resultFrameStartedAt = 0;
-            _resultVisibleUntil = 0;
             _scoreRefreshSerial = 0;
             _lastResultMessage = null;
             _lastPacketType = null;
@@ -469,7 +469,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return;
             }
-            if (currentTimeMs >= _resultVisibleUntil)
+            if (HasResultElapsed(_resultStartedAt, GetResultDuration(), currentTimeMs))
             {
                 _showResult = false;
                 return;
@@ -478,7 +478,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 IDXObject frame = _resultFrames[_resultFrameIndex];
                 int delay = frame.Delay > 0 ? frame.Delay : 100;
-                if (currentTimeMs - _resultFrameStartedAt < delay)
+                if (!HasResultElapsed(_resultFrameStartedAt, delay, currentTimeMs))
                 {
                     break;
                 }
@@ -518,8 +518,8 @@ namespace HaCreator.MapSimulator.Fields
             _showResult = false;
             _entries.Clear();
             _resultFrameIndex = 0;
+            _resultStartedAt = 0;
             _resultFrameStartedAt = 0;
-            _resultVisibleUntil = 0;
             _scoreRefreshSerial = 0;
             _localPlayerJob = 0;
             _lastResultMessage = null;
@@ -617,6 +617,20 @@ namespace HaCreator.MapSimulator.Fields
         {
             return ResolveResultSoundPath();
         }
+        internal static bool HasResultElapsedForTesting(int startTimeMs, int durationMs, int currentTimeMs)
+        {
+            return HasResultElapsed(startTimeMs, durationMs, currentTimeMs);
+        }
+        internal void SetResultFramesForTesting(params IDXObject[] frames)
+        {
+            _resultFrames.Clear();
+            if (frames == null)
+            {
+                return;
+            }
+
+            _resultFrames.AddRange(frames.Where(static frame => frame != null));
+        }
         internal string LastResultMessageForTesting => _lastResultMessage;
         private static string FormatScoreText(int score)
         {
@@ -664,6 +678,11 @@ namespace HaCreator.MapSimulator.Fields
                 total += _resultFrames[i].Delay > 0 ? _resultFrames[i].Delay : 100;
             }
             return total;
+        }
+        private static bool HasResultElapsed(int startTimeMs, int durationMs, int currentTimeMs)
+        {
+            return durationMs <= 0
+                || unchecked((uint)(currentTimeMs - startTimeMs)) >= (uint)durationMs;
         }
         private void EnsureAssetsLoaded()
         {

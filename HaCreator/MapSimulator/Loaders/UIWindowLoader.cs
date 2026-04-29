@@ -4212,7 +4212,7 @@ namespace HaCreator.MapSimulator.Loaders
                 manager.RegisterCustomWindow(socialSearchWindow);
             }
 
-            UIWindowBase friendGroupWindow = CreateFriendGroupWindow(uiWindow1Image, uiWindow2Image, soundUIImage, device, new Point(position.X + 12, position.Y + 6));
+            UIWindowBase friendGroupWindow = CreateFriendGroupWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(position.X + 12, position.Y + 6));
             if (friendGroupWindow != null)
             {
                 manager.RegisterCustomWindow(friendGroupWindow);
@@ -4770,11 +4770,13 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject resetButton = LoadButton(tradeProperty, "BtReset", clickSound, overSound, device);
             UIObject coinButton = LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device);
             UIObject acceptButton = LoadButton(tradeProperty, "BtClame", clickSound, overSound, device);
+            UIObject enterButton = LoadButton(tradeProperty, "BtEnter", clickSound, overSound, device);
             window.BindButton(tradeButton, () => runtime.TryApplyTradingRoomLocalTradeRequest(out _, out _));
             window.BindButton(resetButton, runtime.ResetTrade);
             window.BindButton(coinButton, runtime.IncreaseTradeOffer);
             window.BindButton(acceptButton, () => runtime.ToggleTradeAcceptance(out _));
-            window.RegisterTradingRoomButtons(tradeButton, resetButton, coinButton, acceptButton);
+            window.BindButton(enterButton, runtime.SubmitTradingRoomEnterButton);
+            window.RegisterTradingRoomButtons(tradeButton, resetButton, coinButton, acceptButton, enterButton);
             return window;
         }
 
@@ -6539,6 +6541,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static UIWindowBase CreateFriendGroupWindow(
             WzImage uiWindow1Image,
             WzImage uiWindow2Image,
+            WzImage basicImage,
             WzImage soundUIImage,
             GraphicsDevice device,
             Point position)
@@ -6574,6 +6577,7 @@ namespace HaCreator.MapSimulator.Loaders
                 needMessagePopupOffset,
                 LoadButton(groupProperty, "BtOK", clickSound, overSound, device),
                 LoadButton(groupProperty, "BtCancle", clickSound, overSound, device),
+                LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
                 device)
             {
                 Position = position
@@ -7679,6 +7683,15 @@ namespace HaCreator.MapSimulator.Loaders
                 [WeddingInvitationStyle.Sweet] = LoadCanvasTexture(sourceProperty, "sweet", device),
                 [WeddingInvitationStyle.Premium] = LoadCanvasTexture(sourceProperty, "premium", device)
             };
+            Dictionary<int, Texture2D> clientDialogBackgrounds = new()
+            {
+                [WeddingInvitationRuntime.DefaultClientDialogType] =
+                    LoadCanvasTexture(uiWindow1Image?["Wedding/Invitation"] as WzSubProperty, WeddingInvitationRuntime.DefaultClientDialogAssetName, device)
+                    ?? LoadCanvasTexture(sourceProperty, WeddingInvitationRuntime.DefaultClientDialogAssetName, device),
+                [WeddingInvitationRuntime.AlternateClientDialogType] =
+                    LoadCanvasTexture(uiWindow1Image?["Wedding/Invitation"] as WzSubProperty, WeddingInvitationRuntime.AlternateClientDialogAssetName, device)
+                    ?? LoadCanvasTexture(sourceProperty, WeddingInvitationRuntime.AlternateClientDialogAssetName, device)
+            };
 
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
@@ -7692,7 +7705,7 @@ namespace HaCreator.MapSimulator.Loaders
                     new Color(255, 236, 183),
                     new Color(170, 170, 170));
 
-            WeddingInvitationWindow window = new(backgrounds, device);
+            WeddingInvitationWindow window = new(backgrounds, clientDialogBackgrounds, device);
             window.InitializeControls(acceptButton);
             return window;
         }
@@ -7705,8 +7718,13 @@ namespace HaCreator.MapSimulator.Loaders
                 [WeddingInvitationStyle.Sweet] = CreateFilledTexture(device, 234, 250, new Color(250, 235, 239), new Color(214, 176, 190)),
                 [WeddingInvitationStyle.Premium] = CreateFilledTexture(device, 234, 250, new Color(242, 238, 228), new Color(174, 164, 134))
             };
+            Dictionary<int, Texture2D> clientDialogBackgrounds = new()
+            {
+                [WeddingInvitationRuntime.DefaultClientDialogType] = backgrounds[WeddingInvitationStyle.Neat],
+                [WeddingInvitationRuntime.AlternateClientDialogType] = backgrounds[WeddingInvitationStyle.Premium]
+            };
 
-            WeddingInvitationWindow window = new(backgrounds, device);
+            WeddingInvitationWindow window = new(backgrounds, clientDialogBackgrounds, device);
             window.InitializeControls(
                 UiButtonFactory.CreateSolidButton(
                     device,

@@ -707,16 +707,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsDojoMap(MapInfo mapInfo)
         {
-            if (mapInfo == null)
-            {
-                return false;
-            }
-
-            return mapInfo.fieldType == FieldType.FIELDTYPE_DOJANG
-                || (mapInfo.id >= 925020000 && mapInfo.id <= 925040999)
-                || string.Equals(mapInfo.mapMark, "MuruengRaid", StringComparison.OrdinalIgnoreCase)
-                || (!string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
-                    && mapInfo.onUserEnter.StartsWith("dojang", StringComparison.OrdinalIgnoreCase));
+            return DojoField.IsDojoActivationContract(mapInfo);
         }
 
         private static bool IsBattlefieldMap(MapInfo mapInfo)

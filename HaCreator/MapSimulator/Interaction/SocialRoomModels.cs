@@ -87,7 +87,8 @@ namespace HaCreator.MapSimulator.Interaction
             string miniRoomBalloonTitle = null,
             byte miniRoomBalloonByte0 = 0,
             byte miniRoomBalloonByte1 = 0,
-            byte miniRoomBalloonByte2 = 0)
+            byte miniRoomBalloonByte2 = 0,
+            bool hasMiniRoomBalloonByte2 = false)
         {
             Kind = kind;
             Template = template;
@@ -108,6 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
             MiniRoomBalloonByte0 = miniRoomBalloonByte0;
             MiniRoomBalloonByte1 = miniRoomBalloonByte1;
             MiniRoomBalloonByte2 = miniRoomBalloonByte2;
+            HasMiniRoomBalloonByte2 = hasMiniRoomBalloonByte2;
         }
 
         public SocialRoomKind Kind { get; }
@@ -129,6 +131,7 @@ namespace HaCreator.MapSimulator.Interaction
         public byte MiniRoomBalloonByte0 { get; }
         public byte MiniRoomBalloonByte1 { get; }
         public byte MiniRoomBalloonByte2 { get; }
+        public bool HasMiniRoomBalloonByte2 { get; }
         public bool HasMiniRoomBalloon => MiniRoomType != 0;
     }
 
@@ -1399,7 +1402,8 @@ namespace HaCreator.MapSimulator.Interaction
                     miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : string.Empty,
                     miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : (byte)0,
                     miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : (byte)0,
-                    miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0);
+                    miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0,
+                    hasMiniRoomBalloonByte2: hasPooledEmployee && pooledEmployee.HasBalloonByte2);
             }
 
             if (Kind != SocialRoomKind.EntrustedShop)
@@ -1454,7 +1458,8 @@ namespace HaCreator.MapSimulator.Interaction
                 miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : string.Empty,
                 miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : (byte)0,
                 miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : (byte)0,
-                miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0);
+                miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0,
+                hasMiniRoomBalloonByte2: hasPooledEmployee && pooledEmployee.HasBalloonByte2);
         }
 
         private static SocialRoomFieldActorTemplate ResolvePersonalShopFieldActorTemplate(int templateId)
@@ -1786,6 +1791,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return TryDispatchSyntheticDialogPacket(TradingRoomExceedLimitPacketType, Array.Empty<byte>(), tickCount, out message);
+        }
+
+        public void SubmitTradingRoomEnterButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            StatusMessage = "Trading-room BtEnter stayed on the dedicated CTradingRoomDlg surface; chat text still enters through the shared MiniRoom base chat packet owner.";
+            PersistState();
         }
 
         private bool TryDispatchMiniRoomPacket(PacketReader reader, byte packetType, int tickCount, out string message)
@@ -4206,6 +4222,20 @@ namespace HaCreator.MapSimulator.Interaction
                 message = "Mini-room base update packet did not include a nested room packet type.";
                 return false;
             }
+
+            if (TryDispatchMiniRoomSubtype6ContiguousStreamPayload(nestedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult streamDispatch)
+                && streamDispatch.Handled
+                && streamDispatch.RemainingBytes == 0
+                && !streamDispatch.ForwardedPayload.SequenceEqual(nestedPayload))
+            {
+                string streamPayloadPreview = BuildPacketHexPreview(nestedPayload);
+                string streamDispatchDetail = $"CMiniRoomBaseDlg::OnPacketBase subtype 6 split {streamDispatch.EnvelopeSummary} and forwarded nested packet stream into {streamDispatch.OwnerName}. {streamDispatch.Message} | payload={streamPayloadPreview} | bytes={nestedPayload.Length}";
+                _lastPacketOwnerSummary = streamDispatchDetail;
+                message = streamDispatchDetail;
+                PersistState();
+                return true;
+            }
+
             bool handled;
             string ownerName;
             if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom)
@@ -4408,6 +4438,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6ContiguousStreamPayload(nestedPayload, tickCount, out result))
             {
                 return true;
             }
@@ -4742,6 +4777,173 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"{envelopeLabel} count={entryCount}",
                 firstForwardedPayload ?? Array.Empty<byte>());
             return true;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6ContiguousStreamPayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            int offset = 0;
+            int handledCount = 0;
+            int unhandledCount = 0;
+            int remainingBytes = 0;
+            byte firstPacketType = 0;
+            byte[] firstForwardedPayload = null;
+            List<string> packetTypes = new();
+            List<string> details = new();
+            List<byte[]> forwardedPayloads = new();
+
+            while (offset < nestedPayload.Length)
+            {
+                if (!TryMeasureMiniRoomSubtype6ForwardedPacketLength(nestedPayload, offset, out int payloadLength))
+                {
+                    return false;
+                }
+
+                if (payloadLength <= 0 || offset + payloadLength > nestedPayload.Length)
+                {
+                    return false;
+                }
+
+                forwardedPayloads.Add(nestedPayload.Skip(offset).Take(payloadLength).ToArray());
+                offset += payloadLength;
+            }
+
+            if (forwardedPayloads.Count <= 1)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < forwardedPayloads.Count; i++)
+            {
+                byte[] forwardedPayload = forwardedPayloads[i];
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult entryResult))
+                {
+                    return false;
+                }
+
+                if (firstForwardedPayload == null)
+                {
+                    firstPacketType = entryResult.PacketType;
+                    firstForwardedPayload = forwardedPayload;
+                }
+
+                remainingBytes += Math.Max(0, entryResult.RemainingBytes);
+                packetTypes.Add(entryResult.PacketType.ToString(CultureInfo.InvariantCulture));
+                if (entryResult.Handled)
+                {
+                    handledCount++;
+                }
+                else
+                {
+                    unhandledCount++;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entryResult.Message))
+                {
+                    details.Add($"entry {handledCount + unhandledCount}: {entryResult.Message}");
+                }
+            }
+
+            string handledText = unhandledCount == 0
+                ? $"handled all {handledCount + unhandledCount} entries"
+                : $"handled {handledCount} and retained {unhandledCount} unmodeled entries on the owner seam";
+            string detailText = details.Count == 0
+                ? "No nested owner detail was produced."
+                : string.Join(" ", details);
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handledCount > 0,
+                "CMiniRoomBaseDlg::OnPacketBase contiguous forwarding",
+                $"Contiguous subtype-6 stream {handledText}; packet types [{string.Join(", ", packetTypes)}]. {detailText}",
+                firstPacketType,
+                remainingBytes,
+                $"contiguous packet stream count={handledCount + unhandledCount}",
+                firstForwardedPayload ?? Array.Empty<byte>());
+            return true;
+        }
+
+        private bool TryMeasureMiniRoomSubtype6ForwardedPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            byte packetType = payload[offset];
+            if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+            {
+                return false;
+            }
+
+            int remaining = payload.Length - offset;
+            switch (packetType)
+            {
+                case TradingRoomPutMoneyPacketType:
+                    packetLength = 1 + sizeof(byte) + sizeof(int);
+                    return remaining >= packetLength;
+                case TradingRoomTradePacketType:
+                case TradingRoomItemCrcPacketType:
+                    if (remaining < 2)
+                    {
+                        return false;
+                    }
+
+                    packetLength = 1 + sizeof(byte) + (payload[offset + 1] * (sizeof(int) + sizeof(int)));
+                    return remaining >= packetLength;
+                case TradingRoomExceedLimitPacketType:
+                case OmokReadyPacketType:
+                case OmokCancelReadyPacketType:
+                    packetLength = 1;
+                    return true;
+                case OmokStartPacketType:
+                case OmokTimeOverPacketType:
+                case OmokPutStoneErrorPacketType:
+                    packetLength = 2;
+                    return remaining >= packetLength;
+                case OmokTieRequestPacketType:
+                case OmokTieResultPacketType:
+                case OmokRetreatRequestPacketType:
+                case EntrustedShopWithdrawMoneyResultPacketType:
+                    packetLength = 1;
+                    return true;
+                case PersonalShopBuyResultPacketType:
+                case EntrustedShopWithdrawAllResultPacketType:
+                    packetLength = 1 + sizeof(byte);
+                    return remaining >= packetLength;
+                case OmokPutStonePacketType:
+                    packetLength = 1 + sizeof(int) + sizeof(int) + sizeof(byte);
+                    return remaining >= packetLength;
+                case OmokGameResultPacketType:
+                    if (remaining < 2)
+                    {
+                        return false;
+                    }
+
+                    packetLength = payload[offset + 1] == 1 ? 2 : 3;
+                    return remaining >= packetLength;
+                case OmokRetreatResultPacketType:
+                    if (remaining < 2)
+                    {
+                        return false;
+                    }
+
+                    packetLength = payload[offset + 1] == 0 ? 2 : 4;
+                    return remaining >= packetLength;
+                case EntrustedShopArrangeItemResultPacketType:
+                    packetLength = 1 + sizeof(int);
+                    return remaining >= packetLength;
+                default:
+                    return false;
+            }
         }
 
         private bool TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(
@@ -6156,6 +6358,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_entrustedBlacklistPendingMutationAdd.HasValue)
+            {
+                message = $"Blacklist add is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending request for {_entrustedBlacklistPendingMutationName}.";
+                return false;
+            }
+
             request = new EntrustedShopBlacklistPromptRequest
             {
                 OwnerName = ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist),
@@ -6244,6 +6452,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_entrustedBlacklistPendingMutationAdd.HasValue)
+            {
+                message = $"Blacklist add is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending request for {_entrustedBlacklistPendingMutationName}.";
+                return false;
+            }
+
             string resolvedName = NormalizeName(visitorName);
             if (!IsValidEntrustedBlacklistName(resolvedName))
             {
@@ -6315,6 +6529,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (!HasValidEntrustedBlacklistSelection())
             {
                 message = "Delete stays disabled until the selected blacklist cell is valid.";
+                return false;
+            }
+
+            if (_entrustedBlacklistPendingMutationAdd.HasValue)
+            {
+                message = $"Blacklist delete is waiting for server subtype {EntrustedShopBlackListResultPacketType} to resolve the pending request for {_entrustedBlacklistPendingMutationName}.";
                 return false;
             }
 
@@ -8736,7 +8956,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState pooledEmployee))
             {
-                return $"|pkt|{pooledEmployee.EmployerId}|{pooledEmployee.FootholdId}|{pooledEmployee.MiniRoomType}|{pooledEmployee.MiniRoomSerial}|{pooledEmployee.BalloonTitle}|{pooledEmployee.BalloonByte0}|{pooledEmployee.BalloonByte1}|{pooledEmployee.BalloonByte2}";
+                return $"|pkt|{pooledEmployee.EmployerId}|{pooledEmployee.FootholdId}|{pooledEmployee.MiniRoomType}|{pooledEmployee.MiniRoomSerial}|{pooledEmployee.BalloonTitle}|{pooledEmployee.BalloonByte0}|{pooledEmployee.BalloonByte1}|{pooledEmployee.BalloonByte2}|{pooledEmployee.HasBalloonByte2}";
             }
 
             return string.Empty;

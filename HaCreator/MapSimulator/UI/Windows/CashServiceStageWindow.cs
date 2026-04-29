@@ -3462,6 +3462,19 @@ namespace HaCreator.MapSimulator.UI
                 _noticeState += string.IsNullOrWhiteSpace(trailingHex)
                     ? $" Trailing gift-mate body remained ({trailingByteCount.ToString(CultureInfo.InvariantCulture)} byte(s))."
                     : $" Trailing gift-mate body remained ({trailingByteCount.ToString(CultureInfo.InvariantCulture)} byte(s), head {trailingHex}).";
+                string retainedTailMessage = AppendCashRawTailPacketEntryIfNeeded(
+                    payload,
+                    startOffset: (int)stream.Position,
+                    decodedRowCount: 0,
+                    paneLabel: "Packet gifts",
+                    browseModeLabel: "Gift",
+                    title: "Gift-mate trailing body",
+                    seller: recipient,
+                    stateLabel: "Gift body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    _noticeState += $" {retainedTailMessage}";
+                }
             }
 
             AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
@@ -3524,6 +3537,20 @@ namespace HaCreator.MapSimulator.UI
                 > 0 => $"Duplicate-id result rejected candidate name {candidateName} as already in use.",
                 _ => $"Duplicate-id result checked {candidateName} with result {resultByte.ToString(CultureInfo.InvariantCulture)}."
             };
+            string trailingSummary = AppendCashRawTailPacketEntryIfNeeded(
+                payload,
+                startOffset: (int)stream.Position,
+                decodedRowCount: 0,
+                paneLabel: "Packet rename",
+                browseModeLabel: "Name",
+                title: "Duplicate-id trailing body",
+                seller: candidateName,
+                stateLabel: "Name-check body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _noticeState += $" {trailingSummary}";
+            }
+
             _cashNameChangeLastSummary = _noticeState;
             AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
             {
@@ -3546,6 +3573,20 @@ namespace HaCreator.MapSimulator.UI
                 _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(failureReason)
                     ? "Name-change result reached the stage owner, but the possible-result payload could not be decoded."
                     : failureReason;
+                string retainedTailMessage = AppendCashRawTailPacketEntryIfNeeded(
+                    payload,
+                    startOffset: 0,
+                    decodedRowCount: 0,
+                    paneLabel: "Packet rename",
+                    browseModeLabel: "Name",
+                    title: "Name-change possible-result body",
+                    seller: "CCashShop",
+                    stateLabel: "Decode body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    _cashNameChangeLastSummary += $" {retainedTailMessage}";
+                }
+
                 _noticeState = _cashNameChangeLastSummary;
                 return _cashNameChangeLastSummary;
             }
@@ -3576,6 +3617,20 @@ namespace HaCreator.MapSimulator.UI
                 _cashTransferWorldLastSummary = string.IsNullOrWhiteSpace(failureReason)
                     ? "Transfer-world result reached the stage owner, but the possible-result payload could not be decoded."
                     : failureReason;
+                string retainedTailMessage = AppendCashRawTailPacketEntryIfNeeded(
+                    payload,
+                    startOffset: 0,
+                    decodedRowCount: 0,
+                    paneLabel: "Packet transfer",
+                    browseModeLabel: "Transfer",
+                    title: "Transfer-world possible-result body",
+                    seller: "CCashShop",
+                    stateLabel: "Decode body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    _cashTransferWorldLastSummary += $" {retainedTailMessage}";
+                }
+
                 _noticeState = _cashTransferWorldLastSummary;
                 return _cashTransferWorldLastSummary;
             }
@@ -3636,33 +3691,27 @@ namespace HaCreator.MapSimulator.UI
 
         public string CompleteReceiveGiftDialog(int selectedGiftIndex, string replyText)
         {
-            if (selectedGiftIndex < 0 || selectedGiftIndex >= _cashGiftPacketEntries.Count)
-            {
-                return "CUIReceiveGift could not resolve the selected gift row.";
-            }
-
-            PacketCatalogEntry selectedEntry = _cashGiftPacketEntries[selectedGiftIndex];
-            string sender = string.IsNullOrWhiteSpace(selectedEntry.Seller) ? "unknown sender" : selectedEntry.Seller;
-            string reply = string.IsNullOrWhiteSpace(replyText)
-                ? "without a reply message"
-                : $"with reply \"{SanitizePacketString(replyText, "gift reply")}\"";
-            _cashGiftPacketEntries.RemoveAt(selectedGiftIndex);
-            RemoveCashGiftPacketCatalogEntry(selectedEntry);
-            _cashGiftLastSummary =
-                $"CUIReceiveGift accepted {selectedEntry.Title} from {sender} {reply}; {Math.Max(0, _cashGiftPacketEntries.Count).ToString(CultureInfo.InvariantCulture)} gift row(s) remain staged.";
-            _noticeState = _cashGiftLastSummary;
-            return _cashGiftLastSummary;
+            return CompleteReceiveGiftDialog(selectedGiftIndex, replyText, string.Empty);
         }
 
         public string CompleteReceiveGiftDialog(int selectedGiftIndex, string replyText, string dispatchSummary)
         {
-            string summary = CompleteReceiveGiftDialog(selectedGiftIndex, replyText);
-            if (string.IsNullOrWhiteSpace(dispatchSummary))
+            string stagedSummary = StageReceiveGiftAcceptRequest(selectedGiftIndex, replyText, dispatchSummary);
+            if (!TryCompletePendingReceiveGiftAcceptFromDialogReturn(
+                out string completionSummary,
+                out string ownerNotice,
+                out int nextGiftIndex))
             {
-                return summary;
+                return stagedSummary;
             }
 
-            _cashGiftLastSummary = $"{summary} {dispatchSummary}";
+            string nextOwnerSummary = nextGiftIndex >= 0
+                ? $"Next CUIReceiveGift DoModal pass will open queue index {nextGiftIndex.ToString(CultureInfo.InvariantCulture)}."
+                : "No additional CUIReceiveGift DoModal pass remains.";
+            _cashGiftLastSummary = string.Join(
+                " ",
+                new[] { completionSummary, ownerNotice, nextOwnerSummary }
+                    .Where(part => !string.IsNullOrWhiteSpace(part)));
             _noticeState = _cashGiftLastSummary;
             return _cashGiftLastSummary;
         }

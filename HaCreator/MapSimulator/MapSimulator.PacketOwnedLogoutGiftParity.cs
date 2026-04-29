@@ -1173,7 +1173,12 @@ namespace HaCreator.MapSimulator
                 return PacketOwnedLogoutGiftOwnerAvailability.StageNotField;
             }
 
-            if (hasPredictQuitFlag && predictQuitRawValue == 0)
+            if (!hasPredictQuitFlag)
+            {
+                return PacketOwnedLogoutGiftOwnerAvailability.MissingPredictQuit;
+            }
+
+            if (predictQuitRawValue == 0)
             {
                 return PacketOwnedLogoutGiftOwnerAvailability.PredictQuitFalse;
             }
@@ -1477,6 +1482,8 @@ namespace HaCreator.MapSimulator
             {
                 PacketOwnedLogoutGiftOwnerAvailability.StageNotField =>
                     $"{prefix} The active simulator stage is not a `CField`, so the client `CUILogoutGift::TryShowLogoutGiftDialog` branch would return 1 without creating the singleton.",
+                PacketOwnedLogoutGiftOwnerAvailability.MissingPredictQuit =>
+                    $"{prefix} CWvsContext::m_bPredictQuit has not been decoded from `CWvsContext::OnSetLogoutGiftConfig`, so the client visibility gate cannot be satisfied.",
                 PacketOwnedLogoutGiftOwnerAvailability.PredictQuitFalse =>
                     $"{prefix} CWvsContext::m_bPredictQuit is false, so the client would not surface the owner.",
                 _ => prefix
@@ -1519,6 +1526,7 @@ namespace HaCreator.MapSimulator
         Available = 0,
         StageNotField = 1,
         PredictQuitFalse = 2,
+        MissingPredictQuit = 3,
     }
 
     internal enum PacketOwnedLogoutGiftContinuation

@@ -1688,6 +1688,13 @@ namespace HaCreator.MapSimulator.UI
         {
             if (record?.UsesResolvedAnalyzerOffset == true)
             {
+                if (record.ClientTextDrawLeft != 0 || record.ClientTextDrawTop != 0)
+                {
+                    return new Vector2(
+                        pageOrigin.X + record.ClientTextDrawLeft,
+                        pageOrigin.Y + record.ClientTextDrawTop);
+                }
+
                 return new Vector2(
                     pageOrigin.X + record.Left + ClientCollectionTextDrawBaseX,
                     pageOrigin.Y + record.Top + ClientCollectionTextDrawBaseY);

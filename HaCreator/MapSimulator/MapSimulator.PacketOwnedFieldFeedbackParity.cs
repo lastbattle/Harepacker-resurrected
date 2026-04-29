@@ -1766,7 +1766,10 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private List<PacketOwnedUiFrame> LoadPacketOwnedAnimationFrames(WzImageProperty sourceProperty, int fallbackDelay = 90)
+        private List<PacketOwnedUiFrame> LoadPacketOwnedAnimationFrames(
+            WzImageProperty sourceProperty,
+            int fallbackDelay = 90,
+            PacketOwnedUiAlphaRange? inheritedAlphaRange = null)
         {
             sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
             if (sourceProperty == null || GraphicsDevice == null)
@@ -1776,12 +1779,12 @@ namespace HaCreator.MapSimulator
 
             if (sourceProperty is WzCanvasProperty canvasProperty)
             {
-                return LoadPacketOwnedCanvasFrame(canvasProperty, fallbackDelay);
+                return LoadPacketOwnedCanvasFrame(canvasProperty, fallbackDelay, inheritedAlphaRange);
             }
 
             List<PacketOwnedUiFrame> frames = new();
             int sharedDelay = sourceProperty["delay"]?.GetInt() ?? fallbackDelay;
-            PacketOwnedUiAlphaRange sharedAlphaRange = ResolvePacketOwnedUiAlphaRange(sourceProperty);
+            PacketOwnedUiAlphaRange sharedAlphaRange = ResolvePacketOwnedUiAlphaRange(sourceProperty, inheritedAlphaRange);
 
             for (int i = 0; ; i++)
             {
@@ -1829,7 +1832,14 @@ namespace HaCreator.MapSimulator
             }
 
             List<PacketOwnedCachedUiLayer> layers = new();
-            CollectPacketOwnedAnimationLayers(sourceProperty, fallbackDelay, depth: 0, discoveryOrder: 0, layers);
+            CollectPacketOwnedAnimationLayers(
+                sourceProperty,
+                fallbackDelay,
+                depth: 0,
+                discoveryOrder: 0,
+                inheritedRepeat: false,
+                inheritedAlphaRange: null,
+                layers);
             return layers.Count > 0
                 ? layers
                     .OrderBy(static layer => layer.LayerOrder)
@@ -1842,6 +1852,8 @@ namespace HaCreator.MapSimulator
             int fallbackDelay,
             int depth,
             int discoveryOrder,
+            bool inheritedRepeat,
+            PacketOwnedUiAlphaRange? inheritedAlphaRange,
             ICollection<PacketOwnedCachedUiLayer> layers)
         {
             sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
@@ -1850,13 +1862,15 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            List<PacketOwnedUiFrame> directFrames = LoadPacketOwnedAnimationFrames(sourceProperty, fallbackDelay);
+            bool repeat = ResolvePacketOwnedAnimationRepeat(sourceProperty, inheritedRepeat);
+            PacketOwnedUiAlphaRange alphaRange = ResolvePacketOwnedUiAlphaRange(sourceProperty, inheritedAlphaRange);
+            List<PacketOwnedUiFrame> directFrames = LoadPacketOwnedAnimationFrames(sourceProperty, fallbackDelay, alphaRange);
             if (directFrames?.Count > 0)
             {
                 layers.Add(new PacketOwnedCachedUiLayer(
                     directFrames,
                     ComposePacketOwnedUiLayerOrder(ResolvePacketOwnedAnimationLayerZ(sourceProperty), discoveryOrder),
-                    ResolvePacketOwnedAnimationRepeat(sourceProperty)));
+                    repeat));
                 return;
             }
 
@@ -1869,12 +1883,22 @@ namespace HaCreator.MapSimulator
                 }
 
                 int nextDiscoveryOrder = checked((discoveryOrder * 32) + childIndex + 1);
-                CollectPacketOwnedAnimationLayers(child, fallbackDelay, depth + 1, nextDiscoveryOrder, layers);
+                CollectPacketOwnedAnimationLayers(
+                    child,
+                    fallbackDelay,
+                    depth + 1,
+                    nextDiscoveryOrder,
+                    repeat,
+                    alphaRange,
+                    layers);
                 childIndex++;
             }
         }
 
-        private List<PacketOwnedUiFrame> LoadPacketOwnedCanvasFrame(WzCanvasProperty canvasProperty, int fallbackDelay)
+        private List<PacketOwnedUiFrame> LoadPacketOwnedCanvasFrame(
+            WzCanvasProperty canvasProperty,
+            int fallbackDelay,
+            PacketOwnedUiAlphaRange? inheritedAlphaRange = null)
         {
             if (canvasProperty == null || GraphicsDevice == null)
             {
@@ -1890,7 +1914,7 @@ namespace HaCreator.MapSimulator
             int delay = canvasProperty[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt()
                 ?? canvasProperty["delay"]?.GetInt()
                 ?? fallbackDelay;
-            PacketOwnedUiAlphaRange alphaRange = ResolvePacketOwnedUiAlphaRange(canvasProperty);
+            PacketOwnedUiAlphaRange alphaRange = ResolvePacketOwnedUiAlphaRange(canvasProperty, inheritedAlphaRange);
             using (frameBitmap)
             {
                 Texture2D texture = frameBitmap.ToTexture2D(GraphicsDevice);
@@ -1907,12 +1931,25 @@ namespace HaCreator.MapSimulator
         private static PacketOwnedUiAlphaRange ResolvePacketOwnedUiAlphaRange(WzImageProperty sourceProperty, PacketOwnedUiAlphaRange? fallback = null)
         {
             sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            return ResolvePacketOwnedUiAlphaRangeCore(
+                sourceProperty?["a0"]?.GetInt(),
+                sourceProperty?["a1"]?.GetInt(),
+                sourceProperty?["alpha"]?.GetInt(),
+                fallback);
+        }
+
+        private static PacketOwnedUiAlphaRange ResolvePacketOwnedUiAlphaRangeCore(
+            int? startAlphaHint,
+            int? endAlphaHint,
+            int? sharedAlphaHint,
+            PacketOwnedUiAlphaRange? fallback = null)
+        {
             int defaultAlpha = fallback?.StartAlpha ?? PacketOwnedUiClientAlpha;
-            int startAlpha = sourceProperty?["a0"]?.GetInt()
-                ?? sourceProperty?["alpha"]?.GetInt()
+            int startAlpha = startAlphaHint
+                ?? sharedAlphaHint
                 ?? defaultAlpha;
-            int endAlpha = sourceProperty?["a1"]?.GetInt()
-                ?? sourceProperty?["alpha"]?.GetInt()
+            int endAlpha = endAlphaHint
+                ?? sharedAlphaHint
                 ?? fallback?.EndAlpha
                 ?? startAlpha;
             return new PacketOwnedUiAlphaRange(
@@ -2917,6 +2954,31 @@ namespace HaCreator.MapSimulator
                 repeat: repeat).Repeat;
         }
 
+        internal static bool ResolvePacketOwnedAnimationRepeatForTest(bool inheritedRepeat, int? localRepeat)
+        {
+            return inheritedRepeat || localRepeat.GetValueOrDefault() > 0;
+        }
+
+        internal static (byte StartAlpha, byte EndAlpha) ResolvePacketOwnedUiAlphaRangeForTest(
+            int? startAlphaHint,
+            int? endAlphaHint,
+            int? sharedAlphaHint,
+            byte? fallbackStartAlpha,
+            byte? fallbackEndAlpha)
+        {
+            PacketOwnedUiAlphaRange? fallback = fallbackStartAlpha.HasValue || fallbackEndAlpha.HasValue
+                ? new PacketOwnedUiAlphaRange(
+                    fallbackStartAlpha ?? PacketOwnedUiClientAlpha,
+                    fallbackEndAlpha ?? fallbackStartAlpha ?? PacketOwnedUiClientAlpha)
+                : null;
+            PacketOwnedUiAlphaRange range = ResolvePacketOwnedUiAlphaRangeCore(
+                startAlphaHint,
+                endAlphaHint,
+                sharedAlphaHint,
+                fallback);
+            return (range.StartAlpha, range.EndAlpha);
+        }
+
         internal static int GetPacketOwnedUiLayerOrderForTest(int? zHint, int discoveryOrder)
         {
             return ComposePacketOwnedUiLayerOrder(zHint, discoveryOrder);
@@ -3138,9 +3200,9 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackGroupCommand(string[] args)
         {
-            if (args.Length < 4 || !byte.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte family))
+            if (args.Length < 4 || !PacketFieldFeedbackRuntime.TryResolveGroupFamilyToken(args[1], out byte family))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback group <family> <sender> <text>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback group <friend|party|guild|alliance|association|expedition|familyId> <sender> <text>");
             }
 
             return ApplyPacketOwnedFieldFeedbackHelper(
@@ -3543,10 +3605,10 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
-        private static bool ResolvePacketOwnedAnimationRepeat(WzImageProperty sourceProperty)
+        private static bool ResolvePacketOwnedAnimationRepeat(WzImageProperty sourceProperty, bool inheritedRepeat = false)
         {
             sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
-            return sourceProperty?["repeat"]?.GetInt() > 0;
+            return inheritedRepeat || sourceProperty?["repeat"]?.GetInt() > 0;
         }
 
         private static int ComposePacketOwnedUiLayerOrder(int? zHint, int discoveryOrder)

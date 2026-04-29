@@ -88,6 +88,8 @@ namespace HaCreator.MapSimulator
             public bool? PacketOwnedTerminalSuccess { get; set; }
             public int? PacketOwnedPreludeStartedAtTick { get; set; }
             public int PacketOwnedPreludeDurationMs { get; set; }
+            public bool PacketOwnedOutcomeSuccessObserved { get; set; }
+            public bool PacketOwnedOutcomeSuccess { get; set; }
             public bool PacketOwnedUpgradeStateObserved { get; set; }
             public int PacketOwnedUpgradeState { get; set; } = int.MinValue;
         }
@@ -796,9 +798,9 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedVegaResultPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState))
+            if (!TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState, out string decodeError))
             {
-                message = "Vega result payload must contain at least the leading result byte from CUIVega::OnVegaResult.";
+                message = decodeError;
                 return false;
             }
 
@@ -895,6 +897,12 @@ namespace HaCreator.MapSimulator
             if (_pendingVegaCastState == null || !decodeState.HasOutcomeState)
             {
                 return;
+            }
+
+            if (TryResolvePacketOwnedVegaOutcomeSuccess(decodeState.OutcomeResultValue, out bool outcomeSuccess))
+            {
+                _pendingVegaCastState.PacketOwnedOutcomeSuccessObserved = true;
+                _pendingVegaCastState.PacketOwnedOutcomeSuccess = outcomeSuccess;
             }
 
             _pendingVegaCastState.PacketOwnedUpgradeStateObserved = true;
@@ -1672,6 +1680,37 @@ namespace HaCreator.MapSimulator
             return TryDecodeVegaResultPayload(payload, out resultCode);
         }
 
+        internal static bool TryDecodeVegaResultPayloadStateForTests(
+            byte[] payload,
+            out byte resultCode,
+            out bool hasOutcomeState,
+            out int outcomeResultValue,
+            out int outcomeUpgradeState)
+        {
+            bool decoded = TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState, out _);
+            resultCode = decodeState.ResultCode;
+            hasOutcomeState = decodeState.HasOutcomeState;
+            outcomeResultValue = decodeState.OutcomeResultValue;
+            outcomeUpgradeState = decodeState.OutcomeUpgradeState;
+            return decoded;
+        }
+
+        internal static bool TryDecodeVegaResultPayloadStateForTests(
+            byte[] payload,
+            out byte resultCode,
+            out bool hasOutcomeState,
+            out int outcomeResultValue,
+            out int outcomeUpgradeState,
+            out string decodeError)
+        {
+            bool decoded = TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState, out decodeError);
+            resultCode = decodeState.ResultCode;
+            hasOutcomeState = decodeState.HasOutcomeState;
+            outcomeResultValue = decodeState.OutcomeResultValue;
+            outcomeUpgradeState = decodeState.OutcomeUpgradeState;
+            return decoded;
+        }
+
         internal static bool TryStampObservedVegaModifierItemTokenForTests(
             IReadOnlyList<InventorySlotData> slots,
             int slotIndex,
@@ -1774,12 +1813,16 @@ namespace HaCreator.MapSimulator
 
             itemUpgradeWindow.PrepareEquipmentSelection(_pendingVegaCastState.Request.Slot);
             itemUpgradeWindow.PrepareConsumableSelection(_pendingVegaCastState.Request.ModifierItemId);
+            bool mutationSuccess = ResolvePacketOwnedVegaMutationSuccess(
+                success,
+                _pendingVegaCastState.PacketOwnedOutcomeSuccessObserved,
+                _pendingVegaCastState.PacketOwnedOutcomeSuccess);
             result = itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
                 _pendingVegaCastState.ScrollInventoryType,
                 _pendingVegaCastState.ScrollSlotIndex,
                 _pendingVegaCastState.ModifierInventoryType,
                 _pendingVegaCastState.ModifierSlotIndex,
-                forcedSuccess: success);
+                forcedSuccess: mutationSuccess);
             if (!result.Success.HasValue)
             {
                 message = VegaOwnerStringPoolText.GetUnexpectedResultNotice();
@@ -2048,21 +2091,27 @@ namespace HaCreator.MapSimulator
 
         private static bool TryDecodeVegaResultPayload(byte[] payload, out byte resultCode)
         {
-            bool decoded = TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState);
+            bool decoded = TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState, out _);
             resultCode = decodeState.ResultCode;
             return decoded;
         }
 
-        private static bool TryDecodeVegaResultPayloadState(byte[] payload, out VegaResultDecodeState decodeState)
+        private static bool TryDecodeVegaResultPayloadState(
+            byte[] payload,
+            out VegaResultDecodeState decodeState,
+            out string decodeError)
         {
             decodeState = default;
+            decodeError = null;
             if (payload == null || payload.Length == 0)
             {
+                decodeError = "Vega result payload must contain the leading result byte from CUIVega::OnVegaResult.";
                 return false;
             }
 
             byte resultCode = payload[0];
-            if (payload.Length >= sizeof(byte) + (sizeof(int) * 2))
+            int outcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
+            if (payload.Length == outcomePayloadLength)
             {
                 int outcomeResultValue = BinaryPrimitives.ReadInt32LittleEndian(
                     payload.AsSpan(sizeof(byte), sizeof(int)));
@@ -2074,6 +2123,19 @@ namespace HaCreator.MapSimulator
                     outcomeResultValue,
                     outcomeUpgradeState);
                 return true;
+            }
+
+            if (payload.Length != sizeof(byte))
+            {
+                decodeState = new VegaResultDecodeState(
+                    resultCode,
+                    HasOutcomeState: false,
+                    OutcomeResultValue: 0,
+                    OutcomeUpgradeState: int.MinValue);
+                decodeError = payload.Length > outcomePayloadLength
+                    ? $"Packet-owned Vega result code {resultCode} contains unexpected trailing bytes after the optional outcome-state payload fields."
+                    : $"Packet-owned Vega result code {resultCode} must be either the result byte alone or result plus outcome-state payload fields.";
+                return false;
             }
 
             decodeState = new VegaResultDecodeState(
@@ -2211,6 +2273,48 @@ namespace HaCreator.MapSimulator
         internal static bool DoesVegaTerminalMatchPreludeForTests(bool preludeSuccess, byte terminalResultCode)
         {
             return DoesVegaTerminalMatchPrelude(preludeSuccess, terminalResultCode);
+        }
+
+        internal static bool TryResolvePacketOwnedVegaOutcomeSuccessForTests(int outcomeResultValue, out bool success)
+        {
+            return TryResolvePacketOwnedVegaOutcomeSuccess(outcomeResultValue, out success);
+        }
+
+        internal static bool ResolvePacketOwnedVegaMutationSuccessForTests(
+            bool resultCodeSuccess,
+            bool outcomeSuccessObserved,
+            bool outcomeSuccess)
+        {
+            return ResolvePacketOwnedVegaMutationSuccess(
+                resultCodeSuccess,
+                outcomeSuccessObserved,
+                outcomeSuccess);
+        }
+
+        private static bool ResolvePacketOwnedVegaMutationSuccess(
+            bool resultCodeSuccess,
+            bool outcomeSuccessObserved,
+            bool outcomeSuccess)
+        {
+            return outcomeSuccessObserved ? outcomeSuccess : resultCodeSuccess;
+        }
+
+        private static bool TryResolvePacketOwnedVegaOutcomeSuccess(int outcomeResultValue, out bool success)
+        {
+            if (outcomeResultValue == 0)
+            {
+                success = false;
+                return true;
+            }
+
+            if (outcomeResultValue == 1)
+            {
+                success = true;
+                return true;
+            }
+
+            success = false;
+            return false;
         }
 
         private bool HasLiveVegaLaunchIngressRoute()

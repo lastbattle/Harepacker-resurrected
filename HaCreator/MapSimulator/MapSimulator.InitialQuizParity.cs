@@ -1658,6 +1658,7 @@ namespace HaCreator.MapSimulator
             bool editVisible = childState.EditVisible;
             bool editEnabled = childState.EditEnabled;
             bool okButtonEnabled = childState.OkButtonEnabled;
+            bool okButtonVisible = true;
             return new InitialQuizOwnerControlStackSnapshot(
                 Created: true,
                 Generation: Math.Max(1, generation),
@@ -1666,7 +1667,7 @@ namespace HaCreator.MapSimulator
                 EditVisible: editVisible,
                 EditEnabled: editEnabled,
                 EditFocused: editVisible && editEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input,
-                OkButtonVisible: editVisible,
+                OkButtonVisible: okButtonVisible,
                 OkButtonEnabled: okButtonEnabled,
                 OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton);
         }

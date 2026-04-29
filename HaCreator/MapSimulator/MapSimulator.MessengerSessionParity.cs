@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|claimresult <success|fail> [text]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|claimresult <success|fail> [text]|claimresultpacket <success|fail> [text]|claimresultraw <hex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -109,6 +109,32 @@ namespace HaCreator.MapSimulator
 
                 string resultText = args.Length >= 3 ? string.Join(" ", args, 2, args.Length - 2) : null;
                 return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ResolveSessionOwnedClaimRequest(succeeded, resultText));
+            }
+
+            if (string.Equals(args[0], "claimresultpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !TryParseMessengerClaimResult(args[1], out bool succeeded))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session claimresultpacket <success|fail> [text]");
+                }
+
+                string resultText = args.Length >= 3 ? string.Join(" ", args, 2, args.Length - 2) : null;
+                byte[] payload = MessengerPacketCodec.BuildClaimResultPayload(succeeded, resultText);
+                return _messengerRuntime.TryApplySessionOwnedClaimResultPayload(payload, out string resultMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(resultMessage)
+                    : ChatCommandHandler.CommandResult.Error(resultMessage);
+            }
+
+            if (string.Equals(args[0], "claimresultraw", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args, 1, args.Length - 1), out byte[] payload))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session claimresultraw <hex>");
+                }
+
+                return _messengerRuntime.TryApplySessionOwnedClaimResultPayload(payload, out string resultMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(resultMessage)
+                    : ChatCommandHandler.CommandResult.Error(resultMessage);
             }
 
             if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)

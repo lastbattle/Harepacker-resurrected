@@ -1087,7 +1087,7 @@ namespace HaCreator.MapSimulator
         {
             result = default;
             detail = null;
-            if (payload == null || payload.Length < sizeof(ushort) + sizeof(int) + sizeof(byte))
+            if (payload == null || payload.Length < sizeof(ushort))
             {
                 return false;
             }
@@ -1102,7 +1102,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (payload.Length >= sizeof(int) + sizeof(ushort) + sizeof(int) + sizeof(byte))
+            if (payload.Length >= sizeof(int) + sizeof(ushort))
             {
                 int registeredMobId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
                 if (registeredMobId > 0

@@ -139,7 +139,36 @@ namespace HaCreator.MapSimulator.Managers
             sessionState ??= new PacketOwnedItemMakerSessionState();
             if (!pendingRequest.IsDisassembly)
             {
-                return !sessionState.ServerOwnsCraftExecution;
+                if (!sessionState.ServerOwnsCraftExecution)
+                {
+                    return true;
+                }
+
+                if (!pendingRequest.IsHiddenRecipe || !sessionState.HasAuthoritativeHiddenRecipeList)
+                {
+                    return false;
+                }
+
+                IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry> hiddenEntries =
+                    sessionState.HiddenRecipeEntries ?? Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>();
+                int pendingOutputItemId = pendingRequest.RecipeOutputItemId > 0
+                    ? pendingRequest.RecipeOutputItemId
+                    : pendingRequest.ExpectedRewardItemId;
+                for (int i = 0; i < hiddenEntries.Count; i++)
+                {
+                    PacketOwnedItemMakerSessionHiddenEntry entry = hiddenEntries[i];
+                    if (entry.OutputItemId != pendingOutputItemId)
+                    {
+                        continue;
+                    }
+
+                    if (entry.BucketKey < 0 || entry.BucketKey == pendingRequest.ExpectedRewardBucketKey)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             if (!sessionState.HasAuthoritativeDisassemblyTargets)

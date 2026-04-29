@@ -187,10 +187,28 @@ namespace HaCreator.MapSimulator
                 "Recovered CTrunkDlg::SendPutItemRequest CUtilDlg::YesNo confirmation owner.",
                 onConfirm: () =>
                 {
+                    InventorySlotData acceptedSlotData = slotData;
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI confirmTrunkWindow)
+                    {
+                        if (!confirmTrunkWindow.TryResolveLivePutSlotForPacketConfirm(
+                                inventoryType,
+                                inventoryRowIndex,
+                                slotData,
+                                requestedQuantity,
+                                out InventorySlotData liveSlot,
+                                out string guardStatus))
+                        {
+                            confirmTrunkWindow.RefreshSecurityStatus(guardStatus);
+                            return;
+                        }
+
+                        acceptedSlotData = liveSlot;
+                    }
+
                     TrunkUI.PacketOwnedTrunkRequestResult result = DispatchPacketOwnedTrunkPutItemRequest(
                         inventoryType,
                         inventoryRowIndex,
-                        slotData,
+                        acceptedSlotData,
                         requestedQuantity);
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)
                     {

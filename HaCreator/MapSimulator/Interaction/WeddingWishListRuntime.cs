@@ -86,6 +86,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _selectedWishIndex;
         private int _selectedCandidateIndex;
         private bool _hasPendingTransferRequest;
+        private bool _hasPendingInputRequest;
         private bool _isGetConfirmationArmed;
         private bool _isPutQuantityPromptOpen;
         private bool _isPutConfirmationArmed;
@@ -151,7 +152,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             _mode = mode;
             _isOpen = true;
-            _hasPendingTransferRequest = false;
             _activePane = mode switch
             {
                 WeddingWishListDialogMode.Receive => WeddingWishListSelectionPane.GiftList,
@@ -400,7 +400,7 @@ namespace HaCreator.MapSimulator.Interaction
             _hasPendingTransferRequest = true;
             RefreshCandidateEntries();
             ClampSelections();
-            _statusMessage = $"Claimed {ResolveItemLabel(selected)} from the wedding gift list and marked the request pending until the dialog refreshes.";
+            _statusMessage = $"Claimed {ResolveItemLabel(selected)} from the wedding gift list and marked the request pending until opcode 162 returns its Get completion.";
             NotifySocialChatObserved(ResolveItemLabel(selected));
             return _statusMessage;
         }
@@ -616,6 +616,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!_inputConfirmationArmed)
             {
+                if (_hasPendingInputRequest)
+                {
+                    return GetInputPendingText();
+                }
+
                 _inputConfirmationArmed = true;
                 _statusMessage = GetInputConfirmPromptText();
                 return _statusMessage;
@@ -624,6 +629,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = false;
             _inputConfirmationArmed = false;
             StageWishListInputPacket();
+            _hasPendingInputRequest = true;
             _statusMessage = $"Confirmed {_wishListEntries.Count} wedding wish-list item(s) through the dedicated OK/SetRet owner path and staged the client-owned SendWishListInput request.";
             NotifySocialChatObserved(_wishListEntries.Select(ResolveItemLabel));
             return _statusMessage;
@@ -654,6 +660,21 @@ namespace HaCreator.MapSimulator.Interaction
         {
             message = string.Empty;
             byte subtype = payload?.Count > 0 ? payload[0] : (byte)0;
+            if (subtype == SendWishListInputSubtype)
+            {
+                if (!_hasPendingInputRequest)
+                {
+                    message = "Wedding wish-list input result arrived, but no SendWishListInput request is pending.";
+                    return false;
+                }
+
+                _hasPendingInputRequest = false;
+                ClearTransientActionState();
+                _statusMessage = "Applied wedding wish-list input completion from opcode 162 subtype 9 and cleared the pending SendWishListInput request.";
+                message = _statusMessage;
+                return true;
+            }
+
             if (subtype != SendGetItemRequestSubtype && subtype != SendPutItemRequestSubtype)
             {
                 message = $"Wedding wish-list transfer result subtype {subtype} is not a Get/Put completion.";
@@ -685,6 +706,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedCandidateIndex = 0;
             _candidateQuery = string.Empty;
             _hasPendingTransferRequest = false;
+            _hasPendingInputRequest = false;
             ClearTransientActionState();
             _paneStartIndices.Clear();
             _statusMessage = "Cleared wedding wish-list dialog state.";
@@ -730,6 +752,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsPutConfirmationArmed = _isPutConfirmationArmed,
                 IsInputConfirmationArmed = _inputConfirmationArmed,
                 HasPendingTransferRequest = _hasPendingTransferRequest,
+                HasPendingInputRequest = _hasPendingInputRequest,
                 CanGetSelectedItem = CanGetSelectedItem(),
                 CanPutSelectedItem = CanPutSelectedItem(),
                 CanEnterSelectedWish = CanEnterSelectedWish(),
@@ -1214,7 +1237,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string GetTransferPendingText()
         {
-            return "A wedding wish-list transfer request is already pending until the owner refreshes.";
+            return "A wedding wish-list transfer request is already pending until opcode 162 returns its Get/Put completion.";
+        }
+
+        private static string GetInputPendingText()
+        {
+            return "A wedding wish-list input request is already pending until opcode 162 subtype 9 completes.";
         }
 
         private static string GetWishListGiftAlreadySentText()
@@ -1323,7 +1351,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanConfirmInput()
         {
-            return _isOpen && _mode == WeddingWishListDialogMode.Input;
+            return _isOpen && _mode == WeddingWishListDialogMode.Input && !_hasPendingInputRequest;
         }
 
         private bool CanCloseWindow()
@@ -1347,7 +1375,7 @@ namespace HaCreator.MapSimulator.Interaction
             ClearTransientActionState();
             RefreshCandidateEntries();
             ClampSelections();
-            _statusMessage = $"Queued {ResolveItemLabel(gifted)} x{gifted.Quantity} for {ResolveItemLabel(selectedWish)} and marked the request pending until the dialog refreshes.";
+            _statusMessage = $"Queued {ResolveItemLabel(gifted)} x{gifted.Quantity} for {ResolveItemLabel(selectedWish)} and marked the request pending until opcode 162 returns its Put completion.";
             NotifySocialChatObserved(ResolveItemLabel(gifted), ResolveItemLabel(selectedWish));
             return _statusMessage;
         }
@@ -1644,6 +1672,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsPutConfirmationArmed { get; init; }
         public bool IsInputConfirmationArmed { get; init; }
         public bool HasPendingTransferRequest { get; init; }
+        public bool HasPendingInputRequest { get; init; }
         public bool CanGetSelectedItem { get; init; }
         public bool CanPutSelectedItem { get; init; }
         public bool CanEnterSelectedWish { get; init; }

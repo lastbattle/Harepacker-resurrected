@@ -598,9 +598,9 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyStartShipMovePacket(int value, string owner, out string message)
         {
+            RecordTransportPacketOwner(owner, $"OnStartShipMoveField({value})");
             if (value == 2)
             {
-                RecordTransportPacketOwner(owner, $"OnStartShipMoveField({value})");
                 if (_shipKind != 0)
                 {
                     message = "Handled OnStartShipMoveField value 2 -> LeaveShipMove no-op; CShip gates movement to regular ships.";
@@ -623,9 +623,9 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyEndShipMovePacket(int value, string owner, out string message)
         {
+            RecordTransportPacketOwner(owner, $"OnEndShipMoveField({value})");
             if (value == 6)
             {
-                RecordTransportPacketOwner(owner, $"OnEndShipMoveField({value})");
                 if (_shipKind != 0)
                 {
                     message = "Handled OnEndShipMoveField value 6 -> EnterShipMove no-op; CShip gates movement to regular ships.";
@@ -651,10 +651,10 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyMoveFieldPacket(int value, string owner, out string message)
         {
+            RecordTransportPacketOwner(owner, $"OnMoveField({value})");
             switch (value)
             {
                 case 4:
-                    RecordTransportPacketOwner(owner, $"OnMoveField({value})");
                     if (_shipKind != 1)
                     {
                         message = "Handled OnMoveField value 4 -> AppearShip no-op; CShip gates appearance to Balrog-type ships.";
@@ -665,7 +665,6 @@ namespace HaCreator.MapSimulator.Fields
                     message = "Applied OnMoveField value 4 -> AppearShip.";
                     return true;
                 case 5:
-                    RecordTransportPacketOwner(owner, $"OnMoveField({value})");
                     if (_shipKind != 1)
                     {
                         message = "Handled OnMoveField value 5 -> DisappearShip no-op; CShip gates disappearance to Balrog-type ships.";
@@ -694,12 +693,12 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyContiState(int state, int stateValue, string owner, out string message)
         {
+            RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
             switch (state)
             {
                 case 0:
                 case 1:
                 case 6:
-                    RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
                     if (_shipKind == 0)
                     {
                         bool hadVoyageBalrogAttack = HasActiveVoyageBalrogAttack;
@@ -715,7 +714,6 @@ namespace HaCreator.MapSimulator.Fields
 
                 case 2:
                 case 5:
-                    RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
                     if (_shipKind == 0)
                     {
                         LeaveShipMove();
@@ -728,7 +726,6 @@ namespace HaCreator.MapSimulator.Fields
 
                 case 3:
                 case 4:
-                    RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
                     if (_shipKind == 1 && stateValue == 1)
                     {
                         AppearShip();

@@ -162,6 +162,8 @@ namespace HaCreator.MapSimulator.Interaction
                 HasIncomingInvite = _incomingInvite != null,
                 IncomingInviteFrom = _incomingInvite?.ContactName ?? string.Empty,
                 PendingInviteSummary = BuildPendingInviteSummary(),
+                PendingClaimSummary = BuildPendingClaimSummary(),
+                PendingClaimCount = _pendingClaimRequests.Count,
                 LastActionSummary = _lastActionSummary,
                 LastPacketSummary = _lastPacketSummary,
                 StatusBarText = statusBarText,
@@ -842,6 +844,18 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Resolved server-owned Messenger claim #{pendingClaim.ClaimId} success={(succeeded ? 1 : 0)} target={pendingClaim.TargetCharacterName} type={pendingClaim.ClaimType} context={pendingClaim.Context} chatLines={pendingClaim.ChatLineCount}.");
             StartBlink(Environment.TickCount);
             return _lastActionSummary;
+        }
+
+        internal bool TryApplySessionOwnedClaimResultPayload(byte[] payload, out string message)
+        {
+            if (!MessengerPacketCodec.TryParseClaimResult(payload ?? Array.Empty<byte>(), out MessengerClaimResultPacket packet, out string error))
+            {
+                message = error ?? "Messenger claim-result payload could not be decoded.";
+                return false;
+            }
+
+            message = ResolveSessionOwnedClaimRequest(packet.Succeeded, packet.ResultText);
+            return !message.StartsWith("No Messenger claim request", StringComparison.Ordinal);
         }
 
         internal bool TryObserveOfficialClientRequest(
@@ -3253,6 +3267,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool HasIncomingInvite { get; init; }
         public string IncomingInviteFrom { get; init; } = string.Empty;
         public string PendingInviteSummary { get; init; } = string.Empty;
+        public string PendingClaimSummary { get; init; } = string.Empty;
+        public int PendingClaimCount { get; init; }
         public string LastActionSummary { get; init; } = string.Empty;
         public string LastPacketSummary { get; init; } = string.Empty;
         public string StatusBarText { get; init; } = string.Empty;

@@ -299,6 +299,22 @@ namespace HaCreator.MapSimulator.Character.Skills
 
     public readonly record struct AfterimageRenderableLayer(SkillFrame Frame, float Alpha, float Zoom = 1f);
 
+    public enum AfterimageLayerOperationKind
+    {
+        RemoveCanvas,
+        InsertCanvas
+    }
+
+    public readonly record struct AfterimageLayerOperation(
+        AfterimageLayerOperationKind Kind,
+        SkillFrame Frame,
+        int FrameElapsedMs,
+        int DurationMs,
+        int StartAlpha,
+        int EndAlpha,
+        int StartZoom,
+        int EndZoom);
+
     /// <summary>
     /// Skill effect animation
     /// </summary>

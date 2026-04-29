@@ -2389,6 +2389,8 @@ namespace HaCreator.MapSimulator.Character
                 ["dash"] = "dash",
                 ["darksight"] = "darksight",
                 ["alert2"] = "alert2",
+                ["shoot1"] = "shoot1",
+                ["stabO1"] = "stabO1",
                 ["swingO2"] = "swingO2",
                 // These client-only helper raw rows are still not authored directly in the
                 // mounted `action/0` WZ surface, so gate them through the nearest recovered

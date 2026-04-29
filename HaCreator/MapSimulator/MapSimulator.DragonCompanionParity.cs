@@ -96,7 +96,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleDragonCompanionCommand(string[] args)
         {
-            const string usage = "Usage: /dragoncompanion [status|capture <payload|packet|keypad|keypadpacked> <hex> [-- source...]]";
+            const string usage = "Usage: /dragoncompanion [status|capture <auto|payload|packet|keypad|keypadpacked> <hex> [-- source...]]";
             DragonCompanionRuntime dragonRuntime = _playerManager?.Dragon;
             if (dragonRuntime == null)
             {
@@ -119,9 +119,15 @@ namespace HaCreator.MapSimulator
             }
 
             bool opcodeFramed = false;
+            bool autoDetectPacketShape = false;
             bool keyPadCapture = false;
             bool packedKeyPadCapture = false;
-            if (string.Equals(args[1], "packet", StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(args[1], "auto", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "detect", StringComparison.OrdinalIgnoreCase))
+            {
+                autoDetectPacketShape = true;
+            }
+            else if (string.Equals(args[1], "packet", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[1], "raw", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[1], "opcode", StringComparison.OrdinalIgnoreCase))
             {
@@ -158,6 +164,7 @@ namespace HaCreator.MapSimulator
             {
                 source = keyPadCapture
                     ? packedKeyPadCapture ? "packed keypad capture" : "keypad capture"
+                    : autoDetectPacketShape ? "auto-detected capture"
                     : opcodeFramed ? "opcode-framed capture" : "payload capture";
             }
 
@@ -170,6 +177,16 @@ namespace HaCreator.MapSimulator
                         out string keyPadMessage)
                     ? ChatCommandHandler.CommandResult.Ok(keyPadMessage)
                     : ChatCommandHandler.CommandResult.Error(keyPadMessage);
+            }
+
+            if (autoDetectPacketShape)
+            {
+                return dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+                        bytes,
+                        source,
+                        out string autoMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(autoMessage)
+                    : ChatCommandHandler.CommandResult.Error(autoMessage);
             }
 
             return dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(

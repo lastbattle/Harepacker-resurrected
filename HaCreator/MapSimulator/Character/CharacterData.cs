@@ -2056,6 +2056,7 @@ namespace HaCreator.MapSimulator.Character
         public bool HasAuthoritativeProfilePendantSlot { get; set; } = true;
         public bool HasAuthoritativeProfilePocketSlot { get; set; } = true;
         public bool HasAuthoritativeProfileMedal { get; set; } = true;
+        public bool ProfileHasMedal { get; set; } = true;
         public bool HasAuthoritativeProfileCollection { get; set; } = true;
         public int ProfileMonsterBookOwnedCardTypes { get; set; }
         public int ProfileMonsterBookTotalCardTypes { get; set; }
@@ -3474,6 +3475,10 @@ namespace HaCreator.MapSimulator.Character
                 124 => new AttackFormulaProfile(false, 4.0f, TotalSTR + TotalDEX + TotalLUK, 0, 0.9f),
                 127 or 128 => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
                 59 => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
+                // WZ publishes `Character/Weapon/0160xxxx` as a real equipped weapon family.
+                // Keep it on a STR/DEX one-handed-style damage lane instead of falling through
+                // to the wearer's job archetype when the stat window resolves displayed damage.
+                60 => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f),
                 _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 _ => ResolveWeaponlessAttackFormulaProfile(thiefSecondaryStat)
@@ -3631,6 +3636,7 @@ namespace HaCreator.MapSimulator.Character
                 HasAuthoritativeProfilePendantSlot = HasAuthoritativeProfilePendantSlot,
                 HasAuthoritativeProfilePocketSlot = HasAuthoritativeProfilePocketSlot,
                 HasAuthoritativeProfileMedal = HasAuthoritativeProfileMedal,
+                ProfileHasMedal = ProfileHasMedal,
                 HasAuthoritativeProfileCollection = HasAuthoritativeProfileCollection,
                 ProfileMonsterBookOwnedCardTypes = ProfileMonsterBookOwnedCardTypes,
                 ProfileMonsterBookTotalCardTypes = ProfileMonsterBookTotalCardTypes,

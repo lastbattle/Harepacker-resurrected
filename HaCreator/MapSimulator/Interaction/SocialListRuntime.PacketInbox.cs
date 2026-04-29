@@ -153,15 +153,9 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.Notice => SetPacketGuildNoticeText(packet.Notice, packet.GuildId),
                 SocialListClientGuildResultKind.Mark when packet.MarkSelection.HasValue => SetPacketGuildMarkSelection(packet.MarkSelection.Value, packet.GuildId),
                 SocialListClientGuildResultKind.PointsAndLevel => SetPacketGuildPointsAndLevel(packet.GuildPoints, packet.GuildLevel, packet.GuildId),
-                SocialListClientGuildResultKind.GuildQuestNotEnoughMembers => SetPacketSyncSummary(
-                    SocialListTab.Guild,
-                    BuildClientGuildQuestDirectNoticeSummary(packet)),
-                SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected => SetPacketSyncSummary(
-                    SocialListTab.Guild,
-                    BuildClientGuildQuestDirectNoticeSummary(packet)),
-                SocialListClientGuildResultKind.GuildQuestQueueNotice => SetPacketSyncSummary(
-                    SocialListTab.Guild,
-                    BuildClientGuildQuestQueueNoticeSummary(packet)),
+                SocialListClientGuildResultKind.GuildQuestNotEnoughMembers => ApplyClientGuildQuestDirectNoticeResult(packet),
+                SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected => ApplyClientGuildQuestDirectNoticeResult(packet),
+                SocialListClientGuildResultKind.GuildQuestQueueNotice => ApplyClientGuildQuestQueueNoticeResult(packet),
                 SocialListClientGuildResultKind.GuildBoardAuthKey => SetPacketGuildBoardAuthKey(packet.GuildBoardAuthKey),
                 SocialListClientGuildResultKind.GuildNameInput
                     or SocialListClientGuildResultKind.CreateGuildAgreement
@@ -313,6 +307,36 @@ namespace HaCreator.MapSimulator.Interaction
             return packet.GuildQuestWaitStatus <= 0
                 ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildQuestQueueNotice}) cleared the guild-quest queue temporary notice."
                 : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildQuestQueueNotice}) reported guild-quest queue notice: {notice}";
+        }
+
+        private string ApplyClientGuildQuestDirectNoticeResult(SocialListClientGuildResultPacket packet)
+        {
+            if (TryBuildNoGuildContextOwnedResultIgnore(
+                    packet.RawSubtype,
+                    "guild-quest notice",
+                    out string ignoredMessage))
+            {
+                return ignoredMessage;
+            }
+
+            return SetPacketSyncSummary(
+                SocialListTab.Guild,
+                BuildClientGuildQuestDirectNoticeSummary(packet));
+        }
+
+        private string ApplyClientGuildQuestQueueNoticeResult(SocialListClientGuildResultPacket packet)
+        {
+            if (TryBuildNoGuildContextOwnedResultIgnore(
+                    packet.RawSubtype,
+                    "guild-quest queue notice",
+                    out string ignoredMessage))
+            {
+                return ignoredMessage;
+            }
+
+            return SetPacketSyncSummary(
+                SocialListTab.Guild,
+                BuildClientGuildQuestQueueNoticeSummary(packet));
         }
 
         private static string BuildClientGuildResultFallbackNoticeSummary(SocialListClientGuildResultPacket packet)

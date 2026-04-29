@@ -1206,13 +1206,27 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (canvasCandidates.Count == 1)
             {
-                return CreateEmployeeCanvasFrame(texturePool, canvasCandidates[0].Canvas, device, defaultDelay);
+                int resolvedDelay = ResolveEmployeeLayeredFrameDelay(
+                    frameProperty,
+                    canvasCandidates.Select(static candidate => candidate.Canvas),
+                    defaultDelay);
+                return CreateEmployeeCanvasFrame(
+                    texturePool,
+                    canvasCandidates[0].Canvas,
+                    device,
+                    defaultDelay,
+                    resolvedDelay);
             }
 
             return ComposeEmployeeLayeredFrame(frameProperty, canvasCandidates, device, defaultDelay);
         }
 
-        private IDXObject CreateEmployeeCanvasFrame(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device, int defaultDelay)
+        private IDXObject CreateEmployeeCanvasFrame(
+            TexturePool texturePool,
+            WzCanvasProperty canvasProperty,
+            GraphicsDevice device,
+            int defaultDelay,
+            int? resolvedDelayOverride = null)
         {
             if (canvasProperty?.PngProperty == null || device == null)
             {
@@ -1228,7 +1242,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
             (int drawX, int drawY) = ResolveEmployeeFrameDrawOffset(origin);
-            int delay = GetIntValue(canvasProperty["delay"]) ?? defaultDelay;
+            int delay = resolvedDelayOverride.GetValueOrDefault(GetIntValue(canvasProperty["delay"]) ?? defaultDelay);
             var frame = new DXObject(drawX, drawY, texture, Math.Max(1, delay))
             {
                 Tag = canvasProperty
@@ -2362,8 +2376,12 @@ namespace HaCreator.MapSimulator.Interaction
             SocialRoomFieldActorSnapshot snapshot,
             EmployeeMiniRoomBoardAssets templateAssets = null)
         {
-            byte packetMaxUsers = snapshot?.MiniRoomBalloonByte2 ?? 0;
-            return packetMaxUsers > 0 ? packetMaxUsers : templateAssets?.SlotMax ?? 0;
+            if (snapshot?.HasMiniRoomBalloonByte2 == true)
+            {
+                return snapshot.MiniRoomBalloonByte2;
+            }
+
+            return templateAssets?.SlotMax ?? 0;
         }
 
         internal static byte ResolveMiniRoomCurrentUsersForTesting(SocialRoomFieldActorSnapshot snapshot)

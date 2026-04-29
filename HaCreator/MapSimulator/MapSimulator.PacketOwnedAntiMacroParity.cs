@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator
         private PacketOwnedAntiMacroSubmitTransportPath _lastPacketOwnedAntiMacroSubmitTransportPath;
         private byte[] _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
         private int _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+        private int _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
         private string _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
         private int _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
 
@@ -154,6 +155,31 @@ namespace HaCreator.MapSimulator
             // `CWvsContext::OnAntiMacroResult` forwards the decoded ZXString directly to
             // chat formatting and screenshot naming, so preserve whitespace and empty values.
             return userName ?? string.Empty;
+        }
+
+        internal static bool TryDecodePacketOwnedAntiMacroSubmittedAnswerPayload(
+            IReadOnlyList<byte> payload,
+            out string submittedAnswer)
+        {
+            submittedAnswer = string.Empty;
+            if (payload == null || payload.Count < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                byte[] bytes = payload as byte[] ?? payload.ToArray();
+                using MemoryStream stream = new(bytes, writable: false);
+                using BinaryReader reader = new(stream);
+                submittedAnswer = ReadPacketOwnedMapleString(reader) ?? string.Empty;
+                return true;
+            }
+            catch
+            {
+                submittedAnswer = string.Empty;
+                return false;
+            }
         }
 
         private void RegisterPacketOwnedAntiMacroWindows()
@@ -419,6 +445,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
             _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge.SentCount;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = _localUtilityOfficialSessionBridge.ForwardedOutboundCount;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge.ReceivedCount;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
 
@@ -518,6 +545,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
                 _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
                 _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+                _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
                 _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
@@ -601,6 +629,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
             _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
@@ -765,11 +794,14 @@ namespace HaCreator.MapSimulator
             bool usesOfficialSessionBridgeTransport,
             bool hasSubmittedRawPacket,
             bool bridgeHasQueuedPacket,
-            bool bridgeHasSentPacketAfterTrackedSubmit)
+            bool bridgeHasSentPacketAfterTrackedSubmit,
+            bool bridgeHasObservedClientOutboundPacketAfterTrackedSubmit = false)
         {
             return usesOfficialSessionBridgeTransport
                 && hasSubmittedRawPacket
-                && (bridgeHasQueuedPacket || bridgeHasSentPacketAfterTrackedSubmit);
+                && (bridgeHasQueuedPacket
+                    || bridgeHasSentPacketAfterTrackedSubmit
+                    || bridgeHasObservedClientOutboundPacketAfterTrackedSubmit);
         }
 
         private bool HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(string resultSource)
@@ -790,7 +822,11 @@ namespace HaCreator.MapSimulator
             return _localUtilityOfficialSessionBridge.HasSentOutboundPacketSince(
                 PacketOwnedAntiMacroAnswerSubmitOpcode,
                 _lastPacketOwnedAntiMacroSubmittedRawPacket,
-                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal));
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal))
+                || _localUtilityOfficialSessionBridge.HasObservedClientOutboundPacketSince(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                    Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal));
         }
 
         private bool HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport()
@@ -810,15 +846,22 @@ namespace HaCreator.MapSimulator
                     PacketOwnedAntiMacroAnswerSubmitOpcode,
                     _lastPacketOwnedAntiMacroSubmittedRawPacket,
                     Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal));
+            bool bridgeHasObservedClientOutboundPacket = hasSubmittedRawPacket
+                && _localUtilityOfficialSessionBridge.HasObservedClientOutboundPacketSince(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                    Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal));
 
             // Keep authoritative submit tracking only while opcode 117 is either
             // still queued on the official-session bridge or has actually been
-            // injected into the bridged Maple socket after this submit was staged.
+            // injected into the bridged Maple socket after this submit was staged
+            // or observed leaving the attached client through the bridge.
             return HasPendingAuthoritativeSubmitTransportState(
                 usesOfficialSessionBridgeTransport,
                 hasSubmittedRawPacket,
                 bridgeHasQueuedPacket,
-                bridgeHasSentPacket);
+                bridgeHasSentPacket,
+                bridgeHasObservedClientOutboundPacket);
         }
 
         private void UpdatePacketOwnedAntiMacroAwaitingResultState(int currentTickCount)
@@ -841,6 +884,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
 
@@ -1621,13 +1665,33 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            string submittedAnswer = TryDecodePacketOwnedAntiMacroSubmittedAnswerPayload(e.Payload, out string decodedAnswer)
+                ? decodedAnswer
+                : string.Empty;
+            int currentTickCount = Environment.TickCount;
+            int remainingMs = ResolvePacketOwnedAntiMacroCurrentRemainingMs(currentTickCount);
+            if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
+            {
+                remainingMs = AntiMacroChallengeWindow.ResolveRemainingMilliseconds(window.ExpiresAt, currentTickCount);
+                window.ClearChallenge();
+            }
+
+            _lastPacketOwnedAntiMacroSubmittedAnswer = submittedAnswer;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = remainingMs;
+            _packetOwnedAntiMacroCurrentRemainingMs = remainingMs;
+            _packetOwnedAntiMacroAwaitingResult = true;
+            _lastPacketOwnedAntiMacroSubmittedTick = currentTickCount;
+            _lastPacketOwnedAntiMacroResultTick = int.MinValue;
+            _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
+            _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = e.RawPacket?.ToArray() ?? Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge?.SentCount ?? -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal = Math.Max(0, e.ObservedOrdinal - 1);
             _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge?.ReceivedCount ?? -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource();
             _lastPacketOwnedAntiMacroSummary =
-                $"Observed live client anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} from {ResolvePacketOwnedAntiMacroResultSource(e.Source)}.";
+                $"Observed live client anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} from {ResolvePacketOwnedAntiMacroResultSource(e.Source)} and started packet-owned result tracking with remaining={remainingMs}ms.";
         }
 
         private string AppendPacketOwnedAntiMacroResultSourceSummary(

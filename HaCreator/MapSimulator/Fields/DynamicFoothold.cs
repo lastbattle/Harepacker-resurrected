@@ -405,6 +405,12 @@ namespace HaCreator.MapSimulator.Fields
             if (platform.Waypoints == null || platform.Waypoints.Count < 2)
                 return;
 
+            if (HasPacketOwnedTwoPointWaypointEndpointOrder(platform))
+            {
+                UpdatePacketOwnedTwoPointWaypointMovement(platform, platform.Speed * deltaSeconds, currentTimeMs);
+                return;
+            }
+
             int nextIndex = (platform.CurrentWaypointIndex + 1) % platform.Waypoints.Count;
             Vector2 target = platform.Waypoints[nextIndex];
             Vector2 current = new Vector2(platform.X, platform.Y);
@@ -463,6 +469,63 @@ namespace HaCreator.MapSimulator.Fields
                     }
                 }
             }
+        }
+
+        private static void UpdatePacketOwnedTwoPointWaypointMovement(DynamicPlatform platform, float movement, int currentTimeMs)
+        {
+            const int maxEndpointTurnsPerFrame = 8;
+            int turnCount = 0;
+            while (movement > 0f && turnCount <= maxEndpointTurnsPerFrame)
+            {
+                int nextIndex = (platform.CurrentWaypointIndex + 1) % platform.Waypoints.Count;
+                Vector2 target = platform.Waypoints[nextIndex];
+                Vector2 current = new(platform.X, platform.Y);
+                Vector2 direction = target - current;
+                float distance = direction.Length();
+                RefreshPacketOwnedWaypointReverseFlags(platform, direction);
+
+                if (distance <= 0f || movement >= distance)
+                {
+                    platform.X = target.X;
+                    platform.Y = target.Y;
+                    platform.CurrentWaypointIndex = nextIndex;
+                    int followingIndex = (platform.CurrentWaypointIndex + 1) % platform.Waypoints.Count;
+                    RefreshPacketOwnedWaypointReverseFlags(platform, platform.Waypoints[followingIndex] - target);
+                    movement -= distance;
+                    turnCount++;
+
+                    if (!platform.LoopWaypoints && nextIndex == platform.Waypoints.Count - 1)
+                    {
+                        platform.IsActive = false;
+                        return;
+                    }
+
+                    if (platform.PauseDelay > 0)
+                    {
+                        platform.IsPaused = true;
+                        platform.PauseStartTime = currentTimeMs;
+                        return;
+                    }
+
+                    continue;
+                }
+
+                direction.Normalize();
+                platform.X += direction.X * movement;
+                platform.Y += direction.Y * movement;
+                RefreshPacketOwnedWaypointReverseFlags(platform, direction);
+                return;
+            }
+        }
+
+        private static bool HasPacketOwnedTwoPointWaypointEndpointOrder(DynamicPlatform platform)
+        {
+            return platform?.MovementType == PlatformMovementType.Waypoint
+                && platform.Waypoints?.Count == 2
+                && platform.PacketOwnedMovingX1 != null
+                && platform.PacketOwnedMovingX2 != null
+                && platform.PacketOwnedMovingY1 != null
+                && platform.PacketOwnedMovingY2 != null;
         }
 
         private static void RefreshPacketOwnedHorizontalReverseFlag(DynamicPlatform platform)

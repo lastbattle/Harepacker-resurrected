@@ -92,6 +92,25 @@ namespace HaCreator.MapSimulator.Fields
             AvatarUniformInference = 3,
             PacketOwnedAttackResult = 4
         }
+        internal enum ClientBoardLayerOperationKind
+        {
+            AcquireBoardLayerCanvas,
+            EnsureBoardLayerSize,
+            SetBoardLayerRenderTarget,
+            ClearBoardLayerCanvas,
+            DrawBoardBackground,
+            DrawTeam0Score,
+            DrawTeam1Score,
+            QueryClock,
+            DrawTimer,
+            RestorePreviousRenderTarget,
+            PresentBoardLayer,
+            DrawDirectBoardContents
+        }
+        internal readonly record struct ClientBoardLayerOperation(
+            ClientBoardLayerOperationKind Kind,
+            Point Position,
+            string Text = null);
         public readonly record struct AvatarAppearanceContract(int TeamId, CharacterGender Gender, int CapItemId, int ClothesItemId)
         {
             public bool HasAppearanceItems => CapItemId > 0 || ClothesItemId > 0;
@@ -304,6 +323,101 @@ namespace HaCreator.MapSimulator.Fields
         internal static string FormatClientBoardScoreForParity(int score) => FormatClientBoardScore(score);
         internal int ResolveClientBoardTimeRemainingForParity(int currentTick) => ResolveClientBoardTimeRemaining(currentTick);
         internal string FormatClientBoardTimerForParity(int currentTick) => FormatClientBoardTimer(ResolveClientBoardTimeRemaining(currentTick));
+        internal IReadOnlyList<ClientBoardLayerOperation> BuildClientBoardLayerOperationPlanForParity(int screenWidth, int tickCount)
+        {
+            int boardTimeRemaining = ResolveClientBoardTimeRemaining(tickCount);
+            return BuildClientBoardLayerOperationPlan(
+                screenWidth,
+                CanUseBoardLayerCache(),
+                _boardLayerRenderTarget != null,
+                _boardLayerDirty,
+                HasClientClock,
+                FormatClientBoardScore(_team0Score),
+                FormatClientBoardScore(_team1Score),
+                FormatClientBoardTimer(boardTimeRemaining));
+        }
+
+        internal static IReadOnlyList<ClientBoardLayerOperation> BuildClientBoardLayerOperationPlan(
+            int screenWidth,
+            bool canUseBoardLayerCache,
+            bool hasBoardLayerRenderTarget,
+            bool boardLayerDirty,
+            bool hasClientClock,
+            string team0Text,
+            string team1Text,
+            string timerText)
+        {
+            Point boardPosition = ResolveClientBoardLayerPosition(screenWidth);
+            List<ClientBoardLayerOperation> operations = new();
+            if (!canUseBoardLayerCache)
+            {
+                operations.Add(new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.DrawDirectBoardContents,
+                    boardPosition));
+                return operations;
+            }
+
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.AcquireBoardLayerCanvas,
+                boardPosition));
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.EnsureBoardLayerSize,
+                new Point(BoardWidth, BoardHeight)));
+
+            if (boardLayerDirty)
+            {
+                operations.Add(new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.SetBoardLayerRenderTarget,
+                    Point.Zero));
+                operations.Add(new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.ClearBoardLayerCanvas,
+                    Point.Zero));
+                AddClientBoardLayerContentOperations(operations, Point.Zero, hasClientClock, team0Text, team1Text, timerText);
+                operations.Add(new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.RestorePreviousRenderTarget,
+                    Point.Zero));
+            }
+
+            operations.Add(new ClientBoardLayerOperation(
+                hasBoardLayerRenderTarget || boardLayerDirty
+                    ? ClientBoardLayerOperationKind.PresentBoardLayer
+                    : ClientBoardLayerOperationKind.DrawDirectBoardContents,
+                boardPosition));
+            return operations;
+        }
+
+        private static void AddClientBoardLayerContentOperations(
+            List<ClientBoardLayerOperation> operations,
+            Point boardOrigin,
+            bool hasClientClock,
+            string team0Text,
+            string team1Text,
+            string timerText)
+        {
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.DrawBoardBackground,
+                boardOrigin));
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.DrawTeam0Score,
+                new Point(boardOrigin.X + Team0ScoreX, boardOrigin.Y + ScoreY),
+                team0Text));
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.DrawTeam1Score,
+                new Point(boardOrigin.X + Team1ScoreX, boardOrigin.Y + ScoreY),
+                team1Text));
+            if (!hasClientClock)
+            {
+                return;
+            }
+
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.QueryClock,
+                Point.Zero));
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.DrawTimer,
+                new Point(boardOrigin.X + TimerX, boardOrigin.Y + TimerY),
+                timerText));
+        }
 
         private static string FormatClientBoardScore(int score)
         {

@@ -462,7 +462,9 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            if (node is WzUOLProperty actionUol && actionUol.LinkValue is WzImageProperty linkedActionNode)
+            if (node is WzUOLProperty
+                && ResolveMorphActionNode(node) is WzImageProperty linkedActionNode
+                && !ReferenceEquals(linkedActionNode, node))
             {
                 return LoadMorphAnimation(linkedActionNode, actionName);
             }
@@ -3247,13 +3249,21 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (actionNode is WzUOLProperty actionUol
-                && actionUol.GetLinkedWzImageProperty() is WzImageProperty linkedActionNode)
+            if (actionNode is WzUOLProperty
+                && ResolveMorphActionNode(actionNode) is WzImageProperty linkedActionNode
+                && !ReferenceEquals(linkedActionNode, actionNode))
             {
                 return LooksLikePublishedMorphActionFrameContainer(linkedActionNode);
             }
 
             return LooksLikePublishedMorphActionFrameContainer(actionNode);
+        }
+
+        private static WzImageProperty ResolveMorphActionNode(WzImageProperty actionNode)
+        {
+            return actionNode is WzUOLProperty
+                ? actionNode.GetLinkedWzImageProperty()
+                : actionNode;
         }
 
         private static bool LooksLikePublishedMorphActionFrameContainer(WzImageProperty actionNode)
@@ -3293,9 +3303,19 @@ namespace HaCreator.MapSimulator.Character
             return false;
         }
 
+        internal static bool TryResolveMorphFrameCanvasForTesting(WzImageProperty frameNode)
+        {
+            return TryResolveMorphFrameCanvas(frameNode, out _);
+        }
+
         internal static bool LooksLikePublishedMorphActionForTesting(WzImageProperty actionNode)
         {
             return LooksLikePublishedMorphAction(actionNode);
+        }
+
+        internal static WzImageProperty ResolveMorphActionNodeForTesting(WzImageProperty actionNode)
+        {
+            return ResolveMorphActionNode(actionNode);
         }
 
         [Conditional("DEBUG")]

@@ -1209,7 +1209,7 @@ namespace HaCreator.MapSimulator.Companions
                     continue;
                 }
 
-                IDXObject layerFrame = LoadTexture(layerCanvas, defaultDelay);
+                IDXObject layerFrame = LoadTexture(layerCanvas, defaultDelay, resolvedDelayOverride: defaultDelay);
                 if (layerFrame != null)
                 {
                     layeredFrames.Add(layerFrame);
@@ -1313,7 +1313,11 @@ namespace HaCreator.MapSimulator.Companions
             return LoadTexture(canvas, useCanvasOrigin: false);
         }
 
-        private IDXObject LoadTexture(WzCanvasProperty canvas, int defaultDelay = 100, bool useCanvasOrigin = true)
+        private IDXObject LoadTexture(
+            WzCanvasProperty canvas,
+            int defaultDelay = 100,
+            bool useCanvasOrigin = true,
+            int? resolvedDelayOverride = null)
         {
             if (canvas?.PngProperty == null)
             {
@@ -1337,7 +1341,7 @@ namespace HaCreator.MapSimulator.Companions
                 Point drawOffset = useCanvasOrigin
                     ? ResolveCanvasDrawOffset(canvas)
                     : Point.Empty;
-                int delay = GetIntValue(canvas["delay"]) ?? Math.Max(1, defaultDelay);
+                int delay = resolvedDelayOverride.GetValueOrDefault(GetIntValue(canvas["delay"]) ?? Math.Max(1, defaultDelay));
                 return new DXObject(drawOffset.X, drawOffset.Y, texture, delay)
                 {
                     Tag = canvas

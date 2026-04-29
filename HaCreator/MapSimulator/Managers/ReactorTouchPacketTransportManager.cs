@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class ReactorTouchPacketTransportManager : IDisposable
     {
         public const int DefaultPort = 18500;
+        private const int MaxDeferredTouchRequestsPerFlush = 1;
 
         private sealed class PendingTouchRequest
         {
@@ -253,7 +254,8 @@ namespace HaCreator.MapSimulator.Managers
 
             int flushed = 0;
             int resolvedCurrentTick = ResolveCurrentTick(currentTick);
-            while (_pendingOutboundPackets.Count > 0
+            while (flushed < MaxDeferredTouchRequestsPerFlush
+                && _pendingOutboundPackets.Count > 0
                 && ShouldFlushDeferredTouchAtTick(resolvedCurrentTick, _nextDeferredTouchFlushTick, _deferredTouchFlushTickInitialized))
             {
                 int replayTick = ResolveDeferredTouchReplayTick(

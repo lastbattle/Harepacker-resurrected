@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.PacketLib;
@@ -1239,11 +1240,16 @@ namespace HaCreator.MapSimulator
                 if (!candidateOperationCode.HasValue
                     && candidateEncodedSlotPosition.HasValue
                     && candidateEncodedSlotPosition.Value >= 0
-                    && encodedSlotEndOffset - encodedSlotStartOffset == sizeof(short))
+                    && encodedSlotEndOffset - encodedSlotStartOffset == sizeof(short)
+                    && (remaining < sizeof(int)
+                        || TryResolveRepairResultStringPoolStatusText(
+                            BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(candidateOffset, sizeof(int))),
+                            out _)))
                 {
-                    // A result-first [result][Int16 reason] failure body is more common
-                    // than a positive-slot echo encoded as Int16 without an opcode. Keep
-                    // int32 echoes valid, but leave this compact shape to the reason parser.
+                    // A result-first [result][Int16 reason] failure body, optionally
+                    // followed by a StringPool notice id, is more common than a
+                    // positive-slot echo encoded as Int16 without an opcode. Keep int32
+                    // echoes valid, but leave this compact shape to the reason parser.
                     continue;
                 }
 
@@ -1414,6 +1420,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodeReasonAndStringPoolStatusTail(
+                    payload,
+                    reasonOffset,
+                    reasonPayloadLength,
+                    out reasonCode,
+                    out statusText))
+            {
+                return true;
+            }
+
             if (reasonPayloadLength >= sizeof(int))
             {
                 int intReasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int)));
@@ -1462,6 +1478,81 @@ namespace HaCreator.MapSimulator
 
             error = "Repair-result payload reason segment must be Byte, Int16, or Int32 when present.";
             return false;
+        }
+
+        private static bool TryDecodeReasonAndStringPoolStatusTail(
+            byte[] payload,
+            int reasonOffset,
+            int reasonPayloadLength,
+            out int? reasonCode,
+            out string statusText)
+        {
+            reasonCode = null;
+            statusText = string.Empty;
+            if (payload == null || reasonPayloadLength < sizeof(int))
+            {
+                return false;
+            }
+
+            if (reasonPayloadLength == sizeof(int))
+            {
+                int stringPoolId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int)));
+                if (TryResolveRepairResultStringPoolStatusText(stringPoolId, out statusText))
+                {
+                    return true;
+                }
+            }
+
+            foreach (int reasonSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+            {
+                if (reasonPayloadLength != reasonSize + sizeof(int))
+                {
+                    continue;
+                }
+
+                int stringPoolOffset = reasonOffset + reasonSize;
+                int stringPoolId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(stringPoolOffset, sizeof(int)));
+                if (!TryResolveRepairResultStringPoolStatusText(stringPoolId, out statusText))
+                {
+                    continue;
+                }
+
+                reasonCode = reasonSize switch
+                {
+                    sizeof(byte) => payload[reasonOffset],
+                    sizeof(short) => BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(reasonOffset, sizeof(short))),
+                    sizeof(int) => BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int))),
+                    _ => null
+                };
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveRepairResultStringPoolStatusText(int stringPoolId, out string statusText)
+        {
+            statusText = string.Empty;
+            if (stringPoolId < 0x100
+                || !MapleStoryStringPool.TryGet(stringPoolId, out string resolvedText)
+                || string.IsNullOrWhiteSpace(resolvedText)
+                || LooksLikeAssetPathOrUrl(resolvedText))
+            {
+                return false;
+            }
+
+            statusText = resolvedText.Trim();
+            return true;
+        }
+
+        private static bool LooksLikeAssetPathOrUrl(string text)
+        {
+            string trimmed = text?.Trim() ?? string.Empty;
+            return trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.Contains(".img", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.Contains(".wz", StringComparison.OrdinalIgnoreCase)
+                   || trimmed.Contains('/');
         }
 
         private static bool TryReadRepairOpcode(byte[] payload, ref int offset, out short? operationCode)

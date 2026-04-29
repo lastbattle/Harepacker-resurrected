@@ -2073,6 +2073,38 @@ namespace HaCreator.MapSimulator.Interaction
             return chatLogType >= 0;
         }
 
+        internal static bool TryResolveGroupFamilyToken(string familyToken, out byte family)
+        {
+            family = 0;
+            if (string.IsNullOrWhiteSpace(familyToken))
+            {
+                return false;
+            }
+
+            string normalized = familyToken.Trim().ToLowerInvariant();
+            if (byte.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte parsedFamily))
+            {
+                if (!TryResolveGroupFamily(parsedFamily, out _, out _))
+                {
+                    return false;
+                }
+
+                family = parsedFamily;
+                return true;
+            }
+
+            family = normalized switch
+            {
+                "friend" or "buddy" => 0,
+                "party" => 1,
+                "guild" => 2,
+                "alliance" or "association" => 3,
+                "expedition" => 6,
+                _ => byte.MaxValue
+            };
+            return family != byte.MaxValue;
+        }
+
         private static bool ShouldSuppressBlacklistedGroupMessage(byte family, string sender, PacketFieldFeedbackCallbacks callbacks)
         {
             if (string.IsNullOrWhiteSpace(sender) || callbacks?.IsBlacklistedName == null)

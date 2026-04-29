@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18499;
         public const short OutboundTouchReactorOpcode = 250;
         private const string DefaultProcessName = "MapleStory";
+        private const int MaxDeferredTouchRequestsPerFlush = 1;
 
         private readonly ConcurrentQueue<ReactorPoolPacketInboxMessage> _pendingMessages = new();
         private readonly Queue<PendingTouchRequest> _pendingTouchRequests = new();
@@ -491,7 +492,8 @@ namespace HaCreator.MapSimulator.Managers
 
             int flushed = 0;
             int resolvedCurrentTick = ResolveCurrentTick(currentTick);
-            while (_pendingTouchRequests.Count > 0
+            while (flushed < MaxDeferredTouchRequestsPerFlush
+                && _pendingTouchRequests.Count > 0
                 && ShouldFlushDeferredTouchAtTick(resolvedCurrentTick, _nextDeferredTouchFlushTick, _deferredTouchFlushTickInitialized))
             {
                 int replayTick = ResolveDeferredTouchReplayTick(

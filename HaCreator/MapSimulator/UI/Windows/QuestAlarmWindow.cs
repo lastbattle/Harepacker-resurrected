@@ -742,12 +742,23 @@ namespace HaCreator.MapSimulator.UI
 
             if (hiddenAutoQuestIds != null)
             {
+                HashSet<int> newlyHiddenAutoQuestIds = null;
                 foreach (int questId in hiddenAutoQuestIds)
                 {
                     if (questId > 0)
                     {
-                        _hiddenAutoQuestIds.Add(questId);
+                        if (_hiddenAutoQuestIds.Add(questId))
+                        {
+                            newlyHiddenAutoQuestIds ??= new HashSet<int>();
+                            newlyHiddenAutoQuestIds.Add(questId);
+                        }
                     }
+                }
+
+                if (newlyHiddenAutoQuestIds != null)
+                {
+                    NotifyQuestRecentUpdateAcknowledged(newlyHiddenAutoQuestIds);
+                    NotifyQuestTooltipCleared(newlyHiddenAutoQuestIds);
                 }
             }
 

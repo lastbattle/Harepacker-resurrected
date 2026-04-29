@@ -211,21 +211,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 [4111002] = new[]
                 {
-                    4001003,
+                    4001003, 4001334, 4001344,
                     4101003, 4101004,
                     4111001, 4111003, 4111005, 4111007,
                     4121000, 4121003, 4121004, 4121008
                 },
                 [4211008] = new[]
                 {
-                    4001003,
+                    4001003, 4001334, 4001344,
                     4201002, 4201003, 4201004, 4201005,
                     4211001, 4211002, 4211003, 4211005, 4211006, 4211007,
                     4221000, 4221001, 4221003, 4221004, 4221006, 4221007
                 },
                 [14111000] = new[]
                 {
-                    14001003, 14001005,
+                    14001003, 14001004, 14001005,
                     14101002, 14101003, 14101006,
                     14111001, 14111002, 14111006
                 }
@@ -3278,6 +3278,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan)
         {
             piecePlan = null;
+            if (TryParseMountedGhostShadowPartnerClientActionPieces(actionName, actionNode, out piecePlan))
+            {
+                return true;
+            }
+
             WzImageProperty pieceOwnerNode = ShadowPartnerClientActionResolver.ResolveClientActionManInitPieceOwnerNode(
                 actionName,
                 actionNode);
@@ -3343,6 +3348,145 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             piecePlan = pieces.AsReadOnly();
             return true;
+        }
+
+        private static bool TryParseMountedGhostShadowPartnerClientActionPieces(
+            string actionName,
+            WzImageProperty actionNode,
+            out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan)
+        {
+            piecePlan = null;
+            if (!TryResolveMountedGhostShadowPartnerPieceSource(actionName, out string sourceActionName, out int[] sourceFramePattern)
+                || actionNode?.WzProperties == null
+                || actionNode.WzProperties.Count == 0)
+            {
+                return false;
+            }
+
+            WzImageProperty frameOwnerNode = ResolveLinkedProperty(actionNode["1"]) ?? actionNode;
+            if (frameOwnerNode?.WzProperties == null || frameOwnerNode.WzProperties.Count == 0)
+            {
+                return false;
+            }
+
+            var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(frameOwnerNode.WzProperties.Count);
+            int fallbackSlotIndex = 0;
+            foreach (WzImageProperty frameNode in EnumerateMountedGhostShadowPartnerFrameRowsInClientOrder(frameOwnerNode))
+            {
+                if (frameNode == null)
+                {
+                    continue;
+                }
+
+                int slotIndex = ResolveShadowPartnerClientActionPieceSlotIndex(frameNode.Name, fallbackSlotIndex++);
+                int sourceFrameIndex = sourceFramePattern.Length == 0
+                    ? 0
+                    : sourceFramePattern[pieces.Count % sourceFramePattern.Length];
+                pieces.Add(new ShadowPartnerClientActionResolver.ShadowPartnerActionPiece(
+                    slotIndex,
+                    sourceActionName,
+                    sourceFrameIndex,
+                    frameNode["delay"] != null ? GetInt(frameNode, "delay") : ShadowPartnerClientActionResolver.ClientActionManInitDefaultPieceDelayMs,
+                    ResolveShadowPartnerClientActionPieceFlip(frameNode),
+                    GetVector(frameNode, "move"),
+                    GetInt(frameNode, "rotate"),
+                    IsSyntheticMirroredTailPiece: false,
+                    IsClientActionManInitPiece: true,
+                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(frameNode),
+                    InlineCanvasChildNames: EnumerateShadowPartnerClientActionPieceInlineCanvasChildNames(frameNode)));
+            }
+
+            if (pieces.Count == 0)
+            {
+                return false;
+            }
+
+            piecePlan = pieces.AsReadOnly();
+            return true;
+        }
+
+        private static IReadOnlyList<WzImageProperty> EnumerateMountedGhostShadowPartnerFrameRowsInClientOrder(WzImageProperty frameOwnerNode)
+        {
+            if (frameOwnerNode?.WzProperties == null || frameOwnerNode.WzProperties.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            List<WzImageProperty> orderedFrames = frameOwnerNode.WzProperties
+                .Where(static child =>
+                    child != null
+                    && (child["delay"] != null
+                        || child is WzCanvasProperty
+                        || child.GetLinkedWzImageProperty() is WzCanvasProperty
+                        || ContainsShadowPartnerInlineCanvasFrame(child)))
+                .ToList();
+            return orderedFrames.Count > 0 ? orderedFrames : Array.Empty<WzImageProperty>();
+        }
+
+        private static bool TryResolveMountedGhostShadowPartnerPieceSource(
+            string actionName,
+            out string sourceActionName,
+            out int[] sourceFramePattern)
+        {
+            sourceActionName = null;
+            sourceFramePattern = null;
+            if (string.Equals(actionName, "ghostwalk", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "walk1";
+                sourceFramePattern = new[] { 0, 1 };
+                return true;
+            }
+
+            if (string.Equals(actionName, "ghoststand", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "stand1";
+                sourceFramePattern = new[] { 0, 1, 2 };
+                return true;
+            }
+
+            if (string.Equals(actionName, "ghostjump", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "jump";
+                sourceFramePattern = new[] { 0 };
+                return true;
+            }
+
+            if (string.Equals(actionName, "ghostproneStab", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "proneStab";
+                sourceFramePattern = new[] { 0, 1 };
+                return true;
+            }
+
+            if (string.Equals(actionName, "ghostladder", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "ladder";
+                sourceFramePattern = new[] { 0, 1 };
+                return true;
+            }
+
+            if (string.Equals(actionName, "ghostrope", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "rope";
+                sourceFramePattern = new[] { 0, 1 };
+                return true;
+            }
+
+            if (string.Equals(actionName, "ghostfly", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "fly";
+                sourceFramePattern = new[] { 0, 1 };
+                return true;
+            }
+
+            if (string.Equals(actionName, "ghostsit", StringComparison.OrdinalIgnoreCase))
+            {
+                sourceActionName = "sit";
+                sourceFramePattern = new[] { 0 };
+                return true;
+            }
+
+            return false;
         }
 
         private static void AppendClientZigZagShadowPartnerActionPieces(
@@ -6556,8 +6700,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                          depthRemaining: ClientSummonedUolTableEntryTraversalDepth))
             {
                 string value = GetClientSummonedUolCandidateValue(recordLeaf.Property);
-                if (string.IsNullOrWhiteSpace(value)
-                    || !ClientSummonedUolTableRecordReferencesSkill(value, skillId))
+                if (string.IsNullOrWhiteSpace(value))
                 {
                     continue;
                 }
@@ -6565,6 +6708,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 string relativePath = string.IsNullOrWhiteSpace(recordLeaf.RelativePath)
                     ? propertyName
                     : $"{propertyName}/{recordLeaf.RelativePath}";
+                bool parsedStructuredRecord = IsClientSummonedUolStructuredTableRecord(value);
+                bool yieldedStructuredRecordCandidate = false;
+                foreach (string recordValue in EnumerateClientSummonedUolStructuredTableRecordValues(value, skillId))
+                {
+                    yieldedStructuredRecordCandidate = true;
+                    yield return new ClientSummonedUolCandidateValue(
+                        recordValue,
+                        BuildClientSummonedUolCandidateContextPathParts(contextNode, relativePath, skillNode));
+                }
+
+                if (yieldedStructuredRecordCandidate
+                    || parsedStructuredRecord
+                    || !ClientSummonedUolTableRecordReferencesSkill(value, skillId))
+                {
+                    continue;
+                }
+
                 yield return new ClientSummonedUolCandidateValue(
                     value,
                     BuildClientSummonedUolCandidateContextPathParts(contextNode, relativePath, skillNode));
@@ -6617,6 +6777,263 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string skillIdText = skillId.ToString(CultureInfo.InvariantCulture);
             return ContainsClientSummonedUolTableSkillIdToken(value, skillIdText);
+        }
+
+        private static bool IsClientSummonedUolStructuredTableRecord(string recordText)
+        {
+            if (string.IsNullOrWhiteSpace(recordText))
+            {
+                return false;
+            }
+
+            foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolRecordTextFields(recordText))
+            {
+                if (string.IsNullOrWhiteSpace(FieldName) || string.IsNullOrWhiteSpace(FieldValue))
+                {
+                    continue;
+                }
+
+                if (IsClientSummonedUolTableOwnerFieldName(FieldName)
+                    || IsClientSummonedUolTableEntryValueName(FieldName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolStructuredTableRecordValues(
+            string recordText,
+            int skillId)
+        {
+            if (string.IsNullOrWhiteSpace(recordText) || skillId <= 0)
+            {
+                yield break;
+            }
+
+            var valueCandidates = new List<string>();
+            bool foundOwnerField = false;
+            bool ownerMatches = false;
+            foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolRecordTextFields(recordText))
+            {
+                if (string.IsNullOrWhiteSpace(FieldName) || string.IsNullOrWhiteSpace(FieldValue))
+                {
+                    continue;
+                }
+
+                if (IsClientSummonedUolTableOwnerFieldName(FieldName))
+                {
+                    foundOwnerField = true;
+                    foreach (int ownerSkillId in EnumerateClientSummonedUolRecordTextFieldSkillIds(FieldValue))
+                    {
+                        if (ownerSkillId == skillId)
+                        {
+                            ownerMatches = true;
+                            break;
+                        }
+                    }
+
+                    continue;
+                }
+
+                if (IsClientSummonedUolTableEntryValueName(FieldName))
+                {
+                    valueCandidates.Add(FieldValue);
+                }
+            }
+
+            if (!foundOwnerField || !ownerMatches)
+            {
+                yield break;
+            }
+
+            var yieldedValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string valueCandidate in valueCandidates)
+            {
+                if (!string.IsNullOrWhiteSpace(valueCandidate) && yieldedValues.Add(valueCandidate))
+                {
+                    yield return valueCandidate;
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateClientSummonedUolRecordTextFieldSkillIds(string fieldValue)
+        {
+            if (string.IsNullOrWhiteSpace(fieldValue))
+            {
+                yield break;
+            }
+
+            if (int.TryParse(fieldValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSkillId)
+                && parsedSkillId > 0)
+            {
+                yield return parsedSkillId;
+            }
+
+            foreach (int linkedSkillId in ParseLinkedSkillIds(fieldValue))
+            {
+                if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                {
+                    yield return linkedSkillId;
+                }
+            }
+
+            foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(fieldValue, contextSkillId: 0))
+            {
+                if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                {
+                    yield return fallbackSkillId;
+                }
+            }
+        }
+
+        private static IEnumerable<(string FieldName, string FieldValue)> EnumerateClientSummonedUolRecordTextFields(string recordText)
+        {
+            if (string.IsNullOrWhiteSpace(recordText))
+            {
+                yield break;
+            }
+
+            foreach (string segment in SplitClientSummonedUolRecordTextSegments(
+                         NormalizeClientSummonedUolEncodedPathSyntax(recordText).Trim()))
+            {
+                if (TryParseClientSummonedUolRecordTextField(segment, out string fieldName, out string fieldValue))
+                {
+                    yield return (fieldName, fieldValue);
+                }
+            }
+        }
+
+        private static IEnumerable<string> SplitClientSummonedUolRecordTextSegments(string recordText)
+        {
+            if (string.IsNullOrWhiteSpace(recordText))
+            {
+                yield break;
+            }
+
+            string trimmedText = recordText.Trim().Trim('{', '}', '[', ']');
+            int segmentStart = 0;
+            bool inQuote = false;
+            char quoteChar = '\0';
+            for (int i = 0; i < trimmedText.Length; i++)
+            {
+                char current = trimmedText[i];
+                if ((current == '"' || current == '\'') && (i == 0 || trimmedText[i - 1] != '\\'))
+                {
+                    if (!inQuote)
+                    {
+                        inQuote = true;
+                        quoteChar = current;
+                    }
+                    else if (quoteChar == current)
+                    {
+                        inQuote = false;
+                        quoteChar = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (inQuote || (current != ',' && current != ';' && current != '|' && current != '\r' && current != '\n'))
+                {
+                    continue;
+                }
+
+                if (i > segmentStart)
+                {
+                    yield return trimmedText.Substring(segmentStart, i - segmentStart);
+                }
+
+                segmentStart = i + 1;
+            }
+
+            if (segmentStart < trimmedText.Length)
+            {
+                yield return trimmedText.Substring(segmentStart);
+            }
+        }
+
+        private static bool TryParseClientSummonedUolRecordTextField(
+            string segment,
+            out string fieldName,
+            out string fieldValue)
+        {
+            fieldName = null;
+            fieldValue = null;
+            if (string.IsNullOrWhiteSpace(segment))
+            {
+                return false;
+            }
+
+            string trimmedSegment = segment.Trim();
+            int separatorIndex = FindClientSummonedUolRecordTextFieldSeparator(trimmedSegment, out int separatorLength);
+            if (separatorIndex <= 0 || separatorIndex + separatorLength >= trimmedSegment.Length)
+            {
+                return false;
+            }
+
+            fieldName = TrimClientSummonedUolRecordTextFieldToken(trimmedSegment.Substring(0, separatorIndex));
+            fieldValue = TrimClientSummonedUolRecordTextFieldToken(trimmedSegment.Substring(separatorIndex + separatorLength));
+            return !string.IsNullOrWhiteSpace(fieldName)
+                   && !string.IsNullOrWhiteSpace(fieldValue);
+        }
+
+        private static int FindClientSummonedUolRecordTextFieldSeparator(string segment, out int separatorLength)
+        {
+            separatorLength = 0;
+            if (string.IsNullOrWhiteSpace(segment))
+            {
+                return -1;
+            }
+
+            bool inQuote = false;
+            char quoteChar = '\0';
+            for (int i = 0; i < segment.Length; i++)
+            {
+                char current = segment[i];
+                if ((current == '"' || current == '\'') && (i == 0 || segment[i - 1] != '\\'))
+                {
+                    if (!inQuote)
+                    {
+                        inQuote = true;
+                        quoteChar = current;
+                    }
+                    else if (quoteChar == current)
+                    {
+                        inQuote = false;
+                        quoteChar = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (inQuote)
+                {
+                    continue;
+                }
+
+                if (current == '=')
+                {
+                    separatorLength = i > 0 && segment[i - 1] == '>' ? 2 : 1;
+                    return separatorLength == 2 ? i - 1 : i;
+                }
+
+                if (current == ':' && i + 1 < segment.Length && segment[i + 1] != '/' && segment[i + 1] != '\\')
+                {
+                    separatorLength = 1;
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static string TrimClientSummonedUolRecordTextFieldToken(string token)
+        {
+            return string.IsNullOrWhiteSpace(token)
+                ? null
+                : token.Trim().Trim(ClientSummonedUolTokenTrimChars).Trim();
         }
 
         private static IEnumerable<(WzImageProperty Property, string RelativePath, bool UseNameAsValue)> EnumerateClientSummonedUolTableEntryValues(

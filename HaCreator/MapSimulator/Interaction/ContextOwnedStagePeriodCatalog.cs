@@ -560,7 +560,8 @@ namespace HaCreator.MapSimulator.Interaction
                 0,
                 null,
                 false,
-                UseSourceBackPieceFields: true);
+                UseSourceBackPieceFields: true,
+                SourceStageBackObject: property);
             UpsertNativeStageBackImageEntry(entries, entry);
             return true;
         }
@@ -749,7 +750,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ReadIntWithFallback(property, "screenMode", defaultValue: 0, backImgInfo),
                 ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
                 spineAnimation,
-                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo));
+                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo),
+                SourceStageBackObject: property);
             return true;
         }
 
@@ -1662,7 +1664,8 @@ namespace HaCreator.MapSimulator.Interaction
         int Z,
         string SpineAnimation,
         bool SpineRandomStart,
-        bool UseSourceBackPieceFields = false);
+        bool UseSourceBackPieceFields = false,
+        WzImageProperty SourceStageBackObject = null);
 
     internal sealed class ContextOwnedStageUnitEnableState
     {

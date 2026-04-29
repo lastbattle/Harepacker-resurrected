@@ -5,6 +5,8 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -156,7 +158,97 @@ namespace HaCreator.MapSimulator.Loaders
                     : null;
             }
 
+            if (TryResolveReviveOwnerCanvasProperty(owner, propertyName, out WzCanvasProperty nestedCanvas))
+            {
+                return LoadCanvasTexture(nestedCanvas, device);
+            }
+
             return null;
+        }
+
+        internal static bool TryResolveReviveOwnerCanvasProperty(
+            WzObject owner,
+            string propertyName,
+            out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (owner == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            HashSet<WzObject> visited = new(ReferenceEqualityComparer.Instance);
+            return TryResolveReviveOwnerCanvasPropertyRecursive(owner, propertyName, visited, out canvas);
+        }
+
+        private static bool TryResolveReviveOwnerCanvasPropertyRecursive(
+            WzObject owner,
+            string propertyName,
+            HashSet<WzObject> visited,
+            out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (owner == null || !visited.Add(owner))
+            {
+                return false;
+            }
+
+            IEnumerable<WzImageProperty> properties = owner switch
+            {
+                WzImage image => image.WzProperties,
+                WzImageProperty property => property.WzProperties,
+                _ => null
+            };
+
+            if (properties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (!string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                WzImageProperty resolved = ResolveReviveOwnerLinkedCanvasProperty(property);
+                if (resolved is WzCanvasProperty matchedCanvas)
+                {
+                    canvas = matchedCanvas;
+                    return true;
+                }
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                WzImageProperty resolved = ResolveReviveOwnerLinkedCanvasProperty(property);
+                if (resolved != null
+                    && TryResolveReviveOwnerCanvasPropertyRecursive(resolved, propertyName, visited, out canvas))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static WzImageProperty ResolveReviveOwnerLinkedCanvasProperty(WzImageProperty property)
+        {
+            const int maxDepth = 8;
+            WzImageProperty resolved = property;
+            for (int depth = 0; depth < maxDepth && resolved is WzUOLProperty uolProperty; depth++)
+            {
+                if (uolProperty.WzValue is not WzImageProperty linkedProperty
+                    || ReferenceEquals(linkedProperty, resolved))
+                {
+                    break;
+                }
+
+                resolved = linkedProperty;
+            }
+
+            return resolved;
         }
     }
 }

@@ -11,6 +11,9 @@ namespace HaCreator.MapSimulator.Managers
     {
         public bool IsDisassembly { get; init; }
         public string RecipeKey { get; init; } = string.Empty;
+        public bool IsHiddenRecipe { get; init; }
+        public int ExpectedRewardBucketKey { get; init; } = -1;
+        public int RecipeOutputItemId { get; init; }
         public int SourceSlotIndex { get; init; } = -1;
         public int SourceItemId { get; init; }
         public int ExpectedRewardItemId { get; init; }

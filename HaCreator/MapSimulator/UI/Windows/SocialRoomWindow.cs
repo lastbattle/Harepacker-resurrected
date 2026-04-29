@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _tradingRoomResetButton;
         private UIObject _tradingRoomCoinButton;
         private UIObject _tradingRoomAcceptButton;
+        private UIObject _tradingRoomEnterButton;
         private Texture2D _entrustedBlacklistUtilDlgExFrame;
         private UIObject _entrustedBlacklistPromptOkButton;
         private UIObject _entrustedBlacklistPromptCloseButton;
@@ -273,12 +274,13 @@ namespace HaCreator.MapSimulator.UI
             return button;
         }
 
-        public void RegisterTradingRoomButtons(UIObject tradeButton, UIObject resetButton, UIObject coinButton, UIObject acceptButton)
+        public void RegisterTradingRoomButtons(UIObject tradeButton, UIObject resetButton, UIObject coinButton, UIObject acceptButton, UIObject enterButton = null)
         {
             _tradingRoomTradeButton = tradeButton;
             _tradingRoomResetButton = resetButton;
             _tradingRoomCoinButton = coinButton;
             _tradingRoomAcceptButton = acceptButton;
+            _tradingRoomEnterButton = enterButton;
         }
 
         private void DrawMiniRoomContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
@@ -783,6 +785,7 @@ namespace HaCreator.MapSimulator.UI
             _tradingRoomCoinButton?.SetEnabled(canCoin);
             _tradingRoomAcceptButton?.SetEnabled(canAccept);
             _tradingRoomResetButton?.SetEnabled(true);
+            _tradingRoomEnterButton?.SetEnabled(_runtime.Occupants.Count > 0);
         }
 
         private void DrawTradeOfferSummary(SpriteBatch sprite, Rectangle panel, bool isLocalParty)

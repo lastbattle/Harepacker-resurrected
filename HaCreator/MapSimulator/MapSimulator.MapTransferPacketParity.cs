@@ -32,22 +32,28 @@ namespace HaCreator.MapSimulator
             out MapTransferRuntimeResponse response,
             out string dispatchStatus)
         {
-            response = _mapTransferRuntime.PreviewRequest(build, request);
             dispatchStatus = null;
-            CacheMapTransferAuthoritativeRequest(request);
 
             if (!_mapTransferOfficialSessionBridge.HasConnectedSession)
             {
+                response = _mapTransferRuntime.PreviewRequest(build, request);
+                CacheMapTransferAuthoritativeRequest(request);
                 response = _mapTransferRuntime.SubmitRequest(build, request);
                 return true;
             }
 
-            if (!ShouldForwardMapTransferRequestToOfficialSession(_mapTransferOfficialSessionBridge.HasConnectedSession, request, response))
+            MapTransferRuntimeRequest officialRequest = NormalizeMapTransferRequestForOfficialSession(
+                request,
+                _mapBoard?.MapInfo?.id ?? 0);
+            response = _mapTransferRuntime.PreviewRequest(build, officialRequest);
+            CacheMapTransferAuthoritativeRequest(officialRequest);
+
+            if (!ShouldForwardMapTransferRequestToOfficialSession(_mapTransferOfficialSessionBridge.HasConnectedSession, officialRequest, response))
             {
                 return false;
             }
 
-            if (!_mapTransferOfficialSessionBridge.TrySendRequest(request, out dispatchStatus))
+            if (!_mapTransferOfficialSessionBridge.TrySendRequest(officialRequest, out dispatchStatus))
             {
                 response = new MapTransferRuntimeResponse
                 {
@@ -62,16 +68,42 @@ namespace HaCreator.MapSimulator
             _pendingOfficialMapTransferRequests.Add(new PendingOfficialMapTransferRequest
             {
                 Build = build?.Clone(),
-                Request = request,
+                Request = officialRequest,
                 PredictedResponse = response
             });
             response = new MapTransferRuntimeResponse
             {
                 Applied = false,
-                FocusMapId = request.MapId,
-                FocusSlotIndex = request.SlotIndex
+                FocusMapId = officialRequest.MapId,
+                FocusSlotIndex = officialRequest.SlotIndex
             };
             return true;
+        }
+
+        internal static MapTransferRuntimeRequest NormalizeMapTransferRequestForOfficialSession(
+            MapTransferRuntimeRequest request,
+            int activeFieldMapId)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            if (request.Type != MapTransferRuntimeRequestType.Register)
+            {
+                return CloneMapTransferRuntimeRequest(request);
+            }
+
+            int resolvedMapId = activeFieldMapId > 0
+                ? activeFieldMapId
+                : request.MapId;
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = resolvedMapId,
+                SlotIndex = request.SlotIndex
+            };
         }
 
         internal static bool ShouldForwardMapTransferRequestToOfficialSession(

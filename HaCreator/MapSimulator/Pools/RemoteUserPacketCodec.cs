@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.UI;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using Microsoft.Xna.Framework;
 
@@ -3278,19 +3279,35 @@ namespace HaCreator.MapSimulator.Pools
                     | (payload[2] << 16)
                     | (payload[3] << 24);
                 byte markerRaw = payload[4];
-                MinimapUI.HelperMarkerType? markerType = markerRaw == HelperMarkerClearValue
-                    ? null
-                    : Enum.IsDefined(typeof(MinimapUI.HelperMarkerType), (int)markerRaw)
-                        ? (MinimapUI.HelperMarkerType)markerRaw
-                        : null;
-                if (markerRaw != HelperMarkerClearValue && !markerType.HasValue)
+                if (markerRaw == HelperMarkerClearValue)
                 {
-                    error = $"Remote user helper marker value {markerRaw} is not recognized.";
-                    return false;
+                    packet = new RemoteUserHelperPacket(
+                        characterId,
+                        MarkerType: null,
+                        ShowDirectionOverlay: payload[5] != 0,
+                        AppliesTrackedUserState: true);
+                    return true;
                 }
 
-                packet = new RemoteUserHelperPacket(characterId, markerType, payload[5] != 0, AppliesTrackedUserState: true);
-                return true;
+                if (TryResolveNumericHelperMarker(markerRaw, out MinimapUI.HelperMarkerType? markerType, out bool appliesTrackedUserState))
+                {
+                    packet = new RemoteUserHelperPacket(characterId, markerType, payload[5] != 0, appliesTrackedUserState);
+                    return true;
+                }
+
+                if (TryResolveDefaultHelperChildIndexMarkerName(markerRaw.ToString(CultureInfo.InvariantCulture), out string indexedMarkerName)
+                    && TryResolveDefaultHelperAncillaryMarkerFallback(indexedMarkerName))
+                {
+                    packet = new RemoteUserHelperPacket(
+                        characterId,
+                        MarkerType: null,
+                        ShowDirectionOverlay: payload[5] != 0,
+                        AppliesTrackedUserState: false);
+                    return true;
+                }
+
+                error = $"Remote user helper marker value {markerRaw} is not recognized.";
+                return false;
             }
 
             return TryParseNamedHelper(payload, out packet, out error);
@@ -3370,6 +3387,29 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             payload[^1] = showDirectionOverlay ? (byte)1 : (byte)0;
+            return true;
+        }
+
+        private static bool TryResolveNumericHelperMarker(
+            byte markerRaw,
+            out MinimapUI.HelperMarkerType? markerType,
+            out bool appliesTrackedUserState)
+        {
+            markerType = null;
+            appliesTrackedUserState = true;
+            if (Enum.IsDefined(typeof(MinimapUI.HelperMarkerType), (int)markerRaw))
+            {
+                markerType = (MinimapUI.HelperMarkerType)markerRaw;
+                return true;
+            }
+
+            if (!TryResolveDefaultHelperChildIndexMarkerName(markerRaw.ToString(CultureInfo.InvariantCulture), out string indexedMarkerName)
+                || !TryResolveHelperMarkerName(indexedMarkerName, out markerType)
+                || !markerType.HasValue)
+            {
+                return false;
+            }
+
             return true;
         }
 

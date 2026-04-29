@@ -2410,6 +2410,63 @@ namespace HaCreator.MapSimulator.UI
             return MatchesPendingPutIdentity(stagedSlot, liveSlot);
         }
 
+        internal bool TryResolveLivePutSlotForPacketConfirm(
+            InventoryType inventoryType,
+            int rowIndex,
+            InventorySlotData stagedSlot,
+            int requestedQuantity,
+            out InventorySlotData liveSlot,
+            out string statusMessage)
+        {
+            liveSlot = null;
+            statusMessage = string.Empty;
+            if (!TryResolveLiveInventorySlot(inventoryType, rowIndex, out InventorySlotData resolvedSlot))
+            {
+                statusMessage = "CTrunkDlg::SendPutItemRequest confirmation aborted because CharacterData::GetItem no longer resolves the selected inventory row.";
+                return false;
+            }
+
+            if (!ValidatePutConfirmIdentity(stagedSlot, resolvedSlot, requestedQuantity, out statusMessage))
+            {
+                return false;
+            }
+
+            liveSlot = resolvedSlot;
+            return true;
+        }
+
+        public static bool ValidatePutConfirmIdentityForTests(
+            InventorySlotData stagedSlot,
+            InventorySlotData liveSlot,
+            int requestedQuantity,
+            out string statusMessage)
+        {
+            return ValidatePutConfirmIdentity(stagedSlot, liveSlot, requestedQuantity, out statusMessage);
+        }
+
+        private static bool ValidatePutConfirmIdentity(
+            InventorySlotData stagedSlot,
+            InventorySlotData liveSlot,
+            int requestedQuantity,
+            out string statusMessage)
+        {
+            statusMessage = string.Empty;
+            if (!MatchesPendingPutIdentity(stagedSlot, liveSlot))
+            {
+                statusMessage = "CTrunkDlg::SendPutItemRequest confirmation aborted because CharacterData::GetItem pointer-identity changed before modal acceptance.";
+                return false;
+            }
+
+            int liveQuantity = Math.Max(1, liveSlot?.Quantity ?? 0);
+            if (requestedQuantity > liveQuantity)
+            {
+                statusMessage = $"CTrunkDlg::SendPutItemRequest confirmation aborted because the accepted count {requestedQuantity.ToString(CultureInfo.InvariantCulture)} exceeds live quantity {liveQuantity.ToString(CultureInfo.InvariantCulture)}.";
+                return false;
+            }
+
+            return true;
+        }
+
         private static bool MatchesPendingPutIdentity(InventorySlotData stagedSlot, InventorySlotData liveSlot)
         {
             return ReferenceEquals(stagedSlot, liveSlot);

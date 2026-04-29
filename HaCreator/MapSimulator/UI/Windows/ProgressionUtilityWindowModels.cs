@@ -174,6 +174,8 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<int> LineLefts { get; init; } = Array.Empty<int>();
         public IReadOnlyList<int> LineTops { get; init; } = Array.Empty<int>();
         public IReadOnlyList<int> LineWidths { get; init; } = Array.Empty<int>();
+        public IReadOnlyList<int> LineDrawLefts { get; init; } = Array.Empty<int>();
+        public IReadOnlyList<int> LineDrawTops { get; init; } = Array.Empty<int>();
         public int Left { get; init; }
         public int Top { get; init; }
         public int Width { get; init; }
@@ -214,6 +216,8 @@ namespace HaCreator.MapSimulator.UI
         public int ClientAnalyzerMargin { get; init; }
         public int ClientTextDrawBaseX { get; init; }
         public int ClientTextDrawBaseY { get; init; }
+        public int ClientTextDrawLeft { get; init; }
+        public int ClientTextDrawTop { get; init; }
     }
 
     internal static class CollectionBookClientResources
@@ -1238,6 +1242,8 @@ namespace HaCreator.MapSimulator.UI
                 LineLefts = lines.Select(line => line.Left).ToArray(),
                 LineTops = lines.Select(line => line.Top).ToArray(),
                 LineWidths = lines.Select(line => line.AnalyzerLineWidth).ToArray(),
+                LineDrawLefts = lines.Select(line => line.ClientTextDrawLeft).ToArray(),
+                LineDrawTops = lines.Select(line => line.ClientTextDrawTop).ToArray(),
                 Left = first.ClientAnalyzerLaneLeft,
                 Top = first.ClientAnalyzerLaneTop,
                 Width = first.ClientAnalyzerLaneWidth,
@@ -1274,6 +1280,8 @@ namespace HaCreator.MapSimulator.UI
                 LineLefts = Array.Empty<int>(),
                 LineTops = Array.Empty<int>(),
                 LineWidths = Array.Empty<int>(),
+                LineDrawLefts = Array.Empty<int>(),
+                LineDrawTops = Array.Empty<int>(),
                 Left = rule.Left,
                 Top = rule.Top,
                 Width = rule.Width,
@@ -1607,7 +1615,9 @@ namespace HaCreator.MapSimulator.UI
                 ClientAnalyzerLaneWidth = Math.Max(0, clientAnalyzerLaneWidth),
                 ClientAnalyzerMargin = Math.Max(0, clientAnalyzerMargin),
                 ClientTextDrawBaseX = clientTextDrawBaseX,
-                ClientTextDrawBaseY = clientTextDrawBaseY
+                ClientTextDrawBaseY = clientTextDrawBaseY,
+                ClientTextDrawLeft = clientTextDrawBaseX + left,
+                ClientTextDrawTop = clientTextDrawBaseY + top
             };
         }
 

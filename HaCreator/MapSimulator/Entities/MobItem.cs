@@ -1514,14 +1514,7 @@ namespace HaCreator.MapSimulator.Entities
                 return null;
             }
 
-            string trimmed = message.Trim();
-            int newlineIndex = trimmed.IndexOf('\n');
-            if (newlineIndex >= 0)
-            {
-                trimmed = trimmed[..newlineIndex].Trim();
-            }
-
-            return trimmed;
+            return message.Replace("\r\n", "\n").Trim();
         }
 
         public bool TryGetRecentAttackFrameIndex(string attackAction, int currentTime, int retentionWindowMs, out int frameIndex)

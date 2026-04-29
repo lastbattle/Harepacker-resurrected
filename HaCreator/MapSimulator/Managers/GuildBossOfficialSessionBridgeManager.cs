@@ -605,6 +605,28 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryVerifyPassiveEstablishedSessionIfNeeded(out string status)
+        {
+            lock (_sync)
+            {
+                if (HasConnectedSession)
+                {
+                    status = "Guild boss official-session bridge owns a proxied Maple session; passive socket-pair verification is not needed.";
+                    return true;
+                }
+
+                if (!_passiveEstablishedSession.HasValue)
+                {
+                    status = IsRunning
+                        ? $"Guild boss official-session bridge is armed on 127.0.0.1:{ListenPort}; no passive established socket pair is currently attached."
+                        : "Guild boss official-session bridge has no passive established socket pair to verify.";
+                    return false;
+                }
+            }
+
+            return TryVerifyPassiveEstablishedSession(out status);
+        }
+
         public void Stop()
         {
             lock (_sync)
@@ -625,6 +647,11 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (HasPassiveEstablishedSocketPair)
                 {
+                    if (!TryVerifyPassiveEstablishedSession(out status))
+                    {
+                        return false;
+                    }
+
                     return TryQueuePulleyRequest(request, out status);
                 }
 
@@ -682,6 +709,11 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     status = "Guild boss official-session bridge is not armed for deferred live-session injection.";
                     LastStatus = status;
+                    return false;
+                }
+
+                if (!TryVerifyPassiveEstablishedSession(out status))
+                {
                     return false;
                 }
             }

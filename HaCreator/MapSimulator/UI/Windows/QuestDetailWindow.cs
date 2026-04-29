@@ -977,7 +977,7 @@ namespace HaCreator.MapSimulator.UI
                         clipRect,
                         ResolveCtEntryScale(entry),
                         ResolveCtEntryLane(entry),
-                        entry.Bold,
+                        ResolveCtEntryEmphasis(entry),
                         NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
                         ResolveCtEntryFontPixelSize(entry),
                         preserveClientLineLayout);
@@ -1043,7 +1043,7 @@ namespace HaCreator.MapSimulator.UI
                         ResolveCtEntryWidth(entry),
                         ResolveCtEntryScale(entry),
                         ResolveCtEntryLane(entry),
-                        entry.Bold,
+                        ResolveCtEntryEmphasis(entry),
                         NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
                         ResolveCtEntryFontPixelSize(entry),
                         preserveClientLineLayout);
@@ -1237,10 +1237,32 @@ namespace HaCreator.MapSimulator.UI
         {
             QuestDetailCtEntry[] rowEntries = entries?.Where(entry => entry != null).ToArray()
                 ?? Array.Empty<QuestDetailCtEntry>();
+            bool hasAuthoredDrawLayer = rowEntries.Any(entry => entry.DrawLayer.HasValue);
             bool hasAuthoredDrawOrder = rowEntries.Any(entry => entry.DrawOrder != 0);
+            if (hasAuthoredDrawLayer)
+            {
+                return rowEntries
+                    .OrderBy(entry => entry.DrawLayer ?? 0)
+                    .ThenBy(entry => entry.DrawOrder)
+                    .ThenBy(ResolveCtEntryKindDrawPriority);
+            }
+
             return hasAuthoredDrawOrder
                 ? rowEntries.OrderBy(entry => entry.DrawOrder)
                 : rowEntries;
+        }
+
+        private static int ResolveCtEntryKindDrawPriority(QuestDetailCtEntry entry)
+        {
+            return entry?.Kind switch
+            {
+                QuestDetailCtEntryKind.Canvas => 0,
+                QuestDetailCtEntryKind.SectionHeader => 1,
+                QuestDetailCtEntryKind.RichText => 2,
+                QuestDetailCtEntryKind.ConditionLines => 3,
+                QuestDetailCtEntryKind.Progress => 4,
+                _ => 5
+            };
         }
 
         private static bool UsesClientCtVerbatimLineLayout(QuestDetailCtEntry entry)
@@ -1316,6 +1338,11 @@ namespace HaCreator.MapSimulator.UI
         internal static float? ResolveCtEntryFontPixelSizeForTesting(QuestDetailCtEntry entry)
         {
             return ResolveCtEntryFontPixelSize(entry);
+        }
+
+        internal static bool ResolveCtEntryEmphasisForTesting(QuestDetailCtEntry entry)
+        {
+            return ResolveCtEntryEmphasis(entry);
         }
 
         private static float ResolveCtRowAdvanceForTesting(CtEntryRow row)
@@ -1447,9 +1474,25 @@ namespace HaCreator.MapSimulator.UI
 
         private static QuestDetailTextLane ResolveCtEntryLane(QuestDetailCtEntry entry)
         {
-            return entry?.Bold == true
+            return ResolveCtEntryEmphasis(entry)
                 ? QuestDetailTextLane.DetailStrong
                 : QuestDetailTextLane.Detail;
+        }
+
+        private static bool ResolveCtEntryEmphasis(QuestDetailCtEntry entry)
+        {
+            if (entry == null)
+            {
+                return false;
+            }
+
+            string styleToken = entry.FontStyleToken?.Trim();
+            if (!string.IsNullOrWhiteSpace(styleToken))
+            {
+                return ResolveQuestDetailBoldFontStyle(styleToken) != SD.FontStyle.Regular;
+            }
+
+            return entry.Bold;
         }
 
         private float AdvanceCtEntryText(QuestDetailCtEntry entry)
@@ -1459,7 +1502,7 @@ namespace HaCreator.MapSimulator.UI
                 ResolveCtEntryWidth(entry),
                 ResolveCtEntryScale(entry),
                 ResolveCtEntryLane(entry),
-                entry?.Bold == true,
+                ResolveCtEntryEmphasis(entry),
                 NormalizeQuestDetailFontFamilyOverride(entry?.FontFamily, null),
                 ResolveCtEntryFontPixelSize(entry));
         }
@@ -2446,12 +2489,15 @@ namespace HaCreator.MapSimulator.UI
             source = token?.Trim().Replace("-", string.Empty).Replace("_", string.Empty).ToLowerInvariant() switch
             {
                 "requirementtext" or "demandtext" => QuestDetailInlineReferenceSource.RequirementText,
-                "requirementline" or "demandline" or "demandrect" => QuestDetailInlineReferenceSource.RequirementLine,
+                "requirementline" or "demandline" => QuestDetailInlineReferenceSource.RequirementLine,
+                "demandrect" => QuestDetailInlineReferenceSource.DemandRect,
                 "rewardtext" => QuestDetailInlineReferenceSource.RewardText,
                 "rewardline" => QuestDetailInlineReferenceSource.RewardLine,
                 "hinttext" or "hint" => QuestDetailInlineReferenceSource.HintText,
                 "summarytext" or "summary" => QuestDetailInlineReferenceSource.SummaryText,
                 "deliveryinset" or "delivery" => QuestDetailInlineReferenceSource.DeliveryInset,
+                "deliveryacceptrect" or "acceptdeliveryrect" or "questdeliveryacceptrect" => QuestDetailInlineReferenceSource.DeliveryAcceptRect,
+                "deliverycompleterect" or "completedeliveryrect" or "questdeliverycompleterect" => QuestDetailInlineReferenceSource.DeliveryCompleteRect,
                 _ => QuestDetailInlineReferenceSource.Unknown
             };
 
@@ -2714,7 +2760,7 @@ namespace HaCreator.MapSimulator.UI
                     ResolveCtEntryScale(entry),
                     ResolveCtEntryLane(entry),
                     entry.Source,
-                    entry.Bold,
+                    ResolveCtEntryEmphasis(entry),
                     NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
                     ResolveCtEntryFontPixelSize(entry),
                     UsesClientCtVerbatimLineLayout(entry));
@@ -2761,7 +2807,7 @@ namespace HaCreator.MapSimulator.UI
                     ResolveCtEntryScale(entry),
                     ResolveCtEntryLane(entry),
                     entry.Source,
-                    entry.Bold,
+                    ResolveCtEntryEmphasis(entry),
                     NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
                     ResolveCtEntryFontPixelSize(entry),
                     UsesClientCtVerbatimLineLayout(entry));

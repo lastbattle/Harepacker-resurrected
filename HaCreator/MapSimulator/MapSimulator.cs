@@ -756,6 +756,8 @@ namespace HaCreator.MapSimulator
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
+        private PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner _passiveTransferRequestOwner =
+            PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner.None;
         private int _lastFieldRestrictionMessageTime = int.MinValue;
         private string _lastFieldRestrictionMessage = null;
         private readonly Dictionary<int, int> _lastSkillCooldownBlockedMessageTimes = new();
@@ -3149,7 +3151,8 @@ namespace HaCreator.MapSimulator
             }
 
             int quantity = Math.Max(1, slot.Quantity);
-            if (!_memoMailbox.SetDraftItemAttachment(slot.ItemId, quantity, out _))
+            short inventoryPosition = ResolveMemoDraftAttachmentInventoryPosition(slotIndex, slot);
+            if (!_memoMailbox.SetDraftItemAttachment(slot.ItemId, quantity, inventoryType, inventoryPosition, out _))
             {
                 message = "Parcel item staging rejected this inventory item.";
                 return false;
@@ -3163,6 +3166,23 @@ namespace HaCreator.MapSimulator
             string slotLabel = slotIndex >= 0 ? $" slot #{slotIndex + 1}" : string.Empty;
             message = $"Staged {itemName} x{quantity} from {inventoryType}{slotLabel} into the parcel owner.";
             return true;
+        }
+
+        private static short ResolveMemoDraftAttachmentInventoryPosition(int slotIndex, InventorySlotData slot)
+        {
+            if (slot?.ClientItemToken is int clientItemToken
+                && clientItemToken > 0
+                && clientItemToken <= short.MaxValue)
+            {
+                return unchecked((short)clientItemToken);
+            }
+
+            if (slotIndex >= 0 && slotIndex < short.MaxValue)
+            {
+                return unchecked((short)(slotIndex + 1));
+            }
+
+            return 0;
         }
 
 
@@ -3555,6 +3575,7 @@ namespace HaCreator.MapSimulator
             friendGroupWindow.SetHandlers(
                 visibleIndex => _socialListRuntime.ToggleFriendGroupPopupEntry(visibleIndex),
                 delta => _socialListRuntime.MoveFriendGroupPopupScroll(delta),
+                ratio => _socialListRuntime.SetFriendGroupPopupScrollPosition(ratio),
                 value => _socialListRuntime.AppendFriendGroupPopupInput(value),
                 () => _socialListRuntime.BackspaceFriendGroupPopupInput(),
                 () =>
@@ -4036,13 +4057,28 @@ namespace HaCreator.MapSimulator
             CharacterBuild build = _playerManager?.Player?.Build;
             string playerName = build?.Name ?? "Player";
             string guildName = string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple Guild" : build.GuildName;
+            string guildRoleLabel = _socialListRuntime.GetLocalGuildRoleLabel();
+            GuildBbsPermissionMask? linkedPermissionMask = null;
+            string linkedPermissionSourceLabel = null;
+            if (_socialListRuntime.TryGetGuildBbsLinkedAuthority(
+                out string linkedRoleLabel,
+                out GuildBbsPermissionMask resolvedLinkedPermissionMask,
+                out string resolvedLinkedPermissionSourceLabel))
+            {
+                guildRoleLabel = linkedRoleLabel;
+                linkedPermissionMask = resolvedLinkedPermissionMask;
+                linkedPermissionSourceLabel = resolvedLinkedPermissionSourceLabel;
+            }
+
             _guildBbsRuntime.ConfigureEmoticonCatalog(guildBbsWindow.BasicEmoticonSlotCount, guildBbsWindow.CashEmoticonSlotCount);
             _guildBbsRuntime.UpdateLocalContext(
                 playerName,
                 guildName,
                 GetCurrentMapTransferDisplayName(),
-                _socialListRuntime.GetLocalGuildRoleLabel(),
-                ResolveOwnedGuildBbsCashEmoticonIds(guildBbsWindow.CashEmoticonSlotCount));
+                guildRoleLabel,
+                ResolveOwnedGuildBbsCashEmoticonIds(guildBbsWindow.CashEmoticonSlotCount),
+                linkedPermissionMask,
+                linkedPermissionSourceLabel);
         }
 
 
@@ -5707,6 +5743,10 @@ namespace HaCreator.MapSimulator
             {
                 build.HasMonsterRiding = packet.HasRide.Value;
                 build.HasAuthoritativeProfileRide = true;
+                if (!packet.HasRide.Value)
+                {
+                    ClearCharacterInfoProfileRide(build);
+                }
             }
 
             if (packet.RideVehicleItemId.HasValue || packet.RideSaddleItemId.HasValue || packet.IsRidingInField.HasValue)
@@ -5774,12 +5814,17 @@ namespace HaCreator.MapSimulator
 
             if (packet.HasMedal.HasValue)
             {
+                build.ProfileHasMedal = packet.HasMedal.Value;
                 build.HasAuthoritativeProfileMedal = true;
             }
 
             if (packet.HasCollection.HasValue)
             {
                 build.HasAuthoritativeProfileCollection = true;
+                if (!packet.HasCollection.Value)
+                {
+                    ClearCharacterInfoProfileCollection(build);
+                }
             }
 
             if (packet.PetProfiles != null)
@@ -5836,6 +5881,42 @@ namespace HaCreator.MapSimulator
             build.ProfileMakerSuccessfulCrafts = Math.Max(0, packet.MakerSuccessfulCrafts ?? 0);
             build.ProfileMakerDiscoveredRecipeCount = Math.Max(0, packet.MakerDiscoveredRecipeCount ?? 0);
             build.ProfileMakerUnlockedHiddenRecipeCount = Math.Max(0, packet.MakerUnlockedHiddenRecipeCount ?? 0);
+        }
+
+        private static void ClearCharacterInfoProfileRide(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            build.ProfileRideVehicleItemId = 0;
+            build.ProfileRideSaddleItemId = 0;
+            build.IsProfileRidingInField = false;
+        }
+
+        private static void ClearCharacterInfoProfileCollection(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            build.ProfileMonsterBookOwnedCardTypes = 0;
+            build.ProfileMonsterBookTotalCardTypes = 0;
+            build.ProfileMonsterBookCompletedCardTypes = 0;
+            build.ProfileMonsterBookTotalOwnedCopies = 0;
+            build.ProfileMakerGenericLevel = 1;
+            build.ProfileMakerGloveLevel = 1;
+            build.ProfileMakerShoeLevel = 1;
+            build.ProfileMakerToyLevel = 1;
+            build.ProfileMakerGenericProgress = 0;
+            build.ProfileMakerGloveProgress = 0;
+            build.ProfileMakerShoeProgress = 0;
+            build.ProfileMakerToyProgress = 0;
+            build.ProfileMakerSuccessfulCrafts = 0;
+            build.ProfileMakerDiscoveredRecipeCount = 0;
+            build.ProfileMakerUnlockedHiddenRecipeCount = 0;
         }
 
         private bool TryResolveCharacterInfoPresence(
@@ -21544,7 +21625,8 @@ namespace HaCreator.MapSimulator
                 runtimeData,
                 currentTick,
                 sourceMob.CurrentX,
-                runtimeData.ElementAttribute);
+                runtimeData.ElementAttribute,
+                Math.Max(1000, Math.Max(skill.SkillAfter, skill.EffectAfter)));
 
             if (applied)
             {
@@ -22094,6 +22176,8 @@ namespace HaCreator.MapSimulator
 
             var runtimeData = new MobSkillRuntimeData
             {
+                SourceSkillId = skillId,
+                SourceSkillLevel = Math.Max(1, level),
                 X = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "x"),
                 Y = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "y"),
                 Hp = Math.Max(
@@ -23021,7 +23105,8 @@ namespace HaCreator.MapSimulator
                    || effect.HasSupportedTemporaryBuff
                    || effect.HasSupportedCure
                    || effect.HasSupportedFieldProtection
-                   || effect.HasSupportedMobSkill;
+                   || effect.HasSupportedMobSkill
+                   || effect.HasSupportedScreenMessage;
         }
 
         private bool ShouldAutoApplyRunOnPickupConsumableItem(int itemId)
@@ -23061,7 +23146,8 @@ namespace HaCreator.MapSimulator
                    || effect.HasSupportedTemporaryBuff
                    || effect.HasSupportedCure
                    || effect.HasSupportedFieldProtection
-                   || effect.HasSupportedMobSkill;
+                   || effect.HasSupportedMobSkill
+                   || effect.HasSupportedScreenMessage;
         }
 
         private bool ShouldAutoHandlePickedUpItem(int itemId)
@@ -23129,7 +23215,8 @@ namespace HaCreator.MapSimulator
             bool supportsCure = effect.HasSupportedCure;
             bool supportsFieldProtection = effect.HasSupportedFieldProtection;
             bool supportsMobSkill = effect.HasSupportedMobSkill;
-            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalCp && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
+            bool supportsScreenMessage = effect.HasSupportedScreenMessage;
+            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalCp && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill && !supportsScreenMessage)
             {
                 return false;
             }
@@ -23168,7 +23255,8 @@ namespace HaCreator.MapSimulator
                                              && TryCanApplyMonsterCarnivalCpPickup(effect.MonsterCarnivalCp);
             bool canApplyMonsterCarnivalNuffSkill = supportsMonsterCarnivalNuffSkill
                                                     && TryCanApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId);
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalCp || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
+            bool canShowScreenMessage = supportsScreenMessage;
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalCp || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill || canShowScreenMessage;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -24729,12 +24817,16 @@ namespace HaCreator.MapSimulator
 
         private void HandleDropPickedUpByRemotePlayer(DropItem drop, int playerId, string playerName)
         {
-            if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
+            int currentTime = Environment.TickCount;
+            if (drop == null || !ShouldSurfaceRemotePickupNotice(
+                    drop,
+                    Pools.DropPickupActorKind.Player,
+                    playerId,
+                    currentTime))
             {
                 return;
             }
 
-            int currentTime = Environment.TickCount;
             if (!TryReserveRemotePickupNotice(drop.PoolId, playerId, currentTime))
             {
                 return;
@@ -24757,17 +24849,23 @@ namespace HaCreator.MapSimulator
 
         private void HandleDropPickedUpByRemotePet(DropItem drop, int petId, string petName)
         {
-            if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
+            int currentTime = Environment.TickCount;
+            int fallbackOwnerId = ResolveDropPartyActorOwnerId(petId);
+            if (drop == null || !ShouldSurfaceRemotePickupNotice(
+                    drop,
+                    Pools.DropPickupActorKind.Pet,
+                    petId,
+                    currentTime,
+                    fallbackOwnerId))
             {
                 return;
             }
 
-            int currentTime = Environment.TickCount;
             if (!TryReserveRemotePickupNotice(
                     drop.PoolId,
                     petId,
                     currentTime,
-                    ResolveDropPartyActorOwnerId(petId)))
+                    fallbackOwnerId))
             {
                 return;
             }
@@ -24789,17 +24887,23 @@ namespace HaCreator.MapSimulator
 
         private void HandleDropPickedUpByRemoteOther(DropItem drop, int actorId, string actorName)
         {
-            if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
+            int currentTime = Environment.TickCount;
+            int fallbackOwnerId = ResolveDropPartyActorOwnerId(actorId);
+            if (drop == null || !ShouldSurfaceRemotePickupNotice(
+                    drop,
+                    Pools.DropPickupActorKind.Other,
+                    actorId,
+                    currentTime,
+                    fallbackOwnerId))
             {
                 return;
             }
 
-            int currentTime = Environment.TickCount;
             if (!TryReserveRemotePickupNotice(
                     drop.PoolId,
                     actorId,
                     currentTime,
-                    ResolveDropPartyActorOwnerId(actorId)))
+                    fallbackOwnerId))
             {
                 return;
             }
@@ -24842,18 +24946,27 @@ namespace HaCreator.MapSimulator
 
 
 
-        private bool ShouldSurfaceRemotePickupNotice(DropItem drop)
-
-
-
+        private bool ShouldSurfaceRemotePickupNotice(
+            DropItem drop,
+            Pools.DropPickupActorKind actorKind,
+            int actorId,
+            int currentTime,
+            int fallbackOwnerId = 0)
         {
+            if (!ShouldSurfaceMobPickupNotice(drop))
+            {
+                return false;
+            }
 
-
-
-            return ShouldSurfaceMobPickupNotice(drop);
-
-
-
+            return IsDropPickupActorAdmissibleForOwnershipWindow(
+                drop,
+                currentTime,
+                actorKind,
+                actorId,
+                _playerManager?.Player?.Build?.Id ?? 0,
+                IsLocalPetRuntimeId,
+                AreDropActorsInSameParty,
+                fallbackOwnerId);
         }
 
 
@@ -24862,6 +24975,87 @@ namespace HaCreator.MapSimulator
 
 
 
+
+        private static bool IsDropPickupActorAdmissibleForOwnershipWindow(
+            DropItem drop,
+            int currentTime,
+            Pools.DropPickupActorKind actorKind,
+            int actorId,
+            int localCharacterId,
+            Func<int, bool> localPetRuntimeIdEvaluator,
+            Func<int, int, bool> partyMembershipEvaluator,
+            int fallbackOwnerId = 0)
+        {
+            if (drop == null || drop.OwnerId <= 0 || currentTime >= drop.OwnerExpireTime || drop.SourceId == 0)
+            {
+                return true;
+            }
+
+            return actorKind switch
+            {
+                Pools.DropPickupActorKind.Player => IsPlayerOwnershipWindowPickupAdmissible(
+                    drop.OwnerId,
+                    drop.OwnershipType,
+                    actorId,
+                    partyMembershipEvaluator),
+                Pools.DropPickupActorKind.Pet => IsPetOwnershipWindowPickupAdmissible(
+                    drop.OwnerId,
+                    drop.OwnershipType,
+                    ResolveDropPickupPetOwnerCharacterId(actorId, localCharacterId, localPetRuntimeIdEvaluator, fallbackOwnerId),
+                    partyMembershipEvaluator),
+                Pools.DropPickupActorKind.Other => fallbackOwnerId <= 0
+                    || IsPlayerOwnershipWindowPickupAdmissible(
+                        drop.OwnerId,
+                        drop.OwnershipType,
+                        fallbackOwnerId,
+                        partyMembershipEvaluator),
+                _ => true
+            };
+        }
+
+        private static bool IsPetOwnershipWindowPickupAdmissible(
+            int ownerId,
+            Pools.DropOwnershipType ownershipType,
+            int petOwnerId,
+            Func<int, int, bool> partyMembershipEvaluator)
+        {
+            if (petOwnerId <= 0)
+            {
+                return true;
+            }
+
+            return ownershipType switch
+            {
+                Pools.DropOwnershipType.Character => petOwnerId == ownerId,
+                Pools.DropOwnershipType.Party => petOwnerId == ownerId
+                    || partyMembershipEvaluator?.Invoke(ownerId, petOwnerId) == true,
+                _ => true
+            };
+        }
+
+        private static int ResolveDropPickupPetOwnerCharacterId(
+            int petId,
+            int localCharacterId,
+            Func<int, bool> localPetRuntimeIdEvaluator,
+            int fallbackOwnerId)
+        {
+            if (petId > 0 && localPetRuntimeIdEvaluator?.Invoke(petId) == true)
+            {
+                return localCharacterId > 0 ? localCharacterId : 0;
+            }
+
+            if (fallbackOwnerId > 0)
+            {
+                return fallbackOwnerId;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(petId, out int ownerCharacterId, out _))
+            {
+                return ownerCharacterId;
+            }
+
+            return 0;
+        }
         private static string ResolveMobPickupSourceName(int mobId)
         {
             string key = mobId.ToString("D7");
@@ -25483,6 +25677,9 @@ namespace HaCreator.MapSimulator
 
             public bool HasSupportedMobSkill =>
                 MobSkillEffects != null && MobSkillEffects.Length > 0;
+
+            public bool HasSupportedScreenMessage =>
+                !string.IsNullOrWhiteSpace(ScreenMessage);
         }
 
 
@@ -25629,7 +25826,8 @@ namespace HaCreator.MapSimulator
             bool supportsCure = effect.HasSupportedCure;
             bool supportsFieldProtection = effect.HasSupportedFieldProtection;
             bool supportsMobSkill = effect.HasSupportedMobSkill;
-            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalCp && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
+            bool supportsScreenMessage = effect.HasSupportedScreenMessage;
+            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalCp && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill && !supportsScreenMessage)
             {
                 return false;
             }
@@ -25694,7 +25892,8 @@ namespace HaCreator.MapSimulator
                 && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
             bool canQueueMovement = TryCanQueueConsumableMapTransfer(targetMapId, showFailureMessage: false);
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalCp || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
+            bool canShowScreenMessage = supportsScreenMessage;
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalCp || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill || canShowScreenMessage;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -26169,6 +26368,11 @@ namespace HaCreator.MapSimulator
         internal static string ResolveConsumableScreenMessageForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
             return ResolveConsumableScreenMessage(specProperty, specExProperty);
+        }
+
+        internal static bool HasSupportedConsumableScreenMessageForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return !string.IsNullOrWhiteSpace(ResolveConsumableScreenMessage(specProperty, specExProperty));
         }
 
         private static string ResolveConsumableScreenMessage(WzSubProperty specProperty, WzSubProperty specExProperty)
@@ -32665,7 +32869,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            ArmPassiveTransferRequest();
+            ArmPassiveTransferRequest(ResolvePassiveTransferFieldQueuedRetryWriterFromHandleUpKeyDown());
         }
 
         private void StopSkillMacroForHandleUpKeyDown()
@@ -32689,11 +32893,18 @@ namespace HaCreator.MapSimulator
         private void ClearPassiveTransferRequest()
         {
             _passiveTransferRequestPending = false;
+            _passiveTransferRequestOwner = PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner.None;
         }
 
-        private void ArmPassiveTransferRequest()
+        private void ArmPassiveTransferRequest(PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner owner)
         {
+            if (owner == PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner.None)
+            {
+                return;
+            }
+
             _passiveTransferRequestPending = true;
+            _passiveTransferRequestOwner = owner;
         }
 
         private void ConsumePassiveTransferRequestFromTransferLifecycle()
@@ -32761,7 +32972,9 @@ namespace HaCreator.MapSimulator
             bool hasCollidingTransferPortal = HasPassiveTransferFieldPortalCollision();
             return PassiveTransferFieldReadinessEvaluator.EvaluateQueuedRetryDecision(
                 new PassiveTransferFieldQueuedRetryDecisionState(
-                    HasPendingRequest: _passiveTransferRequestPending,
+                    HasPendingRequest: PassiveTransferFieldReadinessEvaluator.HasRecognizedQueuedRetryWriter(
+                        _passiveTransferRequestPending,
+                        _passiveTransferRequestOwner),
                     HasOneTimeActionCompleted: !hasActiveOneTimeAction,
                     HasReadyFieldInterface: !hasActiveOneTimeAction
                                             && ResolvePassiveTransferFieldQueuedRetryInterfaceGateState(interfaceGateState),
@@ -32913,6 +33126,15 @@ namespace HaCreator.MapSimulator
         private bool ShouldQueuePassiveTransferFieldRequest()
         {
             return PassiveTransferFieldReadinessEvaluator.ShouldArmQueuedRetryFromHandleUpKeyDown(
+                _passiveTransferRequestPending,
+                HasActivePassiveTransferFieldOneTimeAction(_playerManager?.Player),
+                HasPassiveTransferFieldPortalCollision(),
+                ResolvePassiveTransferFieldRuntimeTransferAllowance());
+        }
+
+        private PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner ResolvePassiveTransferFieldQueuedRetryWriterFromHandleUpKeyDown()
+        {
+            return PassiveTransferFieldReadinessEvaluator.ResolveQueuedRetryWriterFromHandleUpKeyDown(
                 _passiveTransferRequestPending,
                 HasActivePassiveTransferFieldOneTimeAction(_playerManager?.Player),
                 HasPassiveTransferFieldPortalCollision(),
@@ -33400,6 +33622,7 @@ namespace HaCreator.MapSimulator
                     path,
                     flushAdmitted,
                     _portalOwnedMovePathPostFlushCarry,
+                    includeClientRandomCounts,
                     out bool consumedPostFlushCarry);
             if (consumedPostFlushCarry)
             {
@@ -38484,7 +38707,9 @@ namespace HaCreator.MapSimulator
                 int remainingMs = Math.Max(0, _initialQuizTimerRuntime.GetRemainingMs(currentTime));
                 _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
                     StatusBarNoticeOwnerKind.QuizPanel,
-                    OwnerIdentity: _initialQuizTimerRuntime.BoundCharacterId,
+                    OwnerIdentity: _initialQuizTimerRuntime.OwnerIdentity > 0
+                        ? _initialQuizTimerRuntime.OwnerIdentity
+                        : _initialQuizTimerRuntime.BoundCharacterId,
                     OwnerExpiresAtTick: currentTime + remainingMs,
                     OwnerSourceKind: WeatherMessageOwnerSourceKind.Unknown,
                     OwnerSkillId: 0,
@@ -38497,7 +38722,9 @@ namespace HaCreator.MapSimulator
                 int remainingMs = Math.Max(0, _speedQuizOwnerRuntime.GetRemainingMs(currentTime));
                 _statusBarNoticeOwnerBuffer.Add(new SkillCooldownNoticeUI.StatusBarNoticeOwnerState(
                     StatusBarNoticeOwnerKind.QuizPanel,
-                    OwnerIdentity: int.MaxValue,
+                    OwnerIdentity: _speedQuizOwnerRuntime.OwnerIdentity > 0
+                        ? _speedQuizOwnerRuntime.OwnerIdentity
+                        : int.MaxValue,
                     OwnerExpiresAtTick: currentTime + remainingMs,
                     OwnerSourceKind: WeatherMessageOwnerSourceKind.Unknown,
                     OwnerSkillId: 0,

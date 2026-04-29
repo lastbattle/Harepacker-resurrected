@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.Fields
             ResolveDarkLayerBounds,
             ClipViewrangeCopyRectangles,
             SkipViewrangeCopyOutsideDarkLayer,
+            CaptureCurrentSmallDarkPatch,
             PrepareRemoveAlphaViewrangeCopy,
             CopyLocalViewrange,
             EvaluateShareViewRemoteLoop,
@@ -1283,6 +1284,12 @@ namespace HaCreator.MapSimulator.Fields
                     sourceWidth: sourceWidth,
                     sourceHeight: sourceHeight,
                     usesRemoveAlphaCopy: true));
+                Rectangle effectiveDestinationRect = new(
+                    (int)MathF.Round(normalizedTopLeft.X),
+                    (int)MathF.Round(normalizedTopLeft.Y),
+                    sourceWidth,
+                    sourceHeight);
+                Rectangle effectiveSourceRect = new(0, 0, sourceWidth, sourceHeight);
                 if (darkLayerBounds.HasValue)
                 {
                     bool hasClippedCopy = TryResolveClientOwnedViewrangeCopyRectangles(
@@ -1317,21 +1324,49 @@ namespace HaCreator.MapSimulator.Fields
                     {
                         continue;
                     }
+
+                    effectiveDestinationRect = destinationRect;
+                    effectiveSourceRect = sourceRect;
                 }
+
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.CaptureCurrentSmallDarkPatch,
+                    normalizedTopLeft,
+                    i,
+                    sourceX: effectiveSourceRect.X,
+                    sourceY: effectiveSourceRect.Y,
+                    sourceWidth: effectiveSourceRect.Width,
+                    sourceHeight: effectiveSourceRect.Height,
+                    destinationX: effectiveDestinationRect.X,
+                    destinationY: effectiveDestinationRect.Y,
+                    destinationWidth: effectiveDestinationRect.Width,
+                    destinationHeight: effectiveDestinationRect.Height));
 
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy,
                     normalizedTopLeft,
                     i,
-                    sourceWidth: sourceWidth,
-                    sourceHeight: sourceHeight,
+                    sourceX: effectiveSourceRect.X,
+                    sourceY: effectiveSourceRect.Y,
+                    sourceWidth: effectiveSourceRect.Width,
+                    sourceHeight: effectiveSourceRect.Height,
+                    destinationX: effectiveDestinationRect.X,
+                    destinationY: effectiveDestinationRect.Y,
+                    destinationWidth: effectiveDestinationRect.Width,
+                    destinationHeight: effectiveDestinationRect.Height,
                     usesRemoveAlphaCopy: true));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     copyKind,
                     normalizedTopLeft,
                     i,
-                    sourceWidth: sourceWidth,
-                    sourceHeight: sourceHeight,
+                    sourceX: effectiveSourceRect.X,
+                    sourceY: effectiveSourceRect.Y,
+                    sourceWidth: effectiveSourceRect.Width,
+                    sourceHeight: effectiveSourceRect.Height,
+                    destinationX: effectiveDestinationRect.X,
+                    destinationY: effectiveDestinationRect.Y,
+                    destinationWidth: effectiveDestinationRect.Width,
+                    destinationHeight: effectiveDestinationRect.Height,
                     usesRemoveAlphaCopy: true));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory,
@@ -1538,6 +1573,7 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.ResolveDarkLayerBounds:
                     case ClientOwnedDrawViewrangeOperationKind.ClipViewrangeCopyRectangles:
                     case ClientOwnedDrawViewrangeOperationKind.SkipViewrangeCopyOutsideDarkLayer:
+                    case ClientOwnedDrawViewrangeOperationKind.CaptureCurrentSmallDarkPatch:
                     case ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy:
                     case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:

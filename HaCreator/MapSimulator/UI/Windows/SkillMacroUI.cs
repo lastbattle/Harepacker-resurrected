@@ -2352,6 +2352,12 @@ namespace HaCreator.MapSimulator.UI
             ForwardClientOwnedFunctionKeyTransitions(keyboardState);
             ForwardClientOwnedNonFunctionKeyTransitions(keyboardState, ctrl, shift);
 
+            if (TryHandleDeferredImeDownKey(keyboardState, ctrl, shift))
+            {
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
             if (!ctrl && TryHandleImeCandidateKeyboardNavigation(keyboardState))
             {
                 _caretBlinkTick = Environment.TickCount;
@@ -2526,6 +2532,59 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex) == true;
+        }
+
+        private bool TryHandleDeferredImeDownKey(KeyboardState keyboardState, bool controlHeld, bool shiftHeld)
+        {
+            bool imeCompositionActive = _compositionText.Length > 0;
+            bool imeCandidateWindowActive = _candidateListState.HasCandidates;
+            if (!WasNameEditKeyPressed(keyboardState, Keys.Down)
+                || !SkillMacroOwnerKeyHandler.ShouldDeferDownKeyToIme(
+                    Keys.Down,
+                    imeCompositionActive,
+                    imeCandidateWindowActive))
+            {
+                return false;
+            }
+
+            bool imeHandledKeyDown = !controlHeld && TryHandleImeCandidateKeyboardNavigation(keyboardState);
+            if (SkillMacroOwnerKeyHandler.ShouldForwardDeferredDownKeyToParentAfterIme(imeHandledKeyDown))
+            {
+                ForwardDeferredImeDownKeyToParent(
+                    controlHeld,
+                    shiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
+            }
+
+            return true;
+        }
+
+        private void ForwardDeferredImeDownKeyToParent(
+            bool controlHeld,
+            bool shiftHeld,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (OnClientForwardedNonFunctionPhysicalKeyStateChanged == null
+                || _forwardedNonFunctionPhysicalKeys.ContainsKey(Keys.Down))
+            {
+                return;
+            }
+
+            OnClientForwardedNonFunctionPhysicalKeyStateChanged(
+                Keys.Down,
+                true,
+                controlHeld,
+                shiftHeld,
+                imeCompositionActive,
+                imeCandidateWindowActive);
+            _forwardedNonFunctionPhysicalKeys[Keys.Down] = new ForwardedNonFunctionPhysicalKeyState(
+                controlHeld,
+                shiftHeld,
+                imeCompositionActive,
+                imeCandidateWindowActive);
+            _imeSuppressedNonFunctionHotkeyPhysicalKeys.Add(Keys.Down);
         }
 
         private bool WasNameEditKeyPressed(KeyboardState keyboardState, Keys key)

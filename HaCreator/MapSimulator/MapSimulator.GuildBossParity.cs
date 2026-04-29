@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator
         private int? _guildBossOfficialSessionBridgeConfiguredLocalPort;
         private const int GuildBossOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt;
+        private int _nextGuildBossPassiveSessionVerifyAt;
 
         internal static bool HasGuildBossOfficialSessionBridgeOwnership(
             bool isRunning,
@@ -61,6 +62,16 @@ namespace HaCreator.MapSimulator
 
         private bool HoldsGuildBossOfficialSessionBridgeOwnership()
         {
+            if (_guildBossOfficialSessionBridge.HasPassiveEstablishedSocketPair
+                && !_guildBossOfficialSessionBridge.HasConnectedSession
+                && !_guildBossOfficialSessionBridge.TryVerifyPassiveEstablishedSessionIfNeeded(out _))
+            {
+                return HasGuildBossOfficialSessionBridgeOwnership(
+                    _guildBossOfficialSessionBridge.IsRunning,
+                    _guildBossOfficialSessionBridge.HasAttachedClient,
+                    hasPassiveEstablishedSocketPair: false);
+            }
+
             return HasGuildBossOfficialSessionBridgeOwnership(
                 _guildBossOfficialSessionBridge.IsRunning,
                 _guildBossOfficialSessionBridge.HasAttachedClient,
@@ -178,6 +189,15 @@ namespace HaCreator.MapSimulator
 
         private void RefreshGuildBossOfficialSessionBridgeDiscovery(int currentTickCount)
         {
+            if (_guildBossOfficialSessionBridge.HasPassiveEstablishedSocketPair
+                && !_guildBossOfficialSessionBridge.HasConnectedSession
+                && currentTickCount >= _nextGuildBossPassiveSessionVerifyAt)
+            {
+                _nextGuildBossPassiveSessionVerifyAt =
+                    currentTickCount + GuildBossOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+                _guildBossOfficialSessionBridge.TryVerifyPassiveEstablishedSession(out _);
+            }
+
             if (!_guildBossOfficialSessionBridgeEnabled
                 || !_guildBossOfficialSessionBridgeUseDiscovery
                 || _guildBossOfficialSessionBridgeConfiguredRemotePort <= 0

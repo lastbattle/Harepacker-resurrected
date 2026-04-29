@@ -1216,8 +1216,57 @@ namespace HaCreator.MapSimulator
 
         private void ForgetObservedRemotePetPickupOwner(int ownerCharacterId)
         {
+            RetainPredictedRemotePetPickupActorPositionsFromObservedOwner(
+                _observedRemotePetPickupActorPositions,
+                _predictedRemotePetPickupActorPositions,
+                _observedDropPartyActorParents,
+                _observedDropPartyActorOwners,
+                ownerCharacterId);
             RemoveObservedRemotePetPickupOwner(_observedRemotePetPickupActorPositions, ownerCharacterId);
-            RemoveObservedRemotePetPickupOwner(_predictedRemotePetPickupActorPositions, ownerCharacterId);
+        }
+
+        internal static void RetainPredictedRemotePetPickupActorPositionsFromObservedOwner(
+            IReadOnlyDictionary<int, Vector2> observedPetActorPositions,
+            IDictionary<int, Vector2> predictedPetActorPositions,
+            IDictionary<int, int> actorParents,
+            IReadOnlyDictionary<int, int> actorOwners,
+            int ownerCharacterId)
+        {
+            if (observedPetActorPositions == null
+                || predictedPetActorPositions == null
+                || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, Vector2> observedEntry in observedPetActorPositions)
+            {
+                int retainedActorId = 0;
+                if (TryDecodeRemotePetPickupActorId(observedEntry.Key, out int decodedOwnerId, out int decodedSlotIndex)
+                    && decodedOwnerId == ownerCharacterId)
+                {
+                    retainedActorId = BuildRemotePetPickupActorId(
+                        ownerCharacterId,
+                        NormalizeRemotePetPickupSlotIndexForPacketParity(decodedSlotIndex));
+                }
+                else if (TryResolveObservedDropPartyLinkedOwnerAlias(
+                        actorParents,
+                        actorOwners,
+                        observedEntry.Key,
+                        out int linkedOwnerCharacterId,
+                        out int linkedSlotIndex)
+                    && linkedOwnerCharacterId == ownerCharacterId)
+                {
+                    retainedActorId = BuildRemotePetPickupActorId(
+                        ownerCharacterId,
+                        NormalizeRemotePetPickupSlotIndexForPacketParity(linkedSlotIndex));
+                }
+
+                if (retainedActorId != 0)
+                {
+                    predictedPetActorPositions[retainedActorId] = observedEntry.Value;
+                }
+            }
         }
 
         internal static void RemoveObservedDropPartyActor(

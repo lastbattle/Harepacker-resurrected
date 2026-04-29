@@ -681,6 +681,18 @@ namespace HaCreator.MapSimulator.UI
                 clientLParam,
                 IsControlKeyDown(),
                 IsShiftKeyDown());
+            if (ShouldTreatClientEncodedKeyDownAsKeyUp(msg == WmKeyDown, clientLParam))
+            {
+                bool wasClientOwnedKeyDown = _clientOwnedKeyDowns.Remove(virtualKey);
+                if (ShouldForwardClientOwnedKeyUpToParent(virtualKey, wasClientOwnedKeyDown))
+                {
+                    ForwardKeyToParent(WmKeyUp, wParam, lParam);
+                }
+
+                UpdateImePlacement();
+                return IntPtr.Zero;
+            }
+
             bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(
                 virtualKey,
                 controlHeld,
@@ -1073,6 +1085,17 @@ namespace HaCreator.MapSimulator.UI
         internal static bool IsClientEncodedKeyUp(int clientLParam)
         {
             return clientLParam < 0;
+        }
+
+        internal static bool ShouldTreatClientEncodedKeyDownAsKeyUp(bool isKeyDownMessage, int clientLParam)
+        {
+            // The recovered `CCtrlEdit::OnKey` receives key-up as a signed lParam
+            // bit, not as a separate Win32 message. When a parent bridge feeds that
+            // exact encoded shape through the hosted EDIT seam, keep it on the
+            // key-up branch instead of executing key-down edit behavior.
+            return isKeyDownMessage
+                && IsClientEncodedOnKeyLParam(clientLParam)
+                && IsClientEncodedKeyUp(clientLParam);
         }
 
         internal static bool IsClientEncodedOnKeyLParam(int clientLParam)

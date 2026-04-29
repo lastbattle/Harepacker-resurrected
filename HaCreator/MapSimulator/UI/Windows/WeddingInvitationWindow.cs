@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly GraphicsDevice _device;
         private readonly Texture2D _pixel;
         private readonly IReadOnlyDictionary<WeddingInvitationStyle, Texture2D> _backgrounds;
+        private readonly IReadOnlyDictionary<int, Texture2D> _clientDialogBackgrounds;
 
         private SpriteFont _font;
         private UIObject _acceptButton;
@@ -43,10 +44,12 @@ namespace HaCreator.MapSimulator.UI
 
         internal WeddingInvitationWindow(
             IReadOnlyDictionary<WeddingInvitationStyle, Texture2D> backgrounds,
+            IReadOnlyDictionary<int, Texture2D> clientDialogBackgrounds,
             GraphicsDevice device)
             : base(new DXObject(0, 0, CreateFrameTexture(device, backgrounds), 0))
         {
             _backgrounds = backgrounds ?? throw new ArgumentNullException(nameof(backgrounds));
+            _clientDialogBackgrounds = clientDialogBackgrounds ?? new Dictionary<int, Texture2D>();
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _pixel = CreateFilledTexture(device, 1, 1, new Color(245, 233, 220));
         }
@@ -119,7 +122,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            DrawBackground(sprite, _lastSnapshot.Style);
+            DrawBackground(sprite, _lastSnapshot);
             if (!CanDrawNames())
             {
                 return;
@@ -144,9 +147,17 @@ namespace HaCreator.MapSimulator.UI
             _acceptButton.ButtonVisible = snapshot.IsOpen;
         }
 
-        private void DrawBackground(SpriteBatch sprite, WeddingInvitationStyle style)
+        private void DrawBackground(SpriteBatch sprite, WeddingInvitationSnapshot snapshot)
         {
-            if (_backgrounds.TryGetValue(style, out Texture2D background) && background != null)
+            if (snapshot.UseClientDialogInvitationSurface
+                && _clientDialogBackgrounds.TryGetValue(snapshot.ClientDialogType, out Texture2D dialogBackground)
+                && dialogBackground != null)
+            {
+                sprite.Draw(dialogBackground, new Rectangle(Position.X, Position.Y, dialogBackground.Width, dialogBackground.Height), Color.White);
+                return;
+            }
+
+            if (_backgrounds.TryGetValue(snapshot.Style, out Texture2D background) && background != null)
             {
                 sprite.Draw(background, new Rectangle(Position.X, Position.Y, background.Width, background.Height), Color.White);
                 return;

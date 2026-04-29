@@ -260,10 +260,12 @@ namespace HaCreator.MapSimulator.Managers
                     : (_observedMessengerInboundSubtypes.Count == 0
                         ? "observed subtypes=none"
                         : $"observed subtypes={string.Join("/", _observedMessengerInboundSubtypes.OrderBy(code => code))}");
+                string recoveredCoverage = DescribeRecoveredInboundCoverage();
+                string ownerBranchCoverage = DescribeOwnerBranchCoverage();
                 string passiveEvidence = DescribePassiveInboundEvidence();
                 string outboundSamples = DescribeObservedOutboundSamples();
                 string inboundSamples = DescribeObservedInboundSamples();
-                return $"{_ownerName} recovered-table verification: observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; outbound samples {outboundSamples}; inbound samples {inboundSamples}; passive {passiveEvidence}.";
+                return $"{_ownerName} recovered-table verification: {recoveredCoverage}; observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; {ownerBranchCoverage}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; outbound samples {outboundSamples}; inbound samples {inboundSamples}; passive {passiveEvidence}.";
             }
         }
 
@@ -1115,6 +1117,80 @@ namespace HaCreator.MapSimulator.Managers
                             : string.Empty;
                         return $"opcode {entry.Key} hits={entry.Value} {branchEvidence}{sample}";
                     }));
+        }
+
+        private string DescribeRecoveredInboundCoverage()
+        {
+            ushort[] recoveredOpcodes = PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes(_ownerName)
+                .Where(opcode => opcode > 0)
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray();
+            if (recoveredOpcodes.Length == 0)
+            {
+                return "recovered inbound opcode coverage unavailable";
+            }
+
+            ushort[] observedRecoveredOpcodes = _observedInboundOpcodes
+                .Where(opcode => recoveredOpcodes.Contains(opcode))
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray();
+            ushort[] missingOpcodes = recoveredOpcodes
+                .Where(opcode => !observedRecoveredOpcodes.Contains(opcode))
+                .ToArray();
+            string observed = observedRecoveredOpcodes.Length == 0
+                ? "none"
+                : string.Join("/", observedRecoveredOpcodes);
+            string missing = missingOpcodes.Length == 0
+                ? "none"
+                : string.Join("/", missingOpcodes);
+            return $"recovered inbound opcode coverage observed={observed} missing={missing}";
+        }
+
+        private string DescribeOwnerBranchCoverage()
+        {
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] missingBranches = new[]
+                    {
+                        PacketOwnedSocialUtilityPacketTable.MapleTvInboundSetMessageOpcode,
+                        PacketOwnedSocialUtilityPacketTable.MapleTvInboundClearMessageOpcode,
+                        PacketOwnedSocialUtilityPacketTable.MapleTvInboundSendResultOpcode
+                    }
+                    .Where(opcode => !_observedInboundOpcodes.Contains(opcode))
+                    .Select(opcode => opcode switch
+                    {
+                        PacketOwnedSocialUtilityPacketTable.MapleTvInboundSetMessageOpcode => "OnSetMessage(405)",
+                        PacketOwnedSocialUtilityPacketTable.MapleTvInboundClearMessageOpcode => "OnClearMessage(406)",
+                        PacketOwnedSocialUtilityPacketTable.MapleTvInboundSendResultOpcode => "OnSendMessageResult(407)",
+                        _ => opcode.ToString()
+                    })
+                    .ToArray();
+                string resultCodes = _observedMapleTvSendResultCodes.Count == 0
+                    ? "none"
+                    : string.Join("/", _observedMapleTvSendResultCodes.OrderBy(code => code));
+                return $"MapleTV branch coverage missing={(missingBranches.Length == 0 ? "none" : string.Join("/", missingBranches))}; send-result codes={resultCodes}";
+            }
+
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
+            {
+                byte[] recoveredSubtypes = PacketOwnedSocialUtilityPacketTable.GetRecoveredMessengerInboundSubtypes()
+                    .OrderBy(subtype => subtype)
+                    .ToArray();
+                byte[] missingSubtypes = recoveredSubtypes
+                    .Where(subtype => !_observedMessengerInboundSubtypes.Contains(subtype))
+                    .ToArray();
+                string observed = _observedMessengerInboundSubtypes.Count == 0
+                    ? "none"
+                    : string.Join("/", _observedMessengerInboundSubtypes.OrderBy(subtype => subtype));
+                string missing = missingSubtypes.Length == 0
+                    ? "none"
+                    : string.Join("/", missingSubtypes);
+                return $"Messenger subtype coverage observed={observed} missing={missing}";
+            }
+
+            return "owner branch coverage not modeled";
         }
 
         private string DescribeObservedOutboundSamples()

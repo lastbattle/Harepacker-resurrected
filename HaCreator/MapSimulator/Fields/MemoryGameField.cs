@@ -1939,6 +1939,8 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             bool hadOpponentLayers = HasClientOpponentSeat();
+            int promptLayerReleaseCount = _clientPromptLayerReleaseCount;
+            int promptResponseSubtype = _lastClientPromptResponseSubtype;
             if (!TryResolveLobbyExit(_localPlayerIndex, out message))
             {
                 return false;
@@ -1949,6 +1951,13 @@ namespace HaCreator.MapSimulator.Fields
                 _clientOpponentLayersMaterialized = false;
                 _clientReadyLayerReleaseCount++;
                 _clientScoreLayerReleaseCount++;
+            }
+
+            if (promptLayerReleaseCount > 0)
+            {
+                _clientPromptLayerMaterialized = false;
+                _clientPromptLayerReleaseCount = promptLayerReleaseCount;
+                _lastClientPromptResponseSubtype = promptResponseSubtype;
             }
 
             _lastClientDialogUpdateArgument = ClientDialogLeaveUpdateArgument;

@@ -48,5 +48,15 @@ namespace HaCreator.MapSimulator.UI
 
             return AdminShopPacketOwnedResultGateAction.DisconnectNoPendingRequest;
         }
+
+        internal static bool ShouldCaptureWishlistSearchSnapshot(
+            bool hasPendingTradeRequest,
+            bool hasPendingWishlistRegister,
+            bool hasPendingWishlistSearch)
+        {
+            return !hasPendingTradeRequest
+                && !hasPendingWishlistRegister
+                && hasPendingWishlistSearch;
+        }
     }
 }

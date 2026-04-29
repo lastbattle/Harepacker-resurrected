@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal byte BalloonByte0 { get; set; }
         internal byte BalloonByte1 { get; set; }
         internal byte BalloonByte2 { get; set; }
+        internal bool HasBalloonByte2 { get; set; }
         internal bool IsVisible => (Flags & SocialRoomEmployeePoolFlags.EnteredField) != 0;
 
         internal SocialRoomEmployeePoolEntrySnapshot ToSnapshot()
@@ -53,7 +54,8 @@ namespace HaCreator.MapSimulator.Interaction
                 BalloonTitle = BalloonTitle,
                 BalloonByte0 = BalloonByte0,
                 BalloonByte1 = BalloonByte1,
-                BalloonByte2 = BalloonByte2
+                BalloonByte2 = BalloonByte2,
+                HasBalloonByte2 = HasBalloonByte2
             };
         }
     }
@@ -79,7 +81,8 @@ namespace HaCreator.MapSimulator.Interaction
             string BalloonTitle,
             byte BalloonByte0,
             byte BalloonByte1,
-            byte BalloonByte2);
+            byte BalloonByte2,
+            bool HasBalloonByte2);
 
         internal readonly record struct LeaveFieldPacket(int EmployerId);
         internal readonly record struct MiniRoomBalloonPacket(
@@ -89,7 +92,8 @@ namespace HaCreator.MapSimulator.Interaction
             string BalloonTitle,
             byte BalloonByte0,
             byte BalloonByte1,
-            byte BalloonByte2);
+            byte BalloonByte2,
+            bool HasBalloonByte2);
 
         internal static bool TryDecodeEmployerId(byte[] packetBytes, out int employerId, out string error)
         {
@@ -139,13 +143,18 @@ namespace HaCreator.MapSimulator.Interaction
                 byte balloonByte0 = 0;
                 byte balloonByte1 = 0;
                 byte balloonByte2 = 0;
+                bool hasBalloonByte2 = false;
                 if (miniRoomType != 0)
                 {
                     miniRoomSerial = reader.ReadInt();
                     balloonTitle = NormalizePacketText(reader.ReadMapleString());
                     balloonByte0 = reader.ReadByte();
                     balloonByte1 = reader.ReadByte();
-                    balloonByte2 = reader.ReadByte();
+                    if (reader.Remaining > 0)
+                    {
+                        balloonByte2 = reader.ReadByte();
+                        hasBalloonByte2 = true;
+                    }
                 }
 
                 packet = new EnterFieldPacket(
@@ -160,7 +169,8 @@ namespace HaCreator.MapSimulator.Interaction
                     balloonTitle,
                     balloonByte0,
                     balloonByte1,
-                    balloonByte2);
+                    balloonByte2,
+                    hasBalloonByte2);
                 return true;
             }
             catch (EndOfStreamException)
@@ -203,13 +213,18 @@ namespace HaCreator.MapSimulator.Interaction
                 byte balloonByte0 = 0;
                 byte balloonByte1 = 0;
                 byte balloonByte2 = 0;
+                bool hasBalloonByte2 = false;
                 if (miniRoomType != 0)
                 {
                     miniRoomSerial = reader.ReadInt();
                     balloonTitle = NormalizePacketText(reader.ReadMapleString());
                     balloonByte0 = reader.ReadByte();
                     balloonByte1 = reader.ReadByte();
-                    balloonByte2 = reader.ReadByte();
+                    if (reader.Remaining > 0)
+                    {
+                        balloonByte2 = reader.ReadByte();
+                        hasBalloonByte2 = true;
+                    }
                 }
 
                 packet = new MiniRoomBalloonPacket(
@@ -219,7 +234,8 @@ namespace HaCreator.MapSimulator.Interaction
                     balloonTitle,
                     balloonByte0,
                     balloonByte1,
-                    balloonByte2);
+                    balloonByte2,
+                    hasBalloonByte2);
                 return true;
             }
             catch (EndOfStreamException)
@@ -327,7 +343,8 @@ namespace HaCreator.MapSimulator.Interaction
                         BalloonTitle = snapshot.BalloonTitle ?? string.Empty,
                         BalloonByte0 = snapshot.BalloonByte0,
                         BalloonByte1 = snapshot.BalloonByte1,
-                        BalloonByte2 = snapshot.BalloonByte2
+                        BalloonByte2 = snapshot.BalloonByte2,
+                        HasBalloonByte2 = snapshot.HasBalloonByte2
                     };
                     _entries[employerId] = state;
                     if (restoredPreferredEmployerId <= 0)
@@ -551,6 +568,7 @@ namespace HaCreator.MapSimulator.Interaction
             state.BalloonByte0 = packet.BalloonByte0;
             state.BalloonByte1 = packet.BalloonByte1;
             state.BalloonByte2 = packet.BalloonByte2;
+            state.HasBalloonByte2 = packet.HasBalloonByte2;
         }
 
         internal bool TryApplyLeaveField(byte[] packetBytes, out string message)
@@ -602,6 +620,7 @@ namespace HaCreator.MapSimulator.Interaction
             state.BalloonByte0 = packet.BalloonByte0;
             state.BalloonByte1 = packet.BalloonByte1;
             state.BalloonByte2 = packet.BalloonByte2;
+            state.HasBalloonByte2 = packet.HasBalloonByte2;
             _lastTouchedEmployerId = packet.EmployerId;
             string displayBalloon = string.IsNullOrWhiteSpace(state.BalloonTitle) ? "cleared" : state.BalloonTitle;
             message =

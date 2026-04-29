@@ -11,6 +11,8 @@ namespace HaCreator.MapSimulator
 
     internal sealed class MobSkillRuntimeData
     {
+        public int SourceSkillId { get; init; }
+        public int SourceSkillLevel { get; init; }
         public int X { get; init; }
         public int Y { get; init; }
         public int Hp { get; init; }

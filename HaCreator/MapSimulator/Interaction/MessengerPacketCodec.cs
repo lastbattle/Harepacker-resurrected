@@ -48,6 +48,10 @@ namespace HaCreator.MapSimulator.Interaction
         string ChatLog,
         bool IncludesChatLog);
 
+    internal readonly record struct MessengerClaimResultPacket(
+        bool Succeeded,
+        string ResultText);
+
     internal readonly record struct MessengerClientBlockedAutoRejectPacket(
         string InviterName,
         string LocalCharacterName,
@@ -196,6 +200,14 @@ namespace HaCreator.MapSimulator.Interaction
                 writer.WriteMapleString(NormalizeText(chatLog));
             }
 
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildClaimResultPayload(bool succeeded, string resultText = null)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(succeeded ? (byte)1 : (byte)0);
+            writer.WriteMapleString(NormalizeText(resultText));
             return writer.ToArray();
         }
 
@@ -928,6 +940,26 @@ namespace HaCreator.MapSimulator.Interaction
             catch (Exception ex)
             {
                 error = $"Messenger claim request payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryParseClaimResult(ReadOnlySpan<byte> payload, out MessengerClaimResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                bool succeeded = reader.ReadByte() != 0;
+                string resultText = reader.HasRemaining ? reader.ReadMapleString().Trim() : string.Empty;
+                packet = new MessengerClaimResultPacket(succeeded, resultText);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger claim-result payload could not be decoded: {ex.Message}";
                 return false;
             }
         }

@@ -142,6 +142,11 @@ namespace HaCreator.MapSimulator.UI
                     key,
                     imeCompositionActive,
                     imeCandidateWindowActive);
+            if (ShouldDeferDownKeyToIme(key, imeCompositionActive, imeCandidateWindowActive))
+            {
+                return false;
+            }
+
             if (suppressImeOwnedForwarding
                 && !ShouldForwardImeNavigationKeyToParent(key))
             {
@@ -187,6 +192,22 @@ namespace HaCreator.MapSimulator.UI
             return !controlHeld;
         }
 
+        internal static bool ShouldDeferDownKeyToIme(
+            Keys key,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            // `CCtrlEdit::OnKey` routes VK_DOWN through the IME candidate owner
+            // before falling through to the parent callback.
+            return key == Keys.Down && (imeCompositionActive || imeCandidateWindowActive);
+        }
+
+        internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)
+        {
+            _ = imeOwnedInputStateAfterKeyDown;
+            return true;
+        }
+
         internal static bool ShouldHandleClipboardPasteCommand(Keys key, bool controlHeld, bool shiftHeld)
         {
             return key == Keys.V && controlHeld
@@ -207,8 +228,9 @@ namespace HaCreator.MapSimulator.UI
         private static bool ShouldForwardImeNavigationKeyToParent(Keys key)
         {
             // `CCtrlEdit::OnKey` still forwards cursor-navigation arrows to the parent
-            // owner path while IME candidate ownership is active.
-            return key is Keys.Left or Keys.Right or Keys.Up or Keys.Down;
+            // owner path while IME candidate ownership is active. VK_DOWN is deferred
+            // through the IME owner first by ShouldDeferDownKeyToIme.
+            return key is Keys.Left or Keys.Right or Keys.Up;
         }
     }
 }

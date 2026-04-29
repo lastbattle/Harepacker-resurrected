@@ -1238,6 +1238,11 @@ namespace HaCreator.MapSimulator.Pools
             state.OneTimeAction = normalizedAction;
             state.OneTimeActionOwnedBySkillPacket = isSkillAction;
             state.OneTimeActionEndTime = currentTime + duration;
+            state.OneTimeActionClip = CreatePacketOwnedOneTimeActionClip(
+                actionAnimation,
+                animationTime: 0,
+                currentTime: currentTime,
+                minimumDurationMs: 0);
             state.Summon.OneTimeActionFallbackAnimation = actionAnimation;
             state.Summon.OneTimeActionFallbackActionCode = normalizedAction;
             state.Summon.OneTimeActionFallbackStartTime = currentTime;
@@ -2673,21 +2678,24 @@ namespace HaCreator.MapSimulator.Pools
                 ?? 1);
         }
 
-        private static int ResolveOneTimeActionFallbackDurationMs(SkillAnimation animation, int animationTime)
+        private static int ResolveOneTimeActionFallbackDurationMs(
+            SkillAnimation animation,
+            int animationTime,
+            int minimumDurationMs = 240)
         {
             if (animation?.Frames.Count <= 0)
             {
-                return 240;
+                return Math.Max(0, minimumDurationMs);
             }
 
             int totalDuration = GetSkillAnimationDuration(animation) ?? 0;
             if (totalDuration <= 0)
             {
-                return 240;
+                return Math.Max(0, minimumDurationMs);
             }
 
             int remainingDuration = Math.Max(0, totalDuration - Math.Max(0, animationTime));
-            return Math.Max(240, remainingDuration);
+            return Math.Max(Math.Max(0, minimumDurationMs), remainingDuration);
         }
 
         private int ClearPacketOwnedMobAttackHitEffects(int summonObjectId)
@@ -3961,6 +3969,7 @@ namespace HaCreator.MapSimulator.Pools
                         || orderedTargetIds.Count >= maxTargets
                         || orderedTargetIds.Contains(preferredTargetMobId)
                         || !candidatesById.TryGetValue(preferredTargetMobId, out PacketOwnedExpiryTargetCandidate preferredCandidate)
+                        || !IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(preferredCandidate)
                         || !IsCandidateInEitherPacketOwnedSummonAttackRange(summon, preferredCandidate))
                     {
                         continue;
@@ -6694,7 +6703,27 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            string[] preferredPropertyNames = { "source", "path", "sHit", "hit", "effect", "uol" };
+            string[] preferredPropertyNames =
+            {
+                "source",
+                "path",
+                "sHit",
+                "hit",
+                "effect",
+                "uol",
+                "hitUol",
+                "hitUOL",
+                "hitUolPath",
+                "hitUOLPath",
+                "sHitUol",
+                "sHitUOL",
+                "sHitUolPath",
+                "sHitUOLPath",
+                "mobAttackInfoHit",
+                "mobAttackInfoHitPath",
+                "mobAttackInfoSHit",
+                "mobAttackInfoSHitPath"
+            };
             for (int i = 0; i < preferredPropertyNames.Length; i++)
             {
                 WzImageProperty candidate = WzInfoTools.GetRealProperty(property[preferredPropertyNames[i]]);
@@ -10198,6 +10227,7 @@ namespace HaCreator.MapSimulator.Pools
             DrawSummonFrame(spriteBatch, summon, frame, mapShiftX, mapShiftY, centerX, centerY, frameAlpha);
 
             if (state.OneTimeActionClip is PacketOwnedOneTimeActionClip actionClip
+                && !ReferenceEquals(actionClip.Animation, summon.OneTimeActionFallbackAnimation)
                 && TryResolvePacketOwnedOneTimeActionPlayback(actionClip, currentTime, out int actionAnimationTime))
             {
                 SkillFrame actionFrame = null;
@@ -10488,7 +10518,11 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        internal static PacketOwnedOneTimeActionClip? CreatePacketOwnedOneTimeActionClip(SkillAnimation animation, int animationTime, int currentTime)
+        internal static PacketOwnedOneTimeActionClip? CreatePacketOwnedOneTimeActionClip(
+            SkillAnimation animation,
+            int animationTime,
+            int currentTime,
+            int minimumDurationMs = 240)
         {
             if (animation?.Frames.Count <= 0)
             {
@@ -10496,7 +10530,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int normalizedAnimationTime = Math.Max(0, animationTime);
-            int duration = ResolveOneTimeActionFallbackDurationMs(animation, normalizedAnimationTime);
+            int duration = ResolveOneTimeActionFallbackDurationMs(
+                animation,
+                normalizedAnimationTime,
+                minimumDurationMs);
             return new PacketOwnedOneTimeActionClip(
                 animation,
                 normalizedAnimationTime,

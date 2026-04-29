@@ -1059,7 +1059,7 @@ namespace HaCreator.MapSimulator
 
             if (pastePressed)
             {
-                string clipboardText = TryGetClipboardText();
+                string clipboardText = NormalizeClientEditCommittedText(TryGetClipboardText());
                 if (!string.IsNullOrEmpty(clipboardText) && CanInsertInputText(clipboardText))
                 {
                     ActivateWhisperTargetPickerModalComboFocus();

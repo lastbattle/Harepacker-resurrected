@@ -650,45 +650,92 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
+            string currentDirectoryPath = HaCreator.Program.DataSource?.VersionInfo?.DirectoryPath;
+            string preferredDirectoryPath = AccountMoreInfoOwnerStringPoolText.GetPreferredAccountMoreInfoDataSourceDirectory();
+            if (ShouldTryPreferredCountryNameDataSourceBeforeActive(preferredDirectoryPath, currentDirectoryPath)
+                && TryPopulateCountryNameCatalogFromDirectory(preferredDirectoryPath, areaGroups, areaDetails, areaDetailItemParams))
+            {
+                AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(preferredDirectoryPath);
+                return;
+            }
+
             WzImage countryNameImage = HaCreator.Program.FindImage("Etc", "CountryName.img");
             if (TryPopulateCountryNameCatalogFromImage(countryNameImage, areaGroups, areaDetails, areaDetailItemParams))
             {
                 return;
             }
 
-            string currentDirectoryPath = HaCreator.Program.DataSource?.VersionInfo?.DirectoryPath;
             if (!string.IsNullOrWhiteSpace(currentDirectoryPath)
-                && TryPopulateCountryNameCatalogFromImage(countryNameImage, areaGroups, areaDetails, areaDetailItemParams))
+                && TryPopulateCountryNameCatalogFromDirectory(currentDirectoryPath, areaGroups, areaDetails, areaDetailItemParams))
             {
                 AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(currentDirectoryPath);
                 return;
             }
 
-            if (TryPopulateCountryNameCatalogFromImage(countryNameImage, areaGroups, areaDetails, areaDetailItemParams))
-            {
-                return;
-            }
-
-            string preferredDirectoryPath = AccountMoreInfoOwnerStringPoolText.GetPreferredAccountMoreInfoDataSourceDirectory();
             IReadOnlyList<string> fallbackDirectories = PrioritizePreferredDataSourceDirectory(
                 preferredDirectoryPath,
                 EnumerateFallbackCountryNameDataSourceDirectories(currentDirectoryPath));
             foreach (string candidateDirectory in fallbackDirectories)
             {
-                try
+                if (TryPopulateCountryNameCatalogFromDirectory(candidateDirectory, areaGroups, areaDetails, areaDetailItemParams))
                 {
-                    using ImgFileSystemDataSource fallbackDataSource = new(candidateDirectory);
-                    WzImage fallbackImage = fallbackDataSource.GetImage("Etc", "CountryName.img");
-                    if (TryPopulateCountryNameCatalogFromImage(fallbackImage, areaGroups, areaDetails, areaDetailItemParams))
-                    {
-                        AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(candidateDirectory);
-                        return;
-                    }
+                    AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(candidateDirectory);
+                    return;
                 }
-                catch
+            }
+        }
+
+        internal static bool ShouldTryPreferredCountryNameDataSourceBeforeActive(
+            string preferredDirectoryPath,
+            string currentDirectoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(preferredDirectoryPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                string preferredFullPath = Path.GetFullPath(preferredDirectoryPath);
+                if (!Directory.Exists(preferredFullPath)
+                    || !File.Exists(Path.Combine(preferredFullPath, CountryNameRootPath.Replace('/', Path.DirectorySeparatorChar))))
                 {
-                    // Ignore malformed or incompatible sibling data sources and keep searching.
+                    return false;
                 }
+
+                return string.IsNullOrWhiteSpace(currentDirectoryPath)
+                    || !string.Equals(
+                        preferredFullPath,
+                        Path.GetFullPath(currentDirectoryPath),
+                        StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryPopulateCountryNameCatalogFromDirectory(
+            string directoryPath,
+            IDictionary<int, string> areaGroups,
+            IDictionary<int, IReadOnlyDictionary<int, string>> areaDetails,
+            IDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (string.IsNullOrWhiteSpace(directoryPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                using ImgFileSystemDataSource dataSource = new(directoryPath);
+                WzImage image = dataSource.GetImage("Etc", "CountryName.img");
+                return TryPopulateCountryNameCatalogFromImage(image, areaGroups, areaDetails, areaDetailItemParams);
+            }
+            catch
+            {
+                // Ignore malformed or incompatible data sources and keep searching.
+                return false;
             }
         }
 

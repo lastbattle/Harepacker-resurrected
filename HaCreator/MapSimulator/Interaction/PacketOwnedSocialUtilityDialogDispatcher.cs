@@ -735,10 +735,19 @@ namespace HaCreator.MapSimulator.Interaction
             if (entry?.HasItemAttachment == true)
             {
                 noticeBuilder.Append(PacketOwnedSocialUtilityStringPoolText.ResolveParcelArrivalItemNotice(
-                    ResolveArrivalItemName(entry.AttachmentItemId)));
+                    ResolveArrivalItemSummary(entry.AttachmentItemId, entry.AttachmentQuantity)));
             }
 
             return noticeBuilder.ToString();
+        }
+
+        private static string ResolveArrivalItemSummary(int itemId, int quantity)
+        {
+            string itemName = ResolveArrivalItemName(itemId);
+            int normalizedQuantity = Math.Max(1, quantity);
+            return normalizedQuantity > 1
+                ? $"{itemName} x{normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"
+                : itemName;
         }
 
         private static string ResolveArrivalItemName(int itemId)

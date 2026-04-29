@@ -912,6 +912,13 @@ namespace HaCreator.MapSimulator
                     }
                     return;
 
+                case PacketOwnedBalloonFontControlKind.FontColor:
+                    if (TryResolvePacketOwnedBalloonFontColorStyle(value, style, out PacketOwnedBalloonTextStyle fontColorStyle))
+                    {
+                        style = fontColorStyle;
+                    }
+                    return;
+
                 default:
                     return;
             }
@@ -1026,6 +1033,87 @@ namespace HaCreator.MapSimulator
             resolvedColorArgb = unchecked((int)style.Color.PackedValue);
             emphasis = style.Emphasis;
             return applied;
+        }
+
+        internal static bool TryResolvePacketOwnedBalloonFontColorStyleForTests(
+            string value,
+            int currentColorArgb,
+            out int resolvedColorArgb)
+        {
+            resolvedColorArgb = 0;
+            PacketOwnedBalloonTextStyle currentStyle = new(new Color(unchecked((uint)currentColorArgb)), false, 1f, false, Color.Transparent);
+            if (!TryResolvePacketOwnedBalloonFontColorStyle(value, currentStyle, out PacketOwnedBalloonTextStyle style))
+            {
+                return false;
+            }
+
+            resolvedColorArgb = unchecked((int)style.Color.PackedValue);
+            return true;
+        }
+
+        private static bool TryResolvePacketOwnedBalloonFontColorStyle(
+            string value,
+            PacketOwnedBalloonTextStyle currentStyle,
+            out PacketOwnedBalloonTextStyle style)
+        {
+            style = currentStyle;
+            if (!TryDecodePacketOwnedBalloonFontColor(value, out Color color))
+            {
+                return false;
+            }
+
+            style = currentStyle with { Color = color };
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedBalloonFontColor(string value, out Color color)
+        {
+            color = Color.Transparent;
+            string normalized = value?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[2..];
+            }
+
+            if (normalized.Length == 6
+                && int.TryParse(normalized, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int rgb))
+            {
+                color = new Color(
+                    (byte)((rgb >> 16) & 0xFF),
+                    (byte)((rgb >> 8) & 0xFF),
+                    (byte)(rgb & 0xFF),
+                    byte.MaxValue);
+                return true;
+            }
+
+            if (normalized.Length == 8
+                && int.TryParse(normalized, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int argb))
+            {
+                color = ResolvePacketOwnedBalloonArgbColor(argb);
+                return true;
+            }
+
+            if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out int styleCode))
+            {
+                color = ResolvePacketOwnedBalloonArgbColor(styleCode);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static Color ResolvePacketOwnedBalloonArgbColor(int styleCode)
+        {
+            byte a = (byte)((styleCode >> 24) & 0xFF);
+            byte r = (byte)((styleCode >> 16) & 0xFF);
+            byte g = (byte)((styleCode >> 8) & 0xFF);
+            byte b = (byte)(styleCode & 0xFF);
+            return new Color(r, g, b, a == 0 ? byte.MaxValue : a);
         }
 
         private static bool TryResolvePacketOwnedBalloonFontNameStyle(
@@ -3951,6 +4039,15 @@ namespace HaCreator.MapSimulator
                 case LocalOverlayPacketInboxManager.BalloonMsgClientPacketType:
                     return TryApplyPacketOwnedBalloonPayload(payload, out message);
 
+                case LocalOverlayPacketInboxManager.NotifyHpDecByFieldClientPacketType:
+                    return TryApplyPacketOwnedFieldHazardPayload(payload, out message);
+
+                case LocalOverlayPacketInboxManager.DamageMeterClientPacketType:
+                    return TryApplyPacketOwnedDamageMeterPayload(payload, out message);
+
+                case LocalOverlayPacketInboxManager.PetConsumeResultPacketType:
+                    return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
+
                 default:
                     message = $"Unsupported local overlay packet type {packetType}.";
                     return false;
@@ -4044,7 +4141,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                    "Usage: /localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]");
+                    "Usage: /localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|hpdec|damagemeter|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]");
             }
         }
 
@@ -4079,7 +4176,7 @@ namespace HaCreator.MapSimulator
                     rawHex: string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase));
             }
 
-            return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+            return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|hpdec|damagemeter|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayPacketCommand(string[] args, bool rawHex)
@@ -4094,7 +4191,7 @@ namespace HaCreator.MapSimulator
 
             if (!LocalOverlayPacketInboxManager.TryParsePacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Local overlay packet type must be fade, fadeoutforce, balloon, 240, 241, or 245.");
+                return ChatCommandHandler.CommandResult.Error("Local overlay packet type must be fade, fadeoutforce, balloon, hpdec, damagemeter, hazardresult, 240, 241, 243, 245, 267, or 1026.");
             }
 
             byte[] payload = Array.Empty<byte>();

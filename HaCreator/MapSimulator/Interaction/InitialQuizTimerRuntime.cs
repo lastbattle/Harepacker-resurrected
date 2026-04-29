@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastObservedRuntimeCharacterId;
         private int _ownerExpiresAtTick;
         private int _contextExpiresAtTick;
+        private int _ownerIdentity;
+        private int _nextOwnerIdentity = 1;
         private string _title = string.Empty;
         private string _problemText = string.Empty;
         private string _hintText = string.Empty;
@@ -24,6 +26,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal int BoundCharacterId => _boundCharacterId;
         internal int LastObservedRuntimeCharacterId => _lastObservedRuntimeCharacterId;
+        internal int OwnerIdentity => _ownerIdentity;
 
         internal bool IsActive(int currentTickCount)
         {
@@ -96,6 +99,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastObservedRuntimeCharacterId = 0;
             _ownerExpiresAtTick = 0;
             _contextExpiresAtTick = 0;
+            _ownerIdentity = 0;
             _title = string.Empty;
             _problemText = string.Empty;
             _hintText = string.Empty;
@@ -114,6 +118,11 @@ namespace HaCreator.MapSimulator.Interaction
             int runtimeCharacterId)
         {
             BindRuntimeCharacter(runtimeCharacterId);
+            if (!HasCreatedOwner() || _ownerIdentity <= 0)
+            {
+                _ownerIdentity = AllocateOwnerIdentity();
+            }
+
             _title = title ?? string.Empty;
             _problemText = problemText ?? string.Empty;
             _hintText = hintText ?? string.Empty;
@@ -291,6 +300,18 @@ namespace HaCreator.MapSimulator.Interaction
         private bool HasCreatedOwner()
         {
             return _ownerExpiresAtTick > 0;
+        }
+
+        private int AllocateOwnerIdentity()
+        {
+            int ownerIdentity = _nextOwnerIdentity;
+            _nextOwnerIdentity++;
+            if (_nextOwnerIdentity <= 0)
+            {
+                _nextOwnerIdentity = 1;
+            }
+
+            return ownerIdentity;
         }
 
         internal void ObserveRuntimeCharacterId(int runtimeCharacterId)

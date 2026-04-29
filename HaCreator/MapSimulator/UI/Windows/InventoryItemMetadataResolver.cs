@@ -1004,7 +1004,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            canvas = (itemProperty?["info"] as WzSubProperty)?[canvasName] as WzCanvasProperty;
+            WzSubProperty infoProperty = ResolveLinkedSubProperty(itemProperty?["info"]);
+            canvas = ResolveLinkedCanvas(infoProperty?[canvasName]);
             return canvas != null;
         }
 
@@ -1048,7 +1049,7 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<InventoryRewardPreviewItem>();
             }
 
-            return ResolveRewardPreviewItems(LoadItemProperty(itemId)?["reward"] as WzSubProperty, limit);
+            return ResolveRewardPreviewItems(ResolveLinkedSubProperty(LoadItemProperty(itemId)?["reward"]), limit);
         }
 
         private static IReadOnlyList<InventoryRewardPreviewItem> ResolveRewardPreviewItems(WzSubProperty rewardProperty, int limit)
@@ -1095,8 +1096,9 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<WzCanvasProperty>();
             }
 
-            if (itemProperty["info"] is WzSubProperty infoProperty
-                && infoProperty[groupName] is WzSubProperty infoGroupProperty)
+            WzSubProperty infoProperty = ResolveLinkedSubProperty(itemProperty["info"]);
+            WzSubProperty infoGroupProperty = ResolveLinkedSubProperty(infoProperty?[groupName]);
+            if (infoGroupProperty != null)
             {
                 IReadOnlyList<WzCanvasProperty> infoRows = GetNumericNamedCanvasRows(infoGroupProperty, limit);
                 if (infoRows.Count > 0)
@@ -1105,16 +1107,17 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            return itemProperty[groupName] is WzSubProperty rootGroupProperty
+            WzSubProperty rootGroupProperty = ResolveLinkedSubProperty(itemProperty[groupName]);
+            return rootGroupProperty != null
                 ? GetNumericNamedCanvasRows(rootGroupProperty, limit)
                 : Array.Empty<WzCanvasProperty>();
         }
 
         private static WzCanvasProperty ResolveTooltipIconCanvas(WzSubProperty itemProperty)
         {
-            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
-            return infoProperty?["iconRaw"] as WzCanvasProperty
-                   ?? infoProperty?["icon"] as WzCanvasProperty;
+            WzSubProperty infoProperty = ResolveLinkedSubProperty(itemProperty?["info"]);
+            return ResolveLinkedCanvas(infoProperty?["iconRaw"])
+                   ?? ResolveLinkedCanvas(infoProperty?["icon"]);
         }
 
         public static bool TryResolveRootCanvas(int itemId, string canvasPath, out WzCanvasProperty canvas)
@@ -1206,8 +1209,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             WzImageProperty current = ResolvePropertyAtPath(rootProperty, canvasPath);
-            canvas = current as WzCanvasProperty;
+            canvas = ResolveLinkedCanvas(current);
             return canvas != null;
+        }
+
+        private static WzCanvasProperty ResolveLinkedCanvas(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            return property.GetLinkedWzImageProperty() as WzCanvasProperty;
+        }
+
+        private static WzSubProperty ResolveLinkedSubProperty(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            return property.GetLinkedWzImageProperty() as WzSubProperty;
         }
 
         private static WzImageProperty ResolvePropertyAtPath(IPropertyContainer rootProperty, string propertyPath)
@@ -4051,8 +4074,13 @@ namespace HaCreator.MapSimulator.UI
             List<(int Index, WzCanvasProperty Canvas)> rows = new();
             foreach (WzImageProperty child in property.WzProperties)
             {
-                if (child is not WzCanvasProperty canvas
-                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                WzCanvasProperty canvas = ResolveLinkedCanvas(child);
+                if (canvas == null)
                 {
                     continue;
                 }

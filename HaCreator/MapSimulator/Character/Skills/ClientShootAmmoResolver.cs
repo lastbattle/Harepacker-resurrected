@@ -103,8 +103,11 @@ public static class ClientShootAmmoResolver
         }
 
         int fallbackActiveBulletItemId = ResolveActiveBulletItemId(useSlots);
-        if (fallbackActiveBulletItemId > 0
-            && (!usesClientSpecialPelletSkill || !IsElementalPelletItem(fallbackActiveBulletItemId)))
+        if (IsEligibleActiveBulletFallbackItem(
+                fallbackActiveBulletItemId,
+                weaponCode,
+                weaponItemId,
+                usesClientSpecialPelletSkill))
         {
             if (TryResolveUseAmmoSlotByItemId(
                     useSlots,
@@ -434,6 +437,17 @@ public static class ClientShootAmmoResolver
         }
 
         return false;
+    }
+
+    private static bool IsEligibleActiveBulletFallbackItem(
+        int itemId,
+        int weaponCode,
+        int weaponItemId,
+        bool excludeElementalPellets)
+    {
+        return itemId > 0
+               && IsCompatibleBulletItem(weaponCode, weaponItemId, itemId)
+               && (!excludeElementalPellets || !IsElementalPelletItem(itemId));
     }
 
     private static bool TryResolveUseAmmoSlotByItemId(

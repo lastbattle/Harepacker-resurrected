@@ -313,6 +313,12 @@ namespace HaCreator.MapSimulator.Interaction
             return jobFamily == 1 ? CygnusTutorSkillId : AranTutorSkillId;
         }
 
+        internal static bool IsClientTutorSkillId(int skillId)
+        {
+            return skillId == CygnusTutorSkillId
+                || skillId == AranTutorSkillId;
+        }
+
         internal bool RequiresCharacterRebind(int runtimeCharacterId)
         {
             return runtimeCharacterId > 0
@@ -404,6 +410,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             BindRuntimeCharacter(runtimeCharacterId);
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
+            if (normalizedSkillId <= 0)
+            {
+                StatusMessage = $"Ignored tutor hire for non-client tutor skill {requestedSkillId}.";
+                return;
+            }
+
             if (normalizedSkillId > 0)
             {
                 ReleaseExistingTutorOwnerBeforeHire(normalizedSkillId, BoundCharacterId, currentTick);
@@ -1746,7 +1758,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int NormalizeTutorSkillId(int skillId)
         {
-            return skillId > 0 ? skillId : 0;
+            return IsClientTutorSkillId(skillId) ? skillId : 0;
         }
     }
 }

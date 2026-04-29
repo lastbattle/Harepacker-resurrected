@@ -356,6 +356,17 @@ namespace HaCreator.MapSimulator.Interaction
                 int movePathElementCount = reader.ReadByte();
                 if (movePathElementCount <= 0)
                 {
+                    if (decodeClientFlushTail)
+                    {
+                        if (!TryDecodeMovePathFlushTail(reader, out DecodedMovePathTailInfo tailInfo))
+                        {
+                            bytesConsumed = reader.Position;
+                            return false;
+                        }
+
+                        movePathTailInfo = tailInfo;
+                    }
+
                     bytesConsumed = reader.Position;
                     return true;
                 }

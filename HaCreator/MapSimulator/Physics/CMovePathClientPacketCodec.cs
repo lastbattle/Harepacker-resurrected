@@ -186,6 +186,7 @@ namespace HaCreator.MapSimulator.Physics
             IReadOnlyList<MovePathElement> path,
             bool flushAdmitted,
             IReadOnlyList<MovePathElement> postFlushCarry,
+            bool includeClientRandomCounts,
             out bool consumedPostFlushCarry)
         {
             IReadOnlyList<MovePathElement> cadenceShapedPath =
@@ -193,20 +194,37 @@ namespace HaCreator.MapSimulator.Physics
                     path,
                     flushAdmitted,
                     postFlushCarry,
+                    includeClientRandomCounts,
                     out consumedPostFlushCarry);
             cadenceShapedPath = ApplyPortalOwnedPostFlushCarryHint(
                 cadenceShapedPath,
                 !flushAdmitted && !consumedPostFlushCarry ? postFlushCarry : Array.Empty<MovePathElement>(),
+                includeClientRandomCounts,
                 out bool prependedPostFlushCarry);
             consumedPostFlushCarry |= prependedPostFlushCarry;
 
             return NormalizeForPortalOwnedClientMakeMovePath(cadenceShapedPath);
         }
 
+        internal static IReadOnlyList<MovePathElement> ShapePortalOwnedMovePathForEncode(
+            IReadOnlyList<MovePathElement> path,
+            bool flushAdmitted,
+            IReadOnlyList<MovePathElement> postFlushCarry,
+            out bool consumedPostFlushCarry)
+        {
+            return ShapePortalOwnedMovePathForEncode(
+                path,
+                flushAdmitted,
+                postFlushCarry,
+                includeClientRandomCounts: true,
+                out consumedPostFlushCarry);
+        }
+
         private static IReadOnlyList<MovePathElement> ApplyPortalOwnedFlushCadenceHintWithRetainedCarrySuffix(
             IReadOnlyList<MovePathElement> path,
             bool flushAdmitted,
             IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts,
             out bool consumedCarry)
         {
             consumedCarry = false;
@@ -215,7 +233,7 @@ namespace HaCreator.MapSimulator.Physics
                 return ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
             }
 
-            if (!TryFindFirstEncodedCarryShapeIndex(path, carryPath, out int carryIndex))
+            if (!TryFindFirstEncodedCarryShapeIndex(path, carryPath, includeClientRandomCounts, out int carryIndex))
             {
                 return ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
             }
@@ -240,6 +258,19 @@ namespace HaCreator.MapSimulator.Physics
             IReadOnlyList<MovePathElement> carryPath,
             out bool consumedCarry)
         {
+            return ApplyPortalOwnedPostFlushCarryHint(
+                path,
+                carryPath,
+                includeClientRandomCounts: true,
+                out consumedCarry);
+        }
+
+        internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedPostFlushCarryHint(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts,
+            out bool consumedCarry)
+        {
             consumedCarry = false;
             if (carryPath == null || carryPath.Count == 0)
             {
@@ -251,7 +282,7 @@ namespace HaCreator.MapSimulator.Physics
                 return Array.Empty<MovePathElement>();
             }
 
-            if (ContainsAllEncodedCarryShapes(path, carryPath))
+            if (ContainsAllEncodedCarryShapes(path, carryPath, includeClientRandomCounts))
             {
                 consumedCarry = true;
                 return path;
@@ -266,7 +297,7 @@ namespace HaCreator.MapSimulator.Physics
             for (int i = 0; i < carryPath.Count; i++)
             {
                 MovePathElement carry = carryPath[i];
-                if (HasEncodedShape(path, carry))
+                if (HasEncodedShape(path, carry, includeClientRandomCounts))
                 {
                     consumedCarry = true;
                     continue;
@@ -533,29 +564,42 @@ namespace HaCreator.MapSimulator.Physics
                 || (previousVelocity > 0 && currentVelocity > 0);
         }
 
-        private static bool HasSameEncodedShape(MovePathElement left, MovePathElement right)
+        private static bool HasSameEncodedShape(
+            MovePathElement left,
+            MovePathElement right,
+            bool includeClientRandomCounts = true)
         {
-            return left.MovePathAttribute == right.MovePathAttribute
-                   && left.X == right.X
-                   && left.Y == right.Y
-                   && left.VelocityX == right.VelocityX
-                   && left.VelocityY == right.VelocityY
-                   && left.FootholdId == right.FootholdId
-                   && left.FallStartFootholdId == right.FallStartFootholdId
-                   && left.Action == right.Action
-                   && left.FacingRight == right.FacingRight
-                   && left.Duration == right.Duration
-                   && left.XOffset == right.XOffset
-                   && left.YOffset == right.YOffset
-                   && left.RandomCount == right.RandomCount
-                   && left.ActualRandomCount == right.ActualRandomCount;
+            left = NormalizePortalOwnedClientMakeMovePathElement(left);
+            right = NormalizePortalOwnedClientMakeMovePathElement(right);
+            if (left.MovePathAttribute != right.MovePathAttribute
+                || left.X != right.X
+                || left.Y != right.Y
+                || left.VelocityX != right.VelocityX
+                || left.VelocityY != right.VelocityY
+                || left.FootholdId != right.FootholdId
+                || left.FallStartFootholdId != right.FallStartFootholdId
+                || left.Action != right.Action
+                || left.FacingRight != right.FacingRight
+                || left.Duration != right.Duration
+                || left.XOffset != right.XOffset
+                || left.YOffset != right.YOffset)
+            {
+                return false;
+            }
+
+            return !includeClientRandomCounts
+                   || (left.RandomCount == right.RandomCount
+                       && left.ActualRandomCount == right.ActualRandomCount);
         }
 
-        private static bool HasEncodedShape(IReadOnlyList<MovePathElement> path, MovePathElement candidate)
+        private static bool HasEncodedShape(
+            IReadOnlyList<MovePathElement> path,
+            MovePathElement candidate,
+            bool includeClientRandomCounts = true)
         {
             for (int i = 0; i < path.Count; i++)
             {
-                if (HasSameEncodedShape(path[i], candidate))
+                if (HasSameEncodedShape(path[i], candidate, includeClientRandomCounts))
                 {
                     return true;
                 }
@@ -566,11 +610,12 @@ namespace HaCreator.MapSimulator.Physics
 
         private static bool ContainsAllEncodedCarryShapes(
             IReadOnlyList<MovePathElement> path,
-            IReadOnlyList<MovePathElement> carryPath)
+            IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts = true)
         {
             for (int i = 0; i < carryPath.Count; i++)
             {
-                if (!HasEncodedShape(path, carryPath[i]))
+                if (!HasEncodedShape(path, carryPath[i], includeClientRandomCounts))
                 {
                     return false;
                 }
@@ -582,6 +627,7 @@ namespace HaCreator.MapSimulator.Physics
         private static bool TryFindFirstEncodedCarryShapeIndex(
             IReadOnlyList<MovePathElement> path,
             IReadOnlyList<MovePathElement> carryPath,
+            bool includeClientRandomCounts,
             out int carryIndex)
         {
             carryIndex = -1;
@@ -589,7 +635,7 @@ namespace HaCreator.MapSimulator.Physics
             {
                 for (int j = 0; j < carryPath.Count; j++)
                 {
-                    if (HasSameEncodedShape(path[i], carryPath[j]))
+                    if (HasSameEncodedShape(path[i], carryPath[j], includeClientRandomCounts))
                     {
                         carryIndex = i;
                         return true;

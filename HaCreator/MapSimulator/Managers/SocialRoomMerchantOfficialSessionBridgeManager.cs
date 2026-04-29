@@ -35,11 +35,22 @@ namespace HaCreator.MapSimulator.Managers
         public const byte EntrustedShopBlacklistRequestModeAdd = 0;
         public const byte EntrustedShopBlacklistRequestModeDelete = 1;
         private const int MaxRecentOutboundPackets = 32;
+        private const int MaxPendingResultExpectations = 32;
 
         private readonly ConcurrentQueue<SocialRoomMerchantPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
+        private readonly List<PendingResultExpectation> _pendingResultExpectations = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+
+        private readonly record struct PendingResultExpectation(
+            int RequestOpcode,
+            byte RequestSubtype,
+            string Source,
+            string PayloadHex,
+            int[] ExpectedInboundOpcodes,
+            byte[] ExpectedInboundSubtypes,
+            string ExpectationSummary);
 
         public readonly record struct OutboundPacketTrace(
             int Opcode,
@@ -47,7 +58,13 @@ namespace HaCreator.MapSimulator.Managers
             int PayloadLength,
             string PayloadHex,
             string RawPacketHex,
-            string Source);
+            string Source,
+            string Summary);
+        private int _expectedResultRequestCount;
+        private int _expectedResultMatchCount;
+        private int _expectedResultMismatchCount;
+        private int _expectedResultUnexpectedCount;
+        private int _expectedResultEvictedCount;
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
@@ -160,7 +177,13 @@ namespace HaCreator.MapSimulator.Managers
             string preferredKind = PreferredKind.HasValue
                 ? $"targeting {DescribeKind(PreferredKind.Value)}"
                 : "merchant owner unset";
-            return $"Merchant-room official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; injected={SentCount}; {inboundOpcode}; {preferredKind}. {LastStatus}";
+            int pendingExpectationCount;
+            lock (_sync)
+            {
+                pendingExpectationCount = _pendingResultExpectations.Count;
+            }
+
+            return $"Merchant-room official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; injected={SentCount}; expectedRequests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={pendingExpectationCount}; {inboundOpcode}; {preferredKind}. {LastStatus}";
         }
 
         public string DescribeMerchantOpcodeMap()
@@ -195,7 +218,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} type={entry.PacketType} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} type={entry.PacketType} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -204,6 +227,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 _recentOutboundPackets.Clear();
+                _pendingResultExpectations.Clear();
             }
 
             LastStatus = "Merchant-room official-session bridge outbound history cleared.";
@@ -437,8 +461,9 @@ namespace HaCreator.MapSimulator.Managers
                 (byte[])e.RawPacket.Clone(),
                 $"official-session:{e.SourceEndpoint}",
                 $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
+            string expectationDetail = RecordRecoveredInboundExpectationResult(opcode, payload);
             ReceivedCount++;
-            LastStatus = $"Queued merchant-room opcode {opcode} subtype {payload[0]} from live session {e.SourceEndpoint}. {autoMapDetail}";
+            LastStatus = $"Queued merchant-room opcode {opcode} subtype {payload[0]} from live session {e.SourceEndpoint}. {autoMapDetail} {expectationDetail}";
         }
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
@@ -463,19 +488,105 @@ namespace HaCreator.MapSimulator.Managers
             byte[] payload = rawPacket.Length > sizeof(ushort)
                 ? rawPacket[sizeof(ushort)..]
                 : Array.Empty<byte>();
+            string summary = "observed";
             lock (_sync)
             {
+                if (PacketOwnedSocialUtilityPacketTable.TryBuildRecoveredResultExpectation(
+                        "Merchant",
+                        opcode,
+                        payload,
+                        out int[] expectedInboundOpcodes,
+                        out byte[] expectedInboundSubtypes,
+                        out string expectationSummary))
+                {
+                    AddPendingResultExpectation(new PendingResultExpectation(
+                        opcode,
+                        packetType,
+                        source,
+                        Convert.ToHexString(payload),
+                        expectedInboundOpcodes,
+                        expectedInboundSubtypes,
+                        expectationSummary));
+                    summary = expectationSummary;
+                }
+
                 _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
                     opcode,
                     packetType,
                     payload.Length,
                     Convert.ToHexString(payload),
                     Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
-                    source));
+                    source,
+                    summary));
                 while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
                 {
                     _recentOutboundPackets.Dequeue();
                 }
+            }
+        }
+
+        private void AddPendingResultExpectation(PendingResultExpectation expectation)
+        {
+            _pendingResultExpectations.Add(expectation);
+            _expectedResultRequestCount++;
+            while (_pendingResultExpectations.Count > MaxPendingResultExpectations)
+            {
+                _pendingResultExpectations.RemoveAt(0);
+                _expectedResultEvictedCount++;
+            }
+        }
+
+        private string RecordRecoveredInboundExpectationResult(int inboundOpcode, byte[] payload)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return "No recovered-table expectation was evaluated for an empty merchant payload.";
+            }
+
+            if (!PacketOwnedSocialUtilityPacketTable.TryDecodeRecoveredInboundBranch(
+                    "Merchant",
+                    inboundOpcode,
+                    payload,
+                    out byte inboundSubtype,
+                    out _,
+                    out string branchSummary))
+            {
+                return "No recovered-table expectation was evaluated for an unknown merchant branch.";
+            }
+
+            lock (_sync)
+            {
+                for (int i = 0; i < _pendingResultExpectations.Count; i++)
+                {
+                    PendingResultExpectation expectation = _pendingResultExpectations[i];
+                    if ((expectation.ExpectedInboundOpcodes?.Length ?? 0) > 0
+                        && !expectation.ExpectedInboundOpcodes.Contains(inboundOpcode))
+                    {
+                        continue;
+                    }
+
+                    if ((expectation.ExpectedInboundSubtypes?.Length ?? 0) == 0
+                        || expectation.ExpectedInboundSubtypes.Contains(inboundSubtype))
+                    {
+                        _pendingResultExpectations.RemoveAt(i);
+                        _expectedResultMatchCount++;
+                        return $"{branchSummary}; matched {expectation.ExpectationSummary} from {expectation.Source}.";
+                    }
+                }
+
+                int mismatchIndex = _pendingResultExpectations.FindIndex(expectation =>
+                    (expectation.ExpectedInboundOpcodes?.Length ?? 0) == 0
+                    || expectation.ExpectedInboundOpcodes.Contains(inboundOpcode));
+                if (mismatchIndex >= 0)
+                {
+                    PendingResultExpectation expectation = _pendingResultExpectations[mismatchIndex];
+                    _pendingResultExpectations.RemoveAt(mismatchIndex);
+                    _expectedResultMismatchCount++;
+                    return $"{branchSummary}; mismatched pending {expectation.ExpectationSummary} from {expectation.Source}.";
+                }
+
+                _expectedResultUnexpectedCount++;
+                return $"{branchSummary}; no pending recovered-table request expectation.";
             }
         }
 
@@ -498,9 +609,15 @@ namespace HaCreator.MapSimulator.Managers
             SentCount = 0;
             LastSentOpcode = -1;
             AutoDetectedInboundOpcode = 0;
+            _expectedResultRequestCount = 0;
+            _expectedResultMatchCount = 0;
+            _expectedResultMismatchCount = 0;
+            _expectedResultUnexpectedCount = 0;
+            _expectedResultEvictedCount = 0;
             lock (_sync)
             {
                 _recentOutboundPackets.Clear();
+                _pendingResultExpectations.Clear();
             }
 
             while (_pendingMessages.TryDequeue(out _))

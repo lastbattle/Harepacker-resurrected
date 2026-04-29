@@ -813,6 +813,26 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryObserveConsumeCashItemUseRequestPayload(
+            byte[] payload,
+            Point hostPosition,
+            int currentTick,
+            out string message,
+            string source = null)
+        {
+            if (!TryRegisterPendingConsumeCashItemUseRequest(payload, hostPosition, currentTick, out string registrationMessage))
+            {
+                message = registrationMessage;
+                return false;
+            }
+
+            string sourceLabel = string.IsNullOrWhiteSpace(source)
+                ? "live client"
+                : source.Trim();
+            message = $"Observed CUserLocal::ConsumeCashItem message-box request from {sourceLabel}; waiting for authoritative CMessageBoxPool packet 326 enter-field or packet 325 create-failed completion. {registrationMessage}";
+            return true;
+        }
+
         internal int PendingConsumeRequestCountForTest => _pendingConsumeRequests.Count;
 
         internal static bool TryDecodeConsumeCashItemUseRequestPayload(

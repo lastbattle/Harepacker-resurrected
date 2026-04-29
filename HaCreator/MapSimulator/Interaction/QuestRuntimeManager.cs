@@ -356,6 +356,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string EndTimeKeepFieldSet { get; init; } = string.Empty;
             public int? EndTimeKeepFieldSetKeepTime { get; init; }
             public int? EndPvpGradeRequirement { get; init; }
+            public IReadOnlyList<string> EndUnresolvedSideChannelDemandKeys { get; init; } = Array.Empty<string>();
             public int? EndInfoNumber { get; init; }
             public int? EndFakeQuestId { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> EndInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
@@ -1090,6 +1091,11 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Completion PvP-grade demand owner is unavailable.");
             }
 
+            if (HasUnresolvedCompletionSideChannelDemands(definition.EndUnresolvedSideChannelDemandKeys))
+            {
+                issues.Add("Completion demand includes unresolved side-channel state owners.");
+            }
+
             if (build == null &&
                 HasUnresolvedCompletionBuildContextDemand(
                     definition.MinLevel,
@@ -1487,6 +1493,11 @@ namespace HaCreator.MapSimulator.Interaction
             // parsed metadata available for conversation branch selection, but
             // do not let it hold packet-owned auto-completion alert ownership.
             return false;
+        }
+
+        internal static bool HasUnresolvedCompletionSideChannelDemands(IReadOnlyList<string> demandKeys)
+        {
+            return demandKeys != null && demandKeys.Count > 0;
         }
 
         internal static bool HasUnresolvedCompletionBuildContextDemand(
@@ -5633,7 +5644,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (hasUnmetPetRequirement &&
-                TryGetStopPages(stopPages, "pet", out IReadOnlyList<NpcInteractionPage> petPages))
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> petPages,
+                    "pet",
+                    "pettameness",
+                    "pettamenessmin",
+                    "pettamenessmax",
+                    "tamingmob",
+                    "tamingmoblevel",
+                    "tamingmoblevelmin",
+                    "tamingmoblevelmax",
+                    "recall",
+                    "petRecall",
+                    "petRecallLimit"))
             {
                 return petPages;
             }
@@ -6960,6 +6984,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement))
             {
                 issues.Add("Completion PvP-grade demand owner is unavailable.");
+            }
+
+            if (HasUnresolvedCompletionSideChannelDemands(definition.EndUnresolvedSideChannelDemandKeys))
+            {
+                issues.Add("Completion demand includes unresolved side-channel state owners.");
             }
 
             if (build == null &&
@@ -9437,6 +9466,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
                 EndTimeKeepFieldSetKeepTime = ParseInt(endCheck?["fieldsetkeeptime"] ?? endCheck?["fieldSetKeepTime"]),
                 EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
+                EndUnresolvedSideChannelDemandKeys = ParseUnresolvedCompletionSideChannelDemandKeys(endCheck),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndFakeQuestId = ParsePositiveInt(endCheck?["fakeQuestID"]),
                 EndInfoRequirements = ParseQuestRecordTextRequirements(endCheck?["info"]),
@@ -10439,6 +10469,83 @@ namespace HaCreator.MapSimulator.Interaction
             return requirements.Count == 0
                 ? Array.Empty<QuestMonsterBookCardRequirement>()
                 : requirements;
+        }
+
+        private static IReadOnlyList<string> ParseUnresolvedCompletionSideChannelDemandKeys(WzSubProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] candidateKeys =
+            {
+                "premium",
+                "dressChanged",
+                "pvpGradeMin",
+                "pvpGradeMax",
+                "completeVIPGradeMin",
+                "completeVIPGradeMax",
+                "completeVIPAccount",
+                "deathCount",
+                "matchingExp",
+                "randomGroupHost",
+                "multiKill",
+                "multiKillCount",
+                "comboKill",
+                "damageOnFalling",
+                "hpRate",
+                "toadCount",
+                "personalShopBuy",
+                "mobDropMesoPickup",
+                "breakTimeField",
+                "runeAct",
+                "dailyCommitment",
+                "gender",
+                "skinSelectNeed",
+                "marriaged",
+                "noMarriaged",
+                "notInTeleportItemLimitedField",
+                "questRecordAndOption",
+                "questOrOption",
+                "itemOrOption",
+                "lvOptinumMob"
+            };
+
+            var demandKeys = new List<string>();
+            for (int i = 0; i < candidateKeys.Length; i++)
+            {
+                string key = candidateKeys[i];
+                if (HasAuthoredCompletionSideChannelDemand(property[key]))
+                {
+                    demandKeys.Add(key);
+                }
+            }
+
+            return demandKeys.Count == 0
+                ? Array.Empty<string>()
+                : demandKeys;
+        }
+
+        private static bool HasAuthoredCompletionSideChannelDemand(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return false;
+            }
+
+            int? scalarValue = ParseInt(property);
+            if (scalarValue.HasValue)
+            {
+                return scalarValue.Value != 0;
+            }
+
+            if (property is WzStringProperty stringProperty)
+            {
+                return !string.IsNullOrWhiteSpace(stringProperty.Value);
+            }
+
+            return property.WzProperties != null && property.WzProperties.Count > 0;
         }
 
         private static void CollectJobIds(WzImageProperty property, ICollection<int> jobs)
@@ -12632,7 +12739,16 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("sp", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("petskill", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("pettameness", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("pettamenessmin", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("pettamenessmax", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("petspeed", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("tamingmob", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("tamingmoblevel", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("tamingmoblevelmin", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("tamingmoblevelmax", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("recall", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("petRecall", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("petRecallLimit", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("userInteract", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("userInteraction", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("map", StringComparison.OrdinalIgnoreCase) ||

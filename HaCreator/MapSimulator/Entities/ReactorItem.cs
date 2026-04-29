@@ -906,20 +906,34 @@ namespace HaCreator.MapSimulator.Entities
             return ResolveLoadLayerFrameDelays(sourceProperty, frameCount);
         }
 
+        internal static int[] ResolveTransientLoadLayerFrameDelaysForTesting(WzImageProperty sourceProperty, int frameCount)
+        {
+            return ResolveLoadLayerFrameDelays(sourceProperty, frameCount, frames: null, preserveSourceClock: true);
+        }
+
         private static int[] ResolveLoadLayerFrameDelays(WzImageProperty sourceProperty, IReadOnlyList<IDXObject> frames)
         {
-            return ResolveLoadLayerFrameDelays(sourceProperty, frames?.Count ?? 0, frames);
+            return ResolveLoadLayerFrameDelays(
+                sourceProperty,
+                frames?.Count ?? 0,
+                frames,
+                preserveSourceClock: true);
         }
 
         private static int[] ResolveLoadLayerFrameDelays(WzImageProperty sourceProperty, int frameCount)
         {
-            return ResolveLoadLayerFrameDelays(sourceProperty, frameCount, frames: null);
+            return ResolveLoadLayerFrameDelays(
+                sourceProperty,
+                frameCount,
+                frames: null,
+                preserveSourceClock: false);
         }
 
         private static int[] ResolveLoadLayerFrameDelays(
             WzImageProperty sourceProperty,
             int frameCount,
-            IReadOnlyList<IDXObject> frames)
+            IReadOnlyList<IDXObject> frames,
+            bool preserveSourceClock)
         {
             if (frameCount <= 0)
             {
@@ -932,6 +946,11 @@ namespace HaCreator.MapSimulator.Entities
             {
                 WzImageProperty nestedHit = WzInfoTools.GetRealProperty(sourceProperty)?["hit"];
                 CollectLoadLayerFrameDelays(WzInfoTools.GetRealProperty(nestedHit), sourceDelays);
+            }
+
+            if (preserveSourceClock && sourceDelays.Count > 0)
+            {
+                return sourceDelays.ToArray();
             }
 
             int[] frameDelays = new int[frameCount];
@@ -1386,7 +1405,10 @@ namespace HaCreator.MapSimulator.Entities
                     out frameIndex,
                     out _);
                 _transientFrameIndex = frameIndex;
-                return _transientFrames[frameIndex];
+                int loadedFrameIndex = ResolveLoadedFrameIndexForLoadLayerClock(
+                    frameIndex,
+                    _transientFrames.Length);
+                return _transientFrames[loadedFrameIndex];
             }
 
             IDXObject[] frames = ResolveStateFrames(_activeState);
@@ -1496,6 +1518,21 @@ namespace HaCreator.MapSimulator.Entities
                 out _)
                 ? frameIndex
                 : 0;
+        }
+
+        internal static int ResolveLoadedFrameIndexForLoadLayerClockForTesting(int frameIndex, int loadedFrameCount)
+        {
+            return ResolveLoadedFrameIndexForLoadLayerClock(frameIndex, loadedFrameCount);
+        }
+
+        private static int ResolveLoadedFrameIndexForLoadLayerClock(int frameIndex, int loadedFrameCount)
+        {
+            if (loadedFrameCount <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(frameIndex, 0, loadedFrameCount - 1);
         }
 
         internal static bool ResolveLoadLayerFrameTimingForTesting(

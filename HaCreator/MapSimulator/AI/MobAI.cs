@@ -1213,7 +1213,7 @@ namespace HaCreator.MapSimulator.AI
 
         internal bool ShouldTriggerAngerGaugeFullChargeEffect(int currentTick)
         {
-            if (!HasAngerGauge)
+            if (!IsAngerCharged)
             {
                 return false;
             }
@@ -1251,7 +1251,7 @@ namespace HaCreator.MapSimulator.AI
 
         internal bool ShouldUseFallbackAngerGaugeFullChargeCadence()
         {
-            if (!HasAngerGauge)
+            if (!IsAngerCharged)
             {
                 return false;
             }

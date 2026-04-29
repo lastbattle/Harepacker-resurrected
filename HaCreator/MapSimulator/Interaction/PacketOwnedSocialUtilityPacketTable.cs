@@ -481,7 +481,9 @@ namespace HaCreator.MapSimulator.Interaction
                 inboundSubtype = payload[0];
                 if (MerchantInboundSubtypeHandlers.TryGetValue(inboundSubtype, out string merchantHandlerName))
                 {
-                    branchSummary = $"{merchantHandlerName} (subtype {inboundSubtype})";
+                    branchSummary = inboundSubtype == 25 && payload.Length > 1
+                        ? $"{merchantHandlerName} (subtype {inboundSubtype}) carrying {DescribeMiniRoomBaseBranch(payload[1])}"
+                        : $"{merchantHandlerName} (subtype {inboundSubtype})";
                     if (inboundSubtype == 24 && payload.Length > 1)
                     {
                         resultCode = payload[1];
@@ -512,6 +514,24 @@ namespace HaCreator.MapSimulator.Interaction
 
             branchSummary = $"CUIMessenger::OnPacket subtype {inboundSubtype}";
             return true;
+        }
+
+        private static string DescribeMiniRoomBaseBranch(byte miniRoomBaseSubtype)
+        {
+            return miniRoomBaseSubtype switch
+            {
+                2 => "CMiniRoomBaseDlg::OnPacketBase static invite branch (base subtype 2)",
+                3 => "CMiniRoomBaseDlg::OnPacketBase static invite-result branch (base subtype 3)",
+                4 => "CMiniRoomBaseDlg::OnEnterBase live enter branch (base subtype 4)",
+                5 => "CMiniRoomBaseDlg::OnPacketBase static enter-result branch (base subtype 5)",
+                6 => "CMiniRoomBaseDlg::OnPacketBase live dialog-update forwarding branch (base subtype 6)",
+                7 => "CMiniRoomBaseDlg::OnChat live chat branch (base subtype 7)",
+                8 => "CMiniRoomBaseDlg::OnChat live alternate-chat branch (base subtype 8)",
+                9 => "CMiniRoomBaseDlg::OnAvatar live avatar-refresh branch (base subtype 9)",
+                10 => "CMiniRoomBaseDlg::OnLeaveBase live leave branch (base subtype 10)",
+                14 => "CMiniRoomBaseDlg::OnPacketBase static SSN2 check branch (base subtype 14)",
+                _ => $"CMiniRoomBaseDlg::OnPacketBase base subtype {miniRoomBaseSubtype}"
+            };
         }
     }
 }

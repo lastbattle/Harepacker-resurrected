@@ -789,6 +789,9 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetActiveSkillCancelRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetLevelLimitEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetPartyOnlyEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetExpeditionOnlyEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetStandAloneModeEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPartyStandAloneEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetTakeOffItemEntryRestrictionMessage(mapInfo));

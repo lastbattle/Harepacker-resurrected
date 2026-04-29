@@ -227,7 +227,7 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.LocationSummary = member.LocationSummary;
                 snapshot.IsOnline = member.IsOnline;
                 snapshot.SimulatedPosition = member.SimulatedPosition;
-                snapshot.IsLocalPlayer = member.Id == LocalPlayerId;
+                snapshot.IsLocalPlayer = IsClientLocalMember(member.Id);
             }
 
             return _trackedMembersBuffer;
@@ -562,7 +562,11 @@ namespace HaCreator.MapSimulator.Interaction
             _packetChartHeaderMemberId = snapshot.Members.Count > 0 && snapshot.Members[0].CharacterId > 0
                 ? snapshot.Members[0].CharacterId
                 : null;
-            _packetChartIsMine = _packetChartLocalMemberId == LocalPlayerId;
+            // CUIFamilyChart::DecodeLocalChart is delivered for the chart owner the
+            // client is viewing. Live packets carry the real character id rather than
+            // the simulator seed id, so treat the decoded focus id as the local owner
+            // for packet-authored management gates.
+            _packetChartIsMine = _packetChartLocalMemberId.HasValue;
             // CUIFamilyChart::DecodeLocalChart clears m_apItem[0] after decode when the packet has two or fewer entries.
             _packetChartSuppressRootSlot = snapshot.Members.Count <= 2;
 
@@ -608,9 +612,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (_packetChartIsMine == true
-                && !_members.ContainsKey(LocalPlayerId))
+                && _packetChartLocalMemberId.HasValue
+                && !_members.ContainsKey(_packetChartLocalMemberId.Value))
             {
-                _members[LocalPlayerId] = CreatePacketLocalPlayerFallback(previousLocalPlayer);
+                _members[_packetChartLocalMemberId.Value] = CreatePacketLocalPlayerFallback(
+                    _packetChartLocalMemberId.Value,
+                    previousLocalPlayer);
             }
 
             foreach (FamilyMemberState member in _members.Values)
@@ -878,7 +885,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case FamilyEntitlementType.MoveToMember:
                 {
-                    if (selectedMember == null || selectedMember.Id == LocalPlayerId)
+                    if (selectedMember == null || IsClientLocalMember(selectedMember.Id))
                     {
                         return new FamilyEntitlementUseResult("Select another online family member before moving.");
                     }
@@ -912,7 +919,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
                 case FamilyEntitlementType.SummonMember:
                 {
-                    if (selectedMember == null || selectedMember.Id == LocalPlayerId)
+                    if (selectedMember == null || IsClientLocalMember(selectedMember.Id))
                     {
                         return new FamilyEntitlementUseResult("Select another family member before using the summon entitlement.");
                     }
@@ -1390,7 +1397,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ? _textResources.FormatGrandchildCount(GetStatisticValue(member))
                     : string.Empty,
                 IsLeader = member.Id == _familyHeadId,
-                IsLocalPlayer = member.Id == LocalPlayerId,
+                IsLocalPlayer = IsClientLocalMember(member.Id),
                 IsSelected = member.Id == _selectedMemberId,
                 IsOnline = member.IsOnline,
                 UseAlertNameColor = ShouldUseAlertNameColor(slotIndex, member)
@@ -1503,7 +1510,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanRemoveSelected(FamilyMemberState selectedMember)
         {
-            if (!CanRemoveMembers() || selectedMember == null || selectedMember.Id == FamilyHeadId || selectedMember.Id == LocalPlayerId)
+            if (!CanRemoveMembers() || selectedMember == null || selectedMember.Id == FamilyHeadId || IsClientLocalMember(selectedMember.Id))
             {
                 return false;
             }
@@ -1515,14 +1522,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             List<int> branchMembers = new();
             CollectBranchMemberIds(selectedMember.Id, branchMembers);
-            return !branchMembers.Contains(LocalPlayerId);
+            return !branchMembers.Any(IsClientLocalMember);
         }
 
         private bool CanExecuteEntitlement(FamilyMemberState selectedMember)
         {
             return selectedMember != null
                 && selectedMember.Id != RemotePreviewMemberId
-                && (selectedMember.Id == LocalPlayerId || selectedMember.IsOnline);
+                && (IsClientLocalMember(selectedMember.Id) || selectedMember.IsOnline);
         }
 
         private FamilyMemberState ResolveEntitlementTarget(string targetName, out FamilyEntitlementUseResult? failureResult)
@@ -2101,10 +2108,10 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private FamilyMemberState CreatePacketLocalPlayerFallback(FamilyMemberState previousLocalPlayer)
+        private FamilyMemberState CreatePacketLocalPlayerFallback(int memberId, FamilyMemberState previousLocalPlayer)
         {
             return new FamilyMemberState(
-                LocalPlayerId,
+                memberId,
                 string.IsNullOrWhiteSpace(previousLocalPlayer?.Name) ? "Player" : previousLocalPlayer.Name,
                 string.IsNullOrWhiteSpace(previousLocalPlayer?.JobName) ? "Beginner" : previousLocalPlayer.JobName,
                 Math.Max(1, previousLocalPlayer?.Level ?? 1),
@@ -2114,6 +2121,14 @@ namespace HaCreator.MapSimulator.Interaction
                 Math.Max(0, previousLocalPlayer?.TodayReputation ?? 0),
                 true,
                 previousLocalPlayer?.SimulatedPosition ?? Vector2.Zero);
+        }
+
+        private bool IsClientLocalMember(int memberId)
+        {
+            return memberId == LocalPlayerId
+                || (_packetChartIsMine == true
+                    && _packetChartLocalMemberId.HasValue
+                    && _packetChartLocalMemberId.Value == memberId);
         }
 
         private static string FormatPacketLocation(int channelId, int loginMinutes)

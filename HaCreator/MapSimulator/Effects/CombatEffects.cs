@@ -185,18 +185,7 @@ namespace HaCreator.MapSimulator.Effects
                 Alpha = 1.0f - phase2Progress;
             }
 
-            bool usesCriticalPresentation = DamageNumberRenderer.UsesCriticalPresentation(ColorType, IsCritical);
-
-            // Critical scale pulse (optional visual enhancement)
-            if (usesCriticalPresentation && elapsed < 200)
-            {
-                float pulseT = (float)elapsed / 200f;
-                Scale = 1.2f - (0.2f * pulseT); // Start big, shrink to normal
-            }
-            else
-            {
-                Scale = 1.0f;
-            }
+            Scale = 1.0f;
         }
 
         /// <summary>
@@ -641,7 +630,7 @@ namespace HaCreator.MapSimulator.Effects
                 ? DamageNumberRenderer.ResolveSpecialTextName(specialTextName)
                 : null;
             display.Alpha = 1.0f;
-            display.Scale = DamageNumberRenderer.UsesCriticalPresentation(colorType, isCritical) ? 1.2f : 1.0f;
+            display.Scale = 1.0f;
             display.ComboIndex = comboIndex;
             display.ColorType = colorType;
 

@@ -22,13 +22,16 @@ namespace HaCreator.MapSimulator.Managers
         internal const byte FollowCharacterWithdrawKeyInput = 1;
         private const string DefaultProcessName = "MapleStory";
         private const int SentOutboundHistoryCapacity = 64;
+        private const int ObservedClientOutboundHistoryCapacity = 64;
         private const int ReceivedInboundHistoryCapacity = 64;
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket, int SentOrdinal = 0);
+        private sealed record ObservedClientOutboundPacket(int Opcode, byte[] RawPacket, int ObservedOrdinal = 0);
         private sealed record ReceivedInboundPacket(int PacketType, byte[] Payload, int ReceivedOrdinal = 0);
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _sentOutboundHistory = new();
+        private readonly ConcurrentQueue<ObservedClientOutboundPacket> _observedClientOutboundHistory = new();
         private readonly ConcurrentQueue<ReceivedInboundPacket> _receivedInboundHistory = new();
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
@@ -311,6 +314,29 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
+        public bool HasObservedClientOutboundPacketSince(int opcode, IReadOnlyList<byte> rawPacket, int minimumObservedCountExclusive)
+        {
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue || rawPacket == null)
+            {
+                return false;
+            }
+
+            byte[] target = rawPacket as byte[] ?? rawPacket.ToArray();
+            ObservedClientOutboundPacket[] history = _observedClientOutboundHistory.ToArray();
+            for (int i = history.Length - 1; i >= 0; i--)
+            {
+                ObservedClientOutboundPacket observed = history[i];
+                if (observed.Opcode == opcode
+                    && observed.ObservedOrdinal > minimumObservedCountExclusive
+                    && observed.RawPacket.AsSpan().SequenceEqual(target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public bool HasReceivedInboundPacketPayloadSince(int packetType, IReadOnlyList<byte> payload, int minimumReceivedCountExclusive)
         {
             if (packetType < 0 || payload == null)
@@ -411,6 +437,7 @@ namespace HaCreator.MapSimulator.Managers
 
             byte[] safeRawPacket = rawPacket?.ToArray() ?? Array.Empty<byte>();
             byte[] safePayload = payload?.ToArray() ?? Array.Empty<byte>();
+            RecordObservedClientOutboundPacket(opcode, safeRawPacket, ForwardedOutboundCount);
             ClientOutboundPacketObserved?.Invoke(
                 this,
                 new LocalUtilityOutboundPacketObservedEventArgs(
@@ -432,6 +459,9 @@ namespace HaCreator.MapSimulator.Managers
                 {
                 }
                 while (_sentOutboundHistory.TryDequeue(out _))
+                {
+                }
+                while (_observedClientOutboundHistory.TryDequeue(out _))
                 {
                 }
 
@@ -505,6 +535,18 @@ namespace HaCreator.MapSimulator.Managers
             _sentOutboundHistory.Enqueue(new PendingOutboundPacket(opcode, LastSentRawPacket, SentCount));
             while (_sentOutboundHistory.Count > SentOutboundHistoryCapacity
                    && _sentOutboundHistory.TryDequeue(out _))
+            {
+            }
+        }
+
+        private void RecordObservedClientOutboundPacket(int opcode, byte[] rawPacket, int observedOrdinal)
+        {
+            _observedClientOutboundHistory.Enqueue(new ObservedClientOutboundPacket(
+                opcode,
+                rawPacket ?? Array.Empty<byte>(),
+                observedOrdinal));
+            while (_observedClientOutboundHistory.Count > ObservedClientOutboundHistoryCapacity
+                   && _observedClientOutboundHistory.TryDequeue(out _))
             {
             }
         }

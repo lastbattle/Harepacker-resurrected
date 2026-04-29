@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientOptionButtonRightPadding = 17;
         private const int ClientOptionButtonBottomPadding = 4;
         private bool _useLegacyOptionButtonCycle;
+        private int _collapsedTopRowButtonRightInset;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -281,6 +282,12 @@ namespace HaCreator.MapSimulator.UI
             if (_btnNpc != null)
                 _btnNpc.ButtonClickReleased += ObjUIBtNpc_ButtonClickReleased;
             _btnMap.ButtonClickReleased += ObjUIBtMap_ButtonClickReleased;
+            UpdateButtonLayout();
+        }
+
+        public void SetCollapsedButtonRightInset(int rightInset)
+        {
+            _collapsedTopRowButtonRightInset = Math.Max(0, rightInset);
             UpdateButtonLayout();
         }
 
@@ -828,7 +835,10 @@ namespace HaCreator.MapSimulator.UI
             int frameWidth = GetVisibleFrame()?.Frame0?.Width ?? Frame0?.Width ?? 0;
             int frameHeight = GetVisibleFrame()?.Frame0?.Height ?? Frame0?.Height ?? 0;
             bool supportsExpandedOption = _btnSmall != null && _expandedFrame != null;
-            int mapButtonX = ResolveTopRowButtonX(frameWidth, _btnMap.CanvasSnapshotWidth);
+            int topRowRightPadding = ResolveTopRowButtonRightPaddingForTesting(
+                _bIsCollapsedState,
+                _collapsedTopRowButtonRightInset);
+            int mapButtonX = ResolveTopRowButtonX(frameWidth, _btnMap.CanvasSnapshotWidth, topRowRightPadding);
 
             _btnMap.X = mapButtonX;
             _btnMap.Y = ClientTopRowButtonTop;
@@ -886,9 +896,19 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        internal static int ResolveTopRowButtonRightPaddingForTesting(bool isCollapsed, int collapsedRightInset)
+        {
+            return ClientTopRowButtonRightPadding + (isCollapsed ? Math.Max(0, collapsedRightInset) : 0);
+        }
+
         private static int ResolveTopRowButtonX(int frameWidth, int buttonWidth)
         {
-            return Math.Max(0, frameWidth - buttonWidth - ClientTopRowButtonRightPadding);
+            return ResolveTopRowButtonX(frameWidth, buttonWidth, ClientTopRowButtonRightPadding);
+        }
+
+        private static int ResolveTopRowButtonX(int frameWidth, int buttonWidth, int rightPadding)
+        {
+            return Math.Max(0, frameWidth - buttonWidth - Math.Max(0, rightPadding));
         }
 
         private static int ResolveAdjacentLeftButtonX(int anchorX, int buttonWidth)
@@ -1173,10 +1193,17 @@ namespace HaCreator.MapSimulator.UI
                 NpcVisible: supportsNpcButton);
         }
 
-        internal static ClientButtonPlacement ResolveMapButtonPlacementForTesting(int frameWidth, int buttonWidth)
+        internal static ClientButtonPlacement ResolveMapButtonPlacementForTesting(
+            int frameWidth,
+            int buttonWidth,
+            int collapsedRightInset = 0,
+            bool isCollapsed = false)
         {
             return new ClientButtonPlacement(
-                ResolveTopRowButtonX(frameWidth, buttonWidth),
+                ResolveTopRowButtonX(
+                    frameWidth,
+                    buttonWidth,
+                    ResolveTopRowButtonRightPaddingForTesting(isCollapsed, collapsedRightInset)),
                 ClientTopRowButtonTop,
                 Visible: true);
         }
@@ -1184,9 +1211,14 @@ namespace HaCreator.MapSimulator.UI
         internal static ClientButtonPlacement ResolveStateButtonPlacementForTesting(
             int frameWidth,
             int mapButtonWidth,
-            int stateButtonWidth)
+            int stateButtonWidth,
+            int collapsedRightInset = 0,
+            bool isCollapsed = false)
         {
-            int mapButtonX = ResolveTopRowButtonX(frameWidth, mapButtonWidth);
+            int mapButtonX = ResolveTopRowButtonX(
+                frameWidth,
+                mapButtonWidth,
+                ResolveTopRowButtonRightPaddingForTesting(isCollapsed, collapsedRightInset));
             return new ClientButtonPlacement(
                 ResolveAdjacentLeftButtonX(mapButtonX, stateButtonWidth),
                 ClientTopRowButtonTop,

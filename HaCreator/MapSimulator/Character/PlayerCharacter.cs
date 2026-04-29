@@ -380,6 +380,7 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasSourcePartsObjectId { get; set; }
             public int LastInsertCanvasSourceLayerObjectId { get; set; }
             public int LastInsertCanvasSourceLayerOriginSignature { get; set; }
+            public int LastInsertCanvasSourceLayerClockSignature { get; set; }
             public int LastInsertCanvasSourceCanvasObjectId { get; set; }
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
@@ -6497,6 +6498,7 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasSourcePartsObjectId = 0,
                     LastInsertCanvasSourceLayerObjectId = 0,
                     LastInsertCanvasSourceLayerOriginSignature = 0,
+                    LastInsertCanvasSourceLayerClockSignature = 0,
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
@@ -6687,6 +6689,19 @@ namespace HaCreator.MapSimulator.Character
             int liveSourceSignature = ComputeMirrorImageSourceLayerSignature(liveSourceParts);
             int liveSourceCanvasSignature = ComputeMirrorImageSourceCanvasSignature(liveSourceParts);
             int liveSourceLayerCurrentTime = GetRenderAnimationTime(currentTime);
+            int liveSourceLayerClockSignature = ComputeMirrorImageSourceLayerClockSignature(
+                preparedLayer.RenderLayer,
+                CurrentActionName,
+                CurrentAction,
+                State,
+                _animationStartTime,
+                liveSourceLayerCurrentTime,
+                currentFrameIndex,
+                _avatarActionLayerState?.FrameRemainingMs ?? 0,
+                _avatarActionLayerState?.ActionSpeedDegree ?? (Assembler?.PreparedActionSpeedDegree ?? 0),
+                _avatarActionLayerState?.WalkSpeed ?? (Assembler?.PreparedWalkSpeed ?? 0),
+                (_avatarActionLayerState?.HeldActionFrameDelay ?? (Assembler?.HeldActionFrameDelay ?? false)) ? 1 : 0,
+                _avatarActionLayerState?.AllowLoop ?? ShouldCurrentAvatarActionLayerLoop());
             bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
@@ -6708,6 +6723,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceLayerObjectId,
                 ComputeMirrorImageSourceLayerOriginSignature(liveSourceParts),
                 preparedLayer.LastInsertCanvasSourceLayerOriginSignature,
+                liveSourceLayerClockSignature,
+                preparedLayer.LastInsertCanvasSourceLayerClockSignature,
                 ResolveMirrorImageSourceCanvasObjectId(liveSourceParts),
                 preparedLayer.LastInsertCanvasSourceCanvasObjectId);
             if (shouldUseLiveSourceLayer)
@@ -6720,7 +6737,8 @@ namespace HaCreator.MapSimulator.Character
                     liveSourceLayerCurrentTime,
                     hasSourceCanvas: true,
                     sourceParts: liveSourceParts,
-                    insertsLiveSourceCanvas: true);
+                    insertsLiveSourceCanvas: true,
+                    sourceLayerClockSignature: liveSourceLayerClockSignature);
             }
 
             return shouldUseLiveSourceLayer;
@@ -6960,6 +6978,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
             preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
             preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
+            preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
             preparedLayer.LastInsertCanvasSourceCanvasObjectId = 0;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
@@ -6977,7 +6996,8 @@ namespace HaCreator.MapSimulator.Character
             int sourceLayerCurrentTime,
             bool hasSourceCanvas,
             IReadOnlyList<AssembledPart> sourceParts,
-            bool insertsLiveSourceCanvas)
+            bool insertsLiveSourceCanvas,
+            int sourceLayerClockSignature = 0)
         {
             if (preparedLayer == null)
             {
@@ -7001,6 +7021,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
                 preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
                 preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
+                preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
                 preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             }
 
@@ -7043,6 +7064,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourceLayerOriginSignature = ResolveMirrorImageLastInsertCanvasSourceLayerOriginSignature(
                 preparedLayer.LastInsertCanvasSourceLayerOriginSignature,
                 ComputeMirrorImageSourceLayerOriginSignature(sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerClockSignature = ResolveMirrorImageLastInsertCanvasSourceLayerClockSignature(
+                preparedLayer.LastInsertCanvasSourceLayerClockSignature,
+                sourceLayerClockSignature,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasSourceCanvasObjectId = ResolveMirrorImageLastInsertCanvasSourceCanvasObjectId(
                 preparedLayer.LastInsertCanvasSourceCanvasObjectId,
@@ -7399,6 +7424,51 @@ namespace HaCreator.MapSimulator.Character
                 : existingOriginSignature;
         }
 
+        internal static int ComputeMirrorImageSourceLayerClockSignature(
+            AvatarRenderLayer sourceLayer,
+            string actionName,
+            CharacterAction action,
+            PlayerState state,
+            int actionStartTime,
+            int sourceLayerCurrentTime,
+            int frameIndex,
+            int frameRemainingMs,
+            int actionSpeedDegree,
+            int walkSpeed,
+            int heldActionFrameDelay,
+            bool allowLoop)
+        {
+            if (sourceLayerCurrentTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add((int)sourceLayer);
+            signature.Add(actionName, StringComparer.Ordinal);
+            signature.Add((int)action);
+            signature.Add((int)state);
+            signature.Add(actionStartTime);
+            signature.Add(sourceLayerCurrentTime);
+            signature.Add(frameIndex);
+            signature.Add(frameRemainingMs);
+            signature.Add(actionSpeedDegree);
+            signature.Add(walkSpeed);
+            signature.Add(heldActionFrameDelay);
+            signature.Add(allowLoop);
+            return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerClockSignature(
+            int existingClockSignature,
+            int currentClockSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentClockSignature != 0
+                ? currentClockSignature
+                : existingClockSignature;
+        }
+
         internal static int ResolveMirrorImageSourceCanvasObjectId(IReadOnlyList<AssembledPart> sourceParts)
         {
             if (sourceParts == null || sourceParts.Count == 0)
@@ -7682,6 +7752,8 @@ namespace HaCreator.MapSimulator.Character
             int lastInsertCanvasSourceLayerObjectId = 0,
             int sourceLayerOriginSignature = 0,
             int lastInsertCanvasSourceLayerOriginSignature = 0,
+            int sourceLayerClockSignature = 0,
+            int lastInsertCanvasSourceLayerClockSignature = 0,
             int sourceCanvasObjectId = 0,
             int lastInsertCanvasSourceCanvasObjectId = 0)
         {
@@ -7762,6 +7834,9 @@ namespace HaCreator.MapSimulator.Character
             bool sourceLayerOriginChanged = sourceLayerOriginSignature != 0
                 && lastInsertCanvasSourceLayerOriginSignature != 0
                 && sourceLayerOriginSignature != lastInsertCanvasSourceLayerOriginSignature;
+            bool sourceLayerClockChanged = sourceLayerClockSignature != 0
+                && lastInsertCanvasSourceLayerClockSignature != 0
+                && sourceLayerClockSignature != lastInsertCanvasSourceLayerClockSignature;
             bool sourceCanvasObjectChanged = sourceCanvasObjectId != 0
                 && lastInsertCanvasSourceCanvasObjectId != 0
                 && sourceCanvasObjectId != lastInsertCanvasSourceCanvasObjectId;
@@ -7774,6 +7849,7 @@ namespace HaCreator.MapSimulator.Character
             if (sourcePartsIdentityChanged
                 || sourceLayerObjectChanged
                 || sourceLayerOriginChanged
+                || sourceLayerClockChanged
                 || sourceCanvasObjectChanged
                 || sourceSignatureChanged
                 || sourceCanvasSignatureChanged)
@@ -7791,6 +7867,8 @@ namespace HaCreator.MapSimulator.Character
                 && (sourceLayerObjectId == 0 || lastInsertCanvasSourceLayerObjectId == 0);
             bool sourceLayerOriginMetadataMissing = (sourceLayerOriginSignature != 0 || lastInsertCanvasSourceLayerOriginSignature != 0)
                 && (sourceLayerOriginSignature == 0 || lastInsertCanvasSourceLayerOriginSignature == 0);
+            bool sourceLayerClockMetadataMissing = (sourceLayerClockSignature != 0 || lastInsertCanvasSourceLayerClockSignature != 0)
+                && (sourceLayerClockSignature == 0 || lastInsertCanvasSourceLayerClockSignature == 0);
             bool sourceCanvasObjectMetadataMissing = (sourceCanvasObjectId != 0 || lastInsertCanvasSourceCanvasObjectId != 0)
                 && (sourceCanvasObjectId == 0 || lastInsertCanvasSourceCanvasObjectId == 0);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
@@ -7798,6 +7876,7 @@ namespace HaCreator.MapSimulator.Character
                 || sourceCanvasSignatureMetadataMissing
                 || sourceLayerObjectMetadataMissing
                 || sourceLayerOriginMetadataMissing
+                || sourceLayerClockMetadataMissing
                 || sourceCanvasObjectMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {

@@ -121,12 +121,13 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session sendraw <hex>");
                 }
 
+                bool observed = TryObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-sendraw", out string observeStatus);
                 return _mapleTvOfficialSessionBridge.TrySendOutboundPacket(
                         MapleTvRuntime.ConsumeCashItemUseRequestOpcode,
                         payload,
                         out string sendStatus)
-                    ? ChatCommandHandler.CommandResult.Ok(sendStatus)
-                    : ChatCommandHandler.CommandResult.Error(sendStatus);
+                    ? ChatCommandHandler.CommandResult.Ok(AppendMapleTvConsumeObservation(sendStatus, observed, observeStatus))
+                    : ChatCommandHandler.CommandResult.Error(AppendMapleTvConsumeObservation(sendStatus, observed, observeStatus));
             }
 
             if (string.Equals(args[0], "queueraw", StringComparison.OrdinalIgnoreCase))
@@ -136,12 +137,13 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session queueraw <hex>");
                 }
 
+                bool observed = TryObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-queueraw", out string observeStatus);
                 return _mapleTvOfficialSessionBridge.TryQueueOutboundPacket(
                         MapleTvRuntime.ConsumeCashItemUseRequestOpcode,
                         payload,
                         out string queueStatus)
-                    ? ChatCommandHandler.CommandResult.Ok(queueStatus)
-                    : ChatCommandHandler.CommandResult.Error(queueStatus);
+                    ? ChatCommandHandler.CommandResult.Ok(AppendMapleTvConsumeObservation(queueStatus, observed, observeStatus))
+                    : ChatCommandHandler.CommandResult.Error(AppendMapleTvConsumeObservation(queueStatus, observed, observeStatus));
             }
 
             if (string.Equals(args[0], "sendpacketraw", StringComparison.OrdinalIgnoreCase))
@@ -151,9 +153,10 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session sendpacketraw <opcode-framed-hex>");
                 }
 
+                bool observed = TryObserveMapleTvOpcodeFramedConsumeCashItemUseRequest(rawPacket, "simulator-sendpacketraw", out string observeStatus);
                 return _mapleTvOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string rawStatus)
-                    ? ChatCommandHandler.CommandResult.Ok(rawStatus)
-                    : ChatCommandHandler.CommandResult.Error(rawStatus);
+                    ? ChatCommandHandler.CommandResult.Ok(AppendMapleTvConsumeObservation(rawStatus, observed, observeStatus))
+                    : ChatCommandHandler.CommandResult.Error(AppendMapleTvConsumeObservation(rawStatus, observed, observeStatus));
             }
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
@@ -352,12 +355,52 @@ namespace HaCreator.MapSimulator
 
         private void ObserveMirroredMapleTvConsumeCashItemUseRequest(byte[] payload, string source)
         {
-            _mapleTvRuntime.TryObserveConsumeCashItemUseRequestPayload(
+            TryObserveMirroredMapleTvConsumeCashItemUseRequest(payload, source, out _);
+        }
+
+        private bool TryObserveMirroredMapleTvConsumeCashItemUseRequest(byte[] payload, string source, out string message)
+        {
+            return _mapleTvRuntime.TryObserveConsumeCashItemUseRequestPayload(
                 payload,
                 currTickCount,
                 ResolveMapleTvItemMetadata,
-                out _,
+                out message,
                 source);
+        }
+
+        private bool TryObserveMapleTvOpcodeFramedConsumeCashItemUseRequest(byte[] rawPacket, string source, out string message)
+        {
+            message = string.Empty;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                message = "MapleTV opcode-framed packet must include a 2-byte opcode before consume-request observation.";
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (opcode != MapleTvRuntime.ConsumeCashItemUseRequestOpcode)
+            {
+                message = $"Opcode-framed MapleTV raw send used opcode {opcode}; consume-request observation only applies to opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode}.";
+                return false;
+            }
+
+            byte[] payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return TryObserveMirroredMapleTvConsumeCashItemUseRequest(payload, source, out message);
+        }
+
+        private static string AppendMapleTvConsumeObservation(string transportStatus, bool observed, string observeStatus)
+        {
+            if (string.IsNullOrWhiteSpace(observeStatus))
+            {
+                return transportStatus;
+            }
+
+            string observationPrefix = observed
+                ? "Observed CUserLocal::ConsumeCashItem request."
+                : "Consume-request observation skipped.";
+            return $"{transportStatus} {observationPrefix} {observeStatus}";
         }
 
         private bool TryApplyMapleTvOpcodeFramedClientPacket(byte[] rawPacket, out string message)

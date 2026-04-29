@@ -112,6 +112,7 @@ namespace HaCreator.MapSimulator.Interaction
                             speakerTemplateId,
                             speaker.NpcId,
                             ResolveInputKind(entry),
+                            ResolveInputMinLength(entry),
                             ResolveInputMinValue(entry),
                             ResolveInputMaxValue(entry),
                             ResolveInputMaxLength(entry));
@@ -156,6 +157,7 @@ namespace HaCreator.MapSimulator.Interaction
                     speakerTemplateId,
                     speaker.NpcId,
                     ResolveInputKind(entry),
+                    ResolveInputMinLength(entry),
                     ResolveInputMinValue(entry),
                     ResolveInputMaxValue(entry),
                     ResolveInputMaxLength(entry));
@@ -1222,6 +1224,7 @@ namespace HaCreator.MapSimulator.Interaction
                 -1,
                 0,
                 0,
+                0,
                 0);
 
             string submittedValue = submission.Kind switch
@@ -1303,6 +1306,26 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (context.MessageType is 3 or 14 &&
+                context.InputKind is NpcInteractionInputKind.Text or NpcInteractionInputKind.MultiLineText &&
+                submission.Kind is NpcInteractionInputKind.Text or NpcInteractionInputKind.MultiLineText)
+            {
+                int submittedByteCount = InitialQuizTimerRuntime.GetClientMapleStringByteCount(submittedValue);
+                if (submittedByteCount < context.MinLength)
+                {
+                    error = $"{context.EntryTitle} submissions require at least {context.MinLength} client byte(s).";
+                    return false;
+                }
+
+                if (context.MaxLength >= 0 && submittedByteCount > context.MaxLength)
+                {
+                    error = $"{context.EntryTitle} submissions cannot exceed {context.MaxLength} client byte(s).";
+                    return false;
+                }
+
+                return true;
+            }
+
             if (context.MessageType != 4)
             {
                 return true;
@@ -1338,6 +1361,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static NpcInteractionInputKind ResolveInputKind(NpcInteractionEntry entry)
         {
             return entry?.Pages?.FirstOrDefault()?.InputRequest?.Kind ?? NpcInteractionInputKind.None;
+        }
+
+        private static int ResolveInputMinLength(NpcInteractionEntry entry)
+        {
+            return entry?.Pages?.FirstOrDefault()?.InputRequest?.MinLength ?? 0;
         }
 
         private static int ResolveInputMinValue(NpcInteractionEntry entry)
@@ -2070,6 +2098,7 @@ namespace HaCreator.MapSimulator.Interaction
             int SpeakerTemplateId,
             int SpeakerNpcId,
             NpcInteractionInputKind InputKind = NpcInteractionInputKind.None,
+            int MinLength = 0,
             int MinValue = int.MinValue,
             int MaxValue = int.MaxValue,
             int MaxLength = int.MaxValue);

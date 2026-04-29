@@ -2460,6 +2460,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string medalName = GetEquippedItemName(EquipSlot.Medal, displayBuild);
+            if (IsRemoteInspectionActive()
+                && displayBuild.HasAuthoritativeProfileMedal
+                && !displayBuild.ProfileHasMedal)
+            {
+                return "Medal: none equipped on inspected build";
+            }
+
             if (IsRemoteInspectionActive() && !displayBuild.HasAuthoritativeProfileMedal)
             {
                 return !string.Equals(medalName, "-", StringComparison.Ordinal)

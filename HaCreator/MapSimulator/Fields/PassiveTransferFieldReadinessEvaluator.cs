@@ -87,6 +87,13 @@ namespace HaCreator.MapSimulator.Fields
             FieldInterfaceTeardown = 3
         }
 
+        public enum QueuedRetryWriterOwner
+        {
+            None = 0,
+            HandleUpKeyDownOneTimeAction = 1,
+            FollowCharacterTransferDetach = 2
+        }
+
         public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
         {
             return state.HasCollidingTransferPortal
@@ -373,11 +380,43 @@ namespace HaCreator.MapSimulator.Fields
                        allowsTransferField);
         }
 
+        public static bool HasRecognizedQueuedRetryWriter(
+            bool hasPendingRequest,
+            QueuedRetryWriterOwner writerOwner)
+        {
+            return hasPendingRequest
+                   && writerOwner != QueuedRetryWriterOwner.None;
+        }
+
+        public static QueuedRetryWriterOwner ResolveQueuedRetryWriterFromHandleUpKeyDown(
+            bool hasPendingRequest,
+            bool hasClientOwnedOneTimeAction,
+            bool hasPassiveTransferFieldPortalCollision,
+            bool allowsTransferField)
+        {
+            return ShouldArmQueuedRetryFromHandleUpKeyDown(
+                hasPendingRequest,
+                hasClientOwnedOneTimeAction,
+                hasPassiveTransferFieldPortalCollision,
+                allowsTransferField)
+                ? QueuedRetryWriterOwner.HandleUpKeyDownOneTimeAction
+                : QueuedRetryWriterOwner.None;
+        }
+
         public static bool ShouldArmQueuedRetryFromFollowCharacterTransferDetach(
             bool isLocalUser,
             bool transferField)
         {
             return isLocalUser && transferField;
+        }
+
+        public static QueuedRetryWriterOwner ResolveQueuedRetryWriterFromFollowCharacterTransferDetach(
+            bool isLocalUser,
+            bool transferField)
+        {
+            return ShouldArmQueuedRetryFromFollowCharacterTransferDetach(isLocalUser, transferField)
+                ? QueuedRetryWriterOwner.FollowCharacterTransferDetach
+                : QueuedRetryWriterOwner.None;
         }
 
         public static bool ShouldClearQueuedRetryFromFollowCharacterFailure(

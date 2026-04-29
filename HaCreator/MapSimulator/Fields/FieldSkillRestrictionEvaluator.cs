@@ -333,20 +333,17 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string GetNoSkillRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId)
         {
-            WzImageProperty noSkillProperty = FindAdditionalFieldProperty(mapInfo, "noSkill");
-            if (noSkillProperty == null)
+            foreach (WzImageProperty noSkillProperty in EnumerateAdditionalFieldProperties(mapInfo, "noSkill"))
             {
-                return null;
-            }
+                if (MatchesAnyListedSkillClass(noSkillProperty, currentJobId, skill))
+                {
+                    return "This field forbids skills for your job branch.";
+                }
 
-            if (MatchesAnyListedSkillClass(noSkillProperty, currentJobId, skill))
-            {
-                return "This field forbids skills for your job branch.";
-            }
-
-            if (MatchesAnyListedSkill(noSkillProperty, skill.SkillId))
-            {
-                return "This skill is forbidden in this field.";
+                if (MatchesAnyListedSkill(noSkillProperty, skill.SkillId))
+                {
+                    return "This skill is forbidden in this field.";
+                }
             }
 
             return null;
@@ -383,15 +380,19 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string GetOnlyUseSkillRestrictionMessage(MapInfo mapInfo, SkillData skill)
         {
-            WzImageProperty onlyUseSkillProperty = FindInfoFieldProperty(mapInfo, "onlyUseSkill");
-            if (onlyUseSkillProperty == null || !HasClientIndexedIntValues(onlyUseSkillProperty))
+            foreach (WzImageProperty onlyUseSkillProperty in EnumerateInfoFieldProperties(mapInfo, "onlyUseSkill"))
             {
-                return null;
+                if (!HasClientIndexedIntValues(onlyUseSkillProperty))
+                {
+                    continue;
+                }
+
+                return MatchesListedSkill(onlyUseSkillProperty, skill.SkillId)
+                    ? null
+                    : "Only field-authorized skills can be used in this field.";
             }
 
-            return MatchesListedSkill(onlyUseSkillProperty, skill.SkillId)
-                ? null
-                : "Only field-authorized skills can be used in this field.";
+            return null;
         }
 
         private static bool MatchesAnyListedSkill(WzImageProperty noSkillProperty, int skillId)
@@ -422,12 +423,19 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool HasMobMassacreDisableSkillFlag(MapInfo mapInfo)
         {
-            WzImageProperty mobMassacreProperty = FindAdditionalFieldProperty(mapInfo, "mobMassacre");
-            WzImageProperty disableSkillProperty = mobMassacreProperty?["disableSkill"] as WzImageProperty;
-            return TryReadInt(disableSkillProperty, out int value) && value != 0;
+            foreach (WzImageProperty mobMassacreProperty in EnumerateAdditionalFieldProperties(mapInfo, "mobMassacre"))
+            {
+                WzImageProperty disableSkillProperty = mobMassacreProperty?["disableSkill"] as WzImageProperty;
+                if (TryReadInt(disableSkillProperty, out int value) && value != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        private static WzImageProperty FindAdditionalFieldProperty(MapInfo mapInfo, string propertyName)
+        private static IEnumerable<WzImageProperty> EnumerateAdditionalFieldProperties(MapInfo mapInfo, string propertyName)
         {
             if (mapInfo?.additionalNonInfoProps != null)
             {
@@ -436,15 +444,18 @@ namespace HaCreator.MapSimulator.Fields
                     WzImageProperty property = mapInfo.additionalNonInfoProps[i];
                     if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
                     {
-                        return property;
+                        yield return property;
                     }
                 }
             }
 
-            return mapInfo?.Image?[propertyName] as WzImageProperty;
+            if (mapInfo?.Image?[propertyName] is WzImageProperty imageProperty)
+            {
+                yield return imageProperty;
+            }
         }
 
-        private static WzImageProperty FindInfoFieldProperty(MapInfo mapInfo, string propertyName)
+        private static IEnumerable<WzImageProperty> EnumerateInfoFieldProperties(MapInfo mapInfo, string propertyName)
         {
             if (mapInfo?.additionalProps != null)
             {
@@ -453,7 +464,7 @@ namespace HaCreator.MapSimulator.Fields
                     WzImageProperty property = mapInfo.additionalProps[i];
                     if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
                     {
-                        return property;
+                        yield return property;
                     }
                 }
             }
@@ -465,12 +476,15 @@ namespace HaCreator.MapSimulator.Fields
                     WzImageProperty property = mapInfo.unsupportedInfoProperties[i];
                     if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
                     {
-                        return property;
+                        yield return property;
                     }
                 }
             }
 
-            return mapInfo?.Image?["info"]?[propertyName] as WzImageProperty;
+            if (mapInfo?.Image?["info"]?[propertyName] is WzImageProperty imageProperty)
+            {
+                yield return imageProperty;
+            }
         }
 
         private static bool MatchesListedSkill(WzImageProperty property, int skillId)

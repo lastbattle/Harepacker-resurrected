@@ -3116,7 +3116,7 @@ namespace HaCreator.MapSimulator
             }
 
             string normalized = text.Trim().TrimStart('?').Replace("&amp;", "&", StringComparison.OrdinalIgnoreCase);
-            if (!normalized.Contains('=', StringComparison.Ordinal) || !normalized.Contains('&', StringComparison.Ordinal))
+            if (!normalized.Contains('=', StringComparison.Ordinal))
             {
                 return false;
             }
@@ -3126,7 +3126,7 @@ namespace HaCreator.MapSimulator
             string source = string.Empty;
             var pageLines = new List<string>();
             var ladderLines = new List<string>();
-            string[] pairs = normalized.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            string[] pairs = SplitClassCompetitionFormPairs(normalized);
             int recognizedCount = 0;
             for (int i = 0; i < pairs.Length; i++)
             {
@@ -3157,7 +3157,9 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (key.Equals("source", StringComparison.OrdinalIgnoreCase))
+                if (key.Equals("source", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("origin", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("provider", StringComparison.OrdinalIgnoreCase))
                 {
                     source = DecodeClassCompetitionFormTextValue(rawValue);
                     recognizedCount++;
@@ -3167,7 +3169,10 @@ namespace HaCreator.MapSimulator
                 if (key.Equals("line", StringComparison.OrdinalIgnoreCase)
                     || key.Equals("page", StringComparison.OrdinalIgnoreCase)
                     || key.Equals("lines", StringComparison.OrdinalIgnoreCase)
-                    || key.Equals("pagelines", StringComparison.OrdinalIgnoreCase))
+                    || key.Equals("pagelines", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("body", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("html", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("content", StringComparison.OrdinalIgnoreCase))
                 {
                     AppendClassCompetitionFormTextLines(pageLines, rawValue);
                     recognizedCount++;
@@ -3176,7 +3181,13 @@ namespace HaCreator.MapSimulator
 
                 if (key.Equals("ladder", StringComparison.OrdinalIgnoreCase)
                     || key.Equals("ladderline", StringComparison.OrdinalIgnoreCase)
-                    || key.Equals("ladderlines", StringComparison.OrdinalIgnoreCase))
+                    || key.Equals("ladderlines", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("row", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("rows", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("rank", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("ranking", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("rankings", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("standings", StringComparison.OrdinalIgnoreCase))
                 {
                     AppendClassCompetitionFormTextLines(ladderLines, rawValue);
                     recognizedCount++;
@@ -3215,6 +3226,21 @@ namespace HaCreator.MapSimulator
                 LadderLines = normalizedLadderLines
             };
             return true;
+        }
+
+        private static string[] SplitClassCompetitionFormPairs(string normalized)
+        {
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return Array.Empty<string>();
+            }
+
+            return normalized
+                .Replace('\0', '&')
+                .Replace('\u001E', '&')
+                .Split(
+                    new[] { '&', ';', '\r', '\n' },
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
         private static bool TryDecodePacketOwnedClassCompetitionRemotePageHtmlPayload(
@@ -15242,7 +15268,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            ArmPassiveTransferRequest();
+            ArmPassiveTransferRequest(PassiveTransferFieldReadinessEvaluator.QueuedRetryWriterOwner.FollowCharacterTransferDetach);
         }
 
         private string ApplyPacketOwnedFollowCharacterFailed(FollowCharacterFailureInfo info)
@@ -18179,6 +18205,23 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            string passiveCharacterRejectReason = message;
+            if (TryApplyPassiveCharacterInventoryOperationMutationsFromInventoryOperationPayload(payload, out message))
+            {
+                StampPacketOwnedUtilityRequestState();
+                if (!string.IsNullOrWhiteSpace(collisionScriptResetMessage))
+                {
+                    message = $"{message} {collisionScriptResetMessage}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(questStartRequestResetMessage))
+                {
+                    message = $"{message} {questStartRequestResetMessage}";
+                }
+
+                return true;
+            }
+
             if (TryApplyPacketOwnedMonsterBookInventoryOperationPickupPayload(payload, out string monsterBookPickupMessage))
             {
                 StampPacketOwnedUtilityRequestState();
@@ -18215,6 +18258,13 @@ namespace HaCreator.MapSimulator
                     : $"{message} {mechanicRejectReason}";
             }
 
+            if (!string.IsNullOrWhiteSpace(passiveCharacterRejectReason))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? passiveCharacterRejectReason
+                    : $"{message} {passiveCharacterRejectReason}";
+            }
+
             if (!consumedCollisionScriptReset && !consumedQuestStartRequestReset)
             {
                 return false;
@@ -18228,6 +18278,204 @@ namespace HaCreator.MapSimulator
                 ? resetMessage
                 : $"{message} {resetMessage}";
             return true;
+        }
+
+        private bool TryApplyPassiveCharacterInventoryOperationMutationsFromInventoryOperationPayload(
+            byte[] payload,
+            out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "Inventory-operation payload is empty.";
+                return false;
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            if (build == null)
+            {
+                return false;
+            }
+
+            InventoryUI inventoryWindow = uiWindowManager?.InventoryWindow as InventoryUI;
+            IReadOnlyList<InventorySlotData> equipInventory =
+                inventoryWindow != null
+                    ? CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP)
+                    : Array.Empty<InventorySlotData>();
+            IReadOnlyList<InventorySlotData> cashInventory =
+                inventoryWindow != null
+                    ? CaptureInventorySnapshot(inventoryWindow, InventoryType.CASH)
+                    : Array.Empty<InventorySlotData>();
+
+            if (!CharacterEquipmentPacketParity.TryDecodePassiveClientInventoryOperationMutations(
+                    payload,
+                    equipInventory,
+                    cashInventory,
+                    out IReadOnlyList<CharacterEquipmentPacketParity.CharacterInventoryOperationMutation> mutations,
+                    out string rejectReason))
+            {
+                message = rejectReason;
+                return false;
+            }
+
+            int appliedMutationCount = 0;
+            int unchangedMutationCount = 0;
+            for (int i = 0; i < mutations.Count; i++)
+            {
+                CharacterEquipmentPacketParity.CharacterInventoryOperationMutation mutation = mutations[i];
+                int equippedItemId = ResolveCharacterEquipmentLayerItemId(build, mutation.Slot, mutation.CashLayer);
+                if (equippedItemId == mutation.ItemId)
+                {
+                    unchangedMutationCount++;
+                    continue;
+                }
+
+                if (!TryApplyPassiveCharacterEquipmentMutation(build, mutation, out rejectReason))
+                {
+                    message = rejectReason;
+                    return false;
+                }
+
+                appliedMutationCount++;
+            }
+
+            if (appliedMutationCount <= 0)
+            {
+                if (mutations.Count <= 0)
+                {
+                    return false;
+                }
+
+                message = "Recovered character inventory-operation mutation payload did not change the current equipment state.";
+                return true;
+            }
+
+            message =
+                $"Applied {appliedMutationCount.ToString(CultureInfo.InvariantCulture)} passive character inventory-operation mutation(s).";
+            if (unchangedMutationCount > 0)
+            {
+                message =
+                    $"{message} {unchangedMutationCount.ToString(CultureInfo.InvariantCulture)} decoded mutation(s) already matched the current equipment state.";
+            }
+
+            return true;
+        }
+
+        private static int ResolveCharacterEquipmentLayerItemId(
+            CharacterBuild build,
+            EquipSlot slot,
+            bool cashLayer)
+        {
+            if (build == null || slot == EquipSlot.None)
+            {
+                return 0;
+            }
+
+            if (cashLayer)
+            {
+                return build.Equipment.TryGetValue(slot, out CharacterPart visiblePart)
+                       && visiblePart?.IsCash == true
+                    ? visiblePart.ItemId
+                    : 0;
+            }
+
+            if (build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart)
+                && hiddenPart != null)
+            {
+                return hiddenPart.ItemId;
+            }
+
+            return build.Equipment.TryGetValue(slot, out CharacterPart equippedPart)
+                   && equippedPart?.IsCash != true
+                ? equippedPart.ItemId
+                : 0;
+        }
+
+        private static bool TryApplyPassiveCharacterEquipmentMutation(
+            CharacterBuild build,
+            CharacterEquipmentPacketParity.CharacterInventoryOperationMutation mutation,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (build == null)
+            {
+                rejectReason = "Character equipment runtime is unavailable.";
+                return false;
+            }
+
+            if (mutation.Slot == EquipSlot.None)
+            {
+                rejectReason = "Inventory-operation character equipment mutation did not resolve a valid slot.";
+                return false;
+            }
+
+            if (mutation.ItemId <= 0)
+            {
+                ClearPassiveCharacterEquipmentLayer(build, mutation.Slot, mutation.CashLayer);
+                return true;
+            }
+
+            if (build.EquipmentPartLoader == null)
+            {
+                rejectReason = $"Character equipment loader is unavailable for inventory-operation item {mutation.ItemId}.";
+                return false;
+            }
+
+            CharacterPart part = build.EquipmentPartLoader.Invoke(mutation.ItemId)?.Clone();
+            if (part == null)
+            {
+                rejectReason = $"Inventory-operation character equipment mutation could not load item {mutation.ItemId}.";
+                return false;
+            }
+
+            if (!EquipUIBigBang.CanDisplayPartInSlot(part, mutation.Slot))
+            {
+                rejectReason = "Inventory-operation character equipment mutation did not match the decoded equipment slot family.";
+                return false;
+            }
+
+            part.IsCash = mutation.CashLayer || part.IsCash;
+            build.PlaceEquipment(part, mutation.Slot);
+            return true;
+        }
+
+        private static void ClearPassiveCharacterEquipmentLayer(
+            CharacterBuild build,
+            EquipSlot slot,
+            bool cashLayer)
+        {
+            if (build == null || slot == EquipSlot.None)
+            {
+                return;
+            }
+
+            if (cashLayer)
+            {
+                if (build.Equipment.TryGetValue(slot, out CharacterPart visiblePart)
+                    && visiblePart?.IsCash == true)
+                {
+                    build.Equipment.Remove(slot);
+                    if (build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart))
+                    {
+                        build.HiddenEquipment.Remove(slot);
+                        build.Equipment[slot] = hiddenPart;
+                    }
+                }
+
+                return;
+            }
+
+            if (build.HiddenEquipment.ContainsKey(slot))
+            {
+                build.HiddenEquipment.Remove(slot);
+                return;
+            }
+
+            if (build.Equipment.TryGetValue(slot, out CharacterPart equippedPart)
+                && equippedPart?.IsCash != true)
+            {
+                build.Equipment.Remove(slot);
+            }
         }
 
         private bool TryApplyPacketOwnedMonsterBookInventoryOperationPickupPayload(byte[] payload, out string message)
@@ -19801,7 +20049,8 @@ namespace HaCreator.MapSimulator
                 || payloadText.IndexOf('<') < 0
                 || (payloadText.IndexOf("<tr", StringComparison.OrdinalIgnoreCase) < 0
                     && payloadText.IndexOf("<li", StringComparison.OrdinalIgnoreCase) < 0
-                    && payloadText.IndexOf("<div", StringComparison.OrdinalIgnoreCase) < 0))
+                    && payloadText.IndexOf("<div", StringComparison.OrdinalIgnoreCase) < 0
+                    && payloadText.IndexOf("<script", StringComparison.OrdinalIgnoreCase) < 0))
             {
                 return false;
             }
@@ -19853,14 +20102,228 @@ namespace HaCreator.MapSimulator
 
             if (parsedEntries.Count == 0)
             {
+                AppendPacketOwnedEventCalendarEmbeddedJsonEntries(payloadText, parsedEntries, out alarmLines);
+            }
+
+            if (parsedEntries.Count == 0)
+            {
                 return false;
             }
 
             entries = parsedEntries.ToArray();
-            alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+            if (alarmLines.Length == 0)
+            {
+                alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+            }
+
             summary = $"Applied packet-authored CUIEventAlarm HTML page with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
             message = summary;
             return true;
+        }
+
+        private static void AppendPacketOwnedEventCalendarEmbeddedJsonEntries(
+            string payloadText,
+            ICollection<EventEntrySnapshot> destination,
+            out EventAlarmLineSnapshot[] alarmLines)
+        {
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            if (string.IsNullOrWhiteSpace(payloadText) || destination == null)
+            {
+                return;
+            }
+
+            MatchCollection scriptMatches = Regex.Matches(
+                payloadText,
+                @"<script\b[^>]*>(?<body>.*?)</script>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            foreach (Match scriptMatch in scriptMatches)
+            {
+                if (TryAppendPacketOwnedEventCalendarEmbeddedJsonEntriesFromScript(scriptMatch.Groups["body"].Value, destination, out alarmLines))
+                {
+                    return;
+                }
+            }
+
+            TryAppendPacketOwnedEventCalendarEmbeddedJsonEntriesFromScript(payloadText, destination, out alarmLines);
+        }
+
+        private static bool TryAppendPacketOwnedEventCalendarEmbeddedJsonEntriesFromScript(
+            string scriptText,
+            ICollection<EventEntrySnapshot> destination,
+            out EventAlarmLineSnapshot[] alarmLines)
+        {
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            if (string.IsNullOrWhiteSpace(scriptText) || destination == null)
+            {
+                return false;
+            }
+
+            foreach (string json in EnumeratePacketOwnedEmbeddedJsonValues(
+                         scriptText,
+                         "eventCalendar",
+                         "attendanceCalendar",
+                         "calendarEntries",
+                         "attendanceEntries",
+                         "eventRows",
+                         "events",
+                         "schedules",
+                         "calendar",
+                         "attendance"))
+            {
+                int beforeCount = destination.Count;
+                if (TryAppendPacketOwnedEventCalendarEmbeddedJsonPayload(json, destination, out alarmLines)
+                    && destination.Count > beforeCount)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryAppendPacketOwnedEventCalendarEmbeddedJsonPayload(
+            string json,
+            ICollection<EventEntrySnapshot> destination,
+            out EventAlarmLineSnapshot[] alarmLines)
+        {
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            if (string.IsNullOrWhiteSpace(json) || destination == null)
+            {
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedEventCalendarJsonPayload(
+                    json,
+                    out _,
+                    out _,
+                    out EventEntrySnapshot[] parsedEntries,
+                    out bool hasAlarmLines,
+                    out _,
+                    out EventAlarmLineSnapshot[] parsedAlarmLines,
+                    out _,
+                    out _))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < parsedEntries.Length; i++)
+            {
+                destination.Add(parsedEntries[i]);
+            }
+
+            alarmLines = hasAlarmLines ? parsedAlarmLines : Array.Empty<EventAlarmLineSnapshot>();
+            return parsedEntries.Length > 0 || alarmLines.Length > 0;
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedEmbeddedJsonValues(string scriptText, params string[] aliases)
+        {
+            if (string.IsNullOrWhiteSpace(scriptText) || aliases == null || aliases.Length == 0)
+            {
+                yield break;
+            }
+
+            for (int aliasIndex = 0; aliasIndex < aliases.Length; aliasIndex++)
+            {
+                string alias = aliases[aliasIndex];
+                if (string.IsNullOrWhiteSpace(alias))
+                {
+                    continue;
+                }
+
+                MatchCollection aliasMatches = Regex.Matches(
+                    scriptText,
+                    $@"(?<![A-Za-z0-9_]){Regex.Escape(alias)}(?![A-Za-z0-9_])",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                foreach (Match aliasMatch in aliasMatches)
+                {
+                    if (!TryExtractPacketOwnedEmbeddedJsonValue(scriptText, aliasMatch.Index + aliasMatch.Length, out string json))
+                    {
+                        continue;
+                    }
+
+                    yield return json;
+                }
+            }
+        }
+
+        private static bool TryExtractPacketOwnedEmbeddedJsonValue(string text, int startIndex, out string json)
+        {
+            json = string.Empty;
+            if (string.IsNullOrWhiteSpace(text) || startIndex < 0 || startIndex >= text.Length)
+            {
+                return false;
+            }
+
+            int separatorIndex = startIndex;
+            while (separatorIndex < text.Length && char.IsWhiteSpace(text[separatorIndex]))
+            {
+                separatorIndex++;
+            }
+
+            if (separatorIndex >= text.Length || (text[separatorIndex] != ':' && text[separatorIndex] != '='))
+            {
+                return false;
+            }
+
+            int valueStart = separatorIndex + 1;
+            while (valueStart < text.Length && char.IsWhiteSpace(text[valueStart]))
+            {
+                valueStart++;
+            }
+
+            if (valueStart >= text.Length || (text[valueStart] != '{' && text[valueStart] != '['))
+            {
+                return false;
+            }
+
+            char open = text[valueStart];
+            char close = open == '{' ? '}' : ']';
+            int depth = 0;
+            bool inString = false;
+            bool escaped = false;
+            for (int i = valueStart; i < text.Length; i++)
+            {
+                char ch = text[i];
+                if (inString)
+                {
+                    if (escaped)
+                    {
+                        escaped = false;
+                    }
+                    else if (ch == '\\')
+                    {
+                        escaped = true;
+                    }
+                    else if (ch == '"')
+                    {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch == open)
+                {
+                    depth++;
+                }
+                else if (ch == close)
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        json = text.Substring(valueStart, i - valueStart + 1);
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static void AppendPacketOwnedEventCalendarHtmlListEntries(string payloadText, ICollection<EventEntrySnapshot> destination)

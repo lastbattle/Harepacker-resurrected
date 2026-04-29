@@ -2054,6 +2054,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 IsDisassembly = false,
                 RecipeKey = recipe.RecipeKey ?? string.Empty,
+                IsHiddenRecipe = recipe.IsHidden,
+                ExpectedRewardBucketKey = recipe.BucketKey,
+                RecipeOutputItemId = recipe.OutputItemId,
                 ExpectedRewardItemId = recipe.UsesRandomReward ? 0 : recipe.OutputItemId,
                 ExpectedRewardQuantity = recipe.UsesRandomReward ? 0 : Math.Max(1, recipe.OutputQuantity),
                 MesoCost = recipe.MesoCost,

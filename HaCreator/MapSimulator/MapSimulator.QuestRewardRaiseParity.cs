@@ -113,7 +113,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            OpenQuestRewardRaiseItemOwnerWindow(prompt);
+            OpenQuestRewardRaiseItemOwnerWindow(prompt, dispatchOpenRequest: true);
             QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
             if (activeRaise == null || activeRaise.OwnerItemId != itemId)
             {
@@ -128,7 +128,7 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void OpenQuestRewardRaiseItemOwnerWindow(QuestRewardChoicePrompt prompt)
+        private void OpenQuestRewardRaiseItemOwnerWindow(QuestRewardChoicePrompt prompt, bool dispatchOpenRequest)
         {
             if (prompt?.OwnerContext == null || prompt.OwnerContext.OwnerItemId <= 0)
             {
@@ -143,7 +143,9 @@ namespace HaCreator.MapSimulator
             }
 
             ApplyQuestRewardRaiseQuestRecordContext(activeRaise);
-            activeRaise.OpenDispatchSummary = DispatchQuestRewardRaiseOpenRequest(activeRaise);
+            activeRaise.OpenDispatchSummary = dispatchOpenRequest
+                ? DispatchQuestRewardRaiseOpenRequest(activeRaise)
+                : $"Observed client raise create-window visibility for owner #{Math.Max(0, activeRaise.OwnerItemId)} quest #{Math.Max(0, activeRaise.Prompt?.QuestId ?? 0)} without emitting another create-window request.";
             ShowActiveQuestRewardRaiseGroup();
         }
 
@@ -773,6 +775,69 @@ namespace HaCreator.MapSimulator
             return request?.ClientOpcode >= 0
                 ? request.ClientPayload ?? Array.Empty<byte>()
                 : request?.Payload ?? Array.Empty<byte>();
+        }
+
+        private bool TryApplyPacketOwnedQuestRewardRaiseClientOpenOwnerPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!QuestRewardRaiseOutboundRequest.TryDecodeClientOpenOwnerPayload(
+                    payload,
+                    out int ownerItemId,
+                    out bool isVisible,
+                    out string error))
+            {
+                message = error ?? "Raise client create-window payload could not be decoded.";
+                return false;
+            }
+
+            if (!InventoryItemMetadataResolver.TryResolveRaiseOwnerContextForItem(
+                    ownerItemId,
+                    out QuestRewardRaiseOwnerContext ownerContext,
+                    out QuestRewardRaiseItemMetadata metadata)
+                || metadata == null
+                || metadata.QuestId <= 0)
+            {
+                message = $"Raise client create-window owner #{ownerItemId} has no WZ-authored raise owner metadata.";
+                return false;
+            }
+
+            int questId = Math.Max(0, metadata.QuestId);
+            if (!isVisible)
+            {
+                QuestRewardRaiseState activeBeforeClose = _questRewardRaiseManager.ActiveRaise;
+                QuestRewardRaiseState destroyed = _questRewardRaiseManager.DestroyWindowWithQuestId(questId);
+                if (activeBeforeClose != null && ReferenceEquals(activeBeforeClose, destroyed))
+                {
+                    ClearQuestRewardRaiseWindow();
+                }
+
+                message = destroyed != null
+                    ? $"Client raise create-window visibility closed owner #{ownerItemId} for quest #{questId}."
+                    : $"Client raise create-window visibility requested close for owner #{ownerItemId} quest #{questId}, but no live or retained owner was open.";
+                return true;
+            }
+
+            int initialQrData = ResolveQuestRewardRaiseInitialQrData(questId);
+            QuestRewardChoicePrompt prompt = BuildQuestRewardRaiseItemOwnerPrompt(
+                metadata,
+                ownerContext,
+                initialQrData);
+            if (prompt == null)
+            {
+                message = $"Raise client create-window owner #{ownerItemId} could not build a WZ-backed owner prompt.";
+                return false;
+            }
+
+            OpenQuestRewardRaiseItemOwnerWindow(prompt, dispatchOpenRequest: false);
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise == null || activeRaise.OwnerItemId != ownerItemId)
+            {
+                message = $"Raise client create-window owner #{ownerItemId} did not produce an active owner window.";
+                return false;
+            }
+
+            message = $"Client raise create-window visibility opened owner #{ownerItemId} for quest #{questId} as {activeRaise.ClientWindowKind}; WZ uiData '{metadata.UiData}' supplied {activeRaise.MaxDropCount} max drop slot(s).";
+            return true;
         }
 
         private bool TryApplyPacketOwnedQuestRewardRaiseQuestRecordMessagePayload(byte[] payload, out string message)

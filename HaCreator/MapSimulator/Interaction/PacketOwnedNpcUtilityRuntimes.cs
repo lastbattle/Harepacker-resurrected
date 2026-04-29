@@ -64,7 +64,13 @@ namespace HaCreator.MapSimulator.Interaction
         bool HasCashSerialNumber,
         bool IsRechargeBundle,
         bool WasRetainedFromPreviousSnapshot,
-        bool DrawsClientSlotBackground);
+        bool DrawsClientSlotBackground,
+        string RawEncodedHex,
+        string BodyEncodedHex,
+        string BaseTailEncodedHex,
+        string EquipTailEncodedHex,
+        string BundleTailEncodedHex,
+        string PetTailEncodedHex);
 
     internal readonly record struct StoreBankOwnerSelectionAnchor(
         InventoryType PacketGroupInventoryType,
@@ -1344,7 +1350,13 @@ namespace HaCreator.MapSimulator.Interaction
                     item.HasCashSerialNumber,
                     item.IsRechargeBundle,
                     item.WasRetainedFromPreviousSnapshot,
-                    i < _slotCount);
+                    i < _slotCount,
+                    Convert.ToHexString(item.RawEncodedBytes ?? Array.Empty<byte>()),
+                    Convert.ToHexString(item.BodyEncodedBytes ?? Array.Empty<byte>()),
+                    Convert.ToHexString(item.BaseTailBytes ?? Array.Empty<byte>()),
+                    Convert.ToHexString(item.EquipTailBytes ?? Array.Empty<byte>()),
+                    Convert.ToHexString(item.BundleTailBytes ?? Array.Empty<byte>()),
+                    Convert.ToHexString(item.PetTailBytes ?? Array.Empty<byte>()));
             }
 
             return rows;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -37,6 +38,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int ItemId { get; init; }
             public int Quantity { get; init; }
             public int Meso { get; init; }
+            public InventoryType InventoryType { get; init; } = InventoryType.NONE;
+            public short InventoryPosition { get; init; }
             public bool IsClaimed { get; set; }
         }
 
@@ -679,6 +682,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool SetDraftItemAttachment(int itemId, int quantity, out string message)
         {
+            return SetDraftItemAttachment(itemId, quantity, InventoryType.NONE, 0, out message);
+        }
+
+        internal bool SetDraftItemAttachment(int itemId, int quantity, InventoryType inventoryType, short inventoryPosition, out string message)
+        {
             if (_activeTab == ParcelDialogTab.QuickSend)
             {
                 message = "Quick Send does not allow item packages. Use the parcel-owner meso field instead.";
@@ -702,7 +710,9 @@ namespace HaCreator.MapSimulator.Interaction
                 Kind = MemoAttachmentKind.Item,
                 ItemId = itemId,
                 Quantity = quantity,
-                Meso = Math.Max(0, _draft.Attachment?.Meso ?? 0)
+                Meso = Math.Max(0, _draft.Attachment?.Meso ?? 0),
+                InventoryType = inventoryPosition > 0 ? inventoryType : InventoryType.NONE,
+                InventoryPosition = inventoryPosition > 0 ? inventoryPosition : (short)0
             };
             _awaitingItemSelection = false;
 
@@ -1052,7 +1062,9 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         Kind = MemoAttachmentKind.Item,
                         ItemId = _draft.Attachment.ItemId,
-                        Quantity = Math.Max(1, _draft.Attachment.Quantity)
+                        Quantity = Math.Max(1, _draft.Attachment.Quantity),
+                        InventoryType = _draft.Attachment.InventoryType,
+                        InventoryPosition = _draft.Attachment.InventoryPosition
                     };
                 }
                 else if (_draft.Attachment?.Kind == MemoAttachmentKind.Meso)
@@ -1078,7 +1090,9 @@ namespace HaCreator.MapSimulator.Interaction
                     Kind = MemoAttachmentKind.Item,
                     ItemId = _draft.Attachment.ItemId,
                     Quantity = Math.Max(1, _draft.Attachment.Quantity),
-                    Meso = meso
+                    Meso = meso,
+                    InventoryType = _draft.Attachment.InventoryType,
+                    InventoryPosition = _draft.Attachment.InventoryPosition
                 }
                 : new MemoAttachmentState
             {
@@ -1135,6 +1149,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ItemId = attachment.ItemId,
                     Quantity = attachment.Quantity,
                     Meso = attachment.Meso,
+                    InventoryType = attachment.InventoryType,
+                    InventoryPosition = attachment.InventoryPosition,
                     IsClaimed = attachment.IsClaimed
                 };
         }
@@ -1545,6 +1561,7 @@ namespace HaCreator.MapSimulator.Interaction
             int feeMeso = isQuickDelivery
                 ? GetParcelTax(meso)
                 : GetParcelTax(meso) + 5000;
+            bool hasItem = HasItemAttachment(attachment);
             byte[] payload = BuildParcelDialogOutboundPayload(
                 isQuickDelivery ? ParcelDialogQuickSendRequestSubtype : ParcelDialogNormalSendRequestSubtype,
                 normalizedRecipient,
@@ -1559,6 +1576,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Opcode = 0,
                 Subtype = isQuickDelivery ? ParcelDialogQuickSendRequestSubtype : ParcelDialogNormalSendRequestSubtype,
                 SourceTab = sourceTab,
+                InventoryType = hasItem ? (byte)Math.Clamp((int)attachment.InventoryType, 0, byte.MaxValue) : (byte)0,
+                InventoryPosition = hasItem ? attachment.InventoryPosition : (short)0,
                 AttachmentItemId = GetAttachmentItemId(attachment),
                 ItemQuantity = (short)Math.Clamp(GetAttachmentQuantity(attachment), 0, short.MaxValue),
                 Meso = meso,

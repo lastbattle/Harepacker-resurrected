@@ -103,12 +103,13 @@ namespace HaCreator.MapSimulator.UI
         public bool HasPendingWishlistSearch => PendingWishlistSearchRequestId >= 0
             || !string.IsNullOrWhiteSpace(PendingWishlistSearchQuery)
             || PendingWishlistSearchPriceRangeIndex >= 0;
-        public bool HasDeferredOwnerGatedResult => _deferredOwnerGatedResult.HasValue;
+        public bool HasDeferredOwnerGatedResult => _deferredOwnerGatedResults.Count > 0;
+        public int DeferredOwnerGatedResultCount => _deferredOwnerGatedResults.Count;
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
             = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
         private byte[] _trailingPayload = Array.Empty<byte>();
         private byte[] _resultTrailingPayload = Array.Empty<byte>();
-        private AdminShopPacketOwnedDeferredResultSnapshot? _deferredOwnerGatedResult;
+        private readonly Queue<AdminShopPacketOwnedDeferredResultSnapshot> _deferredOwnerGatedResults = new();
 
         public void BeginOpen(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string ownerState = null)
         {
@@ -432,7 +433,7 @@ namespace HaCreator.MapSimulator.UI
         {
             int normalizedTrailingByteCount = Math.Max(0, trailingByteCount);
             byte[] normalizedTrailingPayload = NormalizeTrailingPayload(trailingPayload, normalizedTrailingByteCount);
-            _deferredOwnerGatedResult = new AdminShopPacketOwnedDeferredResultSnapshot(
+            _deferredOwnerGatedResults.Enqueue(new AdminShopPacketOwnedDeferredResultSnapshot(
                 subtype,
                 resultCode,
                 hasResultCode,
@@ -440,20 +441,19 @@ namespace HaCreator.MapSimulator.UI
                 normalizedTrailingByteCount > 0
                     ? NormalizePayloadSignature(trailingPayloadSignature)
                     : "none",
-                normalizedTrailingPayload);
+                normalizedTrailingPayload));
             TouchWishlistSearchStateToken();
         }
 
         public bool TryConsumeDeferredOwnerGatedResult(out AdminShopPacketOwnedDeferredResultSnapshot snapshot)
         {
-            if (!_deferredOwnerGatedResult.HasValue)
+            if (_deferredOwnerGatedResults.Count == 0)
             {
                 snapshot = default;
                 return false;
             }
 
-            snapshot = _deferredOwnerGatedResult.Value;
-            _deferredOwnerGatedResult = null;
+            snapshot = _deferredOwnerGatedResults.Dequeue();
             TouchWishlistSearchStateToken();
             return true;
         }
@@ -682,7 +682,7 @@ namespace HaCreator.MapSimulator.UI
                 PendingWishlistSearchQuery ?? string.Empty,
                 PendingWishlistSearchCategoryKey ?? "all",
                 PendingWishlistSearchPriceRangeIndex,
-                HasDeferredOwnerGatedResult ? "1" : "0",
+                DeferredOwnerGatedResultCount,
                 HasDeferredOwnerGatedResult ? DescribeDeferredOwnerGatedResult() : string.Empty,
                 ((int)OwnerVisibilityState).ToString(),
                 LastNotice ?? string.Empty,
@@ -1083,19 +1083,22 @@ namespace HaCreator.MapSimulator.UI
 
         private string DescribeDeferredOwnerGatedResult()
         {
-            if (!_deferredOwnerGatedResult.HasValue)
+            if (_deferredOwnerGatedResults.Count == 0)
             {
                 return "result unresolved";
             }
 
-            AdminShopPacketOwnedDeferredResultSnapshot snapshot = _deferredOwnerGatedResult.Value;
+            AdminShopPacketOwnedDeferredResultSnapshot snapshot = _deferredOwnerGatedResults.Peek();
             string resultCodeText = snapshot.HasResultCode
                 ? $"code {snapshot.ResultCode}"
                 : "no result code";
             string tailText = snapshot.TrailingByteCount > 0
                 ? $", tail {snapshot.TrailingByteCount} byte(s) ({snapshot.TrailingPayloadSignature})"
                 : string.Empty;
-            return $"packet 366 subtype {snapshot.Subtype}, {resultCodeText}{tailText}";
+            string queuedText = _deferredOwnerGatedResults.Count > 1
+                ? $", queued {_deferredOwnerGatedResults.Count} result(s)"
+                : string.Empty;
+            return $"packet 366 subtype {snapshot.Subtype}, {resultCodeText}{tailText}{queuedText}";
         }
 
         private void TouchWishlistSearchStateToken()
@@ -1107,12 +1110,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void ClearDeferredOwnerGatedResultCore(bool touchStateToken)
         {
-            if (!_deferredOwnerGatedResult.HasValue)
+            if (_deferredOwnerGatedResults.Count == 0)
             {
                 return;
             }
 
-            _deferredOwnerGatedResult = null;
+            _deferredOwnerGatedResults.Clear();
             if (touchStateToken)
             {
                 TouchWishlistSearchStateToken();

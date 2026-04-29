@@ -988,14 +988,16 @@ namespace HaCreator.MapSimulator.Character
                 duration);
         }
 
-        private void HandleMobStatusPeriodicDamageApplied(PlayerMobStatusEffect effect, int damage, int currentTime)
+        private void HandleMobStatusPeriodicDamageApplied(PlayerMobStatusEffect effect, int damage, int currentTime, int sourceSkillId, int sourceSkillLevel)
         {
             if (effect != PlayerMobStatusEffect.Bomb || Player == null || _animationEffects == null || _mobSkillEffectLoader == null)
             {
                 return;
             }
 
-            MobSkillEffectData effectData = _mobSkillEffectLoader.LoadMobSkillEffect(171, 1);
+            int resolvedSkillId = sourceSkillId > 0 ? sourceSkillId : 171;
+            int resolvedSkillLevel = Math.Max(1, sourceSkillLevel);
+            MobSkillEffectData effectData = _mobSkillEffectLoader.LoadMobSkillEffect(resolvedSkillId, resolvedSkillLevel);
             if (effectData == null)
             {
                 return;
@@ -1609,14 +1611,26 @@ namespace HaCreator.MapSimulator.Character
             return Math.Max(0, (effectData?.Time ?? 0) * 1000);
         }
 
-        internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f, int elementAttribute = 0)
+        internal bool TryApplyMobSkillStatus(
+            int skillId,
+            MobSkillRuntimeData runtimeData,
+            int currentTime,
+            float sourceX = 0f,
+            int elementAttribute = 0,
+            int recastLeadTimeMs = 0)
         {
             if (Player == null)
             {
                 return false;
             }
 
-            return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX, elementAttribute) == true;
+            return _mobStatusController?.TryApplyMobSkill(
+                skillId,
+                runtimeData,
+                currentTime,
+                sourceX,
+                elementAttribute,
+                recastLeadTimeMs) == true;
         }
 
         internal bool TryApplyMobSkillBlockingStatus(int skillId, int skillLevel, MobSkillRuntimeData runtimeData, int currentTime)

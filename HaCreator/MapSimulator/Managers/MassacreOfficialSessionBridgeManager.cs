@@ -146,6 +146,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
+        public int UndecodedInboundCount { get; private set; }
         public string LastStatus { get; private set; } = "Massacre official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -158,7 +159,7 @@ namespace HaCreator.MapSimulator.Managers
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}. {LastStatus}";
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -716,7 +717,9 @@ namespace HaCreator.MapSimulator.Managers
                     _sessionValueInfoState,
                     out MassacrePacketInboxMessage message))
             {
-                LastStatus = _roleSessionProxy.LastStatus;
+                RecordInboundPacket(e.RawPacket, null, $"official-session:{e.SourceEndpoint}");
+                UndecodedInboundCount++;
+                LastStatus = $"Captured undecoded Massacre live-session packet opcode 0x{TryDecodePacketOpcode(e.RawPacket):X4} from {e.SourceEndpoint}; use /massacre session recent to map or recover it.";
                 return;
             }
 
@@ -747,6 +750,7 @@ namespace HaCreator.MapSimulator.Managers
             _recentInboundPackets.Clear();
             _sessionValueInfoState.Clear();
             ReceivedCount = 0;
+            UndecodedInboundCount = 0;
         }
 
         private Dictionary<int, MassacrePacketInboxMessageKind> GetMappedInboundOpcodesSnapshot()
@@ -1211,25 +1215,46 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        internal void RecordUndecodedInboundPacketForRecovery(byte[] rawPacket, string source)
+        {
+            RecordInboundPacket(rawPacket, null, source);
+            UndecodedInboundCount++;
+            LastStatus = $"Captured undecoded Massacre live-session packet opcode 0x{TryDecodePacketOpcode(rawPacket):X4} from {source}; use /massacre session recent to map or recover it.";
+        }
+
         private void RecordInboundPacket(byte[] rawPacket, MassacrePacketInboxMessage message, string source)
         {
             lock (_sync)
             {
-                _recentInboundPackets.Enqueue(new InboundPacketTrace(
-                    rawPacket != null && rawPacket.Length >= sizeof(ushort)
-                        ? BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)))
-                        : -1,
-                    message?.PacketType ?? -1,
-                    message?.Kind ?? MassacrePacketInboxMessageKind.Packet,
-                    message?.Payload?.Length ?? 0,
-                    Convert.ToHexString(message?.Payload ?? Array.Empty<byte>()),
-                    Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
-                    source));
+                _recentInboundPackets.Enqueue(BuildInboundPacketTrace(rawPacket, message, source));
                 while (_recentInboundPackets.Count > MaxRecentInboundPackets)
                 {
                     _recentInboundPackets.Dequeue();
                 }
             }
+        }
+
+        internal static InboundPacketTrace BuildInboundPacketTrace(byte[] rawPacket, MassacrePacketInboxMessage message, string source)
+        {
+            int opcode = TryDecodePacketOpcode(rawPacket);
+            byte[] payload = rawPacket != null && rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
+            return new InboundPacketTrace(
+                opcode,
+                message?.PacketType ?? opcode,
+                message?.Kind ?? MassacrePacketInboxMessageKind.Packet,
+                message?.Payload?.Length ?? payload.Length,
+                Convert.ToHexString(message?.Payload ?? payload),
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                source ?? string.Empty);
+        }
+
+        private static int TryDecodePacketOpcode(byte[] rawPacket)
+        {
+            return rawPacket != null && rawPacket.Length >= sizeof(ushort)
+                ? BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)))
+                : -1;
         }
 
         private static string DescribeMessage(MassacrePacketInboxMessage message)

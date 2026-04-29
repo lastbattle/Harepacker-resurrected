@@ -1,4 +1,8 @@
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -12,6 +16,28 @@ namespace HaCreator.MapSimulator.Fields
 
     public static class FieldEntryRestrictionEvaluator
     {
+        public static string GetLevelLimitEntryMessage(MapInfo mapInfo)
+        {
+            int requiredLevel = mapInfo?.lvLimit ?? 0;
+            return requiredLevel > 0
+                ? $"Field admission requires level {requiredLevel}."
+                : null;
+        }
+
+        public static string GetPartyOnlyEntryMessage(MapInfo mapInfo)
+        {
+            return IsPartyOnlyMap(mapInfo)
+                ? "Party-only field admission is active in this map."
+                : null;
+        }
+
+        public static string GetExpeditionOnlyEntryMessage(MapInfo mapInfo)
+        {
+            return IsExpeditionOnlyMap(mapInfo)
+                ? "Expedition-only field admission is active in this map."
+                : null;
+        }
+
         public static string GetRestrictionMessage(MapInfo mapInfo, FieldEntryRestrictionContext context)
         {
             FieldEntryRestrictionType restrictionType = GetRestrictionType(mapInfo, context);
@@ -41,7 +67,7 @@ namespace HaCreator.MapSimulator.Fields
             bool hasPartyAdmission = context.UsesPacketOwnedPartyAdmissionContext
                 ? context.HasPacketOwnedPartyAdmission
                 : context.HasParty;
-            if (mapInfo.partyOnly == true && !hasPartyAdmission)
+            if (IsPartyOnlyMap(mapInfo) && !hasPartyAdmission)
             {
                 return FieldEntryRestrictionType.PartyOnly;
             }
@@ -49,12 +75,75 @@ namespace HaCreator.MapSimulator.Fields
             bool hasExpeditionAdmission = context.UsesPacketOwnedExpeditionAdmissionContext
                 ? context.HasPacketOwnedExpeditionAdmission
                 : context.HasExpedition;
-            if (mapInfo.expeditionOnly == true && !hasExpeditionAdmission)
+            if (IsExpeditionOnlyMap(mapInfo) && !hasExpeditionAdmission)
             {
                 return FieldEntryRestrictionType.ExpeditionOnly;
             }
 
             return FieldEntryRestrictionType.None;
+        }
+
+        public static bool IsPartyOnlyMap(MapInfo mapInfo)
+        {
+            return mapInfo?.partyOnly == true
+                   || IsInfoFlagSet(mapInfo, "PartyOnly");
+        }
+
+        public static bool IsExpeditionOnlyMap(MapInfo mapInfo)
+        {
+            return mapInfo?.expeditionOnly == true
+                   || IsInfoFlagSet(mapInfo, "ExpeditionOnly");
+        }
+
+        private static bool IsInfoFlagSet(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return property.GetInt() != 0;
+            }
+            catch
+            {
+                return property is WzStringProperty stringProperty
+                       && int.TryParse(stringProperty.Value, out int value)
+                       && value != 0;
+            }
+        }
+
+        private static WzImageProperty FindInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty property = FindNamedProperty(mapInfo.additionalProps, propertyName)
+                ?? FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName);
+
+            return property ?? mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+        }
+
+        private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)
+        {
+            if (properties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
     }
 

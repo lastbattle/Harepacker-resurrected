@@ -762,6 +762,13 @@ namespace HaCreator.MapSimulator.Managers
                     hasMappedPacketType = false;
                 }
 
+                byte[] inferencePayload = null;
+                if (hasMappedPacketType)
+                {
+                    inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    RememberMappedPortableChairRecordEvidenceNoLock(opcode, packetType, inferencePayload, source);
+                }
+
                 if (!hasMappedPacketType)
                 {
                     if (!IsOfficialSessionSource(source))
@@ -770,7 +777,7 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
-                    byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    inferencePayload ??= rawPacket.Skip(sizeof(ushort)).ToArray();
                     if (TryResolveExtendedPortableChairRecordAddFromCaptureNoLock(
                             opcode,
                             inferencePayload,
@@ -1502,6 +1509,33 @@ namespace HaCreator.MapSimulator.Managers
 
             _learnedPacketMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual, source, payload);
             RememberLearnedTutorOpcodeByBuildNoLock(opcode, packetType, evidence, isManual, source, payload);
+        }
+
+        private void RememberMappedPortableChairRecordEvidenceNoLock(
+            ushort opcode,
+            int packetType,
+            byte[] payload,
+            string source)
+        {
+            if (packetType != (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd)
+            {
+                return;
+            }
+
+            if (!TryResolveExtendedPortableChairRecordAddFromCaptureNoLock(
+                    opcode,
+                    payload,
+                    source,
+                    out int resolvedPacketType,
+                    out string reason,
+                    out int characterId)
+                || resolvedPacketType != packetType)
+            {
+                return;
+            }
+
+            _portableChairRecordInferenceMap[opcode] = reason;
+            RememberPortableChairRecordAddOwnerNoLock(source, characterId, opcode);
         }
 
         private void RememberLearnedTutorOpcodeByBuildNoLock(

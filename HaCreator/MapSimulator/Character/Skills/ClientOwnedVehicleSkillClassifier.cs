@@ -248,16 +248,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 45,  // shoot6
                 46,  // arrowRain
                 56,  // burster1
-                64,  // rush2
-                65,  // sanctuary
-                116, // blade
-                209, // tripleBlow
                 210, // quadBlow
-                211, // deathBlow
-                212, // finishBlow
-                215, // cyclone
-                216, // cyclone_after
-                217  // lasergun
+                217, // lasergun
+                221, // siege_after
+                223, // tank
+                227, // tank_after
+                234, // tank_rbooster_pre
+                237  // tank_mRush
             );
 
         private static readonly string[] WzOnlyMechanicVehicleOneTimeActionNames =
@@ -561,6 +558,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(string actionName)
         {
             return ContainsActionName(ClientConfirmedMechanicVehicleOwnerOnlyOneTimeActionNames, actionName);
+        }
+
+        internal static bool IsClientAdmittedMechanicVehicleIdOnlyActionName(string actionName)
+        {
+            return ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName);
         }
 
         internal static bool IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(string actionName)

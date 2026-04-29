@@ -2200,6 +2200,11 @@ namespace HaCreator.MapSimulator.Effects
                         mappedRecord,
                         mappedOwnerCharacterId,
                         packet.ItemSerial);
+                    ApplyRelationshipRecordRemoveForMirroredParticipants(
+                        mappedParticipant,
+                        packet.RelationshipType,
+                        mappedOwnerCharacterId,
+                        packet.ItemSerial);
                     RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, mappedOwnerCharacterId);
                     return true;
                 }
@@ -2325,6 +2330,32 @@ namespace HaCreator.MapSimulator.Effects
             if (ApplyRelationshipRecordRemove(ownerParticipant, relationshipType, characterId, itemSerial))
             {
                 RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerParticipant.CharacterId);
+            }
+        }
+
+        private void ApplyRelationshipRecordRemoveForMirroredParticipants(
+            WeddingRemoteParticipant dispatchParticipant,
+            RemoteRelationshipOverlayType relationshipType,
+            int? characterId,
+            long? itemSerial)
+        {
+            if (dispatchParticipant == null
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship))
+            {
+                return;
+            }
+
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                if (participant == null || participant.CharacterId == dispatchParticipant.CharacterId)
+                {
+                    continue;
+                }
+
+                if (ApplyRelationshipRecordRemove(participant, relationshipType, characterId, itemSerial))
+                {
+                    RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, participant.CharacterId);
+                }
             }
         }
 

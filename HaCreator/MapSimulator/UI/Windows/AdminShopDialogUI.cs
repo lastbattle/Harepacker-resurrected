@@ -465,6 +465,7 @@ namespace HaCreator.MapSimulator.UI
             [AdminShopServiceMode.CashShop] = new HashSet<string>(StringComparer.Ordinal),
             [AdminShopServiceMode.Mts] = new HashSet<string>(StringComparer.Ordinal)
         };
+        private readonly HashSet<string> _acceptedPacketOwnedWishlistRegisterKeys = new(StringComparer.Ordinal);
         private readonly Dictionary<AdminShopServiceMode, HashSet<string>> _purchasedEntryKeys = new()
         {
             [AdminShopServiceMode.CashShop] = new HashSet<string>(StringComparer.Ordinal),
@@ -784,6 +785,7 @@ namespace HaCreator.MapSimulator.UI
             ClearPendingPacketOwnedWishlistRegister();
             ClearPendingPacketOwnedWishlistSearchRequest();
             ClearPacketOwnedWishlistSearchSnapshot();
+            ClearAcceptedPacketOwnedWishlistRegisters();
             RefreshPacketOwnedSessionRowsAtOwner(
                 preservePacketOwnedUserSelection,
                 preservedUserSelectionInventoryType,
@@ -1121,6 +1123,7 @@ namespace HaCreator.MapSimulator.UI
             ClearPendingPacketOwnedWishlistRegister();
             ClearPendingPacketOwnedWishlistSearchRequest();
             ClearPacketOwnedWishlistSearchSnapshot();
+            ClearAcceptedPacketOwnedWishlistRegisters();
             ResetPendingRequestState();
             _footerMessage = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Packet 367 rejected the admin-shop open request. {outboundSummary}"
@@ -1398,6 +1401,7 @@ namespace HaCreator.MapSimulator.UI
                 ClearPendingPacketOwnedUserSellSnapshot();
                 ClearPendingPacketOwnedWishlistSearchRequest();
                 ClearPacketOwnedWishlistSearchSnapshot();
+                ClearAcceptedPacketOwnedWishlistRegisters();
                 ResetPendingRequestState();
                 _footerMessage = string.IsNullOrWhiteSpace(outboundSummary)
                     ? "Closed the packet-owned admin-shop owner."
@@ -5056,6 +5060,7 @@ namespace HaCreator.MapSimulator.UI
                             : pendingTitle;
                         if (resultCode == 0)
                         {
+                            RecordAcceptedPacketOwnedWishlistRegister(pendingItemId);
                             ClearPendingPacketOwnedWishlistRegister();
                             _packetOwnedAdminShopSession.ClearLastNotice();
                             _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 accepted the packet-authored wish-list register request by item id; no live NPC catalog row was available to focus.");
@@ -5155,6 +5160,31 @@ namespace HaCreator.MapSimulator.UI
             _pendingPacketOwnedWishlistRegisterItemId = 0;
             _pendingPacketOwnedWishlistRegisterTitle = string.Empty;
             _packetOwnedAdminShopSession.ClearPendingWishlistRegister();
+        }
+
+        private void RecordAcceptedPacketOwnedWishlistRegister(int registerItemId)
+        {
+            string key = AdminShopPacketOwnedWishlistSearchSessionParity.BuildAcceptedRegisterKey(
+                _packetOwnedAdminShopSession.ServiceSessionId,
+                registerItemId);
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                _acceptedPacketOwnedWishlistRegisterKeys.Add(key);
+            }
+        }
+
+        private bool IsPacketOwnedWishlistRegisterLocallyAccepted(int serviceSessionId, int registerItemId)
+        {
+            string key = AdminShopPacketOwnedWishlistSearchSessionParity.BuildAcceptedRegisterKey(
+                serviceSessionId,
+                registerItemId);
+            return !string.IsNullOrWhiteSpace(key)
+                   && _acceptedPacketOwnedWishlistRegisterKeys.Contains(key);
+        }
+
+        private void ClearAcceptedPacketOwnedWishlistRegisters()
+        {
+            _acceptedPacketOwnedWishlistRegisterKeys.Clear();
         }
 
         private bool TryResolvePendingPacketOwnedWishlistRegisterEntry(int pendingSerialNumber, int pendingItemId, string pendingTitle, out AdminShopEntry entry)
@@ -5562,6 +5592,9 @@ namespace HaCreator.MapSimulator.UI
                     : "Price unresolved";
             Texture2D iconTexture = ResolveWishlistResultIcon(resolvedItemId);
             string entryKey = BuildPacketOwnedWishlistSyntheticEntryKey(snapshot, row, rowIndex, sourceItemId);
+            bool alreadyWishlisted = AdminShopPacketOwnedWishlistSearchSessionParity.ResolveAlreadyWishlisted(
+                row?.AlreadyWishlisted.GetValueOrDefault() == true,
+                IsPacketOwnedWishlistRegisterLocallyAccepted(snapshot?.ServiceSessionId ?? -1, resolvedItemId));
 
             result = new WishlistSearchResult
             {
@@ -5573,13 +5606,13 @@ namespace HaCreator.MapSimulator.UI
                 CategoryLabel = categoryLabel ?? string.Empty,
                 RewardItemId = resolvedItemId,
                 IconTexture = iconTexture,
-                AlreadyWishlisted = row?.AlreadyWishlisted.GetValueOrDefault() == true,
+                AlreadyWishlisted = alreadyWishlisted,
                 Score = int.MaxValue - rowIndex,
                 IsClientItemNameResult = false,
                 CanRegister = AdminShopPacketOwnedWishlistSearchSessionParity.CanRegisterPacketAuthoredResult(
                     sessionCurrent: true,
                     registerItemId: resolvedItemId,
-                    alreadyWishlisted: row?.AlreadyWishlisted.GetValueOrDefault() == true),
+                    alreadyWishlisted: alreadyWishlisted),
                 IsPacketAuthored = true,
                 HasLiveCatalogBinding = false,
                 PacketServiceSessionId = snapshot?.ServiceSessionId ?? -1,
@@ -5606,6 +5639,9 @@ namespace HaCreator.MapSimulator.UI
 
             if (row == null || !row.HasMetadata)
             {
+                bool metadataAlreadyWishlisted = AdminShopPacketOwnedWishlistSearchSessionParity.ResolveAlreadyWishlisted(
+                    baseResult.AlreadyWishlisted,
+                    IsPacketOwnedWishlistRegisterLocallyAccepted(serviceSessionId, baseResult.RewardItemId));
                 return new WishlistSearchResult
                 {
                     EntryKey = baseResult.EntryKey,
@@ -5616,10 +5652,13 @@ namespace HaCreator.MapSimulator.UI
                     CategoryLabel = baseResult.CategoryLabel,
                     RewardItemId = baseResult.RewardItemId,
                     IconTexture = baseResult.IconTexture,
-                    AlreadyWishlisted = baseResult.AlreadyWishlisted,
+                    AlreadyWishlisted = metadataAlreadyWishlisted,
                     Score = baseResult.Score,
                     IsClientItemNameResult = baseResult.IsClientItemNameResult,
-                    CanRegister = hasLiveCatalogBinding,
+                    CanRegister = AdminShopPacketOwnedWishlistSearchSessionParity.CanRegisterPacketAuthoredResult(
+                        sessionCurrent: hasLiveCatalogBinding,
+                        registerItemId: baseResult.RewardItemId,
+                        alreadyWishlisted: metadataAlreadyWishlisted),
                     IsPacketAuthored = true,
                     HasLiveCatalogBinding = hasLiveCatalogBinding,
                     PacketServiceSessionId = serviceSessionId,
@@ -5644,6 +5683,9 @@ namespace HaCreator.MapSimulator.UI
                 : row.Price != long.MinValue
                     ? FormatCashPriceLabel(row.Price)
                     : baseResult.PriceLabel;
+            bool alreadyWishlisted = AdminShopPacketOwnedWishlistSearchSessionParity.ResolveAlreadyWishlisted(
+                row.AlreadyWishlisted ?? baseResult.AlreadyWishlisted,
+                IsPacketOwnedWishlistRegisterLocallyAccepted(serviceSessionId, resolvedItemId));
 
             return new WishlistSearchResult
             {
@@ -5655,10 +5697,13 @@ namespace HaCreator.MapSimulator.UI
                 CategoryLabel = categoryLabel ?? string.Empty,
                 RewardItemId = resolvedItemId,
                 IconTexture = iconTexture,
-                AlreadyWishlisted = row.AlreadyWishlisted ?? baseResult.AlreadyWishlisted,
+                AlreadyWishlisted = alreadyWishlisted,
                 Score = baseResult.Score,
                 IsClientItemNameResult = baseResult.IsClientItemNameResult,
-                CanRegister = hasLiveCatalogBinding,
+                CanRegister = AdminShopPacketOwnedWishlistSearchSessionParity.CanRegisterPacketAuthoredResult(
+                    sessionCurrent: hasLiveCatalogBinding,
+                    registerItemId: resolvedItemId,
+                    alreadyWishlisted: alreadyWishlisted),
                 IsPacketAuthored = true,
                 HasLiveCatalogBinding = hasLiveCatalogBinding,
                 PacketServiceSessionId = serviceSessionId,

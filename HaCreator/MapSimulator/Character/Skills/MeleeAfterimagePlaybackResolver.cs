@@ -439,6 +439,91 @@ namespace HaCreator.MapSimulator.Character.Skills
             return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();
         }
 
+        public static IReadOnlyList<AfterimageLayerOperation> ResolveLayerOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int frameElapsedMs)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null || frames.Count == 0)
+            {
+                return Array.Empty<AfterimageLayerOperation>();
+            }
+
+            int elapsed = Math.Max(0, frameElapsedMs);
+            List<AfterimageLayerOperation> operations = null;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int durationMs = ResolveClientInsertCanvasDurationMs(frame);
+                if (durationMs > 0 && elapsed >= durationMs)
+                {
+                    operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                    operations.Add(CreateAfterimageLayerOperation(
+                        AfterimageLayerOperationKind.RemoveCanvas,
+                        frame,
+                        durationMs,
+                        durationMs));
+                    continue;
+                }
+
+                int localFrameElapsed = durationMs > 0
+                    ? Math.Min(elapsed, durationMs)
+                    : elapsed;
+                operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                operations.Add(CreateAfterimageLayerOperation(
+                    AfterimageLayerOperationKind.InsertCanvas,
+                    frame,
+                    localFrameElapsed,
+                    durationMs));
+            }
+
+            return operations ?? (IReadOnlyList<AfterimageLayerOperation>)Array.Empty<AfterimageLayerOperation>();
+        }
+
+        internal static int ResolveClientInsertCanvasDurationMs(SkillFrame frame)
+        {
+            return Math.Max(0, frame?.Delay ?? 0);
+        }
+
+        internal static (int StartAlpha, int EndAlpha) ResolveClientInsertCanvasAlphaEndpoints(SkillFrame frame)
+        {
+            if (frame == null)
+            {
+                return (255, 255);
+            }
+
+            return (
+                Math.Clamp(frame.AlphaStart, 0, 255),
+                Math.Clamp(frame.AlphaEnd, 0, 255));
+        }
+
+        private static AfterimageLayerOperation CreateAfterimageLayerOperation(
+            AfterimageLayerOperationKind kind,
+            SkillFrame frame,
+            int frameElapsedMs,
+            int durationMs)
+        {
+            (int startAlpha, int endAlpha) = ResolveClientInsertCanvasAlphaEndpoints(frame);
+            (int startZoom, int endZoom) = ResolveClientInsertCanvasZoomEndpoints(
+                frame?.HasZoomStart == true || frame?.ZoomStart != 0 ? frame?.ZoomStart : null,
+                frame?.HasZoomEnd == true || frame?.ZoomEnd != 0 ? frame?.ZoomEnd : null);
+
+            return new AfterimageLayerOperation(
+                kind,
+                frame,
+                Math.Max(0, frameElapsedMs),
+                Math.Max(0, durationMs),
+                startAlpha,
+                endAlpha,
+                startZoom,
+                endZoom);
+        }
+
         internal static bool TryResolveNonLoopingFrameTimingAtTime(
             AssembledFrame[] frames,
             int timeMs,

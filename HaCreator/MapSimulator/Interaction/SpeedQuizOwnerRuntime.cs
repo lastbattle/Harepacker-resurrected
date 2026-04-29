@@ -9,6 +9,10 @@ namespace HaCreator.MapSimulator.Interaction
         private int _totalQuestions;
         private int _correctAnswers;
         private int _remainingQuestions;
+        private int _ownerIdentity;
+        private int _nextOwnerIdentity = 1;
+
+        internal int OwnerIdentity => _ownerIdentity;
 
         internal bool IsActive(int currentTickCount)
         {
@@ -59,6 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
             _totalQuestions = 0;
             _correctAnswers = 0;
             _remainingQuestions = 0;
+            _ownerIdentity = 0;
         }
 
         internal string ApplyClientOwnerState(
@@ -69,6 +74,11 @@ namespace HaCreator.MapSimulator.Interaction
             int remainingSeconds,
             int currentTickCount)
         {
+            if (!IsActive(currentTickCount) || _ownerIdentity <= 0)
+            {
+                _ownerIdentity = AllocateOwnerIdentity();
+            }
+
             _currentQuestion = Math.Max(0, currentQuestion);
             _totalQuestions = Math.Max(0, totalQuestions);
             _correctAnswers = Math.Max(0, correctAnswers);
@@ -76,6 +86,18 @@ namespace HaCreator.MapSimulator.Interaction
             _expiresAtTick = currentTickCount + (Math.Max(0, remainingSeconds) * 1000);
             return
                 $"Synced packet-authored speed quiz owner: question {_currentQuestion}/{_totalQuestions}, score {_correctAnswers}, remaining {_remainingQuestions}, {Math.Max(0, remainingSeconds)}s left.";
+        }
+
+        private int AllocateOwnerIdentity()
+        {
+            int ownerIdentity = _nextOwnerIdentity;
+            _nextOwnerIdentity++;
+            if (_nextOwnerIdentity <= 0)
+            {
+                _nextOwnerIdentity = 1;
+            }
+
+            return ownerIdentity;
         }
     }
 

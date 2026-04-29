@@ -21,6 +21,11 @@ namespace HaCreator.MapSimulator.UI
         private const byte ItemSlotTypeBundle = 2;
         private const byte ItemSlotTypePet = 3;
         internal const int ClientInventoryOperationPacketType = 28;
+        internal readonly record struct CharacterInventoryOperationMutation(
+            EquipSlot Slot,
+            bool CashLayer,
+            int ItemId);
+
         private readonly record struct CharacterInventoryOperationContext(
             bool SawPositiveEquipRemove,
             bool SawExpectedPositiveEquipRemove,
@@ -430,6 +435,355 @@ namespace HaCreator.MapSimulator.UI
                     ? lastMismatchReason
                     : "Inventory-operation payload did not match an active character equipment packet-owned request.";
             return false;
+        }
+
+        internal static bool TryDecodePassiveClientInventoryOperationMutations(
+            IReadOnlyList<byte> payload,
+            IReadOnlyList<InventorySlotData> equipInventorySlots,
+            IReadOnlyList<InventorySlotData> cashInventorySlots,
+            out IReadOnlyList<CharacterInventoryOperationMutation> mutations,
+            out string rejectReason)
+        {
+            mutations = Array.Empty<CharacterInventoryOperationMutation>();
+            rejectReason = null;
+            if (payload == null || payload.Count < sizeof(byte) * 2)
+            {
+                rejectReason = "Inventory-operation payload is missing the exclusive-reset and operation-count bytes.";
+                return false;
+            }
+
+            try
+            {
+                byte[] buffer = payload as byte[] ?? new List<byte>(payload).ToArray();
+                using MemoryStream stream = new(buffer, writable: false);
+                using BinaryReader reader = new(stream);
+                _ = reader.ReadByte();
+                int operationCount = reader.ReadByte();
+                if (operationCount <= 0)
+                {
+                    rejectReason = "Inventory-operation payload did not include any operation entry.";
+                    return false;
+                }
+
+                Dictionary<(EquipSlot Slot, bool CashLayer), CharacterInventoryOperationMutation> recoveredMutations = new();
+                bool requiresSecondaryStatChangedPointTrailer = false;
+                bool terminatedAfterHeader = false;
+                for (int i = 0; i < operationCount; i++)
+                {
+                    if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
+                    {
+                        rejectReason = "Inventory-operation payload ended before a full operation header could be decoded.";
+                        return false;
+                    }
+
+                    byte operationMode = reader.ReadByte();
+                    byte inventoryType = reader.ReadByte();
+                    short fromPosition = reader.ReadInt16();
+                    switch (operationMode)
+                    {
+                        case 0:
+                        {
+                            if (!TryReadPassiveClientInventoryOperationAddEntry(
+                                    inventoryType,
+                                    fromPosition,
+                                    reader,
+                                    isLastOperation: i == operationCount - 1,
+                                    remainingOperationCount: operationCount - i - 1,
+                                    reservedTrailerBytes: requiresSecondaryStatChangedPointTrailer ? sizeof(byte) : 0,
+                                    out CharacterInventoryOperationMutation? passiveAddMutation,
+                                    out bool terminateAfterHeader,
+                                    out rejectReason))
+                            {
+                                if (recoveredMutations.Count > 0
+                                    && IsPassiveAddEntryRecoveryTerminatorReason(rejectReason))
+                                {
+                                    terminatedAfterHeader = true;
+                                    i = operationCount;
+                                    break;
+                                }
+
+                                return false;
+                            }
+
+                            if (passiveAddMutation.HasValue)
+                            {
+                                CharacterInventoryOperationMutation mutation = passiveAddMutation.Value;
+                                recoveredMutations[(mutation.Slot, mutation.CashLayer)] = mutation;
+                            }
+
+                            if (terminateAfterHeader)
+                            {
+                                terminatedAfterHeader = true;
+                                i = operationCount;
+                            }
+
+                            break;
+                        }
+                        case 1:
+                            if (stream.Length - stream.Position < sizeof(short))
+                            {
+                                rejectReason = "Inventory-operation quantity update entry is truncated.";
+                                return false;
+                            }
+
+                            _ = reader.ReadInt16();
+                            break;
+                        case 2:
+                        {
+                            if (stream.Length - stream.Position < sizeof(short))
+                            {
+                                rejectReason = "Inventory-operation swap entry is truncated.";
+                                return false;
+                            }
+
+                            short toPosition = reader.ReadInt16();
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailer(
+                                    inventoryType,
+                                    fromPosition,
+                                    toPosition);
+                            if (!IsSupportedClientCharacterInventoryType(inventoryType))
+                            {
+                                break;
+                            }
+
+                            bool sourceIsCharacter = TryResolveCharacterSlotFromClientPosition(fromPosition, out EquipSlot sourceSlot);
+                            bool targetIsCharacter = TryResolveCharacterSlotFromClientPosition(toPosition, out EquipSlot targetSlot);
+                            bool cashLayer = inventoryType == ClientCashInventoryType;
+                            if (sourceIsCharacter && !targetIsCharacter)
+                            {
+                                recoveredMutations[(sourceSlot, cashLayer)] = new CharacterInventoryOperationMutation(sourceSlot, cashLayer, 0);
+                                break;
+                            }
+
+                            if (!sourceIsCharacter && targetIsCharacter)
+                            {
+                                if (!TryResolvePassiveInventoryItemId(
+                                        inventoryType == ClientCashInventoryType ? cashInventorySlots : equipInventorySlots,
+                                        fromPosition,
+                                        out int sourceItemId))
+                                {
+                                    break;
+                                }
+
+                                recoveredMutations[(targetSlot, cashLayer)] = new CharacterInventoryOperationMutation(targetSlot, cashLayer, sourceItemId);
+                            }
+
+                            break;
+                        }
+                        case 3:
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailerForRemove(inventoryType, fromPosition);
+                            if (IsSupportedClientCharacterInventoryType(inventoryType)
+                                && TryResolveCharacterSlotFromClientPosition(fromPosition, out EquipSlot removedSlot))
+                            {
+                                bool cashLayer = inventoryType == ClientCashInventoryType;
+                                recoveredMutations[(removedSlot, cashLayer)] = new CharacterInventoryOperationMutation(removedSlot, cashLayer, 0);
+                            }
+
+                            break;
+                        case 4:
+                            if (stream.Length - stream.Position < sizeof(int))
+                            {
+                                rejectReason = "Inventory-operation consume-item entry is truncated.";
+                                return false;
+                            }
+
+                            _ = reader.ReadInt32();
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+                if (!terminatedAfterHeader
+                    && !TryConsumeClientInventoryOperationTrailer(
+                        reader,
+                        requiresSecondaryStatChangedPointTrailer,
+                        out rejectReason))
+                {
+                    if (!(recoveredMutations.Count > 0
+                          && IsRecoverableInventoryOperationTrailerReason(rejectReason)))
+                    {
+                        return false;
+                    }
+
+                    rejectReason = null;
+                }
+
+                if (recoveredMutations.Count == 0)
+                {
+                    rejectReason = "Inventory-operation payload did not include a character equipment mutation that can be recovered passively.";
+                    return false;
+                }
+
+                List<CharacterInventoryOperationMutation> mutationList = new(recoveredMutations.Count);
+                foreach (CharacterInventoryOperationMutation mutation in recoveredMutations.Values)
+                {
+                    mutationList.Add(mutation);
+                }
+
+                mutations = mutationList;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                rejectReason = $"Inventory-operation payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryReadPassiveClientInventoryOperationAddEntry(
+            byte inventoryType,
+            short targetPosition,
+            BinaryReader reader,
+            bool isLastOperation,
+            int remainingOperationCount,
+            int reservedTrailerBytes,
+            out CharacterInventoryOperationMutation? mutation,
+            out bool terminateAfterHeader,
+            out string rejectReason)
+        {
+            mutation = null;
+            terminateAfterHeader = false;
+            rejectReason = null;
+            if (!TryEnsureRemaining(reader?.BaseStream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
+            byte slotType = reader.ReadByte();
+            if (slotType is not ItemSlotTypeEquip and not ItemSlotTypeBundle and not ItemSlotTypePet)
+            {
+                rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+                return false;
+            }
+
+            int itemId = reader.ReadInt32();
+            bool hasCashSerial = reader.ReadByte() != 0;
+            if (hasCashSerial)
+            {
+                if (!TryEnsureRemaining(reader.BaseStream, sizeof(long), out rejectReason))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            if (!TryEnsureRemaining(reader.BaseStream, sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt64();
+
+            long itemBodyStart = reader.BaseStream?.CanSeek == true
+                ? reader.BaseStream.Position
+                : -1;
+            bool consumed = slotType switch
+            {
+                ItemSlotTypeEquip => TryReadClientEquipAddEntryBody(reader, hasCashSerial, out rejectReason),
+                ItemSlotTypeBundle => TryReadClientBundleAddEntryBody(reader, itemId, out rejectReason),
+                ItemSlotTypePet => TryReadClientPetAddEntryBody(reader, out rejectReason),
+                _ => false
+            };
+
+            if (!consumed)
+            {
+                if (itemBodyStart >= 0)
+                {
+                    reader.BaseStream.Position = itemBodyStart;
+                }
+
+                if (IsSupportedClientCharacterInventoryType(inventoryType)
+                    && targetPosition < 0
+                    && slotType == ItemSlotTypeEquip
+                    && itemId > 0
+                    && TryConsumeHeaderMatchedModeZeroFallbackBody(
+                        reader,
+                        isLastOperation,
+                        remainingOperationCount,
+                        reservedTrailerBytes,
+                        out rejectReason))
+                {
+                    terminateAfterHeader = isLastOperation || remainingOperationCount <= 0;
+                    rejectReason = null;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            if (IsSupportedClientCharacterInventoryType(inventoryType)
+                && targetPosition < 0
+                && slotType == ItemSlotTypeEquip
+                && itemId > 0
+                && TryResolveCharacterSlotFromClientPosition(targetPosition, out EquipSlot slot))
+            {
+                mutation = new CharacterInventoryOperationMutation(
+                    slot,
+                    inventoryType == ClientCashInventoryType,
+                    itemId);
+            }
+
+            return true;
+        }
+
+        private static bool TryResolvePassiveInventoryItemId(
+            IReadOnlyList<InventorySlotData> inventorySlots,
+            short clientPosition,
+            out int itemId)
+        {
+            itemId = 0;
+            int slotIndex = clientPosition - 1;
+            if (slotIndex < 0 || inventorySlots == null || slotIndex >= inventorySlots.Count)
+            {
+                return false;
+            }
+
+            itemId = inventorySlots[slotIndex]?.ItemId ?? 0;
+            return itemId > 0;
+        }
+
+        private static bool TryResolveCharacterSlotFromClientPosition(short clientPosition, out EquipSlot slot)
+        {
+            slot = EquipSlot.None;
+            if (clientPosition >= 0)
+            {
+                return false;
+            }
+
+            int slotValue = -clientPosition;
+            if (!Enum.IsDefined(typeof(EquipSlot), slotValue) || slotValue == (int)EquipSlot.None)
+            {
+                return false;
+            }
+
+            slot = (EquipSlot)slotValue;
+            return true;
+        }
+
+        private static bool IsPassiveAddEntryRecoveryTerminatorReason(string rejectReason)
+        {
+            return IsRecoverableInventoryOperationTrailerReason(rejectReason)
+                   || string.Equals(
+                       rejectReason,
+                       "Inventory-operation add entry body could not be decoded before later operations.",
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRecoverableInventoryOperationTrailerReason(string rejectReason)
+        {
+            return string.Equals(
+                       rejectReason,
+                       "Inventory-operation payload contained unsupported trailing bytes.",
+                       StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(
+                       rejectReason,
+                       "Inventory-operation payload is missing the equip secondary-stat changed-point trailer.",
+                       StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsCharacterInventoryOperationRequestMismatch(string reason)

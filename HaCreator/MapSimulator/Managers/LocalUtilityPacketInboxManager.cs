@@ -551,6 +551,8 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("randommesobagsucceeded", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("mesobagok", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommesosacksucceeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesosackok", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onrandommesobag_succeeded", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onrandommesobagsucceeded", StringComparison.OrdinalIgnoreCase))
             {
@@ -560,6 +562,8 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("randommesobagfailed", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("mesobagfail", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommesosackfailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesosackfail", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onrandommesobag_failed", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onrandommesobagfailed", StringComparison.OrdinalIgnoreCase))
             {

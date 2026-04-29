@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator.Managers
         internal bool HasObservedLiveOutboundOpcode160 => _hasObservedLiveOutboundOpcode160;
         internal bool HasObservedLiveInboundOpcode371 => _hasObservedLiveInboundOpcode371;
         internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveCurrentLiveOwnershipVerificationState();
+        internal bool HasPairedLiveOwnershipVerificationEvidence => HasPairedLiveOwnershipEvidence();
         public int RecentInboundPacketCount
         {
             get
@@ -159,7 +160,10 @@ namespace HaCreator.MapSimulator.Managers
             string guidance = DescribeSessionControlGuidance();
             string verification = DescribeCurrentLiveOwnershipVerificationStatus();
             string verificationEvidence = DescribeLiveOwnershipVerificationEvidence();
-            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}. {verification} {verificationEvidence} {LastStatus} {guidance}";
+            string pairedEvidence = HasPairedLiveOwnershipVerificationEvidence
+                ? "paired initialized live evidence present"
+                : "no paired initialized live evidence";
+            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}; {pairedEvidence}. {verification} {verificationEvidence} {LastStatus} {guidance}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -1025,6 +1029,21 @@ namespace HaCreator.MapSimulator.Managers
                 IsRunning,
                 outboundEvidence.HasValue,
                 inboundEvidence.HasValue);
+        }
+
+        private bool HasPairedLiveOwnershipEvidence()
+        {
+            OutboundPacketTrace? outboundEvidence;
+            InboundPacketTrace? inboundEvidence;
+            lock (_sync)
+            {
+                outboundEvidence = _liveOutboundOpcode160Evidence;
+                inboundEvidence = _liveInboundOpcode371Evidence;
+            }
+
+            return outboundEvidence.HasValue
+                && inboundEvidence.HasValue
+                && IsSameInitializedSession(outboundEvidence.Value, inboundEvidence.Value);
         }
 
         private string DescribeCurrentLiveOwnershipVerificationStatus()

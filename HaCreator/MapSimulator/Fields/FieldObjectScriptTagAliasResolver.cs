@@ -176,6 +176,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            IReadOnlyDictionary<string, string> localAliasMap = BuildLocalAliasMap(scriptName);
             bool foundDelay = false;
             foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(scriptName))
             {
@@ -188,7 +189,7 @@ namespace HaCreator.MapSimulator.Fields
                 for (int i = firstDelayCandidateIndex; i < call.Arguments.Count; i++)
                 {
                     string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
-                    if (!TryParsePositiveDelayMs(argument, out int parsedDelayMs))
+                    if (!TryResolvePositiveDelayMs(argument, localAliasMap, out int parsedDelayMs))
                     {
                         continue;
                     }
@@ -3530,7 +3531,11 @@ namespace HaCreator.MapSimulator.Fields
             {
                 if (!IsScriptCallbackFunctionName(call.FunctionName)
                     || call.Arguments.Count == 0
-                    || !TryResolveCallbackCallDelayMs(call.FunctionName, call.Arguments, out int callbackDelayMs))
+                    || !TryResolveCallbackCallDelayMs(
+                        call.FunctionName,
+                        call.Arguments,
+                        localAliasMap,
+                        out int callbackDelayMs))
                 {
                     continue;
                 }
@@ -3545,7 +3550,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
                     if (string.IsNullOrWhiteSpace(argument)
-                        || (i >= firstDelayCandidateIndex && TryParsePositiveDelayMs(argument, out _)))
+                        || (i >= firstDelayCandidateIndex && TryResolvePositiveDelayMs(argument, localAliasMap, out _)))
                     {
                         continue;
                     }
@@ -3646,6 +3651,7 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryResolveCallbackCallDelayMs(
             string functionName,
             IReadOnlyList<string> arguments,
+            IReadOnlyDictionary<string, string> localAliasMap,
             out int delayMs)
         {
             delayMs = 0;
@@ -3664,7 +3670,7 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = firstDelayCandidateIndex; i < arguments.Count; i++)
             {
                 string argument = NormalizeFunctionAliasArgument(arguments[i]);
-                if (!TryParsePositiveDelayMs(argument, out int parsedDelayMs))
+                if (!TryResolvePositiveDelayMs(argument, localAliasMap, out int parsedDelayMs))
                 {
                     continue;
                 }
@@ -3674,6 +3680,85 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return foundDelay;
+        }
+
+        private static bool TryResolvePositiveDelayMs(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            out int parsedInt)
+        {
+            return TryResolvePositiveDelayMs(
+                value,
+                localAliasMap,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                out parsedInt);
+        }
+
+        private static bool TryResolvePositiveDelayMs(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            ISet<string> seenDelayExpressions,
+            out int parsedInt)
+        {
+            parsedInt = 0;
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                return false;
+            }
+
+            if (TryParsePositiveDelayMs(normalizedValue, out parsedInt))
+            {
+                return true;
+            }
+
+            if (localAliasMap != null
+                && localAliasMap.TryGetValue(normalizedValue, out string mappedDelay)
+                && seenDelayExpressions != null
+                && seenDelayExpressions.Add(normalizedValue))
+            {
+                try
+                {
+                    if (TryResolvePositiveDelayMs(mappedDelay, localAliasMap, seenDelayExpressions, out parsedInt))
+                    {
+                        return true;
+                    }
+                }
+                finally
+                {
+                    seenDelayExpressions.Remove(normalizedValue);
+                }
+            }
+
+            IReadOnlyList<string> plusTerms = SplitTopLevelByPlus(StripOuterBalancedParentheses(normalizedValue));
+            if (plusTerms.Count <= 1)
+            {
+                return false;
+            }
+
+            int delaySum = 0;
+            bool sawResolvedTerm = false;
+            for (int i = 0; i < plusTerms.Count; i++)
+            {
+                string term = NormalizeFunctionAliasArgument(plusTerms[i]).TrimEnd(';');
+                if (!TryResolvePositiveDelayMs(term, localAliasMap, seenDelayExpressions, out int termDelay))
+                {
+                    return false;
+                }
+
+                delaySum = delaySum >= int.MaxValue - termDelay
+                    ? int.MaxValue
+                    : delaySum + termDelay;
+                sawResolvedTerm = true;
+            }
+
+            if (!sawResolvedTerm || delaySum <= 0)
+            {
+                return false;
+            }
+
+            parsedInt = delaySum;
+            return true;
         }
 
         private static bool TryParsePositiveDelayMs(string value, out int parsedInt)

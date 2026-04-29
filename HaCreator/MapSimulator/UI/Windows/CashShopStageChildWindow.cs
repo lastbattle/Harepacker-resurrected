@@ -148,9 +148,12 @@ namespace HaCreator.MapSimulator.UI
             public sealed class HistoryEntryState
             {
                 public int CommoditySerialNumber { get; init; }
-                public int OriginalCommoditySerialNumber { get; init; }
-                public string ItemLabel { get; init; } = string.Empty;
-                public string DateLabel { get; init; } = string.Empty;
+            public int OriginalCommoditySerialNumber { get; init; }
+            public string ItemLabel { get; init; } = string.Empty;
+            public string DateLabel { get; init; } = string.Empty;
+            public bool HasPacketStateByte { get; init; }
+            public int PacketStateByte { get; init; }
+            public int PacketStateByteOffset { get; init; } = -1;
             }
 
             public bool IsPending { get; init; }
@@ -3152,6 +3155,14 @@ namespace HaCreator.MapSimulator.UI
                 && historyEntry.OriginalCommoditySerialNumber != historyEntry.CommoditySerialNumber)
             {
                 detail += $"  Original SN {historyEntry.OriginalCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (historyEntry.HasPacketStateByte)
+            {
+                string offsetLabel = historyEntry.PacketStateByteOffset >= 0
+                    ? $" @0x{historyEntry.PacketStateByteOffset:X}"
+                    : string.Empty;
+                detail += $"  history-state 0x{(historyEntry.PacketStateByte & 0xFF):X2}{offsetLabel}";
             }
 
             return detail;

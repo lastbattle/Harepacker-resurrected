@@ -362,6 +362,7 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     _stageTransitionFadeInEndTime = currentTimeMs;
                 }
+                LastFadeCompletionTimeMs = currentTimeMs;
                 onComplete?.Invoke();
                 return;
             }

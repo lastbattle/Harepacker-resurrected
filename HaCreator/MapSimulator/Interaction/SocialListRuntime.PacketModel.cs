@@ -445,6 +445,34 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Guild authority now follows packet-owned role {resolvedRole} (rank={FormatOnOff(canManageRanks)}, admission={FormatOnOff(canToggleAdmission)}, notice={FormatOnOff(canEditNotice)}).";
         }
 
+        internal bool TryGetGuildBbsLinkedAuthority(
+            out string roleLabel,
+            out GuildBbsPermissionMask permissionMask,
+            out string sourceLabel)
+        {
+            if (_packetGuildAuthority.HasValue)
+            {
+                PacketGuildAuthorityState authority = _packetGuildAuthority.Value;
+                roleLabel = string.IsNullOrWhiteSpace(authority.RoleLabel) ? GetLocalGuildRoleLabel() : authority.RoleLabel;
+                permissionMask = ResolveGuildBbsPermissionMask(authority);
+                sourceLabel = "CWvsContext::OnGuildResult guild authority";
+                return true;
+            }
+
+            if (TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState derivedAuthority))
+            {
+                roleLabel = string.IsNullOrWhiteSpace(derivedAuthority.RoleLabel) ? GetLocalGuildRoleLabel() : derivedAuthority.RoleLabel;
+                permissionMask = ResolveGuildBbsPermissionMask(derivedAuthority);
+                sourceLabel = "packet-owned guild roster role";
+                return true;
+            }
+
+            roleLabel = GetLocalGuildRoleLabel();
+            permissionMask = GuildBbsPermissionMask.None;
+            sourceLabel = null;
+            return false;
+        }
+
         internal string SetPacketGuildMarkSelection(GuildMarkSelection selection, int guildId)
         {
             if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
@@ -498,6 +526,18 @@ namespace HaCreator.MapSimulator.Interaction
                     ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildBoardAuthKey}) cleared the guild-board auth key."
                     : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildBoardAuthKey}) refreshed the guild-board auth key.";
             return _lastPacketSyncSummaryByTab[SocialListTab.Guild];
+        }
+
+        private bool TryBuildNoGuildContextOwnedResultIgnore(byte rawSubtype, string resultLabel, out string message)
+        {
+            if (ResolveEffectiveGuildMembership(null))
+            {
+                message = null;
+                return false;
+            }
+
+            message = $"Ignored client OnGuildResult({rawSubtype}) {resultLabel} because no packet-owned guild context is active.";
+            return true;
         }
 
         internal int? GetEffectivePacketGuildId()
@@ -1040,6 +1080,19 @@ namespace HaCreator.MapSimulator.Interaction
                    || string.Equals(role, "Jr. Master", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(role, "Jr Master", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(role, "Junior Master", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static GuildBbsPermissionMask ResolveGuildBbsPermissionMask(PacketGuildAuthorityState authority)
+        {
+            GuildBbsPermissionMask mask = GuildBbsPermissionMask.WriteThread
+                                          | GuildBbsPermissionMask.Reply
+                                          | GuildBbsPermissionMask.OwnThread;
+            if (authority.CanEditNotice)
+            {
+                mask |= GuildBbsPermissionMask.WriteNotice | GuildBbsPermissionMask.Moderate;
+            }
+
+            return mask;
         }
 
         private static bool CanManageAllianceByRole(string role)

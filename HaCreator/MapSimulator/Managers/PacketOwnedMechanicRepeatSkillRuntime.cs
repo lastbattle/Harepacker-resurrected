@@ -2783,7 +2783,25 @@ namespace HaCreator.MapSimulator.Managers
                    || normalized.Contains("payload", StringComparison.Ordinal)
                    || normalized.Contains("rawbytes", StringComparison.Ordinal)
                    || normalized.Contains("packetbytes", StringComparison.Ordinal)
-                   || normalized.Contains("payloadbytes", StringComparison.Ordinal);
+                   || normalized.Contains("payloadbytes", StringComparison.Ordinal)
+                   || normalized is "observedbytes"
+                       or "actualbytes"
+                       or "capturedbytes"
+                       or "capturebytes"
+                       or "officialbytes"
+                       or "clientbytes"
+                       or "originalbytes"
+                       or "wirebytes"
+                       or "rebuiltbytes"
+                       or "expectedbytes"
+                       or "replaybytes"
+                       or "replayedbytes"
+                       or "simulatorbytes"
+                       or "simulatedbytes"
+                       or "generatedbytes"
+                       or "candidatebytes"
+                       or "emulatedbytes"
+                       or "reconstructedbytes";
         }
 
         private static bool IsSg88PayloadComparisonByteArrayLabel(string propertyName)
@@ -2880,12 +2898,12 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                return false;
+                return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
             }
 
             if (hex.Length == 0 || (hex.Length % 2) != 0)
             {
-                return false;
+                return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
             }
 
             try

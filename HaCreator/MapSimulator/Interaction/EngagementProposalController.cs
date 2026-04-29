@@ -240,6 +240,23 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryApplyMarriageResultPayload(
+            IReadOnlyList<byte> payload,
+            UIWindowManager windowManager,
+            out string message)
+        {
+            if (!EngagementProposalRuntime.TryDecodeMarriageResultPayload(
+                    payload,
+                    out byte subtype,
+                    out string serverText,
+                    out message))
+            {
+                return false;
+            }
+
+            return TryApplyMarriageResultSubtype(subtype, serverText, windowManager, out message);
+        }
+
         internal string Dismiss(UIWindowManager windowManager)
         {
             _runtime.TryDismiss(out EngagementProposalResponse response, out string message);

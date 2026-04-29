@@ -1486,6 +1486,32 @@ namespace HaCreator.MapSimulator.Companions
             return TryDecodeClientDragonEndUpdateActiveFlushTail(payload, out tail, out error);
         }
 
+        internal static bool TryDecodeClientDragonEndUpdateActiveFlushTailFromCapture(
+            IReadOnlyList<byte> capture,
+            out ClientDragonFlushTail tail,
+            out bool opcodeFramed,
+            out string error)
+        {
+            tail = default;
+            opcodeFramed = false;
+            error = null;
+
+            if (capture == null || capture.Count <= 0)
+            {
+                error = "Dragon move capture is missing.";
+                return false;
+            }
+
+            if (capture.Count >= sizeof(ushort)
+                && ReadUInt16LittleEndian(capture, 0) == ClientVecCtrlDragonMovePacketOpcode)
+            {
+                opcodeFramed = true;
+                return TryDecodeClientDragonEndUpdateActiveFlushTailFromRawPacket(capture, out tail, out error);
+            }
+
+            return TryDecodeClientDragonEndUpdateActiveFlushTail(capture, out tail, out error);
+        }
+
         internal static bool TryDecodeClientDragonKeyPadStates(
             IReadOnlyList<byte> bytes,
             bool packedNibbles,
@@ -1560,6 +1586,35 @@ namespace HaCreator.MapSimulator.Companions
                 IsClientDragonOfficialSessionCaptureSource(_lastCapturedVecCtrlEndUpdateActiveFlushSource);
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary =
                 $"Captured client dragon opcode {ClientVecCtrlDragonMovePacketOpcode} tail from {_lastCapturedVecCtrlEndUpdateActiveFlushSource}: keypad={FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates)}, bounds={FormatClientDragonFlushBounds(capturedTail)}.";
+
+            message = DescribeClientVecCtrlEndUpdateActiveParityStatus();
+            return true;
+        }
+
+        internal bool TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+            IReadOnlyList<byte> bytes,
+            string source,
+            out string message)
+        {
+            message = null;
+            if (!TryDecodeClientDragonEndUpdateActiveFlushTailFromCapture(
+                    bytes,
+                    out ClientDragonFlushTail capturedTail,
+                    out bool opcodeFramed,
+                    out string error))
+            {
+                message = error ?? "Captured dragon move packet could not be decoded.";
+                return false;
+            }
+
+            _lastCapturedVecCtrlEndUpdateActiveFlushTail = capturedTail;
+            _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds = true;
+            _lastCapturedVecCtrlEndUpdateActiveFlushSource = string.IsNullOrWhiteSpace(source) ? "auto-detected capture" : source.Trim();
+            _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession =
+                IsClientDragonOfficialSessionCaptureSource(_lastCapturedVecCtrlEndUpdateActiveFlushSource);
+            string captureShape = opcodeFramed ? "opcode-framed" : "payload-only";
+            _lastCapturedVecCtrlEndUpdateActiveFlushSummary =
+                $"Captured client dragon opcode {ClientVecCtrlDragonMovePacketOpcode} {captureShape} tail from {_lastCapturedVecCtrlEndUpdateActiveFlushSource}: keypad={FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates)}, bounds={FormatClientDragonFlushBounds(capturedTail)}.";
 
             message = DescribeClientVecCtrlEndUpdateActiveParityStatus();
             return true;

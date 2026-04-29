@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Entities;
 using MapleLib.WzLib;
@@ -11,8 +12,19 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int MobActionSpeechHorizontalPadding = 18;
+        private const int MobActionSpeechVerticalPadding = 12;
+        private const int MobActionSpeechOwnerMaxTextWidth = 220;
+        private const int MobActionSpeechScreenMaxTextWidth = 360;
+
         private readonly Dictionary<int, LocalOverlayBalloonSkin> _mobActionSpeechBalloonSkins = new();
         private bool _mobActionSpeechBalloonSkinsLoaded;
+
+        internal sealed class MobActionSpeechTextLayout
+        {
+            public IReadOnlyList<string> Lines { get; init; }
+            public Vector2 TextSize { get; init; }
+        }
 
         private void DrawMobActionSpeechFeedback(in Managers.RenderContext renderContext)
         {
@@ -44,9 +56,14 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            Vector2 textSize = MeasureChatTextWithFallback(mob.ActiveActionSpeechText);
+            MobActionSpeechTextLayout textLayout = BuildMobActionSpeechTextLayout(
+                mob.ActiveActionSpeechText,
+                mob.ActiveActionSpeechChatBalloon,
+                mob.ActiveActionSpeechFloatNotice,
+                renderContext.RenderParams.RenderWidth,
+                MeasureChatTextWithFallback);
             Rectangle bounds = ResolveMobActionSpeechBounds(
-                textSize,
+                textLayout.TextSize,
                 mob.CurrentX,
                 mob.CurrentY - mob.GetVisualHeight(60),
                 mob.ActiveActionSpeechChatBalloon,
@@ -88,7 +105,7 @@ namespace HaCreator.MapSimulator
                     !IsMobActionSpeechScreenNotice(mob.ActiveActionSpeechChatBalloon, mob.ActiveActionSpeechFloatNotice));
             }
 
-            DrawChatTextWithFallback(mob.ActiveActionSpeechText, new Vector2(bounds.Left + 9, bounds.Top + 6), textColor);
+            DrawMobActionSpeechText(textLayout, bounds, textColor);
         }
 
         private LocalOverlayBalloonSkin ResolveMobActionSpeechBalloonSkin(int chatBalloon)
@@ -259,8 +276,8 @@ namespace HaCreator.MapSimulator
             int renderWidth,
             int renderHeight)
         {
-            int boxWidth = Math.Max(18, (int)Math.Ceiling(textSize.X) + 18);
-            int boxHeight = Math.Max(20, (int)Math.Ceiling(textSize.Y) + 12);
+            int boxWidth = Math.Max(MobActionSpeechHorizontalPadding, (int)Math.Ceiling(textSize.X) + MobActionSpeechHorizontalPadding);
+            int boxHeight = Math.Max(20, (int)Math.Ceiling(textSize.Y) + MobActionSpeechVerticalPadding);
 
             if (IsMobActionSpeechScreenNotice(chatBalloon, floatNotice))
             {
@@ -274,6 +291,186 @@ namespace HaCreator.MapSimulator
             int boxX = mobWorldX - mapShiftX + mapCenterX - (boxWidth / 2);
             int boxY = mobWorldTop - mapShiftY + mapCenterY - boxHeight - 24;
             return new Rectangle(boxX, boxY, boxWidth, boxHeight);
+        }
+
+        internal static MobActionSpeechTextLayout BuildMobActionSpeechTextLayout(
+            string text,
+            int chatBalloon,
+            int floatNotice,
+            int renderWidth,
+            Func<string, Vector2> measureText)
+        {
+            measureText ??= _ => Vector2.Zero;
+            string normalizedText = NormalizeMobActionSpeechText(text);
+            if (string.IsNullOrWhiteSpace(normalizedText))
+            {
+                return new MobActionSpeechTextLayout
+                {
+                    Lines = Array.Empty<string>(),
+                    TextSize = Vector2.Zero
+                };
+            }
+
+            int maxTextWidth = ResolveMobActionSpeechMaxTextWidth(chatBalloon, floatNotice, renderWidth);
+            List<string> lines = WrapMobActionSpeechText(normalizedText, maxTextWidth, measureText);
+            if (lines.Count == 0)
+            {
+                lines.Add(normalizedText);
+            }
+
+            float maxLineWidth = 0f;
+            float lineHeight = Math.Max(1f, measureText("Ay").Y);
+            foreach (string line in lines)
+            {
+                Vector2 lineSize = measureText(line);
+                maxLineWidth = Math.Max(maxLineWidth, lineSize.X);
+                lineHeight = Math.Max(lineHeight, lineSize.Y);
+            }
+
+            return new MobActionSpeechTextLayout
+            {
+                Lines = lines,
+                TextSize = new Vector2(maxLineWidth, lineHeight * lines.Count)
+            };
+        }
+
+        private static int ResolveMobActionSpeechMaxTextWidth(int chatBalloon, int floatNotice, int renderWidth)
+        {
+            int authoredMaxWidth = IsMobActionSpeechScreenNotice(chatBalloon, floatNotice)
+                ? MobActionSpeechScreenMaxTextWidth
+                : MobActionSpeechOwnerMaxTextWidth;
+            int viewportMaxWidth = renderWidth > 0
+                ? Math.Max(48, renderWidth - (MobActionSpeechHorizontalPadding * 2))
+                : authoredMaxWidth;
+            return Math.Max(24, Math.Min(authoredMaxWidth, viewportMaxWidth));
+        }
+
+        private static List<string> WrapMobActionSpeechText(
+            string text,
+            int maxTextWidth,
+            Func<string, Vector2> measureText)
+        {
+            var lines = new List<string>();
+            foreach (string paragraph in text.Replace("\r\n", "\n").Split('\n'))
+            {
+                string normalizedParagraph = NormalizeMobActionSpeechParagraph(paragraph);
+                if (string.IsNullOrWhiteSpace(normalizedParagraph))
+                {
+                    continue;
+                }
+
+                string currentLine = string.Empty;
+                foreach (string word in normalizedParagraph.Split(' '))
+                {
+                    if (string.IsNullOrWhiteSpace(word))
+                    {
+                        continue;
+                    }
+
+                    string candidateLine = string.IsNullOrEmpty(currentLine)
+                        ? word
+                        : currentLine + " " + word;
+                    if (measureText(candidateLine).X <= maxTextWidth)
+                    {
+                        currentLine = candidateLine;
+                        continue;
+                    }
+
+                    if (!string.IsNullOrEmpty(currentLine))
+                    {
+                        lines.Add(currentLine);
+                        currentLine = string.Empty;
+                    }
+
+                    if (measureText(word).X <= maxTextWidth)
+                    {
+                        currentLine = word;
+                        continue;
+                    }
+
+                    foreach (string segment in SplitMobActionSpeechLongWord(word, maxTextWidth, measureText))
+                    {
+                        if (measureText(segment).X <= maxTextWidth)
+                        {
+                            lines.Add(segment);
+                        }
+                        else
+                        {
+                            currentLine = segment;
+                        }
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                {
+                    lines.Add(currentLine);
+                }
+            }
+
+            return lines;
+        }
+
+        private static IEnumerable<string> SplitMobActionSpeechLongWord(
+            string word,
+            int maxTextWidth,
+            Func<string, Vector2> measureText)
+        {
+            string segment = string.Empty;
+            foreach (char character in word)
+            {
+                string candidate = segment + character;
+                if (candidate.Length > 1 && measureText(candidate).X > maxTextWidth)
+                {
+                    yield return segment;
+                    segment = character.ToString();
+                    continue;
+                }
+
+                segment = candidate;
+            }
+
+            if (!string.IsNullOrEmpty(segment))
+            {
+                yield return segment;
+            }
+        }
+
+        private static string NormalizeMobActionSpeechText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            string[] lines = text.Replace("\r\n", "\n")
+                .Split('\n')
+                .Select(NormalizeMobActionSpeechParagraph)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .ToArray();
+            return lines.Length == 0 ? null : string.Join("\n", lines);
+        }
+
+        private static string NormalizeMobActionSpeechParagraph(string text)
+        {
+            return string.IsNullOrWhiteSpace(text)
+                ? null
+                : string.Join(" ", text.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private void DrawMobActionSpeechText(MobActionSpeechTextLayout layout, Rectangle bounds, Color textColor)
+        {
+            if (layout?.Lines == null || layout.Lines.Count == 0)
+            {
+                return;
+            }
+
+            float lineHeight = Math.Max(1f, MeasureChatTextWithFallback("Ay").Y);
+            Vector2 position = new Vector2(bounds.Left + 9, bounds.Top + 6);
+            foreach (string line in layout.Lines)
+            {
+                DrawChatTextWithFallback(line, position, textColor);
+                position.Y += lineHeight;
+            }
         }
 
         internal static bool IsMobActionSpeechScreenChat(int chatBalloon)
