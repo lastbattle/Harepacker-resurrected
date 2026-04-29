@@ -184,6 +184,7 @@ This handler is still absent from the login backlog even though it owns a distin
 
 Notes:
 The latest `CField::OnPacket` re-check exposed another entitlement-adjacent owner that the backlog was only implying through the login-side extra-slot rows. Packet family `413` to `416` is forwarded from `CField::OnPacket` into `CField::OnCharacterSale`, and the handler itself is not a no-op shim back into login state: it checks a dedicated child-owner pointer at `this+0x244` and then dispatches through that owner's virtual slot `0x3C`. That means the client keeps a separate field/stage-owned character-sale bridge between the broader Cash Shop or ITC stage family and the login-side `CLogin::OnExtraCharInfoResult` entitlement gate, instead of letting `buyCharacter` exposure and purchase-result handling live only on the ordinary roster or selector packet path. Keeping this seam explicit in the login backlog avoids losing the stage-to-roster bridge under the already separate cash-service and extra-character rows.
+The follow-up function scan resolves that child owner as `CUICharacterSaleDlg`: `CUICharacterSaleDlg::OnPacket` at `0x778c50` dispatches packet `413` to `OnCheckDuplicatedIDResult` and packet `414` to `OnCreateNewCharacterResult`, so this row should remain tied to the field/stage sale dialog rather than only the login-map new-character wrappers.
 
 ### 8. Additional alternate-entry packet handler discovered by targeted `CLogin::OnPacket` scan
 
