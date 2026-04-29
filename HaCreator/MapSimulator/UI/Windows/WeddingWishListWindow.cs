@@ -1014,15 +1014,39 @@ namespace HaCreator.MapSimulator.UI
 
         private void RefreshButtonLayout()
         {
-            ConfigureButton(_getButton, _assets.ReceiveGetButtonPosition, _snapshot.Mode == WeddingWishListDialogMode.Receive && _snapshot.IsOpen);
-            ConfigureButton(_putButton, _assets.GivePutButtonPosition, _snapshot.Mode == WeddingWishListDialogMode.Give && _snapshot.IsOpen);
-            ConfigureButton(_enterButton, _assets.InputEnterButtonPosition, _snapshot.Mode == WeddingWishListDialogMode.Input && _snapshot.IsOpen);
-            ConfigureButton(_deleteButton, _assets.InputDeleteButtonPosition, _snapshot.Mode == WeddingWishListDialogMode.Input && _snapshot.IsOpen);
-            ConfigureButton(_confirmButton, _assets.InputOkButtonPosition, _snapshot.Mode == WeddingWishListDialogMode.Input && _snapshot.IsOpen);
-            ConfigureButton(_closeButton, _assets.CloseButtonPosition, (_snapshot.Mode == WeddingWishListDialogMode.Receive || _snapshot.Mode == WeddingWishListDialogMode.Give) && _snapshot.IsOpen);
+            ConfigureButton(
+                _getButton,
+                _assets.ReceiveGetButtonPosition,
+                _snapshot.Mode == WeddingWishListDialogMode.Receive && _snapshot.IsOpen,
+                _snapshot.CanGetSelectedItem);
+            ConfigureButton(
+                _putButton,
+                _assets.GivePutButtonPosition,
+                _snapshot.Mode == WeddingWishListDialogMode.Give && _snapshot.IsOpen,
+                _snapshot.CanPutSelectedItem);
+            ConfigureButton(
+                _enterButton,
+                _assets.InputEnterButtonPosition,
+                _snapshot.Mode == WeddingWishListDialogMode.Input && _snapshot.IsOpen,
+                _snapshot.CanEnterSelectedWish);
+            ConfigureButton(
+                _deleteButton,
+                _assets.InputDeleteButtonPosition,
+                _snapshot.Mode == WeddingWishListDialogMode.Input && _snapshot.IsOpen,
+                _snapshot.CanDeleteSelectedWish);
+            ConfigureButton(
+                _confirmButton,
+                _assets.InputOkButtonPosition,
+                _snapshot.Mode == WeddingWishListDialogMode.Input && _snapshot.IsOpen,
+                _snapshot.CanConfirmInput);
+            ConfigureButton(
+                _closeButton,
+                _assets.CloseButtonPosition,
+                (_snapshot.Mode == WeddingWishListDialogMode.Receive || _snapshot.Mode == WeddingWishListDialogMode.Give) && _snapshot.IsOpen,
+                _snapshot.CanCloseWindow);
         }
 
-        private void ConfigureButton(UIObject button, Point position, bool visible)
+        private void ConfigureButton(UIObject button, Point position, bool visible, bool enabled)
         {
             if (button == null)
             {
@@ -1032,7 +1056,7 @@ namespace HaCreator.MapSimulator.UI
             button.X = position.X;
             button.Y = position.Y;
             button.SetVisible(visible);
-            button.SetEnabled(visible);
+            button.SetEnabled(visible && enabled);
             button.ButtonVisible = visible;
         }
 

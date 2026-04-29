@@ -2173,6 +2173,78 @@ namespace HaCreator.MapSimulator.Interaction
             _questExRecordValues[questId] = normalizedValue;
         }
 
+        public string ApplyPacketOwnedQuestExKeptRecord(int questId, int keptSeconds)
+        {
+            if (questId <= 0)
+            {
+                return string.Empty;
+            }
+
+            string keptValue = Math.Max(0, keptSeconds).ToString(CultureInfo.InvariantCulture);
+            string existingValue = TryGetQuestExRecordValue(questId, out string questExValue)
+                ? questExValue
+                : (TryGetQuestRecordValue(questId, out string questRecordValue) ? questRecordValue : string.Empty);
+            string updatedValue = UpsertQuestDetailRecordTokenValue(existingValue, "kept", keptValue);
+            SetPacketOwnedQuestExRecordValue(questId, updatedValue);
+            SetPacketOwnedQuestRecordValue(questId, updatedValue);
+            return updatedValue;
+        }
+
+        internal static string UpsertQuestDetailRecordTokenValue(string recordValue, string token, string value)
+        {
+            string normalizedToken = token?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return recordValue?.Trim() ?? string.Empty;
+            }
+
+            string normalizedValue = value?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(recordValue))
+            {
+                return $"{normalizedToken}={normalizedValue}";
+            }
+
+            var entries = new List<string>();
+            bool replaced = false;
+            string[] rawEntries = recordValue.Split(QuestRecordTokenDelimiters, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < rawEntries.Length; i++)
+            {
+                string entry = rawEntries[i]?.Trim() ?? string.Empty;
+                if (entry.Length == 0)
+                {
+                    continue;
+                }
+
+                int separatorIndex = entry.IndexOf('=');
+                if (separatorIndex < 0)
+                {
+                    separatorIndex = entry.IndexOf(':');
+                }
+
+                if (separatorIndex <= 0)
+                {
+                    continue;
+                }
+
+                string key = entry[..separatorIndex].Trim();
+                if (string.Equals(key, normalizedToken, StringComparison.OrdinalIgnoreCase))
+                {
+                    entries.Add($"{key}={normalizedValue}");
+                    replaced = true;
+                    continue;
+                }
+
+                entries.Add(entry);
+            }
+
+            if (!replaced)
+            {
+                entries.Add($"{normalizedToken}={normalizedValue}");
+            }
+
+            return string.Join(";", entries);
+        }
+
         public void ApplyPacketOwnedQuestExRecordSnapshot(IReadOnlyDictionary<int, string> questExRecordValues)
         {
             if (questExRecordValues == null)

@@ -454,10 +454,28 @@ namespace HaCreator.MapSimulator.Effects
             _returnMapId = NormalizeTransferMapId(mapInfo?.returnMap);
             _forcedReturnMapId = NormalizeTransferMapId(mapInfo?.forcedReturn);
             _nextFloorMapId = -1;
-            _hasNextFloorPortal = hasNextFloorPortal || HasPortalScript(_mapId, "dojang_next");
             _hasExitPortal = false;
             _exitPortalName = string.Empty;
             _exitPortalTargetMapId = -1;
+
+            if (TryResolvePortalContractsFromWzMap(
+                    _mapId,
+                    out int wzNextFloorMapId,
+                    out string wzNextFloorPortalName,
+                    out bool wzHasExitPortal,
+                    out string wzExitPortalName,
+                    out int wzExitPortalTargetMapId))
+            {
+                _nextFloorMapId = wzNextFloorMapId;
+                _nextFloorPortalName = wzNextFloorPortalName ?? string.Empty;
+                _hasExitPortal = wzHasExitPortal;
+                _exitPortalName = wzExitPortalName ?? string.Empty;
+                _exitPortalTargetMapId = wzExitPortalTargetMapId;
+            }
+
+            _hasNextFloorPortal = hasNextFloorPortal
+                || _nextFloorMapId > 0
+                || HasPortalScript(_mapId, "dojang_next");
         }
         public void Configure(MapInfo mapInfo, IEnumerable<PortalInstance> portals, bool hasNextFloorPortal = false)
         {
@@ -954,6 +972,72 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return (false, string.Empty, -1);
+        }
+
+        private static bool TryResolvePortalContractsFromWzMap(
+            int mapId,
+            out int nextFloorMapId,
+            out string nextFloorPortalName,
+            out bool hasExitPortal,
+            out string exitPortalName,
+            out int exitPortalTargetMapId)
+        {
+            nextFloorMapId = -1;
+            nextFloorPortalName = string.Empty;
+            hasExitPortal = false;
+            exitPortalName = string.Empty;
+            exitPortalTargetMapId = -1;
+
+            if (mapId <= 0 || global::HaCreator.Program.WzManager == null)
+            {
+                return false;
+            }
+
+            WzImage mapImage = WzInfoTools.FindMapImage(mapId.ToString(CultureInfo.InvariantCulture), global::HaCreator.Program.WzManager);
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            WzImage portalImage = ResolveLinkedMapImage(mapImage) ?? mapImage;
+            WzImageProperty portalRoot = portalImage["portal"];
+            if (portalRoot == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty portalProperty in portalRoot.WzProperties)
+            {
+                if (portalProperty == null)
+                {
+                    continue;
+                }
+
+                string script = (portalProperty["script"] as WzStringProperty)?.Value ?? string.Empty;
+                string portalName = (portalProperty["pn"] as WzStringProperty)?.Value ?? string.Empty;
+                string targetPortalName = (portalProperty["tn"] as WzStringProperty)?.Value ?? string.Empty;
+                int targetMapId = NormalizeTransferMapId((portalProperty["tm"] as WzIntProperty)?.GetInt() ?? -1);
+
+                if (string.Equals(script, "dojang_next", StringComparison.OrdinalIgnoreCase))
+                {
+                    nextFloorPortalName = !string.IsNullOrWhiteSpace(targetPortalName)
+                        ? targetPortalName
+                        : portalName;
+                    nextFloorMapId = targetMapId > 0
+                        ? targetMapId
+                        : ResolveNextFloorMapIdCore(mapId, hasNextFloorPortal: true, HasMapImage);
+                    continue;
+                }
+
+                if (string.Equals(script, "dojang_exit", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasExitPortal = true;
+                    exitPortalName = portalName;
+                    exitPortalTargetMapId = targetMapId;
+                }
+            }
+
+            return nextFloorMapId > 0 || hasExitPortal;
         }
 
         private static bool IsAuthoredDojoNextFloorPortal(int currentMapId, PortalInstance portal, int targetMapId)

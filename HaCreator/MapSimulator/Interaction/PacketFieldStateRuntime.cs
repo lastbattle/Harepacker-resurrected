@@ -239,6 +239,28 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryGetQuestTimerKeptSeconds(int questId, int currentTick, out int keptSeconds)
+        {
+            keptSeconds = 0;
+            if (questId <= 0 || !_questTimers.TryGetValue(questId, out PacketQuestTimerEntry timer))
+            {
+                return false;
+            }
+
+            keptSeconds = ResolveQuestTimerKeptSeconds(timer.ReceivedAtTick, timer.DurationMs, currentTick);
+            return true;
+        }
+
+        internal static int ResolveQuestTimerKeptSeconds(int receivedAtTick, int durationMs, int currentTick)
+        {
+            int elapsedMs = Math.Max(0, unchecked(currentTick - receivedAtTick));
+            int boundedDurationMs = Math.Max(0, durationMs);
+            int keptMs = boundedDurationMs > 0
+                ? Math.Min(elapsedMs, boundedDurationMs)
+                : elapsedMs;
+            return Math.Max(0, keptMs / 1000);
+        }
+
         internal string DescribeStatus(int currentTick)
         {
             string helpStatus = _activeHelpMessage == null

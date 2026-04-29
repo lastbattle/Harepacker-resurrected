@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator
                 mob.CurrentX,
                 mob.CurrentY - mob.GetVisualHeight(60),
                 mob.ActiveActionSpeechChatBalloon,
+                mob.ActiveActionSpeechFloatNotice,
                 renderContext.MapShiftX,
                 renderContext.MapShiftY,
                 renderContext.MapCenterX,
@@ -60,6 +61,7 @@ namespace HaCreator.MapSimulator
             float remainingAlpha = MathHelper.Clamp((mob.ActiveActionSpeechExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
             ResolveMobActionSpeechColors(
                 mob.ActiveActionSpeechChatBalloon,
+                mob.ActiveActionSpeechFloatNotice,
                 remainingAlpha,
                 out Color backgroundColor,
                 out Color borderColor,
@@ -71,7 +73,7 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bounds.Left, bounds.Top, 2, bounds.Height), borderColor);
             _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bounds.Right - 2, bounds.Top, 2, bounds.Height), borderColor);
 
-            if (!IsMobActionSpeechScreenChat(mob.ActiveActionSpeechChatBalloon))
+            if (!IsMobActionSpeechScreenNotice(mob.ActiveActionSpeechChatBalloon, mob.ActiveActionSpeechFloatNotice))
             {
                 int arrowX = bounds.Left + (bounds.Width / 2) - 5;
                 int arrowY = bounds.Bottom - 1;
@@ -88,6 +90,7 @@ namespace HaCreator.MapSimulator
             int mobWorldX,
             int mobWorldTop,
             int chatBalloon,
+            int floatNotice,
             int mapShiftX,
             int mapShiftY,
             int mapCenterX,
@@ -98,7 +101,7 @@ namespace HaCreator.MapSimulator
             int boxWidth = Math.Max(18, (int)Math.Ceiling(textSize.X) + 18);
             int boxHeight = Math.Max(20, (int)Math.Ceiling(textSize.Y) + 12);
 
-            if (IsMobActionSpeechScreenChat(chatBalloon))
+            if (IsMobActionSpeechScreenNotice(chatBalloon, floatNotice))
             {
                 return new Rectangle(
                     Math.Max(0, (renderWidth - boxWidth) / 2),
@@ -118,14 +121,33 @@ namespace HaCreator.MapSimulator
             return chatBalloon == 1;
         }
 
+        internal static bool IsMobActionSpeechFloatNotice(int floatNotice)
+        {
+            return floatNotice > 0;
+        }
+
+        internal static bool IsMobActionSpeechScreenNotice(int chatBalloon, int floatNotice)
+        {
+            return IsMobActionSpeechScreenChat(chatBalloon) || IsMobActionSpeechFloatNotice(floatNotice);
+        }
+
         private static void ResolveMobActionSpeechColors(
             int chatBalloon,
+            int floatNotice,
             float alpha,
             out Color backgroundColor,
             out Color borderColor,
             out Color textColor)
         {
             float clampedAlpha = MathHelper.Clamp(alpha, 0f, 1f);
+            if (IsMobActionSpeechFloatNotice(floatNotice))
+            {
+                backgroundColor = new Color(32, 28, 18) * (0.90f * clampedAlpha);
+                borderColor = new Color(255, 214, 91) * clampedAlpha;
+                textColor = new Color(255, 244, 198) * clampedAlpha;
+                return;
+            }
+
             if (IsMobActionSpeechScreenChat(chatBalloon))
             {
                 backgroundColor = new Color(31, 31, 31) * (0.88f * clampedAlpha);

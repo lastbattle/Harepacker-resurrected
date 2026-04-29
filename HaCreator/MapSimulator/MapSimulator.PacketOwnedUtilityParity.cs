@@ -294,6 +294,14 @@ namespace HaCreator.MapSimulator
             public IReadOnlyList<string> LadderLines { get; init; } = Array.Empty<string>();
         }
 
+        internal sealed class ClassCompetitionRemotePageSnapshot
+        {
+            public string NavigateUrl { get; init; } = string.Empty;
+            public string Source { get; init; } = string.Empty;
+            public IReadOnlyList<string> PageLines { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<string> LadderLines { get; init; } = Array.Empty<string>();
+        }
+
         internal readonly record struct PacketOwnedTimeBombInvincibilityOptionLevelData(int DurationMs, int ProbabilityPercent);
 
         internal readonly record struct PacketOwnedTimeBombAttackPayload(
@@ -2370,12 +2378,20 @@ namespace HaCreator.MapSimulator
                 ? "packet class-competition remote-page payload"
                 : remotePayload.Source.Trim();
             _lastClassCompetitionRemotePageTick = now;
+            ClassCompetitionRemotePageSnapshot mergedSnapshot = MergeClassCompetitionRemotePageSnapshot(
+                _lastClassCompetitionRemoteNavigateUrl,
+                _lastClassCompetitionRemotePageSource,
+                _lastClassCompetitionRemotePageLines,
+                _lastClassCompetitionRemoteLadderLines,
+                remotePayload);
+            _lastClassCompetitionRemoteNavigateUrl = mergedSnapshot.NavigateUrl;
+            _lastClassCompetitionRemotePageSource = string.IsNullOrWhiteSpace(mergedSnapshot.Source)
+                ? "packet class-competition remote-page payload"
+                : mergedSnapshot.Source;
             _lastClassCompetitionRemotePageLines.Clear();
-            _lastClassCompetitionRemotePageLines.AddRange(
-                NormalizeClassCompetitionRemoteLines(remotePayload.PageLines, PacketOwnedClassCompetitionMaxRemotePageLines));
+            _lastClassCompetitionRemotePageLines.AddRange(mergedSnapshot.PageLines);
             _lastClassCompetitionRemoteLadderLines.Clear();
-            _lastClassCompetitionRemoteLadderLines.AddRange(
-                NormalizeClassCompetitionRemoteLines(remotePayload.LadderLines, PacketOwnedClassCompetitionMaxRemoteLadderLines));
+            _lastClassCompetitionRemoteLadderLines.AddRange(mergedSnapshot.LadderLines);
 
             if (!string.IsNullOrWhiteSpace(_lastClassCompetitionRemoteNavigateUrl)
                 && string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
@@ -2386,6 +2402,52 @@ namespace HaCreator.MapSimulator
             }
 
             message = $"Applied packet-authored class-competition remote-page snapshot with {_lastClassCompetitionRemotePageLines.Count} page line(s) and {_lastClassCompetitionRemoteLadderLines.Count} ladder line(s).";
+        }
+
+        internal static ClassCompetitionRemotePageSnapshot MergeClassCompetitionRemotePageSnapshotForTests(
+            string existingNavigateUrl,
+            string existingSource,
+            IReadOnlyList<string> existingPageLines,
+            IReadOnlyList<string> existingLadderLines,
+            ClassCompetitionRemotePagePayload remotePayload)
+        {
+            return MergeClassCompetitionRemotePageSnapshot(
+                existingNavigateUrl,
+                existingSource,
+                existingPageLines,
+                existingLadderLines,
+                remotePayload);
+        }
+
+        private static ClassCompetitionRemotePageSnapshot MergeClassCompetitionRemotePageSnapshot(
+            string existingNavigateUrl,
+            string existingSource,
+            IReadOnlyList<string> existingPageLines,
+            IReadOnlyList<string> existingLadderLines,
+            ClassCompetitionRemotePagePayload remotePayload)
+        {
+            IReadOnlyList<string> normalizedPageLines = NormalizeClassCompetitionRemoteLines(
+                remotePayload?.PageLines,
+                PacketOwnedClassCompetitionMaxRemotePageLines);
+            IReadOnlyList<string> normalizedLadderLines = NormalizeClassCompetitionRemoteLines(
+                remotePayload?.LadderLines,
+                PacketOwnedClassCompetitionMaxRemoteLadderLines);
+
+            return new ClassCompetitionRemotePageSnapshot
+            {
+                NavigateUrl = !string.IsNullOrWhiteSpace(remotePayload?.NavigateUrl)
+                    ? remotePayload.NavigateUrl.Trim()
+                    : existingNavigateUrl ?? string.Empty,
+                Source = !string.IsNullOrWhiteSpace(remotePayload?.Source)
+                    ? remotePayload.Source.Trim()
+                    : existingSource ?? string.Empty,
+                PageLines = normalizedPageLines.Count > 0
+                    ? normalizedPageLines
+                    : NormalizeClassCompetitionRemoteLines(existingPageLines, PacketOwnedClassCompetitionMaxRemotePageLines),
+                LadderLines = normalizedLadderLines.Count > 0
+                    ? normalizedLadderLines
+                    : NormalizeClassCompetitionRemoteLines(existingLadderLines, PacketOwnedClassCompetitionMaxRemoteLadderLines)
+            };
         }
 
         private static bool TryDecodeClassCompetitionAuthKeyPayload(byte[] payload, out string authKey, out string detail)
@@ -7421,7 +7483,8 @@ namespace HaCreator.MapSimulator
                 {
                     if (TryGetJsonBoolean(working, "opened", out bool parsedOpened)
                         || TryGetJsonBoolean(working, "open", out parsedOpened)
-                        || TryGetJsonBoolean(working, "isOpened", out parsedOpened))
+                        || TryGetJsonBoolean(working, "isOpened", out parsedOpened)
+                        || TryGetJsonBoolean(working, "QuestAlarm_opened", out parsedOpened))
                     {
                         opened = parsedOpened;
                     }
@@ -7435,7 +7498,8 @@ namespace HaCreator.MapSimulator
 
                     if (TryGetJsonBoolean(working, "autoRegisterEnabled", out bool parsedAutoRegisterEnabled)
                         || TryGetJsonBoolean(working, "autoRegister", out parsedAutoRegisterEnabled)
-                        || TryGetJsonBoolean(working, "auto", out parsedAutoRegisterEnabled))
+                        || TryGetJsonBoolean(working, "auto", out parsedAutoRegisterEnabled)
+                        || TryGetJsonBoolean(working, "QuestAlarm_autoregister", out parsedAutoRegisterEnabled))
                     {
                         autoRegisterEnabled = parsedAutoRegisterEnabled;
                     }
@@ -7468,6 +7532,11 @@ namespace HaCreator.MapSimulator
                     {
                         hasQuestRegistrationList = true;
                         questIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(questArray);
+                    }
+                    else if (TryDecodeQuestAlarmRegistrationQuestIdsFromClientOptionJsonObject(working, out int[] clientOptionQuestIds))
+                    {
+                        hasQuestRegistrationList = true;
+                        questIds = clientOptionQuestIds;
                     }
                 }
                 else if (working.ValueKind == JsonValueKind.Array)
@@ -7509,7 +7578,9 @@ namespace HaCreator.MapSimulator
                         || TryGetJsonBoolean(working, "minimize", out _)
                         || TryGetJsonBoolean(working, "autoRegisterEnabled", out _)
                         || TryGetJsonBoolean(working, "autoRegister", out _)
-                        || TryGetJsonBoolean(working, "auto", out _)))
+                        || TryGetJsonBoolean(working, "auto", out _)
+                        || TryGetJsonBoolean(working, "QuestAlarm_opened", out _)
+                        || TryGetJsonBoolean(working, "QuestAlarm_autoregister", out _)))
                 {
                     error = null;
                     return true;
@@ -7572,6 +7643,50 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private static bool TryDecodeQuestAlarmRegistrationQuestIdsFromClientOptionJsonObject(
+            JsonElement element,
+            out int[] questIds)
+        {
+            questIds = Array.Empty<int>();
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            SortedDictionary<int, int> slotQuestIds = new();
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (!TryResolveQuestAlarmRegistrationClientOptionSlotIndex(property.Name, out int slotIndex))
+                {
+                    continue;
+                }
+
+                if (slotIndex < 0 || slotIndex >= QuestAlarmRegistrationSyncMaxQuestCount)
+                {
+                    continue;
+                }
+
+                if (TryResolveQuestAlarmRegistrationQuestIdFromJsonElement(property.Value, out int questId) && questId > 0)
+                {
+                    slotQuestIds[slotIndex] = questId;
+                }
+            }
+
+            if (slotQuestIds.Count == 0)
+            {
+                return false;
+            }
+
+            List<int> decodedQuestIds = new(QuestAlarmRegistrationSyncMaxQuestCount);
+            foreach (int questId in slotQuestIds.Values)
+            {
+                AddQuestAlarmRegistrationSyncQuestId(decodedQuestIds, questId);
+            }
+
+            questIds = decodedQuestIds.ToArray();
+            return true;
+        }
+
         private static bool TryDecodeQuestAlarmRegistrationSyncTextPayload(
             string payloadText,
             out bool? opened,
@@ -7622,7 +7737,8 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "open", out bool parsedOpen)
-                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "opened", out parsedOpen))
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "opened", out parsedOpen)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "QuestAlarm_opened", out parsedOpen))
                 {
                     opened = parsedOpen;
                     sawDirective = true;
@@ -7639,7 +7755,8 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "auto", out bool parsedAuto)
-                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "autoregister", out parsedAuto))
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "autoregister", out parsedAuto)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "QuestAlarm_autoregister", out parsedAuto))
                 {
                     autoRegisterEnabled = parsedAuto;
                     sawDirective = true;
@@ -7658,6 +7775,13 @@ namespace HaCreator.MapSimulator
                 if (TryParseQuestAlarmRegistrationSyncListDirective(segment, parsedQuestIds))
                 {
                     sawQuestRegistrationListDirective = true;
+                    continue;
+                }
+
+                if (TryParseQuestAlarmRegistrationSyncClientOptionDirective(segment, parsedQuestIds, out bool isClientQuestSlotDirective))
+                {
+                    sawQuestRegistrationListDirective |= isClientQuestSlotDirective;
+                    sawDirective |= !isClientQuestSlotDirective;
                     continue;
                 }
 
@@ -7693,6 +7817,61 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool TryParseQuestAlarmRegistrationSyncClientOptionDirective(
+            string text,
+            List<int> destination,
+            out bool isQuestSlotDirective)
+        {
+            isQuestSlotDirective = false;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            int separatorIndex = text.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                separatorIndex = text.IndexOf(':');
+            }
+
+            if (separatorIndex <= 0)
+            {
+                return false;
+            }
+
+            string key = text[..separatorIndex].Trim();
+            if (string.Equals(key, "QuestAlarm_cnt", StringComparison.OrdinalIgnoreCase))
+            {
+                isQuestSlotDirective = true;
+                return true;
+            }
+
+            if (!TryResolveQuestAlarmRegistrationClientOptionSlotIndex(key, out int slotIndex)
+                || slotIndex < 0
+                || slotIndex >= QuestAlarmRegistrationSyncMaxQuestCount)
+            {
+                return false;
+            }
+
+            isQuestSlotDirective = true;
+            string value = text[(separatorIndex + 1)..].Trim();
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId) && questId > 0)
+            {
+                AddQuestAlarmRegistrationSyncQuestId(destination, questId);
+            }
+
+            return true;
+        }
+
+        private static bool TryResolveQuestAlarmRegistrationClientOptionSlotIndex(string key, out int slotIndex)
+        {
+            slotIndex = -1;
+            const string prefix = "QuestAlarm_";
+            return !string.IsNullOrWhiteSpace(key)
+                && key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(key[prefix.Length..].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out slotIndex);
         }
 
         private static bool TryParseQuestAlarmRegistrationSyncListDirective(string text, List<int> destination)
@@ -10153,6 +10332,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioClientMmsPlaySucceeded = mmsPlayPlan.Started;
                 _lastPacketOwnedRadioClientMmsPlayFailureReason = mmsPlayPlan.FailureReason;
                 _lastPacketOwnedRadioClientHandleStatus = mmsPlayPlan.HandleStatus;
+                _packetOwnedRadioClientHandle = null;
                 if (!mmsPlayPlan.Started)
                 {
                     RollBackPacketOwnedRadioScheduleContextAfterFailedStart(scheduleSource, "mms-play-failed");
@@ -10164,6 +10344,9 @@ namespace HaCreator.MapSimulator
                     return mmsPlayRejectedMessage;
                 }
 
+                _packetOwnedRadioClientHandle = PacketOwnedRadioClientPlaybackHandle.Create(
+                    mmsPlayPlan,
+                    rawBufferLength);
                 _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false, startOffsetMs);
                 ResolvePacketOwnedRadioRealizedPlaybackWindow(
                     _packetOwnedRadioAudio,
@@ -10187,6 +10370,7 @@ namespace HaCreator.MapSimulator
                     RollBackPacketOwnedRadioScheduleContextAfterFailedStart(scheduleSource, "offset-unusable");
                     _packetOwnedRadioAudio.Dispose();
                     _packetOwnedRadioAudio = null;
+                    _packetOwnedRadioClientHandle = null;
                     ResetPacketOwnedRadioCreateLayerSessionState();
                     string rejectedMessage = authoritativeTrackDurationMs > 0
                         ? $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because authored timeValue {normalizedTimeValue}s resolves to {authoritativeStartOffsetMs} ms, past the {authoritativeTrackDurationMs} ms track length."
@@ -10250,6 +10434,7 @@ namespace HaCreator.MapSimulator
                 RollBackPacketOwnedRadioScheduleContextAfterFailedStart(scheduleSource, "exception");
                 _packetOwnedRadioAudio?.Dispose();
                 _packetOwnedRadioAudio = null;
+                _packetOwnedRadioClientHandle = null;
                 ResetPacketOwnedRadioCreateLayerSessionState();
                 string failedMessage = $"Packet-owned radio track '{normalizedTrackDescriptor}' could not start: {ex.Message}";
                 _lastPacketOwnedRadioStatusMessage = failedMessage;
@@ -10639,17 +10824,30 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _lastPacketOwnedRadioClientPlaybackPositionMs = ResolvePacketOwnedRadioClientPlaybackPositionMs(
-                _lastPacketOwnedRadioStartOffsetMs,
-                _lastPacketOwnedRadioStartTick,
-                currentTickCount,
-                _lastPacketOwnedRadioClientTrackDurationMs);
-            bool clientHandleStopped = IsPacketOwnedRadioClientHandleStopped(
-                _lastPacketOwnedRadioClientPlaybackPositionMs,
-                _lastPacketOwnedRadioClientTrackDurationMs);
-            _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusAfterPoll(
-                _lastPacketOwnedRadioClientHandleStatus,
-                clientHandleStopped);
+            bool clientHandleStopped;
+            if (_packetOwnedRadioClientHandle != null)
+            {
+                clientHandleStopped = _packetOwnedRadioClientHandle.Update(
+                    _lastPacketOwnedRadioStartOffsetMs,
+                    _lastPacketOwnedRadioStartTick,
+                    currentTickCount);
+                _lastPacketOwnedRadioClientPlaybackPositionMs = _packetOwnedRadioClientHandle.MsPosition;
+                _lastPacketOwnedRadioClientHandleStatus = _packetOwnedRadioClientHandle.Status;
+            }
+            else
+            {
+                _lastPacketOwnedRadioClientPlaybackPositionMs = ResolvePacketOwnedRadioClientPlaybackPositionMs(
+                    _lastPacketOwnedRadioStartOffsetMs,
+                    _lastPacketOwnedRadioStartTick,
+                    currentTickCount,
+                    _lastPacketOwnedRadioClientTrackDurationMs);
+                clientHandleStopped = IsPacketOwnedRadioClientHandleStopped(
+                    _lastPacketOwnedRadioClientPlaybackPositionMs,
+                    _lastPacketOwnedRadioClientTrackDurationMs);
+                _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusAfterPoll(
+                    _lastPacketOwnedRadioClientHandleStatus,
+                    clientHandleStopped);
+            }
             bool useBackendStopSignal = !HasPacketOwnedRadioClientTrackDuration(_lastPacketOwnedRadioClientTrackDurationMs);
             bool backendStopped = _packetOwnedRadioAudio?.State == Microsoft.Xna.Framework.Audio.SoundState.Stopped;
             if (ShouldCompletePacketOwnedRadioSchedule(
@@ -10751,22 +10949,36 @@ namespace HaCreator.MapSimulator
         private string StopPacketOwnedRadioSchedule(bool completed, bool emitChatNotice)
         {
             string displayName = _lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor ?? "radio track";
-            _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusBeforeStop(
-                _lastPacketOwnedRadioClientHandleStatus,
-                _lastPacketOwnedRadioStartOffsetMs,
-                _lastPacketOwnedRadioStartTick,
-                Environment.TickCount,
-                _lastPacketOwnedRadioClientTrackDurationMs,
-                out int stopPlaybackPositionMs);
-            _lastPacketOwnedRadioClientPlaybackPositionMs = stopPlaybackPositionMs;
-            _lastPacketOwnedRadioMmsStopPlan = ResolvePacketOwnedRadioMmsStopPlan(
-                _lastPacketOwnedRadioClientTrackPropertyLoaded,
-                _lastPacketOwnedRadioClientSoundObjectLoaded,
-                _lastPacketOwnedRadioClientRawBufferLoaded,
-                _lastPacketOwnedRadioClientHandleStatus);
+            if (_packetOwnedRadioClientHandle != null)
+            {
+                _lastPacketOwnedRadioMmsStopPlan = _packetOwnedRadioClientHandle.Stop(
+                    _lastPacketOwnedRadioStartOffsetMs,
+                    _lastPacketOwnedRadioStartTick,
+                    Environment.TickCount);
+                _lastPacketOwnedRadioClientPlaybackPositionMs = _packetOwnedRadioClientHandle.MsPosition;
+                _lastPacketOwnedRadioClientHandleStatus = _packetOwnedRadioClientHandle.Status;
+            }
+            else
+            {
+                _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusBeforeStop(
+                    _lastPacketOwnedRadioClientHandleStatus,
+                    _lastPacketOwnedRadioStartOffsetMs,
+                    _lastPacketOwnedRadioStartTick,
+                    Environment.TickCount,
+                    _lastPacketOwnedRadioClientTrackDurationMs,
+                    out int stopPlaybackPositionMs);
+                _lastPacketOwnedRadioClientPlaybackPositionMs = stopPlaybackPositionMs;
+                _lastPacketOwnedRadioMmsStopPlan = ResolvePacketOwnedRadioMmsStopPlan(
+                    _lastPacketOwnedRadioClientTrackPropertyLoaded,
+                    _lastPacketOwnedRadioClientSoundObjectLoaded,
+                    _lastPacketOwnedRadioClientRawBufferLoaded,
+                    _lastPacketOwnedRadioClientHandleStatus);
+            }
+
             _packetOwnedRadioAudio?.Stop();
             _packetOwnedRadioAudio?.Dispose();
             _packetOwnedRadioAudio = null;
+            _packetOwnedRadioClientHandle = null;
             _lastPacketOwnedRadioTrackDescriptor = null;
             _lastPacketOwnedRadioResolvedTrackDescriptor = null;
             _lastPacketOwnedRadioResolvedDescriptor = null;
@@ -10783,6 +10995,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioClientTrackPropertyLoaded = false;
             _lastPacketOwnedRadioClientSoundObjectLoaded = false;
             _lastPacketOwnedRadioClientRawBufferLoaded = false;
+            _lastPacketOwnedRadioClientRawBufferLength = 0;
             _lastPacketOwnedRadioClientMmsPlaySucceeded = false;
             _lastPacketOwnedRadioClientMmsPlayFailureReason = completed ? "completed" : "stopped";
             _lastPacketOwnedRadioStartTick = int.MinValue;
@@ -15094,31 +15307,45 @@ namespace HaCreator.MapSimulator
                     return true;
 
                 case "party":
-                    route = new PacketOwnedChatRoute($"[Party] {message}", 2);
+                    route = new PacketOwnedChatRoute(
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Party]"),
+                        2);
                     return true;
 
                 case "friend":
-                    route = new PacketOwnedChatRoute($"[Friend] {message}", 3);
+                    route = new PacketOwnedChatRoute(
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Friend]"),
+                        3);
                     return true;
 
                 case "guild":
-                    route = new PacketOwnedChatRoute($"[Guild] {message}", 4);
+                    route = new PacketOwnedChatRoute(
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Guild]"),
+                        4);
                     return true;
 
                 case "alliance":
-                    route = new PacketOwnedChatRoute($"[Alliance] {message}", 5);
+                    route = new PacketOwnedChatRoute(
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Alliance]"),
+                        5);
                     return true;
 
                 case "association":
-                    route = new PacketOwnedChatRoute($"[Association] {message}", 5);
+                    route = new PacketOwnedChatRoute(
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Association]"),
+                        5);
                     return true;
 
                 case "couple":
-                    route = new PacketOwnedChatRoute($"[Couple] {message}", 6);
+                    route = new PacketOwnedChatRoute(
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Couple]"),
+                        6);
                     return true;
 
                 case "expedition":
-                    route = new PacketOwnedChatRoute($"[Expedition] {message}", 26);
+                    route = new PacketOwnedChatRoute(
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Expedition]"),
+                        26);
                     return true;
 
                 case "error":
@@ -15257,6 +15484,18 @@ namespace HaCreator.MapSimulator
         private static bool IsPacketOwnedWhisperChatLogType(int chatLogType)
         {
             return chatLogType == 14 || chatLogType == 16;
+        }
+
+        private static string FormatPacketOwnedGroupChatLine(string message, string sender, string fallbackPrefix)
+        {
+            string trimmedMessage = message?.Trim() ?? string.Empty;
+            string trimmedSender = sender?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(trimmedSender))
+            {
+                return $"{trimmedSender}: {trimmedMessage}";
+            }
+
+            return $"{fallbackPrefix} {trimmedMessage}".Trim();
         }
 
         private static string FormatPacketOwnedChatLine(string message, string channel)
@@ -22003,6 +22242,15 @@ namespace HaCreator.MapSimulator
                 };
                 hasOwnerState = true;
                 summary = "Applied packet-authored CWebWnd ranking form owner state.";
+                message = summary;
+                return true;
+            }
+
+            ownerState = BuildPacketOwnedRankingOwnerStateFromForm(fields);
+            if (ownerState.HasAnyState)
+            {
+                hasOwnerState = true;
+                summary = "Applied packet-authored CWebWnd ranking form request state.";
                 message = summary;
                 return true;
             }

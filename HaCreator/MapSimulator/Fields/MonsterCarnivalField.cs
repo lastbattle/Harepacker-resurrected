@@ -196,7 +196,8 @@ namespace HaCreator.MapSimulator.Fields
 
     internal readonly record struct PendingLocalRequestToken(
         MonsterCarnivalTab Tab,
-        int EntryIndex);
+        int EntryIndex,
+        bool AcceptsOfficialClientResultOwner = false);
 
     public sealed class MonsterCarnivalUiDataRowState
     {
@@ -1396,6 +1397,12 @@ namespace HaCreator.MapSimulator.Fields
         private int _waitingRoomDelegatedPacketCount;
         private int _waitingRoomRawPacketCount;
         private int _waitingRoomStructuredPacketCount;
+        private int _waitingRoomEnterPacketCount;
+        private int _waitingRoomRequestPacketCount;
+        private int _waitingRoomHudPacketCount;
+        private int _waitingRoomMemberPacketCount;
+        private int _waitingRoomDeathPacketCount;
+        private int _waitingRoomResultPacketCount;
         private string _variantTransportLastRoute;
         private GraphicsDevice _graphicsDevice;
         private MonsterCarnivalHudAssets _hudAssets = new();
@@ -1445,6 +1452,12 @@ namespace HaCreator.MapSimulator.Fields
         public int WaitingRoomDelegatedPacketCount => _waitingRoomDelegatedPacketCount;
         public int WaitingRoomRawPacketCount => _waitingRoomRawPacketCount;
         public int WaitingRoomStructuredPacketCount => _waitingRoomStructuredPacketCount;
+        public int WaitingRoomEnterPacketCount => _waitingRoomEnterPacketCount;
+        public int WaitingRoomRequestPacketCount => _waitingRoomRequestPacketCount;
+        public int WaitingRoomHudPacketCount => _waitingRoomHudPacketCount;
+        public int WaitingRoomMemberPacketCount => _waitingRoomMemberPacketCount;
+        public int WaitingRoomDeathPacketCount => _waitingRoomDeathPacketCount;
+        public int WaitingRoomResultPacketCount => _waitingRoomResultPacketCount;
         public MonsterCarnivalWaitingRoomLobbyPhase WaitingRoomLobbyPhase => _waitingRoomLobbyPhase;
         public string WaitingRoomLobbySessionTrailSummary => BuildWaitingRoomLobbySessionTrailSummary();
         public string WaitingRoomLobbyRouteTrailSummary => BuildWaitingRoomLobbyRouteTrailSummary();
@@ -1491,6 +1504,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _pendingLocalRequests.Enqueue(new PendingLocalRequestToken(tab, entryIndex));
+        }
+
+        public void MarkPendingOfficialClientRequest(MonsterCarnivalTab tab, int entryIndex)
+        {
+            if (entryIndex < 0)
+            {
+                return;
+            }
+
+            _pendingLocalRequests.Enqueue(new PendingLocalRequestToken(tab, entryIndex, AcceptsOfficialClientResultOwner: true));
         }
 
         public bool TryResolveCharacterTeam(string characterName, out MonsterCarnivalTeam team)
@@ -2769,6 +2792,12 @@ namespace HaCreator.MapSimulator.Fields
             _waitingRoomDelegatedPacketCount = 0;
             _waitingRoomRawPacketCount = 0;
             _waitingRoomStructuredPacketCount = 0;
+            _waitingRoomEnterPacketCount = 0;
+            _waitingRoomRequestPacketCount = 0;
+            _waitingRoomHudPacketCount = 0;
+            _waitingRoomMemberPacketCount = 0;
+            _waitingRoomDeathPacketCount = 0;
+            _waitingRoomResultPacketCount = 0;
             _variantTransportLastRoute = null;
             _waitingRoomLobbyPhase = MonsterCarnivalWaitingRoomLobbyPhase.None;
             _waitingRoomLobbySummary = null;
@@ -2836,6 +2865,12 @@ namespace HaCreator.MapSimulator.Fields
             _waitingRoomDelegatedPacketCount = 0;
             _waitingRoomRawPacketCount = 0;
             _waitingRoomStructuredPacketCount = 0;
+            _waitingRoomEnterPacketCount = 0;
+            _waitingRoomRequestPacketCount = 0;
+            _waitingRoomHudPacketCount = 0;
+            _waitingRoomMemberPacketCount = 0;
+            _waitingRoomDeathPacketCount = 0;
+            _waitingRoomResultPacketCount = 0;
             _variantTransportLastRoute = null;
             _waitingRoomLobbyPhase = MonsterCarnivalWaitingRoomLobbyPhase.None;
             _waitingRoomLobbySummary = null;
@@ -3655,8 +3690,13 @@ namespace HaCreator.MapSimulator.Fields
                 && string.Equals(characterName.Trim(), _localCharacterName, StringComparison.OrdinalIgnoreCase);
         }
 
-        private bool TryConsumePendingLocalRequest(MonsterCarnivalTab tab, int entryIndex)
+        private bool TryConsumePendingLocalRequest(
+            MonsterCarnivalTab tab,
+            int entryIndex,
+            Func<PendingLocalRequestToken, bool> ownershipPredicate,
+            out PendingLocalRequestToken token)
         {
+            token = default;
             if (_pendingLocalRequests.Count <= 0)
             {
                 return false;
@@ -3668,8 +3708,12 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = 0; i < pendingCount; i++)
             {
                 PendingLocalRequestToken pending = _pendingLocalRequests.Dequeue();
-                if (!consumed && pending.Tab == tab && pending.EntryIndex == entryIndex)
+                if (!consumed
+                    && pending.Tab == tab
+                    && pending.EntryIndex == entryIndex
+                    && (ownershipPredicate == null || ownershipPredicate(pending)))
                 {
+                    token = pending;
                     consumed = true;
                     continue;
                 }
@@ -3697,13 +3741,24 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (TryConsumePendingLocalRequest(tab, entryIndex))
+            if (isLocalRequestOwner
+                && TryConsumePendingLocalRequest(tab, entryIndex, ownershipPredicate: null, out consumedToken))
             {
-                consumedToken = new PendingLocalRequestToken(tab, entryIndex);
                 return true;
             }
 
-            return TryConsumeNextResolvablePendingLocalRequest(out consumedToken);
+            if (TryConsumePendingLocalRequest(
+                    tab,
+                    entryIndex,
+                    pending => pending.AcceptsOfficialClientResultOwner,
+                    out consumedToken))
+            {
+                return true;
+            }
+
+            return TryConsumeNextResolvablePendingLocalRequest(
+                pending => isLocalRequestOwner || pending.AcceptsOfficialClientResultOwner,
+                out consumedToken);
         }
 
         private bool TryResolveEntryFromPendingLocalRequest(
@@ -3720,7 +3775,9 @@ namespace HaCreator.MapSimulator.Fields
             return entry != null;
         }
 
-        private bool TryConsumeNextResolvablePendingLocalRequest(out PendingLocalRequestToken token)
+        private bool TryConsumeNextResolvablePendingLocalRequest(
+            Func<PendingLocalRequestToken, bool> ownershipPredicate,
+            out PendingLocalRequestToken token)
         {
             token = default;
             if (_pendingLocalRequests.Count <= 0)
@@ -3734,7 +3791,9 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = 0; i < pendingCount; i++)
             {
                 PendingLocalRequestToken pending = _pendingLocalRequests.Dequeue();
-                if (!consumed && TryResolveEntryFromPendingLocalRequest(pending, out _))
+                if (!consumed
+                    && (ownershipPredicate == null || ownershipPredicate(pending))
+                    && TryResolveEntryFromPendingLocalRequest(pending, out _))
                 {
                     token = pending;
                     consumed = true;
@@ -4705,6 +4764,7 @@ namespace HaCreator.MapSimulator.Fields
                     _waitingRoomStructuredPacketCount++;
                 }
 
+                RecordWaitingRoomLobbyBucket(packetBucket);
                 RecordWaitingRoomLobbyRoute(packetType, rawPacket, packetBucket, delegatedOwner);
                 RecordWaitingRoomLobbySessionEvent(
                     $"{(rawPacket ? "raw" : "packet")} {packetType} [{packetBucket}] delegated to {delegatedOwner}",
@@ -5302,7 +5362,7 @@ namespace HaCreator.MapSimulator.Fields
             }
             else if (_definition?.IsWaitingRoom == true)
             {
-                summary += $",waitingRoomDelegated={_waitingRoomDelegatedPacketCount},waitingRoomRaw={_waitingRoomRawPacketCount},waitingRoomPacket={_waitingRoomStructuredPacketCount},waitingRoomTrail={BuildWaitingRoomLobbyRouteTrailSummary()}";
+                summary += $",waitingRoomDelegated={_waitingRoomDelegatedPacketCount},waitingRoomRaw={_waitingRoomRawPacketCount},waitingRoomPacket={_waitingRoomStructuredPacketCount},waitingRoomBuckets={BuildWaitingRoomLobbyBucketSummary()},waitingRoomTrail={BuildWaitingRoomLobbyRouteTrailSummary()}";
             }
 
             return summary;
@@ -5396,6 +5456,41 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _waitingRoomLobbyRouteTrail.Dequeue();
             }
+        }
+
+        private void RecordWaitingRoomLobbyBucket(string packetBucket)
+        {
+            switch (packetBucket)
+            {
+                case "enter":
+                    _waitingRoomEnterPacketCount++;
+                    break;
+                case "request":
+                    _waitingRoomRequestPacketCount++;
+                    break;
+                case "hud":
+                    _waitingRoomHudPacketCount++;
+                    break;
+                case "member":
+                    _waitingRoomMemberPacketCount++;
+                    break;
+                case "death":
+                    _waitingRoomDeathPacketCount++;
+                    break;
+                case "result":
+                    _waitingRoomResultPacketCount++;
+                    break;
+            }
+        }
+
+        private string BuildWaitingRoomLobbyBucketSummary()
+        {
+            if (_definition?.IsWaitingRoom != true)
+            {
+                return "n/a";
+            }
+
+            return $"enter={_waitingRoomEnterPacketCount}/request={_waitingRoomRequestPacketCount}/hud={_waitingRoomHudPacketCount}/member={_waitingRoomMemberPacketCount}/death={_waitingRoomDeathPacketCount}/result={_waitingRoomResultPacketCount}";
         }
 
         private string BuildWaitingRoomLobbyRouteTrailSummary()

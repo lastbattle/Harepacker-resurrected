@@ -468,6 +468,7 @@ namespace HaCreator.MapSimulator
                 movingState.Y1,
                 movingState.Y2,
                 platform.MovementType);
+            ClearPacketOwnedMovingFootholdWaypointsWhenNotPromotedForPacketParity(platform);
             ApplyPacketOwnedMovingFootholdWaypointsForPacketParity(platform, movingState);
             platform.X = movingState.CurrentX;
             platform.Y = movingState.CurrentY;
@@ -507,7 +508,7 @@ namespace HaCreator.MapSimulator
                 return PlatformMovementType.Vertical;
             }
 
-            return currentMovementType;
+            return PlatformMovementType.Static;
         }
 
         internal static bool ResolvePacketOwnedMovingFootholdMovingRightForPacketParity(
@@ -572,6 +573,17 @@ namespace HaCreator.MapSimulator
                 movingState.ReverseVertical,
                 movingState.ReverseHorizontal);
             platform.LoopWaypoints = true;
+        }
+
+        internal static void ClearPacketOwnedMovingFootholdWaypointsWhenNotPromotedForPacketParity(DynamicPlatform platform)
+        {
+            if (platform == null || platform.MovementType == PlatformMovementType.Waypoint)
+            {
+                return;
+            }
+
+            platform.Waypoints = null;
+            platform.CurrentWaypointIndex = 0;
         }
 
         internal static int ResolvePacketOwnedMovingFootholdWaypointIndexForPacketParity(

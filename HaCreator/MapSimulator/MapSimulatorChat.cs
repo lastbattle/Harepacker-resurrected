@@ -193,6 +193,25 @@ namespace HaCreator.MapSimulator
             KeepChatOpen = 2
         }
 
+        internal bool HandleCommittedText(string text)
+        {
+            if (!_isActive
+                || string.IsNullOrEmpty(text)
+                || IsWhisperTargetPickerModalFooterFocused()
+                || !CanInsertInputText(text))
+            {
+                return false;
+            }
+
+            ActivateWhisperTargetPickerModalComboFocus();
+            TryDeleteInputSelection();
+            InsertInputText(text);
+            SyncWhisperTargetPickerSelectionFromInput();
+            ResetHistoryNavigation();
+            ResetKeyRepeat();
+            return true;
+        }
+
         public enum WhisperTargetPickerPresentation
         {
             Inline = 0,

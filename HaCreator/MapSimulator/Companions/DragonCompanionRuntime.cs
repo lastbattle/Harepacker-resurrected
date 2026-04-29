@@ -246,7 +246,8 @@ namespace HaCreator.MapSimulator.Companions
         private const float PassiveHoldDistance = ActiveFollowDistanceX;
         private const float PassiveVerticalHoldDistance = 5f;
         private const int ClientVecCtrlPassiveStepMilliseconds = 30;
-        private const int ClientVecCtrlDragonMovePacketOpcode = 214;
+        internal const int ClientVecCtrlDragonMovePacketOpcode = 214;
+        internal const int ClientVecCtrlDragonMovePacketOpcode214 = ClientVecCtrlDragonMovePacketOpcode;
         private const int ClientVecCtrlDragonFlushThresholdMilliseconds = 1000;
         private const int MaxPendingClientVecCtrlFlushPackets = 128;
         private const int MaxClientVecCtrlMovePathElements = 128;

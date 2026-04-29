@@ -85,6 +85,13 @@ namespace HaCreator.MapSimulator
             {
                 liveMob?.MovementInfo?.QueuePacketMovePathElements(decodedPacket.MovePathElements, currentTime);
             }
+            if (decodedPacket.MovePathTailInfo is MobMoveAttackPacketCodec.DecodedMovePathTailInfo movePathTailInfo)
+            {
+                liveMob?.MovementInfo?.ApplyPacketMovePathTailInfo(
+                    movePathTailInfo.PassiveKeyPadStateCount,
+                    movePathTailInfo.PathBounds,
+                    currentTime);
+            }
 
             if (!decodedPacket.NextAttackPossible)
             {

@@ -360,12 +360,15 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string resolvedPrecept = NormalizePrecept(precept);
+            if (string.IsNullOrWhiteSpace(resolvedPrecept))
+            {
+                return "Enter at least one character for the family precept.";
+            }
+
             if (RequiresPacketOwnedManagementCompletion())
             {
                 _pendingManagementRequest = PendingFamilyManagementRequest.CreatePrecept(resolvedPrecept);
-                return string.IsNullOrWhiteSpace(resolvedPrecept)
-                    ? "Sent a packet-shaped request to clear the family precept. Await `CWvsContext::OnFamilyResult` before updating the compact Family window."
-                    : $"Sent a packet-shaped family precept request: {resolvedPrecept}. Await `CWvsContext::OnFamilyResult` before updating the compact Family window.";
+                return $"Sent a packet-shaped family precept request: {resolvedPrecept}. Await `CWvsContext::OnFamilyResult` before updating the compact Family window.";
             }
 
             return SetPreceptCore(resolvedPrecept, packetAuthored: false);

@@ -119,6 +119,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int RankingPagePacketType = 1033;
         public const int UserInfoPopularityResultPacketType = 1050;
         public const int UserInfoRemoteProfilePacketType = 1051;
+        public const int UserInfoCollectionClaimResultPacketType = 1052;
         public const int QuestRewardRaiseOwnerSyncPacketType = 1036;
         public const int QuestRewardRaisePutItemAddResultPacketType = 1037;
         public const int QuestRewardRaisePutItemReleaseResultPacketType = 1038;
@@ -350,6 +351,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("cuiuserinfoprofile", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = UserInfoRemoteProfilePacketType;
+                return true;
+            }
+
+            if (token.Equals("userinfocollectionclaim", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("userinfoarrayget", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("btarraygetresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiuserinfoarraygetresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = UserInfoCollectionClaimResultPacketType;
                 return true;
             }
 
@@ -1130,6 +1140,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == RankingPagePacketType
                 || packetType == UserInfoPopularityResultPacketType
                 || packetType == UserInfoRemoteProfilePacketType
+                || packetType == UserInfoCollectionClaimResultPacketType
                 || packetType == PlayEventSoundPacketType
                 || packetType == PlayEventSoundClientPacketType
                 || packetType == PlayMinigameSoundPacketType
@@ -1355,6 +1366,7 @@ namespace HaCreator.MapSimulator.Managers
                 RankingPagePacketType => "RankingPage(1033)",
                 UserInfoPopularityResultPacketType => "CUIUserInfo::OnGivePopularityResult(1050)",
                 UserInfoRemoteProfilePacketType => "CUIUserInfo::RemoteProfile(1051)",
+                UserInfoCollectionClaimResultPacketType => "CUIUserInfo::BtArrayGetResult(1052)",
                 InitialQuizTimerRuntime.PacketType => "InitialQuizStart(43)",
                 FollowCharacterPacketType => "FollowCharacter(1012)",
                 SetDirectionModePacketType => "SetDirectionMode(1013)",

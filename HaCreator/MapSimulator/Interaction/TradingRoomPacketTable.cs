@@ -57,6 +57,16 @@ namespace HaCreator.MapSimulator.Interaction
             return opcode != 0 && TradingRoomInboundOpcodeSet.Contains(opcode);
         }
 
+        internal static bool IsRecoveredInboundSubtype(byte subtype)
+        {
+            return TradingRoomInboundSubtypeHandlers.ContainsKey(subtype);
+        }
+
+        internal static bool IsRecoveredOutboundSubtype(byte subtype)
+        {
+            return TradingRoomOutboundSubtypeHandlers.ContainsKey(subtype);
+        }
+
         internal static bool TryResolveRecoveredInboundOpcodeToken(string token, out ushort inboundOpcode)
         {
             inboundOpcode = ResolveRecoveredInboundOpcode(0);
@@ -103,6 +113,74 @@ namespace HaCreator.MapSimulator.Interaction
                 ", ",
                 TradingRoomOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
             return $"Recovered TradingRoom packet table: inbound opcode {inboundSet} to CTradingRoomDlg::OnPacket ({inboundSubtypes}); outbound opcode {outboundSet} ({outboundSubtypes}).";
+        }
+
+        internal static bool TryBuildRecoveredResultExpectation(
+            int requestOpcode,
+            ReadOnlySpan<byte> payload,
+            out int[] expectedInboundOpcodes,
+            out byte[] expectedInboundSubtypes,
+            out string expectationSummary)
+        {
+            expectedInboundOpcodes = Array.Empty<int>();
+            expectedInboundSubtypes = Array.Empty<byte>();
+            expectationSummary = string.Empty;
+
+            if (requestOpcode != TradingRoomOutboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            byte requestSubtype = payload[0];
+            switch (requestSubtype)
+            {
+                case 15:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 15, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnPutItem echo or OnExceedLimit failure (subtypes 15/21)";
+                    return true;
+                case 16:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 16, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnPutMoney echo or OnExceedLimit failure (subtypes 16/21)";
+                    return true;
+                case 17:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 17, 20, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnTrade handoff/checksum branch or OnExceedLimit failure (subtypes 17/20/21)";
+                    return true;
+                case 20:
+                    expectedInboundOpcodes = new[] { (int)TradingRoomInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 20, 21 };
+                    expectationSummary = "expect CTradingRoomDlg::OnTrade checksum follow-up or OnExceedLimit failure (subtypes 20/21)";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        internal static bool TryDecodeRecoveredInboundBranch(
+            int inboundOpcode,
+            ReadOnlySpan<byte> payload,
+            out byte inboundSubtype,
+            out string branchSummary)
+        {
+            inboundSubtype = byte.MaxValue;
+            branchSummary = string.Empty;
+            if (inboundOpcode != TradingRoomInboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            inboundSubtype = payload[0];
+            if (TradingRoomInboundSubtypeHandlers.TryGetValue(inboundSubtype, out string handlerName))
+            {
+                branchSummary = $"{handlerName} (subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)})";
+                return true;
+            }
+
+            branchSummary = $"CTradingRoomDlg::OnPacket subtype {inboundSubtype.ToString(CultureInfo.InvariantCulture)}";
+            return true;
         }
     }
 }

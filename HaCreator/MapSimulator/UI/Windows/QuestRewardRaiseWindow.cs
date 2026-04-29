@@ -44,8 +44,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _backgroundBottomRight;
         private readonly Texture2D _previewBackdrop;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
+        private readonly Dictionary<string, Texture2D> _raiseOwnerSurfaceCache = new();
 
         private Func<int, Texture2D> _itemIconProvider;
+        private Func<string, int, Texture2D> _raiseOwnerSurfaceProvider;
         private UIObject _confirmButton;
         private UIObject _cancelButton;
         private MouseState _previousMouseState;
@@ -96,6 +98,11 @@ namespace HaCreator.MapSimulator.UI
         internal void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
         {
             _itemIconProvider = itemIconProvider;
+        }
+
+        internal void SetRaiseOwnerSurfaceProvider(Func<string, int, Texture2D> raiseOwnerSurfaceProvider)
+        {
+            _raiseOwnerSurfaceProvider = raiseOwnerSurfaceProvider;
         }
 
         internal void Configure(QuestRewardRaiseState state)
@@ -451,6 +458,18 @@ namespace HaCreator.MapSimulator.UI
 
             QuestRewardChoiceOption selectedOption = GetSelectedOption();
             QuestRewardRaisePlacedPiece selectedPiece = GetSelectedPlacedPiece();
+            Texture2D ownerSurface = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
+                ? ResolveRaiseOwnerSurface()
+                : null;
+            if (ownerSurface != null)
+            {
+                float ownerSurfaceScale = Math.Min(1f, Math.Min((PreviewSize - 12f) / ownerSurface.Width, (PreviewSize - 12f) / ownerSurface.Height));
+                Vector2 ownerSurfacePosition = new(
+                    previewBounds.X + ((previewBounds.Width - (ownerSurface.Width * ownerSurfaceScale)) / 2f),
+                    previewBounds.Y + ((previewBounds.Height - (ownerSurface.Height * ownerSurfaceScale)) / 2f));
+                sprite.Draw(ownerSurface, ownerSurfacePosition, null, Color.White, 0f, Vector2.Zero, ownerSurfaceScale, SpriteEffects.None, 0f);
+            }
+
             Texture2D icon = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
                 ? ResolveItemIcon(selectedPiece?.ItemId ?? 0)
                 : selectedOption != null ? ResolveItemIcon(selectedOption.ItemId) : null;
@@ -612,6 +631,26 @@ namespace HaCreator.MapSimulator.UI
             Texture2D icon = _itemIconProvider(itemId);
             _itemIconCache[itemId] = icon;
             return icon;
+        }
+
+        private Texture2D ResolveRaiseOwnerSurface()
+        {
+            string uiData = _state?.UiData ?? _prompt?.OwnerContext?.UiData ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(uiData) || _raiseOwnerSurfaceProvider == null)
+            {
+                return null;
+            }
+
+            int qrData = Math.Max(0, _state?.QrData ?? _prompt?.OwnerContext?.InitialQrData ?? 0);
+            string cacheKey = $"{uiData.Trim()}#{qrData}";
+            if (_raiseOwnerSurfaceCache.TryGetValue(cacheKey, out Texture2D cached))
+            {
+                return cached;
+            }
+
+            Texture2D surface = _raiseOwnerSurfaceProvider(uiData, qrData);
+            _raiseOwnerSurfaceCache[cacheKey] = surface;
+            return surface;
         }
 
         private void DrawButtonLabel(SpriteBatch sprite, UIObject button, string label)

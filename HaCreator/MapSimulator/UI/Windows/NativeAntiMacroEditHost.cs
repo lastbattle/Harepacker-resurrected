@@ -656,6 +656,14 @@ namespace HaCreator.MapSimulator.UI
 
         private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
+            if (msg == WmSetText)
+            {
+                IntPtr setTextResult = HandleClientOwnedSetText(wParam, lParam);
+                SynchronizeState();
+                UpdateImePlacement();
+                return setTextResult;
+            }
+
             int virtualKey = ExtractLowInt32(wParam);
             if (msg == WmGetDlgCode)
             {
@@ -803,12 +811,33 @@ namespace HaCreator.MapSimulator.UI
                 UpdateImePlacement();
             }
 
-            if (msg == WmSetText || msg == WmPaste || msg == WmCut || msg == WmClear || msg == WmUndo || msg == WmChar)
+            if (msg == WmPaste || msg == WmCut || msg == WmClear || msg == WmUndo || msg == WmChar)
             {
                 SynchronizeState();
             }
 
             return result;
+        }
+
+        private IntPtr HandleClientOwnedSetText(IntPtr wParam, IntPtr lParam)
+        {
+            string requestedText = lParam == IntPtr.Zero
+                ? string.Empty
+                : Marshal.PtrToStringUni(lParam) ?? string.Empty;
+            string resolvedText = ResolveClientOwnedSetText(requestedText, _maxLength, _clientEncoding);
+            IntPtr resolvedTextPointer = IntPtr.Zero;
+            try
+            {
+                resolvedTextPointer = Marshal.StringToHGlobalUni(resolvedText);
+                return CallWindowProc(_originalWndProc, _editHandle, WmSetText, wParam, resolvedTextPointer);
+            }
+            finally
+            {
+                if (resolvedTextPointer != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(resolvedTextPointer);
+                }
+            }
         }
 
         private bool HandleClientOwnedKeyDown(int virtualKey, bool controlHeld, bool shiftHeld, IntPtr wParam, IntPtr lParam)
@@ -1116,6 +1145,20 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldHandleClientOwnedEditCommand(uint msg)
         {
             return msg is WmPaste or WmCut or WmClear;
+        }
+
+        internal static string ResolveClientOwnedSetText(string text, int maxHorzUnits, Encoding encoding = null)
+        {
+            // Programmatic `WM_SETTEXT` can bypass key/paste handling on a hosted
+            // Win32 EDIT. Keep it inside the same single-line `nHorzMax` budget
+            // that `CUIAntiMacro::OnCreate` gives the client `CCtrlEdit`.
+            return ResolveClientLimitedReplacementText(
+                text,
+                currentText: string.Empty,
+                selectionStart: 0,
+                selectionEnd: 0,
+                maxHorzUnits,
+                encoding);
         }
 
         internal static bool ShouldHandleClientOwnedMouseMessage(uint msg)

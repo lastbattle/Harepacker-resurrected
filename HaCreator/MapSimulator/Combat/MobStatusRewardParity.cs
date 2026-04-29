@@ -152,9 +152,9 @@ namespace HaCreator.MapSimulator.Combat
 
             int stableSeed = Math.Max(0, identitySeed);
             int startIndex = (stableSeed & int.MaxValue) % rewardItemIds.Count;
-            int rewardCount = Math.Min(maxRewardCount, rewardItemIds.Count);
-            List<int> selectedItemIds = new(rewardCount);
-            for (int offset = 0; offset < rewardItemIds.Count && selectedItemIds.Count < rewardCount; offset++)
+            int slotCount = Math.Min(maxRewardCount, rewardItemIds.Count);
+            List<int> selectedItemIds = new(slotCount);
+            for (int offset = 0; offset < slotCount; offset++)
             {
                 int itemId = Math.Max(0, rewardItemIds[(startIndex + offset) % rewardItemIds.Count]);
                 if (itemId <= 0)

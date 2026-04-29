@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 
@@ -375,6 +376,7 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.AvoidabilityPercent > 0
                    || levelData.Speed > 0
                    || levelData.SpeedPercent > 0
+                   || levelData.SpeedMax > 0
                    || levelData.Jump > 0
                    || levelData.CriticalRate > 0
                    || levelData.CriticalDamageMin > 0
@@ -395,6 +397,16 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.INT > 0
                    || levelData.LUK > 0
                    || levelData.AllStat > 0
+                   || levelData.StrengthPercent > 0
+                   || levelData.DexterityPercent > 0
+                   || levelData.IntelligencePercent > 0
+                   || levelData.LuckPercent > 0
+                   || levelData.AllStatPercent > 0
+                   || levelData.StrengthToDexterityPercent > 0
+                   || levelData.DexterityToStrengthPercent > 0
+                   || levelData.IntelligenceToLuckPercent > 0
+                   || levelData.LuckToDexterityPercent > 0
+                   || levelData.Craft > 0
                    || levelData.DamageReductionRate > 0
                    || levelData.AbnormalStatusResistance > 0
                    || levelData.ElementalResistance > 0
@@ -1437,6 +1449,7 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.AvoidabilityPercent > 0
                    || levelData.Speed > 0
                    || levelData.SpeedPercent > 0
+                   || levelData.SpeedMax > 0
                    || levelData.Jump > 0
                    || levelData.MaxHPPercent > 0
                    || levelData.MaxMPPercent > 0
@@ -1454,6 +1467,16 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.IndieMaxHP > 0
                    || levelData.IndieMaxMP > 0
                    || levelData.AllStat > 0
+                   || levelData.StrengthPercent > 0
+                   || levelData.DexterityPercent > 0
+                   || levelData.IntelligencePercent > 0
+                   || levelData.LuckPercent > 0
+                   || levelData.AllStatPercent > 0
+                   || levelData.StrengthToDexterityPercent > 0
+                   || levelData.DexterityToStrengthPercent > 0
+                   || levelData.IntelligenceToLuckPercent > 0
+                   || levelData.LuckToDexterityPercent > 0
+                   || levelData.Craft > 0
                    || levelData.ExperienceRate > 0
                    || levelData.DropRate > 0
                    || levelData.MesoRate > 0
@@ -1567,11 +1590,22 @@ namespace HaCreator.MapSimulator.Pools
             target.AvoidabilityPercent = Math.Max(target.AvoidabilityPercent, source.AvoidabilityPercent);
             target.Speed = Math.Max(target.Speed, source.Speed);
             target.SpeedPercent = Math.Max(target.SpeedPercent, source.SpeedPercent);
+            target.SpeedMax = Math.Max(target.SpeedMax, source.SpeedMax);
             target.Jump = Math.Max(target.Jump, source.Jump);
             target.STR = Math.Max(target.STR, source.STR);
             target.DEX = Math.Max(target.DEX, source.DEX);
             target.INT = Math.Max(target.INT, source.INT);
             target.LUK = Math.Max(target.LUK, source.LUK);
+            target.StrengthPercent = Math.Max(target.StrengthPercent, source.StrengthPercent);
+            target.DexterityPercent = Math.Max(target.DexterityPercent, source.DexterityPercent);
+            target.IntelligencePercent = Math.Max(target.IntelligencePercent, source.IntelligencePercent);
+            target.LuckPercent = Math.Max(target.LuckPercent, source.LuckPercent);
+            target.AllStatPercent = Math.Max(target.AllStatPercent, source.AllStatPercent);
+            target.StrengthToDexterityPercent = Math.Max(target.StrengthToDexterityPercent, source.StrengthToDexterityPercent);
+            target.DexterityToStrengthPercent = Math.Max(target.DexterityToStrengthPercent, source.DexterityToStrengthPercent);
+            target.IntelligenceToLuckPercent = Math.Max(target.IntelligenceToLuckPercent, source.IntelligenceToLuckPercent);
+            target.LuckToDexterityPercent = Math.Max(target.LuckToDexterityPercent, source.LuckToDexterityPercent);
+            target.Craft = Math.Max(target.Craft, source.Craft);
             target.Mastery = Math.Max(target.Mastery, source.Mastery);
             target.CriticalRate = Math.Max(target.CriticalRate, source.CriticalRate);
             target.CriticalDamageMin = Math.Max(target.CriticalDamageMin, source.CriticalDamageMin);
@@ -1601,6 +1635,28 @@ namespace HaCreator.MapSimulator.Pools
             target.U = SelectGenericSupportMagnitude(target.U, source.U);
             target.V = SelectGenericSupportMagnitude(target.V, source.V);
             target.W = SelectGenericSupportMagnitude(target.W, source.W);
+            MergeAuthoredPropertyOrder(target, source);
+        }
+
+        private static void MergeAuthoredPropertyOrder(SkillLevelData target, SkillLevelData source)
+        {
+            if (source.AuthoredPropertyOrder == null || source.AuthoredPropertyOrder.Count == 0)
+            {
+                return;
+            }
+
+            target.AuthoredPropertyOrder ??= new List<string>();
+            for (int i = 0; i < source.AuthoredPropertyOrder.Count; i++)
+            {
+                string propertyName = source.AuthoredPropertyOrder[i];
+                if (string.IsNullOrWhiteSpace(propertyName)
+                    || target.AuthoredPropertyOrder.Contains(propertyName, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                target.AuthoredPropertyOrder.Add(propertyName);
+            }
         }
 
         private static int SelectGenericSupportMagnitude(int currentValue, int candidateValue)

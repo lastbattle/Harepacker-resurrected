@@ -171,6 +171,9 @@ namespace HaCreator.MapSimulator.UI
         public CollectionBookRecordRole Role { get; init; }
         public string SourceText { get; init; } = string.Empty;
         public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<int> LineLefts { get; init; } = Array.Empty<int>();
+        public IReadOnlyList<int> LineTops { get; init; } = Array.Empty<int>();
+        public IReadOnlyList<int> LineWidths { get; init; } = Array.Empty<int>();
         public int Left { get; init; }
         public int Top { get; init; }
         public int Width { get; init; }
@@ -263,6 +266,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionDetailPairRightLaneWidth = ClientCollectionValueLaneWidth;
         private const int ClientCollectionTextDrawBaseX = 35;
         private const int ClientCollectionTextDrawBaseY = 30;
+        private const int ClientCollectionRuleDrawBaseX = 3;
+        private const int ClientCollectionRuleDrawBaseY = 30;
         private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
         private const int BookFontStyleStringPoolId = 0x5B0;
@@ -335,6 +340,7 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < pages.Count; i++)
             {
+                IReadOnlyList<CollectionBookRecordSnapshot> records = BuildPageRecords(pages[i], measureTextWidth);
                 pages[i] = new CollectionBookPageSnapshot
                 {
                     PageIndex = i,
@@ -342,7 +348,8 @@ namespace HaCreator.MapSimulator.UI
                     Subtitle = pages[i].Subtitle,
                     Footer = pages[i].Footer,
                     Entries = pages[i].Entries,
-                    Records = BuildPageRecords(pages[i], measureTextWidth)
+                    Records = records,
+                    ClientCtInfoBlocks = BuildClientCtInfoBlocks(records)
                 };
             }
 
@@ -1160,6 +1167,64 @@ namespace HaCreator.MapSimulator.UI
             return maxBlockIndex + 1;
         }
 
+        private static IReadOnlyList<CollectionBookClientCtInfoBlockSnapshot> BuildClientCtInfoBlocks(IReadOnlyList<CollectionBookRecordSnapshot> records)
+        {
+            if (records == null || records.Count == 0)
+            {
+                return Array.Empty<CollectionBookClientCtInfoBlockSnapshot>();
+            }
+
+            return records
+                .Where(record => record?.Type == CollectionBookRecordType.Text && record.ClientTextBlockIndex >= 0)
+                .GroupBy(record => record.ClientTextBlockIndex)
+                .OrderBy(group => group.Key)
+                .Select(group => CreateClientTextCtInfoBlock(group.Key, group.OrderBy(record => record.ClientTextLineIndex).ToArray()))
+                .Where(block => block != null)
+                .ToArray();
+        }
+
+        private static CollectionBookClientCtInfoBlockSnapshot CreateClientTextCtInfoBlock(int blockIndex, IReadOnlyList<CollectionBookRecordSnapshot> lines)
+        {
+            if (lines == null || lines.Count == 0)
+            {
+                return null;
+            }
+
+            CollectionBookRecordSnapshot first = lines[0];
+            int lineCount = Math.Max(1, lines.Count);
+            int top = lines.Min(line => line.Top);
+            int height = lineCount == 1
+                ? first.Height
+                : (lines.Max(line => line.Top) - top) + first.Height;
+
+            return new CollectionBookClientCtInfoBlockSnapshot
+            {
+                BlockIndex = blockIndex,
+                Kind = CollectionBookClientCtInfoBlockKind.Text,
+                Role = first.Role,
+                SourceText = first.ClientSourceText ?? string.Empty,
+                Lines = lines.Select(line => line.Text ?? string.Empty).ToArray(),
+                LineLefts = lines.Select(line => line.Left).ToArray(),
+                LineTops = lines.Select(line => line.Top).ToArray(),
+                LineWidths = lines.Select(line => line.AnalyzerLineWidth).ToArray(),
+                Left = first.ClientAnalyzerLaneLeft,
+                Top = first.ClientAnalyzerLaneTop,
+                Width = first.ClientAnalyzerLaneWidth,
+                Height = height,
+                StyleIndex = first.StyleIndex,
+                Alignment = first.Alignment,
+                AnalyzerMargin = first.ClientAnalyzerMargin,
+                AnalyzerWrapWidth = Math.Max(1, first.ClientAnalyzerLaneWidth - (first.ClientAnalyzerMargin * 2)),
+                TextLineHeight = first.Height,
+                TextLineStep = ClientCollectionDetailLineStep,
+                VerticalCarryAfter = ClientCollectionAnalyzedBlockCarry,
+                TextDrawBaseX = first.ClientTextDrawBaseX,
+                TextDrawBaseY = first.ClientTextDrawBaseY,
+                RuleDrawBaseX = ClientCollectionRuleDrawBaseX,
+                RuleDrawBaseY = ClientCollectionRuleDrawBaseY
+            };
+        }
+
         private static int GetWrappedCollectionLineCount(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)
         {
             int count = WrapCollectionText(text, width, styleIndex, measureTextWidth).Count;
@@ -1518,6 +1583,16 @@ namespace HaCreator.MapSimulator.UI
                         Footer = footer,
                         Entries = pageEntries
                     }, measureTextWidth)
+                })
+                .Select(page => new CollectionBookPageSnapshot
+                {
+                    PageIndex = page.PageIndex,
+                    Title = page.Title,
+                    Subtitle = page.Subtitle,
+                    Footer = page.Footer,
+                    Entries = page.Entries,
+                    Records = page.Records,
+                    ClientCtInfoBlocks = BuildClientCtInfoBlocks(page.Records)
                 })
                 .ToArray();
         }

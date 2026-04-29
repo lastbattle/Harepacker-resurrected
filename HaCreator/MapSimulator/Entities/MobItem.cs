@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Entities
         private string _activeActionSpeechText;
         private int _activeActionSpeechExpiresAt;
         private int _activeActionSpeechChatBalloon;
+        private int _activeActionSpeechFloatNotice;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -116,6 +117,8 @@ namespace HaCreator.MapSimulator.Entities
         public int ActiveActionSpeechExpiresAt => _activeActionSpeechExpiresAt;
 
         public int ActiveActionSpeechChatBalloon => _activeActionSpeechChatBalloon;
+
+        public int ActiveActionSpeechFloatNotice => _activeActionSpeechFloatNotice;
 
         /// <summary>
         /// Whether the death animation has completed (all frames played)
@@ -1419,6 +1422,7 @@ namespace HaCreator.MapSimulator.Entities
 
             _activeActionSpeechText = SanitizeActionSpeakMessage(message);
             _activeActionSpeechChatBalloon = metadata.ChatBalloon;
+            _activeActionSpeechFloatNotice = metadata.FloatNotice;
             _activeActionSpeechExpiresAt = currentTick + GetActionSpeakDurationMs(_activeActionSpeechText);
         }
 
@@ -1443,6 +1447,7 @@ namespace HaCreator.MapSimulator.Entities
             _activeActionSpeechText = null;
             _activeActionSpeechExpiresAt = 0;
             _activeActionSpeechChatBalloon = 0;
+            _activeActionSpeechFloatNotice = 0;
         }
 
         internal static bool ShouldTriggerActionSpeak(
@@ -2156,19 +2161,13 @@ namespace HaCreator.MapSimulator.Entities
             string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
                 _mobInstance?.MobInfo?.ID,
                 _animationSet.GetAngerGaugeEffectPath());
-            if (!MobAngerGaugeBurstParity.CanRegisterOwnerBurst(
+            if (!MobAngerGaugeBurstParity.TryResolveOwnerRegistrationCadence(
                     effectFrames,
                     effectPath,
-                    hasActiveAnimationDisplayer: _animationEffects != null))
-            {
-                return;
-            }
-
-            int repeatIntervalMs = MobAngerGaugeBurstParity.ResolveRepeatIntervalMs(
-                effectFrames,
-                AI?.GetCurrentAttack(),
-                AI?.AngerGaugeFullChargeEffectIntervalMs ?? 0);
-            if (repeatIntervalMs <= 0)
+                    hasActiveAnimationDisplayer: _animationEffects != null,
+                    AI?.GetCurrentAttack(),
+                    AI?.AngerGaugeFullChargeEffectIntervalMs ?? 0,
+                    out int repeatIntervalMs))
             {
                 return;
             }
@@ -2183,7 +2182,9 @@ namespace HaCreator.MapSimulator.Entities
                 tickCount,
                 zOrder: 1);
 
-            _angerGaugeBurstNextAllowedTick = tickCount + repeatIntervalMs;
+            _angerGaugeBurstNextAllowedTick = MobAngerGaugeBurstParity.ResolveNextAllowedTick(
+                tickCount,
+                repeatIntervalMs);
             AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
         }
 

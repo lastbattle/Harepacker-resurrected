@@ -284,6 +284,9 @@ namespace HaCreator.MapSimulator
                 case "packetclientraw":
                     return HandlePacketOwnedAdminShopClientPacketRawCommand(args);
 
+                case "packetclientrawseq":
+                    return HandlePacketOwnedAdminShopClientPacketRawSequenceCommand(args);
+
                 case "show":
                 case "open":
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI adminShopWindow)
@@ -295,7 +298,7 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Packet-owned admin-shop owner is unavailable.");
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop [status|show|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|recent|clearrecent|stop]|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop [status|show|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|recent|clearrecent|stop]|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>|packetclientrawseq <hex;hex;...>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>|packetclientrawseq <hex;hex;...>]");
             }
         }
 
@@ -431,7 +434,12 @@ namespace HaCreator.MapSimulator
                 return HandlePacketOwnedAdminShopClientPacketRawCommand(args);
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /adminshop inbox [status|start|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
+            if (string.Equals(args[0], "packetclientrawseq", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandlePacketOwnedAdminShopClientPacketRawSequenceCommand(args);
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /adminshop inbox [status|start|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>|packetclientrawseq <hex;hex;...>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopPacketCommand(string[] args)
@@ -477,6 +485,39 @@ namespace HaCreator.MapSimulator
             return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out string message, "admin-shop-client-raw")
                 ? ChatCommandHandler.CommandResult.Ok($"Applied admin-shop client opcode {packetType}. {message}")
                 : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopClientPacketRawSequenceCommand(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /adminshop packetclientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>");
+            }
+
+            string sequenceText = string.Join(" ", args.Skip(1));
+            if (!AdminShopPacketInboxManager.TryDecodeOpcodeFramedPacketSequence(
+                    sequenceText,
+                    out IReadOnlyList<AdminShopOpcodeFramedPacket> packets,
+                    out string decodeError))
+            {
+                return ChatCommandHandler.CommandResult.Error(decodeError ?? "Usage: /adminshop packetclientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>");
+            }
+
+            List<string> appliedMessages = new(packets.Count);
+            for (int index = 0; index < packets.Count; index++)
+            {
+                AdminShopOpcodeFramedPacket packet = packets[index];
+                string source = $"admin-shop-client-raw-seq:{index + 1}/{packets.Count}";
+                if (!TryApplyPacketOwnedAdminShopPacket(packet.PacketType, packet.Payload, out string message, source))
+                {
+                    return ChatCommandHandler.CommandResult.Error(
+                        $"Admin-shop client packet sequence stopped at {index + 1}/{packets.Count} opcode {packet.PacketType}: {message}");
+                }
+
+                appliedMessages.Add($"{index + 1}/{packets.Count} opcode {packet.PacketType}: {message}");
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(string.Join(Environment.NewLine, appliedMessages));
         }
 
         private bool TryApplyPacketOwnedAdminShopPacket(int packetType, byte[] payload, out string message, string source = null)

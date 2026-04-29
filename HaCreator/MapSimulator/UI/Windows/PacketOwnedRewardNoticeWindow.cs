@@ -139,6 +139,14 @@ namespace HaCreator.MapSimulator.UI
             return new Point(topRightX, CloseButtonTopMargin);
         }
 
+        internal static bool IsClientChromeCloseButtonSize(int width, int height)
+        {
+            return width > 0
+                && height > 0
+                && width <= ClientChromeCloseButtonWidth + 1
+                && height <= ClientChromeCloseButtonHeight + 1;
+        }
+
         internal static bool ShouldDismissForKeyboard(Keys key)
         {
             return key == Keys.Enter

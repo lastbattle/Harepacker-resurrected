@@ -4407,12 +4407,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeEnvelopePayload(nestedPayload, tickCount, out result))
+            if (TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(nestedPayload, tickCount, out result))
             {
                 return true;
             }
 
-            if (TryDispatchMiniRoomSubtype6CountedBatchEnvelopePayload(nestedPayload, tickCount, out result))
+            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeEnvelopePayload(nestedPayload, tickCount, out result))
             {
                 return true;
             }
@@ -4620,7 +4620,16 @@ namespace HaCreator.MapSimulator.Interaction
                 || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 0, 4, "count+len32 batch envelope", tickCount, out result)
                 || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 1, $"room-type+count+len8 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
                 || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 2, $"room-type+count+len16 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
-                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 4, $"room-type+count+len32 batch envelope roomType={nestedPayload[0]}", tickCount, out result);
+                || TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 1, 4, $"room-type+count+len32 batch envelope roomType={nestedPayload[0]}", tickCount, out result)
+                || (nestedPayload.Length >= 4 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 2, 1, $"opcode+count+len8 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 2, 2, $"opcode+count+len16 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 7 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 2, 4, $"opcode+count+len32 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 1, $"room-type+opcode+count+len8 batch envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 6 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 2, $"room-type+opcode+count+len16 batch envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 8 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 4, $"room-type+opcode+count+len32 batch envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}", tickCount, out result))
+                || (nestedPayload.Length >= 5 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 1, $"opcode+room-type+count+len8 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result))
+                || (nestedPayload.Length >= 6 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 2, $"opcode+room-type+count+len16 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result))
+                || (nestedPayload.Length >= 8 && TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(nestedPayload, 3, 4, $"opcode+room-type+count+len32 batch envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}", tickCount, out result));
         }
 
         private bool TryDispatchMiniRoomSubtype6CountedBatchEnvelopeCandidate(
@@ -5969,7 +5978,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Entrusted-shop blacklist: empty.";
             _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
             _entrustedChildDialogKind = EntrustedShopChildDialogKind.Blacklist;
-            string pendingCompletion = BuildEntrustedBlacklistPendingCompletionSummary();
+            string pendingCompletion = BuildEntrustedBlacklistPendingCompletionSummary(_blockedVisitors);
             ClearEntrustedBlacklistPendingMutation();
             _entrustedChildDialogStatus = _blockedVisitors.Count < 20
                 ? "CBlackListDlg::OnCreate opened the dedicated blacklist owner. Add stays enabled while the client-side count remains below 20."
@@ -6394,7 +6403,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private string BuildEntrustedBlacklistPendingCompletionSummary()
+        private string BuildEntrustedBlacklistPendingCompletionSummary(IEnumerable<string> authoritativeNames)
         {
             if (!_entrustedBlacklistPendingMutationAdd.HasValue || string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName))
             {
@@ -6402,7 +6411,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string action = _entrustedBlacklistPendingMutationAdd.Value ? "add" : "delete";
-            return $" Server-owned subtype {EntrustedShopBlackListResultPacketType} completed the pending blacklist {action} request for {_entrustedBlacklistPendingMutationName}.";
+            bool containsPendingName = authoritativeNames?.Contains(_entrustedBlacklistPendingMutationName, StringComparer.OrdinalIgnoreCase) == true;
+            bool approved = _entrustedBlacklistPendingMutationAdd.Value
+                ? containsPendingName
+                : !containsPendingName;
+            string result = approved ? "approved" : "rejected or left unchanged";
+            return $" Server-owned subtype {EntrustedShopBlackListResultPacketType} {result} the pending blacklist {action} request for {_entrustedBlacklistPendingMutationName}.";
         }
 
         private void ClearEntrustedBlacklistPendingMutation()
@@ -7461,6 +7475,38 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return TryListPersonalShopItem(slotData.ItemId, Math.Max(1, slotData.Quantity), ResolveSuggestedPrice(slotData.ItemId, slotData.Quantity), out message);
+        }
+
+        public bool TryResolveFirstInventoryListingCandidate(out int itemId, out int quantity, out int mesoAmount, out string message)
+        {
+            itemId = 0;
+            quantity = 0;
+            mesoAmount = 0;
+            message = null;
+
+            if (Kind is not (SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop))
+            {
+                message = "Merchant listing packets only apply to personal-shop or entrusted-shop shells.";
+                return false;
+            }
+
+            if (Kind == SocialRoomKind.EntrustedShop && !EnsureEntrustedPermitActive(out message))
+            {
+                return false;
+            }
+
+            if (!TryGetFirstInventoryItem(out InventorySlotData slotData, out _))
+            {
+                message = Kind == SocialRoomKind.EntrustedShop
+                    ? "No inventory item is available to restock in the entrusted shop."
+                    : "No inventory item is available to list in the personal shop.";
+                return false;
+            }
+
+            itemId = slotData.ItemId;
+            quantity = Math.Max(1, slotData.Quantity);
+            mesoAmount = ResolveSuggestedPrice(slotData.ItemId, slotData.Quantity);
+            return true;
         }
 
         public bool TryListPersonalShopItem(int itemId, int quantity, int mesoAmount, out string message)

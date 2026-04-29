@@ -18865,6 +18865,7 @@ namespace HaCreator.MapSimulator
             _adminShopOfficialSessionBridge = new AdminShopOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _localUtilityOfficialSessionBridge = new LocalUtilityOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _localUtilityOfficialSessionBridge.ClientOutboundPacketObserved += HandlePacketOwnedAntiMacroClientOutboundPacketObserved;
+            _localUtilityOfficialSessionBridge.ClientOutboundPacketObserved += HandleDragonCompanionClientOutboundPacketObserved;
             _messengerOfficialSessionBridge = new MessengerOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _mapleTvOfficialSessionBridge = new MessengerOfficialSessionBridgeManager(
                 "MapleTV",
@@ -19157,7 +19158,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            uiWindowManager?.ActiveKeyboardWindow?.HandleCommittedText(e.Character.ToString());
+            UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
+            activeKeyboardWindow?.HandleCommittedText(e.Character.ToString());
+            if (activeKeyboardWindow == null && _chat?.IsActive == true && e.Character > 0x7F)
+            {
+                _chat.HandleCommittedText(e.Character.ToString());
+            }
 
         }
 
@@ -21329,7 +21335,12 @@ namespace HaCreator.MapSimulator
 
             foreach (MobItem targetMob in ResolveMobSkillStatusTargets(sourceMob, definition, runtimeData, currentTick))
             {
-                targetMob?.AI?.ApplyStatusEffect(
+                if (!MobSkillSelectionParity.ShouldApplyStatusToTarget(targetMob?.AI, definition, runtimeData))
+                {
+                    continue;
+                }
+
+                targetMob.AI.ApplyStatusEffect(
                     definition.Effect,
                     runtimeData.DurationMs,
                     currentTick,
@@ -23059,6 +23070,7 @@ namespace HaCreator.MapSimulator
 
             bool consumedOnPickup = InventoryItemMetadataResolver.IsConsumedOnPickup(itemId);
             bool runOnPickup = InventoryItemMetadataResolver.IsRunOnPickup(itemId);
+            bool onlyPickup = InventoryItemMetadataResolver.IsOnlyPickup(itemId);
             bool autoConsume = ShouldAutoConsumePickedUpItem(itemId);
             bool autoRunConsumable = ShouldAutoApplyRunOnPickupConsumableItem(itemId);
             bool autoRunInteraction = InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
@@ -23066,6 +23078,7 @@ namespace HaCreator.MapSimulator
                 consumeOnPickupMonsterCard: false,
                 consumedOnPickup: consumedOnPickup,
                 runOnPickup: runOnPickup,
+                onlyPickup: onlyPickup,
                 autoConsume: autoConsume,
                 autoRunConsumable: autoRunConsumable,
                 autoRunInteraction: autoRunInteraction);
@@ -23075,6 +23088,7 @@ namespace HaCreator.MapSimulator
             bool consumeOnPickupMonsterCard,
             bool consumedOnPickup,
             bool runOnPickup,
+            bool onlyPickup,
             bool autoConsume,
             bool autoRunConsumable,
             bool autoRunInteraction)
@@ -23082,6 +23096,7 @@ namespace HaCreator.MapSimulator
             return consumeOnPickupMonsterCard
                    || consumedOnPickup
                    || runOnPickup
+                   || onlyPickup
                    || autoConsume
                    || autoRunConsumable
                    || autoRunInteraction;
@@ -23399,6 +23414,15 @@ namespace HaCreator.MapSimulator
             bool autoRunInteractionHandled)
         {
             return runOnPickup && !autoRunConsumableHandled && !autoRunInteractionHandled;
+        }
+
+        internal static bool ShouldBurnUnsupportedOnlyPickupRemainder(
+            bool onlyPickup,
+            bool autoConsumeHandled,
+            bool autoRunConsumableHandled,
+            bool autoRunInteractionHandled)
+        {
+            return onlyPickup && !autoConsumeHandled && !autoRunConsumableHandled && !autoRunInteractionHandled;
         }
 
 
@@ -24270,12 +24294,13 @@ namespace HaCreator.MapSimulator
             {
                 int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
                 bool consumeOnPickupMonsterCard = _monsterBookManager.IsConsumeOnPickupCardItem(itemId);
-                bool consumedOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsConsumedOnPickup(itemId);
-                bool runOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsRunOnPickup(itemId);
-                bool autoConsumePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoConsumePickedUpItem(itemId);
-                bool autoRunConsumablePickedUpItem = !consumeOnPickupMonsterCard
-                                                     && !autoConsumePickedUpItem
-                                                     && ShouldAutoApplyRunOnPickupConsumableItem(itemId);
+            bool consumedOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsConsumedOnPickup(itemId);
+            bool runOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsRunOnPickup(itemId);
+            bool onlyPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsOnlyPickup(itemId);
+            bool autoConsumePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoConsumePickedUpItem(itemId);
+            bool autoRunConsumablePickedUpItem = !consumeOnPickupMonsterCard
+                                                 && !autoConsumePickedUpItem
+                                                 && ShouldAutoApplyRunOnPickupConsumableItem(itemId);
                 bool autoRunPickedUpItem = !consumeOnPickupMonsterCard
                                            && !autoConsumePickedUpItem
                                            && !autoRunConsumablePickedUpItem
@@ -24391,6 +24416,15 @@ namespace HaCreator.MapSimulator
                 {
                     // Keep runOnPickup rows pickup-owned when they do not map to the current
                     // consumable or authored NPC/script interaction seams.
+                }
+                else if (ShouldBurnUnsupportedOnlyPickupRemainder(
+                             onlyPickupMetadata,
+                             autoConsumePickedUpItem,
+                             autoRunConsumablePickedUpItem,
+                             autoRunPickedUpItem))
+                {
+                    // WZ onlyPickup rows are authored for pickup-time ownership; do not turn an
+                    // unsupported pickup-only drop into an unusable inventory stack.
                 }
                 else if (!autoHandlePickedUpItem || !TryApplyPickedUpItemRuntime(itemId, currentTime))
                 {
@@ -24852,8 +24886,20 @@ namespace HaCreator.MapSimulator
             return ResolveMobPickupActorName(mobId);
         }
 
-        private static int ResolveMobPickupNoticeActorAlias(int mobId)
+        private int ResolveMobPickupNoticeActorAlias(int mobId)
         {
+            if (mobId > 0 && _mobPool?.ActiveMobs != null)
+            {
+                foreach (MobItem mob in _mobPool.ActiveMobs)
+                {
+                    if (mob?.PoolId == mobId
+                        && TryResolveMobPickupTemplateId(mob, out int mobTemplateId))
+                    {
+                        return mobTemplateId;
+                    }
+                }
+            }
+
             return mobId;
         }
 
@@ -29939,7 +29985,8 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldDispatchReactorTouchStateChange(ReactorTouchStateChange change)
         {
-            return change.UsesPacketObjectId && change.ObjectId > 0;
+            return change.UsesPacketObjectId
+                && ReactorPool.IsTransportableLocalTouchObjectId(change.ObjectId);
         }
 
         internal static bool ShouldQueueReactorTouchThroughOfficialSessionBridge(
@@ -31602,6 +31649,7 @@ namespace HaCreator.MapSimulator
                 || !TryResolvePacketOwnedActiveCastInputOwner(key, out PacketOwnedCastInputOwner owner)
                 || !ShouldDispatchSkillMacroPacketOwnedRawCastOwnerForTesting(
                     owner.IsHandledByLiveHotkeyBinding,
+                    SkillMacroOwnerKeyHandler.IsClientForwardedNonFunctionHotkeyPhysicalKey(key),
                     suppressImeOwnedForwarding))
             {
                 return;
@@ -31726,9 +31774,12 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldDispatchSkillMacroPacketOwnedRawCastOwnerForTesting(
             bool handledByLiveHotkeyBinding,
+            bool handledByDedicatedOwnerHotkeyCallback,
             bool suppressImeOwnedForwarding)
         {
-            return !handledByLiveHotkeyBinding && !suppressImeOwnedForwarding;
+            return !handledByLiveHotkeyBinding
+                && !handledByDedicatedOwnerHotkeyCallback
+                && !suppressImeOwnedForwarding;
         }
 
         internal static bool TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(
@@ -32878,21 +32929,12 @@ namespace HaCreator.MapSimulator
 
         private static bool IsPassiveTransferFieldPortalType(PortalType portalType)
         {
-            return portalType != PortalType.CollisionScript
-                   && portalType != PortalType.CollisionVerticalJump
-                   && portalType != PortalType.CollisionCustomImpact;
+            return PassiveTransferFieldReadinessEvaluator.IsPassiveTransferFieldPortalType(portalType);
         }
 
         internal static bool IsPassiveTransferFieldPortalCandidate(int targetMapId)
         {
-            return targetMapId > 0
-                   && targetMapId != MapConstants.MaxMap;
-        }
-
-        private static bool IsChangeablePortalType(PortalType portalType)
-        {
-            return portalType == PortalType.Changeable
-                   || portalType == PortalType.ChangeableInvisible;
+            return PassiveTransferFieldReadinessEvaluator.IsPassiveTransferFieldPortalCandidate(targetMapId);
         }
 
         internal static bool ShouldSendTransferFieldRequestForPortal(
@@ -32900,14 +32942,15 @@ namespace HaCreator.MapSimulator
             int currentMapId,
             PortalType portalType)
         {
-            return targetMapId > 0
-                   && targetMapId != MapConstants.MaxMap
-                   && (targetMapId != currentMapId || IsChangeablePortalType(portalType));
+            return PassiveTransferFieldReadinessEvaluator.ShouldSendTransferFieldRequestForPortal(
+                targetMapId,
+                currentMapId,
+                portalType);
         }
 
         internal static bool ShouldPlayTransferFieldPortalSound(PortalType portalType)
         {
-            return !IsChangeablePortalType(portalType);
+            return PassiveTransferFieldReadinessEvaluator.ShouldPlayTransferFieldPortalSound(portalType);
         }
 
 
@@ -33204,7 +33247,8 @@ namespace HaCreator.MapSimulator
             {
                 PortalType.CollisionScript => TryHandleCollisionScriptPortal(portal, portalIndex, currentTime),
                 PortalType.CollisionVerticalJump => TryHandleVerticalJumpPortal(portal, currentTime),
-                PortalType.CollisionCustomImpact => TryHandleCustomImpactPortal(portal),
+                PortalType.CollisionCustomImpact => TryHandleCustomImpactPortal(portal, currentTime),
+                PortalType.CollisionCustomImpact2 => TryHandleCustomImpactPortal(portal, currentTime),
                 _ => TryHandleTransferPortalCollision(portal, portalIndex, currentTime, fieldLimit)
             };
         }
@@ -33631,7 +33675,7 @@ namespace HaCreator.MapSimulator
             return (clampedInputDirection * 100) + (facingRight ? 200 : -200);
         }
 
-        private bool TryHandleCustomImpactPortal(PortalInstance portal)
+        private bool TryHandleCustomImpactPortal(PortalInstance portal, int currentTime)
         {
             if (portal == null)
             {
@@ -33649,7 +33693,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (!string.IsNullOrWhiteSpace(portal.sessionValueKey)
-                && TryApplyPortalSessionValueImpact(portal))
+                && TryApplyPortalSessionValueImpact(portal, currentTime))
             {
                 _ = ClearPacketOwnedTeleportPassengerLink();
                 return true;
@@ -33665,7 +33709,7 @@ namespace HaCreator.MapSimulator
                     player,
                     portal.horizontalImpact ?? 0,
                     -(portal.verticalImpact ?? 0),
-                    currTickCount))
+                    currentTime))
             {
                 return false;
             }
@@ -33742,7 +33786,7 @@ namespace HaCreator.MapSimulator
                 && visualState != 2;
         }
 
-        private bool TryApplyPortalSessionValueImpact(PortalInstance portal)
+        private bool TryApplyPortalSessionValueImpact(PortalInstance portal, int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Physics == null)
@@ -33761,10 +33805,10 @@ namespace HaCreator.MapSimulator
                     ownerKind,
                     portal.sessionValueKey,
                     sessionValue,
-                    currTickCount,
+                    currentTime,
                     portal.horizontalImpact ?? 0,
                     -(portal.verticalImpact ?? 0)));
-                TryDispatchPortalSessionValueRequest(portal.sessionValueKey, currTickCount);
+                TryDispatchPortalSessionValueRequest(portal.sessionValueKey, currentTime);
                 return true;
             }
 

@@ -2440,13 +2440,14 @@ namespace HaCreator.MapSimulator.Entities
                 yield break;
             }
 
-            HashSet<int> yieldedIndices = new HashSet<int>();
+            HashSet<int> acceptedIndices = new HashSet<int>();
             if (WzInfoTools.GetRealProperty(realStateProperty["event"]) is WzSubProperty eventProperty)
             {
                 foreach (WzImageProperty child in eventProperty.WzProperties)
                 {
                     if (int.TryParse(child?.Name, out int properEventIndex)
-                        && yieldedIndices.Add(properEventIndex))
+                        && TryReadIndexedHitDuration(child) > 0
+                        && acceptedIndices.Add(properEventIndex))
                     {
                         yield return (properEventIndex, child);
                     }
@@ -2457,7 +2458,8 @@ namespace HaCreator.MapSimulator.Entities
             {
                 if (int.TryParse(child?.Name, out int properEventIndex)
                     && WzInfoTools.GetRealProperty(child) is WzSubProperty
-                    && yieldedIndices.Add(properEventIndex))
+                    && TryReadIndexedHitDuration(child) > 0
+                    && acceptedIndices.Add(properEventIndex))
                 {
                     yield return (properEventIndex, child);
                 }

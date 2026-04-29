@@ -334,6 +334,52 @@ namespace HaCreator.MapSimulator.Companions
             return false;
         }
 
+        internal static bool TryFindMatchingClientInventoryOperationCompletionRequest(
+            IReadOnlyList<EquipmentChangeRequest> candidateRequests,
+            IReadOnlyList<byte> payload,
+            out EquipmentChangeRequest matchedRequest,
+            out string rejectReason)
+        {
+            matchedRequest = null;
+            rejectReason = null;
+            if (candidateRequests == null || candidateRequests.Count == 0)
+            {
+                rejectReason = "Inventory-operation payload did not match an active mechanic packet-owned request.";
+                return false;
+            }
+
+            string lastMismatchReason = null;
+            for (int i = 0; i < candidateRequests.Count; i++)
+            {
+                EquipmentChangeRequest candidate = candidateRequests[i];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                if (TryRecognizeClientInventoryOperationCompletion(candidate, payload, out string candidateRejectReason))
+                {
+                    matchedRequest = candidate;
+                    rejectReason = null;
+                    return true;
+                }
+
+                if (IsMechanicInventoryOperationRequestMismatch(candidateRejectReason))
+                {
+                    lastMismatchReason = candidateRejectReason;
+                    continue;
+                }
+
+                rejectReason = candidateRejectReason;
+                return false;
+            }
+
+            rejectReason = !string.IsNullOrWhiteSpace(lastMismatchReason)
+                ? lastMismatchReason
+                : "Inventory-operation payload did not match an active mechanic packet-owned request.";
+            return false;
+        }
+
         internal static bool TryDecodePassiveClientInventoryOperationMutations(
             IReadOnlyList<byte> payload,
             IReadOnlyList<InventorySlotData> equipInventorySlots,
@@ -2369,6 +2415,23 @@ namespace HaCreator.MapSimulator.Companions
                 reason,
                 "Inventory-operation payload contained unsupported trailing bytes.",
                 StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsMechanicInventoryOperationRequestMismatch(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                return false;
+            }
+
+            return reason.StartsWith("Inventory-operation swap did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation add entry did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation remove did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic equip-in inventory-operation ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic drag-back-out inventory-operation ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Only mechanic equip-in or drag-back-out requests ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic equip-in request is missing ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic drag-back-out request is missing ", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

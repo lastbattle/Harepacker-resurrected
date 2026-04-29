@@ -243,6 +243,25 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetStandAloneModeEntryMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "standAlone")
+                ? "Stand-alone field control is active in this map."
+                : null;
+        }
+
+        public static bool ShouldApplyStandAloneMode(MapInfo mapInfo)
+        {
+            return GetStandAloneModeEntryMessage(mapInfo) != null;
+        }
+
+        public static string GetPartyStandAloneEntryMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "partyStandAlone")
+                ? "Party stand-alone field metadata is active in this map."
+                : null;
+        }
+
         public static string GetTakeOffItemRestrictionMessage(MapInfo mapInfo, int itemId)
         {
             if (itemId <= 0)
@@ -770,6 +789,8 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetActiveSkillCancelRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetStandAloneModeEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetPartyStandAloneEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetTakeOffItemEntryRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetFollowCharacterRestrictionMessage(mapInfo));
             if (GetPetRuntimeRestrictionMessage(fieldLimit) == null)

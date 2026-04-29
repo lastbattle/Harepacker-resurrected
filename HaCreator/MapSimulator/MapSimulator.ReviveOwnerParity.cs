@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator
         private const int ReviveOwnerUpgradeTombEffectOpcode = 58;
         private const int ReviveOwnerUpgradeTombItemId = 5510000;
         private const int ReviveOwnerPremiumSafetyCharmContextSlot = 2073;
+        private const int ReviveOwnerSafetyCharmResultStringPoolId = 0x0BC2;
+        private const int ReviveOwnerNamedSafetyCharmResultStringPoolId = 0x0BC3;
         private const int ReviveOwnerWheelOfFortuneResultStringPoolId = 0x1494;
         private const int ReviveOwnerSoulStoneResultStringPoolId = 0x155A;
         private const byte ReviveOwnerSyntheticFieldKey = 0;
@@ -1062,6 +1064,33 @@ namespace HaCreator.MapSimulator
                 return MapleStoryStringPool.GetOrFallback(
                     ReviveOwnerSoulStoneResultStringPoolId,
                     "You have revived on the current map through the effect of the Spirit Stone.");
+            }
+
+            if (request.Variant == ReviveOwnerVariant.SafetyCharmChoice)
+            {
+                string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    ReviveOwnerSafetyCharmResultStringPoolId,
+                    "The EXP did not drop after using the Safety Charm once.({0} days/{1} times left)",
+                    maxPlaceholderCount: 2,
+                    out _);
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    format,
+                    0,
+                    Math.Max(0, remainingConsumableCount));
+            }
+
+            if (request.Variant == ReviveOwnerVariant.PremiumSafetyCharmChoice)
+            {
+                string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    ReviveOwnerNamedSafetyCharmResultStringPoolId,
+                    "The EXP did not drop after using {0} item.",
+                    maxPlaceholderCount: 1,
+                    out _);
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    format,
+                    ReviveOwnerRuntime.GetOwnerLabel(request.Variant));
             }
 
             return string.Empty;

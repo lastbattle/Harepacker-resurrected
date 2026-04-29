@@ -357,6 +357,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildRankingEntries(IReadOnlyList<GuildRankingSeedEntry> rankingEntries, int guildId)
         {
+            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
+            RememberPacketGuildId(guildId);
             _packetGuildRankingEntries.Clear();
             if (rankingEntries != null)
             {

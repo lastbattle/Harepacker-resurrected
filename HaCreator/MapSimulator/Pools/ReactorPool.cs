@@ -3380,9 +3380,15 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
         }
 
-        private static bool UsesPacketObjectIdForLocalTouch(ReactorRuntimeData data, int objectId)
+        internal static bool UsesPacketObjectIdForLocalTouch(ReactorRuntimeData data, int objectId)
         {
-            return data?.PacketObjectId == objectId;
+            return IsTransportableLocalTouchObjectId(objectId)
+                && data?.PacketObjectId == objectId;
+        }
+
+        internal static bool IsTransportableLocalTouchObjectId(int objectId)
+        {
+            return objectId > 0;
         }
 
         private bool IsLocallyTouchedReactor(int index, ReactorRuntimeData data)

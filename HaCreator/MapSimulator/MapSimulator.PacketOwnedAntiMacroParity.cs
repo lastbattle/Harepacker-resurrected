@@ -660,11 +660,21 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketOwnedAntiMacroCloseResult(int mode, int antiMacroType, bool preserveAuthoritativeSubmitAwaitingState = false)
         {
             string clearSummary = ClearPacketOwnedAntiMacro(
-                releaseCombo: true,
+                releaseCombo: ShouldReleasePacketOwnedAntiMacroComboOnCloseResult(preserveAuthoritativeSubmitAwaitingState),
                 preserveAuthoritativeSubmitAwaitingState: preserveAuthoritativeSubmitAwaitingState);
             string noticeSummary = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
             _lastPacketOwnedAntiMacroSummary = $"{clearSummary} {noticeSummary}";
             return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        internal static bool ShouldReleasePacketOwnedAntiMacroComboOnCloseResult(bool preserveAuthoritativeSubmitAwaitingState)
+        {
+            // `CUIAntiMacro::SetRet` closes the owner locally but leaves Ctrl-combo
+            // suppression held while the authoritative server result is outstanding.
+            // A non-authoritative mirrored 7/9 result can close local UI state, but
+            // it must not release the hold before the bridge-correlated result or
+            // the recovered timeout boundary.
+            return !preserveAuthoritativeSubmitAwaitingState;
         }
 
         internal static int ResolvePacketOwnedAntiMacroLaunchRemainingMs(int currentRemainingMs, int firstAttemptFlag)

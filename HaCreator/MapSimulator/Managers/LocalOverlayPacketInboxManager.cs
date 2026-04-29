@@ -25,9 +25,6 @@ namespace HaCreator.MapSimulator.Managers
         public const int FieldFadeInOutClientPacketType = 240;
         public const int FieldFadeOutForceClientPacketType = 241;
         public const int BalloonMsgClientPacketType = 245;
-        public const int NotifyHpDecByFieldClientPacketType = LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType;
-        public const int DamageMeterClientPacketType = LocalUtilityPacketInboxManager.DamageMeterPacketType;
-        public const int PetConsumeResultPacketType = LocalUtilityPacketInboxManager.PetConsumeResultPacketType;
 
         private readonly ConcurrentQueue<LocalOverlayPacketInboxMessage> _pendingMessages = new();
         public int ReceivedCount { get; private set; }
@@ -167,36 +164,6 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            if (string.Equals(normalized, "hpdec", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "hazard", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "notifyhpdecbyfield", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "onnotifyhpdecbyfield", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = NotifyHpDecByFieldClientPacketType;
-                return true;
-            }
-
-            if (string.Equals(normalized, "damagemeter", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "damage", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "ondamagemeter", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = DamageMeterClientPacketType;
-                return true;
-            }
-
-            if (string.Equals(normalized, "petconsumeresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "onpetconsumeresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "petitemuseresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "onpetitemuseresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "petuseresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "onpetuseresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "hpresult", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "hazardresult", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = PetConsumeResultPacketType;
-                return true;
-            }
-
             if ((normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
                     && int.TryParse(normalized[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out packetType))
                 || int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out packetType))
@@ -214,9 +181,6 @@ namespace HaCreator.MapSimulator.Managers
                 FieldFadeInOutClientPacketType => $"OnFieldFadeInOut (0x{packetType:X})",
                 FieldFadeOutForceClientPacketType => $"OnFieldFadeOutForce (0x{packetType:X})",
                 BalloonMsgClientPacketType => $"OnBalloonMsg (0x{packetType:X})",
-                NotifyHpDecByFieldClientPacketType => $"OnNotifyHPDecByField (0x{packetType:X})",
-                DamageMeterClientPacketType => $"OnDamageMeter (0x{packetType:X})",
-                PetConsumeResultPacketType => $"PetConsumeResult (0x{packetType:X})",
                 _ => $"0x{packetType:X}"
             };
         }
@@ -225,10 +189,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType == FieldFadeInOutClientPacketType
                 || packetType == FieldFadeOutForceClientPacketType
-                || packetType == BalloonMsgClientPacketType
-                || packetType == NotifyHpDecByFieldClientPacketType
-                || packetType == DamageMeterClientPacketType
-                || packetType == PetConsumeResultPacketType;
+                || packetType == BalloonMsgClientPacketType;
         }
 
         private static bool TryParsePayload(string text, out byte[] payload, out string error)

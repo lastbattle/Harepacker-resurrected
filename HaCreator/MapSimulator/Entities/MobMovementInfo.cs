@@ -83,6 +83,11 @@ namespace HaCreator.MapSimulator.Entities
         int TimeStamp,
         int MoveAction);
 
+    public readonly record struct MobPacketMovePathTailInfo(
+        int PassiveKeyPadStateCount,
+        Microsoft.Xna.Framework.Rectangle PathBounds,
+        int ReceiveTime);
+
     /// <summary>
     /// Stores movement state and physics for a mob in the MapSimulator.
     /// Based on MapleNecrocer's Mob.cs implementation.
@@ -671,6 +676,7 @@ namespace HaCreator.MapSimulator.Entities
         public int LastPacketMovePathRebaseTime { get; private set; } = int.MinValue;
         public int LastPacketOwnedMoveAction { get; private set; } = -1;
         public int LastPacketOwnedMoveActionUpdateTime { get; private set; } = int.MinValue;
+        public MobPacketMovePathTailInfo? LastPacketMovePathTailInfo { get; private set; }
         public IReadOnlyList<MobPacketMovePathElement> PacketMovePathBuffer => _packetMovePathBuffer;
 
         internal void QueuePacketMovePathElement(MobPacketMovePathElement element)
@@ -752,6 +758,17 @@ namespace HaCreator.MapSimulator.Entities
 
             ApplyPacketMovePathSample(sample, sampleTime);
             return true;
+        }
+
+        internal void ApplyPacketMovePathTailInfo(
+            int passiveKeyPadStateCount,
+            Microsoft.Xna.Framework.Rectangle pathBounds,
+            int receiveTime)
+        {
+            LastPacketMovePathTailInfo = new MobPacketMovePathTailInfo(
+                Math.Max(0, passiveKeyPadStateCount),
+                pathBounds,
+                Math.Max(0, receiveTime));
         }
 
         public void ApplyPacketMoveInterrupt(

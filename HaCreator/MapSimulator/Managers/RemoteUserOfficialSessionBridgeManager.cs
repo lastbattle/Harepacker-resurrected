@@ -10,18 +10,25 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class RemoteUserOfficialSessionBridgeMessage
     {
-        public RemoteUserOfficialSessionBridgeMessage(int packetType, byte[] payload, string source, ushort opcode)
+        public RemoteUserOfficialSessionBridgeMessage(
+            int packetType,
+            byte[] payload,
+            string source,
+            ushort opcode,
+            int officialSessionSequence = 0)
         {
             PacketType = packetType;
             Payload = payload ?? Array.Empty<byte>();
             Source = string.IsNullOrWhiteSpace(source) ? "remote-user-session" : source;
             Opcode = opcode;
+            OfficialSessionSequence = officialSessionSequence;
         }
 
         public int PacketType { get; }
         public byte[] Payload { get; }
         public string Source { get; }
         public ushort Opcode { get; }
+        public int OfficialSessionSequence { get; }
     }
 
     /// <summary>
@@ -709,7 +716,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             string summary = message == null
                 ? "remote-user packet"
-                : $"{RemoteUserPacketInboxManager.DescribePacketType(message.PacketType)} opcode {message.Opcode}";
+                : $"{RemoteUserPacketInboxManager.DescribePacketType(message.PacketType)} opcode {message.Opcode}{FormatOfficialSessionSequence(message.OfficialSessionSequence)}";
             LastStatus = success
                 ? $"Applied {summary} from {message?.Source ?? "remote-user-session"}."
                 : $"Ignored {summary} from {message?.Source ?? "remote-user-session"}: {detail}";
@@ -1444,6 +1451,15 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string buildTag = ResolveOfficialSessionBuildTag(source);
+            if (IsBuildTagKnownV95(buildTag)
+                && IsOfficialTutorLocalOpcodeCoveredByV95OwnerTable(opcode))
+            {
+                // The v95 tutor opcodes are recovered CUserLocal owner-table entries, not
+                // build-inferred remote wrappers, so do not churn them through unknown-build
+                // proof suspension on later packets from the same recovered build.
+                return false;
+            }
+
             int buildProof = learnedEntry.ResolveOfficialSessionBuildProofCount(buildTag);
             if (buildProof >= MinOfficialSessionTutorInferenceProofCount)
             {
@@ -1744,9 +1760,15 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            _pendingMessages.Enqueue(message);
             ReceivedCount++;
-            LastStatus = $"Queued {RemoteUserPacketInboxManager.DescribePacketType(message.PacketType)} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {e.SourceEndpoint} ({ResolveOfficialSessionBuildTag(evidenceSource)} evidence).";
+            message = new RemoteUserOfficialSessionBridgeMessage(
+                message.PacketType,
+                message.Payload,
+                message.Source,
+                message.Opcode,
+                ReceivedCount);
+            _pendingMessages.Enqueue(message);
+            LastStatus = $"Queued {RemoteUserPacketInboxManager.DescribePacketType(message.PacketType)} opcode {message.Opcode}{FormatOfficialSessionSequence(message.OfficialSessionSequence)} ({message.Payload.Length} byte(s)) from live session {e.SourceEndpoint} ({ResolveOfficialSessionBuildTag(evidenceSource)} evidence).";
         }
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
@@ -1790,6 +1812,13 @@ namespace HaCreator.MapSimulator.Managers
                 ? "unknown-endpoint"
                 : e.SourceEndpoint;
             return $"{OfficialSessionSourcePrefix}{buildTag}:{endpoint}";
+        }
+
+        private static string FormatOfficialSessionSequence(int sequence)
+        {
+            return sequence > 0
+                ? $" seq {sequence}"
+                : string.Empty;
         }
 
         private string DescribeTutorInferenceConflictsNoLock()

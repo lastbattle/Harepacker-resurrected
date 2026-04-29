@@ -3417,6 +3417,16 @@ namespace HaCreator.MapSimulator.Pools
                 return string.Empty;
             }
 
+            if (segments.Length == 1)
+            {
+                string onlySegment = NormalizeHelperMarkerNameSegment(segments[0]);
+                if (IsNumericHelperMarkerPathSegment(onlySegment)
+                    && TryResolveDefaultHelperChildIndexMarkerName(onlySegment, out string indexedMarkerName))
+                {
+                    return indexedMarkerName;
+                }
+            }
+
             if (TryResolveMinimapIconDirectionMarkerSegment(segments, out string directionMarkerName))
             {
                 return directionMarkerName;

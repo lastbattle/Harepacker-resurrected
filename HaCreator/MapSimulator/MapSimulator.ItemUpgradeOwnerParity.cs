@@ -323,6 +323,13 @@ namespace HaCreator.MapSimulator
                 _itemUpgradeOwnerLastResultValue = decodeState.OutcomeResultValue;
                 _itemUpgradeOwnerLastUpgradeStateValue = decodeState.OutcomeUpgradeState;
             }
+            else if (decodeState.HasReasonCode)
+            {
+                // CUIItemUpgrade::OnItemUpgradeResult keeps the decoded notice
+                // argument on the same result lane that later StringPool 0x1A86
+                // formatting observes.
+                _itemUpgradeOwnerLastResultValue = decodeState.ReasonCode;
+            }
 
             if (_pendingItemUpgradeOwnerRequest == null)
             {
@@ -413,7 +420,7 @@ namespace HaCreator.MapSimulator
             if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
                     decodeState.ResultCode,
                     decodeState.HasReasonCode ? decodeState.ReasonCode : (int?)null,
-                    decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : _itemUpgradeOwnerLastResultValue,
+                    ResolveItemUpgradeNoticeArgument(decodeState, _itemUpgradeOwnerLastResultValue),
                     out string noticeMessage))
             {
                 _pendingItemUpgradeOwnerRequest.ForcedSuccess = null;
@@ -501,7 +508,7 @@ namespace HaCreator.MapSimulator
             out string message)
         {
             int? reasonCode = decodeState.HasReasonCode ? decodeState.ReasonCode : (int?)null;
-            int? resultValue = decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : _itemUpgradeOwnerLastResultValue;
+            int? resultValue = ResolveItemUpgradeNoticeArgument(decodeState, _itemUpgradeOwnerLastResultValue);
             int recoverySlotCountArgument = ResolveItemUpgradeRecoveredSlotCountArgumentWithoutPendingRequest();
             return TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
                 decodeState.ResultCode,
@@ -509,6 +516,23 @@ namespace HaCreator.MapSimulator
                 resultValue,
                 recoverySlotCountArgument,
                 out message);
+        }
+
+        private static int? ResolveItemUpgradeNoticeArgument(
+            ItemUpgradeResultDecodeState decodeState,
+            int fallbackResultValue)
+        {
+            if (decodeState.HasOutcomeState)
+            {
+                return decodeState.OutcomeResultValue;
+            }
+
+            if (decodeState.HasReasonCode)
+            {
+                return decodeState.ReasonCode;
+            }
+
+            return fallbackResultValue;
         }
 
         private static bool TryResolveItemUpgradePacketOwnedOutcomeWithoutPendingRequest(
@@ -1440,6 +1464,24 @@ namespace HaCreator.MapSimulator
             out string message)
         {
             return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(resultCode, reasonCode, resultValue, out message);
+        }
+
+        internal static int? ResolveItemUpgradeNoticeArgumentForTests(
+            bool hasReasonCode,
+            int reasonCode,
+            bool hasOutcomeState,
+            int outcomeResultValue,
+            int fallbackResultValue)
+        {
+            return ResolveItemUpgradeNoticeArgument(
+                new ItemUpgradeResultDecodeState(
+                    ResultCode: 0,
+                    HasReasonCode: hasReasonCode,
+                    ReasonCode: reasonCode,
+                    HasOutcomeState: hasOutcomeState,
+                    OutcomeResultValue: outcomeResultValue,
+                    OutcomeUpgradeState: 0),
+                fallbackResultValue);
         }
 
         internal static bool TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequestForTests(

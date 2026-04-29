@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Managers;
 using Microsoft.Xna.Framework;
 using System;
 
@@ -47,6 +48,50 @@ namespace HaCreator.MapSimulator
             }
 
             _localUtilityPacketOutbox.TryQueueOutboundPacket(packetOpcode, payload, out _);
+        }
+
+        private void HandleDragonCompanionClientOutboundPacketObserved(
+            object sender,
+            LocalUtilityOutboundPacketObservedEventArgs e)
+        {
+            DragonCompanionRuntime dragonRuntime = _playerManager?.Dragon;
+            if (dragonRuntime == null || e == null || !IsDragonCompanionClientOutboundPacket(e))
+            {
+                return;
+            }
+
+            byte[] rawPacket = e.RawPacket ?? Array.Empty<byte>();
+            if (rawPacket.Length > 0)
+            {
+                dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+                    rawPacket,
+                    opcodeFramed: true,
+                    BuildDragonCompanionObservedClientOutboundSource(e),
+                    out _);
+                return;
+            }
+
+            dragonRuntime.TryRecordClientDragonEndUpdateActiveFlushTailCapture(
+                e.Payload ?? Array.Empty<byte>(),
+                opcodeFramed: false,
+                BuildDragonCompanionObservedClientOutboundSource(e),
+                out _);
+        }
+
+        internal static bool IsDragonCompanionClientOutboundPacket(LocalUtilityOutboundPacketObservedEventArgs e)
+        {
+            return e?.Opcode == DragonCompanionRuntime.ClientVecCtrlDragonMovePacketOpcode;
+        }
+
+        internal static string BuildDragonCompanionObservedClientOutboundSource(LocalUtilityOutboundPacketObservedEventArgs e)
+        {
+            string source = string.IsNullOrWhiteSpace(e?.Source)
+                ? "official-session:outbound"
+                : e.Source.Trim();
+            int ordinal = e?.ObservedOrdinal ?? 0;
+            return ordinal > 0
+                ? $"{source} outbound#{ordinal}"
+                : source;
         }
 
         private ChatCommandHandler.CommandResult HandleDragonCompanionCommand(string[] args)

@@ -3448,6 +3448,7 @@ namespace HaCreator.MapSimulator.Interaction
         private long _damageTotalDamage;
         private int _damageTotalAttackCount;
         private long _damageTotalAttrRate;
+        private int _damageTotalAttrRateCount;
         private int _averageAttrRate;
         private int _averageDamagePerHit;
         private int _averageDamagePerSecond;
@@ -3568,6 +3569,7 @@ namespace HaCreator.MapSimulator.Interaction
             _damageTotalDamage = 0;
             _damageTotalAttackCount = 0;
             _damageTotalAttrRate = 0;
+            _damageTotalAttrRateCount = 0;
             _averageAttrRate = 0;
             _averageDamagePerHit = 0;
             _averageDamagePerSecond = 0;
@@ -4137,6 +4139,7 @@ namespace HaCreator.MapSimulator.Interaction
             _damageTotalDamage = 0;
             _damageTotalAttackCount = 0;
             _damageTotalAttrRate = 0;
+            _damageTotalAttrRateCount = 0;
             _averageAttrRate = 0;
             _averageDamagePerHit = 0;
             _averageDamagePerSecond = 0;
@@ -4251,13 +4254,14 @@ namespace HaCreator.MapSimulator.Interaction
             if (attrRate.HasValue && attrRateCountDelta > 0)
             {
                 _damageTotalAttrRate += (long)attrRate.Value * attrRateCountDelta;
+                _damageTotalAttrRateCount += attrRateCountDelta;
             }
 
             _averageDamagePerHit = _damageTotalAttackCount > 0
                 ? (int)(_damageTotalDamage / _damageTotalAttackCount)
                 : 0;
-            _averageAttrRate = _damageTotalAttackCount > 0
-                ? (int)(_damageTotalAttrRate / _damageTotalAttackCount)
+            _averageAttrRate = _damageTotalAttrRateCount > 0
+                ? (int)(_damageTotalAttrRate / _damageTotalAttrRateCount)
                 : 0;
 
             uint nowTick = unchecked((uint)(currentTickCount ?? Environment.TickCount));

@@ -61,7 +61,7 @@ internal static class MobSkillSelectionParity
 
                 foreach (MobAI target in candidateTargets)
                 {
-                    if (ShouldApplyStatusToTarget(target, definition.Effect, statusValue))
+                    if (ShouldApplyStatusToTarget(target, definition, runtimeData, statusValue))
                     {
                         return true;
                     }
@@ -81,19 +81,61 @@ internal static class MobSkillSelectionParity
             && playerHitbox.Intersects(area);
     }
 
-    private static bool ShouldApplyStatusToTarget(MobAI target, MobStatusEffect effect, int statusValue)
+    internal static bool ShouldApplyStatusToTarget(
+        MobAI target,
+        MobSkillStatusDefinition definition,
+        MobSkillRuntimeData runtimeData)
+    {
+        int statusValue = MobSkillStatusMapper.ResolveStatusValue(
+            definition.Effect,
+            runtimeData?.X ?? 0,
+            runtimeData?.Y ?? 0,
+            runtimeData?.Hp ?? 0);
+        return ShouldApplyStatusToTarget(target, definition, runtimeData, statusValue);
+    }
+
+    private static bool ShouldApplyStatusToTarget(
+        MobAI target,
+        MobSkillStatusDefinition definition,
+        MobSkillRuntimeData runtimeData,
+        int statusValue)
     {
         if (target?.IsDead != false)
         {
             return false;
         }
 
-        if (!target.HasStatusEffect(effect))
+        if (!IsAuthoredHpGateOpen(target, definition, runtimeData))
+        {
+            return false;
+        }
+
+        if (!target.HasStatusEffect(definition.Effect))
         {
             return true;
         }
 
-        return target.GetStatusEffectValue(effect) < statusValue;
+        return target.GetStatusEffectValue(definition.Effect) < statusValue;
+    }
+
+    private static bool IsAuthoredHpGateOpen(
+        MobAI target,
+        MobSkillStatusDefinition definition,
+        MobSkillRuntimeData runtimeData)
+    {
+        if (definition.Operation != MobSkillOperation.ApplyStatus || runtimeData == null)
+        {
+            return true;
+        }
+
+        int hpThresholdPercent = runtimeData.Hp;
+        if (hpThresholdPercent <= 0 || hpThresholdPercent >= 100)
+        {
+            return true;
+        }
+
+        float hpPercent = System.Math.Clamp(target.HpPercent, 0f, 1f) * 100f;
+        return hpPercent <= hpThresholdPercent;
     }
 
     private static int ResolveHealThresholdPercent(MobSkillRuntimeData runtimeData)

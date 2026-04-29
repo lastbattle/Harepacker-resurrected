@@ -2777,6 +2777,9 @@ namespace HaCreator.MapSimulator.Managers
                 .Replace(" ", string.Empty, StringComparison.Ordinal)
                 .ToLowerInvariant();
             return normalized.Contains("packet", StringComparison.Ordinal)
+                   || normalized.Contains("rawcomparison", StringComparison.Ordinal)
+                   || normalized.Contains("rawdiff", StringComparison.Ordinal)
+                   || normalized.Contains("capturediff", StringComparison.Ordinal)
                    || normalized.Contains("payload", StringComparison.Ordinal)
                    || normalized.Contains("rawbytes", StringComparison.Ordinal)
                    || normalized.Contains("packetbytes", StringComparison.Ordinal)
@@ -2927,27 +2930,41 @@ namespace HaCreator.MapSimulator.Managers
                 case "observed":
                 case "observedvalue":
                 case "observedbyte":
+                case "observedbytes":
+                case "observedraw":
                 case "actual":
                 case "actualvalue":
                 case "actualbyte":
+                case "actualbytes":
+                case "actualraw":
                 case "raw":
                 case "rawvalue":
                 case "rawbyte":
                 case "captured":
                 case "capturedvalue":
                 case "capturedbyte":
+                case "capturedbytes":
+                case "capturedraw":
                 case "official":
                 case "officialvalue":
                 case "officialbyte":
+                case "officialbytes":
+                case "officialraw":
                 case "client":
                 case "clientvalue":
                 case "clientbyte":
+                case "clientbytes":
+                case "clientraw":
                 case "original":
                 case "originalvalue":
                 case "originalbyte":
+                case "originalbytes":
+                case "originalraw":
                 case "wire":
                 case "wirevalue":
                 case "wirebyte":
+                case "wirebytes":
+                case "wireraw":
                 case "packet":
                 case "packetvalue":
                 case "packetbyte":
@@ -2974,6 +2991,8 @@ namespace HaCreator.MapSimulator.Managers
                 case "capture":
                 case "capturevalue":
                 case "capturebyte":
+                case "capturebytes":
+                case "captureraw":
                 case "capturerawpacket":
                 case "capturepacket":
                 case "capturepackethex":
@@ -2987,12 +3006,18 @@ namespace HaCreator.MapSimulator.Managers
                 case "rebuilt":
                 case "rebuiltvalue":
                 case "rebuiltbyte":
+                case "rebuiltbytes":
+                case "rebuiltraw":
                 case "expected":
                 case "expectedvalue":
                 case "expectedbyte":
+                case "expectedbytes":
+                case "expectedraw":
                 case "replay":
                 case "replayvalue":
                 case "replaybyte":
+                case "replaybytes":
+                case "replayraw":
                 case "replayrawpacket":
                 case "replaypacket":
                 case "replaypackethex":
@@ -3001,9 +3026,13 @@ namespace HaCreator.MapSimulator.Managers
                 case "replayed":
                 case "replayedvalue":
                 case "replayedbyte":
+                case "replayedbytes":
+                case "replayedraw":
                 case "simulator":
                 case "simulatorvalue":
                 case "simulatorbyte":
+                case "simulatorbytes":
+                case "simulatorraw":
                 case "simulatorrawpacket":
                 case "simulatorpacket":
                 case "simulatorpackethex":
@@ -3012,9 +3041,13 @@ namespace HaCreator.MapSimulator.Managers
                 case "simulated":
                 case "simulatedvalue":
                 case "simulatedbyte":
+                case "simulatedbytes":
+                case "simulatedraw":
                 case "generated":
                 case "generatedvalue":
                 case "generatedbyte":
+                case "generatedbytes":
+                case "generatedraw":
                 case "generatedrawpacket":
                 case "generatedpacket":
                 case "generatedpackethex":
@@ -3023,12 +3056,18 @@ namespace HaCreator.MapSimulator.Managers
                 case "candidate":
                 case "candidatevalue":
                 case "candidatebyte":
+                case "candidatebytes":
+                case "candidateraw":
                 case "emulated":
                 case "emulatedvalue":
                 case "emulatedbyte":
+                case "emulatedbytes":
+                case "emulatedraw":
                 case "reconstructed":
                 case "reconstructedvalue":
                 case "reconstructedbyte":
+                case "reconstructedbytes":
+                case "reconstructedraw":
                 case "reconstructedrawpacket":
                 case "reconstructedpacket":
                 case "reconstructedpackethex":

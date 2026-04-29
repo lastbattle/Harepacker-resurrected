@@ -750,7 +750,7 @@ namespace HaCreator.MapSimulator
             if (TryDecodeRemotePetPickupActorId(actorId, out int decodedOwnerCharacterId, out int decodedSlotIndex))
             {
                 ownerCharacterId = decodedOwnerCharacterId;
-                slotIndex = decodedSlotIndex;
+                slotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(decodedSlotIndex);
                 return true;
             }
 
@@ -1117,7 +1117,8 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            int exactPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, slotIndex);
+            int normalizedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(slotIndex);
+            int exactPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, normalizedSlotIndex);
             if (observedPetActorPositions.TryGetValue(exactPetActorId, out Vector2 exactPosition))
             {
                 return exactPosition;
@@ -1133,7 +1134,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                int slotDelta = Math.Abs(observedSlotIndex - slotIndex);
+                int normalizedObservedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(observedSlotIndex);
+                int slotDelta = Math.Abs(normalizedObservedSlotIndex - normalizedSlotIndex);
                 if (slotDelta >= closestSlotDelta)
                 {
                     continue;
@@ -1623,6 +1625,7 @@ namespace HaCreator.MapSimulator
 
             if (TryDecodeRemotePetPickupActorId(actorId, out int requestedOwnerCharacterId, out int requestedSlotIndex))
             {
+                int normalizedRequestedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(requestedSlotIndex);
                 foreach (int linkedActorId in linkedActorIds)
                 {
                     if (linkedActorId != actorId)
@@ -1637,7 +1640,7 @@ namespace HaCreator.MapSimulator
                     }
 
                     ownerCharacterId = requestedOwnerCharacterId;
-                    slotIndex = requestedSlotIndex;
+                    slotIndex = normalizedRequestedSlotIndex;
                     return true;
                 }
             }
@@ -1658,10 +1661,11 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (!foundOwnerAlias || decodedSlotIndex < bestOwnerAliasSlot)
+                int normalizedDecodedSlotIndex = NormalizeRemotePetPickupSlotIndexForPacketParity(decodedSlotIndex);
+                if (!foundOwnerAlias || normalizedDecodedSlotIndex < bestOwnerAliasSlot)
                 {
                     bestOwnerAliasOwnerId = decodedOwnerCharacterId;
-                    bestOwnerAliasSlot = decodedSlotIndex;
+                    bestOwnerAliasSlot = normalizedDecodedSlotIndex;
                     foundOwnerAlias = true;
                 }
             }

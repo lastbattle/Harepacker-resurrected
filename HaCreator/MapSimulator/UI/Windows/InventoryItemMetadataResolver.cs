@@ -1008,6 +1008,12 @@ namespace HaCreator.MapSimulator.UI
             return canvas != null;
         }
 
+        public static bool TryResolveTooltipIconCanvas(int itemId, out WzCanvasProperty canvas)
+        {
+            canvas = ResolveTooltipIconCanvas(LoadItemProperty(itemId));
+            return canvas != null;
+        }
+
         public static IReadOnlyList<WzCanvasProperty> ResolveInfoCanvasSequence(int itemId, string groupName, int limit = 8)
         {
             if (itemId <= 0 || string.IsNullOrWhiteSpace(groupName))
@@ -1086,6 +1092,13 @@ namespace HaCreator.MapSimulator.UI
             return itemProperty[groupName] is WzSubProperty rootGroupProperty
                 ? GetNumericNamedCanvasRows(rootGroupProperty, limit)
                 : Array.Empty<WzCanvasProperty>();
+        }
+
+        private static WzCanvasProperty ResolveTooltipIconCanvas(WzSubProperty itemProperty)
+        {
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            return infoProperty?["iconRaw"] as WzCanvasProperty
+                   ?? infoProperty?["icon"] as WzCanvasProperty;
         }
 
         public static bool TryResolveRootCanvas(int itemId, string canvasPath, out WzCanvasProperty canvas)
@@ -5018,6 +5031,11 @@ namespace HaCreator.MapSimulator.UI
             int limit = 8)
         {
             return ResolveInfoCanvasSequence(itemProperty, groupName, limit);
+        }
+
+        public static WzCanvasProperty ResolveTooltipIconCanvasForTests(WzSubProperty itemProperty)
+        {
+            return ResolveTooltipIconCanvas(itemProperty);
         }
 
         public static IReadOnlyList<InventoryRewardPreviewItem> ResolveRewardPreviewItemsForTests(

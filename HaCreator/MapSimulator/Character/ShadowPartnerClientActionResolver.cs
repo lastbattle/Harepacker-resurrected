@@ -3107,7 +3107,7 @@ namespace HaCreator.MapSimulator.Character
                         supportedRawActionNames,
                         out SkillAnimation pieceAnimation))
                 {
-                    continue;
+                    return null;
                 }
 
                 firstPieceAnimation ??= pieceAnimation;
@@ -3116,7 +3116,7 @@ namespace HaCreator.MapSimulator.Character
                     int frameIndex = piece.SourceFrameIndex.Value;
                     if (frameIndex < 0 || frameIndex >= pieceAnimation.Frames.Count)
                     {
-                        continue;
+                        return null;
                     }
 
                     SkillFrame frame = CloneSkillFrame(

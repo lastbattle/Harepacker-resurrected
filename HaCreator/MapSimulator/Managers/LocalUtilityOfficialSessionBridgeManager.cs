@@ -417,7 +417,8 @@ namespace HaCreator.MapSimulator.Managers
                     opcode,
                     safePayload,
                     safeRawPacket,
-                    string.IsNullOrWhiteSpace(source) ? "official-session:outbound" : source.Trim()));
+                    string.IsNullOrWhiteSpace(source) ? "official-session:outbound" : source.Trim(),
+                    ForwardedOutboundCount));
         }
 
         private void StopInternal(bool clearPending)

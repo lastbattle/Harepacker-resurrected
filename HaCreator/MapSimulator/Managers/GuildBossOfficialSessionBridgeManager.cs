@@ -513,6 +513,11 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryRefreshFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
         {
+            if (HasPassiveEstablishedSocketPair && !HasConnectedSession)
+            {
+                TryVerifyPassiveEstablishedSession(out _);
+            }
+
             return TryStartFromDiscovery(listenPort, remotePort, processSelector, localPort, out status);
         }
 

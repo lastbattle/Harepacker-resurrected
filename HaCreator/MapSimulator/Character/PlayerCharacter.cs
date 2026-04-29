@@ -378,6 +378,8 @@ namespace HaCreator.MapSimulator.Character
             public AvatarRenderLayer? LastInsertCanvasSourceLayer { get; set; }
             public AvatarRenderLayer? LastInsertCanvasOverlayTargetLayer { get; set; }
             public int LastInsertCanvasSourcePartsObjectId { get; set; }
+            public int LastInsertCanvasSourceLayerObjectId { get; set; }
+            public int LastInsertCanvasSourceLayerOriginSignature { get; set; }
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -4395,11 +4397,16 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            string resolvedActionName = ResolveShadowPartnerActionName(skill.ShadowPartnerActionAnimations, CurrentActionName, null);
+            string resolvedActionName = ResolveShadowPartnerActionName(
+                skill.ShadowPartnerActionAnimations,
+                skill.ShadowPartnerSupportedRawActionNames,
+                CurrentActionName,
+                null);
             SkillAnimation resolvedPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
                 skill.ShadowPartnerActionAnimations,
                 resolvedActionName,
-                CurrentActionName);
+                CurrentActionName,
+                skill.ShadowPartnerSupportedRawActionNames);
             string spawnActionName = ResolveShadowPartnerCreateActionName(skill.ShadowPartnerActionAnimations);
             bool useSpawnAction = !string.IsNullOrWhiteSpace(spawnActionName);
             int observedAttackTriggerTime = GetShadowPartnerObservedActionTriggerTime();
@@ -4409,6 +4416,8 @@ namespace HaCreator.MapSimulator.Character
             SkillAnimation resolvedAttackPlaybackAnimation = null;
             if (observedAttackAction
                 && TryResolveShadowPartnerAttackAction(
+                    skill.ShadowPartnerActionAnimations,
+                    skill.ShadowPartnerSupportedRawActionNames,
                     CurrentActionName,
                     out resolvedAttackActionName,
                     out resolvedAttackPlaybackAnimation))
@@ -4463,7 +4472,11 @@ namespace HaCreator.MapSimulator.Character
                 ClientOffsetTransitionStartTime = currentTime,
                 CurrentActionName = useSpawnAction ? spawnActionName : resolvedActionName,
                 CurrentPlaybackAnimation = useSpawnAction
-                    ? ResolveShadowPartnerPlaybackAnimation(skill.ShadowPartnerActionAnimations, spawnActionName, null)
+                    ? ResolveShadowPartnerPlaybackAnimation(
+                        skill.ShadowPartnerActionAnimations,
+                        spawnActionName,
+                        null,
+                        skill.ShadowPartnerSupportedRawActionNames)
                     : resolvedPlaybackAnimation,
                 CurrentActionStartTime = currentTime,
                 CurrentFacingRight = FacingRight,
@@ -6481,6 +6494,8 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasSourceLayer = null,
                     LastInsertCanvasOverlayTargetLayer = null,
                     LastInsertCanvasSourcePartsObjectId = 0,
+                    LastInsertCanvasSourceLayerObjectId = 0,
+                    LastInsertCanvasSourceLayerOriginSignature = 0,
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
@@ -6687,7 +6702,11 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasTime,
                 currentTime,
                 liveSourceCanvasSignature,
-                preparedLayer.LastInsertedSourceCanvasSignature);
+                preparedLayer.LastInsertedSourceCanvasSignature,
+                ResolveMirrorImageSourceLayerObjectId(preparedLayer.RenderLayer, liveSourceParts),
+                preparedLayer.LastInsertCanvasSourceLayerObjectId,
+                ComputeMirrorImageSourceLayerOriginSignature(liveSourceParts),
+                preparedLayer.LastInsertCanvasSourceLayerOriginSignature);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -6936,6 +6955,8 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourceLayer = null;
             preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
             preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
+            preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
+            preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -6974,6 +6995,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceLayer = null;
                 preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
                 preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
+                preparedLayer.LastInsertCanvasSourceLayerObjectId = 0;
+                preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
                 preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             }
 
@@ -7008,6 +7031,14 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourcePartsObjectId = ResolveMirrorImageLastInsertCanvasSourcePartsObjectId(
                 preparedLayer.LastInsertCanvasSourcePartsObjectId,
                 ResolveMirrorImageSourcePartsObjectId(sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerObjectId = ResolveMirrorImageLastInsertCanvasSourceLayerObjectId(
+                preparedLayer.LastInsertCanvasSourceLayerObjectId,
+                ResolveMirrorImageSourceLayerObjectId(preparedLayer.RenderLayer, sourceParts),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerOriginSignature = ResolveMirrorImageLastInsertCanvasSourceLayerOriginSignature(
+                preparedLayer.LastInsertCanvasSourceLayerOriginSignature,
+                ComputeMirrorImageSourceLayerOriginSignature(sourceParts),
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
                 preparedLayer.LastInsertedLiveSourceParts,
@@ -7325,6 +7356,41 @@ namespace HaCreator.MapSimulator.Character
                 : existingSourcePartsObjectId;
         }
 
+        internal static int ResolveMirrorImageSourceLayerObjectId(
+            AvatarRenderLayer sourceLayer,
+            IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null)
+            {
+                return 0;
+            }
+
+            var identity = new HashCode();
+            identity.Add((int)sourceLayer);
+            identity.Add(RuntimeHelpers.GetHashCode(sourceParts));
+            return identity.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerObjectId(
+            int existingSourceLayerObjectId,
+            int currentSourceLayerObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentSourceLayerObjectId != 0
+                ? currentSourceLayerObjectId
+                : existingSourceLayerObjectId;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerOriginSignature(
+            int existingOriginSignature,
+            int currentOriginSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOriginSignature != 0
+                ? currentOriginSignature
+                : existingOriginSignature;
+        }
+
         internal static bool ShouldResetMirrorImageInsertCanvasMetadataForPreparedLayerRecreation(
             bool updatesFromLiveInsertCanvas,
             int preparedLayerObjectId,
@@ -7567,7 +7633,11 @@ namespace HaCreator.MapSimulator.Character
             int lastInsertCanvasTime,
             int currentTime,
             int sourceCanvasSignature = 0,
-            int lastInsertedSourceCanvasSignature = 0)
+            int lastInsertedSourceCanvasSignature = 0,
+            int sourceLayerObjectId = 0,
+            int lastInsertCanvasSourceLayerObjectId = 0,
+            int sourceLayerOriginSignature = 0,
+            int lastInsertCanvasSourceLayerOriginSignature = 0)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -7640,13 +7710,23 @@ namespace HaCreator.MapSimulator.Character
             bool sourcePartsIdentityChanged = sourcePartsObjectId > 0
                 && lastInsertCanvasSourcePartsObjectId > 0
                 && sourcePartsObjectId != lastInsertCanvasSourcePartsObjectId;
+            bool sourceLayerObjectChanged = sourceLayerObjectId != 0
+                && lastInsertCanvasSourceLayerObjectId != 0
+                && sourceLayerObjectId != lastInsertCanvasSourceLayerObjectId;
+            bool sourceLayerOriginChanged = sourceLayerOriginSignature != 0
+                && lastInsertCanvasSourceLayerOriginSignature != 0
+                && sourceLayerOriginSignature != lastInsertCanvasSourceLayerOriginSignature;
             bool sourceSignatureChanged = sourceSignature != 0
                 && lastInsertedSourceSignature != 0
                 && sourceSignature != lastInsertedSourceSignature;
             bool sourceCanvasSignatureChanged = sourceCanvasSignature != 0
                 && lastInsertedSourceCanvasSignature != 0
                 && sourceCanvasSignature != lastInsertedSourceCanvasSignature;
-            if (sourcePartsIdentityChanged || sourceSignatureChanged || sourceCanvasSignatureChanged)
+            if (sourcePartsIdentityChanged
+                || sourceLayerObjectChanged
+                || sourceLayerOriginChanged
+                || sourceSignatureChanged
+                || sourceCanvasSignatureChanged)
             {
                 return true;
             }
@@ -7657,9 +7737,15 @@ namespace HaCreator.MapSimulator.Character
                 || lastInsertedSourceSignature == 0;
             bool sourceCanvasSignatureMetadataMissing = (sourceCanvasSignature != 0 || lastInsertedSourceCanvasSignature != 0)
                 && (sourceCanvasSignature == 0 || lastInsertedSourceCanvasSignature == 0);
+            bool sourceLayerObjectMetadataMissing = (sourceLayerObjectId != 0 || lastInsertCanvasSourceLayerObjectId != 0)
+                && (sourceLayerObjectId == 0 || lastInsertCanvasSourceLayerObjectId == 0);
+            bool sourceLayerOriginMetadataMissing = (sourceLayerOriginSignature != 0 || lastInsertCanvasSourceLayerOriginSignature != 0)
+                && (sourceLayerOriginSignature == 0 || lastInsertCanvasSourceLayerOriginSignature == 0);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
                 || sourceSignatureMetadataMissing
-                || sourceCanvasSignatureMetadataMissing;
+                || sourceCanvasSignatureMetadataMissing
+                || sourceLayerObjectMetadataMissing
+                || sourceLayerOriginMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;
@@ -7762,6 +7848,25 @@ namespace HaCreator.MapSimulator.Character
                 signature.Add(part.ZLayer, StringComparer.Ordinal);
             }
 
+            return signature.ToHashCode();
+        }
+
+        internal static int ComputeMirrorImageSourceLayerOriginSignature(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            Rectangle bounds = CalculateMirrorImageSourceLayerBounds(sourceParts);
+            if (bounds.IsEmpty)
+            {
+                return 0;
+            }
+
+            Point origin = ResolveMirrorImageSourceLayerOrigin(bounds);
+            var signature = new HashCode();
+            signature.Add(bounds.X);
+            signature.Add(bounds.Y);
+            signature.Add(bounds.Width);
+            signature.Add(bounds.Height);
+            signature.Add(origin.X);
+            signature.Add(origin.Y);
             return signature.ToHashCode();
         }
 
@@ -9045,7 +9150,11 @@ namespace HaCreator.MapSimulator.Character
 
         private string ResolveShadowPartnerActionName(string playerActionName, string fallbackActionName)
         {
-            return ResolveShadowPartnerActionName(_activeShadowPartner?.ActionAnimations, playerActionName, fallbackActionName);
+            return ResolveShadowPartnerActionName(
+                _activeShadowPartner?.ActionAnimations,
+                _activeShadowPartner?.SupportedRawActionNames,
+                playerActionName,
+                fallbackActionName);
         }
 
         private bool TryResolveShadowPartnerAttackAction(
@@ -9053,9 +9162,23 @@ namespace HaCreator.MapSimulator.Character
             out string resolvedActionName,
             out SkillAnimation resolvedPlaybackAnimation)
         {
+            return TryResolveShadowPartnerAttackAction(
+                _activeShadowPartner?.ActionAnimations,
+                _activeShadowPartner?.SupportedRawActionNames,
+                playerActionName,
+                out resolvedActionName,
+                out resolvedPlaybackAnimation);
+        }
+
+        private bool TryResolveShadowPartnerAttackAction(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            IReadOnlySet<string> supportedRawActionNames,
+            string playerActionName,
+            out string resolvedActionName,
+            out SkillAnimation resolvedPlaybackAnimation)
+        {
             resolvedActionName = null;
             resolvedPlaybackAnimation = null;
-            IReadOnlyDictionary<string, SkillAnimation> actionAnimations = _activeShadowPartner?.ActionAnimations;
             if (!ShadowPartnerClientActionResolver.TryResolveAttackIdentityActionName(
                     actionAnimations,
                     playerActionName,
@@ -9063,7 +9186,7 @@ namespace HaCreator.MapSimulator.Character
                     out string resolvedAttackActionName,
                     Build?.GetWeapon()?.WeaponType,
                     TryGetCurrentClientRawActionCode(out int currentRawActionCode) ? currentRawActionCode : null,
-                    _activeShadowPartner?.SupportedRawActionNames))
+                    supportedRawActionNames))
             {
                 return false;
             }
@@ -9071,7 +9194,8 @@ namespace HaCreator.MapSimulator.Character
             SkillAnimation attackPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
                 actionAnimations,
                 resolvedAttackActionName,
-                playerActionName);
+                playerActionName,
+                supportedRawActionNames);
             if (attackPlaybackAnimation?.Frames == null || attackPlaybackAnimation.Frames.Count == 0)
             {
                 return false;
@@ -9084,6 +9208,7 @@ namespace HaCreator.MapSimulator.Character
 
         private string ResolveShadowPartnerActionName(
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            IReadOnlySet<string> supportedRawActionNames,
             string playerActionName,
             string fallbackActionName)
         {
@@ -9092,7 +9217,10 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            foreach (string candidate in EnumerateShadowPartnerClientMappedCandidates(playerActionName, fallbackActionName))
+            foreach (string candidate in EnumerateShadowPartnerClientMappedCandidates(
+                         playerActionName,
+                         fallbackActionName,
+                         supportedRawActionNames))
             {
                 if (actionAnimations.ContainsKey(candidate))
                 {
@@ -9102,7 +9230,8 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string candidate in EnumerateShadowPartnerActionCandidates(playerActionName, fallbackActionName))
             {
-                if (actionAnimations.ContainsKey(candidate))
+                if (ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(candidate, supportedRawActionNames)
+                    && actionAnimations.ContainsKey(candidate))
                 {
                     return candidate;
                 }
@@ -9112,6 +9241,17 @@ namespace HaCreator.MapSimulator.Character
         }
 
         private IEnumerable<string> EnumerateShadowPartnerClientMappedCandidates(string playerActionName, string fallbackActionName)
+        {
+            return EnumerateShadowPartnerClientMappedCandidates(
+                playerActionName,
+                fallbackActionName,
+                _activeShadowPartner?.SupportedRawActionNames);
+        }
+
+        private IEnumerable<string> EnumerateShadowPartnerClientMappedCandidates(
+            string playerActionName,
+            string fallbackActionName,
+            IReadOnlySet<string> supportedRawActionNames)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string normalizedWeaponType = Build?.GetWeapon()?.WeaponType;
@@ -9125,7 +9265,7 @@ namespace HaCreator.MapSimulator.Character
                          fallbackActionName,
                          normalizedWeaponType,
                          rawActionCode,
-                         _activeShadowPartner?.SupportedRawActionNames))
+                         supportedRawActionNames))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
                 {
@@ -9702,6 +9842,19 @@ namespace HaCreator.MapSimulator.Character
             string resolvedActionName,
             string playerActionName)
         {
+            return ResolveShadowPartnerPlaybackAnimation(
+                actionAnimations,
+                resolvedActionName,
+                playerActionName,
+                _activeShadowPartner?.SupportedRawActionNames);
+        }
+
+        private SkillAnimation ResolveShadowPartnerPlaybackAnimation(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string resolvedActionName,
+            string playerActionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
             string rawActionName = null;
             if (!string.IsNullOrWhiteSpace(playerActionName)
                 && TryGetCurrentClientRawActionCode(out int rawActionCode))
@@ -9714,7 +9867,7 @@ namespace HaCreator.MapSimulator.Character
                 resolvedActionName,
                 playerActionName,
                 rawActionName,
-                _activeShadowPartner?.SupportedRawActionNames);
+                supportedRawActionNames);
         }
 
         private bool ShouldHoldShadowPartnerCurrentAction(int currentTime)

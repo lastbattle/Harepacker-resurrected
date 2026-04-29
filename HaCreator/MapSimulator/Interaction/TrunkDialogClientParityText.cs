@@ -147,19 +147,19 @@ namespace HaCreator.MapSimulator.Interaction
             return steps;
         }
 
-        internal static string BuildSendPutConfirmationBody(InventorySlotData slotData, bool treatSingly, int availableQuantity, int mesoCost)
+        internal static string BuildSendPutConfirmationBody(InventorySlotData slotData, bool treatSingly, int availableQuantity, int mesoCost, bool includeAskCount = true)
         {
             string preConfirm = RequiresOwnershipPreConfirm(slotData)
                 ? $"{ResolveSendPutPreConfirm(slotData?.CashItemSerialNumber.GetValueOrDefault() > 0)}\r\n\r\n"
                 : string.Empty;
-            string askCount = !treatSingly && availableQuantity > 1
+            string askCount = includeAskCount && !treatSingly && availableQuantity > 1
                 ? $"{ResolveSendPutAskItemCountPrompt()}\r\n\r\n"
                 : string.Empty;
 
             return $"{preConfirm}{askCount}{ResolveSendPutCostConfirm(mesoCost)}";
         }
 
-        internal static IReadOnlyList<ConfirmationStep> BuildSendPutConfirmationChoreography(InventorySlotData slotData, bool treatSingly, int availableQuantity, int mesoCost)
+        internal static IReadOnlyList<ConfirmationStep> BuildSendPutConfirmationChoreography(InventorySlotData slotData, bool treatSingly, int availableQuantity, int mesoCost, bool includeAskCount = true)
         {
             List<ConfirmationStep> steps = new(3);
             bool sharableOnce = slotData?.CashItemSerialNumber.GetValueOrDefault() > 0;
@@ -171,7 +171,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ResolveSendPutPreConfirm(sharableOnce)));
             }
 
-            if (!treatSingly && availableQuantity > 1)
+            if (includeAskCount && !treatSingly && availableQuantity > 1)
             {
                 steps.Add(new ConfirmationStep(
                     SendPutAskItemCountStringPoolId,

@@ -147,6 +147,32 @@ namespace HaCreator.MapSimulator.Entities
                 && hasActiveAnimationDisplayer;
         }
 
+        public static bool TryResolveOwnerRegistrationCadence(
+            IReadOnlyList<IDXObject> frames,
+            string effectPath,
+            bool hasActiveAnimationDisplayer,
+            MobAttackEntry currentAttack,
+            int configuredSpecialAttackAfterMs,
+            out int repeatIntervalMs)
+        {
+            repeatIntervalMs = 0;
+            if (!CanRegisterOwnerBurst(frames, effectPath, hasActiveAnimationDisplayer))
+            {
+                return false;
+            }
+
+            repeatIntervalMs = ResolveRepeatIntervalMs(
+                frames,
+                currentAttack,
+                configuredSpecialAttackAfterMs);
+            return repeatIntervalMs > 0;
+        }
+
+        public static int ResolveNextAllowedTick(int currentTick, int repeatIntervalMs)
+        {
+            return unchecked(currentTick + Math.Max(0, repeatIntervalMs));
+        }
+
         public static bool HasReplayGateElapsed(int currentTick, int startTick, int intervalMs)
         {
             return startTick == int.MinValue

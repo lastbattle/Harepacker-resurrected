@@ -349,6 +349,7 @@ namespace HaCreator.MapSimulator.Fields
             _currentX = _startMoveX;
             _voyageBalrogDepartureStartTime = 0;
             _voyageBalrogAutoTriggered = false;
+            ClearVoyageBalrogAttackState(clearOwner: true);
 
             QueueAnnouncement("The ship is arriving.", 2000);
         }
@@ -631,8 +632,11 @@ namespace HaCreator.MapSimulator.Fields
                     return true;
                 }
 
+                bool hadVoyageBalrogAttack = HasActiveVoyageBalrogAttack;
                 EnterShipMove();
-                message = "Applied OnEndShipMoveField value 6 -> EnterShipMove.";
+                message = hadVoyageBalrogAttack
+                    ? "Applied OnEndShipMoveField value 6 -> EnterShipMove and cleared active departure-owned voyage Balrog attack."
+                    : "Applied OnEndShipMoveField value 6 -> EnterShipMove.";
                 return true;
             }
 
@@ -698,8 +702,11 @@ namespace HaCreator.MapSimulator.Fields
                     RecordTransportPacketOwner(owner, $"OnContiState({state},{stateValue})");
                     if (_shipKind == 0)
                     {
+                        bool hadVoyageBalrogAttack = HasActiveVoyageBalrogAttack;
                         EnterShipMove();
-                        message = $"Applied OnContiState ({state}, {stateValue}) -> EnterShipMove.";
+                        message = hadVoyageBalrogAttack
+                            ? $"Applied OnContiState ({state}, {stateValue}) -> EnterShipMove and cleared active departure-owned voyage Balrog attack."
+                            : $"Applied OnContiState ({state}, {stateValue}) -> EnterShipMove.";
                         return true;
                     }
 
@@ -829,6 +836,7 @@ namespace HaCreator.MapSimulator.Fields
                     _state = ShipState.Docked;
                     _voyageBalrogDepartureStartTime = 0;
                     _voyageBalrogAutoTriggered = false;
+                    ClearVoyageBalrogAttackState(clearOwner: true);
                     OnArrival?.Invoke();
                     System.Diagnostics.Debug.WriteLine("[TransportField] Ship docked");
                     QueueAnnouncement("We have arrived at our destination.", 3000);
@@ -1302,6 +1310,37 @@ namespace HaCreator.MapSimulator.Fields
         {
             return _state == ShipState.InTransit
                 || (_state == ShipState.Moving && _voyageBalrogDepartureStartTime != 0);
+        }
+
+        private void ClearVoyageBalrogAttackState(bool clearOwner)
+        {
+            if (_balrogState == BalrogState.Hidden
+                && _balrogAlpha <= 0f
+                && _balrogX == 0f
+                && _balrogY == 0f)
+            {
+                if (clearOwner)
+                {
+                    _lastVoyageBalrogEventOwner = "none";
+                }
+
+                return;
+            }
+
+            _balrogState = BalrogState.Hidden;
+            _balrogAlpha = 0f;
+            _balrogX = 0f;
+            _balrogY = 0f;
+            _balrogStartX = 0f;
+            _balrogEndX = 0f;
+            _balrogStartY = 0f;
+            _balrogEndY = 0f;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
+            if (clearOwner)
+            {
+                _lastVoyageBalrogEventOwner = "none";
+            }
         }
 
         private int ResolveDefaultVoyageBalrogTriggerOffsetMs()

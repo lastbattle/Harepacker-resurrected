@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Managers
             RockPaperScissorsClientRequestType RequestType,
             RockPaperScissorsChoice Choice,
             int PayloadLength,
+            short? SessionVersion,
             string Source,
             string Summary,
             string PayloadHex,
@@ -58,6 +59,7 @@ namespace HaCreator.MapSimulator.Managers
             int Opcode,
             int PacketType,
             int PayloadLength,
+            short? SessionVersion,
             string Source,
             string Summary,
             string PayloadHex,
@@ -525,7 +527,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} type={entry.RequestType} choice={entry.Choice} payloadLen={entry.PayloadLength} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} type={entry.RequestType} choice={entry.Choice} payloadLen={entry.PayloadLength} sessionVersion={DescribeSessionVersion(entry.SessionVersion)} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -561,7 +563,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} subtype={entry.PacketType} payloadLen={entry.PayloadLength} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} subtype={entry.PacketType} payloadLen={entry.PayloadLength} sessionVersion={DescribeSessionVersion(entry.SessionVersion)} evidence={DescribeTraceEvidenceKind(entry)} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -899,7 +901,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (TryBuildInboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out InboundPacketTrace inboundTrace))
+            if (TryBuildInboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out InboundPacketTrace inboundTrace, e.SessionVersion))
             {
                 RecordInboundTrace(inboundTrace);
             }
@@ -917,7 +919,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (TryBuildOutboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out OutboundPacketTrace trace))
+            if (TryBuildOutboundTrace(e.RawPacket, $"official-session:{e.SourceEndpoint}", out OutboundPacketTrace trace, e.SessionVersion))
             {
                 RecordOutboundTrace(trace);
                 ForwardedOutboundCount++;
@@ -994,19 +996,19 @@ namespace HaCreator.MapSimulator.Managers
             {
                 OutboundPacketTrace outbound = outboundEvidence.Value;
                 InboundPacketTrace inbound = inboundEvidence.Value;
-                return $"Live ownership verification evidence: paired proxied capture outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
+                return $"Live ownership verification evidence: paired proxied initialized capture outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} source={inbound.Source} raw={inbound.RawPacketHex}].";
             }
 
             if (outboundEvidence.HasValue)
             {
                 OutboundPacketTrace outbound = outboundEvidence.Value;
-                return $"Live ownership verification evidence: outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}], waiting for inbound opcode {RockPaperScissorsField.OwnerOpcode}.";
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} sessionVersion={DescribeSessionVersion(outbound.SessionVersion)} source={outbound.Source} raw={outbound.RawPacketHex}], waiting for inbound opcode {RockPaperScissorsField.OwnerOpcode}.";
             }
 
             if (inboundEvidence.HasValue)
             {
                 InboundPacketTrace inbound = inboundEvidence.Value;
-                return $"Live ownership verification evidence: inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}], waiting for outbound opcode {RockPaperScissorsField.ClientOpcode}.";
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} sessionVersion={DescribeSessionVersion(inbound.SessionVersion)} source={inbound.Source} raw={inbound.RawPacketHex}], waiting for outbound opcode {RockPaperScissorsField.ClientOpcode}.";
             }
 
             return "Live ownership verification evidence: none.";
@@ -1047,7 +1049,7 @@ namespace HaCreator.MapSimulator.Managers
             return LiveOwnershipVerificationState.Idle;
         }
 
-        internal static bool TryBuildInboundTrace(byte[] rawPacket, string source, out InboundPacketTrace trace)
+        internal static bool TryBuildInboundTrace(byte[] rawPacket, string source, out InboundPacketTrace trace, short? sessionVersion = null)
         {
             trace = default;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort) + sizeof(byte))
@@ -1080,6 +1082,7 @@ namespace HaCreator.MapSimulator.Managers
                 opcode,
                 packetType,
                 payloadLength,
+                sessionVersion,
                 NormalizeTraceSource(source, "unknown-remote"),
                 summary,
                 Convert.ToHexString(payload),
@@ -1087,7 +1090,7 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        internal static bool TryBuildOutboundTrace(byte[] rawPacket, string source, out OutboundPacketTrace trace)
+        internal static bool TryBuildOutboundTrace(byte[] rawPacket, string source, out OutboundPacketTrace trace, short? sessionVersion = null)
         {
             trace = default;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort) + sizeof(byte))
@@ -1138,6 +1141,7 @@ namespace HaCreator.MapSimulator.Managers
                 requestType,
                 choice,
                 payloadLength,
+                sessionVersion,
                 NormalizeTraceSource(source, "unknown-client"),
                 summary,
                 Convert.ToHexString(payload),
@@ -1209,12 +1213,12 @@ namespace HaCreator.MapSimulator.Managers
 
         private static bool IsLiveProxiedSource(OutboundPacketTrace trace)
         {
-            return IsLiveProxiedSource(trace.Source);
+            return IsLiveProxiedSource(trace.Source, trace.SessionVersion);
         }
 
         private static bool IsLiveProxiedSource(InboundPacketTrace trace)
         {
-            return IsLiveProxiedSource(trace.Source);
+            return IsLiveProxiedSource(trace.Source, trace.SessionVersion);
         }
 
         private static string DescribeTraceEvidenceKind(OutboundPacketTrace trace)
@@ -1227,10 +1231,11 @@ namespace HaCreator.MapSimulator.Managers
             return IsLiveProxiedSource(trace) ? "live-proxied" : "trace-only";
         }
 
-        private static bool IsLiveProxiedSource(string source)
+        private static bool IsLiveProxiedSource(string source, short? sessionVersion)
         {
             const string officialSessionPrefix = "official-session:";
-            return !string.IsNullOrWhiteSpace(source)
+            return sessionVersion.HasValue
+                && !string.IsNullOrWhiteSpace(source)
                 && source.StartsWith(officialSessionPrefix, StringComparison.OrdinalIgnoreCase)
                 && source.Length > officialSessionPrefix.Length
                 && !string.IsNullOrWhiteSpace(source[officialSessionPrefix.Length..]);
@@ -1239,6 +1244,11 @@ namespace HaCreator.MapSimulator.Managers
         private static string NormalizeTraceSource(string source, string fallback)
         {
             return string.IsNullOrWhiteSpace(source) ? fallback : source.Trim();
+        }
+
+        private static string DescribeSessionVersion(short? sessionVersion)
+        {
+            return sessionVersion.HasValue ? sessionVersion.Value.ToString() : "none";
         }
         private static string NormalizeRemoteHost(string remoteHost)
         {

@@ -208,6 +208,11 @@ namespace HaCreator.MapSimulator
         {
             WireFieldDeathPenaltyHandler();
 
+            if (FieldInteractionRestrictionEvaluator.ShouldApplyStandAloneMode(_mapBoard?.MapInfo))
+            {
+                _gameState?.SetStandAloneMode(true);
+            }
+
             PetController pets = _playerManager?.Pets;
             if (pets != null)
             {

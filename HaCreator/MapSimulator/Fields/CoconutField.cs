@@ -497,10 +497,9 @@ namespace HaCreator.MapSimulator.Fields
         public void OnClock(int timeSeconds, int? currentTimeMs = null)
         {
             int now = currentTimeMs ?? Environment.TickCount;
-            int durationMs = Math.Max(0, timeSeconds) * 1000;
             bool wasRoundOwned = _gameActive || _awaitingFinalScore;
             _runtimeActive = true;
-            _finishTick = ResolveClientFinishTick(now, durationMs);
+            _finishTick = ResolveClientClockFinishTick(now, timeSeconds);
             _timeRemaining = Math.Max(0, timeSeconds);
             MarkBoardLayerDirty();
             if (timeSeconds > 0)
@@ -1228,6 +1227,16 @@ namespace HaCreator.MapSimulator.Fields
         {
             int finishTick = unchecked(currentTick + durationMs);
             return finishTick != 0 ? finishTick : 1;
+        }
+
+        private static int ResolveClientClockFinishTick(int currentTick, int timeSeconds)
+        {
+            if (timeSeconds <= 0)
+            {
+                return 1;
+            }
+
+            return ResolveClientFinishTick(currentTick, timeSeconds * 1000);
         }
 
         private void ShowRoundResult(int currentTick)

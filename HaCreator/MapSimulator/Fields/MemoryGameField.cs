@@ -3106,6 +3106,7 @@ namespace HaCreator.MapSimulator.Fields
 
             _statusMessageBeforePrompt = _statusMessage;
             _pendingPrompt = new MemoryGamePromptState(type, stringPoolId, playerIndex, text);
+            MaterializeClientPromptLayer();
             SyncMiniRoomRuntime();
             message = text;
             return true;
@@ -3182,8 +3183,31 @@ namespace HaCreator.MapSimulator.Fields
 
         private void ClearPendingPrompt()
         {
+            ReleaseClientPromptLayer();
             _pendingPrompt = default;
             _statusMessageBeforePrompt = null;
+        }
+
+        private void MaterializeClientPromptLayer()
+        {
+            if (_clientPromptLayerMaterialized)
+            {
+                return;
+            }
+
+            _clientPromptLayerMaterialized = true;
+            _clientPromptLayerCreateCount++;
+        }
+
+        private void ReleaseClientPromptLayer()
+        {
+            if (!_clientPromptLayerMaterialized)
+            {
+                return;
+            }
+
+            _clientPromptLayerMaterialized = false;
+            _clientPromptLayerReleaseCount++;
         }
 
         private bool TryConsumePendingPromptForOutgoingPacket(byte[] packetBytes, out string message)
@@ -3206,6 +3230,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            _lastClientPromptResponseSubtype = packetBytes[0];
             ClearPendingPrompt();
             return true;
         }

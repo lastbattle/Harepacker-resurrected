@@ -2089,7 +2089,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
             {
-                return false;
+                return IsWzConfirmedSkillOnlyMorphActionName(actionName);
             }
 
             if (rawActionCode == ClientMorphActionTableSkippedRawActionCode)
@@ -2108,6 +2108,21 @@ namespace HaCreator.MapSimulator.Character
             // families through this same morph-owner resolver seam. Keep explicit
             // post-table maps constrained to their evidenced alias surface instead
             // of widening to unrelated published morph combat branches.
+            return IsClientPublishedAuthoredMorphFallbackAction(actionName)
+                   || IsClientPublishedMeleeMorphFallbackAction(actionName)
+                   || ClientPublishedJumpMorphFallbackAliases.ContainsKey(actionName)
+                   || ClientPublishedMovementMorphFallbackAliases.ContainsKey(actionName)
+                   || ClientPublishedPostureMorphFallbackAliases.ContainsKey(actionName);
+        }
+
+        private static bool IsWzConfirmedSkillOnlyMorphActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || !ClientPublishedAliasesWithoutDirectBodyRedirectRows.Contains(actionName))
+            {
+                return false;
+            }
+
             return IsClientPublishedAuthoredMorphFallbackAction(actionName)
                    || IsClientPublishedMeleeMorphFallbackAction(actionName)
                    || ClientPublishedJumpMorphFallbackAliases.ContainsKey(actionName)

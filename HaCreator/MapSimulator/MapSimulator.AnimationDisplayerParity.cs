@@ -387,6 +387,7 @@ namespace HaCreator.MapSimulator
             public int EffectiveUpdateCount => Math.Max(1, UpdateCount > 0 ? UpdateCount : FrameCount);
             public int EffectiveDurationMs => Math.Max(120, DurationMs > 0 ? DurationMs : AnimationDisplayerFallingFallbackDurationMs);
             public float EffectiveFallSpeed => EffectiveFallDistance * 1000f / EffectiveDurationMs;
+            public byte EffectiveAlpha => (byte)Math.Clamp(Alpha > 0 ? Alpha : byte.MaxValue, byte.MinValue, byte.MaxValue);
         }
 
         internal readonly record struct AnimationDisplayerAreaRegistrationProfile(
@@ -1051,7 +1052,8 @@ namespace HaCreator.MapSimulator
                 Math.Max(1f, profile.StartArea.Width / 2f),
                 profile.EffectiveUpdateCount,
                 Math.Max(120f, profile.EffectiveFallSpeed),
-                currTickCount + profile.UpdateNextMs);
+                currTickCount + profile.UpdateNextMs,
+                profile.EffectiveAlpha);
             message = $"Registered falling animation-displayer effect from {effectUol} ({profile.EffectiveUpdateCount} drops).";
             return true;
         }
@@ -1269,14 +1271,24 @@ namespace HaCreator.MapSimulator
             }
 
             Vector2 fallbackPosition = getPosition();
-            _animationEffects.AddOneTimeAttached(
+            string ownerActionName = ResolveAnimationDisplayerLocalPacketOwnedActionName(ownerCharacterId);
+            bool ownerFacingRight = ResolveAnimationDisplayerLocalPacketOwnedFacingRight(ownerCharacterId);
+            int initialElapsedMs = ResolveAnimationDisplayerLocalPacketOwnedBasicOneTimeInitialElapsed(
+                ownerCharacterId,
+                BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKey(effectUol),
+                effectUol,
+                ownerActionName,
+                ownerFacingRight,
+                currentTime,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+            _animationEffects.AddPacketOwnedCool(
                 frames,
+                effectUol,
                 getPosition,
-                getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
-                fallbackFlip: false,
-                currentTime);
+                currentTime,
+                initialElapsedMs: initialElapsedMs);
             message = $"Registered cooldown animation-displayer layer from {effectUol}.";
             return true;
         }
@@ -5596,6 +5608,13 @@ namespace HaCreator.MapSimulator
                 effectUol);
         }
 
+        private static string BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKey(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
+                "cool",
+                effectUol);
+        }
+
         private static string BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
             string ownerFamily,
             string effectUol)
@@ -6184,6 +6203,11 @@ namespace HaCreator.MapSimulator
         internal static string BuildAnimationDisplayerLocalPacketOwnedCombatFeedbackOwnerSlotKeyForTesting(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedCombatFeedbackOwnerSlotKey(effectUol);
+        }
+
+        internal static string BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKeyForTesting(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKey(effectUol);
         }
 
         internal static int ResolveAnimationDisplayerLocalPacketOwnedBasicOneTimeRestoreElapsedForTesting(

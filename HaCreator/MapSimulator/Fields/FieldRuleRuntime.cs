@@ -85,6 +85,8 @@ namespace HaCreator.MapSimulator.Fields
             FieldInteractionRestrictionEvaluator.GetExpDecreaseRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetItemOptionLimitMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetAutoExpandMinimapMessage(_fieldLimit) != null ||
+            FieldInteractionRestrictionEvaluator.GetStandAloneModeEntryMessage(_mapInfo) != null ||
+            FieldInteractionRestrictionEvaluator.GetPartyStandAloneEntryMessage(_mapInfo) != null ||
             FieldSkillRestrictionEvaluator.HasFieldEntryNotice(_fieldLimit) ||
             _moveLimit.HasValue ||
             _entryScripts.Count > 0 ||

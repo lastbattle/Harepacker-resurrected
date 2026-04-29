@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MiniRoomLayoutLegacyOwnerY = 61;
         private const int MiniRoomTitleClientLineWidth = 100;
         private const int MiniRoomTitleSecondLineOffsetY = 14;
+        private const float MiniRoomCountTextFallbackScale = 0.38f;
         private const int NameTagVerticalOffset = 8;
         private const int NameTagMinimumWidth = 58;
         private const int NameTagHorizontalPadding = 18;
@@ -1977,13 +1978,15 @@ namespace HaCreator.MapSimulator.Interaction
                 assets.CurrentCountDigits,
                 ResolveMiniRoomCurrentUsers(_activeSnapshot),
                 boardX + layout.CurrentCountX,
-                boardY + layout.CurrentCountY);
+                boardY + layout.CurrentCountY,
+                font);
             DrawMiniRoomBalloonCount(
                 spriteBatch,
                 assets.MaxCountDigits,
                 ResolveMiniRoomMaxUsers(_activeSnapshot, _activeMiniRoomBoardAssets),
                 boardX + layout.MaxCountX,
-                boardY + layout.MaxCountY);
+                boardY + layout.MaxCountY,
+                font);
 
             Texture2D statusTexture = ResolveMiniRoomStatusTexture(_activeSnapshot, assets, _activeMiniRoomBoardAssets);
             if (statusTexture != null)
@@ -2382,9 +2385,15 @@ namespace HaCreator.MapSimulator.Interaction
                     : null);
         }
 
-        private static void DrawMiniRoomBalloonCount(SpriteBatch spriteBatch, IReadOnlyList<Texture2D> digits, byte value, int x, int y)
+        private static void DrawMiniRoomBalloonCount(
+            SpriteBatch spriteBatch,
+            IReadOnlyList<Texture2D> digits,
+            byte value,
+            int x,
+            int y,
+            SpriteFont font)
         {
-            if (spriteBatch == null || digits == null)
+            if (spriteBatch == null)
             {
                 return;
             }
@@ -2392,6 +2401,7 @@ namespace HaCreator.MapSimulator.Interaction
             int digitIndex = ResolveMiniRoomBalloonDigitIndex(value, digits.Count);
             if (digitIndex < 0)
             {
+                DrawMiniRoomBalloonCountTextFallback(spriteBatch, font, value, x, y);
                 return;
             }
 
@@ -2399,7 +2409,10 @@ namespace HaCreator.MapSimulator.Interaction
             if (digitTexture != null)
             {
                 spriteBatch.Draw(digitTexture, new Vector2(x, y), Color.White);
+                return;
             }
+
+            DrawMiniRoomBalloonCountTextFallback(spriteBatch, font, value, x, y);
         }
 
         internal static int ResolveMiniRoomBalloonDigitIndexForTesting(byte value, int digitArrayLength)
@@ -2416,6 +2429,36 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return digit;
+        }
+
+        internal static bool ShouldUseMiniRoomBalloonCountTextFallbackForTesting(byte value, int digitArrayLength)
+        {
+            return value > 0 && ResolveMiniRoomBalloonDigitIndex(value, digitArrayLength) < 0;
+        }
+
+        private static void DrawMiniRoomBalloonCountTextFallback(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            byte value,
+            int x,
+            int y)
+        {
+            if (spriteBatch == null || font == null || value == 0)
+            {
+                return;
+            }
+
+            string text = value.ToString(CultureInfo.InvariantCulture);
+            spriteBatch.DrawString(
+                font,
+                text,
+                new Vector2(x, y - 1),
+                Color.Black,
+                0f,
+                Vector2.Zero,
+                MiniRoomCountTextFallbackScale,
+                SpriteEffects.None,
+                0f);
         }
 
         private void DrawMiniRoomBalloonText(

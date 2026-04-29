@@ -928,6 +928,60 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static bool TryDecodeMarriageResultPayload(
+            IReadOnlyList<byte> payload,
+            out byte subtype,
+            out string serverText,
+            out string error)
+        {
+            subtype = 0;
+            serverText = string.Empty;
+
+            if (payload == null || payload.Count == 0)
+            {
+                error = "Marriage-result payload is empty.";
+                return false;
+            }
+
+            byte[] bytes = payload as byte[] ?? payload.ToArray();
+            try
+            {
+                using MemoryStream stream = new(bytes, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: true);
+                subtype = reader.ReadByte();
+
+                if (subtype == EngagementProposalDialogText.ResultSubtypeServerNotice)
+                {
+                    serverText = ReadMapleString(reader);
+                }
+
+                if (!EngagementProposalDialogText.TryGetMarriageResultNotice(subtype, serverText, out _))
+                {
+                    error = $"Marriage-result subtype {subtype} is not owned by {ClientOwnerTypeName}.";
+                    return false;
+                }
+
+                if (stream.Position != stream.Length)
+                {
+                    error = $"Marriage-result subtype {subtype} payload has {stream.Length - stream.Position} unexpected trailing bytes.";
+                    return false;
+                }
+
+                error = null;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = $"Marriage-result subtype {subtype} payload ended before all fields could be decoded.";
+                return false;
+            }
+            catch (IOException ex)
+            {
+                error = $"Failed to decode marriage-result payload: {ex.Message}";
+                return false;
+            }
+        }
+
         internal static bool TryDecodeIncomingDecisionPayload(
             IReadOnlyList<byte> payload,
             out bool accepted,

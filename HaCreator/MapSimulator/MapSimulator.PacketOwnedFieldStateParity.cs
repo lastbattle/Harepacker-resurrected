@@ -313,7 +313,11 @@ namespace HaCreator.MapSimulator
             int Y,
             int Z,
             int PlatformNumber,
-            bool Flow,
+            byte Flow,
+            int? Rx,
+            int? Ry,
+            int? Cx,
+            int? Cy,
             string StateSfx,
             IReadOnlyDictionary<int, string> AuthoredStateSfxByIndex,
             IReadOnlySet<int> AuthoredStateIndexes)
@@ -353,7 +357,7 @@ namespace HaCreator.MapSimulator
                         parts.Add($"authoredStates={string.Join("/", AuthoredStateIndexes.OrderBy(static state => state))}");
                     }
 
-                    if (Flow)
+                    if (Flow != 0)
                     {
                         parts.Add("restartMoving");
                     }

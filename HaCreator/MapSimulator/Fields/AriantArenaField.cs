@@ -1048,6 +1048,11 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (!TryRequireAriantRemoteActor(avatarUpdate.CharacterId, out errorMessage))
+            {
+                return false;
+            }
+
             return _remoteUserPool.TryApplyAvatarModified(
                 avatarUpdate,
                 currentTimeMs,
@@ -1062,6 +1067,11 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (!TryRequireAriantRemoteActor(packet.CharacterId, out errorMessage))
+            {
+                return false;
+            }
+
             return _remoteUserPool.TryApplyTemporaryStatSet(packet, out errorMessage);
         }
 
@@ -1069,6 +1079,11 @@ namespace HaCreator.MapSimulator.Fields
         {
             errorMessage = null;
             if (!RemoteUserPacketCodec.TryParseTemporaryStatReset(payload, out RemoteUserTemporaryStatResetPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryRequireAriantRemoteActor(packet.CharacterId, out errorMessage))
             {
                 return false;
             }
@@ -1217,6 +1232,18 @@ namespace HaCreator.MapSimulator.Fields
             return _remoteUserPool != null
                 && _remoteUserPool.TryGetActor(characterId, out actor)
                 && IsAriantRemoteActor(actor);
+        }
+
+        private bool TryRequireAriantRemoteActor(int characterId, out string errorMessage)
+        {
+            if (TryGetRemoteActor(characterId, out _))
+            {
+                errorMessage = null;
+                return true;
+            }
+
+            errorMessage = $"Remote Ariant actor id {characterId} does not exist.";
+            return false;
         }
 
         private static bool IsAriantRemoteActor(RemoteUserActor actor)

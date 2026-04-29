@@ -1300,6 +1300,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => $"Channel transfer request was ignored with reason {reason}."
             };
             _lastTransferFailureMessage = text;
+            callbacks?.ConsumeTransferFieldRequestFailure?.Invoke();
             callbacks?.AddClientChatMessage?.Invoke(text, 12, null);
             _statusMessage = "Applied packet-owned transfer-channel failure feedback.";
             message = _statusMessage;

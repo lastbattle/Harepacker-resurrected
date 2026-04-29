@@ -179,7 +179,9 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsMonsterRidingSlot(EquipSlot slot)
         {
-            return slot == EquipSlot.TamingMob || slot == EquipSlot.Saddle;
+            return slot == EquipSlot.TamingMob
+                   || slot == EquipSlot.Saddle
+                   || slot == EquipSlot.TamingMobAccessory;
         }
     }
 }

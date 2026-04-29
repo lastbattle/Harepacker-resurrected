@@ -659,22 +659,27 @@ namespace HaCreator.MapSimulator.UI
 
         internal Texture2D ResolveTexture(bool selected, bool hovered, bool pressed)
         {
+            Texture2D baseFrame = Normal ?? Hovered ?? Pressed ?? Disabled;
+            Texture2D keyFocused = IsFrameCompatible(KeyFocused, baseFrame)
+                ? KeyFocused
+                : null;
+
             if (pressed)
             {
-                return Pressed ?? Hovered ?? KeyFocused ?? Normal;
+                return Pressed ?? Hovered ?? keyFocused ?? Normal;
             }
 
             if (hovered)
             {
-                return Hovered ?? KeyFocused ?? Normal;
+                return Hovered ?? keyFocused ?? Normal;
             }
 
             if (selected)
             {
-                return KeyFocused ?? Hovered ?? Normal;
+                return keyFocused ?? Hovered ?? Normal;
             }
 
-            return Normal ?? Hovered ?? Pressed ?? Disabled ?? KeyFocused;
+            return Normal ?? Hovered ?? Pressed ?? Disabled ?? keyFocused;
         }
 
         internal static Point ResolveFrameSize(LogoutGiftButtonSkin skin)
@@ -687,6 +692,32 @@ namespace HaCreator.MapSimulator.UI
             return texture == null
                 ? new Point(DefaultSelectButtonWidth, DefaultSelectButtonHeight)
                 : new Point(texture.Width, texture.Height);
+        }
+
+        internal static bool IsKeyFocusedFrameCompatible(Point keyFocusedSize, Point baseFrameSize)
+        {
+            return keyFocusedSize.X > 0
+                && keyFocusedSize.Y > 0
+                && baseFrameSize.X > 0
+                && baseFrameSize.Y > 0
+                && keyFocusedSize == baseFrameSize;
+        }
+
+        private static bool IsFrameCompatible(Texture2D candidate, Texture2D baseFrame)
+        {
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            if (baseFrame == null)
+            {
+                return true;
+            }
+
+            return IsKeyFocusedFrameCompatible(
+                new Point(candidate.Width, candidate.Height),
+                new Point(baseFrame.Width, baseFrame.Height));
         }
     }
 }

@@ -30,6 +30,9 @@ namespace HaCreator.MapSimulator.UI
             public int CommoditySerialNumber { get; init; }
             public int OriginalCommoditySerialNumber { get; init; }
             public int RawDate { get; init; }
+            public bool HasPacketStateByte { get; init; }
+            public int PacketStateByte { get; init; }
+            public int PacketStateByteOffset { get; init; } = -1;
         }
 
         internal sealed class OneADayPacketState
@@ -45,6 +48,8 @@ namespace HaCreator.MapSimulator.UI
             public bool HasPacketRewardSessionByte { get; init; }
             public int PacketRewardSessionByte { get; init; }
             public int RewardSessionByteOffset { get; init; } = -1;
+            public int RewardHistoryByteCount { get; init; }
+            public string RewardHistoryPayloadHex { get; init; } = string.Empty;
         }
 
         public sealed class PacketCatalogEntry
@@ -4173,10 +4178,13 @@ namespace HaCreator.MapSimulator.UI
             string rewardSessionState = state.HasPacketRewardSessionByte
                 ? $"packet reward-session 0x{(state.PacketRewardSessionByte & 0xFF):X2}"
                 : "no packet reward-session byte";
+            string rewardHistoryByteState = state.RewardHistoryByteCount > 0
+                ? $", reward-history bytes {state.RewardHistoryByteCount.ToString(CultureInfo.InvariantCulture)} ({state.RewardHistoryPayloadHex})"
+                : string.Empty;
             _noticeState =
-                $"One-a-day owner loaded {currentLabel}, date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous slot(s) ({(_cashOneADayRewardPending ? "today lane armed" : "today lane idle")}, {rewardSessionState}).";
+                $"One-a-day owner loaded {currentLabel}, date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous slot(s) ({(_cashOneADayRewardPending ? "today lane armed" : "today lane idle")}, {rewardSessionState}{rewardHistoryByteState}).";
             return
-                $"CCashShop::OnOneADay decoded current date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous entry(ies), and {(state.HasPacketRewardSessionByte ? $"reward-session byte 0x{(state.PacketRewardSessionByte & 0xFF):X2}" : "no reward-session byte")}.";
+                $"CCashShop::OnOneADay decoded current date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous entry(ies), {(state.HasPacketRewardSessionByte ? $"reward-session byte 0x{(state.PacketRewardSessionByte & 0xFF):X2}" : "no reward-session byte")}, and {state.RewardHistoryByteCount.ToString(CultureInfo.InvariantCulture)} reward-history byte(s).";
         }
 
         internal static bool IsOneADayRewardPending(int currentCommoditySerialNumber)
@@ -4210,18 +4218,14 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                List<OneADayHistoryEntry> historyEntries = new(historyCount);
+                List<(int CommoditySerialNumber, int OriginalCommoditySerialNumber, int RawDate)> decodedHistoryEntries = new(historyCount);
                 for (int i = 0; i < historyCount; i++)
                 {
-                    historyEntries.Add(new OneADayHistoryEntry
-                    {
-                        CommoditySerialNumber = reader.ReadInt32(),
-                        OriginalCommoditySerialNumber = reader.ReadInt32(),
-                        RawDate = reader.ReadInt32()
-                    });
+                    decodedHistoryEntries.Add((reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32()));
                 }
 
                 int decodedByteLength = (int)stream.Position;
+                int trailingPayloadOffset = decodedByteLength;
                 int trailingByteCount = (int)Math.Max(0L, stream.Length - stream.Position);
                 bool hasPacketRewardSessionByte = trailingByteCount >= 1;
                 int packetRewardSessionByte = 0;
@@ -4246,6 +4250,27 @@ namespace HaCreator.MapSimulator.UI
                     trailingPayloadBytes = reader.ReadBytes(trailingByteCount);
                 }
 
+                int rewardHistoryByteCount = Math.Min(decodedHistoryEntries.Count, trailingPayloadBytes.Length);
+                List<OneADayHistoryEntry> historyEntries = new(historyCount);
+                for (int i = 0; i < decodedHistoryEntries.Count; i++)
+                {
+                    (int commoditySerialNumber, int originalCommoditySerialNumber, int rawDate) = decodedHistoryEntries[i];
+                    bool hasPacketStateByte = i < rewardHistoryByteCount;
+                    historyEntries.Add(new OneADayHistoryEntry
+                    {
+                        CommoditySerialNumber = commoditySerialNumber,
+                        OriginalCommoditySerialNumber = originalCommoditySerialNumber,
+                        RawDate = rawDate,
+                        HasPacketStateByte = hasPacketStateByte,
+                        PacketStateByte = hasPacketStateByte ? trailingPayloadBytes[i] : 0,
+                        PacketStateByteOffset = hasPacketStateByte ? trailingPayloadOffset + i : -1
+                    });
+                }
+
+                string rewardHistoryPayloadHex = rewardHistoryByteCount > 0
+                    ? BuildCompactPayloadHex(trailingPayloadBytes, 0, rewardHistoryByteCount)
+                    : string.Empty;
+
                 state = new OneADayPacketState
                 {
                     CurrentDate = currentDate,
@@ -4260,7 +4285,9 @@ namespace HaCreator.MapSimulator.UI
                     TrailingPayloadBytes = trailingPayloadBytes,
                     HasPacketRewardSessionByte = hasPacketRewardSessionByte,
                     PacketRewardSessionByte = packetRewardSessionByte,
-                    RewardSessionByteOffset = rewardSessionByteOffset
+                    RewardSessionByteOffset = rewardSessionByteOffset,
+                    RewardHistoryByteCount = rewardHistoryByteCount,
+                    RewardHistoryPayloadHex = rewardHistoryPayloadHex
                 };
                 return true;
             }
@@ -4712,6 +4739,7 @@ namespace HaCreator.MapSimulator.UI
             int winningPrice = Math.Max(0, reader.ReadInt32());
             int itemCount = Math.Max(0, reader.ReadInt32());
             int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1 + (sizeof(int) * 2), _itcPurchasePacketEntries, _itcPacketCatalogEntries);
+            int trailingOffset = (int)Math.Min(stream.Length, stream.Position);
             List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(
                 reader,
                 ResolveTrailingItcDecodeCount(reader, requestedCount: itemCount));
@@ -4747,17 +4775,22 @@ namespace HaCreator.MapSimulator.UI
                 int fallbackListingId = listingIdHint > 0
                     ? listingIdHint
                     : Math.Max(0, _itcNormalItemSelectedListingId);
+                string rawTailSummary = BuildItcRawTailSummary(payload, trailingOffset);
                 PacketCatalogEntry snapshotEntry = new()
                 {
                     Title = "Success bid",
                     Detail = winningPrice > 0
-                        ? $"Success-bid info resolved at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s)."
-                        : $"Success-bid info resolved for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) without an explicit winning price.",
+                        ? $"Success-bid info resolved at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s).{rawTailSummary}"
+                        : $"Success-bid info resolved for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) without an explicit winning price.{rawTailSummary}",
                     Seller = "CITC purchase owner",
                     PriceLabel = winningPrice > 0 ? winningPrice.ToString("N0", CultureInfo.InvariantCulture) : string.Empty,
                     StateLabel = "Bid success",
                     ListingId = fallbackListingId,
-                    Price = winningPrice
+                    Price = winningPrice,
+                    PacketSource = "CITC::OnSuccessBidInfoResult",
+                    PacketFieldSummary = BuildItcRawTailFieldSummary(payload, trailingOffset),
+                    PacketRawByteLength = Math.Max(0, (payload?.Length ?? 0) - trailingOffset),
+                    PacketPayloadRawHex = BuildItcRawTailHexSummary(payload, trailingOffset)
                 };
                 UpsertWishEntry(_itcPurchasePacketEntries, snapshotEntry);
                 if (fallbackListingId > 0)
@@ -4774,6 +4807,19 @@ namespace HaCreator.MapSimulator.UI
                 : $"Success-bid info arrived without an explicit winning price and refreshed {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} purchase owner row(s).";
             message =
                 $"CITC::OnSuccessBidInfoResult updated {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} packet-owned purchase row(s) from bid info ({updatedRows.ToString(CultureInfo.InvariantCulture)} decoded ITC row(s), listing hint {listingIdHint.ToString(CultureInfo.InvariantCulture)}).";
+            string retainedTailMessage = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                trailingOffset,
+                decodedRows.Count,
+                "Success bid body",
+                "CITC purchase owner",
+                "Bid success body");
+            if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+            {
+                message += $" {retainedTailMessage}";
+                _noticeState += $" {retainedTailMessage}";
+            }
+
             AppendItcResultPacketEntry(new PacketCatalogEntry
             {
                 Title = "Success bid info",
@@ -4806,6 +4852,7 @@ namespace HaCreator.MapSimulator.UI
             int reason = reader.ReadInt32();
             int itemCount = reader.ReadInt32();
             int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1 + (sizeof(int) * 2), _itcWishPacketEntries);
+            int trailingOffset = (int)Math.Min(stream.Length, stream.Position);
             List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(
                 reader,
                 ResolveTrailingItcDecodeCount(reader, requestedCount: itemCount));
@@ -4854,6 +4901,19 @@ namespace HaCreator.MapSimulator.UI
                 : $"Wish cancellation notice reported reason {reason.ToString(CultureInfo.InvariantCulture)} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) still pending.";
             message =
                 $"CITC::OnNotifyCancelWishResult surfaced reason {reason.ToString(CultureInfo.InvariantCulture)} for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) and decoded {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s) (listing hint {listingIdHint.ToString(CultureInfo.InvariantCulture)}, removed {removedCount.ToString(CultureInfo.InvariantCulture)}).";
+            string retainedTailMessage = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                trailingOffset,
+                decodedRows.Count,
+                "Cancel wish body",
+                "CITC wish owner",
+                reason == 0 ? "Processed body" : "Pending body");
+            if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+            {
+                message += $" {retainedTailMessage}";
+                _noticeState += $" {retainedTailMessage}";
+            }
+
             AppendItcResultPacketEntry(new PacketCatalogEntry
             {
                 Title = "Cancel wish notice",
@@ -6972,6 +7032,20 @@ namespace HaCreator.MapSimulator.UI
                     AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Failed body"));
                 }
             }
+            else
+            {
+                string retainedTailMessage = AppendItcRawTailResultEntryIfNeeded(
+                    payload,
+                    startOffset: 2,
+                    decodedRowCount: decodedRows.Count,
+                    title: "Failed ITC body",
+                    seller: "CITC",
+                    stateLabel: "Failed body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    message += $" {retainedTailMessage}";
+                }
+            }
 
             AppendItcResultPacketEntry(new PacketCatalogEntry
             {
@@ -7007,6 +7081,20 @@ namespace HaCreator.MapSimulator.UI
                     AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Decoded fallback"));
                 }
             }
+            else
+            {
+                string retainedTailMessage = AppendItcRawTailResultEntryIfNeeded(
+                    payload,
+                    startOffset: 1,
+                    decodedRowCount: decodedRows.Count,
+                    title: "Decode-failed ITC body",
+                    seller: "CITC",
+                    stateLabel: "Decode body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    message += $" {retainedTailMessage}";
+                }
+            }
 
             AppendItcResultPacketEntry(new PacketCatalogEntry
             {
@@ -7036,6 +7124,20 @@ namespace HaCreator.MapSimulator.UI
                 foreach (PacketCatalogEntry row in decodedRows)
                 {
                     AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Unknown body"));
+                }
+            }
+            else
+            {
+                string retainedTailMessage = AppendItcRawTailResultEntryIfNeeded(
+                    packetPayload,
+                    startOffset: 1,
+                    decodedRowCount: decodedRows.Count,
+                    title: $"{subtypeLabel} body",
+                    seller: "CITC",
+                    stateLabel: "Unknown body");
+                if (!string.IsNullOrWhiteSpace(retainedTailMessage))
+                {
+                    summary += $" {retainedTailMessage}";
                 }
             }
 
@@ -7072,6 +7174,84 @@ namespace HaCreator.MapSimulator.UI
             using BinaryReader reader = new(stream);
             stream.Position = offset;
             return TryDecodeTrailingItcItemEntries(reader, maxCount);
+        }
+
+        private string AppendItcRawTailResultEntryIfNeeded(
+            byte[] payload,
+            int startOffset,
+            int decodedRowCount,
+            string title,
+            string seller,
+            string stateLabel)
+        {
+            if (decodedRowCount > 0 || payload == null)
+            {
+                return string.Empty;
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            if (offset >= payload.Length)
+            {
+                return string.Empty;
+            }
+
+            int byteLength = payload.Length - offset;
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = string.IsNullOrWhiteSpace(title) ? "ITC packet body" : title,
+                Detail = $"{(string.IsNullOrWhiteSpace(title) ? "ITC packet body" : title)} retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw trailing byte(s) for the packet-owned stage row.",
+                Seller = string.IsNullOrWhiteSpace(seller) ? "CITC" : seller,
+                PriceLabel = $"Offset {offset.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = string.IsNullOrWhiteSpace(stateLabel) ? "Raw body" : stateLabel,
+                PacketSource = string.IsNullOrWhiteSpace(title) ? "ITC packet body" : title,
+                PacketFieldSummary = BuildItcRawTailFieldSummary(payload, offset),
+                PacketRawByteLength = byteLength,
+                PacketPayloadRawHex = BuildItcRawTailHexSummary(payload, offset)
+            });
+            return $"Retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw trailing ITC byte(s) at offset {offset.ToString(CultureInfo.InvariantCulture)} for packet-owned result fallback.";
+        }
+
+        private static string BuildItcRawTailSummary(byte[] payload, int startOffset)
+        {
+            int byteLength = Math.Max(0, (payload?.Length ?? 0) - Math.Clamp(startOffset, 0, payload?.Length ?? 0));
+            return byteLength > 0
+                ? $" Raw trailing ITC body retained ({byteLength.ToString(CultureInfo.InvariantCulture)} byte(s))."
+                : string.Empty;
+        }
+
+        private static string BuildItcRawTailFieldSummary(byte[] payload, int startOffset)
+        {
+            if (payload == null)
+            {
+                return string.Empty;
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            int byteLength = Math.Max(0, payload.Length - offset);
+            return byteLength > 0
+                ? $"Raw trailing ITC packet body: offset {offset.ToString(CultureInfo.InvariantCulture)}, {byteLength.ToString(CultureInfo.InvariantCulture)} byte(s)."
+                : string.Empty;
+        }
+
+        private static string BuildItcRawTailHexSummary(byte[] payload, int startOffset)
+        {
+            if (payload == null)
+            {
+                return string.Empty;
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            int byteLength = Math.Max(0, payload.Length - offset);
+            if (byteLength <= 0)
+            {
+                return string.Empty;
+            }
+
+            int previewLength = Math.Min(byteLength, 64);
+            byte[] preview = new byte[previewLength];
+            Buffer.BlockCopy(payload, offset, preview, 0, previewLength);
+            string suffix = byteLength > previewLength ? "..." : string.Empty;
+            return $"ITC raw tail[{byteLength.ToString(CultureInfo.InvariantCulture)}]={Convert.ToHexString(preview)}{suffix}";
         }
 
         private void AppendItcResultPacketEntry(PacketCatalogEntry entry)

@@ -287,11 +287,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (normalizedAction == PacketSkillActionHealingRobotHeal)
             {
-                return ResolvePacketSpecialBranch(
-                    skill,
-                    assistType,
-                    "heal",
-                    "support");
+                if (!IsSitdownHealingSupportSummon(skill))
+                {
+                    return null;
+                }
+
+                return ResolveSitdownHealingRequestBranch(skill);
             }
 
             if (normalizedAction == PacketSkillActionSubsummon)
@@ -377,9 +378,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (normalizedAction == PacketSkillActionHealingRobotHeal
-                && (HasSupportOwnedMinionAbilityCue(skill)
-                    || HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction))
-                && HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction))
+                && HasAuthoredHealingRobotPacketSkillBranch(skill))
             {
                 return SummonAssistType.Support;
             }
@@ -544,13 +543,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (normalizedAction == PacketSkillActionHealingRobotHeal)
                 {
-                    if (!HasSupportOwnedMinionAbilityCue(skill)
-                        && !HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction))
-                    {
-                        return false;
-                    }
-
-                    return HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction);
+                    return HasAuthoredHealingRobotPacketSkillBranch(skill);
                 }
 
                 if (IsBeholderSupportPacketSkillAction(normalizedAction))
@@ -632,6 +625,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return !string.IsNullOrWhiteSpace(ResolveNoActionSupportOwnedBranch(skill));
         }
 
+        private static bool HasAuthoredHealingRobotPacketSkillBranch(SkillData skill)
+        {
+            return IsSitdownHealingSupportSummon(skill)
+                   && !string.IsNullOrWhiteSpace(ResolveSitdownHealingRequestBranch(skill));
+        }
+
         private static bool HasAuthoredSupportOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
         {
             if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
@@ -641,8 +640,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (normalizedAction == PacketSkillActionHealingRobotHeal)
             {
-                return !string.IsNullOrWhiteSpace(
-                    ResolveNamedSummonBranch(skill, "heal", "support", "skill1", "skill2", "stand"));
+                return HasAuthoredHealingRobotPacketSkillBranch(skill);
             }
 
             if (skill.SkillId == BeholderSummonSkillId && IsBeholderSupportPacketSkillAction(normalizedAction))

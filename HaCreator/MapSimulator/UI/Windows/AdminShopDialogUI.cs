@@ -955,8 +955,9 @@ namespace HaCreator.MapSimulator.UI
                 trailingByteCount,
                 hasResultCode,
                 trailingPayloadSignature: trailingPayloadSignature,
-                keepSessionActive,
-                preservedVisibilityState,
+                trailingPayload: trailingPayload,
+                keepSessionActive: keepSessionActive,
+                preservedVisibilityState: preservedVisibilityState,
                 keepPendingRequestState: hasPendingRequestState);
             if (shouldStageDeferredResult)
             {
@@ -1176,6 +1177,7 @@ namespace HaCreator.MapSimulator.UI
                 trailingByteCount,
                 hasResultCode,
                 trailingPayloadSignature,
+                trailingPayload,
                 countAsInboundPacket);
             CapturePacketOwnedWishlistSearchSnapshot(
                 subtype,
@@ -2158,6 +2160,20 @@ namespace HaCreator.MapSimulator.UI
             _footerMessage = message;
             UpdateActionButtonStates();
             return results;
+        }
+
+        public bool HasPacketOwnedWishlistSearchResultPayload(string query, string categoryKey, int priceRangeIndex)
+        {
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+            if (snapshot == null
+                || snapshot.IgnoredDueToSessionMismatch
+                || !MatchesPacketOwnedWishlistSearchSnapshot(snapshot, query, categoryKey, priceRangeIndex))
+            {
+                return false;
+            }
+
+            return (snapshot.ItemIds?.Count ?? 0) > 0
+                   || (snapshot.ResultRows?.Count ?? 0) > 0;
         }
 
         public IReadOnlyList<WishlistSearchResult> GetWishlistCategoryResults(string categoryKey, out string message)

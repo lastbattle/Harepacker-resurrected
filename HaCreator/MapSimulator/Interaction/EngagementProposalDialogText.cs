@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const byte ResultSubtypeReservationCanceled = 31;
         internal const byte ResultSubtypeReservationLockedBreak = 32;
         internal const byte ResultSubtypeInvitationInvalid = 34;
+        internal const byte ResultSubtypeServerNotice = 36;
 
         private const string WaitForResponseFallback = "Waiting for her response...";
         private const string IncomingRequestPromptFallback = "%s has requested engagement.\r\nWill you accept this proposal?";
@@ -265,7 +266,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case ResultSubtypeInvitationInvalid:
                     notice = GetInvitationInvalidText();
                     return true;
-                case 36:
+                case ResultSubtypeServerNotice:
                     notice = string.IsNullOrWhiteSpace(serverText) ? string.Empty : serverText.Trim();
                     return !string.IsNullOrWhiteSpace(notice);
                 default:

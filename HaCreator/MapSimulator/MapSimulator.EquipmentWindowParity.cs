@@ -1784,38 +1784,36 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PendingEquipmentChangeEnvelope matchedEnvelope = null;
-            string lastMismatchReason = null;
-            string structuralRejectReason = null;
-            for (int i = 0; i < mechanicCandidates.Count; i++)
+            List<EquipmentChangeRequest> candidateRequests = new(mechanicCandidates.Count);
+            foreach (PendingEquipmentChangeEnvelope candidate in mechanicCandidates)
             {
-                PendingEquipmentChangeEnvelope candidate = mechanicCandidates[i];
-                if (MechanicEquipmentPacketParity.TryRecognizeClientInventoryOperationCompletion(
-                        candidate.Request,
-                        payload,
-                        out string rejectReason))
+                candidateRequests.Add(candidate.Request);
+            }
+
+            if (!MechanicEquipmentPacketParity.TryFindMatchingClientInventoryOperationCompletionRequest(
+                    candidateRequests,
+                    payload,
+                    out EquipmentChangeRequest matchedRequest,
+                    out string rejectReason))
+            {
+                message = rejectReason;
+                return false;
+            }
+
+            PendingEquipmentChangeEnvelope matchedEnvelope = null;
+            foreach (PendingEquipmentChangeEnvelope candidate in mechanicCandidates)
+            {
+                if (ReferenceEquals(candidate.Request, matchedRequest)
+                    || candidate.Request.RequestId == matchedRequest.RequestId)
                 {
                     matchedEnvelope = candidate;
                     break;
                 }
-
-                if (IsMechanicInventoryOperationRequestMismatch(rejectReason))
-                {
-                    lastMismatchReason = rejectReason;
-                    continue;
-                }
-
-                structuralRejectReason = rejectReason;
-                break;
             }
 
             if (matchedEnvelope?.Request == null)
             {
-                message = !string.IsNullOrWhiteSpace(structuralRejectReason)
-                    ? structuralRejectReason
-                    : !string.IsNullOrWhiteSpace(lastMismatchReason)
-                        ? lastMismatchReason
-                        : "Inventory-operation payload did not match an active mechanic packet-owned request.";
+                message = "Inventory-operation payload matched a mechanic equipment request that is no longer pending.";
                 return false;
             }
 
@@ -1926,23 +1924,6 @@ namespace HaCreator.MapSimulator
                 ? "Mechanic state payload did not match the active mechanic packet-owned request scope."
                 : lastRejectReason;
             return false;
-        }
-
-        private static bool IsMechanicInventoryOperationRequestMismatch(string reason)
-        {
-            if (string.IsNullOrWhiteSpace(reason))
-            {
-                return false;
-            }
-
-            return reason.StartsWith("Inventory-operation swap did not ", StringComparison.OrdinalIgnoreCase)
-                   || reason.StartsWith("Inventory-operation add entry did not ", StringComparison.OrdinalIgnoreCase)
-                   || reason.StartsWith("Inventory-operation remove did not ", StringComparison.OrdinalIgnoreCase)
-                   || reason.StartsWith("Mechanic equip-in inventory-operation ", StringComparison.OrdinalIgnoreCase)
-                   || reason.StartsWith("Mechanic drag-back-out inventory-operation ", StringComparison.OrdinalIgnoreCase)
-                   || reason.StartsWith("Only mechanic equip-in or drag-back-out requests ", StringComparison.OrdinalIgnoreCase)
-                   || reason.StartsWith("Mechanic equip-in request is missing ", StringComparison.OrdinalIgnoreCase)
-                   || reason.StartsWith("Mechanic drag-back-out request is missing ", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryGetMechanicRequestScope(

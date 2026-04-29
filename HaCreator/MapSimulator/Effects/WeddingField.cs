@@ -1973,9 +1973,18 @@ namespace HaCreator.MapSimulator.Effects
                 PairItemSerial: null,
                 CharacterId: packet.CharacterId,
                 PairCharacterId: packet.PairCharacterId);
+            relationshipRecord = NormalizeWeddingRelationshipItemEffectRecordForApply(
+                packet.RelationshipType,
+                relationshipRecord);
             state = ApplyRelationshipRecordToAvatarModifiedState(state, packet.RelationshipType, relationshipRecord);
 
             StoreAvatarModifiedState(participant, state);
+            MirrorRelationshipRecordToCanonicalOwnerParticipant(participant, packet.RelationshipType, relationshipRecord);
+            ApplyRelationshipItemEffectClearForRelatedOwner(
+                participant,
+                packet.RelationshipType,
+                relationshipRecord,
+                packet.PairCharacterId);
             ApplyAvatarModifiedStateToBuild(participant.Build, state);
             return true;
         }
@@ -2285,6 +2294,86 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return packetOwnerCharacterId <= matchedOwnerCharacterId;
+        }
+
+        private RemoteUserRelationshipRecord NormalizeWeddingRelationshipItemEffectRecordForApply(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            if (relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || relationshipRecord.CharacterId.GetValueOrDefault() <= 0
+                || relationshipRecord.PairCharacterId.GetValueOrDefault() <= 0)
+            {
+                return relationshipRecord;
+            }
+
+            int packetOwnerCharacterId = relationshipRecord.CharacterId.Value;
+            int pairCharacterId = relationshipRecord.PairCharacterId.Value;
+            if (TryResolveParticipantForTemporaryStats(pairCharacterId, out WeddingRemoteParticipant pairParticipant, out _)
+                && pairParticipant.AvatarModifiedState.HasValue)
+            {
+                RemoteUserRelationshipRecord pairRecord = GetRelationshipRecord(
+                    pairParticipant.AvatarModifiedState.Value,
+                    relationshipType);
+                if (pairRecord.IsActive)
+                {
+                    bool packetOwnerIsCanonicalOwner = IsWeddingRelationshipPacketOwnerCanonicalOwner(
+                        packetOwnerCharacterId,
+                        pairCharacterId,
+                        pairRecord);
+                    return relationshipRecord with
+                    {
+                        ItemId = relationshipRecord.ItemId > 0 ? relationshipRecord.ItemId : pairRecord.ItemId,
+                        CharacterId = packetOwnerIsCanonicalOwner
+                            ? packetOwnerCharacterId
+                            : pairRecord.CharacterId.GetValueOrDefault(pairCharacterId),
+                        PairCharacterId = packetOwnerIsCanonicalOwner
+                            ? pairCharacterId
+                            : packetOwnerCharacterId
+                    };
+                }
+            }
+
+            if (!relationshipRecord.IsActive)
+            {
+                return relationshipRecord;
+            }
+
+            return relationshipRecord with
+            {
+                CharacterId = Math.Min(packetOwnerCharacterId, pairCharacterId),
+                PairCharacterId = Math.Max(packetOwnerCharacterId, pairCharacterId)
+            };
+        }
+
+        private void ApplyRelationshipItemEffectClearForRelatedOwner(
+            WeddingRemoteParticipant packetParticipant,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord,
+            int? packetPairCharacterId)
+        {
+            if (packetParticipant == null
+                || relationshipRecord.IsActive
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !packetPairCharacterId.HasValue
+                || packetPairCharacterId.Value <= 0
+                || packetPairCharacterId.Value == packetParticipant.CharacterId
+                || !TryResolveParticipantForTemporaryStats(
+                    packetPairCharacterId.Value,
+                    out WeddingRemoteParticipant pairParticipant,
+                    out _))
+            {
+                return;
+            }
+
+            if (ApplyRelationshipRecordRemove(
+                    pairParticipant,
+                    relationshipType,
+                    packetParticipant.CharacterId,
+                    itemSerial: null))
+            {
+                RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, pairParticipant.CharacterId);
+            }
         }
 
         private bool TryFindWeddingRelationshipRecord(

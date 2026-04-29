@@ -160,6 +160,16 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < count; i++)
             {
                 int questId = reader.ReadUInt16();
+                if (timeKeepQuestTimer &&
+                    _packetFieldStateRuntime.TryGetQuestTimerKeptSeconds(questId, currTickCount, out int keptSeconds))
+                {
+                    string keptRecord = _questRuntime.ApplyPacketOwnedQuestExKeptRecord(questId, keptSeconds);
+                    if (!string.IsNullOrWhiteSpace(keptRecord))
+                    {
+                        removed.Add($"Recorded packet-owned time-keep quest-ex kept={keptSeconds} for Quest #{questId}.");
+                    }
+                }
+
                 removed.Add(_packetFieldStateRuntime.RemoveQuestTimer(questId, timeKeepQuestTimer));
             }
 
@@ -1329,7 +1339,7 @@ namespace HaCreator.MapSimulator
                     enforcePreferredPhaseMatch: true);
                 if (candidateOwnershipIndex < 0)
                 {
-                    continue;
+                    break;
                 }
 
                 phaseHintIndex = i;

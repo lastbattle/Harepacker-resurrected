@@ -814,7 +814,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (opcode == CurrentWrapperRelayOpcode
-                && SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out byte[] relayedPayload, out _))
+                && TryDecodeCurrentWrapperRelayPacketChain(payload, out int relayedPacketType, out byte[] relayedPayload))
             {
                 if (relayedPacketType == DefaultInboundSessionValueOpcode)
                 {
@@ -849,6 +849,36 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            return false;
+        }
+
+        private static bool TryDecodeCurrentWrapperRelayPacketChain(
+            byte[] payload,
+            out int relayedPacketType,
+            out byte[] relayedPayload)
+        {
+            relayedPacketType = -1;
+            relayedPayload = payload ?? Array.Empty<byte>();
+            for (int depth = 0; depth < MaxNestedRelayDepth; depth++)
+            {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        relayedPayload,
+                        out relayedPacketType,
+                        out byte[] nextPayload,
+                        out _))
+                {
+                    return false;
+                }
+
+                relayedPayload = nextPayload;
+                if (relayedPacketType != CurrentWrapperRelayOpcode)
+                {
+                    return true;
+                }
+            }
+
+            relayedPacketType = -1;
+            relayedPayload = Array.Empty<byte>();
             return false;
         }
 

@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.UI
         public string TrailingPayloadSignature { get; private set; } = "none";
         public string ResultTrailingPayloadSignature { get; private set; } = "none";
         public IReadOnlyList<byte> TrailingPayload => _trailingPayload;
+        public IReadOnlyList<byte> ResultTrailingPayload => _resultTrailingPayload;
         public int OpenCount { get; private set; }
         public int CloseCount { get; private set; }
         public int BlockedByOwnerCount { get; private set; }
@@ -106,6 +107,7 @@ namespace HaCreator.MapSimulator.UI
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
             = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
         private byte[] _trailingPayload = Array.Empty<byte>();
+        private byte[] _resultTrailingPayload = Array.Empty<byte>();
         private AdminShopPacketOwnedDeferredResultSnapshot? _deferredOwnerGatedResult;
 
         public void BeginOpen(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string ownerState = null)
@@ -128,6 +130,7 @@ namespace HaCreator.MapSimulator.UI
             ResultTrailingByteCount = 0;
             TrailingPayloadSignature = NormalizePayloadSignature(snapshot.TrailingPayloadSignature);
             ResultTrailingPayloadSignature = "none";
+            _resultTrailingPayload = Array.Empty<byte>();
             OpenCount++;
             LastSubtype = -1;
             LastResultCode = -1;
@@ -204,6 +207,7 @@ namespace HaCreator.MapSimulator.UI
                 ? NormalizePayloadSignature(rejectedTrailingPayloadSignature)
                 : "none";
             ResultTrailingPayloadSignature = "none";
+            _resultTrailingPayload = Array.Empty<byte>();
             AskItemWishlist = false;
             LastSubtype = -1;
             LastResultCode = -1;
@@ -235,6 +239,7 @@ namespace HaCreator.MapSimulator.UI
             ResultTrailingByteCount = 0;
             _trailingPayload = Array.Empty<byte>();
             ResultTrailingPayloadSignature = "none";
+            _resultTrailingPayload = Array.Empty<byte>();
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
@@ -267,6 +272,7 @@ namespace HaCreator.MapSimulator.UI
             ResultTrailingByteCount = 0;
             TrailingPayloadSignature = NormalizePayloadSignature(snapshot.TrailingPayloadSignature);
             ResultTrailingPayloadSignature = "none";
+            _resultTrailingPayload = Array.Empty<byte>();
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
@@ -295,6 +301,7 @@ namespace HaCreator.MapSimulator.UI
             int trailingByteCount = 0,
             bool hasResultCode = true,
             string trailingPayloadSignature = null,
+            byte[] trailingPayload = null,
             bool countAsInboundPacket = true)
         {
             if (countAsInboundPacket)
@@ -310,6 +317,7 @@ namespace HaCreator.MapSimulator.UI
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
                 : "none";
+            _resultTrailingPayload = NormalizeTrailingPayload(trailingPayload, ResultTrailingByteCount);
             if (subtype == 4 && hasResultCode && resultCode == 0)
             {
                 WishlistSearchSessionId = AdvanceSessionId(WishlistSearchSessionId);
@@ -348,6 +356,7 @@ namespace HaCreator.MapSimulator.UI
             int trailingByteCount = 0,
             bool hasResultCode = true,
             string trailingPayloadSignature = null,
+            byte[] trailingPayload = null,
             bool keepSessionActive = false,
             AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden,
             bool keepPendingRequestState = false)
@@ -361,6 +370,7 @@ namespace HaCreator.MapSimulator.UI
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
                 : "none";
+            _resultTrailingPayload = NormalizeTrailingPayload(trailingPayload, ResultTrailingByteCount);
             IsWaitingForResult = keepPendingRequestState && keepSessionActive;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
@@ -393,6 +403,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultMissingSubtype = true;
             ResultTrailingByteCount = 0;
             ResultTrailingPayloadSignature = "none";
+            _resultTrailingPayload = Array.Empty<byte>();
             IsWaitingForResult = keepPendingRequestState && keepSessionActive;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
@@ -420,7 +431,7 @@ namespace HaCreator.MapSimulator.UI
             byte[] trailingPayload)
         {
             int normalizedTrailingByteCount = Math.Max(0, trailingByteCount);
-            byte[] normalizedTrailingPayload = trailingPayload?.ToArray() ?? Array.Empty<byte>();
+            byte[] normalizedTrailingPayload = NormalizeTrailingPayload(trailingPayload, normalizedTrailingByteCount);
             _deferredOwnerGatedResult = new AdminShopPacketOwnedDeferredResultSnapshot(
                 subtype,
                 resultCode,

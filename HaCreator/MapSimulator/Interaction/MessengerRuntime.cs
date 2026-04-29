@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly List<MessengerParticipantState> _participants = new(MaxParticipants);
         private readonly List<MessengerLogEntryState> _logEntries = new();
+        private readonly List<PendingMessengerClaimRequestState> _pendingClaimRequests = new();
         private readonly Dictionary<string, MessengerContactState> _contacts = new(StringComparer.OrdinalIgnoreCase);
         private readonly Queue<PendingMessengerInviteState> _incomingInviteQueue = new();
         private int _selectedSlot;
@@ -779,15 +780,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             MessengerLogEntryState[] claimableEntries = GetClaimableLogEntries();
             int appliedLineCount = Math.Min(chatLineCount, claimableEntries.Length);
-            if (claimableEntries.Length == 0 && chatLineCount <= 0)
-            {
-                return "No Messenger chat lines are available for claim submission.";
-            }
 
             int claimId = _nextClaimId++;
             IEnumerable<MessengerLogEntryState> entriesToRetire = appliedLineCount <= 0
                 ? claimableEntries
                 : claimableEntries.TakeLast(appliedLineCount);
+            MessengerLogEntryState[] retiredEntries = entriesToRetire.ToArray();
             foreach (MessengerLogEntryState entry in entriesToRetire)
             {
                 entry.IsClaimed = true;
@@ -798,12 +796,50 @@ namespace HaCreator.MapSimulator.Interaction
                 appliedLineCount = chatLineCount;
             }
 
+            _pendingClaimRequests.Add(new PendingMessengerClaimRequestState(
+                claimId,
+                NormalizeParticipantName(targetCharacterName) ?? targetCharacterName ?? string.Empty,
+                claimType,
+                string.IsNullOrWhiteSpace(context) ? string.Empty : context.Trim(),
+                Math.Max(0, appliedLineCount),
+                Environment.TickCount,
+                queuedOnly,
+                retiredEntries));
+
             string modeLabel = queuedOnly ? "Queued live" : "Submitted live";
             _lastActionSummary =
                 $"{modeLabel} Messenger claim #{claimId} for {appliedLineCount} line(s) targeting {targetCharacterName}; waiting for the server-owned claim lifecycle.";
             AddSystemLog(_lastActionSummary);
             RecordPacketSummary(
                 $"Mirrored CWvsContext::SendClaimRequest claim #{claimId} target={targetCharacterName} type={claimType} context={context} chatLines={appliedLineCount}.");
+            StartBlink(Environment.TickCount);
+            return _lastActionSummary;
+        }
+
+        internal string ResolveSessionOwnedClaimRequest(bool succeeded, string resultText = null)
+        {
+            if (_pendingClaimRequests.Count == 0)
+            {
+                return "No Messenger claim request is waiting for server-owned completion.";
+            }
+
+            PendingMessengerClaimRequestState pendingClaim = _pendingClaimRequests[0];
+            _pendingClaimRequests.RemoveAt(0);
+
+            if (!succeeded)
+            {
+                RestoreRetiredClaimEntries(pendingClaim);
+            }
+
+            string normalizedResult = string.IsNullOrWhiteSpace(resultText)
+                ? (succeeded ? "server accepted the claim" : "server rejected the claim")
+                : resultText.Trim();
+            _lastActionSummary = succeeded
+                ? $"Messenger claim #{pendingClaim.ClaimId} completed: {normalizedResult}."
+                : $"Messenger claim #{pendingClaim.ClaimId} failed: {normalizedResult}.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary(
+                $"Resolved server-owned Messenger claim #{pendingClaim.ClaimId} success={(succeeded ? 1 : 0)} target={pendingClaim.TargetCharacterName} type={pendingClaim.ClaimType} context={pendingClaim.Context} chatLines={pendingClaim.ChatLineCount}.");
             StartBlink(Environment.TickCount);
             return _lastActionSummary;
         }
@@ -1599,7 +1635,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "none"
                 : string.Join(", ", _participants.Select((participant, index) =>
                     $"{index + 1}:{participant.Name}{(participant.IsOnline ? string.Empty : " (offline)")}{(participant.IsLocalPlayer ? " [self]" : string.Empty)}"));
-            return $"Messenger {_windowState.ToDisplayName()} state. Occupants: {occupants}. Pending: {BuildPendingInviteSummary()}. Last action: {_lastActionSummary}. Packet: {_lastPacketSummary}";
+            return $"Messenger {_windowState.ToDisplayName()} state. Occupants: {occupants}. Pending: {BuildPendingInviteSummary()}. Claims: {BuildPendingClaimSummary()}. Last action: {_lastActionSummary}. Packet: {_lastPacketSummary}";
         }
 
         private string QueueInvite(MessengerContactState contact, bool sessionOwned = false)
@@ -1670,6 +1706,7 @@ namespace HaCreator.MapSimulator.Interaction
         private void Tick(int tickCount)
         {
             TryCompleteDeferredDelete(tickCount);
+            ExpirePendingClaimRequests(tickCount);
 
             if (_incomingInvite != null
                 && _incomingInvite.PromptExpireTick != int.MinValue
@@ -1717,6 +1754,55 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{contact.Name} went offline.";
             AddSystemLog(_lastActionSummary);
             RecordPacketSummary($"Applied simulated Messenger presence pulse for {contact.Name}.");
+        }
+
+        private string BuildPendingClaimSummary()
+        {
+            if (_pendingClaimRequests.Count == 0)
+            {
+                return "none";
+            }
+
+            PendingMessengerClaimRequestState firstClaim = _pendingClaimRequests[0];
+            string suffix = _pendingClaimRequests.Count == 1
+                ? string.Empty
+                : $" (+{_pendingClaimRequests.Count - 1})";
+            return $"claim #{firstClaim.ClaimId} target={firstClaim.TargetCharacterName} lines={firstClaim.ChatLineCount}{suffix}";
+        }
+
+        private void ExpirePendingClaimRequests(int tickCount)
+        {
+            for (int i = _pendingClaimRequests.Count - 1; i >= 0; i--)
+            {
+                PendingMessengerClaimRequestState pendingClaim = _pendingClaimRequests[i];
+                if (tickCount - pendingClaim.RequestedAtTick < ClaimRequestStageLifetimeMs)
+                {
+                    continue;
+                }
+
+                _pendingClaimRequests.RemoveAt(i);
+                RestoreRetiredClaimEntries(pendingClaim);
+                _lastActionSummary = $"Messenger claim #{pendingClaim.ClaimId} expired before server-owned completion.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary(
+                    $"Expired server-owned Messenger claim #{pendingClaim.ClaimId} after {ClaimRequestStageLifetimeMs} ms and restored retired chat lines.");
+            }
+        }
+
+        private static void RestoreRetiredClaimEntries(PendingMessengerClaimRequestState pendingClaim)
+        {
+            if (pendingClaim?.RetiredEntries == null)
+            {
+                return;
+            }
+
+            foreach (MessengerLogEntryState entry in pendingClaim.RetiredEntries)
+            {
+                if (entry != null)
+                {
+                    entry.IsClaimed = false;
+                }
+            }
         }
 
         private MessengerContactState FindNextInvitableContact()
@@ -3004,6 +3090,16 @@ namespace HaCreator.MapSimulator.Interaction
             int PromptExpireTick = int.MinValue,
             byte[] PacketPayload = null,
             bool SessionOwned = false);
+
+        private sealed record PendingMessengerClaimRequestState(
+            int ClaimId,
+            string TargetCharacterName,
+            byte ClaimType,
+            string Context,
+            int ChatLineCount,
+            int RequestedAtTick,
+            bool QueuedOnly,
+            IReadOnlyList<MessengerLogEntryState> RetiredEntries);
 
         private PendingMessengerInviteState BuildIncomingInviteState(MessengerContactState contact, MessengerInvitePacket packet, int tickCount)
         {

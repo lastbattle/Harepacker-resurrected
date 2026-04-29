@@ -848,7 +848,8 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
-                && opcode == PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode;
+                && (opcode == PacketOwnedSocialUtilityPacketTable.MessengerOutboundOpcode
+                    || opcode == PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode);
         }
 
         private bool TryBuildRawPacket(int opcode, IReadOnlyList<byte> payload, out byte[] rawPacket, out string status)

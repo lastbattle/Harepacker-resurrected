@@ -154,6 +154,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _debugTooltipTexture;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
+        private readonly Dictionary<int, Texture2D> _tooltipIconTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
         private readonly Dictionary<int, TooltipSampleUiFrame> _sampleUiFrameCache = new();
@@ -2373,6 +2374,7 @@ namespace HaCreator.MapSimulator.UI
                 metadata.MetadataLines);
             string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
+            Texture2D tooltipIconTexture = ResolveTooltipIconTexture(slot.ItemId);
             Texture2D sampleTexture = ResolveInfoSampleTexture(slot.ItemId);
             Texture2D[] iconRewardTextures = ResolveInfoIconRewardTextures(slot.ItemId);
             Texture2D[] rewardPreviewTextures = HasDrawableBitmap(iconRewardTextures)
@@ -2385,7 +2387,11 @@ namespace HaCreator.MapSimulator.UI
                                              && metadata.AuthoredSampleLines.Count > 0;
 
             int tooltipWidth = ResolveTooltipWidth();
-            int textLeftOffset = TOOLTIP_PADDING + TOOLTIP_ICON_SIZE + TOOLTIP_ICON_GAP;
+            Texture2D primaryIconTexture = tooltipIconTexture ?? slot.ItemTexture;
+            bool drawPrimaryIconAtWzSize = tooltipIconTexture != null;
+            int primaryIconWidth = Math.Max(TOOLTIP_ICON_SIZE, primaryIconTexture?.Width ?? 0);
+            int primaryIconHeight = Math.Max(TOOLTIP_ICON_SIZE, primaryIconTexture?.Height ?? 0);
+            int textLeftOffset = TOOLTIP_PADDING + primaryIconWidth + TOOLTIP_ICON_GAP;
             float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
             float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
 
@@ -2439,7 +2445,7 @@ namespace HaCreator.MapSimulator.UI
                 contentHeight += (contentHeight > 0f ? 2f : 0f) + cashLabelHeight;
             }
 
-            float iconBlockHeight = Math.Max(TOOLTIP_ICON_SIZE, contentHeight);
+            float iconBlockHeight = Math.Max(primaryIconHeight, contentHeight);
             float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
             float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
             float rewardPreviewHeight = MeasureHorizontalBitmapStripHeight(rewardPreviewTextures);
@@ -2475,9 +2481,16 @@ namespace HaCreator.MapSimulator.UI
             DrawTooltipLines(sprite, wrappedTitle, titleX, titleY, new Color(255, 220, 120));
 
             int contentY = backgroundRect.Y + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_SECTION_GAP;
-            if (slot.ItemTexture != null)
+            if (primaryIconTexture != null)
             {
-                sprite.Draw(slot.ItemTexture, new Rectangle(backgroundRect.X + TOOLTIP_PADDING, contentY, TOOLTIP_ICON_SIZE, TOOLTIP_ICON_SIZE), Color.White);
+                if (drawPrimaryIconAtWzSize)
+                {
+                    sprite.Draw(primaryIconTexture, new Vector2(backgroundRect.X + TOOLTIP_PADDING, contentY), Color.White);
+                }
+                else
+                {
+                    sprite.Draw(primaryIconTexture, new Rectangle(backgroundRect.X + TOOLTIP_PADDING, contentY, TOOLTIP_ICON_SIZE, TOOLTIP_ICON_SIZE), Color.White);
+                }
             }
 
             int textX = backgroundRect.X + textLeftOffset;
@@ -2788,6 +2801,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _infoSampleTextureCache[itemId] = texture;
+            return texture;
+        }
+
+        private Texture2D ResolveTooltipIconTexture(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_tooltipIconTextureCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = null;
+            if (InventoryItemMetadataResolver.TryResolveTooltipIconCanvas(itemId, out WzCanvasProperty iconCanvas))
+            {
+                texture = iconCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+
+            _tooltipIconTextureCache[itemId] = texture;
             return texture;
         }
 

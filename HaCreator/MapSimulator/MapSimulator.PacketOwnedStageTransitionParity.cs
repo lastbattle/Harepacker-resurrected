@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectStateMetadata> _packetStageTransitionNamedObjectMetadata = new();
         private readonly Dictionary<BaseDXDrawableItem, Dictionary<int, BaseDXDrawableItem>> _packetStageTransitionAuthoredStateBranchItems = new();
         private readonly Dictionary<BaseDXDrawableItem, bool> _packetStageTransitionObjectVisibility = new();
+        private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectMovingState> _packetStageTransitionNamedObjectMovingStates = new();
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
         private int _packetStageTransitionBackEffectDurationMs;
         private byte _packetStageTransitionBackEffectStartAlpha = byte.MaxValue;
@@ -405,7 +406,11 @@ namespace HaCreator.MapSimulator
                     objInst.Y,
                     objInst.Z,
                     objInst.PlatformNumber,
-                    objInst.flow == true,
+                    (byte)objInst.flow,
+                    objInst.rx,
+                    objInst.ry,
+                    objInst.cx,
+                    objInst.cy,
                     ResolvePacketOwnedNamedObjectStateSfx(objectInfo),
                     ResolvePacketOwnedNamedObjectAuthoredStateSfxByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectAuthoredStateIndexes(objectInfo?.ParentObject as WzImageProperty));
@@ -587,6 +592,7 @@ namespace HaCreator.MapSimulator
         private void ResetPacketOwnedStageTransitionRuntimeState()
         {
             _packetStageTransitionObjectVisibility.Clear();
+            _packetStageTransitionNamedObjectMovingStates.Clear();
             RestorePacketOwnedBackEffect();
             _packetStageTransitionRuntime.Clear();
             ClearPacketOwnedScriptSelectablePets();
@@ -598,6 +604,8 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePacketOwnedStageTransitionState(int currentTick)
         {
+            UpdatePacketOwnedNamedObjectMovingStates(currentTick);
+
             if (_packetStageTransitionBackEffectStartTick == int.MinValue)
             {
                 return;
@@ -621,6 +629,43 @@ namespace HaCreator.MapSimulator
             if (progress >= 1f)
             {
                 _packetStageTransitionBackEffectStartTick = int.MinValue;
+            }
+        }
+
+        private void UpdatePacketOwnedNamedObjectMovingStates(int currentTick)
+        {
+            if (_packetStageTransitionNamedObjectMovingStates.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<BaseDXDrawableItem, PacketOwnedNamedObjectMovingState> entry in _packetStageTransitionNamedObjectMovingStates.ToArray())
+            {
+                if (entry.Key == null)
+                {
+                    continue;
+                }
+
+                entry.Value.Apply(entry.Key, currentTick);
+            }
+        }
+
+        private sealed record PacketOwnedNamedObjectMovingState(
+            int StartTick,
+            int DurationMs,
+            int StartX,
+            int StartY,
+            int TargetX,
+            int TargetY)
+        {
+            public void Apply(BaseDXDrawableItem item, int currentTick)
+            {
+                if (item == null)
+                {
+                    return;
+                }
+
+                _ = currentTick;
             }
         }
 

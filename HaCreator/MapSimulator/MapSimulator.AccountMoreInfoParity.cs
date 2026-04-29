@@ -51,7 +51,8 @@ namespace HaCreator.MapSimulator
             switch (subtype)
             {
                 case PacketOwnedAccountMoreInfoFirstEntrySubtype:
-                    message = OpenPacketOwnedAccountMoreInfoOwner(firstEntry: true);
+                    message = OpenPacketOwnedAccountMoreInfoOwner(
+                        firstEntry: Managers.AccountMoreInfoRuntime.ResolveFirstEntryFlagFromOpenPayload(payload));
                     return true;
 
                 case PacketOwnedAccountMoreInfoLoadResultSubtype:

@@ -419,13 +419,14 @@ namespace HaCreator.MapSimulator.Loaders
                 yield break;
             }
 
-            HashSet<int> yieldedIndices = new HashSet<int>();
+            HashSet<int> acceptedIndices = new HashSet<int>();
             if (WzInfoTools.GetRealProperty(resolvedStateProperty["event"]) is WzSubProperty eventProperty)
             {
                 foreach (WzImageProperty child in eventProperty.WzProperties)
                 {
                     if (int.TryParse(child?.Name, out int properEventIndex)
-                        && yieldedIndices.Add(properEventIndex))
+                        && IsReactorIndexedHitPropertyCandidate(child)
+                        && acceptedIndices.Add(properEventIndex))
                     {
                         yield return (properEventIndex, child);
                     }
@@ -436,7 +437,8 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 if (int.TryParse(child?.Name, out int properEventIndex)
                     && WzInfoTools.GetRealProperty(child) is WzSubProperty
-                    && yieldedIndices.Add(properEventIndex))
+                    && IsReactorIndexedHitPropertyCandidate(child)
+                    && acceptedIndices.Add(properEventIndex))
                 {
                     yield return (properEventIndex, child);
                 }

@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Fields
         private const float PortalInteractRangeX = 40f;
         private const float PortalInteractRangeY = 60f;
         private const byte RemoteTownPortalOverlayState = 1;
+        private const int ClientTownPortalPointTypeId = 6;
 
         private readonly TexturePool _texturePool;
         private readonly GraphicsDevice _graphicsDevice;
@@ -2264,7 +2265,8 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (portalTypeId.HasValue)
             {
-                if (portalTypeId.Value == (int)PortalType.TownPortalPoint)
+                if (portalTypeId.Value == ClientTownPortalPointTypeId
+                    || portalTypeId.Value == (int)PortalType.TownPortalPoint)
                 {
                     return true;
                 }
@@ -4289,6 +4291,11 @@ namespace HaCreator.MapSimulator.Fields
         internal static bool IsRemoteTownPortalSourceFallbackStartPortalForTesting(int? portalTypeId, string portalName)
         {
             return IsRemoteTownPortalSourceFallbackStartPortal(portalTypeId, portalName);
+        }
+
+        internal static bool IsRemoteTownPortalTownPointPortalForTesting(int? portalTypeId, string portalName)
+        {
+            return IsRemoteTownPortalTownPointPortal(portalTypeId, portalName);
         }
 
         internal static bool TrySelectRemoteTownPortalTownDestinationFallbackPositionForTesting(

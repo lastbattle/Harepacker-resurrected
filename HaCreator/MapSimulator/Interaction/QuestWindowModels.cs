@@ -105,9 +105,11 @@ namespace HaCreator.MapSimulator.Interaction
         public int? RowIndex { get; init; }
         public int RowHeight { get; init; }
         public int DrawOrder { get; init; }
+        public int? DrawLayer { get; init; }
         public bool RewardSection { get; init; }
         public bool Bold { get; init; }
         public string FontFamily { get; init; } = string.Empty;
+        public string FontStyleToken { get; init; } = string.Empty;
         public float FontPixelSize { get; init; }
         public int? TextColorArgb { get; init; }
     }

@@ -1833,6 +1833,7 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Probability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100),
                 ChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, 0, "chataBalloon", "chatBalloon")),
+                FloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice")),
                 HpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp")),
                 Messages = messages
             };

@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Animation
         {
             public int Probability { get; init; }
             public int ChatBalloon { get; init; }
+            public int FloatNotice { get; init; }
             public int HpThreshold { get; init; }
             public IReadOnlyList<string> Messages { get; init; }
         }

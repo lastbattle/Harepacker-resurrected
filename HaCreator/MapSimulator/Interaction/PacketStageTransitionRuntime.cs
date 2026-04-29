@@ -1532,9 +1532,41 @@ namespace HaCreator.MapSimulator.Interaction
             return snapshot with
             {
                 CharacterDataSectionRecordCountsByFlag = recordCountsByFlag,
+                CharacterDataSectionNativeRecordCountsByFlag = BuildCharacterDataSectionNativeRecordCounts(snapshot, recordCountsByFlag),
                 CharacterDataSectionCountByteCountsByFlag = countByteCountsByFlag,
                 CharacterDataSectionRecordByteCountsByFlag = recordByteCountsByFlag
             };
+        }
+
+        private static IReadOnlyDictionary<ulong, int> BuildCharacterDataSectionNativeRecordCounts(
+            PacketCharacterDataSnapshot snapshot,
+            IReadOnlyDictionary<ulong, int> semanticRecordCountsByFlag)
+        {
+            Dictionary<ulong, int> nativeCountsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+            foreach (KeyValuePair<ulong, int> count in semanticRecordCountsByFlag)
+            {
+                nativeCountsByFlag[count.Key] = count.Value;
+            }
+
+            nativeCountsByFlag[CharacterDataSkillRecordFlag] = snapshot.SkillRecordNativeCount;
+            nativeCountsByFlag[CharacterDataSkillExpirationFlag] = snapshot.SkillExpirationRecordNativeCount;
+            nativeCountsByFlag[CharacterDataSkillCooldownFlag] = snapshot.SkillCooldownRecordNativeCount;
+
+            nativeCountsByFlag[CharacterDataInt16ValueRecordFlag] = snapshot.Int16ValueRecordNativeCount > 0
+                ? snapshot.Int16ValueRecordNativeCount
+                : snapshot.OpaqueInt16ValueRecordNativeCount;
+
+            nativeCountsByFlag[CharacterDataQuestRecordFlag] = snapshot.QuestRecordNativeCount;
+            nativeCountsByFlag[CharacterDataShortFileTimeRecordFlag] = snapshot.ShortFileTimeRecordNativeCount;
+            nativeCountsByFlag[CharacterDataMiniGameRecordFlag] = snapshot.MiniGameRecordNativeCount;
+            nativeCountsByFlag[CharacterDataRelationshipRecordFlag] =
+                checked(snapshot.CoupleRecordNativeCount + snapshot.FriendRecordNativeCount + snapshot.MarriageRecordNativeCount);
+            nativeCountsByFlag[CharacterDataNewYearCardRecordFlag] = snapshot.NewYearCardRecordNativeCount;
+            nativeCountsByFlag[CharacterDataQuestExRecordFlag] = snapshot.QuestExRecordNativeCount;
+            nativeCountsByFlag[CharacterDataQuestCompleteRecordFlag] = snapshot.QuestCompleteRecordNativeCount;
+            nativeCountsByFlag[CharacterDataVisitorQuestRecordFlag] = snapshot.VisitorQuestRecordNativeCount;
+
+            return nativeCountsByFlag;
         }
 
         private static PacketCharacterDataSnapshot ApplyCharacterDataNativeSectionRanges(PacketCharacterDataSnapshot snapshot)
@@ -2987,6 +3019,7 @@ namespace HaCreator.MapSimulator.Interaction
                     OpaqueInt16ValueRecordEntries = null,
                     OpaqueInt16ValueRecords = null,
                     Int16ValueRecordCount = 0,
+                    Int16ValueRecordNativeCount = 0,
                     Int16ValueRecordCountByteCount = 0,
                     Int16ValueRecordRecordByteCount = 0,
                     Int16ValueRecordEntries = null,
@@ -2999,6 +3032,7 @@ namespace HaCreator.MapSimulator.Interaction
                         out int opaqueInt16ValueRecordByteCount,
                         out int opaqueInt16ValueRecordCountByteCount,
                         out int opaqueInt16ValueRecordRecordByteCount,
+                        out int opaqueInt16ValueRecordNativeCount,
                         out IReadOnlyList<PacketCharacterDataInt16ValueRecord> opaqueInt16ValueRecordEntries,
                         out IReadOnlyDictionary<int, int> opaqueInt16ValueRecords))
                 {
@@ -3008,6 +3042,7 @@ namespace HaCreator.MapSimulator.Interaction
                         OpaqueInt16ValueRecordCountByteCount = opaqueInt16ValueRecordCountByteCount,
                         OpaqueInt16ValueRecordRecordByteCount = opaqueInt16ValueRecordRecordByteCount,
                         OpaqueInt16ValueRecordCount = opaqueInt16ValueRecordEntries.Count,
+                        OpaqueInt16ValueRecordNativeCount = opaqueInt16ValueRecordNativeCount,
                         OpaqueInt16ValueRecordEntries = opaqueInt16ValueRecordEntries,
                         OpaqueInt16ValueRecords = opaqueInt16ValueRecords
                     };
@@ -3021,10 +3056,12 @@ namespace HaCreator.MapSimulator.Interaction
                             reader,
                             out IReadOnlyDictionary<int, int> int16ValueRecords,
                             out int int16ValueRecordCountByteCount,
-                            out int int16ValueRecordRecordByteCount);
+                            out int int16ValueRecordRecordByteCount,
+                            out int int16ValueRecordNativeCount);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         Int16ValueRecordCount = int16ValueRecordEntries.Count,
+                        Int16ValueRecordNativeCount = int16ValueRecordNativeCount,
                         Int16ValueRecordCountByteCount = int16ValueRecordCountByteCount,
                         Int16ValueRecordRecordByteCount = int16ValueRecordRecordByteCount,
                         Int16ValueRecordEntries = int16ValueRecordEntries,
@@ -3046,11 +3083,13 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out IReadOnlyDictionary<int, string> questRecords,
                         out int questRecordCountByteCount,
-                        out int questRecordRecordByteCount);
+                        out int questRecordRecordByteCount,
+                        out int questRecordNativeCount);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         QuestRecordEntries = questRecordEntries,
                         QuestRecordCount = questRecords.Count,
+                        QuestRecordNativeCount = questRecordNativeCount,
                         QuestRecordCountByteCount = questRecordCountByteCount,
                         QuestRecordRecordByteCount = questRecordRecordByteCount,
                         QuestRecordValues = questRecords
@@ -3067,11 +3106,13 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out IReadOnlyDictionary<int, long> shortFileTimeRecords,
                         out int shortFileTimeRecordCountByteCount,
-                        out int shortFileTimeRecordByteCount);
+                        out int shortFileTimeRecordByteCount,
+                        out int shortFileTimeRecordNativeCount);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         ShortFileTimeRecordEntries = shortFileTimeRecordEntries,
                         ShortFileTimeRecordCount = shortFileTimeRecords.Count,
+                        ShortFileTimeRecordNativeCount = shortFileTimeRecordNativeCount,
                         ShortFileTimeRecordCountByteCount = shortFileTimeRecordCountByteCount,
                         ShortFileTimeRecordByteCount = shortFileTimeRecordByteCount,
                         ShortFileTimeRecords = shortFileTimeRecords
@@ -3132,10 +3173,12 @@ namespace HaCreator.MapSimulator.Interaction
                     IReadOnlyList<PacketCharacterDataNewYearCardRecord> newYearCardRecords = ReadCharacterDataNewYearCardRecords(
                         reader,
                         out int newYearCardRecordCountByteCount,
-                        out int newYearCardRecordByteCount);
+                        out int newYearCardRecordByteCount,
+                        out int newYearCardRecordNativeCount);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         NewYearCardRecordCount = newYearCardRecords.Count,
+                        NewYearCardRecordNativeCount = newYearCardRecordNativeCount,
                         NewYearCardRecordCountByteCount = newYearCardRecordCountByteCount,
                         NewYearCardRecordByteCount = newYearCardRecordByteCount,
                         NewYearCardRecords = newYearCardRecords
@@ -3152,12 +3195,14 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out IReadOnlyDictionary<int, string> questExRecords,
                         out int questExRecordCountByteCount,
-                        out int questExRecordByteCount);
+                        out int questExRecordByteCount,
+                        out int questExRecordNativeCount);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         QuestExRecordEntries = questExRecordEntries,
                         QuestExRecordCount = questExRecords.Count,
+                        QuestExRecordNativeCount = questExRecordNativeCount,
                         QuestExRecordCountByteCount = questExRecordCountByteCount,
                         QuestExRecordByteCount = questExRecordByteCount,
                         QuestExRecordValues = questExRecords
@@ -3198,12 +3243,14 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out IReadOnlyDictionary<int, long> questCompleteRecords,
                         out int questCompleteRecordCountByteCount,
-                        out int questCompleteRecordByteCount);
+                        out int questCompleteRecordByteCount,
+                        out int questCompleteRecordNativeCount);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         QuestCompleteRecordEntries = questCompleteRecordEntries,
                         QuestCompleteRecordCount = questCompleteRecords.Count,
+                        QuestCompleteRecordNativeCount = questCompleteRecordNativeCount,
                         QuestCompleteRecordCountByteCount = questCompleteRecordCountByteCount,
                         QuestCompleteRecordByteCount = questCompleteRecordByteCount,
                         QuestCompleteRecords = questCompleteRecords
@@ -3220,12 +3267,14 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out IReadOnlyDictionary<int, int> visitorQuestRecords,
                         out int visitorQuestRecordCountByteCount,
-                        out int visitorQuestRecordByteCount);
+                        out int visitorQuestRecordByteCount,
+                        out int visitorQuestRecordNativeCount);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         VisitorQuestRecordEntries = visitorQuestRecordEntries,
                         VisitorQuestRecordCount = visitorQuestRecords.Count,
+                        VisitorQuestRecordNativeCount = visitorQuestRecordNativeCount,
                         VisitorQuestRecordCountByteCount = visitorQuestRecordCountByteCount,
                         VisitorQuestRecordByteCount = visitorQuestRecordByteCount,
                         VisitorQuestRecords = visitorQuestRecords
@@ -3255,12 +3304,14 @@ namespace HaCreator.MapSimulator.Interaction
             out int consumedByteCount,
             out int countByteCount,
             out int recordByteCount,
+            out int nativeRecordCount,
             out IReadOnlyList<PacketCharacterDataInt16ValueRecord> recordEntries,
             out IReadOnlyDictionary<int, int> records)
         {
             consumedByteCount = 0;
             countByteCount = 0;
             recordByteCount = 0;
+            nativeRecordCount = 0;
             recordEntries = null;
             records = null;
             if (opaqueBytes == null || opaqueBytes.Length < sizeof(ushort))
@@ -3276,7 +3327,8 @@ namespace HaCreator.MapSimulator.Interaction
                     reader,
                     out records,
                     out countByteCount,
-                    out recordByteCount);
+                    out recordByteCount,
+                    out nativeRecordCount);
                 consumedByteCount = checked((int)stream.Position);
                 return consumedByteCount >= sizeof(ushort);
             }
@@ -3285,6 +3337,7 @@ namespace HaCreator.MapSimulator.Interaction
                 consumedByteCount = 0;
                 countByteCount = 0;
                 recordByteCount = 0;
+                nativeRecordCount = 0;
                 recordEntries = null;
                 records = null;
                 return false;
@@ -3340,6 +3393,9 @@ namespace HaCreator.MapSimulator.Interaction
                 int skillRecordCount = 0;
                 int skillExpirationRecordCount = 0;
                 int skillCooldownRecordCount = 0;
+                int skillRecordNativeCount = 0;
+                int skillExpirationRecordNativeCount = 0;
+                int skillCooldownRecordNativeCount = 0;
                 int skillMasterLevelRecordCount = 0;
                 int skillRecordCountByteCount = 0;
                 int skillRecordRecordByteCount = 0;
@@ -3363,7 +3419,8 @@ namespace HaCreator.MapSimulator.Interaction
                         out rawSkillMasterLevels,
                         out skillRecordCountByteCount,
                         out skillRecordRecordByteCount,
-                        out skillRecordMasterLevelRecordByteCount);
+                        out skillRecordMasterLevelRecordByteCount,
+                        out skillRecordNativeCount);
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
                     skillMasterLevelRecordCount = rawSkillMasterLevels?.Count ?? 0;
                     decodedSectionFlags |= CharacterDataSkillRecordFlag;
@@ -3378,7 +3435,8 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out skillExpirations,
                         out skillExpirationRecordCountByteCount,
-                        out skillExpirationRecordByteCount);
+                        out skillExpirationRecordByteCount,
+                        out skillExpirationRecordNativeCount);
                     skillExpirationRecordCount = skillExpirationRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordExpirations(skillRecordEntries, skillExpirations);
                     decodedSectionFlags |= CharacterDataSkillExpirationFlag;
@@ -3393,7 +3451,8 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out skillCooldowns,
                         out skillCooldownRecordCountByteCount,
-                        out skillCooldownRecordByteCount);
+                        out skillCooldownRecordByteCount,
+                        out skillCooldownRecordNativeCount);
                     skillCooldownRecordCount = skillCooldownRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordCooldowns(skillRecordEntries, skillCooldowns);
                     decodedSectionFlags |= CharacterDataSkillCooldownFlag;
@@ -3406,6 +3465,9 @@ namespace HaCreator.MapSimulator.Interaction
                     SkillRecordCount = skillRecordCount,
                     SkillExpirationRecordCount = skillExpirationRecordCount,
                     SkillCooldownRecordCount = skillCooldownRecordCount,
+                    SkillRecordNativeCount = skillRecordNativeCount,
+                    SkillExpirationRecordNativeCount = skillExpirationRecordNativeCount,
+                    SkillCooldownRecordNativeCount = skillCooldownRecordNativeCount,
                     SkillRecords = skillRecords,
                     SkillExpirationFileTimes = skillExpirations,
                     SkillExpirationRecordEntries = skillExpirationRecordEntries,
@@ -3429,10 +3491,12 @@ namespace HaCreator.MapSimulator.Interaction
                     Int16ValueRecordEntries = null,
                     Int16ValueRecords = null,
                     QuestRecordCount = 0,
+                    QuestRecordNativeCount = 0,
                     QuestRecordCountByteCount = 0,
                     QuestRecordRecordByteCount = 0,
                     QuestRecordValues = null,
                     ShortFileTimeRecordCount = 0,
+                    ShortFileTimeRecordNativeCount = 0,
                     ShortFileTimeRecordCountByteCount = 0,
                     ShortFileTimeRecordByteCount = 0,
                     ShortFileTimeRecords = null,
@@ -3458,9 +3522,11 @@ namespace HaCreator.MapSimulator.Interaction
             out IReadOnlyDictionary<int, int> rawSkillMasterLevels,
             out int countByteCount,
             out int recordByteCount,
-            out int masterLevelRecordByteCount)
+            out int masterLevelRecordByteCount,
+            out int nativeRecordCount)
         {
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             recordByteCount = 0;
             masterLevelRecordByteCount = 0;
@@ -3528,9 +3594,11 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyDictionary<int, long> records,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             recordByteCount = checked(count * (sizeof(int) + sizeof(long)));
             List<PacketCharacterDataSkillExpirationRecord> entries = new(count);
@@ -3582,6 +3650,7 @@ namespace HaCreator.MapSimulator.Interaction
                 reader,
                 out records,
                 out _,
+                out _,
                 out _);
         }
 
@@ -3589,9 +3658,11 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyDictionary<int, int> records,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             recordByteCount = checked(count * (sizeof(int) + sizeof(ushort)));
             List<PacketCharacterDataInt16ValueRecord> entries = new(count);
@@ -3624,10 +3695,12 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyDictionary<int, string> records,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             List<PacketCharacterDataUInt16StringRecord> entries = new(count);
             Dictionary<int, string> recordsByKey = new(count);
@@ -3658,10 +3731,12 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyDictionary<int, long> records,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             List<PacketCharacterDataUInt16FileTimeRecord> entries = new(count);
             Dictionary<int, long> recordsByKey = new(count);
@@ -3691,10 +3766,12 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyDictionary<int, long> records,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             List<PacketCharacterDataUInt16FileTimeRecord> entries = new(count);
             Dictionary<int, long> recordsByKey = new(count);
@@ -3724,10 +3801,12 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyDictionary<int, int> records,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             List<PacketCharacterDataUInt16ValueRecord> entries = new(count);
             Dictionary<int, int> recordsByKey = new(count);
@@ -3935,12 +4014,16 @@ namespace HaCreator.MapSimulator.Interaction
             };
             int miniGameRecordCountByteCount = 0;
             int miniGameRecordByteCount = 0;
+            int miniGameRecordNativeCount = 0;
             int coupleRecordCountByteCount = 0;
             int coupleRecordByteCount = 0;
+            int coupleRecordNativeCount = 0;
             int friendRecordCountByteCount = 0;
             int friendRecordByteCount = 0;
+            int friendRecordNativeCount = 0;
             int marriageRecordCountByteCount = 0;
             int marriageRecordByteCount = 0;
+            int marriageRecordNativeCount = 0;
             if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0)
             {
                 long sectionStart = reader.BaseStream.Position;
@@ -3949,7 +4032,8 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketCharacterDataFixedClientRecord.MiniGameOwner,
                     CharacterDataMiniGameRecordByteLength,
                     out miniGameRecordCountByteCount,
-                    out miniGameRecordByteCount);
+                    out miniGameRecordByteCount,
+                    out miniGameRecordNativeCount);
                 fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.MiniGameOwner] = miniGameRecordCountByteCount;
                 fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.MiniGameOwner] = miniGameRecordByteCount;
                 decodedSectionFlags |= CharacterDataMiniGameRecordFlag;
@@ -3965,7 +4049,8 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketCharacterDataFixedClientRecord.CoupleOwner,
                     CharacterDataCoupleRecordByteLength,
                     out coupleRecordCountByteCount,
-                    out coupleRecordByteCount);
+                    out coupleRecordByteCount,
+                    out coupleRecordNativeCount);
                 fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.CoupleOwner] = coupleRecordCountByteCount;
                 fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.CoupleOwner] = coupleRecordByteCount;
                 friendRecords = ReadCharacterDataFixedRecordGroup(
@@ -3973,7 +4058,8 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketCharacterDataFixedClientRecord.FriendOwner,
                     CharacterDataFriendRecordByteLength,
                     out friendRecordCountByteCount,
-                    out friendRecordByteCount);
+                    out friendRecordByteCount,
+                    out friendRecordNativeCount);
                 fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.FriendOwner] = friendRecordCountByteCount;
                 fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.FriendOwner] = friendRecordByteCount;
                 marriageRecords = ReadCharacterDataFixedRecordGroup(
@@ -3981,7 +4067,8 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketCharacterDataFixedClientRecord.MarriageOwner,
                     CharacterDataMarriageRecordByteLength,
                     out marriageRecordCountByteCount,
-                    out marriageRecordByteCount);
+                    out marriageRecordByteCount,
+                    out marriageRecordNativeCount);
                 fixedRecordCountByteCountsByOwner[PacketCharacterDataFixedClientRecord.MarriageOwner] = marriageRecordCountByteCount;
                 fixedRecordRecordByteCountsByOwner[PacketCharacterDataFixedClientRecord.MarriageOwner] = marriageRecordByteCount;
                 decodedSectionFlags |= CharacterDataRelationshipRecordFlag;
@@ -3992,21 +4079,25 @@ namespace HaCreator.MapSimulator.Interaction
             return snapshot with
             {
                 MiniGameRecordCount = miniGameRecords.Count,
+                MiniGameRecordNativeCount = miniGameRecordNativeCount,
                 MiniGameRecordCountByteCount = miniGameRecordCountByteCount,
                 MiniGameRecordByteCount = miniGameRecordByteCount,
                 MiniGameRecordEntries = miniGameRecords,
                 MiniGameRecords = ExtractFixedClientRecordBytes(miniGameRecords),
                 CoupleRecordCount = coupleRecords.Count,
+                CoupleRecordNativeCount = coupleRecordNativeCount,
                 CoupleRecordCountByteCount = coupleRecordCountByteCount,
                 CoupleRecordByteCount = coupleRecordByteCount,
                 CoupleRecordEntries = coupleRecords,
                 CoupleRecords = ExtractFixedClientRecordBytes(coupleRecords),
                 FriendRecordCount = friendRecords.Count,
+                FriendRecordNativeCount = friendRecordNativeCount,
                 FriendRecordCountByteCount = friendRecordCountByteCount,
                 FriendRecordByteCount = friendRecordByteCount,
                 FriendRecordEntries = friendRecords,
                 FriendRecords = ExtractFixedClientRecordBytes(friendRecords),
                 MarriageRecordCount = marriageRecords.Count,
+                MarriageRecordNativeCount = marriageRecordNativeCount,
                 MarriageRecordCountByteCount = marriageRecordCountByteCount,
                 MarriageRecordByteCount = marriageRecordByteCount,
                 MarriageRecordEntries = marriageRecords,
@@ -4094,9 +4185,11 @@ namespace HaCreator.MapSimulator.Interaction
             string clientOwner,
             int recordByteLength,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             recordByteCount = checked(count * recordByteLength);
             if (count <= 0)
@@ -4147,10 +4240,12 @@ namespace HaCreator.MapSimulator.Interaction
         private static IReadOnlyList<PacketCharacterDataNewYearCardRecord> ReadCharacterDataNewYearCardRecords(
             BinaryReader reader,
             out int countByteCount,
-            out int recordByteCount)
+            out int recordByteCount,
+            out int nativeRecordCount)
         {
             long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
+            nativeRecordCount = count;
             countByteCount = sizeof(ushort);
             List<PacketCharacterDataNewYearCardRecord> records = new(count);
             for (int i = 0; i < count; i++)
@@ -4723,6 +4818,9 @@ namespace HaCreator.MapSimulator.Interaction
         int SkillRecordCount = 0,
         int SkillExpirationRecordCount = 0,
         int SkillCooldownRecordCount = 0,
+        int SkillRecordNativeCount = 0,
+        int SkillExpirationRecordNativeCount = 0,
+        int SkillCooldownRecordNativeCount = 0,
         IReadOnlyDictionary<int, int> SkillRecords = null,
         IReadOnlyDictionary<int, int> RawSkillRecords = null,
         IReadOnlyDictionary<int, long> SkillExpirationFileTimes = null,
@@ -4741,16 +4839,19 @@ namespace HaCreator.MapSimulator.Interaction
         int SkillCooldownRecordCountByteCount = 0,
         int SkillCooldownRecordByteCount = 0,
         int Int16ValueRecordCount = 0,
+        int Int16ValueRecordNativeCount = 0,
         int Int16ValueRecordCountByteCount = 0,
         int Int16ValueRecordRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataInt16ValueRecord> Int16ValueRecordEntries = null,
         IReadOnlyDictionary<int, int> Int16ValueRecords = null,
         int QuestRecordCount = 0,
+        int QuestRecordNativeCount = 0,
         int QuestRecordCountByteCount = 0,
         int QuestRecordRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataUInt16StringRecord> QuestRecordEntries = null,
         IReadOnlyDictionary<int, string> QuestRecordValues = null,
         int ShortFileTimeRecordCount = 0,
+        int ShortFileTimeRecordNativeCount = 0,
         int ShortFileTimeRecordCountByteCount = 0,
         int ShortFileTimeRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> ShortFileTimeRecordEntries = null,
@@ -4763,6 +4864,7 @@ namespace HaCreator.MapSimulator.Interaction
         int OpaqueInt16ValueRecordCountByteCount = 0,
         int OpaqueInt16ValueRecordRecordByteCount = 0,
         int OpaqueInt16ValueRecordCount = 0,
+        int OpaqueInt16ValueRecordNativeCount = 0,
         IReadOnlyList<PacketCharacterDataInt16ValueRecord> OpaqueInt16ValueRecordEntries = null,
         IReadOnlyDictionary<int, int> OpaqueInt16ValueRecords = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
@@ -4774,21 +4876,25 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<string, int> MapTransferRecordCountsByGroup = null,
         IReadOnlyDictionary<string, int> MapTransferRecordByteCountsByGroup = null,
         int MiniGameRecordCount = 0,
+        int MiniGameRecordNativeCount = 0,
         int MiniGameRecordCountByteCount = 0,
         int MiniGameRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataFixedClientRecord> MiniGameRecordEntries = null,
         IReadOnlyList<byte[]> MiniGameRecords = null,
         int CoupleRecordCount = 0,
+        int CoupleRecordNativeCount = 0,
         int CoupleRecordCountByteCount = 0,
         int CoupleRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataFixedClientRecord> CoupleRecordEntries = null,
         IReadOnlyList<byte[]> CoupleRecords = null,
         int FriendRecordCount = 0,
+        int FriendRecordNativeCount = 0,
         int FriendRecordCountByteCount = 0,
         int FriendRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataFixedClientRecord> FriendRecordEntries = null,
         IReadOnlyList<byte[]> FriendRecords = null,
         int MarriageRecordCount = 0,
+        int MarriageRecordNativeCount = 0,
         int MarriageRecordCountByteCount = 0,
         int MarriageRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataFixedClientRecord> MarriageRecordEntries = null,
@@ -4796,10 +4902,12 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<string, int> FixedRecordCountByteCountsByOwner = null,
         IReadOnlyDictionary<string, int> FixedRecordRecordByteCountsByOwner = null,
         int NewYearCardRecordCount = 0,
+        int NewYearCardRecordNativeCount = 0,
         int NewYearCardRecordCountByteCount = 0,
         int NewYearCardRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataNewYearCardRecord> NewYearCardRecords = null,
         int QuestExRecordCount = 0,
+        int QuestExRecordNativeCount = 0,
         int QuestExRecordCountByteCount = 0,
         int QuestExRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataUInt16StringRecord> QuestExRecordEntries = null,
@@ -4811,11 +4919,13 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<string, int> WildHunterInfoFieldByteCounts = null,
         PacketCharacterDataWildHunterInfo? WildHunterInfo = null,
         int QuestCompleteRecordCount = 0,
+        int QuestCompleteRecordNativeCount = 0,
         int QuestCompleteRecordCountByteCount = 0,
         int QuestCompleteRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> QuestCompleteRecordEntries = null,
         IReadOnlyDictionary<int, long> QuestCompleteRecords = null,
         int VisitorQuestRecordCount = 0,
+        int VisitorQuestRecordNativeCount = 0,
         int VisitorQuestRecordCountByteCount = 0,
         int VisitorQuestRecordByteCount = 0,
         IReadOnlyList<PacketCharacterDataUInt16ValueRecord> VisitorQuestRecordEntries = null,
@@ -4835,6 +4945,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<string, int> CharacterStatTrailerFieldByteCounts { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionNativeRecordCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionCountByteCountsByFlag { get; init; } = null;
 

@@ -299,6 +299,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_mapleTvOfficialSessionBridge.TryQueueOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out string queueStatus))
                 {
+                    ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-queue");
                     message = $"Queued CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}]. {queueStatus}";
                     return true;
                 }
@@ -309,6 +310,7 @@ namespace HaCreator.MapSimulator
 
             if (_mapleTvOfficialSessionBridge.TrySendOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out string sendStatus))
             {
+                ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-send");
                 message = $"Dispatched CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}]. {sendStatus}";
                 return true;
             }
@@ -316,12 +318,23 @@ namespace HaCreator.MapSimulator
             if ((_mapleTvOfficialSessionBridgeEnabled || _mapleTvOfficialSessionBridge.IsRunning)
                 && _mapleTvOfficialSessionBridge.TryQueueOutboundPacket(MapleTvRuntime.ConsumeCashItemUseRequestOpcode, payload, out string deferredStatus))
             {
+                ObserveMirroredMapleTvConsumeCashItemUseRequest(payload, "simulator-deferred-queue");
                 message = $"Queued CUserLocal::ConsumeCashItem MapleTV request opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] after live dispatch was unavailable. Bridge: {sendStatus} Deferred bridge: {deferredStatus}";
                 return true;
             }
 
             message = sendStatus;
             return false;
+        }
+
+        private void ObserveMirroredMapleTvConsumeCashItemUseRequest(byte[] payload, string source)
+        {
+            _mapleTvRuntime.TryObserveConsumeCashItemUseRequestPayload(
+                payload,
+                currTickCount,
+                ResolveMapleTvItemMetadata,
+                out _,
+                source);
         }
 
         private bool TryApplyMapleTvOpcodeFramedClientPacket(byte[] rawPacket, out string message)

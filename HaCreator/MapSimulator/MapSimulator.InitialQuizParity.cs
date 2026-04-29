@@ -697,12 +697,7 @@ namespace HaCreator.MapSimulator
             InitialQuizButtonFrame okButtonFrame = ResolveInitialQuizOwnerOkButtonFrame(_initialQuizOwnerChildControlState.OkButtonEnabled);
             if (okButtonFrame?.Texture != null)
             {
-                Rectangle drawBounds = new(
-                    okButtonBounds.X - okButtonFrame.Origin.X,
-                    okButtonBounds.Y - okButtonFrame.Origin.Y,
-                    okButtonFrame.Texture.Width,
-                    okButtonFrame.Texture.Height);
-                _spriteBatch.Draw(okButtonFrame.Texture, drawBounds, Color.White);
+                _spriteBatch.Draw(okButtonFrame.Texture, okButtonBounds, Color.White);
             }
             else
             {
@@ -1429,11 +1424,22 @@ namespace HaCreator.MapSimulator
 
         internal static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds, int buttonWidth, int buttonHeight, Point origin)
         {
+            int resolvedWidth = Math.Max(1, buttonWidth);
+            int resolvedHeight = Math.Max(1, buttonHeight);
+            if (origin != Point.Zero)
+            {
+                return new Rectangle(
+                    ownerBounds.X - origin.X,
+                    ownerBounds.Y - origin.Y,
+                    resolvedWidth,
+                    resolvedHeight);
+            }
+
             return new Rectangle(
-                ownerBounds.X + InitialQuizOwnerOkButtonLeft - origin.X,
-                ownerBounds.Y + InitialQuizOwnerOkButtonTop - origin.Y,
-                Math.Max(1, buttonWidth),
-                Math.Max(1, buttonHeight));
+                ownerBounds.X + InitialQuizOwnerOkButtonLeft,
+                ownerBounds.Y + InitialQuizOwnerOkButtonTop,
+                resolvedWidth,
+                resolvedHeight);
         }
 
         internal static Point ResolveInitialQuizOwnerOkButtonHitOrigin(

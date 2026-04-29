@@ -796,12 +796,13 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedVegaResultPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!TryDecodeVegaResultPayload(payload, out byte resultCode))
+            if (!TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState))
             {
                 message = "Vega result payload must contain at least the leading result byte from CUIVega::OnVegaResult.";
                 return false;
             }
 
+            byte resultCode = decodeState.ResultCode;
             if (_pendingVegaCastState == null)
             {
                 message = $"Vega result code {resultCode} arrived without a pending Vega request.";
@@ -820,12 +821,16 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.PacketOwnedPreludeSuccess = success;
                 _pendingVegaCastState.PacketOwnedPreludeStartedAtTick = currTickCount;
                 _pendingVegaCastState.PacketOwnedPreludeDurationMs = preludeDurationMs;
+                RecordPacketOwnedVegaOutcomeState(decodeState);
                 _pendingVegaCastState.OutcomeResolved = true;
                 _pendingVegaCastState.ResolvedSuccess = success;
                 _pendingVegaCastState.Result = result;
                 _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
                 ApplyVegaResultPrelude(result, allowSoundWithoutWindow: true);
-                message = $"Observed packet-owned Vega prelude result code {resultCode} through CUIVega::OnVegaResult ownership and deferred equipment mutation until the terminal result packet.";
+                string stateNote = decodeState.HasOutcomeState
+                    ? $" with packet-authored upgrade state {decodeState.OutcomeUpgradeState}"
+                    : string.Empty;
+                message = $"Observed packet-owned Vega prelude result code {resultCode}{stateNote} through CUIVega::OnVegaResult ownership and deferred equipment mutation until the terminal result packet.";
                 return true;
             }
 
@@ -852,11 +857,16 @@ namespace HaCreator.MapSimulator
                     int preludeDurationMs = ResolveCurrentVegaResultPreludeDurationMs();
                     _pendingVegaCastState.PacketOwnedPreludeStartedAtTick = currTickCount;
                     _pendingVegaCastState.PacketOwnedPreludeDurationMs = preludeDurationMs;
+                    RecordPacketOwnedVegaOutcomeState(decodeState);
                     _pendingVegaCastState.PacketOwnedPreludeSuccess = terminalSuccess;
                     _pendingVegaCastState.OutcomeResolved = true;
                     _pendingVegaCastState.ResolvedSuccess = terminalSuccess;
                     _pendingVegaCastState.Result = result;
                     ApplyVegaResultPrelude(result, allowSoundWithoutWindow: true);
+                }
+                else
+                {
+                    RecordPacketOwnedVegaOutcomeState(decodeState);
                 }
 
                 _pendingVegaCastState.PacketOwnedTerminalCode = resultCode;
@@ -867,7 +877,10 @@ namespace HaCreator.MapSimulator
                     currTickCount,
                     _pendingVegaCastState.PacketOwnedPreludeStartedAtTick ?? currTickCount,
                     _pendingVegaCastState.PacketOwnedPreludeDurationMs);
-                message = $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}) and deferred equipment mutation until the recovered prelude handoff.";
+                string stateNote = decodeState.HasOutcomeState
+                    ? $" with packet-authored upgrade state {decodeState.OutcomeUpgradeState}"
+                    : string.Empty;
+                message = $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}){stateNote} and deferred equipment mutation until the recovered prelude handoff.";
                 return true;
             }
 
@@ -875,6 +888,17 @@ namespace HaCreator.MapSimulator
             HandleUnknownPacketOwnedVegaResult();
             message = $"Observed unknown packet-owned Vega result code {resultCode}.";
             return true;
+        }
+
+        private void RecordPacketOwnedVegaOutcomeState(VegaResultDecodeState decodeState)
+        {
+            if (_pendingVegaCastState == null || !decodeState.HasOutcomeState)
+            {
+                return;
+            }
+
+            _pendingVegaCastState.PacketOwnedUpgradeStateObserved = true;
+            _pendingVegaCastState.PacketOwnedUpgradeState = decodeState.OutcomeUpgradeState;
         }
 
         private void HandleUnknownPacketOwnedVegaResult()

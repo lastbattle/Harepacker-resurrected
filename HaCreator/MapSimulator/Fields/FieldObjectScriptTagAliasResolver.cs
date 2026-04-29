@@ -1052,6 +1052,15 @@ namespace HaCreator.MapSimulator.Fields
                 return noArgumentCallAlias;
             }
 
+            if (TryResolveArrayMethodObjectAliasCandidate(
+                    normalizedValue,
+                    localAliasMap,
+                    objectMemberAliasMap,
+                    out string arrayMethodAlias))
+            {
+                return arrayMethodAlias;
+            }
+
             if (TryResolveBracketVariableAliasCandidate(
                     normalizedValue,
                     localAliasMap,
@@ -2018,6 +2027,16 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
+            if (TryResolveArrayMethodObjectAliasCandidate(
+                    normalizedCandidate,
+                    localAliasMap,
+                    objectMemberAliasMap,
+                    out string arrayMethodAlias))
+            {
+                yield return arrayMethodAlias;
+                yield break;
+            }
+
             if (TryResolveIndexedObjectAliasCandidate(
                     normalizedCandidate,
                     localAliasMap,
@@ -2196,6 +2215,12 @@ namespace HaCreator.MapSimulator.Fields
             if (TryResolveIndexedObjectAliasCandidate(value, localAliasMap, objectMemberAliasMap, out string indexedAlias))
             {
                 aliasName = indexedAlias;
+                return true;
+            }
+
+            if (TryResolveArrayMethodObjectAliasCandidate(value, localAliasMap, objectMemberAliasMap, out string arrayMethodAlias))
+            {
+                aliasName = arrayMethodAlias;
                 return true;
             }
 
@@ -3807,6 +3832,152 @@ namespace HaCreator.MapSimulator.Fields
 
             aliasName = normalizedAlias;
             return true;
+        }
+
+        private static bool TryResolveArrayMethodObjectAliasCandidate(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            out string aliasName)
+        {
+            aliasName = string.Empty;
+            if (string.IsNullOrWhiteSpace(value)
+                || objectMemberAliasMap == null
+                || objectMemberAliasMap.Count == 0)
+            {
+                return false;
+            }
+
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            int openIndex = FindTrailingCallOpenParenthesis(normalizedValue);
+            if (openIndex <= 0 || FindMatchingCloseParenthesis(normalizedValue, openIndex) != normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string callPrefix = normalizedValue[..openIndex].TrimEnd();
+            int separatorIndex = callPrefix.LastIndexOf('.');
+            if (separatorIndex <= 0 || separatorIndex >= callPrefix.Length - 1)
+            {
+                return false;
+            }
+
+            string objectName = NormalizeFunctionAliasArgument(callPrefix[..separatorIndex]).TrimEnd(';');
+            string methodName = NormalizeFunctionAliasArgument(callPrefix[(separatorIndex + 1)..]).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(objectName)
+                || !objectMemberAliasMap.TryGetValue(objectName, out IReadOnlyDictionary<string, string> memberAliasMap)
+                || memberAliasMap == null
+                || memberAliasMap.Count == 0)
+            {
+                return false;
+            }
+
+            string argumentText = normalizedValue[(openIndex + 1)..^1];
+            string memberKey;
+            if (methodName.Equals("at", StringComparison.OrdinalIgnoreCase))
+            {
+                var arguments = new List<string>(SplitFunctionArguments(argumentText));
+                if (arguments.Count != 1
+                    || !TryResolveBracketIndexKey(arguments[0], localAliasMap, out memberKey))
+                {
+                    return false;
+                }
+
+                if (int.TryParse(memberKey, out int parsedIndex) && parsedIndex < 0)
+                {
+                    int? lastIndex = TryGetLastArrayMemberIndex(memberAliasMap);
+                    if (!lastIndex.HasValue)
+                    {
+                        return false;
+                    }
+
+                    memberKey = (lastIndex.Value + parsedIndex + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+            }
+            else if (methodName.Equals("pop", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(argumentText))
+                {
+                    return false;
+                }
+
+                int? lastIndex = TryGetLastArrayMemberIndex(memberAliasMap);
+                if (!lastIndex.HasValue)
+                {
+                    return false;
+                }
+
+                memberKey = lastIndex.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (methodName.Equals("shift", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(argumentText))
+                {
+                    return false;
+                }
+
+                int? firstIndex = TryGetFirstArrayMemberIndex(memberAliasMap);
+                if (!firstIndex.HasValue)
+                {
+                    return false;
+                }
+
+                memberKey = firstIndex.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                return false;
+            }
+
+            return TryResolveObjectMemberAlias(objectName, memberKey, objectMemberAliasMap, out aliasName);
+        }
+
+        private static int? TryGetFirstArrayMemberIndex(IReadOnlyDictionary<string, string> memberAliasMap)
+        {
+            if (memberAliasMap == null || memberAliasMap.Count == 0)
+            {
+                return null;
+            }
+
+            int? firstIndex = null;
+            foreach (string key in memberAliasMap.Keys)
+            {
+                if (!int.TryParse(key, out int parsedIndex) || parsedIndex < 0)
+                {
+                    continue;
+                }
+
+                if (!firstIndex.HasValue || parsedIndex < firstIndex.Value)
+                {
+                    firstIndex = parsedIndex;
+                }
+            }
+
+            return firstIndex;
+        }
+
+        private static int? TryGetLastArrayMemberIndex(IReadOnlyDictionary<string, string> memberAliasMap)
+        {
+            if (memberAliasMap == null || memberAliasMap.Count == 0)
+            {
+                return null;
+            }
+
+            int? lastIndex = null;
+            foreach (string key in memberAliasMap.Keys)
+            {
+                if (!int.TryParse(key, out int parsedIndex) || parsedIndex < 0)
+                {
+                    continue;
+                }
+
+                if (!lastIndex.HasValue || parsedIndex > lastIndex.Value)
+                {
+                    lastIndex = parsedIndex;
+                }
+            }
+
+            return lastIndex;
         }
 
         private static bool TryResolveNoArgumentFunctionCallAliasCandidate(

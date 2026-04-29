@@ -100,6 +100,53 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summonUOL",
             "summonUol"
         };
+        private static readonly string[] ClientSummonedUolTableWrapperNames =
+        {
+            "client",
+            "clientData",
+            "clientOwned",
+            "clientExtracted",
+            "clientExtraction",
+            "clientSidecar",
+            "hidden",
+            "sidecar",
+            "skillEntry",
+            "SKILLENTRY",
+            "skillInfo",
+            "CSkillInfo",
+            "tables",
+            "table"
+        };
+        private static readonly string[] ClientSummonedUolTableOwnerFieldNames =
+        {
+            "skillid",
+            "nskillid",
+            "currentskillid",
+            "sourceskillid",
+            "currentskill",
+            "sourceskill",
+            "currentskillpath",
+            "sourceskillpath",
+            "summonedskillid",
+            "summonedskill",
+            "summonedskillpath",
+            "skill",
+            "nskill",
+            "skillpath",
+            "skillidpath",
+            "id",
+            "key",
+            "owner",
+            "ownerskill",
+            "ownerid",
+            "ownerpath",
+            "ownerskillpath",
+            "sourceowner",
+            "summonowner",
+            "summonedowner",
+            "summonskillid",
+            "ownerskillid"
+        };
         private static readonly string[] ClientTileUolPropertyNames =
         {
             "sTileUOL",
@@ -6360,18 +6407,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return ancestorProperty;
                 }
 
-                foreach (string wrapperName in new[]
-                         {
-                             "client",
-                             "clientData",
-                             "clientOwned",
-                             "hidden",
-                             "sidecar",
-                             "skillEntry",
-                             "SKILLENTRY",
-                             "skillInfo",
-                             "CSkillInfo"
-                         })
+                foreach (string wrapperName in ClientSummonedUolTableWrapperNames)
                 {
                     WzImageProperty wrapperNode = ancestorProperty[wrapperName];
                     if (TryAddClientSummonedUolCandidateNode(yieldedNodePaths, wrapperNode))
@@ -6676,10 +6712,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield return mountedSkillEntry;
             }
 
+            WzImageProperty archiveMountedSkillEntry = tableNode["Skill.wz"]?["Skill"]?[imageName]?["skill"]?[skillIdText];
+            if (archiveMountedSkillEntry != null)
+            {
+                yield return archiveMountedSkillEntry;
+            }
+
+            WzImageProperty archiveRootMountedSkillEntry = tableNode["Skill.wz"]?[imageName]?["skill"]?[skillIdText];
+            if (archiveRootMountedSkillEntry != null)
+            {
+                yield return archiveRootMountedSkillEntry;
+            }
+
             WzImageProperty mountedSkillEntryWithoutImageSuffix = tableNode["Skill"]?[jobIdText]?["skill"]?[skillIdText];
             if (mountedSkillEntryWithoutImageSuffix != null)
             {
                 yield return mountedSkillEntryWithoutImageSuffix;
+            }
+
+            WzImageProperty archiveMountedSkillEntryWithoutImageSuffix = tableNode["Skill.wz"]?["Skill"]?[jobIdText]?["skill"]?[skillIdText];
+            if (archiveMountedSkillEntryWithoutImageSuffix != null)
+            {
+                yield return archiveMountedSkillEntryWithoutImageSuffix;
             }
 
             WzImageProperty imageGroupedEntry = tableNode[imageName]?[skillIdText];
@@ -6688,10 +6742,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield return imageGroupedEntry;
             }
 
+            WzImageProperty imageMountedSkillEntry = tableNode[imageName]?["skill"]?[skillIdText];
+            if (imageMountedSkillEntry != null)
+            {
+                yield return imageMountedSkillEntry;
+            }
+
+            WzImageProperty jobMountedSkillEntry = tableNode[jobIdText]?["skill"]?[skillIdText];
+            if (jobMountedSkillEntry != null)
+            {
+                yield return jobMountedSkillEntry;
+            }
+
             WzImageProperty mountedImageGroupedEntry = tableNode["Skill"]?[imageName]?[skillIdText];
             if (mountedImageGroupedEntry != null)
             {
                 yield return mountedImageGroupedEntry;
+            }
+
+            WzImageProperty wzMountedSkillEntry = tableNode["wz"]?["Skill"]?[imageName]?["skill"]?[skillIdText];
+            if (wzMountedSkillEntry != null)
+            {
+                yield return wzMountedSkillEntry;
             }
 
             foreach (WzImageProperty tokenNamedEntry in EnumerateClientSummonedUolTableSkillTokenNamedEntries(
@@ -6964,29 +7036,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
-            return normalizedName.Equals("skillid", StringComparison.Ordinal)
-                   || normalizedName.Equals("nskillid", StringComparison.Ordinal)
-                   || normalizedName.Equals("currentskillid", StringComparison.Ordinal)
-                   || normalizedName.Equals("sourceskillid", StringComparison.Ordinal)
-                   || normalizedName.Equals("currentskill", StringComparison.Ordinal)
-                   || normalizedName.Equals("sourceskill", StringComparison.Ordinal)
-                   || normalizedName.Equals("summonedskillid", StringComparison.Ordinal)
-                   || normalizedName.Equals("summonedskill", StringComparison.Ordinal)
-                   || normalizedName.Equals("skill", StringComparison.Ordinal)
-                   || normalizedName.Equals("nskill", StringComparison.Ordinal)
-                   || normalizedName.Equals("skillpath", StringComparison.Ordinal)
-                   || normalizedName.Equals("skillidpath", StringComparison.Ordinal)
-                   || normalizedName.Equals("id", StringComparison.Ordinal)
-                   || normalizedName.Equals("key", StringComparison.Ordinal)
-                   || normalizedName.Equals("owner", StringComparison.Ordinal)
-                   || normalizedName.Equals("ownerskill", StringComparison.Ordinal)
-                   || normalizedName.Equals("ownerid", StringComparison.Ordinal)
-                   || normalizedName.Equals("ownerpath", StringComparison.Ordinal)
-                   || normalizedName.Equals("sourceowner", StringComparison.Ordinal)
-                   || normalizedName.Equals("summonowner", StringComparison.Ordinal)
-                   || normalizedName.Equals("summonedowner", StringComparison.Ordinal)
-                   || normalizedName.Equals("summonskillid", StringComparison.Ordinal)
-                   || normalizedName.Equals("ownerskillid", StringComparison.Ordinal);
+            return ClientSummonedUolTableOwnerFieldNames.Contains(normalizedName, StringComparer.Ordinal);
         }
 
         private static bool TryReadClientSummonedUolTableOwnerSkillIdFromFieldName(string name, out int skillId)
@@ -7002,32 +7052,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            foreach (string ownerFieldName in new[]
-                     {
-                         "skillid",
-                         "nskillid",
-                         "currentskillid",
-                         "sourceskillid",
-                         "currentskill",
-                         "sourceskill",
-                         "summonedskillid",
-                         "summonedskill",
-                         "skill",
-                         "nskill",
-                         "skillpath",
-                         "skillidpath",
-                         "id",
-                         "key",
-                         "owner",
-                         "ownerskill",
-                         "ownerid",
-                         "ownerpath",
-                         "sourceowner",
-                         "summonowner",
-                         "summonedowner",
-                         "summonskillid",
-                         "ownerskillid"
-                     })
+            foreach (string ownerFieldName in ClientSummonedUolTableOwnerFieldNames)
             {
                 if (!normalizedName.StartsWith(ownerFieldName, StringComparison.Ordinal))
                 {
@@ -7139,6 +7164,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || name.Equals("summonedValue", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("target", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("targetUol", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("targetUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("targetUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("sourceUol", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("sourceUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("sourceUOLPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourcePath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("srcPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("asset", StringComparison.OrdinalIgnoreCase)
@@ -12505,13 +12536,37 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static int TryGetConcreteMorphTemplateId(WzImageProperty node, string name)
         {
             WzImageProperty child = node?[name];
-            if (child == null)
+            if (!TryGetMorphTemplateIdValue(child, out int morphTemplateId))
             {
                 return 0;
             }
 
-            int morphTemplateId = GetInt(node, name);
             return morphTemplateId > 1 ? morphTemplateId : 0;
+        }
+
+        private static bool TryGetMorphTemplateIdValue(WzImageProperty property, out int value)
+        {
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty:
+                    value = (int)longProperty.Value;
+                    return true;
+                case WzStringProperty stringProperty:
+                    return int.TryParse(
+                        stringProperty.Value?.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out value);
+                default:
+                    value = 0;
+                    return false;
+            }
         }
 
         private static int ResolveFlagOnlyMorphAliasTemplateId(

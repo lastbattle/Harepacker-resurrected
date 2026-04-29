@@ -101,7 +101,9 @@ namespace HaCreator.MapSimulator.UI
                                              && metadata.AuthoredSampleLines.Count > 0;
 
             int tooltipWidth = ResolveTooltipWidth();
-            int textLeftOffset = TooltipPadding + TooltipIconSize + TooltipIconGap;
+            int primaryIconWidth = Math.Max(TooltipIconSize, itemTexture?.Width ?? 0);
+            int primaryIconHeight = Math.Max(TooltipIconSize, itemTexture?.Height ?? 0);
+            int textLeftOffset = TooltipPadding + primaryIconWidth + TooltipIconGap;
             float titleWidth = tooltipWidth - (TooltipPadding * 2);
             float sectionWidth = tooltipWidth - textLeftOffset - TooltipPadding;
 
@@ -155,7 +157,7 @@ namespace HaCreator.MapSimulator.UI
                 contentHeight += (contentHeight > 0f ? 2f : 0f) + cashLabelHeight;
             }
 
-            float iconBlockHeight = Math.Max(TooltipIconSize, contentHeight);
+            float iconBlockHeight = Math.Max(primaryIconHeight, contentHeight);
             float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
             float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
             float rewardPreviewHeight = MeasureHorizontalBitmapStripHeight(rewardPreviewTextures);
@@ -190,7 +192,7 @@ namespace HaCreator.MapSimulator.UI
             int contentY = backgroundRect.Y + TooltipPadding + (int)Math.Ceiling(titleHeight) + TooltipSectionGap;
             if (itemTexture != null)
             {
-                sprite.Draw(itemTexture, new Rectangle(backgroundRect.X + TooltipPadding, contentY, TooltipIconSize, TooltipIconSize), Color.White);
+                sprite.Draw(itemTexture, new Vector2(backgroundRect.X + TooltipPadding, contentY), Color.White);
             }
 
             int textX = backgroundRect.X + textLeftOffset;
