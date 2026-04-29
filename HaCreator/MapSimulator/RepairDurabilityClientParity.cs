@@ -581,7 +581,7 @@ namespace HaCreator.MapSimulator
                 throw new ArgumentOutOfRangeException(nameof(operationCode), operationCode, "Repair durability only supports opcodes 130 and 131.");
             }
 
-            using PacketWriter writer = new(sizeof(int));
+            using PacketWriter writer = new();
             writer.WriteInt(encodedPosition);
             return writer.ToArray();
         }

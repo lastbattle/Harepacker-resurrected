@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.Managers
         public static byte[] BuildRawFieldInitPacket(int fieldId, int shipKind)
         {
             byte[] payload = BuildFieldInitPayload(fieldId, shipKind);
-            using BinaryWriter writer = new(sizeof(ushort) + payload.Length);
+            using BinaryWriter writer = new();
             writer.Write(OutboundFieldInitOpcode);
             writer.Write(payload);
             return writer.ToArray();

@@ -5758,7 +5758,7 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.BuyerCharacterId,
                 snapshot.BuyerCharacterIdRawHex,
                 Math.Max(1, snapshot.BuyerCharacterIdByteLength));
-            using PacketWriter writer = new(CashItemInfoPacketByteLength);
+            using PacketWriter writer = new();
             writer.WriteLong(snapshot.SerialNumber);
             writer.WriteInt(snapshot.AccountId);
             writer.WriteInt(snapshot.CharacterId);
@@ -6443,8 +6443,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            using MemoryStream stream = new(payload, writable: false);
-            using BinaryReader reader = new(stream);
+            using PacketReader reader = new PacketReader(payload);
             _ = reader.ReadByte();
             return TryReadCashItemInfoPacketSnapshot(reader, out snapshot);
         }

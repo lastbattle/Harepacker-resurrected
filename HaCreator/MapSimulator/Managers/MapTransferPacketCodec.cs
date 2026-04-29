@@ -35,7 +35,7 @@ namespace HaCreator.MapSimulator.Managers
         public static byte[] BuildRawRequestPacket(MapTransferRuntimeRequest request)
         {
             byte[] payload = BuildRequestPayload(request);
-            using BinaryWriter writer = new(sizeof(ushort) + payload.Length);
+            using BinaryWriter writer = new();
             writer.Write(OutboundRequestOpcode);
             writer.Write(payload);
             return writer.ToArray();

@@ -1095,7 +1095,7 @@ namespace HaCreator.MapSimulator
 
         internal static byte[] BuildPacketOwnedLogoutGiftSelectionPayload(int index)
         {
-            using PacketWriter writer = new(sizeof(int));
+            using PacketWriter writer = new();
             writer.WriteInt(index);
             return writer.ToArray();
         }

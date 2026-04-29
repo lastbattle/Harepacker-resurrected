@@ -183,7 +183,7 @@ namespace HaCreator.MapSimulator.Managers
             _playStyleMask = playStyleMask;
             _activityMask = activityMask;
 
-            using PacketWriter writer = new(sizeof(byte) + (sizeof(uint) * 4));
+            using PacketWriter writer = new();
             writer.WriteByte(3);
             writer.Write(BuildClientAreaCodeForSave(_areaGroup, _areaDetail));
             writer.Write(BuildClientBirthdayForSave(_birthYear, _birthMonth, _birthDay));

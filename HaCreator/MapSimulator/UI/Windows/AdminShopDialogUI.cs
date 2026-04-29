@@ -10106,7 +10106,7 @@ namespace HaCreator.MapSimulator.UI
             selectedPaymentOption = ResolveCashShopIncTrunkCountSelectedPaymentOption(availablePaymentOptions);
             bool mapPointOnly = selectedPaymentOption == 2;
             confirmPromptSummary = BuildCashShopIncTrunkCountConfirmPrompt();
-            using PacketWriter writer = new(sizeof(byte) + sizeof(byte) + sizeof(int) + sizeof(byte));
+            using PacketWriter writer = new();
             writer.WriteByte(CashShopIncTrunkCountMode);
             writer.WriteByte(mapPointOnly ? 1 : 0);
             writer.WriteInt(selectedPaymentOption);
@@ -10258,7 +10258,7 @@ namespace HaCreator.MapSimulator.UI
         {
             bool hasIntPayload = mode == PacketOwnedAdminShopResultMode
                 || mode == PacketOwnedAdminShopWishlistRegisterMode;
-            using PacketWriter writer = new(sizeof(byte) + (hasIntPayload ? sizeof(int) : 0));
+            using PacketWriter writer = new();
             writer.WriteByte(mode);
             if (hasIntPayload)
             {
@@ -10288,7 +10288,7 @@ namespace HaCreator.MapSimulator.UI
 
             int normalizedCount = Math.Clamp(requestCount, 1, ushort.MaxValue);
             int normalizedPosition = Math.Clamp(position, 0, ushort.MaxValue);
-            using PacketWriter writer = new(sizeof(byte) + sizeof(int) + (sizeof(ushort) * 2));
+            using PacketWriter writer = new();
             writer.WriteByte(PacketOwnedAdminShopTradeRequestMode);
             writer.WriteInt(commoditySerialNumber);
             writer.Write((ushort)normalizedCount);
@@ -10315,7 +10315,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            using PacketWriter writer = new(sizeof(byte) + sizeof(ushort) + normalizedQuery.Length);
+            using PacketWriter writer = new();
             writer.WriteByte(PacketOwnedAdminShopWishlistSearchMode);
             writer.WriteMapleString(normalizedQuery);
             byte[] payload = writer.ToArray();

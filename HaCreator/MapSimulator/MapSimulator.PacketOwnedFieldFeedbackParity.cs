@@ -3219,7 +3219,7 @@ namespace HaCreator.MapSimulator
                 && int.TryParse(args[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out int transferX)
                 && int.TryParse(args[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out int transferY))
             {
-                using PacketWriter writer = new(payload.Length + (sizeof(int) * 2));
+                using PacketWriter writer = new();
                 writer.WriteBytes(payload);
                 writer.WriteInt(transferX);
                 writer.WriteInt(transferY);

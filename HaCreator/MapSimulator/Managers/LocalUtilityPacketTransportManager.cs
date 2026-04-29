@@ -172,7 +172,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)
         {
-            using PacketWriter writer = new(sizeof(ushort) + (payload?.Count ?? 0));
+            using PacketWriter writer = new();
             writer.Write(opcode);
             if (payload is byte[] bytes)
             {

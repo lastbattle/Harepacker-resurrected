@@ -18,7 +18,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] payload = BuildClientPayload(packet);
-            using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            using PacketWriter writer = new();
             writer.Write((ushort)packet.Opcode);
             writer.WriteBytes(payload);
             return writer.ToArray();
@@ -31,7 +31,7 @@ namespace HaCreator.MapSimulator.Managers
                 return Array.Empty<byte>();
             }
 
-            using PacketWriter writer = new(sizeof(byte) + (packet.Payload?.Length ?? 0));
+            using PacketWriter writer = new();
             writer.WriteByte((byte)packet.RequestType);
             if (packet.Payload != null)
             {

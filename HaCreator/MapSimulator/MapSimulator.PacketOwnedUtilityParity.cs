@@ -1928,7 +1928,7 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildPacketOwnedQuestDeliveryTalkToNpcPayload(int npcTemplateId, int localX, int localY)
         {
-            using PacketWriter writer = new(sizeof(int) + (sizeof(short) * 2));
+            using PacketWriter writer = new();
             writer.WriteInt(npcTemplateId);
             writer.Write(ClampPacketOwnedQuestDeliveryTalkCoordinate(localX));
             writer.Write(ClampPacketOwnedQuestDeliveryTalkCoordinate(localY));

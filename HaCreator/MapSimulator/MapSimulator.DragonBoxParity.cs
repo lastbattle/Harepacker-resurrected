@@ -295,7 +295,7 @@ namespace HaCreator.MapSimulator
             bool canSummon,
             int orbMask)
         {
-            using PacketWriter writer = new(sizeof(int) + (sizeof(byte) * 3) + (closeRequested ? 0 : sizeof(int)));
+            using PacketWriter writer = new();
             writer.WriteInt(Math.Max(0, remainingTimeMs));
             writer.WriteByte(showRequested ? 1 : 0);
             writer.WriteByte(closeRequested ? 1 : 0);

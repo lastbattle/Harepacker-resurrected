@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error("Usage: /rps open [entryValue]");
                             }
 
-                            using PacketWriter writer = new(sizeof(uint));
+                            using PacketWriter writer = new();
                             writer.Write(entryValue);
                             byte[] payload = writer.ToArray();
                             return TryApplyRockPaperScissorsPacket(8, payload, currTickCount, out string openMessage)
@@ -107,7 +107,7 @@ namespace HaCreator.MapSimulator
                                         return ChatCommandHandler.CommandResult.Error("Usage: /rps packet open [entryValue]");
                                     }
 
-                                    using PacketWriter writer = new(sizeof(uint));
+                                    using PacketWriter writer = new();
                                     writer.Write(entryValue);
                                     payload = writer.ToArray();
                                     break;

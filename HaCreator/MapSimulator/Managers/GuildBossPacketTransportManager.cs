@@ -314,7 +314,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (short.TryParse(tokens[valueIndex], NumberStyles.Integer, CultureInfo.InvariantCulture, out short signedValue))
             {
-                using PacketWriter writer = new(sizeof(short));
+                using PacketWriter writer = new();
                 writer.Write(signedValue);
                 payload = writer.ToArray();
                 return true;

@@ -901,7 +901,7 @@ namespace HaCreator.MapSimulator.Effects
                     if (_healerEnabled && _healerFall > 0)
                     {
                         short healerY = checked((short)ClampHealerY((int)MathF.Round(_healerTargetY) + _healerFall));
-                        using PacketWriter writer = new(sizeof(short));
+                        using PacketWriter writer = new();
                         writer.Write(healerY);
                         TryApplyPacket((int)GuildBossPacketType.HealerMove, writer.ToArray(), currentTimeMs, GuildBossPacketSource.LocalPreview, out _);
                     }

@@ -71,7 +71,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildMerchantOutboundPacket(byte requestSubtype, ReadOnlySpan<byte> requestBody = default)
         {
-            using PacketWriter writer = new(sizeof(ushort) + sizeof(byte) + requestBody.Length);
+            using PacketWriter writer = new();
             writer.Write(OutboundMiniRoomOpcode);
             writer.WriteByte(requestSubtype);
             if (!requestBody.IsEmpty)
@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator.Managers
         public static byte[] BuildPersonalShopBuyOutboundPacket(bool buyFromEntrustedShop, byte itemIndex, short bundleCount, uint itemCrc)
         {
             byte requestSubtype = buyFromEntrustedShop ? RequestSubtypeEntrustedShopBuy : RequestSubtypePersonalShopBuy;
-            using PacketWriter writer = new(sizeof(byte) + sizeof(short) + sizeof(uint));
+            using PacketWriter writer = new();
             writer.WriteByte(itemIndex);
             writer.Write(Math.Max((short)1, bundleCount));
             writer.Write(itemCrc);
@@ -101,7 +101,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildMerchantPutItemOutboundPacket(byte inventorySlot, short bundleCount, int bundlePrice, uint itemCrc)
         {
-            using PacketWriter writer = new(sizeof(byte) + sizeof(short) + sizeof(int) + sizeof(uint));
+            using PacketWriter writer = new();
             writer.WriteByte(inventorySlot);
             writer.Write(Math.Max((short)1, bundleCount));
             writer.WriteInt(Math.Max(0, bundlePrice));

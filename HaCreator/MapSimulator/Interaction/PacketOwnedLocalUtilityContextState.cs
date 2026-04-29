@@ -1008,7 +1008,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static byte[] CreateEmotionChangePayload(int emotionId, bool byItemOption, int durationMs)
         {
-            using PacketWriter writer = new((sizeof(int) * 2) + sizeof(byte));
+            using PacketWriter writer = new();
             writer.WriteInt(emotionId);
             writer.WriteInt(durationMs);
             writer.WriteByte(byItemOption ? 1 : 0);
@@ -1046,7 +1046,7 @@ namespace HaCreator.MapSimulator.Interaction
             int requestIndex,
             int updateTime)
         {
-            using PacketWriter writer = new(sizeof(ulong) + sizeof(byte) + sizeof(int) + sizeof(ushort) + sizeof(int));
+            using PacketWriter writer = new();
             writer.Write(petSerial);
             writer.WriteByte(buffSkill ? 1 : 0);
             writer.WriteInt(updateTime);

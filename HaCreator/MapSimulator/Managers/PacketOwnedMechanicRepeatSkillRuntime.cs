@@ -109,7 +109,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            using PacketWriter writer = new(sizeof(int) + 2);
+            using PacketWriter writer = new();
             writer.WriteInt(skillId);
             writer.WriteByte(skillLevel);
             writer.WriteByte(sendLocal ? 1 : 0);
@@ -162,7 +162,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            using PacketWriter writer = new((sizeof(int) * 2) + sizeof(byte) + (sizeof(short) * 2) + 2);
+            using PacketWriter writer = new();
             writer.WriteInt(requestTime);
             writer.WriteInt(Sg88SkillId);
             writer.WriteByte(skillLevel);
@@ -199,7 +199,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            using PacketWriter writer = new();
             writer.Write((ushort)Sg88FirstUseSummonOpcode);
             writer.WriteBytes(payload);
             byte[] rawPacket = writer.ToArray();
@@ -381,7 +381,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+                using PacketWriter writer = new();
                 writer.Write((ushort)Sg88FirstUseSummonOpcode);
                 writer.WriteBytes(payload);
                 byte[] rawPacket = writer.ToArray();

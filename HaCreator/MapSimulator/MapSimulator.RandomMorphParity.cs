@@ -290,7 +290,7 @@ namespace HaCreator.MapSimulator
             string normalizedTargetName = targetName ?? string.Empty;
             byte[] encodedTargetName = Encoding.Default.GetBytes(normalizedTargetName);
             int targetLength = Math.Min(encodedTargetName.Length, ushort.MaxValue);
-            using PacketWriter writer = new(sizeof(int) + sizeof(short) + sizeof(int) + sizeof(ushort) + targetLength);
+            using PacketWriter writer = new();
             writer.WriteInt(currentTick);
             writer.Write((short)Math.Clamp(inventoryPosition, 0, short.MaxValue));
             writer.WriteInt(itemId);

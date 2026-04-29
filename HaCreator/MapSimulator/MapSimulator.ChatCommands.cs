@@ -3556,7 +3556,7 @@ namespace HaCreator.MapSimulator
                         byte[] payload = null;
                         if (packetType == 344)
                         {
-                            using PacketWriter writer = new(sizeof(short));
+                            using PacketWriter writer = new();
                             writer.Write(checked((short)packetValue));
                             payload = writer.ToArray();
                         }
@@ -8615,7 +8615,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        using PacketWriter writer = new(sizeof(ushort) + recvPayload.Length);
+                        using PacketWriter writer = new();
                         writer.Write(recvOpcode);
                         writer.WriteBytes(recvPayload);
                         byte[] recvPacket = writer.ToArray();

@@ -243,7 +243,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static byte[] BuildUsePrivilegeRequestPayload(int privilegeIndex, bool includeTargetName, string targetName)
         {
-            using PacketWriter writer = new(sizeof(int) + sizeof(ushort) + Math.Max(0, targetName?.Length ?? 0));
+            using PacketWriter writer = new();
             writer.WriteInt(privilegeIndex);
             if (!includeTargetName)
             {

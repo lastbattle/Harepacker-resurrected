@@ -889,7 +889,7 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildItemUpgradeRequestPayload(int itemToken, int slotPosition, int updateTick)
         {
-            using PacketWriter writer = new(ItemUpgradeOwnerRequestPayloadLength);
+            using PacketWriter writer = new();
             writer.WriteInt(itemToken);
             writer.WriteInt(Math.Max(0, slotPosition));
             writer.WriteInt(updateTick);
@@ -903,7 +903,7 @@ namespace HaCreator.MapSimulator
             int itemToken,
             int updateTick)
         {
-            using PacketWriter writer = new(ItemUpgradeOwnerConsumeCashRequestPayloadLength);
+            using PacketWriter writer = new();
             writer.WriteInt(useRequestTick);
             writer.Write((short)Math.Clamp(consumableSlotPosition, short.MinValue, short.MaxValue));
             writer.WriteInt(consumableItemId);
@@ -1071,7 +1071,7 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildItemUpgradeResultAckPayload(int returnResultCode, int resultValue)
         {
-            using PacketWriter writer = new(ItemUpgradeOwnerResultAckPayloadLength);
+            using PacketWriter writer = new();
             writer.WriteInt(returnResultCode);
             writer.WriteInt(resultValue);
             return writer.ToArray();

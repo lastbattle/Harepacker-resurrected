@@ -336,7 +336,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
         {
-            using PacketWriter writer = new(FollowCharacterRequestPayloadLength);
+            using PacketWriter writer = new();
             writer.WriteInt(driverId);
             writer.WriteByte(autoRequest ? 1 : 0);
             writer.WriteByte(keyInput ? 1 : 0);
@@ -511,7 +511,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)
         {
-            using PacketWriter writer = new(sizeof(ushort) + (payload?.Count ?? 0));
+            using PacketWriter writer = new();
             writer.Write(opcode);
             if (payload is byte[] bytes)
             {

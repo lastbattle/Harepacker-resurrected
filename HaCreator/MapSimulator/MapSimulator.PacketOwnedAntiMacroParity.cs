@@ -1287,7 +1287,7 @@ namespace HaCreator.MapSimulator
 
         private static byte[] BuildPacketOwnedAntiMacroAnswerRawPacket(IReadOnlyList<byte> payload)
         {
-            using PacketWriter writer = new(sizeof(ushort) + (payload?.Count ?? 0));
+            using PacketWriter writer = new();
             writer.Write((ushort)PacketOwnedAntiMacroAnswerSubmitOpcode);
             if (payload is byte[] bytes)
             {

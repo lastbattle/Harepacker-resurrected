@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildComboCountPayload(int comboCount)
         {
-            using PacketWriter writer = new(sizeof(int));
+            using PacketWriter writer = new();
             writer.WriteInt(comboCount);
             return writer.ToArray();
         }

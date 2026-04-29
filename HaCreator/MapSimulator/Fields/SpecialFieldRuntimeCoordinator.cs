@@ -338,7 +338,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             payload ??= Array.Empty<byte>();
 
-            using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            using PacketWriter writer = new();
             writer.Write((ushort)packetType);
             writer.WriteBytes(payload);
             return writer.ToArray();

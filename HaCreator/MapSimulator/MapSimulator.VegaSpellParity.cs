@@ -588,7 +588,7 @@ namespace HaCreator.MapSimulator
             bool useWhiteScroll,
             int updateTick)
         {
-            using PacketWriter writer = new(VegaOwnerRequestPayloadLength);
+            using PacketWriter writer = new();
             writer.WriteInt(updateTick);
             writer.Write((short)Math.Max(0, modifierSlotPosition));
             writer.WriteInt(modifierItemId);
@@ -609,7 +609,7 @@ namespace HaCreator.MapSimulator
             int slotIndex,
             int modifierItemToken)
         {
-            using PacketWriter writer = new(VegaConsumeCashLaunchPayloadLength);
+            using PacketWriter writer = new();
             writer.WriteInt(updateTick);
             writer.Write((short)Math.Max(0, modifierSlotPosition));
             writer.WriteInt(modifierItemId);

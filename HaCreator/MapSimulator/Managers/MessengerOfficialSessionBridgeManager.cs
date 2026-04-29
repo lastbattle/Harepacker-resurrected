@@ -864,7 +864,7 @@ namespace HaCreator.MapSimulator.Managers
             byte[] safePayload = payload == null
                 ? Array.Empty<byte>()
                 : payload as byte[] ?? payload.ToArray();
-            using PacketWriter writer = new(sizeof(ushort) + safePayload.Length);
+            using PacketWriter writer = new();
             writer.Write((ushort)opcode);
             writer.WriteBytes(safePayload);
             rawPacket = writer.ToArray();

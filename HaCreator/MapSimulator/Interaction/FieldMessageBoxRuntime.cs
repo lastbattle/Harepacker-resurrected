@@ -885,7 +885,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal static byte[] BuildOpcodePrefixedRawPacket(ushort opcode, byte[] payload)
         {
             payload ??= Array.Empty<byte>();
-            PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            PacketWriter writer = new();
             writer.WriteShort(opcode);
             writer.WriteBytes(payload);
             return writer.ToArray();

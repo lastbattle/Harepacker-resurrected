@@ -118,7 +118,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public static byte[] BuildClientMesoDropRequestPayload(int currentTimeMs, int amount)
         {
-            using PacketWriter writer = new(sizeof(int) * 2);
+            using PacketWriter writer = new();
             writer.WriteInt(currentTimeMs);
             writer.WriteInt(amount);
             return writer.ToArray();
@@ -130,7 +130,7 @@ namespace HaCreator.MapSimulator.Fields
             int sourceSlotPosition,
             int dropCount)
         {
-            using PacketWriter writer = new(sizeof(int) + sizeof(byte) + (sizeof(short) * 3));
+            using PacketWriter writer = new();
             writer.WriteInt(currentTimeMs);
             writer.WriteByte((byte)inventoryType);
             writer.Write((short)sourceSlotPosition);

@@ -306,7 +306,7 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /messagebox session send <opcode> [payloadhex=..|payloadb64=..]");
                 }
 
-                using PacketWriter writer = new(sizeof(ushort) + payload.Length);
+                using PacketWriter writer = new();
                 writer.Write((ushort)opcode);
                 writer.WriteBytes(payload);
                 byte[] rawPacket = writer.ToArray();

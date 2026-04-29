@@ -992,7 +992,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRequestPacket(MonsterCarnivalTab tab, int entryIndex)
         {
-            using PacketWriter writer = new(sizeof(ushort) + sizeof(byte) + sizeof(int));
+            using PacketWriter writer = new();
             writer.Write((ushort)OutboundRequestOpcode);
             writer.WriteByte((byte)tab);
             writer.WriteInt(entryIndex);

@@ -265,7 +265,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static byte[] BuildTouchRequestPacket(int objectId, bool isTouching)
         {
-            using PacketWriter writer = new(sizeof(ushort) + sizeof(int) + sizeof(byte));
+            using PacketWriter writer = new();
             writer.Write(OutboundTouchReactorOpcode);
             writer.WriteInt(objectId);
             writer.WriteByte(isTouching ? 1 : 0);

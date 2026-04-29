@@ -1306,7 +1306,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private static byte[] BuildRawPacket(int opcode, byte[] payload)
         {
-            using PacketWriter writer = new(sizeof(ushort) + (payload?.Length ?? 0));
+            using PacketWriter writer = new();
             writer.Write((ushort)opcode);
             if (payload != null)
             {
