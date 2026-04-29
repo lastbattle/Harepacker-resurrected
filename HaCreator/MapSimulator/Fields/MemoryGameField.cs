@@ -3074,12 +3074,6 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool CanLocalHostSendStartRequest(out string message)
         {
-            if (_localPlayerIndex != 0)
-            {
-                message = "Only the Match Cards room owner can send start packet (61).";
-                return false;
-            }
-
             if (!HasClientStartTarget())
             {
                 message = "Start request ignored because no opponent is seated in the Match Cards room yet.";

@@ -4055,11 +4055,11 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            string normalizedPath = markerName.Replace('\\', '/');
-            bool hasDefaultHelperPathContext = markerName.IndexOf("DefaultHelper", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool hasMinimapIconDirectionPathContext = normalizedPath.IndexOf("MiniMap/iconDirection", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool hasMinimapIconNpcPathContext = normalizedPath.IndexOf("MiniMap/iconNpc", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool isPlainMarkerToken = markerName.IndexOf('/') < 0 && markerName.IndexOf('\\') < 0;
+            string[] markerSegments = SplitHelperMarkerNameSegments(markerName.Trim().Replace('\\', '/'));
+            bool hasDefaultHelperPathContext = HasHelperMarkerPathSegment(markerSegments, "DefaultHelper");
+            bool hasMinimapIconDirectionPathContext = HasHelperMarkerPathSequence(markerSegments, "MiniMap", "iconDirection");
+            bool hasMinimapIconNpcPathContext = HasHelperMarkerPathSequence(markerSegments, "MiniMap", "iconNpc");
+            bool isPlainMarkerToken = markerSegments.Length == 1;
             if (!hasDefaultHelperPathContext
                 && !hasMinimapIconDirectionPathContext
                 && !hasMinimapIconNpcPathContext
@@ -4100,6 +4100,45 @@ namespace HaCreator.MapSimulator.Pools
             // outside tracked-user icons (npc/portal/arrow families). Accept those
             // payloads while keeping tracked-user marker ownership unchanged.
             return true;
+        }
+
+        private static bool HasHelperMarkerPathSegment(string[] segments, string expectedSegment)
+        {
+            if (segments == null || string.IsNullOrWhiteSpace(expectedSegment))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < segments.Length; i++)
+            {
+                if (string.Equals(segments[i], expectedSegment, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasHelperMarkerPathSequence(string[] segments, string firstSegment, string secondSegment)
+        {
+            if (segments == null
+                || string.IsNullOrWhiteSpace(firstSegment)
+                || string.IsNullOrWhiteSpace(secondSegment))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < segments.Length - 1; i++)
+            {
+                if (string.Equals(segments[i], firstSegment, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(segments[i + 1], secondSegment, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string ResolveHelperMarkerWzName(MinimapUI.HelperMarkerType? markerType)
@@ -4890,6 +4929,23 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
                     adjacentPairConsensusChargeElement,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementBySeparatedSkillElementPairConsensusFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
+                    out int separatedPairConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    separatedPairConsensusChargeElement,
                     out chargeSkillId))
             {
                 return true;

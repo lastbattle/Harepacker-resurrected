@@ -855,7 +855,6 @@ namespace HaCreator.MapSimulator.Fields
         private void BeginFinalScoreWait(int currentTick)
         {
             _gameActive = false;
-            _finishTick = 0;
             _timeRemaining = 0;
             _awaitingFinalScore = true;
             _pendingAttackPacketRequests.Clear();

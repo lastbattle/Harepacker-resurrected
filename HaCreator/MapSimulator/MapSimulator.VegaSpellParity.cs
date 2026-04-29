@@ -88,6 +88,8 @@ namespace HaCreator.MapSimulator
             public bool? PacketOwnedTerminalSuccess { get; set; }
             public int? PacketOwnedPreludeStartedAtTick { get; set; }
             public int PacketOwnedPreludeDurationMs { get; set; }
+            public bool PacketOwnedUpgradeStateObserved { get; set; }
+            public int PacketOwnedUpgradeState { get; set; } = int.MinValue;
         }
 
         private sealed class PendingVegaPromptState
@@ -1760,6 +1762,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (_pendingVegaCastState.PacketOwnedUpgradeStateObserved)
+            {
+                itemUpgradeWindow.ApplyPacketOwnedUpgradeSlotState(
+                    _pendingVegaCastState.Request.Slot,
+                    _pendingVegaCastState.PacketOwnedUpgradeState);
+            }
+
             return true;
         }
 
@@ -2007,15 +2016,47 @@ namespace HaCreator.MapSimulator
                 : 0;
         }
 
+        private readonly record struct VegaResultDecodeState(
+            byte ResultCode,
+            bool HasOutcomeState,
+            int OutcomeResultValue,
+            int OutcomeUpgradeState);
+
         private static bool TryDecodeVegaResultPayload(byte[] payload, out byte resultCode)
         {
-            resultCode = 0;
+            bool decoded = TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState);
+            resultCode = decodeState.ResultCode;
+            return decoded;
+        }
+
+        private static bool TryDecodeVegaResultPayloadState(byte[] payload, out VegaResultDecodeState decodeState)
+        {
+            decodeState = default;
             if (payload == null || payload.Length == 0)
             {
                 return false;
             }
 
-            resultCode = payload[0];
+            byte resultCode = payload[0];
+            if (payload.Length >= sizeof(byte) + (sizeof(int) * 2))
+            {
+                int outcomeResultValue = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte), sizeof(int)));
+                int outcomeUpgradeState = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte) + sizeof(int), sizeof(int)));
+                decodeState = new VegaResultDecodeState(
+                    resultCode,
+                    HasOutcomeState: true,
+                    outcomeResultValue,
+                    outcomeUpgradeState);
+                return true;
+            }
+
+            decodeState = new VegaResultDecodeState(
+                resultCode,
+                HasOutcomeState: false,
+                OutcomeResultValue: 0,
+                OutcomeUpgradeState: int.MinValue);
             return true;
         }
 

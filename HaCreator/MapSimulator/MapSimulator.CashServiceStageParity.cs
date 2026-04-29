@@ -3381,7 +3381,7 @@ namespace HaCreator.MapSimulator
                         ClientHeight = 20
                     }
                 },
-                footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000) at height-95, Prepaid Cash (1001) at height-80, Nexon Cash (1002) at height-65, combo 1003 at (62,42,150,18) for multi-packed commodities, OK at (157,height-37), and Cancel at (207,height-37).",
+                footer: "WZ: CashShop.img/CSNotice/0 pieces compose the purchase shell. Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000) at height-95, Prepaid Cash (1001) at height-80, Nexon Cash (1002) at height-65, combo 1003 at (62,42,150,18) for multi-packed commodities, OK at (157,height-37), and Cancel at (207,height-37).",
                 checkBoxes: BuildCashPurchasePaymentSelectorStates(stageWindow, selectedEntry, purchaseVariants, preferredVariantSerialNumber),
                 comboBox: BuildCashPurchaseVariantComboBoxState(selectedEntry, purchaseVariants, preferredVariantSerialNumber));
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);
@@ -3430,6 +3430,7 @@ namespace HaCreator.MapSimulator
                     messageShapeLine,
                     string.IsNullOrWhiteSpace(entry.PriceLabel) ? string.Empty : entry.PriceLabel,
                     string.IsNullOrWhiteSpace(entry.StateLabel) ? string.Empty : entry.StateLabel,
+                    "WZ: CashShop.img/CSNotice/3/backgrnd (266x250).",
                     "Client evidence: OnCashItemResLoadGiftDone allocates one CUIReceiveGift per decoded GW_GiftList row and advances after each modal closes."
                 },
                 new[]
@@ -3480,6 +3481,7 @@ namespace HaCreator.MapSimulator
                 {
                     ownerNotice,
                     acceptanceSummary,
+                    "WZ: CashShop.img/CSNotice/3/backgrnd (266x250).",
                     "Client evidence: OnCashItemResLoadGiftDone sends opcode 154 and shows StringPool[0xAC0] notice immediately after each CDialog::DoModal return value 1.",
                     $"Decoded queue still has {remainingRows.ToString(CultureInfo.InvariantCulture)} row(s) after this accept branch."
                 },

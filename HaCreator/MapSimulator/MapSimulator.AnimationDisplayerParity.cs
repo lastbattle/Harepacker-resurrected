@@ -1236,13 +1236,12 @@ namespace HaCreator.MapSimulator
                 packetOwnedOwnerContext,
                 frames);
             Vector2 fallbackPosition = getPosition();
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedCatch(
                 frames,
+                effectUol,
                 getPosition,
-                getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
-                fallbackFlip: false,
                 currentTime,
                 initialElapsedMs: initialElapsedMs);
             message = $"Registered catch animation-displayer layer from {effectUol}.";
@@ -1314,13 +1313,12 @@ namespace HaCreator.MapSimulator
                 packetOwnedOwnerContext,
                 frames);
             Vector2 fallbackPosition = getPosition();
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedSquib(
                 frames,
+                visualEffectUol,
                 getPosition,
-                getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
-                fallbackFlip: false,
                 currentTime,
                 initialElapsedMs: initialElapsedMs);
             message = $"Registered squib animation-displayer layer from {visualEffectUol}.";
@@ -1353,13 +1351,12 @@ namespace HaCreator.MapSimulator
                 packetOwnedOwnerContext,
                 frames);
             Vector2 fallbackPosition = getPosition();
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedTransformed(
                 frames,
+                effectUol,
                 getPosition,
-                getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
-                fallbackFlip: false,
                 currentTime,
                 initialElapsedMs: initialElapsedMs);
             message = $"Registered transformed animation-displayer layer from {effectUol}.";

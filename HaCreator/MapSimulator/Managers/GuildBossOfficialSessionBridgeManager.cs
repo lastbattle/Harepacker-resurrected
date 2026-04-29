@@ -529,6 +529,47 @@ namespace HaCreator.MapSimulator.Managers
             return DescribeDiscoveryCandidates(candidates, remotePort, owningProcessId, owningProcessName, localPort);
         }
 
+        public bool TryVerifyPassiveEstablishedSession(out string status)
+        {
+            lock (_sync)
+            {
+                if (HasConnectedSession)
+                {
+                    status = "Guild boss official-session bridge owns a proxied Maple session; passive socket-pair verification is not needed.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                if (!_passiveEstablishedSession.HasValue)
+                {
+                    status = IsRunning
+                        ? $"Guild boss official-session bridge is armed on 127.0.0.1:{ListenPort}; no passive established socket pair is currently attached."
+                        : "Guild boss official-session bridge has no passive established socket pair to verify.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                SessionDiscoveryCandidate candidate = _passiveEstablishedSession.Value;
+                IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(
+                    candidate.RemoteEndpoint.Port,
+                    candidate.ProcessId,
+                    candidate.ProcessName);
+                if (ContainsMatchingEstablishedSession(candidates, candidate))
+                {
+                    status = $"Verified passive Guild Boss Maple socket pair is still established: {DescribeEstablishedSession(candidate)}. Proxy reconnect is still required for decrypt/inject ownership.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                _passiveEstablishedSession = null;
+                status = IsRunning
+                    ? $"Passive Guild Boss Maple socket pair is no longer established: {DescribeEstablishedSession(candidate)}. Keeping reconnect proxy armed on 127.0.0.1:{ListenPort} with {PendingPacketCount} queued opcode {OutboundPulleyRequestOpcode} request(s)."
+                    : $"Passive Guild Boss Maple socket pair is no longer established: {DescribeEstablishedSession(candidate)}. Cleared passive ownership and retained {PendingPacketCount} queued opcode {OutboundPulleyRequestOpcode} request(s) for the next reconnect-armed session.";
+                LastStatus = status;
+                return false;
+            }
+        }
+
         public void Stop()
         {
             lock (_sync)
@@ -1161,6 +1202,18 @@ namespace HaCreator.MapSimulator.Managers
                 && string.Equals(left.ProcessName, right.ProcessName, StringComparison.OrdinalIgnoreCase)
                 && Equals(left.LocalEndpoint, right.LocalEndpoint)
                 && Equals(left.RemoteEndpoint, right.RemoteEndpoint);
+        }
+
+        internal static bool ContainsMatchingEstablishedSession(
+            IReadOnlyList<SessionDiscoveryCandidate> candidates,
+            SessionDiscoveryCandidate expected)
+        {
+            if (candidates == null || expected.LocalEndpoint == null || expected.RemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            return candidates.Any(candidate => IsSameEstablishedSession(candidate, expected));
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

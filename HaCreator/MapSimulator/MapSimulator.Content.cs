@@ -387,6 +387,10 @@ namespace HaCreator.MapSimulator
 
                     RegisterQuestGatedMapObject(mapItem, tileObj, questGatedMapObjects);
                     mapObjects[tileObj.LayerNumber].Add(mapItem);
+                    foreach (BaseDXDrawableItem branchItem in CreatePacketOwnedStageTransitionAuthoredStateBranchItems(mapItem, tileObj, usedProps, questGatedMapObjects))
+                    {
+                        mapObjects[tileObj.LayerNumber].Add(branchItem);
+                    }
                 }
                 taskStopwatch.Stop();
                 Debug.WriteLine($"[MapLoad] Tile task loaded {_mapBoard.BoardItems.TileObjs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
@@ -1569,6 +1573,10 @@ namespace HaCreator.MapSimulator
 
                     RegisterQuestGatedMapObject(mapItem, tileObj, questGatedMapObjects);
                     mapObjects[tileObj.LayerNumber].Add(mapItem);
+                    foreach (BaseDXDrawableItem branchItem in CreatePacketOwnedStageTransitionAuthoredStateBranchItems(mapItem, tileObj, usedProps, questGatedMapObjects))
+                    {
+                        mapObjects[tileObj.LayerNumber].Add(branchItem);
+                    }
                 }
                 taskStopwatch.Stop();
                 Debug.WriteLine($"[MapLoad] Tiles task loaded {_mapBoard.BoardItems.TileObjs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");

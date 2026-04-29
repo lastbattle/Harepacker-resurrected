@@ -91,6 +91,8 @@ namespace HaCreator.MapSimulator.Interaction
             new Dictionary<byte, string>
             {
                 [10] = "CPersonalShopDlg::SetRet(nRet=2) / close",
+                [11] = "CPersonalShopDlg::SetRet(nRet=1) / open setup",
+                [15] = "CPersonalShopDlg::PutItem(list item)",
                 [23] = "CPersonalShopDlg::BuyItem(personal shop)",
                 [34] = "CPersonalShopDlg::BuyItem(entrusted shop visitor path)",
                 [39] = "CEntrustedShopDlg::OnGoOut",
@@ -323,6 +325,16 @@ namespace HaCreator.MapSimulator.Interaction
                         expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
                         expectedInboundSubtypes = new byte[] { 25 };
                         expectationSummary = "expect CPersonalShopDlg::OnPacket -> CMiniRoomBaseDlg::OnPacketBase close/leave update (subtype 25)";
+                        return true;
+                    case 11:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 25 };
+                        expectationSummary = "expect CPersonalShopDlg::SetRet(nRet=1) setup request to be followed by a MiniRoom base enter/result family (subtype 25)";
+                        return true;
+                    case 15:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 25 };
+                        expectationSummary = "expect CPersonalShopDlg::PutItem list request to be followed by a MiniRoom base update family (subtype 25)";
                         return true;
                     case 23:
                     case 34:

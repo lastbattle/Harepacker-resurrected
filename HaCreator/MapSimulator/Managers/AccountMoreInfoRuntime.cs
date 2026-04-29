@@ -178,12 +178,17 @@ namespace HaCreator.MapSimulator.Managers
                 return null;
             }
 
+            uint playStyleMask = MaskClientPlayStyleBits(_playStyleMask);
+            uint activityMask = MaskClientActivityBits(_activityMask);
+            _playStyleMask = playStyleMask;
+            _activityMask = activityMask;
+
             using PacketWriter writer = new(sizeof(byte) + (sizeof(uint) * 4));
             writer.WriteByte(3);
             writer.Write(BuildClientAreaCodeForSave(_areaGroup, _areaDetail));
-            writer.Write((uint)(_birthYear * 10000 + (_birthMonth * 100) + _birthDay));
-            writer.Write(_playStyleMask);
-            writer.Write(_activityMask);
+            writer.Write(BuildClientBirthdayForSave(_birthYear, _birthMonth, _birthDay));
+            writer.Write(playStyleMask);
+            writer.Write(activityMask);
             _savePending = true;
             _isFirstEntry = false;
             _statusText = "Queued an account-more-info save request and disabled further saves until server subtype 4 returns.";
@@ -416,6 +421,14 @@ namespace HaCreator.MapSimulator.Managers
             // OnLoadAccountMoreInfoResult recovers the selected area values from
             // the low two bytes of this dword; keep outbound save encoding byte-owned too.
             return (uint)((areaGroup & 0xFF) | ((areaDetail & 0xFF) << 8));
+        }
+
+        internal static uint BuildClientBirthdayForSave(int year, int month, int day)
+        {
+            int resolvedYear = ResolveLoadedBirthYear(year);
+            int resolvedMonth = ResolveLoadedBirthMonth(month);
+            int resolvedDay = ResolveLoadedBirthDay(resolvedYear, resolvedMonth, day);
+            return (uint)((resolvedYear * 10000) + (resolvedMonth * 100) + resolvedDay);
         }
 
         internal static uint MaskClientPlayStyleBits(uint value)
@@ -912,8 +925,23 @@ namespace HaCreator.MapSimulator.Managers
         {
             id = 0;
             name = null;
-            if (child is not IPropertyContainer container
-                || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out id))
+            if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out id))
+            {
+                return false;
+            }
+
+            if (child is WzStringProperty directNameProperty)
+            {
+                if (string.IsNullOrWhiteSpace(directNameProperty.Value))
+                {
+                    return false;
+                }
+
+                name = directNameProperty.Value;
+                return true;
+            }
+
+            if (child is not IPropertyContainer container)
             {
                 return false;
             }

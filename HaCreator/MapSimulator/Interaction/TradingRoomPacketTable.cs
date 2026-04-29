@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly IReadOnlyDictionary<byte, string> TradingRoomOutboundSubtypeHandlers =
             new Dictionary<byte, string>
             {
+                [15] = "CTradingRoomDlg::OnPutItem request",
+                [16] = "CTradingRoomDlg::OnPutMoney request",
                 [17] = "CTradingRoomDlg::OnTrade request",
                 [20] = "CTradingRoomDlg::OnTrade CRC follow-up"
             };

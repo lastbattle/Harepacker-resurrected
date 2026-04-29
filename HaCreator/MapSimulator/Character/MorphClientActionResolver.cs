@@ -467,6 +467,13 @@ namespace HaCreator.MapSimulator.Character
                 // rather than unique morph roots.
                 ["demonSlasher"] = new[] { "stand1", "swingO2" },
                 ["bluntSmash"] = new[] { "alert", "swingO3", "swingOF" },
+                // Skill/3100.img/skill/31001000 publishes the Blunt Smash
+                // prepare/key-down/end owners as skill-only action strings. The checked
+                // body and morph images keep no direct `bluntSmash*` branches, so keep
+                // them on the same alert/swing morph surface as the root Blunt Smash row.
+                ["bluntSmashPrep"] = new[] { "alert", "swingO3", "swingOF" },
+                ["bluntSmashLoop"] = new[] { "swingO3", "swingOF", "alert" },
+                ["bluntSmashEnd"] = new[] { "alert", "swingOF", "swingO3" },
                 // Skill/3110.img publishes the Soul Eater prepare/key-down/end owners
                 // as skill-only action strings, while Character/00002000.img and
                 // Morph/*.img keep no direct `soulEater*` branches. Keep them near the
@@ -834,6 +841,9 @@ namespace HaCreator.MapSimulator.Character
                 "demonJumpUpward",
                 "demonJumpFoward",
                 "demonFly",
+                "bluntSmashPrep",
+                "bluntSmashLoop",
+                "bluntSmashEnd",
                 "soulEater_prep",
                 "soulEater",
                 "soulEater_end",

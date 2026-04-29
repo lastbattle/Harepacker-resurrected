@@ -127,6 +127,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientOptionExpanded = 0;
         private const int ClientOptionCompact = 1;
         private const int ClientOptionCollapsed = 2;
+        private const int ClientPortalTypeVisible = 2;
+        private const int ClientPortalTypeTownPortalPoint = 7;
         private const int ClientTopRowButtonTop = 4;
         private const int ClientTopRowButtonRightPadding = 6;
         private const int ClientOptionButtonRightPadding = 17;
@@ -1801,8 +1803,13 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool IsClientMinimapTooltipPortalType(PortalType portalType)
         {
-            return portalType == PortalType.Visible
-                || portalType == PortalType.TownPortalPoint;
+            return IsClientMinimapTooltipPortalTypeIdForTesting((int)portalType);
+        }
+
+        internal static bool IsClientMinimapTooltipPortalTypeIdForTesting(int portalTypeId)
+        {
+            return portalTypeId == ClientPortalTypeVisible
+                || portalTypeId == ClientPortalTypeTownPortalPoint;
         }
 
         internal static Point ResolveTooltipAnchorPointForTesting(int windowX, int windowY, int relativeMouseX, int relativeMouseY)

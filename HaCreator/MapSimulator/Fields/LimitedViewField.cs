@@ -1402,6 +1402,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int successfulCopyCount = 0;
+            HashSet<int> successfulCopyMaskIndices = new();
             foreach (ClientOwnedDrawViewrangeOperation operation in operations)
             {
                 switch (operation.Kind)
@@ -1446,10 +1447,14 @@ namespace HaCreator.MapSimulator.Fields
                             operation.UsesRemoveAlphaCopy))
                         {
                             successfulCopyCount++;
+                            successfulCopyMaskIndices.Add(operation.MaskIndex);
                         }
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory:
-                        TrackClientOwnedCurrentMaskTopLeft(operation.TopLeft);
+                        if (ShouldAppendClientOwnedPreviousMaskTopLeft(operation, successfulCopyMaskIndices))
+                        {
+                            TrackClientOwnedCurrentMaskTopLeft(operation.TopLeft);
+                        }
                         break;
                 }
             }
@@ -1458,6 +1463,15 @@ namespace HaCreator.MapSimulator.Fields
             {
                 DrawClientOwnedDarkLayerFallback(spriteBatch, fogColor);
             }
+        }
+
+        internal static bool ShouldAppendClientOwnedPreviousMaskTopLeft(
+            ClientOwnedDrawViewrangeOperation operation,
+            ISet<int> successfulCopyMaskIndices)
+        {
+            return operation.Kind == ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory
+                && successfulCopyMaskIndices != null
+                && successfulCopyMaskIndices.Contains(operation.MaskIndex);
         }
 
         internal static bool ShouldDrawClientOwnedDarkLayerFallbackAfterCopyOperations(

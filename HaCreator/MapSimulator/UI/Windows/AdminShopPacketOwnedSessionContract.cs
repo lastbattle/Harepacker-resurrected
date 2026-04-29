@@ -281,9 +281,14 @@ namespace HaCreator.MapSimulator.UI
             byte resultCode,
             int trailingByteCount = 0,
             bool hasResultCode = true,
-            string trailingPayloadSignature = null)
+            string trailingPayloadSignature = null,
+            bool countAsInboundPacket = true)
         {
-            ResultCount++;
+            if (countAsInboundPacket)
+            {
+                ResultCount++;
+            }
+
             LastSubtype = subtype;
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;

@@ -99,6 +99,9 @@ namespace HaCreator.MapSimulator.Effects
         private bool _hasNextFloorPortal;
         private int _nextFloorMapId = -1;
         private string _nextFloorPortalName = string.Empty;
+        private bool _hasExitPortal;
+        private string _exitPortalName = string.Empty;
+        private int _exitPortalTargetMapId = -1;
         private int _pendingTransferMapId = -1;
         private string _pendingTransferPortalName = string.Empty;
         private int _pendingTransferAtTick = int.MinValue;
@@ -167,11 +170,27 @@ namespace HaCreator.MapSimulator.Effects
             EnergyFullTopLeft);
         public int NextFloorMapId => ResolveNextFloorMapId();
         public string NextFloorPortalName => ResolveNextFloorPortalName() ?? string.Empty;
+        public bool HasAuthoredExitPortal => _hasExitPortal;
+        public string AuthoredExitPortalName => _exitPortalName;
+        public int AuthoredExitPortalTargetMapId => _exitPortalTargetMapId;
         public int ClearTransferMapId => ResolveClearTransferMapId();
         public string ClearTransferPortalName => ResolveClearTransferPortalName() ?? string.Empty;
         public int ExitMapId => ResolveExitMapId();
         public bool HasLiveTimer => _timeOverTick != int.MinValue && _timeOverTick > Environment.TickCount;
         public bool IsTimerExpired => _timeOverTick != int.MinValue && _timeOverTick != 0 && _timeOverTick <= Environment.TickCount;
+        public static bool IsDojoActivationContract(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            return mapInfo.fieldType == FieldType.FIELDTYPE_DOJANG
+                || (mapInfo.id >= 925020000 && mapInfo.id <= 925040999)
+                || string.Equals(mapInfo.mapMark, "MuruengRaid", StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
+                    && mapInfo.onUserEnter.StartsWith("dojang", StringComparison.OrdinalIgnoreCase));
+        }
         public static bool TryInferClockPacketType(byte[] payload, out int packetType, out string reason)
         {
             packetType = -1;
@@ -401,6 +420,9 @@ namespace HaCreator.MapSimulator.Effects
             _hasNextFloorPortal = false;
             _nextFloorMapId = -1;
             _nextFloorPortalName = string.Empty;
+            _hasExitPortal = false;
+            _exitPortalName = string.Empty;
+            _exitPortalTargetMapId = -1;
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
@@ -433,11 +455,15 @@ namespace HaCreator.MapSimulator.Effects
             _forcedReturnMapId = NormalizeTransferMapId(mapInfo?.forcedReturn);
             _nextFloorMapId = -1;
             _hasNextFloorPortal = hasNextFloorPortal || HasPortalScript(_mapId, "dojang_next");
+            _hasExitPortal = false;
+            _exitPortalName = string.Empty;
+            _exitPortalTargetMapId = -1;
         }
         public void Configure(MapInfo mapInfo, IEnumerable<PortalInstance> portals, bool hasNextFloorPortal = false)
         {
             Configure(mapInfo, hasNextFloorPortal);
             (_nextFloorMapId, _nextFloorPortalName) = ResolveNextFloorDestinationFromPortals(portals);
+            (_hasExitPortal, _exitPortalName, _exitPortalTargetMapId) = ResolveExitPortalContractFromPortals(portals);
             if (_nextFloorMapId > 0)
             {
                 _hasNextFloorPortal = true;
@@ -691,6 +717,12 @@ namespace HaCreator.MapSimulator.Effects
             string transferPortalText = _pendingTransferMapId > 0 && !string.IsNullOrWhiteSpace(_pendingTransferPortalName)
                 ? $", pendingPortal={_pendingTransferPortalName}"
                 : string.Empty;
+            string nextPortalContractText = ResolveNextFloorMapId() > 0
+                ? $", next={ResolveNextFloorMapId()}:{ResolveNextFloorPortalName() ?? string.Empty}"
+                : string.Empty;
+            string exitPortalContractText = _hasExitPortal
+                ? $", exitPortal={_exitPortalName}->{(_exitPortalTargetMapId > 0 ? _exitPortalTargetMapId.ToString(CultureInfo.InvariantCulture) : "return")}"
+                : string.Empty;
             string clockPacketText = _lastDecodedClockType >= 0
                 ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s/{_lastDecodedClockPayloadLength}b"
                 : string.Empty;
@@ -706,7 +738,7 @@ namespace HaCreator.MapSimulator.Effects
             string packetTailText = string.IsNullOrWhiteSpace(_lastDecodedPacketTrailingPayloadHex)
                 ? string.Empty
                 : $", rawPacketTail={_lastDecodedPacketTrailingPayloadHex}";
-            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{transferPortalText}{clockPacketText}{clockTailText}{packetText}{packetOptionText}{packetTailText}, expiryEffect=StringPool::ms_aString[0x09EE]+sound[0x0A24] via CField_Dojang::UpdateTimer";
+            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{transferPortalText}{nextPortalContractText}{exitPortalContractText}{clockPacketText}{clockTailText}{packetText}{packetOptionText}{packetTailText}, expiryEffect=StringPool::ms_aString[0x09EE]+sound[0x0A24] via CField_Dojang::UpdateTimer";
         }
         public void Reset()
         {
@@ -721,6 +753,9 @@ namespace HaCreator.MapSimulator.Effects
             _hasNextFloorPortal = false;
             _nextFloorMapId = -1;
             _nextFloorPortalName = string.Empty;
+            _hasExitPortal = false;
+            _exitPortalName = string.Empty;
+            _exitPortalTargetMapId = -1;
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
@@ -897,6 +932,28 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return (-1, string.Empty);
+        }
+
+        private static (bool HasExitPortal, string PortalName, int TargetMapId) ResolveExitPortalContractFromPortals(IEnumerable<PortalInstance> portals)
+        {
+            if (portals == null)
+            {
+                return (false, string.Empty, -1);
+            }
+
+            foreach (PortalInstance portal in portals.Where(static portal => portal != null))
+            {
+                if (!string.Equals(portal.script, "dojang_exit", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string portalName = portal.pn ?? string.Empty;
+                int targetMapId = NormalizeTransferMapId(portal.tm);
+                return (true, portalName, targetMapId);
+            }
+
+            return (false, string.Empty, -1);
         }
 
         private static bool IsAuthoredDojoNextFloorPortal(int currentMapId, PortalInstance portal, int targetMapId)

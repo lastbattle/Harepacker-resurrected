@@ -603,7 +603,6 @@ namespace HaCreator.MapSimulator
             _lastDeliveryItemId = Math.Max(0, itemId);
             _lastPacketOwnedDeliveryType = packetOwnedDeliveryType;
             _lastDeliveryDisallowedQuestIds.Clear();
-            _packetOwnedDeliveryTypeHintsByQuestId.Clear();
             SetPacketOwnedQuestDeliveryTypeHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
             RegisterPendingQuestDeliveryResultPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
 
@@ -624,6 +623,7 @@ namespace HaCreator.MapSimulator
                 string unavailable = _lastDeliveryItemId > 0
                     ? $"Packet-authored delivery item {_lastDeliveryItemId} could not be resolved through the client item-info seam, so the delivery owner stayed closed."
                     : "Packet-authored delivery item info was missing, so the delivery owner stayed closed.";
+                CancelPacketOwnedQuestDeliveryLaunchPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
                 NotifyEventAlarmOwnerActivity("packet-owned delivery quest");
                 ShowUtilityFeedbackMessage(unavailable);
                 return unavailable;
@@ -636,6 +636,7 @@ namespace HaCreator.MapSimulator
                     PacketOwnedDeliveryUniqueModelessNoticeStringPoolId,
                     "Another utility dialog is already active, so quest delivery stayed on the status-bar chat path.");
                 string message = $"{statusBarNotice} Active owner: {blockingOwner}.";
+                CancelPacketOwnedQuestDeliveryLaunchPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
                 NotifyEventAlarmOwnerActivity("packet-owned delivery quest");
                 ShowUtilityFeedbackMessage(message);
                 return message;
@@ -644,6 +645,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestDelivery) is not QuestDeliveryWindow questDeliveryWindow)
             {
                 const string unavailable = "Quest delivery window is not available in this UI build.";
+                CancelPacketOwnedQuestDeliveryLaunchPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
                 NotifyEventAlarmOwnerActivity("packet-owned delivery quest");
                 ShowUtilityFeedbackMessage(unavailable);
                 return unavailable;
@@ -659,6 +661,7 @@ namespace HaCreator.MapSimulator
                 string emptyMessage = _lastDeliveryQuestId > 0
                     ? $"Quest delivery suppressed quest #{_lastDeliveryQuestId} because no packet-worthy target with a usable NPC and live delivery-item slot survived the packet-owned filter."
                     : $"{itemName} delivery could not surface a packet-worthy quest target with a usable NPC and live delivery-item slot.";
+                CancelPacketOwnedQuestDeliveryLaunchPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
                 NotifyEventAlarmOwnerActivity("packet-owned delivery quest");
                 ShowUtilityFeedbackMessage(emptyMessage);
                 return emptyMessage;
@@ -667,6 +670,7 @@ namespace HaCreator.MapSimulator
             questDeliveryWindow.Configure(_lastDeliveryQuestId, _lastDeliveryItemId, entries, _packetOwnedUtilityRequestTick);
             if (!TryShowFieldRestrictedWindow(MapSimulatorWindowNames.QuestDelivery))
             {
+                CancelPacketOwnedQuestDeliveryLaunchPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
                 return GetFieldWindowRestrictionMessage(MapSimulatorWindowNames.QuestDelivery)
                     ?? "Quest delivery cannot be opened in this map.";
             }
@@ -1515,12 +1519,24 @@ namespace HaCreator.MapSimulator
 
         private void SetPacketOwnedQuestDeliveryTypeHint(int questId, QuestDetailDeliveryType deliveryType)
         {
-            if (questId <= 0 || deliveryType == QuestDetailDeliveryType.None)
+            if (questId <= 0)
             {
                 return;
             }
 
+            if (deliveryType == QuestDetailDeliveryType.None)
+            {
+                _packetOwnedDeliveryTypeHintsByQuestId.Remove(questId);
+                return;
+            }
+
             _packetOwnedDeliveryTypeHintsByQuestId[questId] = deliveryType;
+        }
+
+        private void CancelPacketOwnedQuestDeliveryLaunchPhaseHint(int questId, QuestDetailDeliveryType deliveryType)
+        {
+            RemoveLatestPendingQuestDeliveryResultPhaseHint(questId, deliveryType);
+            RefreshPacketOwnedQuestDeliveryTypeHintAfterResult(questId);
         }
 
         private QuestDetailDeliveryType ResolvePacketOwnedQuestDeliveryTypeHint(int questId)
@@ -2561,6 +2577,12 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryDecodePacketOwnedClassCompetitionRemotePageHtmlPayload(normalizedText, out remotePayload))
+            {
+                detail = "Decoded class-competition auth-cache remote-page HTML payload.";
+                return true;
+            }
+
             if (!LooksLikeStructuredClassCompetitionRemoteTextPayload(normalizedText))
             {
                 detail = "Class-competition auth payload text did not contain structured remote-page fields.";
@@ -2611,6 +2633,12 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (TryDecodePacketOwnedClassCompetitionRemotePageQueryPayload(normalizedText, out remotePayload))
+                {
+                    error = null;
+                    return true;
+                }
+
+                if (TryDecodePacketOwnedClassCompetitionRemotePageHtmlPayload(normalizedText, out remotePayload))
                 {
                     error = null;
                     return true;
@@ -2674,6 +2702,7 @@ namespace HaCreator.MapSimulator
             if (string.Equals(trimmed, "clear", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(trimmed, "reset", StringComparison.OrdinalIgnoreCase)
                 || LooksLikeStructuredClassCompetitionRemoteTextPayload(trimmed)
+                || LooksLikeClassCompetitionRemoteHtmlPayload(trimmed)
                 || (trimmed.StartsWith("{", StringComparison.Ordinal) && trimmed.EndsWith("}", StringComparison.Ordinal)))
             {
                 text = trimmed;
@@ -2921,6 +2950,171 @@ namespace HaCreator.MapSimulator
                 LadderLines = normalizedLadderLines
             };
             return true;
+        }
+
+        private static bool TryDecodePacketOwnedClassCompetitionRemotePageHtmlPayload(
+            string text,
+            out ClassCompetitionRemotePagePayload remotePayload)
+        {
+            remotePayload = null;
+            if (!LooksLikeClassCompetitionRemoteHtmlPayload(text))
+            {
+                return false;
+            }
+
+            string authKey = TryExtractClassCompetitionAuthKeyFromHtml(text, out string extractedAuthKey)
+                ? extractedAuthKey
+                : string.Empty;
+            string navigateUrl = TryExtractClassCompetitionNavigateUrlFromHtml(text, out string extractedNavigateUrl)
+                ? extractedNavigateUrl
+                : string.Empty;
+            if (string.IsNullOrWhiteSpace(authKey)
+                && TryExtractClassCompetitionAuthKeyFromNavigateUrl(navigateUrl, out string navigateAuthKey))
+            {
+                authKey = navigateAuthKey;
+            }
+
+            navigateUrl = HydrateClassCompetitionNavigateUrlWithAuthKey(navigateUrl, authKey);
+            IReadOnlyList<string> ladderLines = NormalizeClassCompetitionRemoteLines(
+                ExtractClassCompetitionHtmlTableRows(text),
+                PacketOwnedClassCompetitionMaxRemoteLadderLines);
+            IReadOnlyList<string> pageLines = NormalizeClassCompetitionRemoteLines(
+                ExtractClassCompetitionHtmlPageLines(text, ladderLines),
+                PacketOwnedClassCompetitionMaxRemotePageLines);
+
+            if (string.IsNullOrWhiteSpace(authKey)
+                && string.IsNullOrWhiteSpace(navigateUrl)
+                && pageLines.Count == 0
+                && ladderLines.Count == 0)
+            {
+                return false;
+            }
+
+            remotePayload = new ClassCompetitionRemotePagePayload
+            {
+                AuthKey = authKey,
+                NavigateUrl = navigateUrl,
+                Source = "packet class-competition html snapshot",
+                PageLines = pageLines,
+                LadderLines = ladderLines
+            };
+            return true;
+        }
+
+        private static bool LooksLikeClassCompetitionRemoteHtmlPayload(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            return text.Contains('<', StringComparison.Ordinal)
+                && (text.Contains("<html", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("<body", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("<table", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("<tr", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("Event/classbattle", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("classbattle/gameview", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains(PacketOwnedClassCompetitionServerHost, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool TryExtractClassCompetitionAuthKeyFromHtml(string text, out string authKey)
+        {
+            authKey = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            foreach (Match match in Regex.Matches(
+                         text,
+                         @"(?:[?&#;]|&amp;|\b)(?:key|auth)\s*=\s*[""']?(?<value>[^&""'<>\s]+)",
+                         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                string candidate = WebUtility.HtmlDecode(match.Groups["value"].Value);
+                candidate = Uri.UnescapeDataString(candidate ?? string.Empty);
+                if (TryNormalizeClassCompetitionAuthKey(candidate, out string normalizedAuthKey))
+                {
+                    authKey = normalizedAuthKey;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryExtractClassCompetitionNavigateUrlFromHtml(string text, out string navigateUrl)
+        {
+            navigateUrl = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            foreach (Match match in Regex.Matches(
+                         text,
+                         @"(?:href|src|action)\s*=\s*[""'](?<url>[^""']+)[""']",
+                         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                string candidate = WebUtility.HtmlDecode(match.Groups["url"].Value).Trim();
+                if (candidate.Contains("classbattle", StringComparison.OrdinalIgnoreCase)
+                    || candidate.Contains(PacketOwnedClassCompetitionServerHost, StringComparison.OrdinalIgnoreCase))
+                {
+                    navigateUrl = candidate;
+                    return true;
+                }
+            }
+
+            Match urlMatch = Regex.Match(
+                text,
+                @"(?:URL|url|navigate)\s*=\s*(?<url>Event/classbattle/gameview[^""'<>\s]*)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (urlMatch.Success)
+            {
+                navigateUrl = WebUtility.HtmlDecode(urlMatch.Groups["url"].Value).Trim();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IReadOnlyList<string> ExtractClassCompetitionHtmlTableRows(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            var rows = new List<string>();
+            foreach (Match match in Regex.Matches(
+                         text,
+                         @"<tr\b[^>]*>(?<row>.*?)</tr>",
+                         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant))
+            {
+                string row = string.Join(" ", SplitClassCompetitionRemoteTextLines(match.Groups["row"].Value));
+                if (!string.IsNullOrWhiteSpace(row))
+                {
+                    rows.Add(row);
+                }
+            }
+
+            return rows;
+        }
+
+        private static IReadOnlyList<string> ExtractClassCompetitionHtmlPageLines(string text, IReadOnlyList<string> ladderLines)
+        {
+            string[] normalizedLines = SplitClassCompetitionRemoteTextLines(text);
+            if (normalizedLines.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var ladderSet = new HashSet<string>(
+                ladderLines ?? Array.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            return normalizedLines
+                .Where(line => !ladderSet.Contains(line))
+                .ToArray();
         }
 
         private static ClassCompetitionRemotePagePayload DecodePacketOwnedClassCompetitionRemotePageTextPayload(string text)
@@ -5120,7 +5314,7 @@ namespace HaCreator.MapSimulator
         {
             if (_packetOwnedActiveEffectMotionBlurState != null)
             {
-                _packetOwnedActiveEffectMotionBlurState.TerminateRequested = true;
+                _packetOwnedActiveEffectMotionBlurState.MarkTerminated();
                 _packetOwnedActiveEffectMotionBlurState = null;
             }
 
@@ -10155,6 +10349,30 @@ namespace HaCreator.MapSimulator
                 : PacketOwnedRadioClientHandleStatus.Unloaded;
         }
 
+        internal static PacketOwnedRadioClientHandleStatus ResolvePacketOwnedRadioClientHandleStatusBeforeStop(
+            PacketOwnedRadioClientHandleStatus currentStatus,
+            int sessionStartOffsetMs,
+            int sessionStartTick,
+            int currentTickCount,
+            int clientTrackDurationMs,
+            out int playbackPositionMs)
+        {
+            playbackPositionMs = ResolvePacketOwnedRadioClientPlaybackPositionMs(
+                sessionStartOffsetMs,
+                sessionStartTick,
+                currentTickCount,
+                clientTrackDurationMs);
+            if (currentStatus == PacketOwnedRadioClientHandleStatus.None
+                || currentStatus == PacketOwnedRadioClientHandleStatus.Unloaded)
+            {
+                return currentStatus;
+            }
+
+            return ResolvePacketOwnedRadioClientHandleStatusAfterPoll(
+                currentStatus,
+                IsPacketOwnedRadioClientHandleStopped(playbackPositionMs, clientTrackDurationMs));
+        }
+
         internal static PacketOwnedRadioMmsStopPlan ResolvePacketOwnedRadioMmsStopPlan(
             bool trackPropertyLoaded,
             bool soundObjectLoaded,
@@ -10447,6 +10665,14 @@ namespace HaCreator.MapSimulator
         private string StopPacketOwnedRadioSchedule(bool completed, bool emitChatNotice)
         {
             string displayName = _lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor ?? "radio track";
+            _lastPacketOwnedRadioClientHandleStatus = ResolvePacketOwnedRadioClientHandleStatusBeforeStop(
+                _lastPacketOwnedRadioClientHandleStatus,
+                _lastPacketOwnedRadioStartOffsetMs,
+                _lastPacketOwnedRadioStartTick,
+                Environment.TickCount,
+                _lastPacketOwnedRadioClientTrackDurationMs,
+                out int stopPlaybackPositionMs);
+            _lastPacketOwnedRadioClientPlaybackPositionMs = stopPlaybackPositionMs;
             _lastPacketOwnedRadioMmsStopPlan = ResolvePacketOwnedRadioMmsStopPlan(
                 _lastPacketOwnedRadioClientTrackPropertyLoaded,
                 _lastPacketOwnedRadioClientSoundObjectLoaded,
@@ -14534,6 +14760,13 @@ namespace HaCreator.MapSimulator
             _localFollowRuntime.ApplyFollowFailure(info);
             NotifyEventAlarmOwnerActivity("packet-owned follow failure");
 
+            if (PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromFollowCharacterFailure(
+                    _passiveTransferRequestPending,
+                    info.ClearsPendingRequest))
+            {
+                ClearPassiveTransferRequest();
+            }
+
             if (info.ClearsPendingRequest)
             {
                 ShowUtilityFeedbackMessage(_lastPacketOwnedFollowFailureMessage);
@@ -14653,6 +14886,25 @@ namespace HaCreator.MapSimulator
             string WhisperTargetCandidate = null,
             int ChannelId = -1);
 
+        internal static bool TryResolvePacketOwnedChatRouteForTests(
+            string channel,
+            string message,
+            out string line,
+            out int chatLogType,
+            out string whisperTargetCandidate,
+            out int channelId)
+        {
+            bool resolved = TryResolvePacketOwnedChatChannel(
+                channel,
+                message,
+                out PacketOwnedChatRoute route);
+            line = route.Line;
+            chatLogType = route.ChatLogType;
+            whisperTargetCandidate = route.WhisperTargetCandidate;
+            channelId = route.ChannelId;
+            return resolved;
+        }
+
         private static PacketOwnedChatRoute ResolvePacketOwnedChatRoute(string message, string channel)
         {
             string resolvedMessage = message?.Trim() ?? string.Empty;
@@ -14726,6 +14978,12 @@ namespace HaCreator.MapSimulator
             {
                 secondaryChannelId = parsedChannelId;
                 primaryTarget = string.Empty;
+            }
+
+            if (TryParsePacketOwnedClientChatLogTypeMode(mode, out int explicitChatLogType))
+            {
+                route = new PacketOwnedChatRoute(message, explicitChatLogType);
+                return true;
             }
 
             switch (mode)
@@ -14866,6 +15124,38 @@ namespace HaCreator.MapSimulator
                 default:
                     return false;
             }
+        }
+
+        private static bool TryParsePacketOwnedClientChatLogTypeMode(string mode, out int chatLogType)
+        {
+            chatLogType = -1;
+            if (string.IsNullOrWhiteSpace(mode))
+            {
+                return false;
+            }
+
+            string token = mode.Trim();
+            if (token.StartsWith("ltype", StringComparison.Ordinal))
+            {
+                token = token["ltype".Length..];
+            }
+            else if (token.StartsWith("type", StringComparison.Ordinal))
+            {
+                token = token["type".Length..];
+            }
+
+            if (!int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedType))
+            {
+                return false;
+            }
+
+            if (parsedType < 0 || parsedType > 26)
+            {
+                return false;
+            }
+
+            chatLogType = parsedType;
+            return true;
         }
 
         private static string FormatPacketOwnedChatLine(string message, string channel)
@@ -18981,50 +19271,60 @@ namespace HaCreator.MapSimulator
             summary = string.Empty;
             message = "Ranking-page HTML payload did not contain a usable CWebWnd ranking table.";
             if (string.IsNullOrWhiteSpace(payloadText)
-                || payloadText.IndexOf("<tr", StringComparison.OrdinalIgnoreCase) < 0)
+                || (payloadText.IndexOf("<tr", StringComparison.OrdinalIgnoreCase) < 0
+                    && payloadText.IndexOf("<li", StringComparison.OrdinalIgnoreCase) < 0
+                    && payloadText.IndexOf("<div", StringComparison.OrdinalIgnoreCase) < 0))
             {
                 return false;
             }
 
             List<RankingEntrySnapshot> parsedEntries = new();
             List<string> headerCells = new();
-            MatchCollection rowMatches = Regex.Matches(
-                payloadText,
-                @"<tr\b[^>]*>(.*?)</tr>",
-                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
-            foreach (Match rowMatch in rowMatches)
+            if (payloadText.IndexOf("<tr", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                string rowHtml = rowMatch.Groups[1].Value;
-                MatchCollection cellMatches = Regex.Matches(
-                    rowHtml,
-                    @"<t[dh]\b[^>]*>(.*?)</t[dh]>",
+                MatchCollection rowMatches = Regex.Matches(
+                    payloadText,
+                    @"<tr\b[^>]*>(.*?)</tr>",
                     RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
-                if (cellMatches.Count == 0)
+                foreach (Match rowMatch in rowMatches)
                 {
-                    continue;
-                }
+                    string rowHtml = rowMatch.Groups[1].Value;
+                    MatchCollection cellMatches = Regex.Matches(
+                        rowHtml,
+                        @"<t[dh]\b[^>]*>(.*?)</t[dh]>",
+                        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+                    if (cellMatches.Count == 0)
+                    {
+                        continue;
+                    }
 
-                List<string> cells = cellMatches
-                    .Cast<Match>()
-                    .Select(match => NormalizePacketOwnedRankingHtmlCell(match.Groups[1].Value))
-                    .Where(cell => !string.IsNullOrWhiteSpace(cell))
-                    .ToList();
-                if (cells.Count == 0)
-                {
-                    continue;
-                }
+                    List<string> cells = cellMatches
+                        .Cast<Match>()
+                        .Select(match => NormalizePacketOwnedRankingHtmlCell(match.Groups[1].Value))
+                        .Where(cell => !string.IsNullOrWhiteSpace(cell))
+                        .ToList();
+                    if (cells.Count == 0)
+                    {
+                        continue;
+                    }
 
-                bool isHeaderRow = Regex.IsMatch(rowHtml, @"<th\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-                if (isHeaderRow)
-                {
-                    headerCells = cells;
-                    continue;
-                }
+                    bool isHeaderRow = Regex.IsMatch(rowHtml, @"<th\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                    if (isHeaderRow)
+                    {
+                        headerCells = cells;
+                        continue;
+                    }
 
-                if (TryCreatePacketOwnedRankingEntryFromHtmlCells(cells, headerCells, out RankingEntrySnapshot entry))
-                {
-                    parsedEntries.Add(entry);
+                    if (TryCreatePacketOwnedRankingEntryFromHtmlCells(cells, headerCells, out RankingEntrySnapshot entry))
+                    {
+                        parsedEntries.Add(entry);
+                    }
                 }
+            }
+
+            if (parsedEntries.Count == 0)
+            {
+                AppendPacketOwnedRankingHtmlListEntries(payloadText, parsedEntries);
             }
 
             if (parsedEntries.Count == 0)
@@ -19033,9 +19333,145 @@ namespace HaCreator.MapSimulator
             }
 
             entries = parsedEntries.ToArray();
-            summary = $"Applied packet-authored CWebWnd ranking HTML table with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+            summary = $"Applied packet-authored CWebWnd ranking HTML page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
             message = summary;
             return true;
+        }
+
+        private static void AppendPacketOwnedRankingHtmlListEntries(string payloadText, ICollection<RankingEntrySnapshot> destination)
+        {
+            if (string.IsNullOrWhiteSpace(payloadText) || destination == null)
+            {
+                return;
+            }
+
+            MatchCollection rowMatches = Regex.Matches(
+                payloadText,
+                @"<(?<tag>li|div)\b(?<attrs>[^>]*)>(?<body>.*?)</\k<tag>>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            foreach (Match rowMatch in rowMatches)
+            {
+                string attrs = rowMatch.Groups["attrs"].Value;
+                string rowHtml = rowMatch.Groups["body"].Value;
+                if (!IsPacketOwnedRankingHtmlRow(attrs, rowHtml))
+                {
+                    continue;
+                }
+
+                if (TryCreatePacketOwnedRankingEntryFromHtmlListRow(attrs, rowHtml, out RankingEntrySnapshot entry))
+                {
+                    destination.Add(entry);
+                }
+            }
+        }
+
+        private static bool IsPacketOwnedRankingHtmlRow(string attrs, string rowHtml)
+        {
+            string rowMarker = ((attrs ?? string.Empty) + " " + (rowHtml ?? string.Empty)).ToLowerInvariant();
+            return rowMarker.Contains("rank")
+                || rowMarker.Contains("character")
+                || rowMarker.Contains("char")
+                || rowMarker.Contains("world")
+                || rowMarker.Contains("job");
+        }
+
+        private static bool TryCreatePacketOwnedRankingEntryFromHtmlListRow(
+            string attrs,
+            string rowHtml,
+            out RankingEntrySnapshot entry)
+        {
+            entry = null;
+            string rank = ResolvePacketOwnedRankingHtmlField(attrs, rowHtml, "rank", "ranking", "position", "place", "data-rank", "data-position");
+            string label = ResolvePacketOwnedRankingHtmlField(attrs, rowHtml, "character", "charactername", "charname", "name", "player", "ranker", "data-character", "data-name");
+            string job = ResolvePacketOwnedRankingHtmlField(attrs, rowHtml, "job", "jobname", "class", "data-job");
+            string world = ResolvePacketOwnedRankingHtmlField(attrs, rowHtml, "world", "worldname", "server", "data-world");
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                List<string> cells = Regex.Matches(
+                        rowHtml,
+                        @"<(?:span|a|em|strong|p)\b[^>]*>(.*?)</(?:span|a|em|strong|p)>",
+                        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant)
+                    .Cast<Match>()
+                    .Select(match => NormalizePacketOwnedRankingHtmlCell(match.Groups[1].Value))
+                    .Where(cell => !string.IsNullOrWhiteSpace(cell))
+                    .ToList();
+                if (cells.Count >= 2)
+                {
+                    rank = string.IsNullOrWhiteSpace(rank) ? cells[0] : rank;
+                    label = cells[1];
+                    job = string.IsNullOrWhiteSpace(job) && cells.Count >= 3 ? cells[2] : job;
+                    world = string.IsNullOrWhiteSpace(world) && cells.Count >= 4 ? cells[3] : world;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return false;
+            }
+
+            List<string> detailParts = new();
+            AddPacketOwnedRankingHtmlDetailPart(detailParts, job);
+            AddPacketOwnedRankingHtmlDetailPart(detailParts, world);
+            entry = CreatePacketOwnedRankingEntry(label, rank, string.Join(" / ", detailParts));
+            return true;
+        }
+
+        private static string ResolvePacketOwnedRankingHtmlField(string attrs, string rowHtml, params string[] aliases)
+        {
+            foreach (string alias in aliases ?? Array.Empty<string>())
+            {
+                if (TryExtractPacketOwnedRankingHtmlAttribute(attrs, alias, out string attributeValue)
+                    || TryExtractPacketOwnedRankingHtmlClassText(rowHtml, alias, out attributeValue))
+                {
+                    return attributeValue;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static bool TryExtractPacketOwnedRankingHtmlAttribute(string attrs, string alias, out string value)
+        {
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(attrs) || string.IsNullOrWhiteSpace(alias))
+            {
+                return false;
+            }
+
+            string normalizedAlias = Regex.Escape(alias);
+            Match match = Regex.Match(
+                attrs,
+                $@"(?:^|\s){normalizedAlias}\s*=\s*(?:""(?<value>[^""]*)""|'(?<value>[^']*)'|(?<value>[^\s>]+))",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            value = WebUtility.HtmlDecode(match.Groups["value"].Value)?.Trim() ?? string.Empty;
+            return !string.IsNullOrWhiteSpace(value);
+        }
+
+        private static bool TryExtractPacketOwnedRankingHtmlClassText(string rowHtml, string alias, out string value)
+        {
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(rowHtml) || string.IsNullOrWhiteSpace(alias))
+            {
+                return false;
+            }
+
+            string normalizedAlias = Regex.Escape(alias);
+            Match match = Regex.Match(
+                rowHtml,
+                $@"<(?<tag>[a-z0-9]+)\b[^>]*(?:class|id)\s*=\s*(?:""[^""]*\b{normalizedAlias}\b[^""]*""|'[^']*\b{normalizedAlias}\b[^']*'|[^\s>]*\b{normalizedAlias}\b[^\s>]*)[^>]*>(?<value>.*?)</\k<tag>>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            value = NormalizePacketOwnedRankingHtmlCell(match.Groups["value"].Value);
+            return !string.IsNullOrWhiteSpace(value);
         }
 
         private static string NormalizePacketOwnedRankingHtmlCell(string html)
@@ -19735,9 +20171,7 @@ namespace HaCreator.MapSimulator
 
             if (subtype == EngagementProposalRuntime.WithdrawPayloadValue)
             {
-                message = _engagementProposalController.Withdraw(uiWindowManager);
-                return !string.Equals(message, "No engagement proposal is active.", StringComparison.Ordinal)
-                    && !message.Contains("Only the requester-owned engagement wait dialog", StringComparison.Ordinal);
+                return _engagementProposalController.TryApplyWithdrawPayload(payload, uiWindowManager, out message);
             }
 
             if (subtype == EngagementProposalRuntime.DecisionPayloadValue)

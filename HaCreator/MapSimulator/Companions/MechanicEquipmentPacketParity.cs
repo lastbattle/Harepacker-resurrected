@@ -460,6 +460,11 @@ namespace HaCreator.MapSimulator.Companions
                                     break;
                                 }
 
+                                if (!TryValidateMechanicItemFamilyForSlot(sourceItemId, targetMechanicSlot, out rejectReason))
+                                {
+                                    return false;
+                                }
+
                                 recoveredMutations[targetMechanicSlot] = sourceItemId;
                             }
 

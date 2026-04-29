@@ -2301,6 +2301,11 @@ namespace HaCreator.MapSimulator.Fields
             return string.Equals(portalName, PortalType.StartPoint.ToCode(), StringComparison.OrdinalIgnoreCase);
         }
 
+        internal static bool TryResolveRemoteTownPortalConfiguredTownMapForSourceMap(int sourceMapId, out int townMapId)
+        {
+            return TryResolveRemoteTownPortalTownMapForSourceMap(sourceMapId, out townMapId);
+        }
+
         private static bool TryResolveRemoteTownPortalTownMapForSourceMap(int sourceMapId, out int townMapId)
         {
             townMapId = -1;

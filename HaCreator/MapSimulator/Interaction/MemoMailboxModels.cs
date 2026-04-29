@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
         public ParcelDialogTab SourceTab { get; init; }
         public byte InventoryType { get; init; }
         public short InventoryPosition { get; init; }
+        public int AttachmentItemId { get; init; }
         public short ItemQuantity { get; init; }
         public int Meso { get; init; }
         public string Recipient { get; init; } = string.Empty;

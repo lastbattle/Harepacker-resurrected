@@ -1209,7 +1209,13 @@ namespace HaCreator.MapSimulator
 
         internal static PacketFieldUtilityMovingFootholdState ResolvePacketOwnedLiveFootholdMovingStateForPacketParity(DynamicPlatform platform)
         {
-            if (platform == null || platform.MovementType == PlatformMovementType.Static)
+            if (platform == null)
+            {
+                return null;
+            }
+
+            if (platform.MovementType == PlatformMovementType.Static
+                && !HasPacketOwnedMovingFootholdMetadataForPacketParity(platform))
             {
                 return null;
             }
@@ -1231,6 +1237,14 @@ namespace HaCreator.MapSimulator
                 (int)platform.Y,
                 ResolvePacketOwnedMovingFootholdSnapshotReverseVerticalForPacketParity(platform, x1, x2, y1, y2),
                 ResolvePacketOwnedMovingFootholdSnapshotReverseHorizontalForPacketParity(platform, x1, x2, y1, y2));
+        }
+
+        internal static bool HasPacketOwnedMovingFootholdMetadataForPacketParity(DynamicPlatform platform)
+        {
+            return platform?.PacketOwnedMovingX1 != null
+                && platform.PacketOwnedMovingX2 != null
+                && platform.PacketOwnedMovingY1 != null
+                && platform.PacketOwnedMovingY2 != null;
         }
 
         internal static void ResolvePacketOwnedMovingFootholdEndpointOrderForPacketParity(

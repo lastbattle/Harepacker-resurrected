@@ -53,6 +53,9 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly Regex Sg88MismatchFieldPairRegex = new(
             @"(?<field>(?:(?:m[\s_\-]*)?n[\s_\-]*)?(?:raw[\s_\-]*)?move[\s_\-]*action(?:[\s_\-]*(?:byte|flag|low[\s_\-]*bit))?|m[\s_\-]*n[\s_\-]*move[\s_\-]*action|vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*|vec[\s_\-]*owner|m[\s_\-]*(?:p[\s_\-]*)?vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))*)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88GenericMismatchFieldPairRegex = new(
+            @"(?<field>[^\r\n]+?)\s*(?:=|(?<!:):(?!:))\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchPairValueRegex = new(
             @"(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -1762,6 +1765,13 @@ namespace HaCreator.MapSimulator.Managers
                 .Replace(".", string.Empty, StringComparison.Ordinal)
                 .Replace("/", string.Empty, StringComparison.Ordinal)
                 .Replace("\\", string.Empty, StringComparison.Ordinal)
+                .Replace(":", string.Empty, StringComparison.Ordinal)
+                .Replace(">", string.Empty, StringComparison.Ordinal)
+                .Replace("&", string.Empty, StringComparison.Ordinal)
+                .Replace("*", string.Empty, StringComparison.Ordinal)
+                .Replace(",", string.Empty, StringComparison.Ordinal)
+                .Replace(";", string.Empty, StringComparison.Ordinal)
+                .Replace("|", string.Empty, StringComparison.Ordinal)
                 .Replace("[", string.Empty, StringComparison.Ordinal)
                 .Replace("]", string.Empty, StringComparison.Ordinal)
                 .Replace("(", string.Empty, StringComparison.Ordinal)
@@ -1775,6 +1785,40 @@ namespace HaCreator.MapSimulator.Managers
             if (normalized.StartsWith("payload", StringComparison.Ordinal))
             {
                 normalized = normalized.Substring("payload".Length);
+            }
+
+            string[] ownerPrefixes =
+            {
+                "this",
+                "cuserlocal",
+                "userlocal",
+                "cuser",
+                "user",
+                "local"
+            };
+            bool trimmedOwnerPrefix;
+            do
+            {
+                trimmedOwnerPrefix = false;
+                for (int i = 0; i < ownerPrefixes.Length; i++)
+                {
+                    string prefix = ownerPrefixes[i];
+                    if (!normalized.StartsWith(prefix, StringComparison.Ordinal)
+                        || normalized.Length == prefix.Length)
+                    {
+                        continue;
+                    }
+
+                    normalized = normalized.Substring(prefix.Length);
+                    trimmedOwnerPrefix = true;
+                    break;
+                }
+            } while (trimmedOwnerPrefix && normalized.Length > 0);
+
+            if (normalized.EndsWith("1", StringComparison.Ordinal)
+                && normalized.Contains("moveaction", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(0, normalized.Length - 1);
             }
 
             string[] prefixedAliases =
@@ -2228,6 +2272,17 @@ namespace HaCreator.MapSimulator.Managers
                 normalizedByByte[byteIndex] = normalizedPair;
             }
 
+            MatchCollection genericFieldMatches = Sg88GenericMismatchFieldPairRegex.Matches(rawPairSegment);
+            foreach (Match match in genericFieldMatches.Cast<Match>())
+            {
+                if (!TryParseSg88ReplayParityMismatchFieldPair(match, out int byteIndex, out string normalizedPair))
+                {
+                    continue;
+                }
+
+                normalizedByByte[byteIndex] = normalizedPair;
+            }
+
             if (normalizedByByte.Count == 0)
             {
                 TryExtractSg88ReplayParityMismatchPairsJsonLike(rawPairSegment, normalizedByByte);
@@ -2391,6 +2446,18 @@ namespace HaCreator.MapSimulator.Managers
 
                         MatchCollection fieldMatches = Sg88MismatchFieldPairRegex.Matches(rawString);
                         foreach (Match match in fieldMatches.Cast<Match>())
+                        {
+                            if (TryParseSg88ReplayParityMismatchFieldPair(
+                                match,
+                                out int parsedByteIndex,
+                                out string parsedPair))
+                            {
+                                normalizedByByte[parsedByteIndex] = parsedPair;
+                            }
+                        }
+
+                        MatchCollection genericFieldMatches = Sg88GenericMismatchFieldPairRegex.Matches(rawString);
+                        foreach (Match match in genericFieldMatches.Cast<Match>())
                         {
                             if (TryParseSg88ReplayParityMismatchFieldPair(
                                 match,
@@ -2672,6 +2739,15 @@ namespace HaCreator.MapSimulator.Managers
                 case "original":
                 case "originalvalue":
                 case "originalbyte":
+                case "wire":
+                case "wirevalue":
+                case "wirebyte":
+                case "packet":
+                case "packetvalue":
+                case "packetbyte":
+                case "capture":
+                case "capturevalue":
+                case "capturebyte":
                 case "from":
                 case "before":
                 case "left":
@@ -2698,6 +2774,15 @@ namespace HaCreator.MapSimulator.Managers
                 case "generated":
                 case "generatedvalue":
                 case "generatedbyte":
+                case "candidate":
+                case "candidatevalue":
+                case "candidatebyte":
+                case "emulated":
+                case "emulatedvalue":
+                case "emulatedbyte":
+                case "reconstructed":
+                case "reconstructedvalue":
+                case "reconstructedbyte":
                 case "to":
                 case "after":
                 case "right":
@@ -2968,6 +3053,15 @@ namespace HaCreator.MapSimulator.Managers
             if (!match.Success)
             {
                 match = Sg88IndexedMismatchPairRegex.Match(token);
+            }
+
+            if (!match.Success)
+            {
+                match = Sg88GenericMismatchFieldPairRegex.Match(token);
+                if (TryParseSg88ReplayParityMismatchFieldPair(match, out byteIndex, out normalizedPair))
+                {
+                    return true;
+                }
             }
 
             if (!match.Success

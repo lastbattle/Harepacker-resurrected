@@ -104,11 +104,16 @@ namespace HaCreator.MapSimulator.Interaction
             string normalizedRequest = string.IsNullOrWhiteSpace(requestKind) ? "Roster update" : requestKind.Trim();
             _lastPendingRequestByTab[tab] = normalizedRequest;
             SocialEntryState selectedEntry = GetSelectedEntry(tab);
+            SocialListOutboundRequestDraft outboundDraft = BuildPacketOwnedOutboundDraft(
+                tab,
+                normalizedRequest,
+                selectedEntry);
             string dispatchMessage = PacketOwnedRequestDispatcher?.Invoke(new SocialListPacketOwnedRequest(
                 tab,
                 normalizedRequest,
                 selectedEntry?.Name,
-                selectedEntry?.MemberId));
+                selectedEntry?.MemberId,
+                outboundDraft));
             requestMessage =
                 $"{normalizedRequest} is staged locally, and {tab} currently follows packet-owned roster authority until a matching client result resolves it.";
             if (!string.IsNullOrWhiteSpace(dispatchMessage))
@@ -118,11 +123,62 @@ namespace HaCreator.MapSimulator.Interaction
 
             return true;
         }
+
+        private static SocialListOutboundRequestDraft BuildPacketOwnedOutboundDraft(
+            SocialListTab tab,
+            string requestKind,
+            SocialEntryState selectedEntry)
+        {
+            string normalizedRequest = string.IsNullOrWhiteSpace(requestKind)
+                ? string.Empty
+                : requestKind.Trim();
+            string selectedName = selectedEntry?.Name;
+            int selectedMemberId = selectedEntry?.MemberId ?? 0;
+
+            return normalizedRequest.ToLowerInvariant() switch
+            {
+                "friend add" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.FriendAdd, selectedName),
+                "friend delete" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.FriendDelete, selectedName, selectedMemberId),
+                "party create" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.PartyCreate),
+                "party invite" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.PartyInvite, selectedName, selectedMemberId),
+                "party kick" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.PartyKick, selectedName, selectedMemberId),
+                "party withdraw" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.PartyWithdraw, selectedName, selectedMemberId),
+                "party change boss" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.PartyChangeBoss, selectedName, selectedMemberId),
+                "guild invite" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildInvite, selectedName, selectedMemberId),
+                "guild remove" => selectedEntry?.IsLocalPlayer == true
+                    ? new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildWithdraw, selectedName, selectedMemberId)
+                    : new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildKick, selectedName, selectedMemberId),
+                "guild grade up" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildGradeChange, selectedName, selectedMemberId, 1),
+                "guild grade down" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.GuildGradeChange, selectedName, selectedMemberId, -1),
+                "alliance invite" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceInvite, selectedName, selectedMemberId),
+                "alliance remove" => selectedEntry?.IsLocalPlayer == true
+                    ? new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceWithdraw, selectedName, selectedMemberId)
+                    : new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceKick, selectedName, selectedMemberId),
+                "alliance grade up" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceGradeChange, selectedName, selectedMemberId, 1),
+                "alliance grade down" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceGradeChange, selectedName, selectedMemberId, -1),
+                "blacklist add" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.BlacklistAdd, selectedName, selectedMemberId),
+                "blacklist delete" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.BlacklistDelete, selectedName, selectedMemberId),
+                _ => new SocialListOutboundRequestDraft(ResolveFallbackOutboundKind(tab), selectedName, selectedMemberId)
+            };
+        }
+
+        private static SocialListOutboundRequestKind ResolveFallbackOutboundKind(SocialListTab tab)
+        {
+            return tab switch
+            {
+                SocialListTab.Party => SocialListOutboundRequestKind.PartyInvite,
+                SocialListTab.Guild => SocialListOutboundRequestKind.GuildInvite,
+                SocialListTab.Alliance => SocialListOutboundRequestKind.AllianceInvite,
+                SocialListTab.Blacklist => SocialListOutboundRequestKind.BlacklistAdd,
+                _ => SocialListOutboundRequestKind.FriendAdd
+            };
+        }
     }
 
     internal readonly record struct SocialListPacketOwnedRequest(
         SocialListTab Tab,
         string RequestKind,
         string SelectedName,
-        int? SelectedMemberId);
+        int? SelectedMemberId,
+        SocialListOutboundRequestDraft OutboundRequest);
 }

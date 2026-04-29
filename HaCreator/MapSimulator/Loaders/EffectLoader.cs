@@ -523,7 +523,19 @@ namespace HaCreator.MapSimulator.Loaders
                 return IsLoadFramesRenderableSource(subProperty.WzProperties[0]);
             }
 
-            return IsReactorFrameLikeProperty(WzInfoTools.GetRealProperty(subProperty["0"]));
+            for (int i = 0; ; i++)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(subProperty[i.ToString()]);
+                if (frameProperty == null)
+                {
+                    return false;
+                }
+
+                if (IsReactorFrameLikeProperty(frameProperty))
+                {
+                    return true;
+                }
+            }
         }
 
         private static bool IsReactorFrameLikeProperty(WzImageProperty property)
@@ -544,7 +556,19 @@ namespace HaCreator.MapSimulator.Loaders
                 return IsReactorFrameLikeProperty(subProperty.WzProperties[0]);
             }
 
-            return IsLoadFramesRenderableSource(WzInfoTools.GetRealProperty(subProperty["0"]));
+            for (int i = 0; ; i++)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(subProperty[i.ToString()]);
+                if (frameProperty == null)
+                {
+                    return false;
+                }
+
+                if (IsLoadFramesRenderableSource(frameProperty))
+                {
+                    return true;
+                }
+            }
         }
         #endregion
 

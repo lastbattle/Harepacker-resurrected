@@ -86,6 +86,22 @@ namespace HaCreator.MapSimulator.Interaction
                 appendFallbackSuffix: true);
         }
 
+        internal static bool IsSharableOnceOwnershipBlocked(InventorySlotData slotData)
+        {
+            if (slotData == null)
+            {
+                return false;
+            }
+
+            if (slotData.IsCashOwnershipLocked)
+            {
+                return true;
+            }
+
+            return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
+                && slotData.OwnerAccountId.GetValueOrDefault() > 0;
+        }
+
         internal static bool RequiresOwnershipPreConfirm(InventorySlotData slotData)
         {
             if (slotData == null)
@@ -184,6 +200,22 @@ namespace HaCreator.MapSimulator.Interaction
                 .Replace("\r", " ", StringComparison.Ordinal)
                 .Replace("\n", " ", StringComparison.Ordinal)
                 .Trim();
+        }
+
+        internal static string DescribeConfirmationChoreography(IReadOnlyList<ConfirmationStep> steps)
+        {
+            if (steps == null || steps.Count == 0)
+            {
+                return "none";
+            }
+
+            List<string> parts = new(steps.Count);
+            foreach (ConfirmationStep step in steps)
+            {
+                parts.Add($"{step.OwnerCall} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)} \"{ToInlineText(step.Text)}\"");
+            }
+
+            return string.Join(" -> ", parts);
         }
 
         private static string ResolveNumericTemplate(int stringPoolId, string fallbackFormat, int value)

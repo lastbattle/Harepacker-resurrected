@@ -1529,7 +1529,7 @@ namespace HaCreator.MapSimulator.Pools
         private static bool SupportsPartyMembersViaSupportSummonMetadata(SkillData skill)
         {
             return skill?.ClientInfoType == 33
-                   && ContainsToken(skill.MinionAbility, "heal", "amplifyDamage");
+                   && ContainsToken(skill.MinionAbility, "heal", "mes", "amplifyDamage");
         }
 
         private static bool SupportsAlliedMembers(SkillData skill)
@@ -1622,7 +1622,7 @@ namespace HaCreator.MapSimulator.Pools
             bool derivedMovementSpeedFromAliasX =
                 projected.Speed <= 0
                 && authoredLevelData?.X > 0
-                && ContainsToken(combinedText, "movement speed", "speed");
+                && ContainsToken(combinedText, "movement speed", "speed", "haste");
             if (derivedMovementSpeedFromAliasX)
             {
                 projected.Speed = Math.Max(projected.Speed, authoredLevelData.X);

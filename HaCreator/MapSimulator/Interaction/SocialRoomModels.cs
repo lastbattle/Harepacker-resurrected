@@ -513,6 +513,9 @@ namespace HaCreator.MapSimulator.Interaction
         private string _miniRoomOmokDialogStatus = string.Empty;
         private string _entrustedChildDialogStatus = string.Empty;
         private string _entrustedBlacklistLastOutboundPacketSummary = string.Empty;
+        private string _entrustedBlacklistPendingMutationName = string.Empty;
+        private bool? _entrustedBlacklistPendingMutationAdd;
+        private string _entrustedBlacklistPendingMutationRawPacketHex = string.Empty;
         private int _employeeTemplateId;
         private bool _employeeUseOwnerAnchor = true;
         private int _employeeAnchorOffsetX;
@@ -685,6 +688,9 @@ namespace HaCreator.MapSimulator.Interaction
         public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
         public Func<byte[], string, bool> EntrustedBlacklistOutboundPacketRequested { get; set; }
         public string EntrustedBlacklistLastOutboundPacketSummary => _entrustedBlacklistLastOutboundPacketSummary;
+        public string EntrustedBlacklistPendingMutationName => _entrustedBlacklistPendingMutationName;
+        public bool? EntrustedBlacklistPendingMutationAdd => _entrustedBlacklistPendingMutationAdd;
+        public string EntrustedBlacklistPendingMutationRawPacketHex => _entrustedBlacklistPendingMutationRawPacketHex;
 
         public void BindInventory(IInventoryRuntime inventoryRuntime)
         {
@@ -845,6 +851,10 @@ namespace HaCreator.MapSimulator.Interaction
                 EntrustedVisitListSelectedIndex = _entrustedVisitListSelectedIndex,
                 EntrustedBlacklistSelectedIndex = _entrustedBlacklistSelectedIndex,
                 EntrustedChildDialogStatus = _entrustedChildDialogStatus,
+                EntrustedBlacklistLastOutboundPacketSummary = _entrustedBlacklistLastOutboundPacketSummary,
+                EntrustedBlacklistPendingMutationName = _entrustedBlacklistPendingMutationName,
+                EntrustedBlacklistPendingMutationAdd = _entrustedBlacklistPendingMutationAdd,
+                EntrustedBlacklistPendingMutationRawPacketHex = _entrustedBlacklistPendingMutationRawPacketHex,
                 EntrustedVisitLogEntries = _entrustedVisitLogEntries
                     .Select(entry => new EntrustedShopVisitLogEntrySnapshot
                     {
@@ -932,6 +942,10 @@ namespace HaCreator.MapSimulator.Interaction
                 _entrustedVisitListSelectedIndex = source?.EntrustedVisitListSelectedIndex ?? _defaultSnapshot.EntrustedVisitListSelectedIndex;
                 _entrustedBlacklistSelectedIndex = source?.EntrustedBlacklistSelectedIndex ?? _defaultSnapshot.EntrustedBlacklistSelectedIndex;
                 _entrustedChildDialogStatus = source?.EntrustedChildDialogStatus ?? _defaultSnapshot.EntrustedChildDialogStatus ?? string.Empty;
+                _entrustedBlacklistLastOutboundPacketSummary = source?.EntrustedBlacklistLastOutboundPacketSummary ?? _defaultSnapshot.EntrustedBlacklistLastOutboundPacketSummary ?? string.Empty;
+                _entrustedBlacklistPendingMutationName = source?.EntrustedBlacklistPendingMutationName ?? _defaultSnapshot.EntrustedBlacklistPendingMutationName ?? string.Empty;
+                _entrustedBlacklistPendingMutationAdd = source?.EntrustedBlacklistPendingMutationAdd ?? _defaultSnapshot.EntrustedBlacklistPendingMutationAdd;
+                _entrustedBlacklistPendingMutationRawPacketHex = source?.EntrustedBlacklistPendingMutationRawPacketHex ?? _defaultSnapshot.EntrustedBlacklistPendingMutationRawPacketHex ?? string.Empty;
                 _entrustedChildDialogKind = source?.EntrustedChildDialog?.IsOpen == true
                     ? source.EntrustedChildDialog.Kind
                     : _defaultSnapshot.EntrustedChildDialog?.IsOpen == true ? _defaultSnapshot.EntrustedChildDialog.Kind : null;
@@ -1150,8 +1164,10 @@ namespace HaCreator.MapSimulator.Interaction
                     .ToList();
             bool canPrimaryAction = kind == EntrustedShopChildDialogKind.VisitList
                 ? HasValidEntrustedVisitListSelection()
-                : _blockedVisitors.Count < 20;
-            bool canSecondaryAction = kind == EntrustedShopChildDialogKind.Blacklist && HasValidEntrustedBlacklistSelection();
+                : _blockedVisitors.Count < 20 && !_entrustedBlacklistPendingMutationAdd.HasValue;
+            bool canSecondaryAction = kind == EntrustedShopChildDialogKind.Blacklist
+                && HasValidEntrustedBlacklistSelection()
+                && !_entrustedBlacklistPendingMutationAdd.HasValue;
 
             return new EntrustedShopChildDialogSnapshot
             {
@@ -1171,7 +1187,9 @@ namespace HaCreator.MapSimulator.Interaction
                 SecondaryActionText = kind == EntrustedShopChildDialogKind.VisitList ? "Close" : "Delete",
                 FooterText = kind == EntrustedShopChildDialogKind.VisitList
                     ? "Save Name copies the selected visitor name to the clipboard."
-                    : "Delete only enables when the selected blacklist row is valid.",
+                    : !string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName)
+                        ? $"Waiting for server blacklist result for {_entrustedBlacklistPendingMutationName}."
+                        : "Delete only enables when the selected blacklist row is valid.",
                 CanPrimaryAction = canPrimaryAction,
                 CanSecondaryAction = canSecondaryAction,
                 SelectedIndex = selectedIndex,
@@ -5951,10 +5969,12 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Entrusted-shop blacklist: empty.";
             _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
             _entrustedChildDialogKind = EntrustedShopChildDialogKind.Blacklist;
+            string pendingCompletion = BuildEntrustedBlacklistPendingCompletionSummary();
+            ClearEntrustedBlacklistPendingMutation();
             _entrustedChildDialogStatus = _blockedVisitors.Count < 20
                 ? "CBlackListDlg::OnCreate opened the dedicated blacklist owner. Add stays enabled while the client-side count remains below 20."
                 : "CBlackListDlg::OnCreate opened the dedicated blacklist owner at the client-side 20-name add limit.";
-            StatusMessage = $"Applied entrusted-shop blacklist packet with {_blockedVisitors.Count} entr{(_blockedVisitors.Count == 1 ? "y" : "ies")} and opened {ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist)}.";
+            StatusMessage = $"Applied entrusted-shop blacklist packet with {_blockedVisitors.Count} entr{(_blockedVisitors.Count == 1 ? "y" : "ies")} and opened {ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist)}.{pendingCompletion}";
             PersistState();
             message = StatusMessage;
             return true;
@@ -6253,16 +6273,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _entrustedBlacklistNotice = null;
-            _blockedVisitors.Add(resolvedName);
-            _entrustedBlacklistSelectedIndex = _blockedVisitors.Count - 1;
-            EnsureMerchantPacketNotes();
-            _notes[1] = $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}.";
-            _entrustedChildDialogStatus =
-                $"CBlackListDlg::AddBlackList added {resolvedName} to the blacklist. Add remains enabled while the count stays below 20.";
-            StatusMessage = _entrustedChildDialogStatus;
-            PersistState();
-            message = StatusMessage;
-            return true;
+            if (TryDispatchEntrustedBlacklistMutationOutbound(resolvedName, add: true, out string outboundMessage))
+            {
+                message = outboundMessage;
+                return true;
+            }
+
+            return ApplyEntrustedBlacklistAddPreview(resolvedName, outboundMessage, out message);
         }
 
         public void DismissEntrustedBlacklistNotice()
@@ -6293,17 +6310,106 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string removedName = _blockedVisitors[_entrustedBlacklistSelectedIndex];
+            if (TryDispatchEntrustedBlacklistMutationOutbound(removedName, add: false, out string outboundMessage))
+            {
+                message = outboundMessage;
+                return true;
+            }
+
             _blockedVisitors.RemoveAt(_entrustedBlacklistSelectedIndex);
             _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
             EnsureMerchantPacketNotes();
             _notes[1] = _blockedVisitors.Count > 0
                 ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
                 : "Entrusted-shop blacklist: empty.";
-            _entrustedChildDialogStatus = $"Deleted {removedName} from the entrusted-shop blacklist.";
+            _entrustedChildDialogStatus = string.IsNullOrWhiteSpace(outboundMessage)
+                ? $"Deleted {removedName} from the entrusted-shop blacklist."
+                : $"Deleted {removedName} from the entrusted-shop blacklist. {outboundMessage}";
             StatusMessage = _entrustedChildDialogStatus;
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private bool ApplyEntrustedBlacklistAddPreview(string resolvedName, string outboundMessage, out string message)
+        {
+            _blockedVisitors.Add(resolvedName);
+            _entrustedBlacklistSelectedIndex = _blockedVisitors.Count - 1;
+            EnsureMerchantPacketNotes();
+            _notes[1] = $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}.";
+            _entrustedChildDialogStatus =
+                $"CBlackListDlg::AddBlackList added {resolvedName} to the blacklist. Add remains enabled while the count stays below 20.";
+            if (!string.IsNullOrWhiteSpace(outboundMessage))
+            {
+                _entrustedChildDialogStatus = $"{_entrustedChildDialogStatus} {outboundMessage}";
+            }
+
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryDispatchEntrustedBlacklistMutationOutbound(string resolvedName, bool add, out string message)
+        {
+            byte[] rawPacket = add
+                ? SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistAddOutboundPacket(resolvedName)
+                : SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistDeleteOutboundPacket(resolvedName);
+            string action = add ? "add" : "delete";
+            string rawHex = Convert.ToHexString(rawPacket);
+            string summary =
+                $"CEntrustedShopDlg::CBlackListDlg prepared opcode {SocialRoomMerchantOfficialSessionBridgeManager.OutboundMiniRoomOpcode} subtype {SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklist} {action} request for {resolvedName} with mode {(add ? SocialRoomMerchantOfficialSessionBridgeManager.EntrustedShopBlacklistRequestModeAdd : SocialRoomMerchantOfficialSessionBridgeManager.EntrustedShopBlacklistRequestModeDelete)} (raw {rawHex}).";
+            _entrustedBlacklistLastOutboundPacketSummary = summary;
+
+            if (EntrustedBlacklistOutboundPacketRequested == null)
+            {
+                message = $"{summary} No live merchant bridge accepted it, so the simulator applied an offline preview.";
+                return false;
+            }
+
+            bool accepted = false;
+            try
+            {
+                accepted = EntrustedBlacklistOutboundPacketRequested.Invoke((byte[])rawPacket.Clone(), summary);
+            }
+            catch
+            {
+                accepted = false;
+            }
+
+            if (!accepted)
+            {
+                message = $"{summary} The live merchant bridge did not accept the request, so the simulator applied an offline preview.";
+                return false;
+            }
+
+            _entrustedBlacklistPendingMutationName = resolvedName;
+            _entrustedBlacklistPendingMutationAdd = add;
+            _entrustedBlacklistPendingMutationRawPacketHex = rawHex;
+            _entrustedChildDialogStatus =
+                $"{summary} Waiting for authoritative server subtype {EntrustedShopBlackListResultPacketType} to refresh the blacklist.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private string BuildEntrustedBlacklistPendingCompletionSummary()
+        {
+            if (!_entrustedBlacklistPendingMutationAdd.HasValue || string.IsNullOrWhiteSpace(_entrustedBlacklistPendingMutationName))
+            {
+                return string.Empty;
+            }
+
+            string action = _entrustedBlacklistPendingMutationAdd.Value ? "add" : "delete";
+            return $" Server-owned subtype {EntrustedShopBlackListResultPacketType} completed the pending blacklist {action} request for {_entrustedBlacklistPendingMutationName}.";
+        }
+
+        private void ClearEntrustedBlacklistPendingMutation()
+        {
+            _entrustedBlacklistPendingMutationName = string.Empty;
+            _entrustedBlacklistPendingMutationAdd = null;
+            _entrustedBlacklistPendingMutationRawPacketHex = string.Empty;
         }
 
         private static bool IsValidEntrustedBlacklistName(string value)

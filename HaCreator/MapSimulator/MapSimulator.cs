@@ -6475,6 +6475,7 @@ namespace HaCreator.MapSimulator
             {
                 roomWindow.Runtime.EntrustedBlacklistPromptRequested = ShowEntrustedShopBlacklistPrompt;
                 roomWindow.Runtime.EntrustedBlacklistNoticeRequested = ShowEntrustedShopBlacklistNotice;
+                roomWindow.Runtime.EntrustedBlacklistOutboundPacketRequested = TrySendEntrustedShopBlacklistOutboundPacket;
             }
 
             roomWindow.SetFont(_fontChat);
@@ -22949,6 +22950,8 @@ namespace HaCreator.MapSimulator
             ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
             return effect.HasSupportedRecovery
                    || effect.HasSupportedProgression
+                   || (effect.HasSupportedMonsterCarnivalCp
+                       && TryCanApplyMonsterCarnivalCpPickup(effect.MonsterCarnivalCp))
                    || (effect.HasSupportedMonsterCarnivalNuffSkill
                        && TryCanApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId))
                    || effect.HasSupportedMovement
@@ -22989,6 +22992,7 @@ namespace HaCreator.MapSimulator
         {
             return effect.HasSupportedRecovery
                    || effect.HasSupportedProgression
+                   || effect.HasSupportedMonsterCarnivalCp
                    || effect.HasSupportedMonsterCarnivalNuffSkill
                    || effect.HasSupportedMovement
                    || effect.HasSupportedMorph
@@ -23051,6 +23055,7 @@ namespace HaCreator.MapSimulator
             ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
             bool supportsRecovery = effect.HasSupportedRecovery;
             bool supportsProgression = effect.HasSupportedProgression;
+            bool supportsMonsterCarnivalCp = effect.HasSupportedMonsterCarnivalCp;
             bool supportsMonsterCarnivalNuffSkill = effect.HasSupportedMonsterCarnivalNuffSkill;
             bool supportsMovement = effect.HasSupportedMovement;
             bool supportsMorph = effect.HasSupportedMorph;
@@ -23058,7 +23063,7 @@ namespace HaCreator.MapSimulator
             bool supportsCure = effect.HasSupportedCure;
             bool supportsFieldProtection = effect.HasSupportedFieldProtection;
             bool supportsMobSkill = effect.HasSupportedMobSkill;
-            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
+            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalCp && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
             {
                 return false;
             }
@@ -23093,9 +23098,11 @@ namespace HaCreator.MapSimulator
                 && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
             bool canApplyMobSkill = supportsMobSkill && _playerManager != null;
+            bool canApplyMonsterCarnivalCp = supportsMonsterCarnivalCp
+                                             && TryCanApplyMonsterCarnivalCpPickup(effect.MonsterCarnivalCp);
             bool canApplyMonsterCarnivalNuffSkill = supportsMonsterCarnivalNuffSkill
                                                     && TryCanApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId);
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalCp || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -23154,6 +23161,11 @@ namespace HaCreator.MapSimulator
             if (canApplyMonsterCarnivalNuffSkill)
             {
                 TryApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId, currTickCount);
+            }
+
+            if (canApplyMonsterCarnivalCp)
+            {
+                TryApplyMonsterCarnivalCpPickup(effect.MonsterCarnivalCp, currTickCount);
             }
 
             PushConsumableScreenMessage(effect, currTickCount);
@@ -24909,7 +24921,12 @@ namespace HaCreator.MapSimulator
             }
 
             int noticeDropId = recentPickup.DropId > 0 ? recentPickup.DropId : dropId;
-            if (!TryReserveRemotePickupNotice(noticeDropId, actorId, currentTime, fallbackOwnerId))
+            if (!TryReserveRemotePickupNotice(
+                    noticeDropId,
+                    actorId,
+                    currentTime,
+                    fallbackOwnerId,
+                    recentPickup.PickerId))
             {
                 return true;
             }
@@ -24951,7 +24968,10 @@ namespace HaCreator.MapSimulator
             return elapsed >= 0 && elapsed < suppressionWindowMs;
         }
 
-        internal static int[] BuildPickupRemoteNoticeActorAliases(int actorId, int fallbackOwnerId = 0)
+        internal static int[] BuildPickupRemoteNoticeActorAliases(
+            int actorId,
+            int fallbackOwnerId = 0,
+            params int[] relatedActorIds)
         {
             HashSet<int> aliases = new();
 
@@ -24973,6 +24993,13 @@ namespace HaCreator.MapSimulator
 
             addAlias(actorId);
             addAlias(fallbackOwnerId);
+            if (relatedActorIds != null)
+            {
+                for (int i = 0; i < relatedActorIds.Length; i++)
+                {
+                    addAlias(relatedActorIds[i]);
+                }
+            }
 
             if (aliases.Count == 0)
             {
@@ -24995,20 +25022,38 @@ namespace HaCreator.MapSimulator
                 fallbackOwnerId);
         }
 
+        private bool TryReserveRemotePickupNotice(
+            int dropId,
+            int actorId,
+            int currentTime,
+            int fallbackOwnerId,
+            params int[] relatedActorIds)
+        {
+            return TryReserveRemotePickupNotice(
+                _recentPickupRemoteNoticeTimes,
+                dropId,
+                actorId,
+                currentTime,
+                PICKUP_REMOTE_NOTICE_SUPPRESSION_MS,
+                fallbackOwnerId,
+                relatedActorIds);
+        }
+
         internal static bool TryReserveRemotePickupNotice(
             IDictionary<long, int> recentNoticeTimes,
             int dropId,
             int actorId,
             int currentTime,
             int suppressionWindowMs,
-            int fallbackOwnerId = 0)
+            int fallbackOwnerId = 0,
+            params int[] relatedActorIds)
         {
             if (dropId <= 0 || recentNoticeTimes == null)
             {
                 return true;
             }
 
-            int[] actorAliases = BuildPickupRemoteNoticeActorAliases(actorId, fallbackOwnerId);
+            int[] actorAliases = BuildPickupRemoteNoticeActorAliases(actorId, fallbackOwnerId, relatedActorIds);
             for (int i = 0; i < actorAliases.Length; i++)
             {
                 long aliasNoticeKey = BuildPickupRemoteNoticeKey(dropId, actorAliases[i]);
@@ -25182,6 +25227,7 @@ namespace HaCreator.MapSimulator
             public int CharmExperience { get; init; }
             public int EventPoint { get; init; }
             public int FatigueDelta { get; init; }
+            public int MonsterCarnivalCp { get; init; }
             public int MonsterCarnivalNuffSkillId { get; init; }
             public int MoveToMapId { get; init; }
             public int Booster { get; init; }
@@ -25257,6 +25303,8 @@ namespace HaCreator.MapSimulator
                 FatigueDelta != 0;
 
             public bool HasSupportedMonsterCarnivalNuffSkill => MonsterCarnivalNuffSkillId > 0;
+
+            public bool HasSupportedMonsterCarnivalCp => MonsterCarnivalCp > 0;
 
 
 
@@ -25469,6 +25517,7 @@ namespace HaCreator.MapSimulator
 
             bool supportsRecovery = effect.HasSupportedRecovery;
             bool supportsProgression = effect.HasSupportedProgression;
+            bool supportsMonsterCarnivalCp = effect.HasSupportedMonsterCarnivalCp;
             bool supportsMonsterCarnivalNuffSkill = effect.HasSupportedMonsterCarnivalNuffSkill;
 
             bool supportsMovement = effect.HasSupportedMovement;
@@ -25480,7 +25529,7 @@ namespace HaCreator.MapSimulator
             bool supportsCure = effect.HasSupportedCure;
             bool supportsFieldProtection = effect.HasSupportedFieldProtection;
             bool supportsMobSkill = effect.HasSupportedMobSkill;
-            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
+            if (!supportsRecovery && !supportsProgression && !supportsMonsterCarnivalCp && !supportsMonsterCarnivalNuffSkill && !supportsMovement && !supportsMorph && !supportsTemporaryBuff && !supportsCure && !supportsFieldProtection && !supportsMobSkill)
             {
                 return false;
             }
@@ -25527,6 +25576,8 @@ namespace HaCreator.MapSimulator
             bool canApplyTemporaryBuff = supportsTemporaryBuff && _playerManager?.Skills != null;
             bool canApplyFieldProtection = supportsFieldProtection;
             bool canApplyMobSkill = supportsMobSkill && _playerManager != null;
+            bool canApplyMonsterCarnivalCp = supportsMonsterCarnivalCp
+                                             && TryCanApplyMonsterCarnivalCpPickup(effect.MonsterCarnivalCp);
             bool canApplyMonsterCarnivalNuffSkill = supportsMonsterCarnivalNuffSkill
                                                     && TryCanApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId);
 
@@ -25543,7 +25594,7 @@ namespace HaCreator.MapSimulator
                 && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
             bool canQueueMovement = TryCanQueueConsumableMapTransfer(targetMapId, showFailureMessage: false);
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canApplyProgression || canApplyMonsterCarnivalCp || canApplyMonsterCarnivalNuffSkill || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus || canApplyFieldProtection || canApplyMobSkill;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -25619,6 +25670,11 @@ namespace HaCreator.MapSimulator
             if (canApplyMonsterCarnivalNuffSkill)
             {
                 TryApplyMonsterCarnivalNuffSkillPickup(effect.MonsterCarnivalNuffSkillId, currentTime);
+            }
+
+            if (canApplyMonsterCarnivalCp)
+            {
+                TryApplyMonsterCarnivalCpPickup(effect.MonsterCarnivalCp, currentTime);
             }
 
             PushConsumableScreenMessage(effect, currentTime);
@@ -25935,6 +25991,7 @@ namespace HaCreator.MapSimulator
                 CharmExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "charmEXP")),
                 EventPoint = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "eventPoint")),
                 FatigueDelta = ResolveConsumableIntValue(specProperty, specExProperty, "incFatigue"),
+                MonsterCarnivalCp = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "cp")),
                 MonsterCarnivalNuffSkillId = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "nuffSkill")),
                 MoveToMapId = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "moveTo")),
                 Booster = ResolveConsumableIntValue(specProperty, specExProperty, "booster", "indieBooster"),
@@ -26074,6 +26131,12 @@ namespace HaCreator.MapSimulator
             return carnivalField?.CanApplyNuffSkillPickup(nuffSkillId) == true;
         }
 
+        private bool TryCanApplyMonsterCarnivalCpPickup(int cp)
+        {
+            MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            return carnivalField?.CanApplyCpPickup(cp) == true;
+        }
+
         private bool TryApplyMonsterCarnivalNuffSkillPickup(int nuffSkillId, int currentTime)
         {
             if (nuffSkillId <= 0)
@@ -26083,6 +26146,17 @@ namespace HaCreator.MapSimulator
 
             MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
             return carnivalField?.TryApplyNuffSkillPickup(nuffSkillId, currentTime, out _) == true;
+        }
+
+        private bool TryApplyMonsterCarnivalCpPickup(int cp, int currentTime)
+        {
+            if (cp <= 0)
+            {
+                return false;
+            }
+
+            MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            return carnivalField?.TryApplyCpPickup(cp, currentTime, out _) == true;
         }
 
         private static ConsumableMobSkillEffect[] ResolveConsumableMobSkillEffects(
@@ -30864,6 +30938,7 @@ namespace HaCreator.MapSimulator
             SyncMonsterCarnivalGuardianReactors(currentTick);
             _reactorPool.RefreshQuestReactors(currentTick);
             _reactorPool.Update(currentTick, deltaSeconds);
+            FlushPendingReactorTouchRequestRemovals();
 
             if (_reactorsArray == null || _reactorsArray.Length == 0)
                 return;
@@ -34541,21 +34616,13 @@ namespace HaCreator.MapSimulator
 
             RegisterPacketOwnedStageTransitionObject(mapItem, objInst);
 
-
-            bool hiddenByMap = objInst.hide == true;
-            bool hasQuestInfo = objInst.QuestInfo != null && objInst.QuestInfo.Count > 0;
-            string[] dynamicTags = ParseObjectTags(objInst.tags);
-            bool hasDynamicTags = dynamicTags.Length > 0;
-            if (!hiddenByMap && !hasQuestInfo && !hasDynamicTags)
+            QuestGatedMapObjectState? state = BuildQuestGatedMapObjectState(objInst);
+            if (!state.HasValue)
             {
                 return;
             }
 
-
-            questGatedMapObjects[mapItem] = new QuestGatedMapObjectState(
-                objInst.QuestInfo?.ToArray(),
-                dynamicTags,
-                hiddenByMap);
+            questGatedMapObjects[mapItem] = state.Value;
         }
 
 
@@ -37807,6 +37874,8 @@ namespace HaCreator.MapSimulator
             }
 
             _fieldRuleRuntime?.RegisterSuccessfulSkillUse(castInfo?.SkillData);
+            _specialFieldRuntime?.SpecialEffects?.Massacre?.TryConsumeSkillUse(
+                castInfo?.CastTime ?? Environment.TickCount);
 
 
 
@@ -38841,6 +38910,7 @@ namespace HaCreator.MapSimulator
             PetFoodItemEffect petFoodEffect = ResolvePetFoodItemEffect(itemId);
             string fieldLimitRestriction = FieldInteractionRestrictionEvaluator.GetItemUseRestrictionMessage(
                 _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                _mapBoard?.MapInfo,
                 inventoryType,
                 itemId,
                 itemName,
@@ -41990,6 +42060,7 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames;
             renderData.IsAlerting = buffEntry.IsAlerting;
             renderData.UseTemporaryStatViewArtworkOnly = buffEntry.UseTemporaryStatViewArtworkOnly;
+            renderData.TemporaryStatViewOwnerIdentity = buffEntry.TemporaryStatViewOwnerIdentity;
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
@@ -43248,21 +43319,17 @@ namespace HaCreator.MapSimulator
             switch (message.Kind)
             {
                 case MassacrePacketInboxMessageKind.Clock:
-                    field.OnClock(2, message.Value1, currentTickCount);
-                    return true;
+                    return field.TryApplyClock(2, message.Value1, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.ClockPayload:
                     return field.TryApplyClockPayload(message.Payload, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.Info:
-                    field.SetMassacreInfo(message.Value1, message.Value2, message.Value3, message.Value4, currentTickCount);
-                    return true;
+                    return field.TryApplyMassacreInfo(message.Value1, message.Value2, message.Value3, message.Value4, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.InfoPayload:
                     return field.TryApplyMassacreInfoPayload(message.Payload, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.IncGauge:
-                    field.OnMassacreIncGauge(message.Value1, currentTickCount);
-                    return true;
+                    return field.TryApplyMassacreIncGauge(message.Value1, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.Stage:
-                    field.ShowCountEffectPresentation(message.Value1, currentTickCount);
-                    return true;
+                    return field.TryShowCountEffectPresentation(message.Value1, currentTickCount, out resultMessage);
                 case MassacrePacketInboxMessageKind.Bonus:
                     field.ShowBonusPresentation(currentTickCount);
                     return true;

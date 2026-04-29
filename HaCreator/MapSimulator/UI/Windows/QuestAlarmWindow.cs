@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _minimizedFrame;
         private readonly Dictionary<int, IDXObject> _maximizedFrames = new();
         private readonly List<int> _trackedQuestIds = new();
+        private readonly HashSet<int> _packetRegisteredQuestIds = new();
         private readonly HashSet<int> _hiddenAutoQuestIds = new();
         private readonly List<RowLayout> _rowLayouts = new();
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
@@ -677,6 +678,7 @@ namespace HaCreator.MapSimulator.UI
             bool wasVisible = TryGetQuestAlarmEntry(snapshot, questId, out _);
             bool wasHidden = _hiddenAutoQuestIds.Contains(questId);
             bool removedTrackedQuest = _trackedQuestIds.Remove(questId);
+            _packetRegisteredQuestIds.Remove(questId);
             if (removedTrackedQuest || wasVisible)
             {
                 // Mirror DeleteQuestByIndex-style suppression so packet-owned removals do not
@@ -729,6 +731,7 @@ namespace HaCreator.MapSimulator.UI
             if (replaceRegistrations)
             {
                 _trackedQuestIds.Clear();
+                _packetRegisteredQuestIds.Clear();
             }
 
             if (clearHiddenAutoTombstones)
@@ -743,9 +746,10 @@ namespace HaCreator.MapSimulator.UI
                     int questId = registeredQuestIds[i];
                     if (questId > 0 &&
                         !_trackedQuestIds.Contains(questId) &&
-                        TryGetRegisterableQuestAlarmEntry(questId, out _))
+                        TryGetPacketRegistrableQuestAlarmEntry(questId, out _))
                     {
                         _trackedQuestIds.Add(questId);
+                        _packetRegisteredQuestIds.Add(questId);
                     }
                 }
 
@@ -938,6 +942,7 @@ namespace HaCreator.MapSimulator.UI
                     NotifyQuestTooltipCleared(_trackedQuestIds);
                     NotifyQuestTooltipCleared(_hiddenAutoQuestIds);
                     _trackedQuestIds.Clear();
+                    _packetRegisteredQuestIds.Clear();
                     _hiddenAutoQuestIds.Clear();
                     SavePersistedState();
                 }
@@ -963,11 +968,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_activeQuestIdsBuffer.Contains(questId) &&
                     _entryByQuestIdBuffer.TryGetValue(questId, out QuestAlarmEntrySnapshot entry) &&
-                    entry?.IsRegistrationCandidate == true)
+                    ShouldRetainTrackedQuest(entry, _packetRegisteredQuestIds.Contains(questId)))
                 {
                     return false;
                 }
 
+                _packetRegisteredQuestIds.Remove(questId);
                 QuestRecentUpdateAcknowledged?.Invoke(questId);
                 QuestTitleTooltipCleared?.Invoke(questId);
                 return true;
@@ -1017,6 +1023,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 stateChanged |= _trackedQuestIds.RemoveAll(questId => !_activeQuestIdsBuffer.Contains(questId)) > 0;
+                _packetRegisteredQuestIds.RemoveWhere(questId => !_activeQuestIdsBuffer.Contains(questId));
             }
 
             if (_autoTrackEnabled && _filteredEntriesBuffer.Count < MaxVisibleEntries)
@@ -1110,6 +1117,21 @@ namespace HaCreator.MapSimulator.UI
             return droppedQuestIds.Count == 0
                 ? Array.Empty<int>()
                 : droppedQuestIds.ToArray();
+        }
+
+        internal static bool ShouldRetainTrackedQuestForTesting(QuestAlarmEntrySnapshot entry, bool packetRegistered)
+        {
+            return ShouldRetainTrackedQuest(entry, packetRegistered);
+        }
+
+        private static bool ShouldRetainTrackedQuest(QuestAlarmEntrySnapshot entry, bool packetRegistered)
+        {
+            if (entry == null || entry.QuestId <= 0)
+            {
+                return false;
+            }
+
+            return packetRegistered || entry.IsRegistrationCandidate;
         }
 
         private void EnsureSelection(QuestAlarmSnapshot snapshot)
@@ -1750,6 +1772,7 @@ namespace HaCreator.MapSimulator.UI
             QuestRecentUpdateAcknowledged?.Invoke(questId);
             QuestTitleTooltipCleared?.Invoke(questId);
             _trackedQuestIds.Remove(questId);
+            _packetRegisteredQuestIds.Remove(questId);
             _hiddenAutoQuestIds.Add(questId);
 
             ResetSelectionAfterMutation();
@@ -1795,6 +1818,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _trackedQuestIds.Clear();
+            _packetRegisteredQuestIds.Clear();
             _hiddenAutoQuestIds.Clear();
             ResetSelectionAfterMutation();
             UpdateButtonStates();
@@ -2105,6 +2129,12 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        private bool TryGetPacketRegistrableQuestAlarmEntry(int questId, out QuestAlarmEntrySnapshot entry)
+        {
+            QuestAlarmSnapshot sourceSnapshot = _snapshotProvider?.Invoke() ?? new QuestAlarmSnapshot();
+            return TryGetQuestAlarmEntry(sourceSnapshot, questId, out entry);
+        }
+
         private IEnumerable<QuestAlarmTextLine> BuildDemandTextLines(QuestAlarmEntrySnapshot entry, float maxWidth, float scale)
         {
             if (entry == null)
@@ -2234,6 +2264,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 QuestAlarmPersistedState state = _stateStore?.GetState(_characterBuildProvider?.Invoke()) ?? new QuestAlarmPersistedState();
                 _trackedQuestIds.Clear();
+                _packetRegisteredQuestIds.Clear();
                 foreach (int questId in state.TrackedQuestIds)
                 {
                     if (questId > 0 && !_trackedQuestIds.Contains(questId))

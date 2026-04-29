@@ -10,6 +10,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class ContextOwnedStagePeriodRuntime
     {
         private const ushort StageChangePacketType = 135;
+        private static readonly Lazy<Encoding> ClientMapleStringEncoding = new(CreateClientMapleStringEncoding);
 
         private int _boundMapId = int.MinValue;
         private string _currentStagePeriod = string.Empty;
@@ -159,7 +160,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static void WriteMapleString(BinaryWriter writer, string value)
         {
             string text = value ?? string.Empty;
-            byte[] encoded = Encoding.Default.GetBytes(text);
+            byte[] encoded = EncodeClientMapleString(text);
             writer.Write((short)encoded.Length);
             writer.Write(encoded);
         }
@@ -178,7 +179,30 @@ namespace HaCreator.MapSimulator.Interaction
                 throw new EndOfStreamException("Stage-period Maple string ended before its declared length.");
             }
 
-            return Encoding.Default.GetString(bytes);
+            return DecodeClientMapleString(bytes);
+        }
+
+        internal static byte[] EncodeClientMapleString(string value)
+        {
+            return ClientMapleStringEncoding.Value.GetBytes(value ?? string.Empty);
+        }
+
+        internal static string DecodeClientMapleString(byte[] bytes)
+        {
+            return ClientMapleStringEncoding.Value.GetString(bytes ?? Array.Empty<byte>());
+        }
+
+        private static Encoding CreateClientMapleStringEncoding()
+        {
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                return Encoding.GetEncoding(949);
+            }
+            catch (Exception)
+            {
+                return Encoding.Default;
+            }
         }
     }
 

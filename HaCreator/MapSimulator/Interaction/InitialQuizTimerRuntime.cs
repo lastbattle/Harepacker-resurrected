@@ -253,6 +253,11 @@ namespace HaCreator.MapSimulator.Interaction
             return EncodeClientMapleString(value).Length;
         }
 
+        internal static Encoding GetClientMapleStringEncoding()
+        {
+            return ClientMapleStringEncoding.Value;
+        }
+
         internal static byte[] EncodeClientMapleString(string value)
         {
             return ClientMapleStringEncoding.Value.GetBytes(value ?? string.Empty);

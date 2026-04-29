@@ -37,7 +37,8 @@ namespace HaCreator.MapSimulator.Managers
         private const ushort V95TutorMsgLocalOpcode = LocalUtilityPacketInboxManager.TutorMsgClientPacketType;
         private const int MinOfficialSessionTutorInferenceProofCount = 2;
 
-        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserLocal::OnPacket (0x9340c0) resolves the full v95 local-user owner table in that 231-276 range with tutor on 255/256 only; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables.";
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserLocal::OnPacket (0x9340c0) resolves the full v95 local-user owner table in that 231-276 range with tutor on 255/256 only; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; CUserPool::Update couple-chair lock admission at 0x94c9f4/0x94ca01 consumes raw pair records only when dwPairCharacterID is 0 or the current owner.";
+        private const string OfficialPortableChairRecordEvidence = "WZ Item/Install/0301.img/03012000/info authors distanceX=53, distanceY=0, maxDiff=6, direction=21 and Effect/ItemEff.img/3012000/0 provides seat-bound 300ms effect frames; compact 8-byte chair payloads remain ambiguous with seat-state traffic, so only the extended 16-byte packet-owned couple-chair record-add wrapper is promoted from live capture.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
@@ -122,6 +123,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly Dictionary<ushort, int> _packetMap = new(DefaultPacketMap);
         private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
+        private readonly Dictionary<ushort, string> _portableChairRecordInferenceMap = new();
         private readonly Dictionary<string, Dictionary<ushort, LearnedOpcodeEntry>> _learnedTutorPacketMapByBuild = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<ushort, PendingTutorInferenceEvidence> _pendingTutorInferenceMap = new();
         private readonly Dictionary<ushort, string> _tutorInferenceConflictMap = new();
@@ -415,7 +417,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected Maple session {RemoteHost}:{RemotePort}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; portableChairRecordInference={DescribePortableChairRecordInferences()}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -446,6 +448,23 @@ namespace HaCreator.MapSimulator.Managers
                         .OrderBy(entry => entry.Key)
                         .Select(entry =>
                             $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count}; officialSessionProof={entry.Value.OfficialSessionProofCount}; officialSessionBuildProof={entry.Value.OfficialSessionBuildProofSummary}; source={entry.Value.LastSource}; payloadBytes={entry.Value.LastPayloadLength}; sample={entry.Value.LastPayloadPreviewHex})"));
+            }
+        }
+
+        private string DescribePortableChairRecordInferences()
+        {
+            lock (_sync)
+            {
+                if (_portableChairRecordInferenceMap.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    ", ",
+                    _portableChairRecordInferenceMap
+                        .OrderBy(entry => entry.Key)
+                        .Select(entry => $"{entry.Key}:{entry.Value}"));
             }
         }
 
@@ -744,8 +763,24 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    if (TryResolveExtendedPortableChairRecordAddFromCaptureNoLock(
+                            opcode,
+                            inferencePayload,
+                            source,
+                            out packetType,
+                            out string portableChairRecordReason))
+                    {
+                        _packetMap[opcode] = packetType;
+                        string learnedEvidence = $"auto:{portableChairRecordReason}; {OfficialRemoteOwnerEvidence}; {OfficialPortableChairRecordEvidence}";
+                        _portableChairRecordInferenceMap[opcode] = portableChairRecordReason;
+                        RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from extended packet-owned couple-chair record-add capture ({portableChairRecordReason}). {OfficialPortableChairRecordEvidence}";
+                        hasMappedPacketType = true;
+                    }
+
                     bool resolvedFromBuildScopedTutorMapping = false;
-                    if (TryResolveBuildScopedLearnedTutorPacketTypeNoLock(
+                    if (!hasMappedPacketType
+                        && TryResolveBuildScopedLearnedTutorPacketTypeNoLock(
                             opcode,
                             source,
                             inferencePayload,
@@ -764,14 +799,16 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
-                    if (!resolvedFromBuildScopedTutorMapping
+                    if (!hasMappedPacketType
+                        && !resolvedFromBuildScopedTutorMapping
                         && IsOfficialRemoteOpcodeCoveredByV95OwnerTable(opcode))
                     {
                         LastStatus = $"Ignored native non-local CUser opcode {opcode}: recovered v95 CUserPool::OnUserRemotePacket owner range has no CTutor/CSummoned tutor branch, so tutor-shaped payloads are not promoted from remote-user opcodes. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 
-                    if (!resolvedFromBuildScopedTutorMapping
+                    if (!hasMappedPacketType
+                        && !resolvedFromBuildScopedTutorMapping
                         && trustV95LocalOwnerTable
                         && !IsOfficialLocalUserOpcodeCoveredByV95OwnerTable(opcode))
                     {
@@ -780,7 +817,8 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     string inferenceReason = string.Empty;
-                    if (!resolvedFromBuildScopedTutorMapping
+                    if (!hasMappedPacketType
+                        && !resolvedFromBuildScopedTutorMapping
                         && trustV95LocalOwnerTable
                         && TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
                     {
@@ -795,21 +833,24 @@ namespace HaCreator.MapSimulator.Managers
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
                         LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from recovered CUserLocal owner table ({knownOwnerReason}) with exact remote wrapper proof ({knownPayloadReason}); {OfficialRemoteOwnerEvidence}";
                     }
-                    else if (!resolvedFromBuildScopedTutorMapping
+                    else if (!hasMappedPacketType
+                        && !resolvedFromBuildScopedTutorMapping
                         && trustV95LocalOwnerTable
                         && TryResolveKnownNonTutorLocalOwnerFromV95LocalOwnerTable(opcode, out string knownNonTutorReason))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: known recovered CUserLocal::OnPacket owner ({knownNonTutorReason}) is non-tutor. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-                    else if (!resolvedFromBuildScopedTutorMapping
+                    else if (!hasMappedPacketType
+                        && !resolvedFromBuildScopedTutorMapping
                         && trustV95LocalOwnerTable
                         && KnownNoHandlerLocalOwnerOpcodesV95.Contains(opcode))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: recovered v95 CUserLocal::OnPacket has no handler for this local-owner case, so tutor inference is disabled for this opcode. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-                    else if (!resolvedFromBuildScopedTutorMapping
+                    else if (!hasMappedPacketType
+                        && !resolvedFromBuildScopedTutorMapping
                         && !TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(
                                  opcode,
                                  inferencePayload,
@@ -822,7 +863,8 @@ namespace HaCreator.MapSimulator.Managers
                             : $"Ignored CUserPool local-user opcode {opcode} on build {officialSessionBuildTag}: payload did not match an exact remote tutor-owner wrapper while v95 owner-table shortcuts were disabled. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-                    else if (!resolvedFromBuildScopedTutorMapping)
+                    else if (!hasMappedPacketType
+                        && !resolvedFromBuildScopedTutorMapping)
                     {
                         if (!TryObserveTutorInferenceNoLock(opcode, packetType, inferenceReason, source, inferencePayload, out PendingTutorInferenceEvidence pendingEvidence, out bool inferenceConfirmed, out string inferenceConflictReason))
                         {
@@ -1456,6 +1498,42 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             learnedMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual: false, source, payload);
+        }
+
+        private static bool TryResolveExtendedPortableChairRecordAddFromCaptureNoLock(
+            ushort opcode,
+            byte[] payload,
+            string source,
+            out int packetType,
+            out string reason)
+        {
+            packetType = 0;
+            reason = string.Empty;
+            if (!IsOfficialSessionSource(source)
+                || payload == null
+                || payload.Length != sizeof(int) * 4)
+            {
+                return false;
+            }
+
+            if (!Pools.RemoteUserPacketCodec.TryParsePortableChairRecordAdd(
+                    payload,
+                    out Pools.RemoteUserPortableChairRecordAddPacket packet,
+                    out _))
+            {
+                return false;
+            }
+
+            if (packet.ChairItemId / 10000 != 301
+                || packet.PairCharacterId.GetValueOrDefault() <= 0
+                || packet.Status.GetValueOrDefault(-1) < 0)
+            {
+                return false;
+            }
+
+            packetType = (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd;
+            reason = $"opcode {opcode} extended chair-record add for character {packet.CharacterId}, chair {packet.ChairItemId}, pair {packet.PairCharacterId.Value}, status {packet.Status.Value}";
+            return true;
         }
 
         private void EnsureLearnedTutorOpcodeBuildProofNoLock(ushort opcode, int packetType, string buildTag, int proofCount)

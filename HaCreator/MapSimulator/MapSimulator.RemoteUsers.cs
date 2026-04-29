@@ -225,6 +225,7 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < actors.Length; i++)
             {
                 ForgetObservedDropPacketActorState(actors[i].CharacterId);
+                RememberPredictedRemotePetPickupActorPositionsForOwnerState(actors[i]);
             }
             _packetOwnedRelationshipRecordRuntime.Clear();
             _packetOwnedPortableChairRecordRuntime.Clear();

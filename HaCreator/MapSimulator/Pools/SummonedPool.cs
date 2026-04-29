@@ -6010,8 +6010,28 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool hasHitAttach = attackData.HasHitAttach;
+            bool hitAttach = attackData.HitAttach;
             bool hasFacingAttach = attackData.HasFacingAttach;
+            bool facingAttach = attackData.FacingAttach;
             bool hasHitAfter = attackData.HasHitAfter;
+            if (TryResolvePacketMobAttackGeneralEffectAttachMetadata(
+                    attackData.HitEffectPath,
+                    out bool? hitEffectAttach,
+                    out bool? hitEffectFacingAttach))
+            {
+                if (!hasHitAttach && hitEffectAttach.HasValue)
+                {
+                    hasHitAttach = true;
+                    hitAttach = hitEffectAttach.Value;
+                }
+
+                if (!hasFacingAttach && hitEffectFacingAttach.HasValue)
+                {
+                    hasFacingAttach = true;
+                    facingAttach = hitEffectFacingAttach.Value;
+                }
+            }
+
             if (!hasHitAttach && !hasFacingAttach && !hasHitAfter)
             {
                 return attackInfo;
@@ -6022,17 +6042,17 @@ namespace HaCreator.MapSimulator.Pools
                 var metadata = new MobAnimationSet.AttackInfoMetadata();
                 if (hasHitAttach)
                 {
-                    metadata.HitAttach = attackData.HitAttach;
+                    metadata.HitAttach = hitAttach;
                     metadata.HasHitAttachMetadata = true;
                 }
 
                 if (hasFacingAttach)
                 {
-                    metadata.FacingAttach = attackData.FacingAttach;
+                    metadata.FacingAttach = facingAttach;
                     metadata.HasFacingAttachMetadata = true;
                     if (!hasHitAttach)
                     {
-                        metadata.HitAttach = attackData.FacingAttach;
+                        metadata.HitAttach = facingAttach;
                         metadata.HasHitAttachMetadata = true;
                     }
                 }
@@ -6047,9 +6067,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool changesHitAttach = hasHitAttach
-                                    && (!attackInfo.HasHitAttachMetadata || attackInfo.HitAttach != attackData.HitAttach);
+                                    && (!attackInfo.HasHitAttachMetadata || attackInfo.HitAttach != hitAttach);
             bool changesFacingAttach = hasFacingAttach
-                                       && (!attackInfo.HasFacingAttachMetadata || attackInfo.FacingAttach != attackData.FacingAttach);
+                                       && (!attackInfo.HasFacingAttachMetadata || attackInfo.FacingAttach != facingAttach);
             int normalizedHitAfterMs = Math.Max(0, attackData.HitAfterMs);
             bool changesHitAfter = hasHitAfter
                                    && (!attackInfo.HasHitAfterMetadata || attackInfo.HitAfterMs != normalizedHitAfterMs);
@@ -6061,17 +6081,17 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet.AttackInfoMetadata clone = CloneAttackInfoMetadata(attackInfo);
             if (hasHitAttach)
             {
-                clone.HitAttach = attackData.HitAttach;
+                clone.HitAttach = hitAttach;
                 clone.HasHitAttachMetadata = true;
             }
 
             if (hasFacingAttach)
             {
-                clone.FacingAttach = attackData.FacingAttach;
+                clone.FacingAttach = facingAttach;
                 clone.HasFacingAttachMetadata = true;
                 if (!hasHitAttach)
                 {
-                    clone.HitAttach = attackData.FacingAttach;
+                    clone.HitAttach = facingAttach;
                     clone.HasHitAttachMetadata = true;
                 }
             }
@@ -6083,6 +6103,149 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return clone;
+        }
+
+        internal static bool TryResolvePacketMobAttackGeneralEffectAttachMetadata(
+            string effectPath,
+            out bool? hitAttach,
+            out bool? facingAttach)
+        {
+            hitAttach = null;
+            facingAttach = null;
+            if (string.IsNullOrWhiteSpace(effectPath))
+            {
+                return false;
+            }
+
+            foreach (string token in EnumeratePacketMobAttackGeneralEffectAttachMetadataTokens(effectPath))
+            {
+                if (TryReadPacketMobAttackGeneralEffectAttachMetadataToken(
+                        token,
+                        out string metadataName,
+                        out bool metadataValue))
+                {
+                    if (IsPacketMobAttackGeneralEffectFacingAttachMetadataName(metadataName))
+                    {
+                        facingAttach ??= metadataValue;
+                    }
+                    else if (IsPacketMobAttackGeneralEffectHitAttachMetadataName(metadataName))
+                    {
+                        hitAttach ??= metadataValue;
+                    }
+                }
+            }
+
+            return hitAttach.HasValue || facingAttach.HasValue;
+        }
+
+        private static IEnumerable<string> EnumeratePacketMobAttackGeneralEffectAttachMetadataTokens(
+            string effectPath)
+        {
+            string normalizedEffectPath = NormalizePacketMobAttackGeneralEffectArrowDelimiterSpacing(
+                NormalizePacketMobAttackGeneralEffectEncodedPathSeparators(effectPath));
+            foreach (string rawToken in normalizedEffectPath.Split(
+                         new[] { '|', ';', ',', '&', '\r', '\n', '\t', ' ' },
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                foreach (string expandedToken in ExpandPacketMobAttackGeneralEffectArrowChainTokens(rawToken))
+                {
+                    string normalizedToken = NormalizePacketMobAttackGeneralEffectPathTokenShell(expandedToken);
+                    if (!string.IsNullOrWhiteSpace(normalizedToken))
+                    {
+                        yield return normalizedToken;
+                    }
+                }
+            }
+        }
+
+        private static bool TryReadPacketMobAttackGeneralEffectAttachMetadataToken(
+            string token,
+            out string metadataName,
+            out bool metadataValue)
+        {
+            metadataName = null;
+            metadataValue = false;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string[] segments = token
+                .Replace("=>", "/")
+                .Replace("->", "/")
+                .Split(new[] { '/', '\\', ':', '=', '(', ')', '[', ']', '{', '}', '<', '>', '"' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(static segment => segment.Trim().Trim('\''))
+                .Where(static segment => !string.IsNullOrWhiteSpace(segment))
+                .ToArray();
+            for (int i = 0; i < segments.Length - 1; i++)
+            {
+                string candidateName = segments[i];
+                if (!IsPacketMobAttackGeneralEffectAttachMetadataName(candidateName))
+                {
+                    continue;
+                }
+
+                if (TryParsePacketMobAttackGeneralEffectAttachMetadataValue(segments[i + 1], out metadataValue))
+                {
+                    metadataName = candidateName;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryParsePacketMobAttackGeneralEffectAttachMetadataValue(
+            string token,
+            out bool value)
+        {
+            value = false;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = NormalizePacketMobAttackGeneralEffectNumericToken(token);
+            if (int.TryParse(normalizedToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
+            {
+                value = intValue > 0;
+                return true;
+            }
+
+            if (string.Equals(normalizedToken, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                value = true;
+                return true;
+            }
+
+            if (string.Equals(normalizedToken, "false", StringComparison.OrdinalIgnoreCase))
+            {
+                value = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectAttachMetadataName(string name)
+        {
+            return IsPacketMobAttackGeneralEffectHitAttachMetadataName(name)
+                   || IsPacketMobAttackGeneralEffectFacingAttachMetadataName(name);
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectHitAttachMetadataName(string name)
+        {
+            return string.Equals(name, "attach", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(name, "bHitAttach", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(name, "hitAttach", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectFacingAttachMetadataName(string name)
+        {
+            return string.Equals(name, "attachfacing", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(name, "bFacingAttach", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(name, "bFacingAttatch", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(name, "facingAttach", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ResolvePacketMobAttackFallbackTemplateId(int? packetMobTemplateId, MobItem mob)

@@ -216,6 +216,15 @@ namespace HaCreator.MapSimulator.Fields
                 return consumeCooldownMessage;
             }
 
+            string mapInfoRestrictionMessage = FieldInteractionRestrictionEvaluator.GetScrollUseRestrictionMessage(
+                _mapInfo,
+                inventoryType,
+                itemId);
+            if (!string.IsNullOrWhiteSpace(mapInfoRestrictionMessage))
+            {
+                return mapInfoRestrictionMessage;
+            }
+
             if (itemId <= 0 || _allowedItems.Count == 0 || _allowedItems.Contains(itemId))
             {
                 return null;

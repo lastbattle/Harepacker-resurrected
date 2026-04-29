@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
         private const byte Version2 = 2;
         private const byte Version3 = 3;
         private const int HeaderSize = 4 + 1 + 4 + 4 + 1;
+        private const int LegacySessionHeaderSize = sizeof(int) * 2;
         private const int LegacyHeaderSize = sizeof(int) + sizeof(int) + sizeof(ushort);
         private const byte FlagQuery = 1 << 0;
         private const byte FlagCategory = 1 << 1;
@@ -74,13 +75,13 @@ namespace HaCreator.MapSimulator.UI
         {
             snapshot = null;
             payload ??= Array.Empty<byte>();
-            if (payload.Length < LegacyHeaderSize)
+            if (payload.Length < LegacySessionHeaderSize)
             {
                 return false;
             }
 
             ReadOnlySpan<byte> span = payload;
-            if (!span[..Magic.Length].SequenceEqual(Magic))
+            if (span.Length < Magic.Length || !span[..Magic.Length].SequenceEqual(Magic))
             {
                 return TryDecodeLegacy(payload, out snapshot);
             }

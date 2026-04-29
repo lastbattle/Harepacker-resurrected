@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.Entities
         private const int DoomBodyOffsetTop = -34;
         private const int DoomBodyWidth = 35;
         private const int DoomBodyHeight = 34;
+        private const int MaxClientMobSkillActionIndex = 17;
 
         private readonly MobInstance _mobInstance;
         private NameTooltipItem _nameTooltip = null;
@@ -1108,7 +1109,7 @@ namespace HaCreator.MapSimulator.Entities
                 }
             }
 
-            for (int actionIndex = 1; actionIndex <= 9; actionIndex++)
+            for (int actionIndex = 1; actionIndex <= MaxClientMobSkillActionIndex; actionIndex++)
             {
                 string animationName = $"skill{actionIndex}";
                 if (_animationSet.HasAnimation(animationName))
@@ -1243,6 +1244,11 @@ namespace HaCreator.MapSimulator.Entities
             return ResolveAuthoredMobSkillCooldown(levelNode, skillLevel);
         }
 
+        internal static int ResolveMobActionIndexForTesting(string animationName)
+        {
+            return GetActionIndex(animationName);
+        }
+
         private static int ResolveAuthoredMobSkillCooldown(int skillId, int skillLevel)
         {
             if (skillId <= 0)
@@ -1280,8 +1286,14 @@ namespace HaCreator.MapSimulator.Entities
                 return 1;
             }
 
-            int suffixIndex = animationName.Length - 1;
-            return suffixIndex >= 0 && int.TryParse(animationName[suffixIndex].ToString(), out int actionIndex)
+            int suffixStart = animationName.Length;
+            while (suffixStart > 0 && char.IsDigit(animationName[suffixStart - 1]))
+            {
+                suffixStart--;
+            }
+
+            return suffixStart < animationName.Length &&
+                   int.TryParse(animationName[suffixStart..], out int actionIndex)
                 ? actionIndex
                 : 1;
         }

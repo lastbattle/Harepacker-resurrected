@@ -636,7 +636,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryParseClientStageBackObjectKey(string name, out int number)
         {
             number = 0;
-            if (string.IsNullOrWhiteSpace(name))
+            if (name == null)
             {
                 return false;
             }

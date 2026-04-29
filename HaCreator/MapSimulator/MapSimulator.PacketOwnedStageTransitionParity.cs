@@ -7,10 +7,12 @@ using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -23,6 +25,7 @@ namespace HaCreator.MapSimulator
         private readonly StageTransitionPacketInboxManager _stageTransitionPacketInbox = new();
         private readonly Dictionary<string, List<BaseDXDrawableItem>> _packetStageTransitionNamedObjects = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectStateMetadata> _packetStageTransitionNamedObjectMetadata = new();
+        private readonly Dictionary<BaseDXDrawableItem, Dictionary<int, BaseDXDrawableItem>> _packetStageTransitionAuthoredStateBranchItems = new();
         private readonly Dictionary<BaseDXDrawableItem, bool> _packetStageTransitionObjectVisibility = new();
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
         private int _packetStageTransitionBackEffectDurationMs;
@@ -193,7 +196,7 @@ namespace HaCreator.MapSimulator
 
             questRuntime.ApplyPacketOwnedQuestStateSnapshot(snapshot.QuestRecordValues, snapshot.QuestCompleteRecords);
             questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestRecordValues);
-            questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestExRecordValues);
+            questRuntime.ApplyPacketOwnedQuestExRecordSnapshot(snapshot.QuestExRecordValues);
             questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.VisitorQuestRecords);
         }
 
@@ -409,6 +412,91 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private IReadOnlyList<BaseDXDrawableItem> CreatePacketOwnedStageTransitionAuthoredStateBranchItems(
+            BaseDXDrawableItem mapItem,
+            LayeredItem sourceItem,
+            ConcurrentBag<WzObject> usedProps,
+            ConcurrentDictionary<BaseDXDrawableItem, QuestGatedMapObjectState> questGatedMapObjects)
+        {
+            if (mapItem == null ||
+                sourceItem is not ObjectInstance objInst ||
+                objInst.BaseInfo is not ObjectInfo objectInfo ||
+                objectInfo.ParentObject is not WzImageProperty objectProperty ||
+                _DxDeviceManager?.GraphicsDevice == null)
+            {
+                return Array.Empty<BaseDXDrawableItem>();
+            }
+
+            IReadOnlySet<int> authoredStateIndexes = ResolvePacketOwnedNamedObjectAuthoredStateIndexes(objectProperty);
+            if (authoredStateIndexes == null || authoredStateIndexes.Count == 0)
+            {
+                return Array.Empty<BaseDXDrawableItem>();
+            }
+
+            List<BaseDXDrawableItem> branchItems = new();
+            Dictionary<int, BaseDXDrawableItem> branchesByState = new();
+            foreach (int stateIndex in authoredStateIndexes.OrderBy(static state => state))
+            {
+                if (stateIndex <= 0)
+                {
+                    continue;
+                }
+
+                WzImageProperty branchProperty = WzInfoTools.GetRealProperty(objectProperty[$"s{stateIndex}"]);
+                if (branchProperty == null)
+                {
+                    continue;
+                }
+
+                List<IDXObject> branchFrames = MapSimulatorLoader.LoadFrames(
+                    _texturePool,
+                    branchProperty,
+                    objInst.X,
+                    objInst.Y,
+                    _DxDeviceManager.GraphicsDevice,
+                    usedProps,
+                    fallbackDelay: 100);
+                if (branchFrames == null || branchFrames.Count == 0)
+                {
+                    continue;
+                }
+
+                BaseDXDrawableItem branchItem = new(branchFrames, objInst.Flip);
+                branchesByState[stateIndex] = branchItem;
+                branchItems.Add(branchItem);
+                _packetStageTransitionObjectVisibility[branchItem] = false;
+
+                QuestGatedMapObjectState? questState = BuildQuestGatedMapObjectState(objInst);
+                if (questState.HasValue)
+                {
+                    questGatedMapObjects[branchItem] = questState.Value;
+                }
+            }
+
+            if (branchesByState.Count > 0)
+            {
+                _packetStageTransitionAuthoredStateBranchItems[mapItem] = branchesByState;
+            }
+
+            return branchItems;
+        }
+
+        private static QuestGatedMapObjectState? BuildQuestGatedMapObjectState(ObjectInstance objInst)
+        {
+            if (objInst == null)
+            {
+                return null;
+            }
+
+            bool hiddenByMap = objInst.hide == true;
+            bool hasQuestInfo = objInst.QuestInfo != null && objInst.QuestInfo.Count > 0;
+            string[] dynamicTags = ParseObjectTags(objInst.tags);
+            bool hasDynamicTags = dynamicTags.Length > 0;
+            return hiddenByMap || hasQuestInfo || hasDynamicTags
+                ? new QuestGatedMapObjectState(objInst.QuestInfo?.ToArray(), dynamicTags, hiddenByMap)
+                : null;
+        }
+
         private static string ResolvePacketOwnedNamedObjectStateSfx(ObjectInfo objectInfo)
         {
             if (objectInfo?.ParentObject is not WzImageProperty objectProperty)
@@ -492,6 +580,7 @@ namespace HaCreator.MapSimulator
             ResetPacketOwnedStageTransitionRuntimeState();
             _packetStageTransitionNamedObjects.Clear();
             _packetStageTransitionNamedObjectMetadata.Clear();
+            _packetStageTransitionAuthoredStateBranchItems.Clear();
             ResetPacketOwnedLogoutGiftRuntimeState(clearConfig: true, hideWindow: true, summary: "Packet-owned logout-gift owner cleared with stage-transition state.");
         }
 

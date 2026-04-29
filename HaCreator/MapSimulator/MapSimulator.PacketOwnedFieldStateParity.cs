@@ -117,6 +117,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryApplyAuthoredSingleObjectStateBranch(objects, stateIndex, currentTick))
+            {
+                return true;
+            }
+
             bool applied = false;
             for (int i = 0; i < objects.Count; i++)
             {
@@ -130,6 +135,7 @@ namespace HaCreator.MapSimulator
                     ? i == stateIndex
                     : objects.Count == 1;
                 _packetStageTransitionObjectVisibility[mapObject] = selected;
+                HidePacketOwnedAuthoredStateBranches(mapObject);
                 if (selected)
                 {
                     mapObject.RestartAnimation(currentTick);
@@ -140,6 +146,67 @@ namespace HaCreator.MapSimulator
             }
 
             return applied;
+        }
+
+        private bool TryApplyAuthoredSingleObjectStateBranch(IReadOnlyList<BaseDXDrawableItem> objects, int stateIndex, int currentTick)
+        {
+            if (objects == null ||
+                objects.Count != 1 ||
+                objects[0] == null ||
+                !_packetStageTransitionAuthoredStateBranchItems.TryGetValue(objects[0], out Dictionary<int, BaseDXDrawableItem> branchesByState) ||
+                branchesByState == null ||
+                branchesByState.Count == 0)
+            {
+                return false;
+            }
+
+            BaseDXDrawableItem baseObject = objects[0];
+            if (stateIndex == 0)
+            {
+                _packetStageTransitionObjectVisibility[baseObject] = true;
+                HidePacketOwnedAuthoredStateBranches(baseObject);
+                baseObject.RestartAnimation(currentTick);
+                ApplyPacketOwnedNamedObjectSelectedStateLifecycle(baseObject, stateIndex);
+                return true;
+            }
+
+            if (!branchesByState.TryGetValue(stateIndex, out BaseDXDrawableItem branchObject) ||
+                branchObject == null)
+            {
+                return false;
+            }
+
+            _packetStageTransitionObjectVisibility[baseObject] = false;
+            foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
+            {
+                bool selected = branch.Key == stateIndex;
+                _packetStageTransitionObjectVisibility[branch.Value] = selected;
+                if (selected)
+                {
+                    branch.Value.RestartAnimation(currentTick);
+                }
+            }
+
+            ApplyPacketOwnedNamedObjectSelectedStateLifecycle(baseObject, stateIndex);
+            return true;
+        }
+
+        private void HidePacketOwnedAuthoredStateBranches(BaseDXDrawableItem baseObject)
+        {
+            if (baseObject == null ||
+                !_packetStageTransitionAuthoredStateBranchItems.TryGetValue(baseObject, out Dictionary<int, BaseDXDrawableItem> branchesByState) ||
+                branchesByState == null)
+            {
+                return;
+            }
+
+            foreach (BaseDXDrawableItem branchObject in branchesByState.Values)
+            {
+                if (branchObject != null)
+                {
+                    _packetStageTransitionObjectVisibility[branchObject] = false;
+                }
+            }
         }
 
         private bool CanApplyAuthoredSingleObjectStateBranch(IReadOnlyList<BaseDXDrawableItem> objects, int stateIndex)
@@ -201,6 +268,20 @@ namespace HaCreator.MapSimulator
                 if (mapObject == null)
                 {
                     continue;
+                }
+
+                if (_packetStageTransitionAuthoredStateBranchItems.TryGetValue(mapObject, out Dictionary<int, BaseDXDrawableItem> branchesByState) &&
+                    branchesByState != null)
+                {
+                    foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
+                    {
+                        if (branch.Value != null &&
+                            _packetStageTransitionObjectVisibility.TryGetValue(branch.Value, out bool branchVisible) &&
+                            branchVisible)
+                        {
+                            return branch.Key;
+                        }
+                    }
                 }
 
                 if (_packetStageTransitionObjectVisibility.TryGetValue(mapObject, out bool visible))

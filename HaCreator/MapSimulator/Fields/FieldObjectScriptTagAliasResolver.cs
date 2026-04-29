@@ -858,7 +858,8 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyDictionary<string, string> localAliasMap,
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
         {
-            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            string normalizedValue = NormalizeOptionalChainingAliasAccess(
+                NormalizeFunctionAliasArgument(value)).TrimEnd(';');
             if (string.IsNullOrWhiteSpace(normalizedValue))
             {
                 return Array.Empty<string>();
@@ -909,6 +910,17 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            foreach (string sequenceTail in EnumerateSequenceExpressionTailCandidates(normalizedValue))
+            {
+                foreach (string sequenceAlias in ResolveAssignmentAliasCandidates(
+                             sequenceTail,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    AddAlias(sequenceAlias);
+                }
+            }
+
             if (IsFunctionExpressionText(normalizedValue))
             {
                 foreach (string returnExpression in EnumerateFunctionReturnExpressions(normalizedValue))
@@ -953,7 +965,8 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyDictionary<string, string> localAliasMap,
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
         {
-            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            string normalizedValue = NormalizeOptionalChainingAliasAccess(
+                NormalizeFunctionAliasArgument(value)).TrimEnd(';');
             if (string.IsNullOrWhiteSpace(normalizedValue))
             {
                 return string.Empty;
@@ -993,6 +1006,18 @@ namespace HaCreator.MapSimulator.Fields
                 if (!string.IsNullOrWhiteSpace(branchAlias))
                 {
                     return branchAlias;
+                }
+            }
+
+            foreach (string sequenceTail in EnumerateSequenceExpressionTailCandidates(normalizedValue))
+            {
+                string sequenceAlias = ResolveAssignmentAliasCandidate(
+                    sequenceTail,
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (!string.IsNullOrWhiteSpace(sequenceAlias))
+                {
+                    return sequenceAlias;
                 }
             }
 
@@ -1882,7 +1907,8 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyDictionary<string, string> localAliasMap,
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
         {
-            string normalizedCandidate = NormalizeFunctionAliasArgument(candidate).TrimEnd(';');
+            string normalizedCandidate = NormalizeOptionalChainingAliasAccess(
+                NormalizeFunctionAliasArgument(candidate)).TrimEnd(';');
             if (string.IsNullOrWhiteSpace(normalizedCandidate))
             {
                 yield break;
@@ -1919,6 +1945,17 @@ namespace HaCreator.MapSimulator.Fields
                              objectMemberAliasMap))
                 {
                     yield return branchCandidate;
+                }
+            }
+
+            foreach (string sequenceTail in EnumerateSequenceExpressionTailCandidates(normalizedCandidate))
+            {
+                foreach (string sequenceCandidate in EnumerateCanonicalAliasCandidates(
+                             sequenceTail,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    yield return sequenceCandidate;
                 }
             }
 
@@ -2232,6 +2269,27 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     yield return branch;
                 }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateSequenceExpressionTailCandidates(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            IReadOnlyList<string> expressions = SplitTopLevelByComma(
+                StripOuterBalancedParentheses(value.Trim()));
+            if (expressions.Count <= 1)
+            {
+                yield break;
+            }
+
+            string tailExpression = expressions[^1]?.Trim();
+            if (!string.IsNullOrWhiteSpace(tailExpression))
+            {
+                yield return tailExpression;
             }
         }
 
@@ -3922,6 +3980,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return value.Trim().Trim('"', '\'').Trim();
+        }
+
+        private static string NormalizeOptionalChainingAliasAccess(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)
+                || value.IndexOf("?.", StringComparison.Ordinal) < 0)
+            {
+                return value;
+            }
+
+            return value
+                .Replace("?.[", "[", StringComparison.Ordinal)
+                .Replace("?.", ".", StringComparison.Ordinal);
         }
 
         private static bool IsPotentialAliasArgument(string value, int argumentIndex)

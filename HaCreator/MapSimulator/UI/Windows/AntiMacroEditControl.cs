@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -129,6 +130,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly int _width;
         private readonly int _height;
         private readonly int _maxLength;
+        private readonly Encoding _clientEncoding;
 
         private readonly ClientTextRasterizer _clientTextRasterizer;
         private SpriteFont _font;
@@ -144,13 +146,14 @@ namespace HaCreator.MapSimulator.UI
         private bool _mouseSelecting;
         private VisualStyle _visualStyle = DefaultVisualStyle;
 
-        public AntiMacroEditControl(Texture2D pixelTexture, Point inputOrigin, int width, int height, int maxLength)
+        public AntiMacroEditControl(Texture2D pixelTexture, Point inputOrigin, int width, int height, int maxLength, Encoding clientEncoding = null)
         {
             _pixelTexture = pixelTexture ?? throw new ArgumentNullException(nameof(pixelTexture));
             _inputOrigin = inputOrigin;
             _width = width;
             _height = height;
             _maxLength = maxLength;
+            _clientEncoding = clientEncoding;
             HasFocus = true;
             _caretBlinkTick = Environment.TickCount;
 
@@ -227,10 +230,13 @@ namespace HaCreator.MapSimulator.UI
         public void SynchronizeExternalState(string text, bool hasFocus)
         {
             string sanitized = text ?? string.Empty;
-            if (GetTextElementCount(sanitized) > _maxLength)
-            {
-                sanitized = GetLeadingTextElements(sanitized, _maxLength);
-            }
+            sanitized = NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
+                sanitized,
+                string.Empty,
+                0,
+                0,
+                _maxLength,
+                _clientEncoding);
 
             _inputText = sanitized;
             _caretIndex = _inputText.Length;
@@ -316,7 +322,8 @@ namespace HaCreator.MapSimulator.UI
                 _inputText,
                 HasSelection ? GetSelectionStart() : _caretIndex,
                 HasSelection ? GetSelectionEnd() : _caretIndex,
-                _maxLength);
+                _maxLength,
+                _clientEncoding);
             if (insertText.Length == 0)
             {
                 return;
@@ -353,7 +360,8 @@ namespace HaCreator.MapSimulator.UI
                 _inputText,
                 replacementStart,
                 replacementEnd,
-                _maxLength);
+                _maxLength,
+                _clientEncoding);
             if (limitedComposition.Length == 0)
             {
                 ClearCompositionText();
@@ -546,7 +554,8 @@ namespace HaCreator.MapSimulator.UI
                 _inputText,
                 HasSelection ? GetSelectionStart() : _caretIndex,
                 HasSelection ? GetSelectionEnd() : _caretIndex,
-                _maxLength);
+                _maxLength,
+                _clientEncoding);
             if (insertText.Length == 0)
             {
                 return false;
@@ -558,7 +567,7 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        internal static string ResolveClientCommittedInsertText(string text, string currentText, int selectedLength, int maxLength)
+        internal static string ResolveClientCommittedInsertText(string text, string currentText, int selectedLength, int maxLength, Encoding clientEncoding = null)
         {
             string resolvedCurrent = currentText ?? string.Empty;
             int selectionEnd = resolvedCurrent.Length;
@@ -568,7 +577,8 @@ namespace HaCreator.MapSimulator.UI
                 resolvedCurrent,
                 selectionStart,
                 selectionEnd,
-                maxLength);
+                maxLength,
+                clientEncoding);
         }
 
         internal static string ResolveClientCompositionPreviewText(
@@ -576,14 +586,16 @@ namespace HaCreator.MapSimulator.UI
             string currentText,
             int selectionStart,
             int selectionEnd,
-            int maxLength)
+            int maxLength,
+            Encoding clientEncoding = null)
         {
             return NativeAntiMacroEditHost.ResolveClientLimitedReplacementText(
                 text,
                 currentText ?? string.Empty,
                 selectionStart,
                 selectionEnd,
-                maxLength);
+                maxLength,
+                clientEncoding);
         }
 
         public bool TryReplaceCharacterBeforeCaret(char character)
@@ -611,7 +623,8 @@ namespace HaCreator.MapSimulator.UI
                 _inputText,
                 previousCaret,
                 currentCaret,
-                _maxLength);
+                _maxLength,
+                _clientEncoding);
             if (insertText.Length == 0)
             {
                 return false;

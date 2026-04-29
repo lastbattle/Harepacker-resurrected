@@ -175,6 +175,8 @@ namespace HaCreator.MapSimulator
 
             DrawNpcQuestFeedback(in renderContext);
 
+            DrawMobActionSpeechFeedback(in renderContext);
+
             DrawPetIdleSpeechFeedback(in renderContext);
 
             _fieldMessageBoxRuntime.Draw(

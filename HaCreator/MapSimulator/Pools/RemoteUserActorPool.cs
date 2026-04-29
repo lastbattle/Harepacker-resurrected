@@ -353,6 +353,24 @@ namespace HaCreator.MapSimulator.Pools
             public string ActionName { get; set; }
             public int ActionStartTime { get; set; } = int.MinValue;
             public int OwnerActionStartTime { get; set; } = int.MinValue;
+            public int SimulatedLayerHandleId { get; set; }
+            public int SimulatedLayerHandleRefCount { get; private set; }
+            public bool TerminateRequested { get; private set; }
+            public bool IsTerminated { get; private set; }
+
+            public void CaptureRegisteredLayerReference()
+            {
+                SimulatedLayerHandleRefCount = SimulatedLayerHandleId > 0 ? 1 : 0;
+                TerminateRequested = false;
+                IsTerminated = false;
+            }
+
+            public void MarkTerminated()
+            {
+                TerminateRequested = true;
+                IsTerminated = true;
+                SimulatedLayerHandleRefCount = 0;
+            }
         }
 
         public readonly record struct RemoteDragonCompanionRenderState(
@@ -721,6 +739,7 @@ namespace HaCreator.MapSimulator.Pools
                 ClearActorFollowLinks(actor);
                 ClearRemoteActiveEffectMotionBlurState(actor);
                 ClearRemoteActiveEffectItemEffectState(actor);
+                ClearRemoteDragonCompanionState(actor);
                 NotifyActorRemoved(actor.CharacterId, actor.Name);
             }
 
@@ -750,7 +769,9 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ClearRemoteDragonCompanionState(actor);
                     ClearPortableChairPairRecord(characterId);
+                    PurgeRelationshipRecordsForActor(characterId);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
@@ -779,7 +800,9 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ClearRemoteDragonCompanionState(actor);
                     ClearPortableChairPairRecord(characterId);
+                    PurgeRelationshipRecordsForActor(characterId);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
@@ -4975,6 +4998,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ClearActorFollowLinks(actor);
             ClearRemoteActiveEffectMotionBlurState(actor);
+            ClearRemoteDragonCompanionState(actor);
             ClearPortableChairPairRecord(characterId);
             PurgeRelationshipRecordsForActor(characterId);
             NotifyActorRemoved(actor.CharacterId, actor.Name);
@@ -5587,6 +5611,7 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.RemoteDragonCompanion ??= new RemoteDragonCompanionPresentationState();
             RemoteDragonCompanionPresentationState dragon = actor.RemoteDragonCompanion;
+            EnsureRemoteDragonCompanionLayerReference(dragon);
             AssembledFrame ownerFrame = actor.GetFrameAtTimeForRendering(currentTime);
             float ownerBodyOriginY = ownerFrame != null
                 ? actor.Position.Y - ownerFrame.FeetOffset
@@ -5817,6 +5842,21 @@ namespace HaCreator.MapSimulator.Pools
             dragon.VisualAnchor = visualAnchor;
             dragon.FollowVelocity = velocity;
             return dragon.VisualAnchor;
+        }
+
+        private static void EnsureRemoteDragonCompanionLayerReference(RemoteDragonCompanionPresentationState dragon)
+        {
+            if (dragon == null || dragon.SimulatedLayerHandleRefCount > 0)
+            {
+                return;
+            }
+
+            if (dragon.SimulatedLayerHandleId <= 0)
+            {
+                dragon.SimulatedLayerHandleId = NextRemoteDragonCompanionLayerHandleId();
+            }
+
+            dragon.CaptureRegisteredLayerReference();
         }
 
         private static void UpdateRemoteDragonCompanionFollowState(
@@ -8394,6 +8434,17 @@ namespace HaCreator.MapSimulator.Pools
             actor.ActiveEffectItemEffect = null;
         }
 
+        private static void ClearRemoteDragonCompanionState(RemoteUserActor actor)
+        {
+            if (actor?.RemoteDragonCompanion == null)
+            {
+                return;
+            }
+
+            actor.RemoteDragonCompanion.MarkTerminated();
+            actor.RemoteDragonCompanion = null;
+        }
+
         private void UpdatePacketOwnedEmotionState(RemoteUserActor actor, int currentTime)
         {
             if (actor?.PacketOwnedEmotion == null)
@@ -8761,6 +8812,11 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteDragonCompanionLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         internal static IReadOnlyDictionary<AvatarRenderLayer, int> CreateRemoteActiveEffectMotionBlurLayerHandleIdsForTesting()
         {
             return CreateRemoteActiveEffectMotionBlurLayerHandleIds();
@@ -8779,6 +8835,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteActiveEffectItemEffectLayerHandleIdForTesting()
         {
             return NextRemoteActiveEffectItemEffectLayerHandleId();
+        }
+
+        internal static int NextRemoteDragonCompanionLayerHandleIdForTesting()
+        {
+            return NextRemoteDragonCompanionLayerHandleId();
         }
 
         internal static bool IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMapForTesting(
@@ -15369,6 +15430,23 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!hasValidMetadataOffset
                 && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementBySeparatedSkillElementPairConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
+                    out int separatedPairConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    separatedPairConsensusChargeElement,
+                    out int separatedPairConsensusChargeSkillId))
+            {
+                return separatedPairConsensusChargeSkillId;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -15586,6 +15664,19 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementBySeparatedSkillElementPairConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingSeparatedPairMaxDistanceBytes,
                     out chargeElement))
             {
                 return true;

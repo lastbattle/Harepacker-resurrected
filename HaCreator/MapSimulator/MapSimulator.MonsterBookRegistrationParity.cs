@@ -684,6 +684,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryDecodeMonsterBookLoadBookRawPayload(payload, out result, out detail))
+            {
+                return true;
+            }
+
             if (TryDecodeMonsterBookOwnershipSaveAckBinaryPayload(payload, out result, out detail))
             {
                 return true;
@@ -1073,6 +1078,103 @@ namespace HaCreator.MapSimulator
             {
                 return false;
             }
+        }
+
+        private static bool TryDecodeMonsterBookLoadBookRawPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(int) + sizeof(byte))
+            {
+                return false;
+            }
+
+            if (TryDecodeMonsterBookLoadBookRawPayloadCore(
+                    payload,
+                    offset: 0,
+                    registeredMobId: null,
+                    out result,
+                    out detail))
+            {
+                return true;
+            }
+
+            if (payload.Length >= sizeof(int) + sizeof(ushort) + sizeof(int) + sizeof(byte))
+            {
+                int registeredMobId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+                if (registeredMobId > 0
+                    && TryDecodeMonsterBookLoadBookRawPayloadCore(
+                        payload,
+                        offset: sizeof(int),
+                        registeredMobId,
+                        out result,
+                        out detail))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeMonsterBookLoadBookRawPayloadCore(
+            byte[] payload,
+            int offset,
+            int? registeredMobId,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            if (payload == null
+                || offset < 0
+                || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort entryCount = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
+            int entriesOffset = offset + sizeof(ushort);
+            int expectedLength = entriesOffset + (entryCount * (sizeof(int) + sizeof(byte)));
+            if (entryCount == 0
+                || entryCount > 1024
+                || expectedLength != payload.Length)
+            {
+                return false;
+            }
+
+            Dictionary<int, int> counts = new();
+            for (int i = 0; i < entryCount; i++)
+            {
+                int entryOffset = entriesOffset + (i * (sizeof(int) + sizeof(byte)));
+                int ownershipKey = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset, sizeof(int)));
+                int count = payload[entryOffset + sizeof(int)];
+                if (ownershipKey <= 0 || count <= 0)
+                {
+                    return false;
+                }
+
+                counts[ownershipKey] = Math.Clamp(count, 0, 5);
+            }
+
+            result = new MonsterBookOwnershipSyncPayload(
+                clearRequested: false,
+                replaceExisting: true,
+                hasOwnershipSnapshot: counts.Count > 0 || registeredMobId.HasValue,
+                saveAccepted: null,
+                requestId: null,
+                characterId: null,
+                characterName: string.Empty,
+                registeredMobId,
+                counts,
+                statusText: string.Empty);
+            detail = registeredMobId.HasValue
+                ? "Decoded CMonsterBookMan::LoadBook raw ownership table with registered cover."
+                : "Decoded CMonsterBookMan::LoadBook raw ownership table.";
+            return true;
         }
 
         private static bool TryDecodeMonsterBookOwnershipSaveAckBinaryPayload(

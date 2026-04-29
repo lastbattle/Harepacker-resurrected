@@ -177,7 +177,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 [14111000] = new[]
                 {
                     14101002, 14101003, 14101006,
-                    14111001, 14111002
+                    14111001, 14111002, 14111006
                 }
             };
 
@@ -2684,7 +2684,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             List<WzImageProperty> orderedFrames = actionNode.WzProperties
                 .Where(static child =>
                     child != null
-                    && (child is WzCanvasProperty || child.GetLinkedWzImageProperty() is WzCanvasProperty))
+                    && (child is WzCanvasProperty
+                        || child.GetLinkedWzImageProperty() is WzCanvasProperty
+                        || ContainsShadowPartnerInlineCanvasFrame(child)))
                 .ToList();
 
             if (orderedFrames.Count == 0)
@@ -2693,6 +2695,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return orderedFrames;
+        }
+
+        private static bool ContainsShadowPartnerInlineCanvasFrame(WzImageProperty frameNode)
+        {
+            return frameNode?.WzProperties != null
+                   && frameNode.WzProperties.Any(static child => child is WzCanvasProperty);
         }
 
         internal static string ResolveShadowPartnerActionStorageKey(string sourceActionKey)
@@ -2761,19 +2769,50 @@ namespace HaCreator.MapSimulator.Character.Skills
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (WzImageProperty sourceSkillNode in sourceSkillNodes)
             {
-                WzImageProperty actionNode = sourceSkillNode?["action"];
-                if (actionNode?.WzProperties == null || actionNode.WzProperties.Count == 0)
+                foreach (WzImageProperty actionNode in EnumerateShadowPartnerSourceActionNodes(sourceSkillNode))
                 {
-                    continue;
-                }
-
-                foreach (WzImageProperty actionChild in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(actionNode))
-                {
-                    string rawActionName = actionChild?.GetString();
+                    string rawActionName = actionNode?.GetString();
                     if (!string.IsNullOrWhiteSpace(rawActionName) && yielded.Add(rawActionName))
                     {
                         yield return rawActionName;
                     }
+
+                    if (actionNode?.WzProperties == null || actionNode.WzProperties.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (WzImageProperty actionChild in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(actionNode))
+                    {
+                        rawActionName = actionChild?.GetString();
+                        if (!string.IsNullOrWhiteSpace(rawActionName) && yielded.Add(rawActionName))
+                        {
+                            yield return rawActionName;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateShadowPartnerSourceActionNodes(WzImageProperty sourceSkillNode)
+        {
+            if (sourceSkillNode == null)
+            {
+                yield break;
+            }
+
+            WzImageProperty actionNode = sourceSkillNode["action"];
+            if (actionNode != null)
+            {
+                yield return actionNode;
+            }
+
+            foreach (string nestedActionOwnerName in new[] { "prepare", "effect" })
+            {
+                WzImageProperty nestedActionNode = sourceSkillNode[nestedActionOwnerName]?["action"];
+                if (nestedActionNode != null)
+                {
+                    yield return nestedActionNode;
                 }
             }
         }
@@ -3034,26 +3073,43 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
                     || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase)
-                    || ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName)
-                    || !TryGetShadowPartnerClientActionPieces(
-                        actionName,
-                        out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
+                    || ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName))
                 {
                     continue;
                 }
 
-                SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
-                    readOnlyActionAnimations,
-                    actionName,
-                    supportedRawActionNames,
-                    piecePlanOverride: piecePlan,
-                    requireSupportedRawActionName: false);
-                if (piecedAnimation?.Frames.Count > 0)
+                if (TryGetShadowPartnerClientActionPieces(
+                        actionName,
+                        out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
                 {
-                    actionAnimations[actionName] = piecedAnimation;
-                    readOnlyActionAnimations =
-                        actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
-                        ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+                    SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
+                        readOnlyActionAnimations,
+                        actionName,
+                        supportedRawActionNames,
+                        piecePlanOverride: piecePlan,
+                        requireSupportedRawActionName: false);
+                    if (piecedAnimation?.Frames.Count > 0)
+                    {
+                        actionAnimations[actionName] = piecedAnimation;
+                        readOnlyActionAnimations =
+                            actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                            ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    continue;
+                }
+
+                if (ShadowPartnerClientActionResolver.IsMountedCreateActionFrameName(actionName))
+                {
+                    WzImageProperty actionNode = ResolveLinkedProperty(actionChild);
+                    SkillAnimation mountedFrameAnimation = LoadShadowPartnerActionAnimation(actionNode, actionName);
+                    if (mountedFrameAnimation?.Frames.Count > 0)
+                    {
+                        actionAnimations[actionName] = mountedFrameAnimation;
+                        readOnlyActionAnimations =
+                            actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                            ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+                    }
                 }
             }
 
@@ -6761,7 +6817,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             foreach (WzImageProperty child in rowNode.WzProperties)
             {
-                if (child == null || !IsClientSummonedUolTableOwnerFieldName(child.Name))
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (TryReadClientSummonedUolTableOwnerSkillIdFromFieldName(child.Name, out skillId))
+                {
+                    return true;
+                }
+
+                if (!IsClientSummonedUolTableOwnerFieldName(child.Name))
                 {
                     continue;
                 }
@@ -6844,6 +6910,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                         }
                     }
                 }
+                else if (TryReadClientSummonedUolTableOwnerSkillIdFromFieldName(child.Name, out skillId))
+                {
+                    return true;
+                }
 
                 if (child.WzProperties == null)
                 {
@@ -6899,6 +6969,91 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("ownerid", StringComparison.Ordinal)
                    || normalizedName.Equals("summonskillid", StringComparison.Ordinal)
                    || normalizedName.Equals("ownerskillid", StringComparison.Ordinal);
+        }
+
+        private static bool TryReadClientSummonedUolTableOwnerSkillIdFromFieldName(string name, out int skillId)
+        {
+            skillId = 0;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            if (!TryReadClientSummonedUolTableEncodedOwnerFieldNamePrefix(name, out string normalizedName))
+            {
+                return false;
+            }
+
+            foreach (string ownerFieldName in new[]
+                     {
+                         "skillid",
+                         "nskillid",
+                         "currentskillid",
+                         "sourceskillid",
+                         "summonedskillid",
+                         "skill",
+                         "nskill",
+                         "id",
+                         "key",
+                         "owner",
+                         "ownerskill",
+                         "ownerid",
+                         "summonskillid",
+                         "ownerskillid"
+                     })
+            {
+                if (!normalizedName.StartsWith(ownerFieldName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                foreach (int linkedSkillId in ParseLinkedSkillIds(name))
+                {
+                    if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                    {
+                        skillId = linkedSkillId;
+                        return true;
+                    }
+                }
+
+                foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(name, contextSkillId: 0))
+                {
+                    if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                    {
+                        skillId = fallbackSkillId;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadClientSummonedUolTableEncodedOwnerFieldNamePrefix(
+            string name,
+            out string normalizedName)
+        {
+            normalizedName = string.Empty;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            int prefixLength = 0;
+            while (prefixLength < name.Length && char.IsLetterOrDigit(name[prefixLength]))
+            {
+                prefixLength++;
+            }
+
+            if (prefixLength <= 0 || prefixLength >= name.Length)
+            {
+                return false;
+            }
+
+            normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name.Substring(0, prefixLength));
+            return !string.IsNullOrWhiteSpace(normalizedName);
         }
 
         private static string BuildClientSummonedUolTableEntryRelativePath(
@@ -9992,6 +10147,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // Try to get from _inlink or _outlink
                 var linked = frameNode.GetLinkedWzImageProperty();
                 canvas = linked as WzCanvasProperty;
+                canvas ??= frameNode.WzProperties?.OfType<WzCanvasProperty>().FirstOrDefault();
             }
 
             if (canvas == null)

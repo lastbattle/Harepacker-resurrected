@@ -2868,7 +2868,10 @@ namespace HaCreator.MapSimulator.UI
                 if (!InventoryItemMetadataResolver.TryResolveRootCanvas(
                         rewardItems[i].ItemId,
                         "info/icon",
-                        out WzCanvasProperty iconCanvas))
+                        out WzCanvasProperty iconCanvas)
+                    && !InventoryItemMetadataResolver.TryResolveEffectFirstCanvas(
+                        rewardItems[i].EffectPath,
+                        out iconCanvas))
                 {
                     continue;
                 }

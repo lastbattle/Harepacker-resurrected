@@ -269,8 +269,19 @@ namespace HaCreator.MapSimulator.Managers
                         "Maker-session disassembly target",
                         out disassemblyTargets))
                 {
-                    error = "Maker-session disassembly target entries are truncated or invalid.";
-                    return false;
+                    bool canUseCountlessSlotOnlyRoster =
+                        !flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList)
+                        && (disassemblyEncoding is DisassemblyTargetEntryEncoding.WideSlotOnlyInt32
+                            or DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16);
+                    if (!canUseCountlessSlotOnlyRoster
+                        || !TryReadRemainingCountlessDisassemblyTargetEntries(
+                            reader,
+                            disassemblyEncoding,
+                            out disassemblyTargets))
+                    {
+                        error = "Maker-session disassembly target entries are truncated or invalid.";
+                        return false;
+                    }
                 }
             }
 
@@ -417,7 +428,18 @@ namespace HaCreator.MapSimulator.Managers
                             out disassemblyTargets,
                             useByteCount: useByteCounts))
                     {
-                        continue;
+                        bool canUseCountlessSlotOnlyRoster =
+                            !flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList)
+                            && (disassemblyEncoding is DisassemblyTargetEntryEncoding.WideSlotOnlyInt32
+                                or DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16);
+                        if (!canUseCountlessSlotOnlyRoster
+                            || !TryReadRemainingCountlessDisassemblyTargetEntries(
+                                reader,
+                                disassemblyEncoding,
+                                out disassemblyTargets))
+                        {
+                            continue;
+                        }
                     }
                 }
 
@@ -1986,6 +2008,81 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
             catch (OverflowException)
+            {
+                entries = null;
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+        }
+
+        private static bool TryReadRemainingCountlessDisassemblyTargetEntries(
+            BinaryReader reader,
+            DisassemblyTargetEntryEncoding encoding,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> entries)
+        {
+            entries = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                int entryWidth = encoding switch
+                {
+                    DisassemblyTargetEntryEncoding.CompactSlotUInt16 => sizeof(ushort) + sizeof(int),
+                    DisassemblyTargetEntryEncoding.WideSlotOnlyInt32 => sizeof(int),
+                    DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16 => sizeof(ushort),
+                    _ => sizeof(int) * 2
+                };
+
+                long remainingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
+                if (remainingBytes <= 0 || remainingBytes % entryWidth != 0)
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                int count = checked((int)(remainingBytes / entryWidth));
+                entries = new List<PacketOwnedItemMakerDisassemblyTargetEntry>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    int slotIndex;
+                    int itemId;
+                    switch (encoding)
+                    {
+                        case DisassemblyTargetEntryEncoding.CompactSlotUInt16:
+                            slotIndex = reader.ReadUInt16();
+                            itemId = reader.ReadInt32();
+                            break;
+                        case DisassemblyTargetEntryEncoding.WideSlotOnlyInt32:
+                            slotIndex = reader.ReadInt32();
+                            itemId = 0;
+                            break;
+                        case DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16:
+                            slotIndex = reader.ReadUInt16();
+                            itemId = 0;
+                            break;
+                        default:
+                            slotIndex = reader.ReadInt32();
+                            itemId = reader.ReadInt32();
+                            break;
+                    }
+
+                    if (slotIndex < 0)
+                    {
+                        entries = null;
+                        reader.BaseStream.Position = startPosition;
+                        return false;
+                    }
+
+                    entries.Add(new PacketOwnedItemMakerDisassemblyTargetEntry(slotIndex, itemId));
+                }
+
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException or OverflowException)
             {
                 entries = null;
                 reader.BaseStream.Position = startPosition;

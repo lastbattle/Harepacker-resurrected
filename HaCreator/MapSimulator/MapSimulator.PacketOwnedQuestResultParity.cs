@@ -1183,6 +1183,18 @@ namespace HaCreator.MapSimulator
                 questId);
         }
 
+        private void RemoveLatestPendingQuestDeliveryResultPhaseHint(int questId, QuestDetailDeliveryType deliveryType)
+        {
+            int hintIndex = FindLatestPendingQuestDeliveryResultPhaseHintIndex(
+                _pendingQuestDeliveryResultPhaseHints,
+                questId,
+                deliveryType);
+            if (hintIndex >= 0)
+            {
+                _pendingQuestDeliveryResultPhaseHints.RemoveAt(hintIndex);
+            }
+        }
+
         private QuestDetailDeliveryType ResolvePendingQuestDeliveryResultPhaseHint(int questId)
         {
             QuestDetailDeliveryType deliveryType = ConsumePendingQuestDeliveryResultPhaseHint(questId);
@@ -1250,6 +1262,32 @@ namespace HaCreator.MapSimulator
             for (int i = pendingHints.Count - 1; i >= 0; i--)
             {
                 if (pendingHints[i].QuestId == normalizedQuestId)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static int FindLatestPendingQuestDeliveryResultPhaseHintIndex(
+            IReadOnlyList<PendingQuestDeliveryResultPhaseHint> pendingHints,
+            int questId,
+            QuestDetailDeliveryType deliveryType)
+        {
+            int normalizedQuestId = Math.Max(0, questId);
+            if (pendingHints == null
+                || pendingHints.Count == 0
+                || normalizedQuestId <= 0
+                || deliveryType == QuestDetailDeliveryType.None)
+            {
+                return -1;
+            }
+
+            for (int i = pendingHints.Count - 1; i >= 0; i--)
+            {
+                PendingQuestDeliveryResultPhaseHint hint = pendingHints[i];
+                if (hint.QuestId == normalizedQuestId && hint.DeliveryType == deliveryType)
                 {
                     return i;
                 }

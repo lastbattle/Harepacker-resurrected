@@ -58,6 +58,33 @@ namespace HaCreator.MapSimulator.Interaction
             CharacterDataVisitorQuestRecordFlag
         };
 
+        private static readonly ulong[] CharacterDataNativeSectionOrder =
+        {
+            CharacterDataStatFlag,
+            0x2UL,
+            0x80UL,
+            CharacterDataTwoIntValueRecordFlag,
+            0x4UL,
+            0x8UL,
+            0x10UL,
+            0x20UL,
+            0x40UL,
+            CharacterDataSkillRecordFlag,
+            CharacterDataSkillExpirationFlag,
+            CharacterDataSkillCooldownFlag,
+            CharacterDataInt16ValueRecordFlag,
+            CharacterDataQuestRecordFlag,
+            CharacterDataShortFileTimeRecordFlag,
+            CharacterDataMiniGameRecordFlag,
+            CharacterDataRelationshipRecordFlag,
+            CharacterDataMapTransferFlag,
+            CharacterDataNewYearCardRecordFlag,
+            CharacterDataQuestExRecordFlag,
+            CharacterDataWildHunterInfoFlag,
+            CharacterDataQuestCompleteRecordFlag,
+            CharacterDataVisitorQuestRecordFlag
+        };
+
         private const ulong CharacterDataSkillRecordFlag = 0x100UL;
         private const ulong CharacterDataStatFlag = 0x1UL;
         private const ulong CharacterDataSkillExpirationFlag = 0x200UL;
@@ -441,6 +468,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int selectedOffset = -1;
+            int selectedScore = int.MinValue;
             int selectedPredictQuitRawValue = 0;
             int[] selectedCommoditySerialNumbers = new int[LogoutGiftEntryCount];
             for (int candidateOffset = trailingPayload.Length - LogoutGiftConfigByteLength; candidateOffset >= 0; candidateOffset--)
@@ -454,19 +482,17 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                if (selectedOffset < 0)
+                int candidateScore = GetLogoutGiftConfigCandidateScore(
+                    trailingPayload,
+                    candidateOffset,
+                    candidatePredictQuitRawValue,
+                    candidateCommoditySerialNumbers);
+                if (selectedOffset < 0 || candidateScore > selectedScore)
                 {
                     selectedOffset = candidateOffset;
+                    selectedScore = candidateScore;
                     selectedPredictQuitRawValue = candidatePredictQuitRawValue;
                     selectedCommoditySerialNumbers = candidateCommoditySerialNumbers;
-                }
-
-                if (IsLikelyLogoutGiftConfig(candidatePredictQuitRawValue, candidateCommoditySerialNumbers))
-                {
-                    selectedOffset = candidateOffset;
-                    selectedPredictQuitRawValue = candidatePredictQuitRawValue;
-                    selectedCommoditySerialNumbers = candidateCommoditySerialNumbers;
-                    break;
                 }
             }
 
@@ -546,6 +572,54 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private static int GetLogoutGiftConfigCandidateScore(
+            byte[] payload,
+            int offset,
+            int predictQuitRawValue,
+            IReadOnlyList<int> commoditySerialNumbers)
+        {
+            int score = IsLikelyLogoutGiftConfig(predictQuitRawValue, commoditySerialNumbers) ? 1000 : 0;
+            int trailingByteCount = payload.Length - (offset + LogoutGiftConfigByteLength);
+            if (trailingByteCount == 0)
+            {
+                score += 20;
+            }
+            else if (TryReadPositiveInt64Suffix(payload, offset + LogoutGiftConfigByteLength, trailingByteCount, out _))
+            {
+                score += trailingByteCount == sizeof(long) ? 40 : 30;
+            }
+
+            if (offset % sizeof(int) == 0)
+            {
+                score += 5;
+            }
+
+            if (commoditySerialNumbers != null)
+            {
+                for (int i = 0; i < commoditySerialNumbers.Count; i++)
+                {
+                    if (commoditySerialNumbers[i] > 0)
+                    {
+                        score++;
+                    }
+                }
+            }
+
+            return score;
+        }
+
+        private static bool TryReadPositiveInt64Suffix(byte[] payload, int offset, int byteCount, out long value)
+        {
+            value = 0;
+            if (payload == null || byteCount < sizeof(long) || offset < 0 || offset + byteCount > payload.Length)
+            {
+                return false;
+            }
+
+            value = BitConverter.ToInt64(payload, offset + byteCount - sizeof(long));
+            return value > 0;
         }
 
         private static int[] DecodeOpaqueAlignedInt32Values(byte[] bytes)
@@ -1319,6 +1393,7 @@ namespace HaCreator.MapSimulator.Interaction
                 };
                 snapshot = ApplyCharacterDataKnownSectionByteCountDefaults(snapshot);
                 snapshot = ApplyCharacterDataSectionOwnershipMaps(snapshot);
+                snapshot = ApplyCharacterDataNativeSectionRanges(snapshot);
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1450,6 +1525,68 @@ namespace HaCreator.MapSimulator.Interaction
                 CharacterDataSectionCountByteCountsByFlag = countByteCountsByFlag,
                 CharacterDataSectionRecordByteCountsByFlag = recordByteCountsByFlag
             };
+        }
+
+        private static PacketCharacterDataSnapshot ApplyCharacterDataNativeSectionRanges(PacketCharacterDataSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return null;
+            }
+
+            Dictionary<ulong, int> startOffsetsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+            Dictionary<ulong, int> endOffsetsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+            List<PacketCharacterDataSectionOwnership> entries = new(CharacterDataNativeSectionOrder.Length);
+            int currentOffset = Math.Max(0, snapshot.CharacterDataDecodePreludeByteCount);
+
+            for (int index = 0; index < CharacterDataNativeSectionOrder.Length; index++)
+            {
+                ulong sectionFlag = CharacterDataNativeSectionOrder[index];
+                int byteCount = ResolveCharacterDataSectionByteCount(snapshot, sectionFlag);
+                int startOffset = currentOffset;
+                int endOffset = checked(startOffset + byteCount);
+                int countPrefixByteCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionCountByteCountsByFlag, sectionFlag);
+                int recordByteCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionRecordByteCountsByFlag, sectionFlag);
+                int recordCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionRecordCountsByFlag, sectionFlag);
+                bool isPresent = byteCount > 0 || recordCount > 0 || (snapshot.DecodedSectionFlags & sectionFlag) != 0 || (snapshot.OpaquePreMapTransferFlags & sectionFlag) != 0;
+
+                startOffsetsByFlag[sectionFlag] = startOffset;
+                endOffsetsByFlag[sectionFlag] = endOffset;
+                entries.Add(new PacketCharacterDataSectionOwnership(
+                    sectionFlag,
+                    index,
+                    startOffset,
+                    endOffset,
+                    byteCount,
+                    countPrefixByteCount,
+                    recordByteCount,
+                    recordCount,
+                    isPresent));
+                currentOffset = endOffset;
+            }
+
+            return snapshot with
+            {
+                CharacterDataSectionStartOffsetsByFlag = startOffsetsByFlag,
+                CharacterDataSectionEndOffsetsByFlag = endOffsetsByFlag,
+                CharacterDataSectionOwnershipEntries = entries
+            };
+        }
+
+        private static int ResolveCharacterDataSectionByteCount(PacketCharacterDataSnapshot snapshot, ulong sectionFlag)
+        {
+            return snapshot.DecodedSectionByteCounts != null &&
+                snapshot.DecodedSectionByteCounts.TryGetValue(sectionFlag, out int byteCount)
+                    ? Math.Max(0, byteCount)
+                    : 0;
+        }
+
+        private static int ResolveCharacterDataSectionMapValue(IReadOnlyDictionary<ulong, int> valuesByFlag, ulong sectionFlag)
+        {
+            return valuesByFlag != null &&
+                valuesByFlag.TryGetValue(sectionFlag, out int value)
+                    ? Math.Max(0, value)
+                    : 0;
         }
 
         private static PacketCharacterDataSnapshot DecodeCharacterDataOwnedPreludeSections(
@@ -4316,6 +4453,17 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketCharacterDataTransferHead(int FieldId, byte PortalIndex, int Hp);
 
+    internal readonly record struct PacketCharacterDataSectionOwnership(
+        ulong Flag,
+        int NativeOrderIndex,
+        int StartOffset,
+        int EndOffset,
+        int ByteCount,
+        int CountPrefixByteCount,
+        int RecordByteCount,
+        int RecordCount,
+        bool IsPresent);
+
     internal readonly record struct PacketCharacterDataSkillRecord(
         int SkillId,
         int SkillLevel,
@@ -4676,6 +4824,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionCountByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionStartOffsetsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionEndOffsetsByFlag { get; init; } = null;
+
+        internal IReadOnlyList<PacketCharacterDataSectionOwnership> CharacterDataSectionOwnershipEntries { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> BackwardUpdatePrimaryMatchedSerialNumberCountsByFlag { get; init; } = null;
 

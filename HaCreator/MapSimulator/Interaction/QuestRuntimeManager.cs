@@ -404,6 +404,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<string, List<int>> _showLayerTagQuestIds = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, QuestProgress> _progress = new();
         private readonly Dictionary<int, string> _questRecordValues = new();
+        private readonly Dictionary<int, string> _questExRecordValues = new();
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
         private readonly Dictionary<int, long> _questAlarmAutoRegisterTicks = new();
@@ -1395,7 +1396,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string TryResolveCompletionTimeKeepQuestExKeptValue(int questId)
         {
-            return TryGetQuestRecordValue(questId, out string recordValue) &&
+            return TryGetQuestExRecordValue(questId, out string recordValue) &&
                    TryResolveQuestDetailRecordTokenValue(recordValue, "kept", out string keptValue)
                 ? keptValue
                 : string.Empty;
@@ -2154,6 +2155,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public void SetPacketOwnedQuestExRecordValue(int questId, string value)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            string normalizedValue = value?.Trim() ?? string.Empty;
+            if (normalizedValue.Length == 0)
+            {
+                _questExRecordValues.Remove(questId);
+                return;
+            }
+
+            _questExRecordValues[questId] = normalizedValue;
+        }
+
+        public void ApplyPacketOwnedQuestExRecordSnapshot(IReadOnlyDictionary<int, string> questExRecordValues)
+        {
+            if (questExRecordValues == null)
+            {
+                return;
+            }
+
+            foreach ((int questId, string value) in questExRecordValues)
+            {
+                SetPacketOwnedQuestExRecordValue(questId, value);
+                SetPacketOwnedQuestRecordValue(questId, value);
+            }
+        }
+
         public void ApplyPacketOwnedQuestStateSnapshot(
             IReadOnlyDictionary<int, string> activeQuestRecords,
             IReadOnlyDictionary<int, long> completedQuestRecords)
@@ -2218,6 +2250,20 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        public bool TryGetQuestExRecordValue(int questId, out string value)
+        {
+            if (questId > 0 &&
+                _questExRecordValues.TryGetValue(questId, out string storedValue) &&
+                !string.IsNullOrEmpty(storedValue))
+            {
+                value = storedValue;
+                return true;
+            }
+
+            value = string.Empty;
+            return false;
+        }
+
         public bool TryResolvePacketOwnedQuestDetailRecordText(string token, out string value)
         {
             value = null;
@@ -2256,7 +2302,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool HasNpcClientActionSelectionContext()
         {
-            return _progress.Count > 0 || _questRecordValues.Count > 0;
+            return _progress.Count > 0 || _questRecordValues.Count > 0 || _questExRecordValues.Count > 0;
         }
 
         public int GetNpcClientActionSelectionContextStamp(CharacterGender? localPlayerGender = null)
@@ -2268,6 +2314,7 @@ namespace HaCreator.MapSimulator.Interaction
                 hash = (hash * 31) + (int)(localPlayerGender ?? 0);
                 hash = (hash * 31) + _progress.Count;
                 hash = (hash * 31) + _questRecordValues.Count;
+                hash = (hash * 31) + _questExRecordValues.Count;
 
                 foreach ((int questId, QuestProgress progress) in _progress.OrderBy(static pair => pair.Key))
                 {
@@ -2276,6 +2323,12 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 foreach ((int questId, string recordValue) in _questRecordValues.OrderBy(static pair => pair.Key))
+                {
+                    hash = (hash * 31) + questId;
+                    hash = AppendOrdinalStringHash(hash, recordValue);
+                }
+
+                foreach ((int questId, string recordValue) in _questExRecordValues.OrderBy(static pair => pair.Key))
                 {
                     hash = (hash * 31) + questId;
                     hash = AppendOrdinalStringHash(hash, recordValue);

@@ -1080,7 +1080,7 @@ namespace HaCreator.MapSimulator.Managers
                 opcode,
                 packetType,
                 payloadLength,
-                string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
+                NormalizeTraceSource(source, "unknown-remote"),
                 summary,
                 Convert.ToHexString(payload),
                 Convert.ToHexString(rawPacket));
@@ -1138,7 +1138,7 @@ namespace HaCreator.MapSimulator.Managers
                 requestType,
                 choice,
                 payloadLength,
-                string.IsNullOrWhiteSpace(source) ? "official-session:unknown-client" : source,
+                NormalizeTraceSource(source, "unknown-client"),
                 summary,
                 Convert.ToHexString(payload),
                 Convert.ToHexString(rawPacket));
@@ -1155,11 +1155,7 @@ namespace HaCreator.MapSimulator.Managers
                     _recentOutboundPackets.RemoveAt(0);
                 }
 
-                if (IsLiveProxiedSource(trace.Source))
-                {
-                    _hasObservedLiveOutboundOpcode160 = true;
-                    _liveOutboundOpcode160Evidence = trace;
-                }
+                RefreshOutboundVerificationEvidence();
             }
         }
 
@@ -1173,12 +1169,42 @@ namespace HaCreator.MapSimulator.Managers
                     _recentInboundPackets.RemoveAt(0);
                 }
 
-                if (IsLiveProxiedSource(trace.Source))
+                RefreshInboundVerificationEvidence();
+            }
+        }
+
+        private void RefreshOutboundVerificationEvidence()
+        {
+            OutboundPacketTrace? latestLiveTrace = null;
+            for (int i = _recentOutboundPackets.Count - 1; i >= 0; i--)
+            {
+                OutboundPacketTrace candidate = _recentOutboundPackets[i];
+                if (IsLiveProxiedSource(candidate))
                 {
-                    _hasObservedLiveInboundOpcode371 = true;
-                    _liveInboundOpcode371Evidence = trace;
+                    latestLiveTrace = candidate;
+                    break;
                 }
             }
+
+            _liveOutboundOpcode160Evidence = latestLiveTrace;
+            _hasObservedLiveOutboundOpcode160 = latestLiveTrace.HasValue;
+        }
+
+        private void RefreshInboundVerificationEvidence()
+        {
+            InboundPacketTrace? latestLiveTrace = null;
+            for (int i = _recentInboundPackets.Count - 1; i >= 0; i--)
+            {
+                InboundPacketTrace candidate = _recentInboundPackets[i];
+                if (IsLiveProxiedSource(candidate))
+                {
+                    latestLiveTrace = candidate;
+                    break;
+                }
+            }
+
+            _liveInboundOpcode371Evidence = latestLiveTrace;
+            _hasObservedLiveInboundOpcode371 = latestLiveTrace.HasValue;
         }
 
         private static bool IsLiveProxiedSource(OutboundPacketTrace trace)
@@ -1193,8 +1219,16 @@ namespace HaCreator.MapSimulator.Managers
 
         private static bool IsLiveProxiedSource(string source)
         {
+            const string officialSessionPrefix = "official-session:";
             return !string.IsNullOrWhiteSpace(source)
-                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
+                && source.StartsWith(officialSessionPrefix, StringComparison.OrdinalIgnoreCase)
+                && source.Length > officialSessionPrefix.Length
+                && !string.IsNullOrWhiteSpace(source[officialSessionPrefix.Length..]);
+        }
+
+        private static string NormalizeTraceSource(string source, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(source) ? fallback : source.Trim();
         }
         private static string NormalizeRemoteHost(string remoteHost)
         {

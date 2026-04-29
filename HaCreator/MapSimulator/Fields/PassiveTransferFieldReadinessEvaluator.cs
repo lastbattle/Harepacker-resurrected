@@ -290,6 +290,13 @@ namespace HaCreator.MapSimulator.Fields
             return isLocalUser && transferField;
         }
 
+        public static bool ShouldClearQueuedRetryFromFollowCharacterFailure(
+            bool hasPendingRequest,
+            bool clearsPendingFollowRequest)
+        {
+            return hasPendingRequest && clearsPendingFollowRequest;
+        }
+
         public static bool ShouldClearQueuedRetryOnChairGetUp(
             bool hasPendingRequest,
             bool consumedChairGetUpBranch)

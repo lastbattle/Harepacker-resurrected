@@ -21,6 +21,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using SD = System.Drawing;
+using SDG = System.Drawing.Graphics;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -68,6 +70,14 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Color SignDetailColor = new(244, 244, 244);
         private static readonly Color SignPanelColor = new(28, 22, 18, 210);
         private static readonly Color SignBorderColor = new(180, 138, 69, 255);
+
+        private readonly record struct EmployeeFrameCanvasCandidate(WzCanvasProperty Canvas, int SourceIndex);
+        private readonly record struct EmployeeLayeredFrameEntry(
+            WzCanvasProperty Canvas,
+            SD.Bitmap Bitmap,
+            SD.Rectangle Bounds,
+            int? Z,
+            int SourceIndex);
 
         private sealed class EmployeeImageEntry
         {
@@ -796,13 +806,7 @@ namespace HaCreator.MapSimulator.Interaction
             var frames = new List<IDXObject>();
             foreach (WzImageProperty childProperty in actionEntry.ActionProperty.WzProperties.OrderBy(GetFrameOrder))
             {
-                WzCanvasProperty canvas = ResolveCanvasProperty(childProperty);
-                if (canvas == null)
-                {
-                    continue;
-                }
-
-                IDXObject frame = CreateEmployeeFrame(texturePool, canvas, device, defaultDelay: ClientEmployeeDefaultFrameDelayMs);
+                IDXObject frame = CreateEmployeeFrame(texturePool, childProperty, device, defaultDelay: ClientEmployeeDefaultFrameDelayMs);
                 if (frame != null)
                 {
                     frames.Add(frame);
@@ -1045,6 +1049,44 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
+        internal static IReadOnlyList<string> EnumerateEmployeeFrameCanvasNamesForTesting(WzImageProperty frameProperty)
+        {
+            return CollectEmployeeFrameCanvasCandidates(frameProperty)
+                .OrderBy(static candidate => candidate, EmployeeFrameCanvasCandidateComparer.Instance)
+                .Select(static candidate => candidate.Canvas?.Name)
+                .Where(static name => !string.IsNullOrWhiteSpace(name))
+                .ToArray();
+        }
+
+        internal static int ResolveEmployeeLayeredFrameDelayForTesting(
+            int? frameDelay,
+            int defaultDelay,
+            params int?[] layerDelays)
+        {
+            WzImageProperty frameProperty = null;
+            if (frameDelay.HasValue)
+            {
+                var frameSubProperty = new WzSubProperty("0");
+                frameSubProperty.AddProperty(new WzIntProperty("delay", frameDelay.Value));
+                frameProperty = frameSubProperty;
+            }
+
+            WzCanvasProperty[] canvases = (layerDelays ?? Array.Empty<int?>())
+                .Select((delay, index) =>
+                {
+                    var canvas = new WzCanvasProperty(index.ToString(CultureInfo.InvariantCulture));
+                    if (delay.HasValue)
+                    {
+                        canvas.AddProperty(new WzIntProperty("delay", delay.Value));
+                    }
+
+                    return canvas;
+                })
+                .ToArray();
+
+            return ResolveEmployeeLayeredFrameDelay(frameProperty, canvases, defaultDelay);
+        }
+
         private static WzImageProperty ResolveLinkedProperty(WzImageProperty property)
         {
             if (property is WzUOLProperty uol)
@@ -1146,7 +1188,29 @@ namespace HaCreator.MapSimulator.Interaction
             return current as WzImageProperty;
         }
 
-        private IDXObject CreateEmployeeFrame(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device, int defaultDelay)
+        private IDXObject CreateEmployeeFrame(TexturePool texturePool, WzImageProperty frameProperty, GraphicsDevice device, int defaultDelay)
+        {
+            WzImageProperty resolvedFrameProperty = ResolveLinkedProperty(frameProperty);
+            if (resolvedFrameProperty is WzCanvasProperty directCanvas)
+            {
+                return CreateEmployeeCanvasFrame(texturePool, directCanvas, device, defaultDelay);
+            }
+
+            IReadOnlyList<EmployeeFrameCanvasCandidate> canvasCandidates = CollectEmployeeFrameCanvasCandidates(resolvedFrameProperty);
+            if (canvasCandidates.Count == 0)
+            {
+                return null;
+            }
+
+            if (canvasCandidates.Count == 1)
+            {
+                return CreateEmployeeCanvasFrame(texturePool, canvasCandidates[0].Canvas, device, defaultDelay);
+            }
+
+            return ComposeEmployeeLayeredFrame(frameProperty, canvasCandidates, device, defaultDelay);
+        }
+
+        private IDXObject CreateEmployeeCanvasFrame(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device, int defaultDelay)
         {
             if (canvasProperty?.PngProperty == null || device == null)
             {
@@ -1169,6 +1233,197 @@ namespace HaCreator.MapSimulator.Interaction
             };
             _usedProps.Add(canvasProperty);
             return frame;
+        }
+
+        private IDXObject ComposeEmployeeLayeredFrame(
+            WzImageProperty frameProperty,
+            IReadOnlyList<EmployeeFrameCanvasCandidate> canvasCandidates,
+            GraphicsDevice device,
+            int defaultDelay)
+        {
+            if (canvasCandidates == null || canvasCandidates.Count == 0 || device == null)
+            {
+                return null;
+            }
+
+            var layerEntries = new List<EmployeeLayeredFrameEntry>(canvasCandidates.Count);
+            try
+            {
+                foreach (EmployeeFrameCanvasCandidate canvasCandidate in canvasCandidates)
+                {
+                    WzCanvasProperty canvas = canvasCandidate.Canvas;
+                    if (canvas?.PngProperty == null)
+                    {
+                        continue;
+                    }
+
+                    SD.Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+                    if (bitmap == null || bitmap.Width <= 0 || bitmap.Height <= 0)
+                    {
+                        bitmap?.Dispose();
+                        continue;
+                    }
+
+                    layerEntries.Add(new EmployeeLayeredFrameEntry(
+                        canvas,
+                        bitmap,
+                        ResolveEmployeeCanvasBounds(canvas, bitmap.Width, bitmap.Height),
+                        GetIntValue(canvas["z"]),
+                        canvasCandidate.SourceIndex));
+                    _usedProps.Add(canvas);
+                }
+
+                if (layerEntries.Count == 0)
+                {
+                    return null;
+                }
+
+                SD.Rectangle composedBounds = SD.Rectangle.FromLTRB(
+                    layerEntries.Min(static entry => entry.Bounds.Left),
+                    layerEntries.Min(static entry => entry.Bounds.Top),
+                    layerEntries.Max(static entry => entry.Bounds.Right),
+                    layerEntries.Max(static entry => entry.Bounds.Bottom));
+
+                using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
+                using (SDG graphics = SDG.FromImage(composedBitmap))
+                {
+                    graphics.Clear(SD.Color.Transparent);
+                    foreach (EmployeeLayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, EmployeeLayeredFrameEntryComparer.Instance))
+                    {
+                        graphics.DrawImageUnscaled(
+                            layerEntry.Bitmap,
+                            layerEntry.Bounds.X - composedBounds.X,
+                            layerEntry.Bounds.Y - composedBounds.Y);
+                    }
+                }
+
+                Texture2D texture = composedBitmap.ToTexture2DAndDispose(device);
+                if (texture == null)
+                {
+                    return null;
+                }
+
+                int delay = ResolveEmployeeLayeredFrameDelay(
+                    frameProperty,
+                    layerEntries.Select(static entry => entry.Canvas),
+                    defaultDelay);
+                return new DXObject(new System.Drawing.PointF(-composedBounds.X, -composedBounds.Y), texture, delay)
+                {
+                    Tag = layerEntries[0].Canvas
+                };
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                foreach (EmployeeLayeredFrameEntry layerEntry in layerEntries)
+                {
+                    layerEntry.Bitmap.Dispose();
+                }
+            }
+        }
+
+        private static IReadOnlyList<EmployeeFrameCanvasCandidate> CollectEmployeeFrameCanvasCandidates(WzImageProperty frameProperty)
+        {
+            var canvases = new List<EmployeeFrameCanvasCandidate>();
+            var visited = new HashSet<WzImageProperty>();
+            int sourceIndex = 0;
+            CollectEmployeeFrameCanvasCandidates(frameProperty, canvases, visited, ref sourceIndex);
+            return canvases;
+        }
+
+        private static void CollectEmployeeFrameCanvasCandidates(
+            WzImageProperty property,
+            List<EmployeeFrameCanvasCandidate> canvases,
+            HashSet<WzImageProperty> visited,
+            ref int sourceIndex)
+        {
+            WzImageProperty resolvedProperty = ResolveLinkedProperty(property);
+            if (resolvedProperty == null)
+            {
+                return;
+            }
+
+            if (resolvedProperty is WzCanvasProperty canvasProperty)
+            {
+                canvases.Add(new EmployeeFrameCanvasCandidate(canvasProperty, sourceIndex++));
+                return;
+            }
+
+            if (resolvedProperty.WzProperties == null || !visited.Add(resolvedProperty))
+            {
+                return;
+            }
+
+            foreach (WzImageProperty childProperty in resolvedProperty.WzProperties.OrderBy(GetFrameOrder))
+            {
+                CollectEmployeeFrameCanvasCandidates(childProperty, canvases, visited, ref sourceIndex);
+            }
+        }
+
+        private static int ResolveEmployeeLayeredFrameDelay(
+            WzImageProperty frameProperty,
+            IEnumerable<WzCanvasProperty> layerCanvases,
+            int defaultDelay)
+        {
+            int? frameDelay = GetIntValue(ResolveLinkedProperty(frameProperty)?["delay"]);
+            if (frameDelay.GetValueOrDefault() > 0)
+            {
+                return frameDelay.Value;
+            }
+
+            if (layerCanvases != null)
+            {
+                foreach (WzCanvasProperty layerCanvas in layerCanvases)
+                {
+                    int? layerDelay = GetIntValue(layerCanvas?["delay"]);
+                    if (layerDelay.GetValueOrDefault() > 0)
+                    {
+                        return layerDelay.Value;
+                    }
+                }
+            }
+
+            return Math.Max(1, defaultDelay);
+        }
+
+        private static SD.Rectangle ResolveEmployeeCanvasBounds(WzCanvasProperty canvas, int width, int height)
+        {
+            System.Drawing.PointF origin = canvas?.GetCanvasOriginPosition() ?? default;
+            SD.Point canvasOrigin = new((int)Math.Round(origin.X), (int)Math.Round(origin.Y));
+            SD.Point? authoredLt = TryResolveVector(canvas?["lt"], out SD.Point lt) ? lt : null;
+            SD.Point? authoredRb = TryResolveVector(canvas?["rb"], out SD.Point rb) ? rb : null;
+
+            int left = authoredLt?.X ?? -canvasOrigin.X;
+            int top = authoredLt?.Y ?? -canvasOrigin.Y;
+            int right = authoredRb?.X ?? left + width;
+            int bottom = authoredRb?.Y ?? top + height;
+
+            if (right <= left)
+            {
+                right = left + width;
+            }
+
+            if (bottom <= top)
+            {
+                bottom = top + height;
+            }
+
+            return SD.Rectangle.FromLTRB(left, top, right, bottom);
+        }
+
+        private static bool TryResolveVector(WzImageProperty property, out SD.Point vector)
+        {
+            vector = default;
+            if (property is not WzVectorProperty vectorProperty)
+            {
+                return false;
+            }
+
+            vector = new SD.Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+            return true;
         }
 
         private static (int X, int Y) ResolveEmployeeFrameDrawOffset(System.Drawing.PointF origin)
@@ -1224,6 +1479,41 @@ namespace HaCreator.MapSimulator.Interaction
         private static int GetFrameOrder(WzImageProperty property)
         {
             return int.TryParse(property?.Name, out int index) ? index : int.MaxValue;
+        }
+
+        private sealed class EmployeeFrameCanvasCandidateComparer : IComparer<EmployeeFrameCanvasCandidate>
+        {
+            internal static readonly EmployeeFrameCanvasCandidateComparer Instance = new();
+
+            public int Compare(EmployeeFrameCanvasCandidate x, EmployeeFrameCanvasCandidate y)
+            {
+                return CompareEmployeeCanvasLayerOrder(
+                    GetIntValue(x.Canvas?["z"]),
+                    x.SourceIndex,
+                    GetIntValue(y.Canvas?["z"]),
+                    y.SourceIndex);
+            }
+        }
+
+        private sealed class EmployeeLayeredFrameEntryComparer : IComparer<EmployeeLayeredFrameEntry>
+        {
+            internal static readonly EmployeeLayeredFrameEntryComparer Instance = new();
+
+            public int Compare(EmployeeLayeredFrameEntry x, EmployeeLayeredFrameEntry y)
+            {
+                return CompareEmployeeCanvasLayerOrder(x.Z, x.SourceIndex, y.Z, y.SourceIndex);
+            }
+        }
+
+        private static int CompareEmployeeCanvasLayerOrder(int? leftZ, int leftIndex, int? rightZ, int rightIndex)
+        {
+            int zOrder = (leftZ ?? 0).CompareTo(rightZ ?? 0);
+            if (zOrder != 0)
+            {
+                return zOrder;
+            }
+
+            return leftIndex.CompareTo(rightIndex);
         }
 
         private void RefreshAutoFacing(SocialRoomFieldActorSnapshot snapshot)

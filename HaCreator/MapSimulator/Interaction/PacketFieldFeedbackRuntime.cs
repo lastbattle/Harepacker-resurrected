@@ -405,7 +405,7 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
             writer.Write((byte)34);
             WriteMapleString(writer, target);
-            writer.Write(available ? (byte)1 : (byte)0);
+            writer.Write(available ? (byte)0 : (byte)1);
             writer.Flush();
             return stream.ToArray();
         }
@@ -909,11 +909,11 @@ namespace HaCreator.MapSimulator.Interaction
                             && hasTransferPosition;
                         bool chaseTransferArmed = canRequestChaseTransfer
                             && callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
-                        bool queuedTransfer = false;
+                        bool transferRequestDispatched = false;
                         if (canRequestChaseTransfer
                             && chaseTransferArmed)
                         {
-                            queuedTransfer = callbacks?.QueueMapTransfer?.Invoke(value, transferX, transferY) == true;
+                            transferRequestDispatched = callbacks?.QueueMapTransfer?.Invoke(value, transferX, transferY) == true;
                         }
 
                         if (subtype == 72)
@@ -933,8 +933,8 @@ namespace HaCreator.MapSimulator.Interaction
                                 null);
                         }
 
-                        _statusMessage = queuedTransfer
-                            ? $"Applied packet-owned whisper chase response for {target} and queued map transfer."
+                        _statusMessage = transferRequestDispatched
+                            ? $"Applied packet-owned whisper chase response for {target} and dispatched transfer request."
                             : $"Applied packet-owned whisper location response for {target}.";
                         message = _statusMessage;
                         return true;

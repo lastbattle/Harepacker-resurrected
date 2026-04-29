@@ -1099,6 +1099,42 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveCanvasAtPath(LoadItemProperty(itemId), canvasPath, out canvas);
         }
 
+        public static bool TryResolveEffectFirstCanvas(string effectPath, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (!TryResolveEffectPath(effectPath, out string imagePath, out string propertyPath))
+            {
+                return false;
+            }
+
+            var effectImage = global::HaCreator.Program.FindImage("Effect", imagePath);
+            if (effectImage == null)
+            {
+                return false;
+            }
+
+            effectImage.ParseImage();
+            if (TryResolveCanvasAtPath(effectImage, propertyPath, out canvas))
+            {
+                return true;
+            }
+
+            WzImageProperty property = ResolvePropertyAtPath(effectImage, propertyPath);
+            if (property is not WzSubProperty effectProperty)
+            {
+                return false;
+            }
+
+            IReadOnlyList<WzCanvasProperty> frames = GetNumericNamedCanvasRows(effectProperty, 1);
+            if (frames.Count == 0)
+            {
+                return false;
+            }
+
+            canvas = frames[0];
+            return canvas != null;
+        }
+
         public static bool TryResolveSampleUiFrame(
             int itemId,
             out WzCanvasProperty topCanvas,
@@ -1129,30 +1165,69 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool TryResolveCanvasAtPath(WzSubProperty rootProperty, string canvasPath, out WzCanvasProperty canvas)
         {
+            return TryResolveCanvasAtPath((IPropertyContainer)rootProperty, canvasPath, out canvas);
+        }
+
+        private static bool TryResolveCanvasAtPath(IPropertyContainer rootProperty, string canvasPath, out WzCanvasProperty canvas)
+        {
             canvas = null;
             if (rootProperty == null || string.IsNullOrWhiteSpace(canvasPath))
             {
                 return false;
             }
 
-            WzImageProperty current = rootProperty;
-            string[] parts = canvasPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            WzImageProperty current = ResolvePropertyAtPath(rootProperty, canvasPath);
+            canvas = current as WzCanvasProperty;
+            return canvas != null;
+        }
+
+        private static WzImageProperty ResolvePropertyAtPath(IPropertyContainer rootProperty, string propertyPath)
+        {
+            if (rootProperty == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            WzImageProperty current = null;
+            string[] parts = propertyPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
             for (int i = 0; i < parts.Length; i++)
             {
-                if (current is not WzSubProperty subProperty)
-                {
-                    return false;
-                }
-
-                current = subProperty[parts[i]];
+                current = i == 0 ? rootProperty[parts[i]] : current?[parts[i]];
                 if (current == null)
                 {
-                    return false;
+                    return null;
                 }
             }
 
-            canvas = current as WzCanvasProperty;
-            return canvas != null;
+            return current;
+        }
+
+        private static bool TryResolveEffectPath(string effectPath, out string imagePath, out string propertyPath)
+        {
+            imagePath = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(effectPath))
+            {
+                return false;
+            }
+
+            string normalizedPath = effectPath.Trim().Replace('\\', '/');
+            if (normalizedPath.StartsWith("Effect/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = normalizedPath.Substring("Effect/".Length);
+            }
+
+            string[] parts = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+            {
+                return false;
+            }
+
+            imagePath = parts[0].EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                ? parts[0]
+                : $"{parts[0]}.img";
+            propertyPath = string.Join("/", parts.Skip(1));
+            return !string.IsNullOrWhiteSpace(imagePath) && !string.IsNullOrWhiteSpace(propertyPath);
         }
 
         private static string ResolveEquipmentFolder(int itemId)
@@ -4916,6 +4991,11 @@ namespace HaCreator.MapSimulator.UI
             int limit = 8)
         {
             return ResolveRewardPreviewItems(rewardProperty, limit);
+        }
+
+        public static bool TryResolveEffectPathForTests(string effectPath, out string imagePath, out string propertyPath)
+        {
+            return TryResolveEffectPath(effectPath, out imagePath, out propertyPath);
         }
 
         public static bool TrySelectConsumeItemRequirementForTests(

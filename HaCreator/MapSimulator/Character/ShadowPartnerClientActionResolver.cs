@@ -2360,6 +2360,19 @@ namespace HaCreator.MapSimulator.Character
             "fly2Skill"
         };
 
+        private static readonly HashSet<string> MountedCreateActionFrameNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "create2",
+            "create2_s",
+            "create2_f",
+            "create3",
+            "create3_s",
+            "create3_f",
+            "create4",
+            "create4_s",
+            "create4_f"
+        };
+
         private const int ClientInitializedShadowPartnerActionCodeLimitExclusive = 0x111;
         private const int ClientActionManInitVariantRowStartRawActionCode = 124;
         private const int ClientActionManInitVariantRowEndRawActionCode = 131;
@@ -2388,6 +2401,7 @@ namespace HaCreator.MapSimulator.Character
                 ["smokeshell"] = "smokeshell",
                 ["ninjastorm"] = "ninjastorm",
                 ["vampire"] = "vampire",
+                ["dash"] = "dash",
                 // These client-only helper raw rows are still not authored directly in the
                 // mounted `action/0` WZ surface, so gate them through the nearest recovered
                 // family-specific raw row instead of letting every helper family claim them.
@@ -2867,6 +2881,12 @@ namespace HaCreator.MapSimulator.Character
 
             return TryParseIndexedAlertNumber(actionName, out int indexedAlert)
                    && indexedAlert > 1;
+        }
+
+        internal static bool IsMountedCreateActionFrameName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && MountedCreateActionFrameNames.Contains(actionName);
         }
 
         internal static bool ShouldSynthesizeMountedCharacterActionName(

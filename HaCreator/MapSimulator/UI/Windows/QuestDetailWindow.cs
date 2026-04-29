@@ -1180,7 +1180,7 @@ namespace HaCreator.MapSimulator.UI
                     .GroupBy(entry => entry.RowIndex.Value)
                     .OrderBy(group => group.Key))
                 {
-                    QuestDetailCtEntry[] rowEntries = rowGroup.ToArray();
+                    QuestDetailCtEntry[] rowEntries = OrderCtEntriesWithinClientRow(rowGroup).ToArray();
                     yield return new CtEntryRow(rowEntries, rowEntries.Length > 1 || rowEntries[0].RowHeight > 0);
                 }
 
@@ -1213,6 +1213,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return hasIndexedEntry;
+        }
+
+        private static IEnumerable<QuestDetailCtEntry> OrderCtEntriesWithinClientRow(IEnumerable<QuestDetailCtEntry> entries)
+        {
+            QuestDetailCtEntry[] rowEntries = entries?.Where(entry => entry != null).ToArray()
+                ?? Array.Empty<QuestDetailCtEntry>();
+            bool hasAuthoredDrawOrder = rowEntries.Any(entry => entry.DrawOrder != 0);
+            return hasAuthoredDrawOrder
+                ? rowEntries.OrderBy(entry => entry.DrawOrder)
+                : rowEntries;
         }
 
         private static bool UsesClientCtVerbatimLineLayout(QuestDetailCtEntry entry)
@@ -1278,6 +1288,16 @@ namespace HaCreator.MapSimulator.UI
         internal static Point ResolveCtEntryCanvasDestinationForTesting(QuestDetailCtEntry entry, float x, float y)
         {
             return ResolveCtEntryCanvasDestination(entry, x, y);
+        }
+
+        internal static float ResolveCtEntryScaleForTesting(QuestDetailCtEntry entry)
+        {
+            return ResolveCtEntryScale(entry);
+        }
+
+        internal static float? ResolveCtEntryFontPixelSizeForTesting(QuestDetailCtEntry entry)
+        {
+            return ResolveCtEntryFontPixelSize(entry);
         }
 
         private static float ResolveCtRowAdvanceForTesting(CtEntryRow row)
@@ -1396,7 +1416,7 @@ namespace HaCreator.MapSimulator.UI
         private static float ResolveCtEntryScale(QuestDetailCtEntry entry)
         {
             return entry?.FontPixelSize > 0f
-                ? Math.Max(0.1f, entry.FontPixelSize / 12f)
+                ? 1f
                 : ClientDetailScale;
         }
 

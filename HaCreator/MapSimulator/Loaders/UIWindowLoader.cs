@@ -4544,6 +4544,8 @@ namespace HaCreator.MapSimulator.Loaders
             window.BindButton(LoadButton(shopProperty, "BtClame", clickSound, overSound, device), runtime.ClaimPersonalShopEarnings);
             window.BindButton(LoadButton(shopProperty, "BtVisit", clickSound, overSound, device), () => runtime.AddPersonalShopVisitor(null, out _));
             window.BindButton(LoadButton(shopProperty, "BtBlackList", clickSound, overSound, device), () => runtime.TogglePersonalShopBlacklist(null, out _));
+            window.BindButton(LoadButton(shopProperty, "BtBan", clickSound, overSound, device), () => runtime.TogglePersonalShopBlacklist(null, out _));
+            window.BindButton(LoadButton(shopProperty, "BtInfo", clickSound, overSound, device), () => runtime.TryRequestPersonalShopOwnerInfo(out _));
             window.BindButton(LoadButton(shopProperty, "BtItem", clickSound, overSound, device), () => runtime.TryAutoListPersonalShopItem(out _));
             window.BindButton(LoadButton(shopProperty, "BtBuy", clickSound, overSound, device), () => runtime.TryBuyPersonalShopItem(-1, null, out _));
             window.BindButton(LoadButton(shopProperty, "BtClose", clickSound, overSound, device), () => runtime.ClosePersonalShop(out _));
@@ -4599,6 +4601,7 @@ namespace HaCreator.MapSimulator.Loaders
             window.BindButton(LoadButton(entrustedShopProperty, "BtArrange", clickSound, overSound, device), runtime.ArrangeEntrustedShop);
             window.BindButton(LoadButton(entrustedShopProperty, "BtCoin", clickSound, overSound, device), runtime.ClaimEntrustedShopEarnings);
             window.BindButton(LoadButton(entrustedShopProperty, "BtItem", clickSound, overSound, device), () => runtime.TryAutoListEntrustedShopItem(out _));
+            window.BindButton(LoadButton(memberShopProperty, "BtTested", clickSound, overSound, device), () => runtime.TryRenewEntrustedPermit(24 * 60, out _));
             window.BindButton(LoadButton(memberShopProperty, "BtOK", clickSound, overSound, device), runtime.ToggleEntrustedLedgerMode);
             window.BindButton(LoadButton(memberShopProperty, "BtCancel", clickSound, overSound, device), window.Hide);
             ConfigureEntrustedChildDialog(

@@ -91,6 +91,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Dictionary<IntPtr, NativeAntiMacroEditHost> HostByHandle = new();
 
         private readonly int _maxLength;
+        private readonly Encoding _clientEncoding;
         private readonly WndProcDelegate _subclassWndProc;
         private readonly HashSet<int> _clientOwnedKeyDowns = new();
 
@@ -103,9 +104,10 @@ namespace HaCreator.MapSimulator.UI
         private bool _mouseSelecting;
         private int _mouseSelectionAnchor = -1;
 
-        public NativeAntiMacroEditHost(int maxLength)
+        public NativeAntiMacroEditHost(int maxLength, Encoding clientEncoding = null)
         {
             _maxLength = Math.Max(1, maxLength);
+            _clientEncoding = clientEncoding;
             _subclassWndProc = SubclassWndProc;
         }
 
@@ -324,7 +326,8 @@ namespace HaCreator.MapSimulator.UI
                 currentText,
                 selectionStart,
                 selectionEnd,
-                _maxLength);
+                _maxLength,
+                _clientEncoding);
             if (replacementText.Length == 0)
             {
                 return false;
@@ -365,7 +368,8 @@ namespace HaCreator.MapSimulator.UI
                 GetControlText(),
                 replacementStart,
                 selectionStart,
-                _maxLength);
+                _maxLength,
+                _clientEncoding);
             if (replacementText.Length == 0)
             {
                 return false;
@@ -1562,7 +1566,8 @@ namespace HaCreator.MapSimulator.UI
                 GetControlText(),
                 selectionStart,
                 selectionEnd,
-                _maxLength);
+                _maxLength,
+                _clientEncoding);
             if (limitedText.Length == 0)
             {
                 return;

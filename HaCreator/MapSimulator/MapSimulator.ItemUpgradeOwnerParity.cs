@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
 using System;
@@ -88,6 +89,38 @@ namespace HaCreator.MapSimulator
             }
 
             itemUpgradeWindow.StartUpgradeRequested = HandleItemUpgradeOwnerStartRequested;
+        }
+
+        private void HandleItemUpgradeClientOutboundPacketObserved(
+            object sender,
+            LocalUtilityOutboundPacketObservedEventArgs e)
+        {
+            if (e == null ||
+                e.Opcode != ItemUpgradeOwnerRequestOpcode ||
+                !TryDecodeObservedItemUpgradeClientOutboundRequestPayload(
+                    e.Payload,
+                    out ObservedItemUpgradeClientOutboundRequest observedRequest))
+            {
+                return;
+            }
+
+            if (_pendingItemUpgradeOwnerRequest == null)
+            {
+                MarkItemUpgradeOwnerRequestSent();
+                StampPacketOwnedUtilityRequestState();
+            }
+
+            string source = string.IsNullOrWhiteSpace(e.Source)
+                ? "official-session:outbound"
+                : e.Source.Trim();
+            string statusMessage = observedRequest.ConsumeCashPrefixed
+                ? $"Observed live client item-upgrade consume-cash request opcode {ItemUpgradeOwnerRequestOpcode} from {source} (consume slot {observedRequest.ConsumeSlotPosition}, item {observedRequest.ConsumeItemId}, itemTI {observedRequest.ItemToken}, slot {observedRequest.SlotPosition})."
+                : $"Observed live client item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} from {source} (itemTI {observedRequest.ItemToken}, slot {observedRequest.SlotPosition}).";
+            ShowUtilityFeedbackMessage(statusMessage);
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
+            {
+                itemUpgradeWindow.SetPacketOwnedRequestPending(statusMessage);
+            }
         }
 
         private bool HandleItemUpgradeOwnerStartRequested(ItemUpgradeUI.ItemUpgradeOwnerRequest request)
@@ -1066,6 +1099,68 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private readonly record struct ObservedItemUpgradeClientOutboundRequest(
+            bool ConsumeCashPrefixed,
+            int UseRequestTick,
+            short ConsumeSlotPosition,
+            int ConsumeItemId,
+            int ItemToken,
+            int SlotPosition,
+            int UpdateTick);
+
+        private static bool TryDecodeObservedItemUpgradeClientOutboundRequestPayload(
+            byte[] payload,
+            out ObservedItemUpgradeClientOutboundRequest request)
+        {
+            request = default;
+
+            if (TryDecodeItemUpgradeRequestPayload(
+                    payload,
+                    out int itemToken,
+                    out int slotPosition,
+                    out int updateTick))
+            {
+                request = new ObservedItemUpgradeClientOutboundRequest(
+                    ConsumeCashPrefixed: false,
+                    UseRequestTick: 0,
+                    ConsumeSlotPosition: 0,
+                    ConsumeItemId: 0,
+                    itemToken,
+                    slotPosition,
+                    updateTick);
+                return true;
+            }
+
+            if (!TryDecodeItemUpgradeConsumeCashRequestPayload(
+                    payload,
+                    out int useRequestTick,
+                    out short consumeSlotPosition,
+                    out int consumeItemId,
+                    out itemToken,
+                    out slotPosition,
+                    out updateTick))
+            {
+                return false;
+            }
+
+            // Vega launch packets share the consume-cash prefix and opcode 0x55,
+            // but are owned by CUIVega rather than CUIItemUpgrade.
+            if (ItemUpgradeUI.IsVegaSpellConsumable(consumeItemId))
+            {
+                return false;
+            }
+
+            request = new ObservedItemUpgradeClientOutboundRequest(
+                ConsumeCashPrefixed: true,
+                useRequestTick,
+                consumeSlotPosition,
+                consumeItemId,
+                itemToken,
+                slotPosition,
+                updateTick);
+            return true;
+        }
+
         internal static bool TryDecodeItemUpgradeResultPayloadForTests(byte[] payload, out byte resultCode)
         {
             return TryDecodeItemUpgradeResultPayload(payload, out resultCode);
@@ -1134,6 +1229,29 @@ namespace HaCreator.MapSimulator
                 out itemToken,
                 out slotPosition,
                 out updateTick);
+        }
+
+        internal static bool TryDecodeObservedItemUpgradeClientOutboundRequestPayloadForTests(
+            byte[] payload,
+            out bool consumeCashPrefixed,
+            out int useRequestTick,
+            out short consumeSlotPosition,
+            out int consumeItemId,
+            out int itemToken,
+            out int slotPosition,
+            out int updateTick)
+        {
+            bool decoded = TryDecodeObservedItemUpgradeClientOutboundRequestPayload(
+                payload,
+                out ObservedItemUpgradeClientOutboundRequest request);
+            consumeCashPrefixed = request.ConsumeCashPrefixed;
+            useRequestTick = request.UseRequestTick;
+            consumeSlotPosition = request.ConsumeSlotPosition;
+            consumeItemId = request.ConsumeItemId;
+            itemToken = request.ItemToken;
+            slotPosition = request.SlotPosition;
+            updateTick = request.UpdateTick;
+            return decoded;
         }
 
         internal static int ResolveItemUpgradeResultAckDispatchDelayMsForTests(byte returnResultCode, int resultValue)

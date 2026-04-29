@@ -942,7 +942,8 @@ namespace HaCreator.MapSimulator
                 InitialQuizOwnerEditOrigin,
                 150,
                 13,
-                _initialQuizOwnerEditTextElementLimit);
+                _initialQuizOwnerEditTextElementLimit,
+                InitialQuizTimerRuntime.GetClientMapleStringEncoding());
             _initialQuizOwnerEditControl.SetFont(_fontChat);
             _initialQuizOwnerEditControl.UseClientAntiMacroVisualStyle();
             _initialQuizOwnerEditControl.SetFocus(_initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input);
@@ -965,7 +966,9 @@ namespace HaCreator.MapSimulator
         {
             if (_initialQuizOwnerNativeEditHost == null)
             {
-                _initialQuizOwnerNativeEditHost = new NativeAntiMacroEditHost(_initialQuizOwnerEditTextElementLimit);
+                _initialQuizOwnerNativeEditHost = new NativeAntiMacroEditHost(
+                    _initialQuizOwnerEditTextElementLimit,
+                    InitialQuizTimerRuntime.GetClientMapleStringEncoding());
                 _initialQuizOwnerNativeEditHost.TextChanged += OnInitialQuizOwnerNativeEditHostTextChanged;
                 _initialQuizOwnerNativeEditHost.SubmitRequested += OnInitialQuizOwnerNativeEditHostSubmitRequested;
                 _initialQuizOwnerNativeEditHost.FocusChanged += OnInitialQuizOwnerNativeEditHostFocusChanged;

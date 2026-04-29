@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int StringPoolClaimWindowExpired = 0xF54;
         private const int StringPoolClaimWindowDaysRemaining = 0x1A17;
         private const int MaxPacketOwnedReceiveRows = 10;
+        private const byte ParcelDialogNormalSendRequestSubtype = 0;
+        private const byte ParcelDialogQuickSendRequestSubtype = 1;
 
         private enum MemoAttachmentKind
         {
@@ -76,6 +78,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _showTaxInfo;
         private int _nextMemoId = 1;
         private string _lastActionSummary = "Parcel delivery ready.";
+        private ParcelDialogOutboundRequestSnapshot _lastOutboundRequest;
         internal Action<string, int> SocialChatObserved { get; set; }
 
         internal MemoMailboxManager()
@@ -150,7 +153,8 @@ namespace HaCreator.MapSimulator.Interaction
                 AwaitingItemSelection = _awaitingItemSelection,
                 ShowTaxInfo = _showTaxInfo,
                 ModeSummary = BuildModeSummary(),
-                TaxSummary = BuildTaxSummary()
+                TaxSummary = BuildTaxSummary(),
+                LastOutboundRequest = _lastOutboundRequest
             };
         }
 
@@ -817,6 +821,12 @@ namespace HaCreator.MapSimulator.Interaction
             string recipient = _draft.Recipient;
             string subject = ResolveDraftParcelLabel();
             MemoAttachmentState attachment = CloneAttachment(_draft.Attachment);
+            _lastOutboundRequest = BuildOutboundRequestSnapshot(
+                ParcelDialogTab.Send,
+                recipient,
+                attachment,
+                isQuickDelivery: false,
+                quickDeliveryMemo: string.Empty);
             _showTaxInfo = false;
 
             message = MapleStoryStringPool.GetOrFallback(
@@ -881,6 +891,12 @@ namespace HaCreator.MapSimulator.Interaction
             string body = _draft.Body;
             MemoAttachmentState attachment = CloneAttachment(_draft.Attachment);
             string quickSubject = ResolveDraftParcelLabel("Quick delivery");
+            _lastOutboundRequest = BuildOutboundRequestSnapshot(
+                ParcelDialogTab.QuickSend,
+                recipient,
+                attachment,
+                isQuickDelivery: true,
+                quickDeliveryMemo: body);
             _showTaxInfo = false;
 
             message = MapleStoryStringPool.GetOrFallback(
@@ -1456,7 +1472,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildTaxSummary()
         {
-            int attachedMeso = _draft.Attachment?.Kind == MemoAttachmentKind.Meso ? Math.Max(0, _draft.Attachment.Meso) : 0;
+            int attachedMeso = HasMesoAttachment(_draft.Attachment) ? Math.Max(0, _draft.Attachment.Meso) : 0;
             return _activeTab switch
             {
                 ParcelDialogTab.QuickSend => FormatClientPrompt(
@@ -1513,6 +1529,28 @@ namespace HaCreator.MapSimulator.Interaction
                 .Replace("\r\n", " ", StringComparison.Ordinal)
                 .Replace('\r', ' ')
                 .Replace('\n', ' ');
+        }
+
+        private static ParcelDialogOutboundRequestSnapshot BuildOutboundRequestSnapshot(
+            ParcelDialogTab sourceTab,
+            string recipient,
+            MemoAttachmentState attachment,
+            bool isQuickDelivery,
+            string quickDeliveryMemo)
+        {
+            return new ParcelDialogOutboundRequestSnapshot
+            {
+                // The official outbound opcode is still an unrecovered client seam for this row.
+                Opcode = 0,
+                Subtype = isQuickDelivery ? ParcelDialogQuickSendRequestSubtype : ParcelDialogNormalSendRequestSubtype,
+                SourceTab = sourceTab,
+                AttachmentItemId = GetAttachmentItemId(attachment),
+                ItemQuantity = (short)Math.Clamp(GetAttachmentQuantity(attachment), 0, short.MaxValue),
+                Meso = GetAttachmentMeso(attachment),
+                Recipient = recipient?.Trim() ?? string.Empty,
+                IsQuickDelivery = isQuickDelivery,
+                QuickDeliveryMemo = isQuickDelivery ? quickDeliveryMemo?.Trim() ?? string.Empty : string.Empty
+            };
         }
 
         private MemoDraftAttachmentKind ResolveDraftAttachmentKind()

@@ -179,18 +179,40 @@ public static class ClientShootAmmoResolver
         int weaponCode,
         int weaponItemId)
     {
+        return RefreshQueuedSelectionSlotMetadata(
+            queuedSelection,
+            useSlots,
+            cashSlots,
+            weaponCode,
+            weaponItemId,
+            requiredSkillAmmoItemId: 0);
+    }
+
+    public static ShootAmmoSelection RefreshQueuedSelectionSlotMetadata(
+        ShootAmmoSelection queuedSelection,
+        IReadOnlyList<InventorySlotData> useSlots,
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId,
+        int requiredSkillAmmoItemId)
+    {
         if (queuedSelection == null)
         {
             return null;
         }
 
+        int normalizedRequiredSkillAmmoItemId = NormalizeClientSpecialPelletRequiredAmmoItemId(requiredSkillAmmoItemId);
+        int queuedUseItemId = NormalizeQueuedUseItemIdForClientSpecialPelletSkill(
+            queuedSelection.UseItemId,
+            normalizedRequiredSkillAmmoItemId);
+
         int refreshedUseSlotIndex = -1;
-        if (queuedSelection.UseItemId > 0
-            && IsCompatibleBulletItem(weaponCode, weaponItemId, queuedSelection.UseItemId))
+        if (queuedUseItemId > 0
+            && IsCompatibleBulletItem(weaponCode, weaponItemId, queuedUseItemId))
         {
             int resolvedUseSlotIndex = FindSlotIndexByItemId(
                 useSlots,
-                queuedSelection.UseItemId,
+                queuedUseItemId,
                 queuedSelection.QueuedUseSlotIndex);
             if (resolvedUseSlotIndex >= 0)
             {
@@ -215,7 +237,7 @@ public static class ClientShootAmmoResolver
         return new ShootAmmoSelection
         {
             UseSlotIndex = refreshedUseSlotIndex,
-            UseItemId = queuedSelection.UseItemId,
+            UseItemId = queuedUseItemId,
             CashSlotIndex = refreshedCashSlotIndex,
             CashItemId = queuedSelection.CashItemId,
             QueuedUseSlotIndex = queuedSelection.QueuedUseSlotIndex > 0
@@ -243,7 +265,8 @@ public static class ClientShootAmmoResolver
             useSlots,
             cashSlots,
             weaponCode,
-            weaponItemId);
+            weaponItemId,
+            requiredSkillAmmoItemId);
         if (queuedSelection == null)
         {
             return !requiresUseAmmo;

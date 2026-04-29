@@ -278,6 +278,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "flamethrower2",
             "flamethrower_after2",
             "gatlingshot",
+            "mRush",
             "herbalism_mechanic",
             "mining_mechanic"
         };
@@ -347,7 +348,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             "msummon2",
             "ride2",
             "getoff2",
-            "mRush",
             "flamethrower_pre",
             "flamethrower",
             "flamethrower_after",

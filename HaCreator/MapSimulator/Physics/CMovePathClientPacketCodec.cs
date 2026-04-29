@@ -189,13 +189,50 @@ namespace HaCreator.MapSimulator.Physics
             out bool consumedPostFlushCarry)
         {
             IReadOnlyList<MovePathElement> cadenceShapedPath =
-                ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
+                ApplyPortalOwnedFlushCadenceHintWithRetainedCarrySuffix(
+                    path,
+                    flushAdmitted,
+                    postFlushCarry,
+                    out consumedPostFlushCarry);
             cadenceShapedPath = ApplyPortalOwnedPostFlushCarryHint(
                 cadenceShapedPath,
-                !flushAdmitted ? postFlushCarry : Array.Empty<MovePathElement>(),
-                out consumedPostFlushCarry);
+                !flushAdmitted && !consumedPostFlushCarry ? postFlushCarry : Array.Empty<MovePathElement>(),
+                out bool prependedPostFlushCarry);
+            consumedPostFlushCarry |= prependedPostFlushCarry;
 
             return NormalizeForPortalOwnedClientMakeMovePath(cadenceShapedPath);
+        }
+
+        private static IReadOnlyList<MovePathElement> ApplyPortalOwnedFlushCadenceHintWithRetainedCarrySuffix(
+            IReadOnlyList<MovePathElement> path,
+            bool flushAdmitted,
+            IReadOnlyList<MovePathElement> carryPath,
+            out bool consumedCarry)
+        {
+            consumedCarry = false;
+            if (path == null || path.Count == 0 || flushAdmitted || carryPath == null || carryPath.Count == 0)
+            {
+                return ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
+            }
+
+            if (!TryFindFirstEncodedCarryShapeIndex(path, carryPath, out int carryIndex))
+            {
+                return ApplyPortalOwnedFlushCadenceHint(path, flushAdmitted);
+            }
+
+            consumedCarry = true;
+            if (carryIndex <= 0)
+            {
+                return path;
+            }
+
+            MovePathElement[] suffix = new MovePathElement[path.Count - carryIndex];
+            for (int i = carryIndex; i < path.Count; i++)
+            {
+                suffix[i - carryIndex] = path[i];
+            }
+
+            return suffix;
         }
 
         internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedPostFlushCarryHint(
@@ -540,6 +577,27 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             return true;
+        }
+
+        private static bool TryFindFirstEncodedCarryShapeIndex(
+            IReadOnlyList<MovePathElement> path,
+            IReadOnlyList<MovePathElement> carryPath,
+            out int carryIndex)
+        {
+            carryIndex = -1;
+            for (int i = 0; i < path.Count; i++)
+            {
+                for (int j = 0; j < carryPath.Count; j++)
+                {
+                    if (HasSameEncodedShape(path[i], carryPath[j]))
+                    {
+                        carryIndex = i;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }

@@ -156,6 +156,13 @@ namespace HaCreator.MapSimulator.Animation
                     .ToDictionary(static entry => entry.Key, static _ => 0);
             }
 
+            internal void MarkTerminated()
+            {
+                TerminateRequested = true;
+                IsTerminated = true;
+                ReleaseRegisteredLayerReferences();
+            }
+
             internal SecondaryMotionBlurAnimationStateTrace CaptureTrace()
             {
                 return new SecondaryMotionBlurAnimationStateTrace(
@@ -264,6 +271,66 @@ namespace HaCreator.MapSimulator.Animation
                 recoveredRegistrationTrace: null,
                 initialElapsedMs: initialElapsedMs);
             InsertOneTimeAnimation(anim);
+        }
+
+        internal void AddPacketOwnedCatch(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedCatch,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedSquib(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedSquib,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedTransformed(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedAttachedOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                fallbackX,
+                fallbackY,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedTransformed,
+                initialElapsedMs);
         }
 
         internal void AddPacketOwnedMonsterBookCardGet(
@@ -419,6 +486,39 @@ namespace HaCreator.MapSimulator.Animation
                 registrationTrace.LoadLayerFlip,
                 currentTimeMs,
                 zOrder,
+                getPosition,
+                getFlip: null,
+                owner,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
+                initialElapsedMs);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void AddPacketOwnedAttachedOneTime(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            float fallbackX,
+            float fallbackY,
+            int currentTimeMs,
+            AnimationOneTimeOwner owner,
+            int initialElapsedMs)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicOneTime(sourceUol);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                flip: false,
+                currentTimeMs,
+                zOrder: 0,
                 getPosition,
                 getFlip: null,
                 owner,
@@ -2285,12 +2385,7 @@ namespace HaCreator.MapSimulator.Animation
 
         public void MarkTerminated()
         {
-            if (_state != null)
-            {
-                _state.IsTerminated = true;
-                _state.TerminateRequested = true;
-                _state.ReleaseRegisteredLayerReferences();
-            }
+            _state?.MarkTerminated();
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
@@ -2669,10 +2764,7 @@ namespace HaCreator.MapSimulator.Animation
 
         public void Dispose()
         {
-            if (_state != null)
-            {
-                _state.ReleaseRegisteredLayerReferences();
-            }
+            _state?.MarkTerminated();
 
             if (!_ownsFrameTextures)
             {
@@ -2820,7 +2912,10 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedMonsterBookCardGet = 2,
         PacketOwnedBuffItemUse = 3,
         PacketOwnedItemUnrelease = 4,
-        PacketOwnedCombatFeedback = 5
+        PacketOwnedCombatFeedback = 5,
+        PacketOwnedCatch = 6,
+        PacketOwnedSquib = 7,
+        PacketOwnedTransformed = 8
     }
 
     internal enum AnimationOneTimePlaybackMode
@@ -2892,7 +2987,9 @@ namespace HaCreator.MapSimulator.Animation
         int CandidateIdentity,
         int EffectVariantCount,
         IReadOnlyList<int> EffectVariantIndices,
-        int ReferenceCountAfterOperation);
+        int ReferenceCountAfterOperation,
+        int EffectVariantIndex = -1,
+        int VariantOrdinal = -1);
 
     internal readonly record struct FollowItemEffectRecoveredNativeOwnerState(
         int ItemId,
@@ -3177,12 +3274,20 @@ namespace HaCreator.MapSimulator.Animation
         int Value,
         CanvasLayerRecoveredCanvasSettings CanvasSettings);
 
+    internal enum CanvasLayerRecoveredNativeObjectRole
+    {
+        None = 0,
+        TemporaryCanvas = 1,
+        OneTimeLayer = 2
+    }
+
     /// <summary>
     /// Per-operation managed snapshot of the recovered Effect_HP COM lifetime sequence.
     /// </summary>
     internal readonly record struct CanvasLayerRecoveredNativeOperationState(
         CanvasLayerRecoveredNativeOperation Operation,
         int OperationIndex,
+        CanvasLayerRecoveredNativeObjectRole OperationObjectRole,
         int SimulatedLayerHandleId,
         int LayerReferenceCountAfterOperation,
         int SimulatedTemporaryCanvasHandleId,
@@ -3218,6 +3323,23 @@ namespace HaCreator.MapSimulator.Animation
         int TemporaryCanvasReferenceCountAfterOwnerRelease,
         bool RegistersOneTimeAnimation,
         bool TemporaryCanvasReleasedAfterRegistration);
+
+    /// <summary>
+    /// Recovered object-role identity for the native Effect_HP COM graph.
+    /// Handles are simulator-only identifiers; roles keep the owner-created canvas
+    /// distinct from the one-time layer without claiming byte-identical COM identity.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeObjectIdentityState(
+        int SimulatedTemporaryCanvasHandleId,
+        CanvasLayerRecoveredNativeObjectRole TemporaryCanvasRole,
+        int SimulatedLayerHandleId,
+        CanvasLayerRecoveredNativeObjectRole LayerRole,
+        bool HasTemporaryCanvas,
+        bool HasLayer,
+        bool HandlesAreDistinct,
+        bool RegistersOneTimeAnimation,
+        bool TemporaryCanvasReleasedAfterRegistration,
+        bool LayerOwnerReferenceReleasedAfterRegistration);
 
     /// <summary>
     /// Owner-prepared source trace that stays attached to managed one-time canvas layers.
@@ -3299,6 +3421,7 @@ namespace HaCreator.MapSimulator.Animation
             = Array.Empty<CanvasLayerRecoveredNativeOperationState>();
         internal CanvasLayerRecoveredNativeLayerState RecoveredNativeLayerState { get; private set; }
         internal CanvasLayerRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
+        internal CanvasLayerRecoveredNativeObjectIdentityState RecoveredNativeObjectIdentityState { get; private set; }
 
         internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
@@ -3435,6 +3558,8 @@ namespace HaCreator.MapSimulator.Animation
                 RecoveredNativeExecutionTrace,
                 simulatedLayerHandleId,
                 simulatedTemporaryCanvasHandleId);
+            RecoveredNativeObjectIdentityState = BuildRecoveredNativeObjectIdentityState(
+                RecoveredNativeLifetimeState);
         }
 
         public bool Update(int currentTimeMs)
@@ -3491,6 +3616,7 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeExecutionStateTrace = Array.Empty<CanvasLayerRecoveredNativeOperationState>();
             RecoveredNativeLayerState = default;
             RecoveredNativeLifetimeState = default;
+            RecoveredNativeObjectIdentityState = default;
         }
 
         internal static CanvasLayerRecoveredNativeLayerState BuildRecoveredNativeLayerState(
@@ -3653,6 +3779,7 @@ namespace HaCreator.MapSimulator.Animation
                 states[i] = new CanvasLayerRecoveredNativeOperationState(
                     operation,
                     i,
+                    ResolveRecoveredNativeOperationObjectRole(operation.Kind),
                     sawLayer ? simulatedLayerHandleId : 0,
                     layerRefCount,
                     sawTemporaryCanvas ? simulatedTemporaryCanvasHandleId : 0,
@@ -3662,6 +3789,56 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return states;
+        }
+
+        internal static CanvasLayerRecoveredNativeObjectIdentityState BuildRecoveredNativeObjectIdentityState(
+            CanvasLayerRecoveredNativeLifetimeState lifetimeState)
+        {
+            bool hasTemporaryCanvas = lifetimeState.SimulatedTemporaryCanvasHandleId > 0
+                || lifetimeState.TemporaryCanvasReferenceCountAfterCreate > 0;
+            bool hasLayer = lifetimeState.SimulatedLayerHandleId > 0
+                || lifetimeState.LayerReferenceCountAfterCreate > 0;
+            bool handlesAreDistinct = !hasTemporaryCanvas
+                || !hasLayer
+                || lifetimeState.SimulatedTemporaryCanvasHandleId != lifetimeState.SimulatedLayerHandleId;
+
+            return new CanvasLayerRecoveredNativeObjectIdentityState(
+                lifetimeState.SimulatedTemporaryCanvasHandleId,
+                hasTemporaryCanvas
+                    ? CanvasLayerRecoveredNativeObjectRole.TemporaryCanvas
+                    : CanvasLayerRecoveredNativeObjectRole.None,
+                lifetimeState.SimulatedLayerHandleId,
+                hasLayer
+                    ? CanvasLayerRecoveredNativeObjectRole.OneTimeLayer
+                    : CanvasLayerRecoveredNativeObjectRole.None,
+                hasTemporaryCanvas,
+                hasLayer,
+                handlesAreDistinct,
+                lifetimeState.RegistersOneTimeAnimation,
+                lifetimeState.TemporaryCanvasReleasedAfterRegistration,
+                lifetimeState.LayerReferenceCountAfterOwnerRelease < lifetimeState.LayerReferenceCountAfterRegisterOneTimeAnimation);
+        }
+
+        private static CanvasLayerRecoveredNativeObjectRole ResolveRecoveredNativeOperationObjectRole(
+            CanvasLayerRecoveredNativeOperationKind kind)
+        {
+            return kind switch
+            {
+                CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas
+                    or CanvasLayerRecoveredNativeOperationKind.InsertTemporaryCanvas
+                    or CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration
+                    => CanvasLayerRecoveredNativeObjectRole.TemporaryCanvas,
+                CanvasLayerRecoveredNativeOperationKind.CreateLayer
+                    or CanvasLayerRecoveredNativeOperationKind.SetLayerOption
+                    or CanvasLayerRecoveredNativeOperationKind.SetLayerPriority
+                    or CanvasLayerRecoveredNativeOperationKind.InsertCanvas
+                    or CanvasLayerRecoveredNativeOperationKind.SetLayerPosition
+                    or CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration
+                    or CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation
+                    or CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration
+                    => CanvasLayerRecoveredNativeObjectRole.OneTimeLayer,
+                _ => CanvasLayerRecoveredNativeObjectRole.None
+            };
         }
 
         internal static CanvasLayerRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
@@ -4889,6 +5066,8 @@ namespace HaCreator.MapSimulator.Animation
         public int Id { get; private set; }
         internal IReadOnlyList<FollowItemEffectRecoveredNativeOperation> RecoveredNativeItemEffectTrace { get; private set; }
             = Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+        internal IReadOnlyList<FollowItemEffectRecoveredNativeOperation> RecoveredNativeItemEffectPerVariantTrace { get; private set; }
+            = Array.Empty<FollowItemEffectRecoveredNativeOperation>();
         internal FollowItemEffectRecoveredNativeOwnerState RecoveredNativeItemEffectOwnerState { get; private set; }
 
         public void Initialize(List<IDXObject> frames, Func<Vector2> getTargetPosition,
@@ -4946,6 +5125,7 @@ namespace HaCreator.MapSimulator.Animation
                 options?.SourceVariantIndices,
                 released: false);
             RecoveredNativeItemEffectTrace = BuildRecoveredNativeItemEffectTrace(RecoveredNativeItemEffectOwnerState);
+            RecoveredNativeItemEffectPerVariantTrace = BuildRecoveredNativeItemEffectPerVariantTrace(RecoveredNativeItemEffectOwnerState);
         }
 
         internal void ReleaseRecoveredNativeItemEffectOwner()
@@ -4964,6 +5144,7 @@ namespace HaCreator.MapSimulator.Animation
                 RecoveredNativeItemEffectOwnerState.EffectVariantIndices,
                 released: true);
             RecoveredNativeItemEffectTrace = BuildRecoveredNativeItemEffectTrace(RecoveredNativeItemEffectOwnerState);
+            RecoveredNativeItemEffectPerVariantTrace = BuildRecoveredNativeItemEffectPerVariantTrace(RecoveredNativeItemEffectOwnerState);
         }
 
         internal static FollowItemEffectRecoveredNativeOwnerState BuildRecoveredNativeItemEffectOwnerState(
@@ -5039,10 +5220,73 @@ namespace HaCreator.MapSimulator.Animation
             return operations.ToArray();
         }
 
+        internal static FollowItemEffectRecoveredNativeOperation[] BuildRecoveredNativeItemEffectPerVariantTrace(
+            FollowItemEffectRecoveredNativeOwnerState ownerState)
+        {
+            if (ownerState.ItemId <= 0
+                || ownerState.ClientEquipIndex < 0
+                || ownerState.EffectVariantIndices == null
+                || ownerState.EffectVariantIndices.Count <= 0)
+            {
+                return Array.Empty<FollowItemEffectRecoveredNativeOperation>();
+            }
+
+            var operations = new List<FollowItemEffectRecoveredNativeOperation>(
+                ownerState.EffectVariantIndices.Count * (ownerState.IsReleased ? 6 : 5));
+            for (int ordinal = 0; ordinal < ownerState.EffectVariantIndices.Count; ordinal++)
+            {
+                int effectVariantIndex = ownerState.EffectVariantIndices[ordinal];
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.AllocateIItemEffect,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.LoadIndexedEffect,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterAllocate,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.RetainInItemEffectManager,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterManagerRetain,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.RegisterFollowInfo,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterManagerRetain,
+                    effectVariantIndex,
+                    ordinal));
+                operations.Add(BuildRecoveredNativeItemEffectOperation(
+                    FollowItemEffectRecoveredNativeOperationKind.ReleaseOwnerReference,
+                    ownerState,
+                    ownerState.ItemEffectReferenceCountAfterOwnerRelease,
+                    effectVariantIndex,
+                    ordinal));
+
+                if (ownerState.IsReleased)
+                {
+                    operations.Add(BuildRecoveredNativeItemEffectOperation(
+                        FollowItemEffectRecoveredNativeOperationKind.ReleaseManagerReference,
+                        ownerState,
+                        ownerState.ItemEffectReferenceCountAfterManagerRelease,
+                        effectVariantIndex,
+                        ordinal));
+                }
+            }
+
+            return operations.ToArray();
+        }
+
         private static FollowItemEffectRecoveredNativeOperation BuildRecoveredNativeItemEffectOperation(
             FollowItemEffectRecoveredNativeOperationKind kind,
             FollowItemEffectRecoveredNativeOwnerState ownerState,
-            int referenceCountAfterOperation)
+            int referenceCountAfterOperation,
+            int effectVariantIndex = -1,
+            int variantOrdinal = -1)
         {
             return new FollowItemEffectRecoveredNativeOperation(
                 kind,
@@ -5051,7 +5295,9 @@ namespace HaCreator.MapSimulator.Animation
                 ownerState.CandidateIdentity,
                 ownerState.EffectVariantCount,
                 ownerState.EffectVariantIndices,
-                Math.Max(0, referenceCountAfterOperation));
+                Math.Max(0, referenceCountAfterOperation),
+                effectVariantIndex,
+                variantOrdinal);
         }
 
         private static IReadOnlyList<int> NormalizeRecoveredNativeItemEffectVariantIndices(
@@ -5087,21 +5333,22 @@ namespace HaCreator.MapSimulator.Animation
         public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
         {
             // Check duration
-            if (_duration > 0 && currentTimeMs - _startTime > _duration)
+            if (_duration > 0
+                && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime) > _duration)
                 return false;
 
             // Update animation frame
             if (AnimationEffects.HasFrames(_frames))
             {
                 IDXObject frame = _frames[_currentFrame];
-                if (currentTimeMs - _lastFrameTime > frame.Delay)
+                if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
                 {
                     _currentFrame = (_currentFrame + 1) % _frames.Count;
                     _lastFrameTime = currentTimeMs;
                 }
             }
 
-            if (_nextSpawnTime <= currentTimeMs)
+            if (ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _nextSpawnTime))
             {
                 bool hasGenerationPoints = _generationPoints != null && _generationPoints.Count > 0;
                 int spawnAngleDegrees = AnimationEffects.ResolveFollowSpawnAngleDegrees(
@@ -5243,6 +5490,11 @@ namespace HaCreator.MapSimulator.Animation
 
             frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
         }
+
+        internal static int ResolveFollowElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
     }
 
     internal sealed class FollowParticleAnimation
@@ -5318,7 +5570,8 @@ namespace HaCreator.MapSimulator.Animation
 
         public bool Update(int currentTimeMs)
         {
-            if (_duration > 0 && currentTimeMs - _startTime >= _duration)
+            if (_duration > 0
+                && ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime) >= _duration)
             {
                 return false;
             }
@@ -5329,7 +5582,7 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             IDXObject frame = _frames[_currentFrame];
-            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
             {
                 _currentFrame = (_currentFrame + 1) % _frames.Count;
                 _lastFrameTime = currentTimeMs;
@@ -5347,7 +5600,7 @@ namespace HaCreator.MapSimulator.Animation
 
             float progress = _duration <= 0
                 ? 1f
-                : MathHelper.Clamp((float)(currentTimeMs - _startTime) / _duration, 0f, 1f);
+                : MathHelper.Clamp((float)ResolveFollowParticleElapsedMs(currentTimeMs, _startTime) / _duration, 0f, 1f);
             Vector2 anchorPosition = AnimationEffects.ResolveFollowSpawnAnchorPosition(
                 _getTargetPosition(),
                 _capturedTargetPosition,
@@ -5359,7 +5612,9 @@ namespace HaCreator.MapSimulator.Animation
             float drawY = anchorPosition.Y + _offsetY + animatedOffset.Y;
             int drawShiftX = -(int)drawX - mapShiftX;
             int drawShiftY = -(int)drawY - mapShiftY;
-            byte alpha = AnimationEffects.ResolveFollowParticleAlpha(currentTimeMs - _startTime, _duration);
+            byte alpha = AnimationEffects.ResolveFollowParticleAlpha(
+                ResolveFollowParticleElapsedMs(currentTimeMs, _startTime),
+                _duration);
             if (alpha == byte.MaxValue)
             {
                 frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
@@ -5375,6 +5630,16 @@ namespace HaCreator.MapSimulator.Animation
                 new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, alpha),
                 flip,
                 null);
+        }
+
+        internal static int ResolveFollowParticleElapsedForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ResolveFollowParticleElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        private static int ResolveFollowParticleElapsedMs(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
         }
 
         internal static FollowParticleRecoveredNativeLayerState BuildRecoveredNativeLayerState(

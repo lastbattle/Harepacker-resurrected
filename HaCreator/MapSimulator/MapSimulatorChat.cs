@@ -433,7 +433,10 @@ namespace HaCreator.MapSimulator
             }
 
             if (!IsWhisperTargetPickerModalFooterFocused()
-                && TryForwardClientEditKeyUpToParent(newKeyboardState, oldKeyboardState))
+                && TryForwardClientEditKeyUpToParent(
+                    newKeyboardState,
+                    oldKeyboardState,
+                    IsWhisperTargetPickerModalDropdownNavigating()))
             {
                 return false;
             }
@@ -3219,7 +3222,20 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldForwardClientEditKeyUpToParent(Keys key)
         {
+            return ShouldForwardClientEditKeyUpToParent(key, modalDropdownNavigating: false);
+        }
+
+        internal static bool ShouldForwardClientEditKeyUpToParent(Keys key, bool modalDropdownNavigating)
+        {
             // CCtrlEdit::OnKey forwards key-up (negative lParam) directly to the parent owner.
+            // When the combo select window is open, VK_UP/VK_DOWN/VK_RETURN are owned by
+            // CCtrlComboBoxSelect::OnKey and should not be promoted as edit-child key-up.
+            if (modalDropdownNavigating
+                && (key == Keys.Up || key == Keys.Down || key == Keys.Enter))
+            {
+                return false;
+            }
+
             _ = key;
             return true;
         }
@@ -3306,12 +3322,13 @@ namespace HaCreator.MapSimulator
 
         private bool TryForwardClientEditKeyUpToParent(
             KeyboardState newKeyboardState,
-            KeyboardState oldKeyboardState)
+            KeyboardState oldKeyboardState,
+            bool modalDropdownNavigating)
         {
             foreach (Keys key in oldKeyboardState.GetPressedKeys())
             {
                 if (newKeyboardState.IsKeyUp(key)
-                    && ShouldForwardClientEditKeyUpToParent(key))
+                    && ShouldForwardClientEditKeyUpToParent(key, modalDropdownNavigating))
                 {
                     if (_lastHeldKey == key)
                     {

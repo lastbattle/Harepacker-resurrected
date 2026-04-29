@@ -82,6 +82,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextLocalMessageBoxId = 1;
         private string _statusMessage = "Field message-box pool idle.";
         internal Action<string, int> SocialChatObserved { get; set; }
+        internal Action<PendingConsumeRequestEntry, int> PendingConsumeRequestConfirmed { get; set; }
 
         internal int ActiveCount => _entries.Count + _leavingEntries.Count;
 
@@ -403,6 +404,10 @@ namespace HaCreator.MapSimulator.Interaction
                     out PendingConsumeRequestEntry resolvedRequest)
                     ? $" Matched pending CUserLocal::ConsumeCashItem request from slot {resolvedRequest.Request.InventoryPosition}."
                     : string.Empty;
+                if (resolvedRequest != null)
+                {
+                    PendingConsumeRequestConfirmed?.Invoke(resolvedRequest, currentTick);
+                }
 
                 if (_entries.ContainsKey(messageBoxId))
                 {

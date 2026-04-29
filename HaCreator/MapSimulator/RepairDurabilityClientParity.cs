@@ -809,6 +809,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodeResultFirstSlotListPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
             if (TryDecodeResultFirstPayload(payload, out result, out error))
             {
                 return true;
@@ -1027,6 +1037,79 @@ namespace HaCreator.MapSimulator
                             out int? reasonCode,
                             out string statusText,
                             out string decodeError))
+                    {
+                        error = decodeError;
+                        return false;
+                    }
+
+                    result = new ResultPayload(
+                        success,
+                        reasonCode,
+                        operationCode,
+                        encodedSlotPositions.Count > 0 ? encodedSlotPositions[0] : null,
+                        statusText,
+                        encodedSlotPositions);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeResultFirstSlotListPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length < 1 + sizeof(byte) + sizeof(int) || payload[0] > 1)
+            {
+                return false;
+            }
+
+            bool success = payload[0] == 0;
+            foreach (bool opcodeBeforeCount in new[] { true, false })
+            {
+                int offset = 1;
+                short? operationCode = null;
+                if (opcodeBeforeCount)
+                {
+                    TryReadRepairOpcode(payload, ref offset, out operationCode);
+                }
+
+                foreach (int countSize in new[] { sizeof(byte), sizeof(short), sizeof(int) })
+                {
+                    int candidateOffset = offset;
+                    if (!TryReadSlotListCount(payload, ref candidateOffset, countSize, out int slotCount))
+                    {
+                        continue;
+                    }
+
+                    int requiredSlotBytes = slotCount * sizeof(int);
+                    if (payload.Length - candidateOffset < requiredSlotBytes)
+                    {
+                        continue;
+                    }
+
+                    var encodedSlotPositions = new List<int>(slotCount);
+                    bool validPositions = true;
+                    for (int i = 0; i < slotCount; i++)
+                    {
+                        int encodedPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(candidateOffset, sizeof(int)));
+                        candidateOffset += sizeof(int);
+                        if (!LooksLikeEncodedSlotPosition(encodedPosition))
+                        {
+                            validPositions = false;
+                            break;
+                        }
+
+                        encodedSlotPositions.Add(encodedPosition);
+                    }
+
+                    if (!validPositions)
+                    {
+                        continue;
+                    }
+
+                    if (!TryDecodeReasonAndStatusTail(payload, candidateOffset, out int? reasonCode, out string statusText, out string decodeError))
                     {
                         error = decodeError;
                         return false;

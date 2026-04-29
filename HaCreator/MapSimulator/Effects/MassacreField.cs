@@ -634,6 +634,23 @@ namespace HaCreator.MapSimulator.Effects
                 RegisterKill(currentTimeMs);
             }
         }
+        public bool TryApplyMassacreIncGauge(int newIncGauge, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_isActive)
+            {
+                errorMessage = "Massacre HUD inactive.";
+                return false;
+            }
+            if (newIncGauge < 0)
+            {
+                errorMessage = "Massacre inc-gauge value must be non-negative.";
+                return false;
+            }
+
+            OnMassacreIncGauge(newIncGauge, currentTimeMs);
+            return true;
+        }
         /// <summary>
         /// Add kills directly (for testing/simulation)
         /// </summary>
@@ -867,6 +884,18 @@ namespace HaCreator.MapSimulator.Effects
                 _keyAnimationStageStart = currentTimeMs;
             }
         }
+
+        public bool TryConsumeSkillUse(int currentTimeMs)
+        {
+            if (!_isActive || _disableSkill || !UsesSkillUsageCounter || _skillCount <= 0)
+            {
+                return false;
+            }
+
+            SetMassacreInfo(_hitCount, _missCount, _coolCount, _skillCount - 1, currentTimeMs);
+            return true;
+        }
+
         public bool TryApplyMassacreInfo(int hit, int miss, int cool, int skill, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;

@@ -751,10 +751,10 @@ namespace HaCreator.MapSimulator.Interaction
             MessengerParticipantState localPlayer = GetLocalParticipant();
             string localPlayerName = localPlayer?.Name ?? "Player";
             int currentTick = Environment.TickCount;
-            _sessionOwnedLeaveRequestInFlight = true;
-            _sessionOwnedLeaveRequestTick = currentTick;
             if (!CanDestroyMessengerWindow())
             {
+                _sessionOwnedLeaveRequestInFlight = true;
+                _sessionOwnedLeaveRequestTick = currentTick;
                 ArmDeleteRequest(
                     currentTick,
                     $"Queued live Messenger leave for {localPlayerName} and waiting for packet-owned room state to clear.",
@@ -805,9 +805,111 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastActionSummary;
         }
 
+        internal bool TryObserveOfficialClientRequest(
+            int opcode,
+            byte[] payload,
+            string source,
+            out string message)
+        {
+            payload ??= Array.Empty<byte>();
+            source = string.IsNullOrWhiteSpace(source) ? "official-session-client" : source.Trim();
+            if (opcode == MessengerPacketCodec.ClientMessengerRequestOpcode)
+            {
+                if (payload.Length == 0)
+                {
+                    message = "Observed CUIMessenger client request without a subtype byte.";
+                    return false;
+                }
+
+                byte requestSubtype = payload[0];
+                ReadOnlySpan<byte> body = payload.AsSpan(1);
+                switch (requestSubtype)
+                {
+                    case 0:
+                        if (!MessengerPacketCodec.TryParseClientAcceptInviteRequest(body, out MessengerClientAcceptInviteRequestPacket acceptPacket, out string acceptError))
+                        {
+                            message = acceptError ?? "Observed CUIMessenger::TryNew request could not be decoded.";
+                            return false;
+                        }
+
+                        message = $"{QueueSessionOwnedIncomingInviteAccept(string.Empty)} Observed official CUIMessenger::TryNew inviteSequence={acceptPacket.InviteSequence} from {source}.";
+                        return true;
+                    case 2:
+                        message = $"{QueueSessionOwnedLeaveRequest()} Observed official CUIMessenger::OnDestroy leave request from {source}.";
+                        return true;
+                    case 3:
+                        if (!MessengerPacketCodec.TryParseClientInviteRequest(body, out MessengerClientInviteRequestPacket invitePacket, out string inviteError))
+                        {
+                            message = inviteError ?? "Observed CUIMessenger::SendInviteMsg request could not be decoded.";
+                            return false;
+                        }
+
+                        message = $"{QueueSessionOwnedInviteRequest(invitePacket.ContactName)} Observed official CUIMessenger::SendInviteMsg target={invitePacket.ContactName} from {source}.";
+                        return true;
+                    case 5:
+                        if (!MessengerPacketCodec.TryParseClientBlockedAutoRejectRequest(body, out MessengerClientBlockedAutoRejectPacket blockedPacket, out string blockedError))
+                        {
+                            message = blockedError ?? "Observed CUIMessenger::OnInvite blocked-auto-reject request could not be decoded.";
+                            return false;
+                        }
+
+                        string blockedStatus = ApplyPacketPayload(
+                            MessengerPacketType.Blocked,
+                            MessengerPacketCodec.BuildBlockedPayload(blockedPacket.InviterName, blockedPacket.Blocked));
+                        message = $"{blockedStatus} Observed official CUIMessenger::OnInvite blocked-auto-reject inviter={blockedPacket.InviterName} local={blockedPacket.LocalCharacterName} blocked={blockedPacket.Blocked} from {source}.";
+                        return true;
+                    case 6:
+                        if (!MessengerPacketCodec.TryParseClientChatRequest(body, out MessengerChatPacket chatPacket, out string chatError))
+                        {
+                            message = chatError ?? "Observed CUIMessenger::ProcessChat request could not be decoded.";
+                            return false;
+                        }
+
+                        message = $"{SendMessage(chatPacket.Message)} Observed official CUIMessenger::ProcessChat speaker={chatPacket.ContactName} from {source}.";
+                        return true;
+                    default:
+                        message = $"Observed official CUIMessenger client request subtype {requestSubtype} from {source}; no simulator owner mirror is modeled for this branch.";
+                        return false;
+                }
+            }
+
+            if (opcode == PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode)
+            {
+                if (!MessengerPacketCodec.TryParseClientClaimRequest(payload, out MessengerClientClaimRequestPacket claimPacket, out string claimError))
+                {
+                    message = claimError ?? "Observed CWvsContext::SendClaimRequest payload could not be decoded.";
+                    return false;
+                }
+
+                int chatLineCount = CountClaimChatLogLines(claimPacket.ChatLog);
+                if (chatLineCount <= 0)
+                {
+                    chatLineCount = CountClaimableChatLines();
+                }
+
+                message = $"{QueueSessionOwnedChatClaimRequest(claimPacket.TargetCharacterName, claimPacket.ClaimType, claimPacket.Context, chatLineCount, queuedOnly: false)} Observed official CWvsContext::SendClaimRequest from {source}.";
+                return true;
+            }
+
+            message = $"Observed official Messenger client opcode {opcode} from {source}; no recovered owner branch is registered.";
+            return false;
+        }
+
         internal int CountClaimableChatLines()
         {
             return GetClaimableLogEntries().Length;
+        }
+
+        private static int CountClaimChatLogLines(string chatLog)
+        {
+            if (string.IsNullOrWhiteSpace(chatLog))
+            {
+                return 0;
+            }
+
+            return chatLog
+                .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+                .Count(line => !string.IsNullOrWhiteSpace(line));
         }
 
         internal bool TryBuildPacketAvatarPayload(
@@ -2445,9 +2547,42 @@ namespace HaCreator.MapSimulator.Interaction
                 return chatError ?? "Messenger OnChat payload could not be decoded.";
             }
 
+            if (chatPacket.IsActivityPulse)
+            {
+                return ApplyPacketClientActivityPulse(chatPacket);
+            }
+
             return chatPacket.IsWhisper
                 ? ReceiveRemoteWhisper(chatPacket.ContactName, chatPacket.Message)
                 : ReceiveRoomMessage(chatPacket.ContactName, chatPacket.Message);
+        }
+
+        private string ApplyPacketClientActivityPulse(MessengerClientChatPacket chatPacket)
+        {
+            string resolvedName = NormalizeParticipantName(chatPacket.ContactName);
+            if (resolvedName == null)
+            {
+                return "Messenger OnChat activity pulse needs a participant name.";
+            }
+
+            int participantIndex = FindParticipantIndex(resolvedName);
+            if (participantIndex >= 0)
+            {
+                MessengerParticipantState participant = _participants[participantIndex];
+                _participants[participantIndex] = participant with
+                {
+                    IsOnline = chatPacket.ActivityEnabled,
+                    StatusText = chatPacket.ActivityEnabled ? "Activity pulse." : "Inactive pulse."
+                };
+            }
+
+            _lastActionSummary = chatPacket.ActivityEnabled
+                ? $"{resolvedName} sent a Messenger activity pulse."
+                : $"{resolvedName} sent a Messenger inactive pulse.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"CUIMessenger::OnChat activity pulse name={resolvedName} active={chatPacket.ActivityEnabled}.");
+            StartBlink(Environment.TickCount);
+            return _lastActionSummary;
         }
 
         private string ApplyPacketLeaveSlot(MessengerLeaveSlotPacket packet)

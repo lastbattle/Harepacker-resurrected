@@ -2,6 +2,7 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Fields;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
@@ -79,6 +80,63 @@ namespace HaCreator.MapSimulator
                     ownerTeam = (int)carnivalTeam;
                     return true;
                 }
+            }
+
+            if (TryResolvePacketOwnedExpiryLocalTeamContextForParity(
+                    _specialFieldRuntime?.Minigames?.Coconut,
+                    _specialFieldRuntime?.PartyRaid,
+                    localPlayerId,
+                    ownerCharacterId,
+                    out ownerTeam))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolvePacketOwnedExpiryLocalTeamContextForParity(
+            CoconutField coconut,
+            PartyRaidField partyRaid,
+            int localPlayerId,
+            int ownerCharacterId,
+            out int ownerTeam)
+        {
+            return TryResolvePacketOwnedExpiryLocalTeamContextForParity(
+                coconut?.HasResolvedLocalTeamSelection == true,
+                coconut?.LocalTeam ?? 0,
+                partyRaid?.IsActive == true,
+                partyRaid?.TeamColor ?? PartyRaidTeamColor.Red,
+                localPlayerId,
+                ownerCharacterId,
+                out ownerTeam);
+        }
+
+        internal static bool TryResolvePacketOwnedExpiryLocalTeamContextForParity(
+            bool coconutTeamResolved,
+            int coconutLocalTeam,
+            bool partyRaidActive,
+            PartyRaidTeamColor partyRaidTeamColor,
+            int localPlayerId,
+            int ownerCharacterId,
+            out int ownerTeam)
+        {
+            ownerTeam = default;
+            if (localPlayerId <= 0 || ownerCharacterId != localPlayerId)
+            {
+                return false;
+            }
+
+            if (coconutTeamResolved)
+            {
+                ownerTeam = coconutLocalTeam == 1 ? 1 : 0;
+                return true;
+            }
+
+            if (partyRaidActive)
+            {
+                ownerTeam = partyRaidTeamColor == PartyRaidTeamColor.Blue ? 1 : 0;
+                return true;
             }
 
             return false;

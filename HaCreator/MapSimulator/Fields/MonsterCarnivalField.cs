@@ -1301,8 +1301,12 @@ namespace HaCreator.MapSimulator.Fields
         private const int Season2TimerTrailCapacity = 6;
         private const int Season2ChatRouteTrailCapacity = 6;
         private const int Season2SubDialogRouteTrailCapacity = 6;
+        internal const int Season2SubDialogWidth = 148;
+        internal const int Season2SubDialogHeight = 88;
         internal const int Season2SubDialogOkButtonWidth = 45;
         internal const int Season2SubDialogOkButtonHeight = 16;
+        internal const int Season2SubDialogOkButtonX = 51;
+        internal const int Season2SubDialogOkButtonY = 64;
 
         private readonly Dictionary<int, int> _mobSpellCounts = new();
         private readonly Dictionary<int, int> _skillUseCounts = new();
@@ -1781,6 +1785,37 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        public bool HandleSeason2SubDialogMouseClick(
+            Point mousePosition,
+            int viewportWidth,
+            int tickCount,
+            out string message)
+        {
+            message = null;
+            if (_definition?.IsSeason2Mode != true || !_season2SubDialogVisible)
+            {
+                return false;
+            }
+
+            Rectangle dialogBounds = ResolveSeason2SubDialogBounds(viewportWidth);
+            if (!dialogBounds.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            Rectangle okButtonBounds = ResolveSeason2SubDialogOkButtonBounds(dialogBounds);
+            if (okButtonBounds.Contains(mousePosition))
+            {
+                return TryAcknowledgeSeason2SubDialog(tickCount, out message);
+            }
+
+            _season2SubDialogLastButtonRoute =
+                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub body click ({mousePosition.X},{mousePosition.Y})";
+            RecordSeason2SubDialogRouteEvent("body-click");
+            message = "Season 2 Monster Carnival sub dialog consumed the click inside its UIWindow2 owner surface.";
+            return true;
+        }
+
         public bool TrySetMobSpellCount(int index, int count, out string message)
         {
             MonsterCarnivalEntry entry = GetEntry(MonsterCarnivalTab.Mob, index);
@@ -1847,6 +1882,37 @@ namespace HaCreator.MapSimulator.Fields
                 MonsterCarnivalVariantSessionPhase.Request,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} applied WZ consumeOnPickup nuffSkill {nuffSkillId.ToString(CultureInfo.InvariantCulture)} through the skill request owner.");
             return true;
+        }
+
+        public bool TryApplyCpPickup(int cp, int tickCount, out string message)
+        {
+            message = null;
+            int cpGain = Math.Max(0, cp);
+            if (!_isVisible || !_enteredField || cpGain <= 0)
+            {
+                return false;
+            }
+
+            MonsterCarnivalTeamState teamState = GetTeamState(_localTeam);
+            _personalCp += cpGain;
+            _personalTotalCp += cpGain;
+            teamState.CurrentCp += cpGain;
+            teamState.TotalCp += cpGain;
+            RefreshClientOwnedUiWindowCpState();
+
+            message = $"Monster Carnival pickup awarded {cpGain.ToString(CultureInfo.InvariantCulture)} CP.";
+            ShowStatus(message, tickCount);
+            SetVariantSessionPhase(
+                MonsterCarnivalVariantSessionPhase.LiveHud,
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} applied WZ consumeOnPickup cp {cpGain.ToString(CultureInfo.InvariantCulture)} through the CP owner.");
+            return true;
+        }
+
+        public bool CanApplyCpPickup(int cp)
+        {
+            return _isVisible
+                   && _enteredField
+                   && cp > 0;
         }
 
         public bool CanApplyNuffSkillPickup(int nuffSkillId)
@@ -2635,6 +2701,7 @@ namespace HaCreator.MapSimulator.Fields
             DrawTabs(spriteBatch, pixelTexture, font, headerBounds.X + ClientTabControlX, headerBounds.Y + ClientTabControlY);
             DrawEntryList(spriteBatch, pixelTexture, font, listBounds);
             DrawFooter(spriteBatch, pixelTexture, font, footerBounds.X + 8, footerBounds.Y + 4, footerBounds.Width - 16, footerBounds.Height - 8);
+            DrawSeason2SubDialog(spriteBatch, pixelTexture, font);
         }
 
         public string DescribeStatus()
@@ -3196,6 +3263,77 @@ namespace HaCreator.MapSimulator.Fields
         private static Rectangle ResolveRecoveredHudHeaderBounds(int viewportWidth)
         {
             return ResolveHeaderBounds(viewportWidth, DefaultHudMetrics);
+        }
+
+        internal static Rectangle ResolveSeason2SubDialogBounds(int viewportWidth)
+        {
+            Rectangle headerBounds = ResolveHeaderBounds(viewportWidth, DefaultHudMetrics);
+            return new Rectangle(
+                headerBounds.X,
+                headerBounds.Y + DefaultHudMetrics.BackgroundHeight + 10,
+                Season2SubDialogWidth,
+                Season2SubDialogHeight);
+        }
+
+        internal static Rectangle ResolveSeason2SubDialogOkButtonBounds(Rectangle dialogBounds)
+        {
+            return new Rectangle(
+                dialogBounds.X + Season2SubDialogOkButtonX,
+                dialogBounds.Y + Season2SubDialogOkButtonY,
+                Season2SubDialogOkButtonWidth,
+                Season2SubDialogOkButtonHeight);
+        }
+
+        private void DrawSeason2SubDialog(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            if (_definition?.IsSeason2Mode != true || !_season2SubDialogVisible)
+            {
+                return;
+            }
+
+            Rectangle bounds = ResolveSeason2SubDialogBounds(spriteBatch.GraphicsDevice.Viewport.Width);
+            Rectangle okBounds = ResolveSeason2SubDialogOkButtonBounds(bounds);
+
+            DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.SubTop, new Rectangle(bounds.X, bounds.Y, bounds.Width, 26), new Color(33, 39, 50, 232));
+            DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.SubCenter, new Rectangle(bounds.X, bounds.Y + 26, bounds.Width, 14), new Color(33, 39, 50, 232));
+            DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.SubBottom, new Rectangle(bounds.X, bounds.Y + 40, bounds.Width, bounds.Height - 40), new Color(33, 39, 50, 232));
+
+            string phaseText = _season2SubDialogPhase switch
+            {
+                MonsterCarnivalSeason2SubDialogPhase.RequestAcceptedPending => "Request accepted",
+                MonsterCarnivalSeason2SubDialogPhase.RequestRejected => "Request failed",
+                MonsterCarnivalSeason2SubDialogPhase.RequestRejectedLocked => "Request locked",
+                MonsterCarnivalSeason2SubDialogPhase.DeathLocked => "Death state",
+                _ => "Monster Carnival"
+            };
+            DrawShadowedText(spriteBatch, font, TrimForDisplay(phaseText, 22), new Vector2(bounds.X + 12, bounds.Y + 9), Color.White, 0.72f);
+
+            Texture2D okTexture = _season2SubDialogOkEnabled
+                ? _hudAssets.SubOkButtonNormal
+                : _hudAssets.SubOkButtonDisabled ?? _hudAssets.SubOkButtonNormal;
+            if (okTexture != null)
+            {
+                spriteBatch.Draw(okTexture, okBounds, Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, okBounds, _season2SubDialogOkEnabled ? new Color(82, 106, 142, 235) : new Color(70, 70, 70, 210));
+                DrawShadowedText(spriteBatch, font, "OK", new Vector2(okBounds.X + 15, okBounds.Y + 2), Color.White, 0.68f);
+            }
+
+            if (_season2SubDialogSelectionLocked)
+            {
+                Texture2D lockTexture = _hudAssets.SubLockEnabled ?? _hudAssets.SubLockDisabled;
+                Rectangle lockBounds = new(bounds.X + 14, bounds.Y + 58, 16, 16);
+                if (lockTexture != null)
+                {
+                    spriteBatch.Draw(lockTexture, lockBounds, Color.White);
+                }
+                else
+                {
+                    spriteBatch.Draw(pixelTexture, lockBounds, new Color(170, 80, 80, 220));
+                }
+            }
         }
 
         private void DrawWaitingRoomWrapperPanel(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)

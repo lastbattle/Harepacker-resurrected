@@ -60,7 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _isInGuild = true;
         private bool _hasManagementAuthority = true;
         private GuildSkillPermissionLevel _permissionLevel = GuildSkillPermissionLevel.Master;
-        private string _activeGuildStateKey = "Maple GM";
+        private string _activeGuildStateKey = NormalizeGuildStateKey("Maple GM");
         private GuildSkillPendingRequest _pendingRequest;
 
         internal static bool HasGuildMembership(CharacterBuild build)
@@ -77,7 +77,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal void UpdateContext(GuildSkillUiContext context)
         {
             bool inGuild = context.HasGuildMembership;
-            string newGuildStateKey = inGuild ? NormalizeGuildStateKey(context.GuildName) : string.Empty;
+            string fallbackGuildStateKey = inGuild ? NormalizeGuildStateKey(context.GuildName) : string.Empty;
+            string newGuildStateKey = inGuild ? NormalizeGuildStateKey(context.GuildName, context.GuildId) : string.Empty;
             bool changedGuildIdentity = !string.Equals(_activeGuildStateKey, newGuildStateKey, StringComparison.OrdinalIgnoreCase);
             if ((!inGuild || changedGuildIdentity) && _pendingRequest != null)
             {
@@ -89,9 +90,18 @@ namespace HaCreator.MapSimulator.Interaction
                 SaveCurrentGuildState(_activeGuildStateKey);
             }
 
-            GuildSkillSavedState savedState = inGuild
-                ? GetSavedGuildState(newGuildStateKey)
-                : null;
+            GuildSkillSavedState savedState = null;
+            if (inGuild)
+            {
+                savedState = GetSavedGuildState(newGuildStateKey);
+                bool canMigrateNameFallback =
+                    !(context.GuildId.GetValueOrDefault(0) > 0) ||
+                    string.Equals(_activeGuildStateKey, fallbackGuildStateKey, StringComparison.OrdinalIgnoreCase);
+                if (savedState == null && canMigrateNameFallback)
+                {
+                    savedState = GetSavedGuildState(fallbackGuildStateKey);
+                }
+            }
             _guildName = inGuild ? (context.GuildName?.Trim() ?? string.Empty) : "No Guild";
             _guildLevel = inGuild ? ResolveGuildLevel(context.GuildLevel, savedState?.GuildLevel ?? 0) : 0;
             _guildPoints = inGuild ? ResolveGuildPoints(context.GuildPoints, savedState?.GuildPoints ?? 0) : 0;
@@ -445,6 +455,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Ignored client guild-skill record for guild {guildId} because the active guild context is {_guildId}.";
             }
 
+            RememberPacketGuildId(guildId);
+
             SkillDisplayData selectedSkill = _skills.FirstOrDefault(skill => skill?.SkillId == packet.SkillId);
             if (selectedSkill == null)
             {
@@ -518,6 +530,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return $"Ignored client guild-skill snapshot for guild {guildId} because the active guild context is {_guildId}.";
             }
+
+            RememberPacketGuildId(guildId);
 
             Dictionary<int, SocialListGuildSkillRecordPacket> recordsBySkillId = new();
             if (records != null)
@@ -1555,7 +1569,52 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return string.IsNullOrWhiteSpace(guildName)
                 ? string.Empty
-                : guildName.Trim();
+                : $"name:{guildName.Trim()}";
+        }
+
+        private static string NormalizeGuildStateKey(string guildName, int? guildId)
+        {
+            int resolvedGuildId = Math.Max(0, guildId ?? 0);
+            if (resolvedGuildId > 0)
+            {
+                return $"id:{resolvedGuildId.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return NormalizeGuildStateKey(guildName);
+        }
+
+        private void RememberPacketGuildId(int guildId)
+        {
+            if (!_isInGuild || guildId <= 0 || _guildId == guildId)
+            {
+                return;
+            }
+
+            string previousStateKey = _activeGuildStateKey;
+            if (!string.IsNullOrWhiteSpace(previousStateKey))
+            {
+                SaveCurrentGuildState(previousStateKey);
+            }
+
+            _guildId = guildId;
+            string packetStateKey = NormalizeGuildStateKey(_guildName, guildId);
+            if (string.Equals(previousStateKey, packetStateKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            GuildSkillSavedState packetState = GetSavedGuildState(packetStateKey);
+            if (packetState != null)
+            {
+                RestoreGuildState(packetState);
+            }
+            else if (!string.IsNullOrWhiteSpace(previousStateKey) &&
+                     _savedGuildStates.TryGetValue(previousStateKey, out GuildSkillSavedState previousState))
+            {
+                _savedGuildStates[packetStateKey] = previousState;
+            }
+
+            _activeGuildStateKey = packetStateKey;
         }
 
         private static string NormalizeGuildRoleLabel(string guildRoleLabel)

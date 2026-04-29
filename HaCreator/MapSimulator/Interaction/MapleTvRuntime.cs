@@ -621,7 +621,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             (string itemName, string itemDescription) = itemMetadataResolver?.Invoke(request.ItemId) ?? (null, null);
-            RecordClientRequest(request, currentTick, "packet-owned MapleTV consume request", MapleTvClientRequestStage.AppliedLocally);
+            RecordClientRequest(request, currentTick, "packet-owned MapleTV consume request", MapleTvClientRequestStage.Dispatched);
             SetItem(request.ItemId, itemName, itemDescription);
             SetReceiver(request.ReceiverName);
             for (int i = 0; i < DisplayLineCount; i++)
@@ -629,20 +629,18 @@ namespace HaCreator.MapSimulator.Interaction
                 _draftLines[i] = i < request.Lines.Count ? request.Lines[i] ?? string.Empty : string.Empty;
             }
 
-            string publishStatus = OnSetMessage(currentTick);
-            if (publishStatus.StartsWith("MapleTV message set", StringComparison.Ordinal))
-            {
-                AdvanceClientRequestStage(MapleTvClientRequestStage.BroadcastStarted, currentTick);
-                MapleTvSendResultDefinition successDefinition = ResolveSendResultDefinition(1);
-                QueueSendResultFeedback(successDefinition);
-                _statusMessage = $"{publishStatus} Queued CMapleTVMan::OnSendMessageResult success feedback (StringPool 0x{successDefinition.StringPoolId:X}).";
-            }
-            else
-            {
-                _statusMessage = publishStatus;
-            }
+            _showMessage = false;
+            _queueExists = true;
+            _messageStartedAt = int.MinValue;
+            _activeDurationMs = 0;
+            _queueConfirmationWaitSeconds = 0;
+            _awaitingQueueReuseConfirmation = false;
+            _pendingSendResultFeedback = null;
+            Array.Clear(_displayLines, 0, _displayLines.Length);
 
-            message = $"Applied CUserLocal::ConsumeCashItem MapleTV request for item {request.ItemId} from slot {request.InventoryPosition}. {_statusMessage}";
+            _statusMessage =
+                $"Staged CUserLocal::ConsumeCashItem MapleTV request for item {request.ItemId} from slot {request.InventoryPosition}; awaiting authoritative CMapleTVMan::OnSetMessage or OnSendMessageResult.";
+            message = _statusMessage;
             return true;
         }
 

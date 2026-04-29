@@ -97,6 +97,7 @@ namespace HaCreator.MapSimulator.UI
             public int Count { get; init; } = 1;
             public long Price { get; init; }
             public int PeriodDays { get; init; }
+            public int Gender { get; init; } = 2;
             public bool OnSale { get; init; }
             public string Label { get; init; } = string.Empty;
         }
@@ -316,6 +317,7 @@ namespace HaCreator.MapSimulator.UI
             public long Price { get; init; }
             public int Priority { get; init; }
             public int PeriodDays { get; init; }
+            public int Gender { get; init; } = 2;
             public bool OnSale { get; init; }
         }
 
@@ -915,10 +917,17 @@ namespace HaCreator.MapSimulator.UI
             bool hasResultCode,
             string blockingOwner)
         {
-            bool hasPendingRequestState = _pendingRequestEntry != null
-                || _pendingPacketOwnedWishlistRegisterEntry != null
-                || _packetOwnedAdminShopSession.IsWaitingForResult
-                || _pendingPacketOwnedAdminShopResult;
+            bool hasPendingRequestState = AdminShopPacketOwnedOwnerGateParity.HasPendingResultRequestState(
+                hasPendingTradeRequest: _pendingRequestEntry != null,
+                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null
+                    || _pendingPacketOwnedWishlistRegisterItemId > 0
+                    || !string.IsNullOrWhiteSpace(_pendingPacketOwnedWishlistRegisterTitle)
+                    || _packetOwnedAdminShopSession.HasPendingWishlistRegister,
+                hasPendingWishlistSearch: _packetOwnedWishlistPendingSearchRequestId >= 0
+                    || !string.IsNullOrWhiteSpace(_packetOwnedWishlistPendingSearchQuery)
+                    || _packetOwnedAdminShopSession.HasPendingWishlistSearch,
+                isWaitingForResult: _packetOwnedAdminShopSession.IsWaitingForResult,
+                hasPendingPacketOwnedResult: _pendingPacketOwnedAdminShopResult);
             bool keepSessionActive = _packetOwnedAdminShopSession.IsActive
                 && (_packetOwnedAdminShopRows.Count > 0 || _packetOwnedAdminShopSession.DecodedItemCount > 0);
             bool shouldStageDeferredResult = AdminShopPacketOwnedOwnerGateParity.ShouldStageDeferredResultAtOwnerGate(
@@ -994,10 +1003,17 @@ namespace HaCreator.MapSimulator.UI
 
         internal string ApplyPacketOwnedAdminShopMalformedResultIgnoredByUniqueModelessOwner(string blockingOwner)
         {
-            bool hasPendingRequestState = _pendingRequestEntry != null
-                || _pendingPacketOwnedWishlistRegisterEntry != null
-                || _packetOwnedAdminShopSession.IsWaitingForResult
-                || _pendingPacketOwnedAdminShopResult;
+            bool hasPendingRequestState = AdminShopPacketOwnedOwnerGateParity.HasPendingResultRequestState(
+                hasPendingTradeRequest: _pendingRequestEntry != null,
+                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null
+                    || _pendingPacketOwnedWishlistRegisterItemId > 0
+                    || !string.IsNullOrWhiteSpace(_pendingPacketOwnedWishlistRegisterTitle)
+                    || _packetOwnedAdminShopSession.HasPendingWishlistRegister,
+                hasPendingWishlistSearch: _packetOwnedWishlistPendingSearchRequestId >= 0
+                    || !string.IsNullOrWhiteSpace(_packetOwnedWishlistPendingSearchQuery)
+                    || _packetOwnedAdminShopSession.HasPendingWishlistSearch,
+                isWaitingForResult: _packetOwnedAdminShopSession.IsWaitingForResult,
+                hasPendingPacketOwnedResult: _pendingPacketOwnedAdminShopResult);
             bool keepSessionActive = _packetOwnedAdminShopSession.IsActive
                 && (_packetOwnedAdminShopRows.Count > 0 || _packetOwnedAdminShopSession.DecodedItemCount > 0);
             AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible
@@ -1064,6 +1080,7 @@ namespace HaCreator.MapSimulator.UI
                 stagedResult.TrailingPayloadSignature,
                 stagedResult.TrailingPayload,
                 stagedResult.HasResultCode,
+                false,
                 out string resultMessage,
                 out noticeText,
                 out _);
@@ -1114,6 +1131,31 @@ namespace HaCreator.MapSimulator.UI
             out string noticeText,
             out bool reopenRequested)
         {
+            return TryApplyPacketOwnedAdminShopResult(
+                subtype,
+                resultCode,
+                trailingByteCount,
+                trailingPayloadSignature,
+                trailingPayload,
+                hasResultCode,
+                true,
+                out message,
+                out noticeText,
+                out reopenRequested);
+        }
+
+        private bool TryApplyPacketOwnedAdminShopResult(
+            byte subtype,
+            byte resultCode,
+            int trailingByteCount,
+            string trailingPayloadSignature,
+            byte[] trailingPayload,
+            bool hasResultCode,
+            bool countAsInboundPacket,
+            out string message,
+            out string noticeText,
+            out bool reopenRequested)
+        {
             message = "Packet-owned admin-shop result could not be applied.";
             noticeText = string.Empty;
             reopenRequested = false;
@@ -1125,7 +1167,8 @@ namespace HaCreator.MapSimulator.UI
                 resultCode,
                 trailingByteCount,
                 hasResultCode,
-                trailingPayloadSignature);
+                trailingPayloadSignature,
+                countAsInboundPacket);
             CapturePacketOwnedWishlistSearchSnapshot(
                 subtype,
                 resultCode,
@@ -2736,6 +2779,7 @@ namespace HaCreator.MapSimulator.UI
                     Count = Math.Max(1, candidate.Count),
                     Price = Math.Max(0L, candidate.Price),
                     PeriodDays = Math.Max(0, candidate.PeriodDays),
+                    Gender = AdminShopPacketOwnedSellTemplateParity.NormalizeCommodityGender(candidate.Gender),
                     OnSale = candidate.OnSale,
                     Label = BuildCommodityPurchaseVariantLabel(candidate)
                 })
@@ -2753,14 +2797,15 @@ namespace HaCreator.MapSimulator.UI
             string period = commodity.PeriodDays > 0
                 ? $"{commodity.PeriodDays.ToString(CultureInfo.InvariantCulture)}d"
                 : "permanent";
+            string gender = AdminShopPacketOwnedSellTemplateParity.ResolveCommodityGenderLabel(commodity.Gender);
             string price = Math.Max(0L, commodity.Price).ToString("N0", CultureInfo.InvariantCulture);
             string sale = commodity.OnSale ? "on sale" : "unavailable";
-            return $"{quantity} / {period} / {price} mesos / {sale}";
+            return $"{quantity} / {period} / {gender} / {price} mesos / {sale}";
         }
 
-        internal static string AppendPacketOwnedCommodityMetadataDetail(string detail, int rewardQuantity, int periodDays)
+        internal static string AppendPacketOwnedCommodityMetadataDetail(string detail, int rewardQuantity, int periodDays, int gender = 2)
         {
-            List<string> additions = new(2);
+            List<string> additions = new(3);
             if (rewardQuantity > 1)
             {
                 additions.Add($"Count: x{rewardQuantity.ToString(CultureInfo.InvariantCulture)}.");
@@ -2771,6 +2816,14 @@ namespace HaCreator.MapSimulator.UI
                     || !detail.Contains("Period:", StringComparison.OrdinalIgnoreCase)))
             {
                 additions.Add($"Period: {periodDays.ToString(CultureInfo.InvariantCulture)} day(s).");
+            }
+
+            int normalizedGender = AdminShopPacketOwnedSellTemplateParity.NormalizeCommodityGender(gender);
+            if (normalizedGender != 2
+                && (string.IsNullOrWhiteSpace(detail)
+                    || !detail.Contains("Gender:", StringComparison.OrdinalIgnoreCase)))
+            {
+                additions.Add($"Gender: {AdminShopPacketOwnedSellTemplateParity.ResolveCommodityGenderLabel(normalizedGender)}.");
             }
 
             if (additions.Count == 0)
@@ -9046,6 +9099,9 @@ namespace HaCreator.MapSimulator.UI
                             Price = Math.Max(0, price),
                             Priority = TryGetIntProperty(commodityProperty, "Priority", out int priority) ? priority : 0,
                             PeriodDays = TryGetIntProperty(commodityProperty, "Period", out int periodDays) ? periodDays : 0,
+                            Gender = TryGetIntProperty(commodityProperty, "Gender", out int gender)
+                                ? AdminShopPacketOwnedSellTemplateParity.NormalizeCommodityGender(gender)
+                                : 2,
                             OnSale = TryGetIntProperty(commodityProperty, "OnSale", out int onSale) && onSale != 0
                         };
 
@@ -9136,7 +9192,8 @@ namespace HaCreator.MapSimulator.UI
                     candidate.OnSale,
                     candidate.Count,
                     candidate.PeriodDays,
-                    candidate.Priority));
+                    candidate.Priority,
+                    candidate.Gender));
             }
 
             int resolvedSerialNumber = AdminShopPacketOwnedSellTemplateParity.SelectBestPacketOwnedCommodityMetadataSerial(
@@ -9760,7 +9817,8 @@ namespace HaCreator.MapSimulator.UI
                 detail = AppendPacketOwnedCommodityMetadataDetail(
                     detail,
                     rewardQuantity,
-                    resolvedCommodity.PeriodDays);
+                    resolvedCommodity.PeriodDays,
+                    resolvedCommodity.Gender);
             }
 
             string stateLabel = isBuyRow
@@ -9910,7 +9968,8 @@ namespace HaCreator.MapSimulator.UI
                 detail = AppendPacketOwnedCommodityMetadataDetail(
                     detail,
                     sourceItemQuantity,
-                    resolvedCommodity.PeriodDays);
+                    resolvedCommodity.PeriodDays,
+                    resolvedCommodity.Gender);
             }
 
             bool available = commodity.SaleState == 0;

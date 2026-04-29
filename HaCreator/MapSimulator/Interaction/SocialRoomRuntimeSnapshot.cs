@@ -86,6 +86,9 @@ namespace HaCreator.MapSimulator.Interaction
         public int EntrustedBlacklistSelectedIndex { get; set; } = -1;
         public string EntrustedChildDialogStatus { get; set; }
         public string EntrustedBlacklistLastOutboundPacketSummary { get; set; }
+        public string EntrustedBlacklistPendingMutationName { get; set; }
+        public bool? EntrustedBlacklistPendingMutationAdd { get; set; }
+        public string EntrustedBlacklistPendingMutationRawPacketHex { get; set; }
         public List<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries { get; set; } = new();
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog { get; set; }
         public List<string> BlockedVisitors { get; set; } = new();

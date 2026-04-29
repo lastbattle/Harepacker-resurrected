@@ -430,6 +430,13 @@ namespace HaCreator.MapSimulator.Interaction
             [0x1031] = "UI/UIWindow.img/MonsterCarnival/BtSide",
             [0x1032] = "UI/UIWindow.img/MonsterCarnival/Tab/enabled",
             [0x1033] = "UI/UIWindow.img/MonsterCarnival/Tab/disabled",
+            // Recovered from MapleStory.exe v95 `CUIRevive::Revive` and nearby
+            // revive-result feedback. Keep the owner notices explicit so the
+            // revive seam can report the same client text after the mirrored
+            // transfer-field request instead of using only simulator summaries.
+            [0x0BC2] = "The EXP did not drop after using the Safety Charm once.(%d days/%d times left)",
+            [0x1494] = "You have used 1 Wheel of Destiny in order to revive at the current map. (%d left)",
+            [0x155A] = "You have revived on the current map through the effect of the Spirit Stone.",
             // Recovered from MapleStory.exe v95 `CField_CookieHouse::Init`,
             // `CField_CookieHouse::Update`, and `CWvsContext::OnSessionValue`. The current
             // generated table keeps the Cookie House WZ ids stable, but the session-value key

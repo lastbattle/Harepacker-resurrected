@@ -684,24 +684,33 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string transferRequestSummary = DispatchPacketOwnedWhisperChaseTransferFieldRequest(mapId, x, y);
+            PacketOwnedWhisperChaseTransferDispatchResult transferRequestResult = DispatchPacketOwnedWhisperChaseTransferFieldRequest(mapId, x, y);
             SetTransferFieldExclusiveRequestSent(currTickCount);
+            if (!ShouldUseSimulatorWhisperChaseMapChangeFallback(transferRequestResult.AcceptedByClientTransport))
+            {
+                ShowUtilityFeedbackMessage(
+                    $"Dispatched packet-owned whisper follow transfer request to {ResolveMapTransferDisplayName(mapId, null)} ({x}, {y}) and left map transfer to the client/server response lifecycle. {transferRequestResult.Summary}");
+                return true;
+            }
+
             bool queued = QueueMapTransfer(mapId, null);
             if (queued)
             {
                 SetPendingMapSpawnTarget(x, y);
                 ShowUtilityFeedbackMessage(
-                    $"Queued packet-owned whisper follow transfer to {ResolveMapTransferDisplayName(mapId, null)} ({x}, {y}). {transferRequestSummary}");
+                    $"Queued packet-owned whisper follow transfer fallback to {ResolveMapTransferDisplayName(mapId, null)} ({x}, {y}) because no client packet transport accepted the native request. {transferRequestResult.Summary}");
             }
 
             return queued;
         }
 
-        private string DispatchPacketOwnedWhisperChaseTransferFieldRequest(int mapId, int x, int y)
+        private PacketOwnedWhisperChaseTransferDispatchResult DispatchPacketOwnedWhisperChaseTransferFieldRequest(int mapId, int x, int y)
         {
             if (!TryBuildPacketOwnedWhisperChaseTransferFieldPayload(mapId, x, y, out byte[] payload))
             {
-                return "Could not build the packet-owned whisper chase transfer-field request payload.";
+                return new PacketOwnedWhisperChaseTransferDispatchResult(
+                    AcceptedByClientTransport: false,
+                    Summary: "Could not build the packet-owned whisper chase transfer-field request payload.");
             }
 
             string payloadHex = Convert.ToHexString(payload);
@@ -711,7 +720,9 @@ namespace HaCreator.MapSimulator
                 payload,
                 out string bridgeStatus))
             {
-                return $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}";
+                return new PacketOwnedWhisperChaseTransferDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}");
             }
 
             string outboxStatus = "generic packet outbox not attempted.";
@@ -723,7 +734,9 @@ namespace HaCreator.MapSimulator
                     out queuedBridgeStatus);
             if (deferredBridgeQueued)
             {
-                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Deferred bridge: {queuedBridgeStatus}";
+                return new PacketOwnedWhisperChaseTransferDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Deferred bridge: {queuedBridgeStatus}");
             }
 
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(
@@ -731,7 +744,9 @@ namespace HaCreator.MapSimulator
                 payload,
                 out outboxStatus))
             {
-                return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+                return new PacketOwnedWhisperChaseTransferDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}");
             }
 
             if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
@@ -739,10 +754,19 @@ namespace HaCreator.MapSimulator
                 payload,
                 out string queuedOutboxStatus))
             {
-                return $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+                return new PacketOwnedWhisperChaseTransferDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}");
             }
 
-            return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PacketOwnedWhisperChaseTransferFieldRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            return new PacketOwnedWhisperChaseTransferDispatchResult(
+                AcceptedByClientTransport: false,
+                Summary: $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PacketOwnedWhisperChaseTransferFieldRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}");
+        }
+
+        private static bool ShouldUseSimulatorWhisperChaseMapChangeFallback(bool acceptedByClientTransport)
+        {
+            return !acceptedByClientTransport;
         }
 
         private static bool TryBuildPacketOwnedWhisperChaseTransferFieldPayload(int mapId, int x, int y, out byte[] payload)
@@ -781,6 +805,11 @@ namespace HaCreator.MapSimulator
             return TryBuildPacketOwnedWhisperChaseTransferFieldPayload(mapId, x, y, out byte[] payload)
                 ? payload
                 : Array.Empty<byte>();
+        }
+
+        internal static bool ShouldUseSimulatorWhisperChaseMapChangeFallbackForTest(bool acceptedByClientTransport)
+        {
+            return ShouldUseSimulatorWhisperChaseMapChangeFallback(acceptedByClientTransport);
         }
 
         private bool HasPacketOwnedWhisperTransferTarget(int mapId)
@@ -3126,6 +3155,10 @@ namespace HaCreator.MapSimulator
             string CategoryName,
             string ImageName,
             string PropertyPath);
+
+        private readonly record struct PacketOwnedWhisperChaseTransferDispatchResult(
+            bool AcceptedByClientTransport,
+            string Summary);
 
         private sealed class PacketOwnedUiAnimation
         {

@@ -3239,7 +3239,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "guildboss",
                 "Inspect or update guild boss healer and pulley state",
-                "/guildboss [status|transport [status]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
+                "/guildboss [status|transport [status]|session [status|verify|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
                 args =>
                 {
                     GuildBossField guildBoss = _specialFieldRuntime.SpecialEffects.GuildBoss;
@@ -3284,6 +3284,14 @@ namespace HaCreator.MapSimulator
                         {
                             return ChatCommandHandler.CommandResult.Info(
                                 $"{guildBoss.DescribeStatus()}{Environment.NewLine}{DescribeGuildBossOfficialSessionBridgeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "verify", StringComparison.OrdinalIgnoreCase))
+                        {
+                            bool verified = _guildBossOfficialSessionBridge.TryVerifyPassiveEstablishedSession(out string verifyStatus);
+                            return verified
+                                ? ChatCommandHandler.CommandResult.Ok($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}")
+                                : ChatCommandHandler.CommandResult.Info($"{verifyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}");
                         }
 
 
@@ -3600,7 +3608,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|verify|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
 
                 });
             _chat.CommandHandler.RegisterCommand(
@@ -5627,7 +5635,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "ariantarena",
                 "Inspect or drive the Ariant Arena ranking, result HUD, and remote actor overlay",
-                "/ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|actor <add|avatar|move|remove|clear|status> ...|inbox [status|start [port]|stop]|remove <name>|result|clear]",
+                "/ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|actor <add|avatar|move|remove|clear|status> ...|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <packetType>|unmap <opcode>|resetmap|stop]|remove <name>|result|clear]",
                 args =>
                 {
                     AriantArenaField field = _specialFieldRuntime.Minigames.AriantArena;
@@ -5943,7 +5951,7 @@ namespace HaCreator.MapSimulator
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                             {
                                 return ChatCommandHandler.CommandResult.Info(
-                                    $"{field.DescribeStatus()}{Environment.NewLine}{_ariantArenaPacketInbox.LastStatus}");
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_ariantArenaPacketInbox.LastStatus}{Environment.NewLine}{DescribeRemoteUserOfficialSessionBridgeStatus()}");
                             }
 
 
@@ -5962,6 +5970,11 @@ namespace HaCreator.MapSimulator
 
 
                             return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena inbox [status|start|stop]");
+
+
+
+                        case "session":
+                            return HandleRemoteUserSessionCommand(args.Skip(1).ToArray());
 
 
 
@@ -5995,7 +6008,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|actor <add|avatar|move|remove|clear|status> ...|inbox [status|start [port]|stop]|remove <name>|result|clear]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|actor <add|avatar|move|remove|clear|status> ...|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <packetType>|unmap <opcode>|resetmap|stop]|remove <name>|result|clear]");
                     }
                 });
 
@@ -9100,7 +9113,7 @@ namespace HaCreator.MapSimulator
                                     int tradeQty = args.Length > actionIndex + 2 && int.TryParse(args[actionIndex + 2], out int parsedTradeQty) ? parsedTradeQty : 1;
                                     return (packetMode
                                             ? DispatchTradingRoomPacketOwnedItem(remoteParty: false, tradeItemId, tradeQty, out string tradeItemMessage)
-                                            : Dispatch(SocialRoomPacketType.OfferTradeItem, out tradeItemMessage, itemId: tradeItemId, quantity: tradeQty))
+                                            : TrySendTradingRoomPutItemRequest(runtime, tradeItemId, tradeQty, out tradeItemMessage))
                                         ? ChatCommandHandler.CommandResult.Ok(tradeItemMessage)
                                         : ChatCommandHandler.CommandResult.Error(tradeItemMessage);
                                 case "offermeso":
@@ -9112,7 +9125,7 @@ namespace HaCreator.MapSimulator
 
                                     return (packetMode
                                             ? DispatchTradingRoomPacketOwnedMeso(remoteParty: false, tradeMeso, out string tradeMesoMessage)
-                                            : Dispatch(SocialRoomPacketType.OfferTradeMeso, out tradeMesoMessage, meso: tradeMeso))
+                                            : TrySendTradingRoomPutMoneyRequest(runtime, tradeMeso, out tradeMesoMessage))
                                         ? ChatCommandHandler.CommandResult.Ok(tradeMesoMessage)
                                         : ChatCommandHandler.CommandResult.Error(tradeMesoMessage);
                                 case "lock":

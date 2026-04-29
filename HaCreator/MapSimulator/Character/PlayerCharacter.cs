@@ -7896,6 +7896,10 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(sourcePart.BonusDEX);
             signature.Add(sourcePart.BonusINT);
             signature.Add(sourcePart.BonusLUK);
+            signature.Add(sourcePart.BonusSTRPercent);
+            signature.Add(sourcePart.BonusDEXPercent);
+            signature.Add(sourcePart.BonusINTPercent);
+            signature.Add(sourcePart.BonusLUKPercent);
             signature.Add(sourcePart.BonusHP);
             signature.Add(sourcePart.BonusMP);
             signature.Add(sourcePart.BonusHPPercent);
@@ -7904,10 +7908,17 @@ namespace HaCreator.MapSimulator.Character
             signature.Add(sourcePart.BonusMagicAttack);
             signature.Add(sourcePart.BonusWeaponDefense);
             signature.Add(sourcePart.BonusMagicDefense);
+            signature.Add(sourcePart.BonusWeaponAttackPercent);
+            signature.Add(sourcePart.BonusMagicAttackPercent);
+            signature.Add(sourcePart.BonusWeaponDefensePercent);
+            signature.Add(sourcePart.BonusMagicDefensePercent);
             signature.Add(sourcePart.BonusAccuracy);
             signature.Add(sourcePart.BonusAvoidability);
+            signature.Add(sourcePart.BonusAccuracyPercent);
+            signature.Add(sourcePart.BonusAvoidabilityPercent);
             signature.Add(sourcePart.BonusHands);
             signature.Add(sourcePart.BonusSpeed);
+            signature.Add(sourcePart.BonusSpeedPercent);
             signature.Add(sourcePart.BonusJump);
             signature.Add(sourcePart.UpgradeSlots);
             signature.Add(sourcePart.TotalUpgradeSlotCount ?? int.MinValue);
@@ -12044,7 +12055,7 @@ namespace HaCreator.MapSimulator.Character
                     transform = IsMechanicTankOwnedRushAction(normalizedAction)
                         ? CreateSingleActionTransform(
                             skillId,
-                            ResolveMechanicTankOwnedTransformActionName(normalizedAction, "mRush", "tank_mRush"),
+                            "tank_mRush",
                             exitActionName: null)
                         : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                     return true;
@@ -12183,7 +12194,7 @@ namespace HaCreator.MapSimulator.Character
                 transform = IsMechanicTankOwnedRushAction(normalizedAction)
                     ? CreateSingleActionTransform(
                         skillId,
-                        ResolveMechanicTankOwnedTransformActionName(normalizedAction, "mRush", "tank_mRush"),
+                        "tank_mRush",
                         exitActionName: null)
                     : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                 return true;

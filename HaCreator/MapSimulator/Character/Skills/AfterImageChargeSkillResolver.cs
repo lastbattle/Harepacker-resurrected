@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal const int ChargeMetadataScopedScanBytes = sizeof(int) * 4;
         internal const int ChargeMetadataMissingMaskBaseNearestScanBytes = sizeof(int) * 16;
         internal const int ChargeMetadataMissingConsensusMinimumMatches = 2;
+        internal const int ChargeMetadataMissingSeparatedPairMaxDistanceBytes = sizeof(int) * 2;
         private const int PageFireChargeSkillId = 1211004;
         private const int PageIceChargeSkillId = 1211006;
         private const int PageLightningChargeSkillId = 1211008;
@@ -1004,6 +1005,84 @@ namespace HaCreator.MapSimulator.Character.Skills
                 out chargeElement);
         }
 
+        internal static bool TryResolveChargeElementBySeparatedSkillElementPairConsensusFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int minimumPairs,
+            int maxPairDistanceBytes,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int) * 2
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
+                || minimumPairs <= 1
+                || maxPairDistanceBytes < sizeof(int))
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - (sizeof(int) * 2))
+            {
+                return false;
+            }
+
+            int icePairs = 0;
+            int firePairs = 0;
+            int lightningPairs = 0;
+            int holyPairs = 0;
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateSkillId = ReadInt32LittleEndian(payload, offset);
+                if (!TryGetChargeElement(candidateSkillId, out int skillElement))
+                {
+                    continue;
+                }
+
+                if (!HasMatchingNearbyElementValue(
+                        payload,
+                        alignedStartOffset,
+                        offset,
+                        skillElement,
+                        maxPairDistanceBytes))
+                {
+                    continue;
+                }
+
+                switch (skillElement)
+                {
+                    case 1:
+                        icePairs++;
+                        break;
+                    case 2:
+                        firePairs++;
+                        break;
+                    case 3:
+                        lightningPairs++;
+                        break;
+                    case 5:
+                        holyPairs++;
+                        break;
+                }
+            }
+
+            return TryResolveChargeElementFromConsensusCounts(
+                icePairs,
+                firePairs,
+                lightningPairs,
+                holyPairs,
+                preferredSkillId,
+                minimumPairs,
+                out chargeElement);
+        }
+
         private static int ResolveAdjacentSkillElementPair(int firstValue, int secondValue)
         {
             if (IsKnownChargeElement(secondValue)
@@ -1021,6 +1100,40 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 0;
+        }
+
+        private static bool HasMatchingNearbyElementValue(
+            ReadOnlySpan<byte> payload,
+            int alignedStartOffset,
+            int skillOffset,
+            int skillElement,
+            int maxPairDistanceBytes)
+        {
+            int minOffset = Math.Max(alignedStartOffset, skillOffset - maxPairDistanceBytes);
+            int maxOffset = Math.Min(payload.Length - sizeof(int), skillOffset + maxPairDistanceBytes);
+            for (int offset = minOffset; offset <= maxOffset; offset += sizeof(int))
+            {
+                if (offset == skillOffset)
+                {
+                    continue;
+                }
+
+                int candidateElement = ReadInt32LittleEndian(payload, offset);
+                if (candidateElement == skillElement)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int ReadInt32LittleEndian(ReadOnlySpan<byte> payload, int offset)
+        {
+            return payload[offset]
+                | (payload[offset + 1] << 8)
+                | (payload[offset + 2] << 16)
+                | (payload[offset + 3] << 24);
         }
 
         private static bool TryResolveChargeElementFromConsensusCounts(

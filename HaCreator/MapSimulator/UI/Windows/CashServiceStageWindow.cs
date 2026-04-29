@@ -5806,11 +5806,21 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
             }
 
-            int previewLength = Math.Min(trailingLength, 24);
+            byte[] trailingPayload = new byte[trailingLength];
+            Buffer.BlockCopy(payload, startOffset, trailingPayload, 0, trailingLength);
+            AppendRawCashPacketTailEntry(
+                trailingPayload,
+                paneLabel,
+                browseModeLabel,
+                titlePrefix,
+                seller,
+                stateLabel,
+                sourceOffset: startOffset);
+            int previewLength = Math.Min(trailingPayload.Length, 24);
             byte[] preview = new byte[previewLength];
-            Buffer.BlockCopy(payload, startOffset, preview, 0, previewLength);
-            string suffix = trailingLength > previewLength ? "..." : string.Empty;
-            return $"Trailing packet tail ({trailingLength.ToString(CultureInfo.InvariantCulture)} byte(s)) remained after primary decode: {Convert.ToHexString(preview)}{suffix}.";
+            Buffer.BlockCopy(trailingPayload, 0, preview, 0, previewLength);
+            string suffix = trailingPayload.Length > previewLength ? "..." : string.Empty;
+            return $"Trailing packet tail ({trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)) was retained as packet-owned raw state after primary decode: {Convert.ToHexString(preview)}{suffix}.";
         }
 
         private string AppendTrailingCashItemInfoFromReader(
@@ -5858,11 +5868,19 @@ namespace HaCreator.MapSimulator.UI
                     : $"{decodedSummary} Recovered at trailing offset {decodedOffset.ToString(CultureInfo.InvariantCulture)}.";
             }
 
+            AppendRawCashPacketTailEntry(
+                trailingPayload,
+                paneLabel,
+                browseModeLabel,
+                titlePrefix,
+                seller,
+                stateLabel,
+                sourceOffset: 0);
             int previewLength = Math.Min(trailingPayload.Length, 24);
             byte[] preview = new byte[previewLength];
             Buffer.BlockCopy(trailingPayload, 0, preview, 0, previewLength);
             string suffix = trailingPayload.Length > previewLength ? "..." : string.Empty;
-            return $"Trailing packet tail ({trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)) remained after primary decode: {Convert.ToHexString(preview)}{suffix}.";
+            return $"Trailing packet tail ({trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)) was retained as packet-owned raw state after primary decode: {Convert.ToHexString(preview)}{suffix}.";
         }
 
         private static List<CashItemInfoPacketSnapshot> TryDecodeEmbeddedCashItemInfoSnapshots(byte[] payload, int startOffset, int maxCount)
@@ -5949,6 +5967,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 PacketCatalogEntry entry = BuildCashItemInfoPacketEntry(snapshots[i], titlePrefix, seller, stateLabel);
                 decodedEntries.Add(entry);
+                ApplyEmbeddedCashItemInfoToChildOwner(entry, paneLabel, browseModeLabel);
                 AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, entry);
             }
 
@@ -5957,6 +5976,67 @@ namespace HaCreator.MapSimulator.UI
                 ? firstEntry.Detail
                 : firstEntry.PacketFieldSummary;
             return $"Decoded {snapshots.Count.ToString(CultureInfo.InvariantCulture)} embedded GW_CashItemInfo row(s){(string.IsNullOrWhiteSpace(firstSummary) ? "." : $": {firstSummary}.")}";
+        }
+
+        private void ApplyEmbeddedCashItemInfoToChildOwner(PacketCatalogEntry entry, string paneLabel, string browseModeLabel)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            string ownerKey = $"{paneLabel} {browseModeLabel} {entry.Seller} {entry.StateLabel}";
+            if (ownerKey.Contains("Inventory", StringComparison.Ordinal)
+                || ownerKey.Contains("CCSWnd_Inventory", StringComparison.Ordinal))
+            {
+                UpsertCashInventoryPacketEntry(ClonePacketCatalogEntry(entry, "Inventory body"));
+                return;
+            }
+
+            if (ownerKey.Contains("Locker", StringComparison.Ordinal)
+                || ownerKey.Contains("CCSWnd_Locker", StringComparison.Ordinal)
+                || ownerKey.Contains("Buy", StringComparison.Ordinal)
+                || ownerKey.Contains("Package", StringComparison.Ordinal)
+                || ownerKey.Contains("Coupon", StringComparison.Ordinal)
+                || ownerKey.Contains("Name", StringComparison.Ordinal)
+                || ownerKey.Contains("Transfer", StringComparison.Ordinal)
+                || ownerKey.Contains("Rebate", StringComparison.Ordinal)
+                || ownerKey.Contains("Free", StringComparison.Ordinal))
+            {
+                UpsertCashLockerPacketEntry(ClonePacketCatalogEntry(entry, "Locker body"));
+                _cashLockerItemCount = Math.Max(_cashLockerPacketEntries.Count, _cashLockerItemCount);
+            }
+        }
+
+        private void AppendRawCashPacketTailEntry(
+            byte[] trailingPayload,
+            string paneLabel,
+            string browseModeLabel,
+            string titlePrefix,
+            string seller,
+            string stateLabel,
+            int sourceOffset)
+        {
+            byte[] normalizedPayload = trailingPayload ?? Array.Empty<byte>();
+            if (normalizedPayload.Length == 0)
+            {
+                return;
+            }
+
+            string normalizedTitle = string.IsNullOrWhiteSpace(titlePrefix) ? "Cash packet tail" : titlePrefix;
+            string normalizedState = string.IsNullOrWhiteSpace(stateLabel) ? "Raw body" : stateLabel;
+            AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, new PacketCatalogEntry
+            {
+                Title = normalizedTitle,
+                Detail = $"{normalizedTitle} retained {normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} raw trailing byte(s) for the packet-owned stage row.",
+                Seller = string.IsNullOrWhiteSpace(seller) ? "CCashShop" : seller,
+                PriceLabel = $"Offset {Math.Max(0, sourceOffset).ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = normalizedState,
+                PacketSource = normalizedTitle,
+                PacketFieldSummary = $"Raw trailing packet body: offset {Math.Max(0, sourceOffset).ToString(CultureInfo.InvariantCulture)}, {normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s).",
+                PacketRawByteLength = normalizedPayload.Length,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(normalizedPayload)
+            });
         }
 
         private static string EscapePacketAsciiLiteral(string value)

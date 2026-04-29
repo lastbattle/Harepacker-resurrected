@@ -1291,12 +1291,13 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (!TryValidatePostMapTransferRemainder(
                         candidateTail[knownTailOffset..],
-                        out _,
+                        out bool matchedKnownRemainder,
                         out int remainderCandidateScore))
                 {
                     continue;
                 }
 
+                matchedKnownTail = matchedKnownRemainder || knownTailOffset > 0;
                 tailCandidateScore = Math.Min(
                     GetBoundedOpaqueTailCandidateScore(opaquePrefixLength),
                     remainderCandidateScore);
