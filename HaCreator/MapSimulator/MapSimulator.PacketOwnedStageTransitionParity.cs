@@ -42,7 +42,7 @@ namespace HaCreator.MapSimulator
             {
                 // Stage transition response owners clear CWvsContext shared
                 // transfer/portal exclusive-request sent state.
-                ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
+                ConsumeSharedExclusiveRequestStateFromStageTransitionLifecycle();
             }
 
             if (packetType == 141

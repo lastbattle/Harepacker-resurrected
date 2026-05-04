@@ -2998,7 +2998,8 @@ namespace HaCreator.MapSimulator
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
-                        return ChatCommandHandler.CommandResult.Info(_engagementProposalController.DescribeStatus());
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"{_engagementProposalController.DescribeStatus()}{Environment.NewLine}{_weddingInvitationController.DescribeStatus()}");
                     }
                     switch (args[0].ToLowerInvariant())
                     {
@@ -3144,16 +3145,54 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Dismiss(uiWindowManager));
 
                         case "invitation":
-                            WeddingInvitationStyle invitationStyle = WeddingInvitationStyle.Neat;
-                            if (args.Length >= 2 && !Enum.TryParse(args[1], true, out invitationStyle))
+                            if (args.Length >= 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /engage invitation [neat|sweet|premium] [1|2]");
+                                switch (args[1].ToLowerInvariant())
+                                {
+                                    case "status":
+                                        return ChatCommandHandler.CommandResult.Info(_weddingInvitationController.DescribeStatus());
+
+                                    case "accept":
+                                    case "ok":
+                                    {
+                                        string invitationAcceptMessage = _weddingInvitationController.Accept(uiWindowManager);
+                                        if (string.Equals(invitationAcceptMessage, "No wedding invitation is active.", StringComparison.Ordinal))
+                                        {
+                                            return ChatCommandHandler.CommandResult.Error(invitationAcceptMessage);
+                                        }
+
+                                        return ChatCommandHandler.CommandResult.Ok(invitationAcceptMessage);
+                                    }
+
+                                    case "dismiss":
+                                    case "close":
+                                    case "cancel":
+                                    {
+                                        string invitationDismissMessage = _weddingInvitationController.Dismiss(uiWindowManager);
+                                        if (string.Equals(invitationDismissMessage, "No wedding invitation is active.", StringComparison.Ordinal))
+                                        {
+                                            return ChatCommandHandler.CommandResult.Error(invitationDismissMessage);
+                                        }
+
+                                        return ChatCommandHandler.CommandResult.Ok(invitationDismissMessage);
+                                    }
+                                }
+                            }
+
+                            WeddingInvitationStyle invitationStyle = WeddingInvitationStyle.Neat;
+                            int invitationStyleIndex = args.Length >= 2 && string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase)
+                                ? 2
+                                : 1;
+                            if (args.Length > invitationStyleIndex && !Enum.TryParse(args[invitationStyleIndex], true, out invitationStyle))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage invitation [open] [neat|sweet|premium] [1|2]|status|accept|dismiss");
                             }
 
                             int invitationDialogType = WeddingInvitationRuntime.DefaultClientDialogType;
-                            if (args.Length >= 3 && !TryParseOptionalPositiveInt(args, 2, out invitationDialogType))
+                            int invitationDialogTypeIndex = invitationStyleIndex + 1;
+                            if (args.Length > invitationDialogTypeIndex && !TryParseOptionalPositiveInt(args, invitationDialogTypeIndex, out invitationDialogType))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /engage invitation [neat|sweet|premium] [1|2]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage invitation [open] [neat|sweet|premium] [1|2]|status|accept|dismiss");
                             }
 
                             if (invitationDialogType != WeddingInvitationRuntime.DefaultClientDialogType
@@ -3230,7 +3269,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok($"{clearMessage} {invitationClearMessage}");
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [open] [neat|sweet|premium] [1|2]|invitation <status|accept|dismiss>|wishlist [receive|give|input] [groom|bride]|clear|status]");
                     }
                 });
 
@@ -7183,6 +7222,33 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_massacreOfficialSessionBridge.ClearRecentInboundPackets());
                         }
 
+                        if (string.Equals(args[1], "send", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length != 4
+                                || !MassacreSessionCommandParsing.TryParseOpcode(args[2], out int outboundOpcode)
+                                || !MassacrePacketInboxManager.TryParseHexPayload(args[3], out byte[] outboundPayload))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.SendUsage);
+                            }
+
+                            return _massacreOfficialSessionBridge.TrySendOutboundPacket(outboundOpcode, outboundPayload, out string sendStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                                : ChatCommandHandler.CommandResult.Error(sendStatus);
+                        }
+
+                        if (string.Equals(args[1], "sendraw", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length != 3
+                                || !MassacrePacketInboxManager.TryParseHexPayload(args[2], out byte[] outboundRawPacket))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.SendRawUsage);
+                            }
+
+                            return _massacreOfficialSessionBridge.TrySendOutboundRawPacket(outboundRawPacket, out string sendRawStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(sendRawStatus)
+                                : ChatCommandHandler.CommandResult.Error(sendRawStatus);
+                        }
+
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
                             _massacreOfficialSessionBridge.Stop();
@@ -7384,7 +7450,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result|stage|bonus>|unmap <opcode|all>|recent [count]|clearrecent|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result|stage|bonus>|unmap <opcode|all>|recent [count]|clearrecent|send <opcode> <hex-payload>|sendraw <opcode-framed-hex>|stop]]");
                 });
 
 

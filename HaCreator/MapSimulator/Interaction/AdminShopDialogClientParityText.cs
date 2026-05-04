@@ -151,6 +151,16 @@ namespace HaCreator.MapSimulator.Interaction
             return $"CAdminShopDlg::OnPacket received unrecovered subtype 4 result code {resultCode}; the simulator preserved the selected row instead of inventing a local trade outcome.";
         }
 
+        internal static string BuildUnmodeledWishlistRegisterResultCodeMessage(byte resultCode)
+        {
+            return $"CUIAdminShopWishList register received unrecovered subtype 4 result code {resultCode}; the simulator left the wish-list row unchanged instead of inventing a register outcome.";
+        }
+
+        internal static string BuildUnmodeledWishlistSearchResultCodeMessage(byte resultCode)
+        {
+            return $"CUIAdminShopWishList SearchItemName received unrecovered subtype 4 result code {resultCode}; the simulator left the active admin-shop owner and staged search rows unchanged instead of inventing a search outcome.";
+        }
+
         internal static string BuildResultStateLabel(byte resultCode)
         {
             return resultCode switch

@@ -90,7 +90,11 @@ namespace HaCreator.MapSimulator.Fields
             FreshHandleUpKeyDownPortalHandled = 5,
             ChairGetUp = 6,
             FollowCharacterFailure = 7,
-            SameMapTeleport = 8
+            SameMapTeleport = 8,
+            MapLoad = 9,
+            StageTransition = 10,
+            FieldFeedbackTransferFailure = 11,
+            PacketTeleportResult = 12
         }
 
         public enum QueuedRetryWriterOwner
@@ -218,6 +222,41 @@ namespace HaCreator.MapSimulator.Fields
             return ShouldClearQueuedRetryFromLifecycleOwner(
                 hasPendingRequest,
                 QueuedRetryLifecycleClearOwner.TransferResponseLifecycle);
+        }
+
+        public static bool ShouldClearQueuedRetryFromMapLoadLifecycle(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.MapLoad);
+        }
+
+        public static bool ShouldClearQueuedRetryFromStageTransitionLifecycle(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.StageTransition);
+        }
+
+        public static bool ShouldClearQueuedRetryFromFieldFeedbackTransferFailure(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.FieldFeedbackTransferFailure);
+        }
+
+        public static bool ShouldClearQueuedRetryFromPacketTeleportResult(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.PacketTeleportResult);
+        }
+
+        public static bool ShouldClearQueuedRetryFromSameMapTeleport(bool hasPendingRequest)
+        {
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                QueuedRetryLifecycleClearOwner.SameMapTeleport);
         }
 
         public static bool ShouldConsumeQueuedRetryOnMapTransferAdmission(bool hasPendingRequest)

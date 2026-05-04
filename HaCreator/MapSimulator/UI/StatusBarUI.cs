@@ -74,6 +74,12 @@ namespace HaCreator.MapSimulator.UI {
         public int TemporaryStatViewParentLayerOrdinal { get; set; }
         public int TemporaryStatViewMainLayerOrdinal { get; set; }
         public int TemporaryStatViewShadowLayerOrdinal { get; set; }
+        public bool IsTemporaryStatViewReleased { get; set; }
+        public int TemporaryStatViewReleaseTime { get; set; } = int.MinValue;
+        public int TemporaryStatViewObjectReleaseSequence { get; set; }
+        public int TemporaryStatViewParentLayerReleaseSequence { get; set; }
+        public int TemporaryStatViewMainLayerReleaseSequence { get; set; }
+        public int TemporaryStatViewShadowLayerReleaseSequence { get; set; }
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }
         public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
@@ -90,6 +96,7 @@ namespace HaCreator.MapSimulator.UI {
         public int ShadowCanvasReferenceCount { get; set; }
         public int ShadowCanvasRemoveSequence { get; set; }
         public int ShadowCanvasInsertSequence { get; set; }
+        public int ShadowCanvasReleaseSequence { get; set; }
         public int AlertLayerAnimationMode { get; set; }
         public int AlertLayerAnimationSequence { get; set; }
     }

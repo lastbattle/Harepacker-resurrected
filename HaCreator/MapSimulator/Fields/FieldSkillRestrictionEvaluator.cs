@@ -563,6 +563,12 @@ namespace HaCreator.MapSimulator.Fields
 
         private static IEnumerable<int> EnumerateClientIndexedIntValues(WzImageProperty property, int defaultValue)
         {
+            if (TryReadInt(property, out int directValue))
+            {
+                yield return directValue;
+                yield break;
+            }
+
             WzPropertyCollection children = property?.WzProperties;
             if (children == null)
             {

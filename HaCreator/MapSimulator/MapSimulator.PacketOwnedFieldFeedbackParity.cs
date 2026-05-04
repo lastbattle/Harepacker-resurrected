@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedRewardRouletteOffsetY = 260;
         private const int PacketOwnedBossTimerOffsetY = 25;
         private const int PacketOwnedBossTimerDigitSpacing = 2;
+        private const string PacketOwnedScreenEffectAnimationOwnerKey = "screen-effect";
         private const int PacketOwnedClockTimerDigitY = 12;
         private const int PacketOwnedClockTimerDigitX1 = 86;
         private const int PacketOwnedClockTimerDigitX2 = 112;
@@ -254,7 +255,7 @@ namespace HaCreator.MapSimulator
                 ClearFieldClock = ClearPacketOwnedFieldClock,
                 RestoreFieldPropertyClock = RestorePacketOwnedFieldPropertyClock,
                 InvalidateWhisperUserListWindow = InvalidatePacketOwnedWhisperUserListWindow,
-                ConsumeTransferFieldRequestFailure = ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle
+                ConsumeTransferFieldRequestFailure = ConsumeSharedExclusiveRequestStateFromFieldFeedbackTransferFailure
             };
         }
 
@@ -2933,16 +2934,7 @@ namespace HaCreator.MapSimulator
 
         internal static string GetPacketOwnedScreenEffectAnimationKey(string descriptor)
         {
-            if (string.IsNullOrWhiteSpace(descriptor))
-            {
-                return "screen:";
-            }
-
-            string normalized = descriptor
-                .Replace('\\', '/')
-                .Trim()
-                .Trim('/');
-            return $"screen:{normalized}";
+            return PacketOwnedScreenEffectAnimationOwnerKey;
         }
 
         internal static bool GetPacketOwnedScreenEffectRegistrationRepeatForTest(bool repeat)

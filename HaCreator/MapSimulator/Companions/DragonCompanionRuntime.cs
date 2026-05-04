@@ -139,6 +139,12 @@ namespace HaCreator.MapSimulator.Companions
                 bool capturedFromOfficialSession,
                 bool officialSessionKeyPadByteProven,
                 bool officialSessionFullTailByteProven,
+                bool hasCapturedKeyPadMemoryStates,
+                bool keyPadMemoryStatesMatch,
+                string capturedKeyPadMemoryStates,
+                string capturedKeyPadMemorySource,
+                bool capturedKeyPadMemoryFromOfficialSession,
+                bool officialSessionKeyPadMemoryByteProven,
                 Rectangle simulatorBounds,
                 Rectangle capturedBounds)
             {
@@ -153,6 +159,12 @@ namespace HaCreator.MapSimulator.Companions
                 CapturedFromOfficialSession = capturedFromOfficialSession;
                 OfficialSessionKeyPadByteProven = officialSessionKeyPadByteProven;
                 OfficialSessionFullTailByteProven = officialSessionFullTailByteProven;
+                HasCapturedKeyPadMemoryStates = hasCapturedKeyPadMemoryStates;
+                KeyPadMemoryStatesMatch = keyPadMemoryStatesMatch;
+                CapturedKeyPadMemoryStates = capturedKeyPadMemoryStates;
+                CapturedKeyPadMemorySource = capturedKeyPadMemorySource;
+                CapturedKeyPadMemoryFromOfficialSession = capturedKeyPadMemoryFromOfficialSession;
+                OfficialSessionKeyPadMemoryByteProven = officialSessionKeyPadMemoryByteProven;
                 SimulatorBounds = simulatorBounds;
                 CapturedBounds = capturedBounds;
             }
@@ -168,6 +180,12 @@ namespace HaCreator.MapSimulator.Companions
             public bool CapturedFromOfficialSession { get; }
             public bool OfficialSessionKeyPadByteProven { get; }
             public bool OfficialSessionFullTailByteProven { get; }
+            public bool HasCapturedKeyPadMemoryStates { get; }
+            public bool KeyPadMemoryStatesMatch { get; }
+            public string CapturedKeyPadMemoryStates { get; }
+            public string CapturedKeyPadMemorySource { get; }
+            public bool CapturedKeyPadMemoryFromOfficialSession { get; }
+            public bool OfficialSessionKeyPadMemoryByteProven { get; }
             public Rectangle SimulatorBounds { get; }
             public Rectangle CapturedBounds { get; }
         }
@@ -228,6 +246,9 @@ namespace HaCreator.MapSimulator.Companions
         private string _lastCapturedVecCtrlEndUpdateActiveFlushSource;
         private bool _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession;
         private string _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
+        private byte[] _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates;
+        private string _lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource;
+        private bool _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession;
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
         private const float GroundSideOffset = 42f;
@@ -569,6 +590,9 @@ namespace HaCreator.MapSimulator.Companions
             _lastCapturedVecCtrlEndUpdateActiveFlushSource = null;
             _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession = false;
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
+            _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates = null;
+            _lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource = null;
+            _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession = false;
         }
 
         internal bool ClearClientOwnedOneTimeActionOnSkillCancel(PlayerCharacter owner, int currentTime)
@@ -1730,6 +1754,19 @@ namespace HaCreator.MapSimulator.Companions
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession,
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession && keyPadStatesMatch,
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession && keyPadStatesMatch && boundsMatch,
+                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null,
+                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null
+                    && hasSimulatorTail
+                    && AreClientDragonFlushKeyPadStatesEqual(
+                        simulatorTail.KeyPadStates,
+                        _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates),
+                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null
+                    ? FormatClientDragonFlushKeyPadStates(_lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates)
+                    : "none",
+                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource,
+                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession,
+                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession
+                    && _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null,
                 simulatorBounds,
                 capturedBounds);
         }

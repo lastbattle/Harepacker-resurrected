@@ -1705,18 +1705,18 @@ namespace HaCreator.MapSimulator.Character
 
         internal static bool IsInteractBlockedByMobStatus(PlayerMobStatusFrameState state)
         {
-            return state.MovementLocked || state.ForcedHorizontalDirection != 0;
+            return state.MovementLocked || state.ForcedControl;
         }
 
         internal static bool ShouldPrepareForMobControlLockout(
             PlayerMobStatusFrameState previousState,
             PlayerMobStatusFrameState currentState)
         {
-            bool enteredForcedHorizontalControl = currentState.ForcedHorizontalDirection != 0
-                                                 && previousState.ForcedHorizontalDirection == 0;
+            bool enteredForcedControl = currentState.ForcedControl
+                                        && !previousState.ForcedControl;
             bool enteredMovementLock = currentState.MovementLocked
                                        && !previousState.MovementLocked;
-            return enteredForcedHorizontalControl || enteredMovementLock;
+            return enteredForcedControl || enteredMovementLock;
         }
 
         internal int AdjustMobAffectedExperienceReward(int baseAmount, int currentTime)
@@ -2011,6 +2011,32 @@ namespace HaCreator.MapSimulator.Character
             {
                 inputState.Left = _currentMobStatusState.ForcedHorizontalDirection < 0;
                 inputState.Right = _currentMobStatusState.ForcedHorizontalDirection > 0;
+                inputState.Up = false;
+                inputState.Down = false;
+                inputState.Attack = false;
+                inputState.AttackPressed = false;
+                inputState.Pickup = false;
+                inputState.PickupPressed = false;
+                inputState.Interact = false;
+                inputState.InteractPressed = false;
+            }
+
+            if (_currentMobStatusState.ForcedJump)
+            {
+                inputState.Jump = true;
+                inputState.JumpPressed = true;
+                inputState.Up = false;
+                inputState.Down = false;
+                inputState.Attack = false;
+                inputState.AttackPressed = false;
+                inputState.Pickup = false;
+                inputState.PickupPressed = false;
+                inputState.Interact = false;
+                inputState.InteractPressed = false;
+            }
+
+            if (_currentMobStatusState.ForcedControl)
+            {
                 inputState.Up = false;
                 inputState.Down = false;
                 inputState.Attack = false;

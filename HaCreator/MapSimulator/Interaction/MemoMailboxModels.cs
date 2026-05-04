@@ -96,6 +96,10 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanClaim { get; init; }
         public bool IsClaimed { get; init; }
         public bool IsExpired { get; init; }
+        public byte QuickDeliveryRawFlag { get; init; }
+        public byte[] QuickDeliveryReservedBytes { get; init; } = Array.Empty<byte>();
+        public bool HasQuickDeliveryReservedState { get; init; }
+        public string QuickDeliveryReservedHex => QuickDeliveryReservedBytes.Length == 0 ? string.Empty : Convert.ToHexString(QuickDeliveryReservedBytes);
     }
 
     internal sealed class MemoMailboxClaimResult
@@ -125,6 +129,10 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanClaimAttachment { get; init; }
         public bool IsAttachmentClaimed { get; init; }
         public bool IsExpired { get; init; }
+        public byte QuickDeliveryRawFlag { get; init; }
+        public byte[] QuickDeliveryReservedBytes { get; init; } = Array.Empty<byte>();
+        public bool HasQuickDeliveryReservedState { get; init; }
+        public string QuickDeliveryReservedHex => QuickDeliveryReservedBytes.Length == 0 ? string.Empty : Convert.ToHexString(QuickDeliveryReservedBytes);
         public string AttachmentSummary { get; init; } = string.Empty;
     }
 

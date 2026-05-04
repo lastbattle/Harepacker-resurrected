@@ -208,7 +208,13 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
 
                 case "bonus":
-                    message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Bonus, "massacre-inbox", trimmed);
+                    if (parts.Length < 2 || !int.TryParse(parts[1], out int bonusValue) || bonusValue < 0)
+                    {
+                        error = "Massacre bonus payload must be a non-negative integer.";
+                        return false;
+                    }
+
+                    message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Bonus, "massacre-inbox", trimmed, value1: bonusValue);
                     return true;
 
                 case "result":
@@ -354,7 +360,7 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        private static bool TryParseHexPayload(string text, out byte[] payload)
+        public static bool TryParseHexPayload(string text, out byte[] payload)
         {
             payload = Array.Empty<byte>();
             string compactHex = string.Concat((text ?? string.Empty).Where(character => !char.IsWhiteSpace(character)));

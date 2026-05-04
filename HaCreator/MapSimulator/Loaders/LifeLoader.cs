@@ -580,27 +580,37 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
+                MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata = BuildMobActionSpeakMetadata(mobStateProperty["speak"]);
                 List<WzCanvasProperty> frameCanvases = BuildMobActionFrameCanvases(mobStateProperty);
-                if (frameCanvases.Count <= 0)
+                if (frameCanvases.Count <= 0 && actionSpeakMetadata == null)
                 {
                     continue;
                 }
 
-                List<MobAnimationSet.FrameMetadata> frameMetadata = BuildMobActionFrameMetadata(mobStateProperty);
-                List<int> frameDelays = BuildMobActionFrameDelays(frameCanvases);
-                List<CachedMobFrameOverlay> frameOverlays = BuildMobActionFrameOverlays(mobStateProperty);
-                MobAnimationSet.ActionSpeakMetadata actionSpeakMetadata = BuildMobActionSpeakMetadata(mobStateProperty["speak"]);
-                if (frameMetadata.Count != frameCanvases.Count)
-                {
-                    frameMetadata = AlignFrameMetadataToFrames(frameCanvases.Count, frameMetadata);
-                }
+                List<MobAnimationSet.FrameMetadata> frameMetadata = frameCanvases.Count > 0
+                    ? BuildMobActionFrameMetadata(mobStateProperty)
+                    : new List<MobAnimationSet.FrameMetadata>();
+                List<int> frameDelays = frameCanvases.Count > 0
+                    ? BuildMobActionFrameDelays(frameCanvases)
+                    : new List<int>();
+                List<CachedMobFrameOverlay> frameOverlays = frameCanvases.Count > 0
+                    ? BuildMobActionFrameOverlays(mobStateProperty)
+                    : new List<CachedMobFrameOverlay>();
 
-                if (ShouldAppendReversePlayback(mobStateProperty))
+                if (frameCanvases.Count > 0)
                 {
-                    AppendReversePlayback(frameCanvases, frameDelays, frameMetadata);
-                    foreach (CachedMobFrameOverlay overlay in frameOverlays)
+                    if (frameMetadata.Count != frameCanvases.Count)
                     {
-                        AppendReversePlayback(overlay.FrameCanvases, overlay.FrameDelays, null);
+                        frameMetadata = AlignFrameMetadataToFrames(frameCanvases.Count, frameMetadata);
+                    }
+
+                    if (ShouldAppendReversePlayback(mobStateProperty))
+                    {
+                        AppendReversePlayback(frameCanvases, frameDelays, frameMetadata);
+                        foreach (CachedMobFrameOverlay overlay in frameOverlays)
+                        {
+                            AppendReversePlayback(overlay.FrameCanvases, overlay.FrameDelays, null);
+                        }
                     }
                 }
 
@@ -846,7 +856,7 @@ namespace HaCreator.MapSimulator.Loaders
             foreach (KeyValuePair<int, CachedMobActionEntry> entry in cachedAssets.ActionEntriesByClientSlot.OrderBy(pair => pair.Key))
             {
                 CachedMobActionEntry actionEntry = entry.Value;
-                if (actionEntry?.FrameCanvases == null || actionEntry.FrameCanvases.Count == 0)
+                if (actionEntry == null)
                 {
                     continue;
                 }
@@ -862,21 +872,25 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                List<IDXObject> actionFrames = InstantiateMobActionFrames(
-                    texturePool,
-                    actionEntry.FrameCanvases,
-                    actionEntry.FrameDelays,
-                    x,
-                    y,
-                    device);
-                animationSet.AddAnimation(actionName, actionFrames);
-
-                if (actionEntry.FrameMetadata != null && actionEntry.FrameMetadata.Count > 0)
+                if (actionEntry.FrameCanvases != null && actionEntry.FrameCanvases.Count > 0)
                 {
-                    animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
+                    List<IDXObject> actionFrames = InstantiateMobActionFrames(
+                        texturePool,
+                        actionEntry.FrameCanvases,
+                        actionEntry.FrameDelays,
+                        x,
+                        y,
+                        device);
+                    animationSet.AddAnimation(actionName, actionFrames);
+
+                    if (actionEntry.FrameMetadata != null && actionEntry.FrameMetadata.Count > 0)
+                    {
+                        animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
+                    }
+
+                    ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
                 }
 
-                ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
                 ApplyCachedMobActionSpeakMetadata(animationSet, actionName, actionEntry);
 
                 appliedActions.Add(actionName);
@@ -885,7 +899,7 @@ namespace HaCreator.MapSimulator.Loaders
             foreach (KeyValuePair<string, CachedMobActionEntry> entry in cachedAssets.ActionEntriesByAuthoredName)
             {
                 CachedMobActionEntry actionEntry = entry.Value;
-                if (actionEntry?.FrameCanvases == null || actionEntry.FrameCanvases.Count == 0)
+                if (actionEntry == null)
                 {
                     continue;
                 }
@@ -896,21 +910,25 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                List<IDXObject> actionFrames = InstantiateMobActionFrames(
-                    texturePool,
-                    actionEntry.FrameCanvases,
-                    actionEntry.FrameDelays,
-                    x,
-                    y,
-                    device);
-                animationSet.AddAnimation(actionName, actionFrames);
-
-                if (actionEntry.FrameMetadata != null && actionEntry.FrameMetadata.Count > 0)
+                if (actionEntry.FrameCanvases != null && actionEntry.FrameCanvases.Count > 0)
                 {
-                    animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
+                    List<IDXObject> actionFrames = InstantiateMobActionFrames(
+                        texturePool,
+                        actionEntry.FrameCanvases,
+                        actionEntry.FrameDelays,
+                        x,
+                        y,
+                        device);
+                    animationSet.AddAnimation(actionName, actionFrames);
+
+                    if (actionEntry.FrameMetadata != null && actionEntry.FrameMetadata.Count > 0)
+                    {
+                        animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
+                    }
+
+                    ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
                 }
 
-                ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
                 ApplyCachedMobActionSpeakMetadata(animationSet, actionName, actionEntry);
             }
         }

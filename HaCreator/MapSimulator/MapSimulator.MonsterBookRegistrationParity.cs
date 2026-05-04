@@ -532,6 +532,19 @@ namespace HaCreator.MapSimulator
             return ResolveMonsterBookRegisteredMobIdFromSyncValue(syncRegisteredValue, syncCardCountsByMob, TryResolve);
         }
 
+        internal static bool ShouldMatchUnidentifiedMonsterBookSaveAckForTests(
+            int pendingRequestCount,
+            int? syncedRequestId,
+            int syncedCharacterId,
+            string syncedCharacterName)
+        {
+            return ShouldMatchUnidentifiedMonsterBookSaveAck(
+                pendingRequestCount,
+                syncedRequestId,
+                syncedCharacterId,
+                syncedCharacterName);
+        }
+
         private int ReserveMonsterBookRegistrationRequestId()
         {
             if (_nextMonsterBookRegistrationRequestId <= 0)
@@ -1467,6 +1480,15 @@ namespace HaCreator.MapSimulator
                 return -1;
             }
 
+            if (ShouldMatchUnidentifiedMonsterBookSaveAck(
+                    _pendingMonsterBookOwnershipSaveRequests.Count,
+                    syncedRequestId,
+                    syncedCharacterId,
+                    syncedCharacterName))
+            {
+                return 0;
+            }
+
             if (syncedRequestId.HasValue && syncedRequestId.Value > 0)
             {
                 for (int i = _pendingMonsterBookOwnershipSaveRequests.Count - 1; i >= 0; i--)
@@ -1507,6 +1529,18 @@ namespace HaCreator.MapSimulator
             }
 
             return newestMatchIndex;
+        }
+
+        private static bool ShouldMatchUnidentifiedMonsterBookSaveAck(
+            int pendingRequestCount,
+            int? syncedRequestId,
+            int syncedCharacterId,
+            string syncedCharacterName)
+        {
+            return pendingRequestCount == 1
+                && syncedRequestId.GetValueOrDefault() <= 0
+                && syncedCharacterId <= 0
+                && string.IsNullOrWhiteSpace(syncedCharacterName);
         }
 
         private int ResolveMonsterBookOwnershipSaveSyncMatchIndex(

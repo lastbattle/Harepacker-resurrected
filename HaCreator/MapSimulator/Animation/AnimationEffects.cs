@@ -170,16 +170,17 @@ namespace HaCreator.MapSimulator.Animation
 
             internal void ReleaseRegisteredLayerReferences()
             {
-                SimulatedOverlayLayerHandleRefCount = 0;
                 var operations = SimulatedLayerReferenceOperations?.ToList()
                     ?? new List<SecondaryMotionBlurLayerReferenceOperation>();
-                if (SimulatedOverlayLayerHandleId > 0)
+                if (SimulatedOverlayLayerHandleRefCount > 0
+                    && SimulatedOverlayLayerHandleId > 0)
                 {
                     operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseOwnerReference(
                         layerCode: -1,
                         SimulatedOverlayLayerHandleId));
                 }
 
+                SimulatedOverlayLayerHandleRefCount = 0;
                 if (SimulatedLayerHandleRefCountsByLayerCode == null
                     || SimulatedLayerHandleRefCountsByLayerCode.Count == 0)
                 {
@@ -855,7 +856,8 @@ namespace HaCreator.MapSimulator.Animation
             float x,
             float y,
             int currentTimeMs,
-            int zOrder = 1)
+            int zOrder = 1,
+            int initialElapsedMs = 0)
         {
             AddPacketOwnedBasicOneTime(
                 frames,
@@ -866,7 +868,7 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedAreaExplosion,
                 zOrder,
-                initialElapsedMs: 0);
+                initialElapsedMs);
         }
 
         internal void AddFullChargedAngerGauge(
@@ -1858,7 +1860,8 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             Action onSpawn = null,
             int zOrder = 1,
-            float? spawnProbability = null)
+            float? spawnProbability = null,
+            int initialElapsedMs = 0)
         {
             return RegisterAreaAnimation(
                 frames,
@@ -1872,7 +1875,8 @@ namespace HaCreator.MapSimulator.Animation
                 zOrder,
                 spawnProbability,
                 AnimationAreaAnimationOwner.PacketOwnedExplosion,
-                sourceUol);
+                sourceUol,
+                initialElapsedMs);
         }
 
         private int RegisterAreaAnimation(
@@ -1887,7 +1891,8 @@ namespace HaCreator.MapSimulator.Animation
             int zOrder,
             float? spawnProbability,
             AnimationAreaAnimationOwner owner,
-            string sourceUol)
+            string sourceUol,
+            int initialElapsedMs = 0)
         {
             if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
             {
@@ -1895,7 +1900,20 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var registration = new AreaAnimationRegistration();
-            registration.Initialize(frames, area, updateIntervalMs, updateCount, updateNextMs, durationMs, currentTimeMs, onSpawn, zOrder, spawnProbability, owner, sourceUol);
+            registration.Initialize(
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currentTimeMs,
+                onSpawn,
+                zOrder,
+                spawnProbability,
+                owner,
+                sourceUol,
+                initialElapsedMs);
             _areaAnimations.Add(registration);
             return registration.Id;
         }
@@ -4239,7 +4257,7 @@ namespace HaCreator.MapSimulator.Animation
             CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
             CanvasLayerRecoveredOwnerTrace? recoveredOwnerTrace = null,
             int simulatedLayerHandleId = 1,
-            int simulatedTemporaryCanvasHandleId = 1)
+            int simulatedTemporaryCanvasHandleId = 2)
         {
             _canvasTexture = canvasTexture;
             _overlayTexture = overlayTexture;
@@ -4364,7 +4382,7 @@ namespace HaCreator.MapSimulator.Animation
             CanvasLayerRecoveredOwnerTrace? ownerTrace,
             IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace = null,
             int simulatedLayerHandleId = 1,
-            int simulatedTemporaryCanvasHandleId = 1)
+            int simulatedTemporaryCanvasHandleId = 2)
         {
             IReadOnlyList<CanvasLayerRecoveredNativeOperation> trace =
                 executionTrace ?? BuildRecoveredNativeExecutionTrace(registrationTrace, ownerTrace);
@@ -4439,7 +4457,7 @@ namespace HaCreator.MapSimulator.Animation
         internal static CanvasLayerRecoveredNativeOperationState[] BuildRecoveredNativeExecutionStateTrace(
             IReadOnlyList<CanvasLayerRecoveredNativeOperation> executionTrace,
             int simulatedLayerHandleId = 1,
-            int simulatedTemporaryCanvasHandleId = 1)
+            int simulatedTemporaryCanvasHandleId = 2)
         {
             if (executionTrace == null || executionTrace.Count == 0)
             {
@@ -7012,6 +7030,7 @@ namespace HaCreator.MapSimulator.Animation
         private Action _onSpawn;
         private int _zOrder;
         private float? _spawnProbability;
+        private int _initialSpawnElapsedMs;
 
         public int Id { get; private set; }
         public AnimationAreaAnimationOwner Owner { get; private set; } = AnimationAreaAnimationOwner.Generic;
@@ -7056,7 +7075,8 @@ namespace HaCreator.MapSimulator.Animation
             int zOrder,
             float? spawnProbability,
             AnimationAreaAnimationOwner owner,
-            string sourceUol)
+            string sourceUol,
+            int initialElapsedMs = 0)
         {
             Id = ++_nextId;
             _frames = frames;
@@ -7075,6 +7095,7 @@ namespace HaCreator.MapSimulator.Animation
             _spawnProbability = spawnProbability.HasValue
                 ? Math.Clamp(spawnProbability.Value, 0f, 1f)
                 : null;
+            _initialSpawnElapsedMs = Math.Max(0, initialElapsedMs);
             Owner = owner;
             SourceUol = sourceUol;
         }
@@ -7106,7 +7127,16 @@ namespace HaCreator.MapSimulator.Animation
                     if (Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
                         && !string.IsNullOrWhiteSpace(SourceUol))
                     {
-                        effects.AddPacketOwnedAreaExplosion(_frames, SourceUol, x, y, scheduledUpdateTime, _zOrder);
+                        int initialElapsedMs = _initialSpawnElapsedMs;
+                        _initialSpawnElapsedMs = 0;
+                        effects.AddPacketOwnedAreaExplosion(
+                            _frames,
+                            SourceUol,
+                            x,
+                            y,
+                            scheduledUpdateTime,
+                            _zOrder,
+                            initialElapsedMs);
                     }
                     else
                     {

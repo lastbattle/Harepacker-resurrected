@@ -243,10 +243,6 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static readonly string[] ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames =
             ResolveClientRawActionNames(
-                9,   // swingT1
-                10,  // swingT2
-                45,  // shoot6
-                46,  // arrowRain
                 56,  // burster1
                 210, // quadBlow
                 217, // lasergun
@@ -665,7 +661,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool SupportsExplicitMechanicVehiclePresentationCurrentAction(string actionName)
         {
             return string.IsNullOrWhiteSpace(actionName)
-                   || IsKnownMechanicVehicleCurrentActionName(actionName);
+                   || IsKnownMechanicVehicleCurrentActionName(actionName)
+                   || IsExplicitMechanicVehiclePresentationActionName(actionName);
         }
 
         internal static bool IsKnownClientOwnedVehicleCurrentActionName(int mountItemId, string actionName)

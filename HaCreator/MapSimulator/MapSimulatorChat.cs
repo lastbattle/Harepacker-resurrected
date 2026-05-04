@@ -62,6 +62,13 @@ namespace HaCreator.MapSimulator
         public int SelectionStart => SelectionAnchor < 0 ? CursorPosition : Math.Min(CursorPosition, SelectionAnchor);
         public int SelectionEnd => SelectionAnchor < 0 ? CursorPosition : Math.Max(CursorPosition, SelectionAnchor);
         public bool HasSelection => SelectionEnd > SelectionStart;
+        public string CompositionText { get; init; } = string.Empty;
+        public int CompositionStart { get; init; } = -1;
+        public int CompositionLength { get; init; }
+        public int CompositionCursorPosition { get; init; } = -1;
+        public bool HasCompositionText => CompositionLength > 0;
+        public string CompositionPreviewText { get; init; } = string.Empty;
+        public ImeCandidateListState ImeCandidateList { get; init; } = ImeCandidateListState.Empty;
         public MapSimulatorChatTargetType TargetType { get; init; }
         public string WhisperTarget { get; init; } = string.Empty;
         public int WhisperTargetPickerSelectionIndex { get; init; } = -1;
@@ -127,6 +134,8 @@ namespace HaCreator.MapSimulator
         private int _lastTickCount = 0;
         private int _cursorPosition = 0; // Position within input text
         private int _selectionAnchor = -1;
+        private ImeCompositionState _compositionState = ImeCompositionState.Empty;
+        private ImeCandidateListState _imeCandidateListState = ImeCandidateListState.Empty;
 
         private SpriteFont _font;
         private Texture2D _backgroundTexture;
@@ -204,6 +213,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            ClearImeEditState();
             ActivateWhisperTargetPickerModalComboFocus();
             TryDeleteInputSelection();
             InsertInputText(committedText);
@@ -211,6 +221,53 @@ namespace HaCreator.MapSimulator
             ResetHistoryNavigation();
             ResetKeyRepeat();
             return true;
+        }
+
+        internal void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        internal void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!ShouldCaptureClientEditIme())
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string compositionText = NormalizeClientEditCommittedText(state?.Text);
+            if (string.IsNullOrEmpty(compositionText) || !CanInsertInputText(compositionText))
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            int cursorPosition = state?.CursorPosition ?? -1;
+            cursorPosition = cursorPosition < 0
+                ? compositionText.Length
+                : Math.Clamp(cursorPosition, 0, compositionText.Length);
+            _compositionState = new ImeCompositionState(
+                compositionText,
+                state?.ClauseOffsets ?? Array.Empty<int>(),
+                cursorPosition);
+        }
+
+        internal void ClearCompositionText()
+        {
+            _compositionState = ImeCompositionState.Empty;
+        }
+
+        internal void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _imeCandidateListState = ShouldCaptureClientEditIme() && state?.HasCandidates == true
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        internal void ClearImeCandidateList()
+        {
+            _imeCandidateListState = ImeCandidateListState.Empty;
         }
 
         public enum WhisperTargetPickerPresentation
@@ -1301,6 +1358,7 @@ namespace HaCreator.MapSimulator
             _inputText.Clear();
             _cursorPosition = 0;
             ClearInputSelection();
+            ClearImeEditState();
             ResetKeyRepeat();
             ResetHistoryNavigation();
         }
@@ -1310,6 +1368,7 @@ namespace HaCreator.MapSimulator
             _isActive = true;
             _cursorBlinkTimer = tickCount;
             ResetHistoryNavigation();
+            ClearImeEditState();
             SetInputText(initialText ?? string.Empty);
         }
 
@@ -1408,6 +1467,16 @@ namespace HaCreator.MapSimulator
         public MapSimulatorChatRenderState GetRenderState(string localPlayerName = null)
         {
             _localPlayerName = NormalizeChatSpeakerCandidate(localPlayerName);
+            string inputText = _inputText.ToString();
+            BuildCompositionPreview(
+                inputText,
+                _cursorPosition,
+                _selectionAnchor,
+                _compositionState,
+                out string compositionPreviewText,
+                out int compositionStart,
+                out int compositionLength,
+                out int compositionCursorPosition);
             return new MapSimulatorChatRenderState
             {
                 Messages = _messages,
@@ -1415,9 +1484,15 @@ namespace HaCreator.MapSimulator
                 IsActive = _isActive,
                 IsWhisperTargetPickerActive = _isWhisperTargetPickerActive,
                 WhisperTargetPickerPresentation = _whisperTargetPickerPresentation,
-                InputText = _inputText.ToString(),
+                InputText = inputText,
                 CursorPosition = _cursorPosition,
                 SelectionAnchor = _selectionAnchor,
+                CompositionText = _compositionState.Text,
+                CompositionStart = compositionStart,
+                CompositionLength = compositionLength,
+                CompositionCursorPosition = compositionCursorPosition,
+                CompositionPreviewText = compositionPreviewText,
+                ImeCandidateList = _imeCandidateListState,
                 TargetType = _chatTarget,
                 WhisperTarget = _whisperTarget ?? string.Empty,
                 WhisperTargetPickerSelectionIndex = _whisperTargetPickerSelectionIndex,
@@ -3458,6 +3533,60 @@ namespace HaCreator.MapSimulator
             }
 
             return normalized?.ToString() ?? text;
+        }
+
+        private bool ShouldCaptureClientEditIme()
+        {
+            return _isActive && !IsWhisperTargetPickerModalFooterFocused();
+        }
+
+        private void ClearImeEditState()
+        {
+            ClearCompositionText();
+            ClearImeCandidateList();
+        }
+
+        internal static void BuildCompositionPreview(
+            string inputText,
+            int cursorPosition,
+            int selectionAnchor,
+            ImeCompositionState compositionState,
+            out string previewText,
+            out int compositionStart,
+            out int compositionLength,
+            out int compositionCursorPosition)
+        {
+            inputText ??= string.Empty;
+            compositionStart = -1;
+            compositionLength = 0;
+            compositionCursorPosition = -1;
+
+            string compositionText = NormalizeClientEditCommittedText(compositionState?.Text);
+            if (string.IsNullOrEmpty(compositionText))
+            {
+                previewText = inputText;
+                return;
+            }
+
+            int safeCursor = Math.Clamp(cursorPosition, 0, inputText.Length);
+            int replaceStart = safeCursor;
+            int replaceEnd = safeCursor;
+            if (selectionAnchor >= 0)
+            {
+                int safeAnchor = Math.Clamp(selectionAnchor, 0, inputText.Length);
+                replaceStart = Math.Min(safeCursor, safeAnchor);
+                replaceEnd = Math.Max(safeCursor, safeAnchor);
+            }
+
+            previewText = inputText.Remove(replaceStart, replaceEnd - replaceStart)
+                .Insert(replaceStart, compositionText);
+            compositionStart = replaceStart;
+            compositionLength = compositionText.Length;
+            int compositionCursor = compositionState?.CursorPosition ?? -1;
+            compositionCursor = compositionCursor < 0
+                ? compositionText.Length
+                : Math.Clamp(compositionCursor, 0, compositionText.Length);
+            compositionCursorPosition = replaceStart + compositionCursor;
         }
 
         private static bool TryParseTargetModeCommand(

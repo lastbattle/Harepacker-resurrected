@@ -3875,13 +3875,12 @@ namespace HaCreator.MapSimulator.Pools
             foreach (MobItem mob in _mobPool.ActiveMobs)
             {
                 if (!IsMobEligibleForPacketOwnedTargeting(mob)
-                    || mob.PoolId <= 0
-                    || candidatesById.ContainsKey(mob.PoolId))
+                    || mob.PoolId <= 0)
                 {
                     continue;
                 }
 
-                candidatesById[mob.PoolId] = mob;
+                candidatesById.TryAdd(mob.PoolId, mob);
                 IReadOnlyList<Rectangle> bodyHitboxes = mob.GetClientMultiBodyHitboxes(currentTime);
                 PacketOwnedExpiryCandidateClientState clientState =
                     _packetOwnedExpiryCandidateClientStateResolver?.Invoke(state.OwnerCharacterId, mob)
@@ -6786,6 +6785,7 @@ namespace HaCreator.MapSimulator.Pools
 
             var normalizedSourcePaths = new List<string>(sourcePathTokens.Count);
             string previousNormalizedSourcePath = null;
+            string previousNormalizedSequenceBasePath = null;
             for (int i = 0; i < sourcePathTokens.Count; i++)
             {
                 if (IsPacketMobAttackGeneralEffectNonSourceAssignmentNoiseToken(sourcePathTokens[i]))
@@ -6801,13 +6801,23 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(token, defaultCategory, out string normalizedSourcePath))
                 {
-                    if (string.IsNullOrWhiteSpace(previousNormalizedSourcePath))
+                    if (string.IsNullOrWhiteSpace(previousNormalizedSourcePath)
+                        && string.IsNullOrWhiteSpace(previousNormalizedSequenceBasePath))
                     {
                         continue;
                     }
 
                     string relativeToken = NormalizePacketMobAttackGeneralEffectColonPathSeparators(token) ?? token;
-                    if (!TryResolvePacketMobAttackGeneralEffectSignedSiblingFrameSourcePath(
+                    if (!string.IsNullOrWhiteSpace(previousNormalizedSequenceBasePath)
+                        && TryResolvePacketMobAttackGeneralEffectSequenceBaseFrameSourcePath(
+                            previousNormalizedSequenceBasePath,
+                            relativeToken,
+                            defaultCategory,
+                            out normalizedSourcePath))
+                    {
+                        // Client sHit root-UOL records can store a root followed by hit-frame aliases.
+                    }
+                    else if (!TryResolvePacketMobAttackGeneralEffectSignedSiblingFrameSourcePath(
                             previousNormalizedSourcePath,
                             relativeToken,
                             defaultCategory,
@@ -6844,13 +6854,15 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (!TryExtractPacketMobAttackGeneralEffectSourceSequenceFrameRootPath(
                         normalizedSourcePath,
-                        out _))
+                        out string currentSequenceRootPath))
                 {
+                    previousNormalizedSequenceBasePath = normalizedSourcePath;
                     continue;
                 }
 
                 normalizedSourcePaths.Add(normalizedSourcePath);
                 previousNormalizedSourcePath = normalizedSourcePath;
+                previousNormalizedSequenceBasePath = currentSequenceRootPath;
             }
 
             if (normalizedSourcePaths.Count == 0)
@@ -6889,6 +6901,40 @@ namespace HaCreator.MapSimulator.Pools
             return string.IsNullOrWhiteSpace(normalizedSequenceRootPath)
                 ? normalizedSourcePaths[0]
                 : normalizedSequenceRootPath;
+        }
+
+        private static bool TryResolvePacketMobAttackGeneralEffectSequenceBaseFrameSourcePath(
+            string previousNormalizedSequenceBasePath,
+            string relativeToken,
+            string defaultCategory,
+            out string normalizedSourcePath)
+        {
+            normalizedSourcePath = null;
+            if (string.IsNullOrWhiteSpace(previousNormalizedSequenceBasePath)
+                || string.IsNullOrWhiteSpace(relativeToken))
+            {
+                return false;
+            }
+
+            if (!TryNormalizePacketMobAttackGeneralEffectSiblingFrameRelativeSegments(
+                    relativeToken,
+                    out string[] relativeSegments))
+            {
+                return false;
+            }
+
+            if (!TryCombinePacketMobAttackGeneralEffectPath(
+                    previousNormalizedSequenceBasePath,
+                    string.Join("/", relativeSegments),
+                    out string combinedPath))
+            {
+                return false;
+            }
+
+            return TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                combinedPath,
+                defaultCategory,
+                out normalizedSourcePath);
         }
 
         private static bool TryResolvePacketMobAttackGeneralEffectSignedSiblingFrameSourcePath(
@@ -8070,6 +8116,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string previousNormalizedSourcePath = null;
+            string previousNormalizedSequenceBasePath = null;
             for (int i = 0; i < sourcePathTokens.Count; i++)
             {
                 if (IsPacketMobAttackGeneralEffectNonSourceAssignmentNoiseToken(sourcePathTokens[i]))
@@ -8085,13 +8132,23 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(token, defaultCategory, out string normalizedSourcePath))
                 {
-                    if (string.IsNullOrWhiteSpace(previousNormalizedSourcePath))
+                    if (string.IsNullOrWhiteSpace(previousNormalizedSourcePath)
+                        && string.IsNullOrWhiteSpace(previousNormalizedSequenceBasePath))
                     {
                         continue;
                     }
 
                     string relativeToken = NormalizePacketMobAttackGeneralEffectColonPathSeparators(token) ?? token;
-                    if (!TryResolvePacketMobAttackGeneralEffectSignedSiblingFrameSourcePath(
+                    if (!string.IsNullOrWhiteSpace(previousNormalizedSequenceBasePath)
+                        && TryResolvePacketMobAttackGeneralEffectSequenceBaseFrameSourcePath(
+                            previousNormalizedSequenceBasePath,
+                            relativeToken,
+                            defaultCategory,
+                            out normalizedSourcePath))
+                    {
+                        // Client sHit root-UOL records can store a root followed by hit-frame aliases.
+                    }
+                    else if (!TryResolvePacketMobAttackGeneralEffectSignedSiblingFrameSourcePath(
                             previousNormalizedSourcePath,
                             relativeToken,
                             defaultCategory,
@@ -8131,8 +8188,13 @@ namespace HaCreator.MapSimulator.Pools
                         normalizedSourcePath,
                         out sourceFrameIndex))
                 {
+                    TryExtractPacketMobAttackGeneralEffectSourceSequenceFrameRootPath(
+                        normalizedSourcePath,
+                        out previousNormalizedSequenceBasePath);
                     return true;
                 }
+
+                previousNormalizedSequenceBasePath = normalizedSourcePath;
             }
 
             return false;
@@ -9506,9 +9568,23 @@ namespace HaCreator.MapSimulator.Pools
             return string.Equals(segment, "source", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "path", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "sHit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sHitPath", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitPath", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "hit", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "effect", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(segment, "uol", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(segment, "uol", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitUol", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitUOL", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitUolPath", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sHitUol", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sHitUOL", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sHitUolPath", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sHitUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "mobAttackInfoHit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "mobAttackInfoHitPath", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "mobAttackInfoSHit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "mobAttackInfoSHitPath", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumeratePacketMobAttackGeneralEffectBasePaths(

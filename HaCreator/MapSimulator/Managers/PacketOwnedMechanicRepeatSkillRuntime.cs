@@ -2871,6 +2871,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string trimmed = value.Trim().Trim('"', '\'');
+            if (LooksLikeSg88PacketComparisonHexDump(trimmed)
+                && TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes))
+            {
+                return true;
+            }
+
             StringBuilder hex = new(trimmed.Length);
             for (int i = 0; i < trimmed.Length; i++)
             {
@@ -2927,6 +2933,40 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
+        }
+
+        private static bool LooksLikeSg88PacketComparisonHexDump(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string[] lines = value.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                if (Regex.IsMatch(
+                        line,
+                        @"^(?:0x)?[0-9A-Fa-f]{4,8}\s*[:\-]\s*",
+                        RegexOptions.CultureInvariant)
+                    || Regex.IsMatch(
+                        line,
+                        @"^(?:0x)?[0-9A-Fa-f]{4,8}\s{2,}",
+                        RegexOptions.CultureInvariant))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool TryParseSg88PacketComparisonBase64Bytes(string value, out byte[] bytes)

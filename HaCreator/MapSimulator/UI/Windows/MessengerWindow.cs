@@ -73,6 +73,9 @@ namespace HaCreator.MapSimulator.UI
         private Func<MessengerSnapshot> _snapshotProvider;
         private Action<int> _slotSelectionHandler;
         private Func<string> _claimHandler;
+        private Func<string> _claimNoticeHandler;
+        private Func<string, string> _claimCategoryHandler;
+        private Func<string> _claimCancelHandler;
         private Func<string> _leaveHandler;
         private Func<bool, string> _stateCycleHandler;
         private Func<string, string> _sendMessageHandler;
@@ -179,6 +182,9 @@ namespace HaCreator.MapSimulator.UI
         internal void SetActionHandlers(
             Action<int> slotSelectionHandler,
             Func<string> claimHandler,
+            Func<string> claimNoticeHandler,
+            Func<string, string> claimCategoryHandler,
+            Func<string> claimCancelHandler,
             Func<string> leaveHandler,
             Func<bool, string> stateCycleHandler,
             Func<string, string> sendMessageHandler,
@@ -192,6 +198,9 @@ namespace HaCreator.MapSimulator.UI
         {
             _slotSelectionHandler = slotSelectionHandler;
             _claimHandler = claimHandler;
+            _claimNoticeHandler = claimNoticeHandler;
+            _claimCategoryHandler = claimCategoryHandler;
+            _claimCancelHandler = claimCancelHandler;
             _leaveHandler = leaveHandler;
             _stateCycleHandler = stateCycleHandler;
             _sendMessageHandler = sendMessageHandler;
@@ -283,6 +292,10 @@ namespace HaCreator.MapSimulator.UI
                 if (treatAsClick && snapshot.ShowExitPrompt)
                 {
                     HandleExitPromptClick(mouseState.X, mouseState.Y);
+                }
+                else if (treatAsClick && snapshot.ClaimDialog.IsOpen && !IsCollapsed)
+                {
+                    HandleClaimDialogClick(mouseState.X, mouseState.Y, snapshot);
                 }
                 else if (treatAsClick && !IsCollapsed)
                 {
@@ -390,6 +403,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawExitPrompt(sprite, snapshot);
             }
+            else if (snapshot.ClaimDialog.IsOpen && !IsCollapsed)
+            {
+                DrawClaimDialog(sprite, snapshot);
+            }
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -430,6 +447,60 @@ namespace HaCreator.MapSimulator.UI
         private void HandleClaim()
         {
             ShowFeedback(_claimHandler?.Invoke());
+        }
+
+        private void HandleClaimDialogClick(int mouseX, int mouseY, MessengerSnapshot snapshot)
+        {
+            GetClaimDialogLayout(
+                out Rectangle dialogBounds,
+                out Rectangle primaryBounds,
+                out Rectangle secondaryBounds,
+                out Rectangle cancelBounds);
+
+            if (!dialogBounds.Contains(mouseX, mouseY))
+            {
+                return;
+            }
+
+            switch (snapshot.ClaimDialog.Stage)
+            {
+                case MessengerClaimDialogStage.Notice:
+                    if (primaryBounds.Contains(mouseX, mouseY))
+                    {
+                        ShowFeedback(_claimNoticeHandler?.Invoke());
+                    }
+                    else if (cancelBounds.Contains(mouseX, mouseY))
+                    {
+                        ShowFeedback(_claimCancelHandler?.Invoke());
+                    }
+                    break;
+
+                case MessengerClaimDialogStage.Category:
+                    if (primaryBounds.Contains(mouseX, mouseY))
+                    {
+                        ShowFeedback(_claimCategoryHandler?.Invoke("chat"));
+                    }
+                    else if (secondaryBounds.Contains(mouseX, mouseY))
+                    {
+                        ShowFeedback(_claimCategoryHandler?.Invoke("personal"));
+                    }
+                    else if (cancelBounds.Contains(mouseX, mouseY))
+                    {
+                        ShowFeedback(_claimCancelHandler?.Invoke());
+                    }
+                    break;
+
+                case MessengerClaimDialogStage.Report:
+                    if (primaryBounds.Contains(mouseX, mouseY))
+                    {
+                        ShowFeedback(_claimHandler?.Invoke());
+                    }
+                    else if (cancelBounds.Contains(mouseX, mouseY))
+                    {
+                        ShowFeedback(_claimCancelHandler?.Invoke());
+                    }
+                    break;
+            }
         }
 
         private void ShowFeedback(string message)
@@ -1261,6 +1332,69 @@ namespace HaCreator.MapSimulator.UI
             DrawPromptButton(sprite, noBounds, "No");
         }
 
+        private void DrawClaimDialog(SpriteBatch sprite, MessengerSnapshot snapshot)
+        {
+            MessengerClaimDialogSnapshot claim = snapshot.ClaimDialog;
+            GetClaimDialogLayout(
+                out Rectangle dialogBounds,
+                out Rectangle primaryBounds,
+                out Rectangle secondaryBounds,
+                out Rectangle cancelBounds);
+
+            int frameWidth = CurrentFrame?.Width ?? 0;
+            int frameHeight = CurrentFrame?.Height ?? 0;
+            sprite.Draw(_pixel, new Rectangle(Position.X, Position.Y, frameWidth, frameHeight), new Color(0, 0, 0, 132));
+            sprite.Draw(_pixel, dialogBounds, new Color(42, 32, 24, 236));
+            sprite.Draw(_pixel, new Rectangle(dialogBounds.X + 2, dialogBounds.Y + 2, dialogBounds.Width - 4, dialogBounds.Height - 4), new Color(247, 235, 205, 246));
+
+            string title = claim.Stage switch
+            {
+                MessengerClaimDialogStage.Notice => "Claim Notice",
+                MessengerClaimDialogStage.Category => "Claim Category",
+                MessengerClaimDialogStage.Report => "Report",
+                MessengerClaimDialogStage.PendingResult => "Claim Pending",
+                MessengerClaimDialogStage.Completed => "Claim Complete",
+                _ => "Claim"
+            };
+
+            DrawOutlinedText(sprite, title, new Vector2(dialogBounds.X + 12, dialogBounds.Y + 9), Color.Black, new Color(112, 74, 38), 0.46f);
+            DrawOutlinedText(sprite, $"Target: {claim.TargetCharacterName}", new Vector2(dialogBounds.X + 12, dialogBounds.Y + 34), Color.Black, new Color(92, 66, 40), 0.36f);
+
+            string body = claim.Stage switch
+            {
+                MessengerClaimDialogStage.Notice => $"Review the Messenger claim notice from {claim.NoticeAsset}.",
+                MessengerClaimDialogStage.Category => $"Choose {claim.AssetRoot} category button.",
+                MessengerClaimDialogStage.Report => $"Submitting {claim.ChatLineCount} Messenger chat line(s) through {claim.ReportAsset}.",
+                MessengerClaimDialogStage.PendingResult => $"Waiting for server-owned claim completion for {claim.Context}.",
+                MessengerClaimDialogStage.Completed => "Server-owned claim completion was applied.",
+                _ => string.Empty
+            };
+
+            int bodyY = dialogBounds.Y + 55;
+            foreach (string line in WrapText(body, dialogBounds.Width - 24))
+            {
+                DrawOutlinedText(sprite, line, new Vector2(dialogBounds.X + 12, bodyY), Color.Black, new Color(92, 66, 40), 0.34f);
+                bodyY += 16;
+            }
+
+            if (claim.Stage == MessengerClaimDialogStage.Category)
+            {
+                DrawPromptButton(sprite, primaryBounds, "BtCClaim");
+                DrawPromptButton(sprite, secondaryBounds, "BtPClaim");
+                DrawPromptButton(sprite, cancelBounds, "Cancel");
+            }
+            else if (claim.Stage == MessengerClaimDialogStage.Notice)
+            {
+                DrawPromptButton(sprite, primaryBounds, "OK");
+                DrawPromptButton(sprite, cancelBounds, "Cancel");
+            }
+            else if (claim.Stage == MessengerClaimDialogStage.Report)
+            {
+                DrawPromptButton(sprite, primaryBounds, "BtClaim");
+                DrawPromptButton(sprite, cancelBounds, "BtCancel");
+            }
+        }
+
         private void DrawPromptButton(SpriteBatch sprite, Rectangle bounds, string label)
         {
             sprite.Draw(_pixel, bounds, new Color(120, 90, 48, 220));
@@ -1302,6 +1436,24 @@ namespace HaCreator.MapSimulator.UI
             promptBounds = new Rectangle(promptX, promptY, promptWidth, promptHeight);
             yesBounds = new Rectangle(promptBounds.X + 26, promptBounds.Bottom - 30, 64, 22);
             noBounds = new Rectangle(promptBounds.Right - 26 - 64, promptBounds.Bottom - 30, 64, 22);
+        }
+
+        private void GetClaimDialogLayout(
+            out Rectangle dialogBounds,
+            out Rectangle primaryBounds,
+            out Rectangle secondaryBounds,
+            out Rectangle cancelBounds)
+        {
+            int dialogWidth = 264;
+            int dialogHeight = 126;
+            int frameWidth = CurrentFrame?.Width ?? 0;
+            int frameHeight = CurrentFrame?.Height ?? 0;
+            int dialogX = Position.X + ((frameWidth - dialogWidth) / 2);
+            int dialogY = Position.Y + Math.Max(18, ((frameHeight - dialogHeight) / 2));
+            dialogBounds = new Rectangle(dialogX, dialogY, dialogWidth, dialogHeight);
+            primaryBounds = new Rectangle(dialogBounds.X + 18, dialogBounds.Bottom - 30, 68, 22);
+            secondaryBounds = new Rectangle(dialogBounds.X + 98, dialogBounds.Bottom - 30, 68, 22);
+            cancelBounds = new Rectangle(dialogBounds.Right - 18 - 68, dialogBounds.Bottom - 30, 68, 22);
         }
 
         private void NavigateHistory(bool previous)

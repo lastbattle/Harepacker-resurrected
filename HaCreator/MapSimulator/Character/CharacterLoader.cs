@@ -3262,9 +3262,26 @@ namespace HaCreator.MapSimulator.Character
 
         private static WzImageProperty ResolveMorphActionNode(WzImageProperty actionNode)
         {
-            return actionNode is WzUOLProperty
-                ? actionNode.GetLinkedWzImageProperty()
-                : actionNode;
+            return ResolveMorphActionNode(actionNode, new HashSet<WzImageProperty>());
+        }
+
+        private static WzImageProperty ResolveMorphActionNode(WzImageProperty actionNode, ISet<WzImageProperty> seen)
+        {
+            if (actionNode == null
+                || actionNode is not WzUOLProperty
+                || seen == null
+                || !seen.Add(actionNode))
+            {
+                return actionNode;
+            }
+
+            WzImageProperty linkedActionNode = actionNode.GetLinkedWzImageProperty();
+            if (linkedActionNode == null || ReferenceEquals(linkedActionNode, actionNode))
+            {
+                return actionNode;
+            }
+
+            return ResolveMorphActionNode(linkedActionNode, seen);
         }
 
         private static bool LooksLikePublishedMorphActionFrameContainer(WzImageProperty actionNode)
@@ -3287,18 +3304,33 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool TryResolveMorphFrameCanvas(WzImageProperty frameNode, out WzCanvasProperty frameCanvas)
         {
+            return TryResolveMorphFrameCanvas(frameNode, new HashSet<WzImageProperty>(), out frameCanvas);
+        }
+
+        private static bool TryResolveMorphFrameCanvas(
+            WzImageProperty frameNode,
+            ISet<WzImageProperty> seen,
+            out WzCanvasProperty frameCanvas)
+        {
             frameCanvas = null;
+            if (frameNode == null || seen == null || !seen.Add(frameNode))
+            {
+                return false;
+            }
+
             if (frameNode is WzCanvasProperty directCanvas)
             {
                 frameCanvas = directCanvas;
                 return true;
             }
 
-            if (frameNode is WzUOLProperty frameUol
-                && frameUol.GetLinkedWzImageProperty() is WzCanvasProperty linkedCanvas)
+            if (frameNode is WzUOLProperty frameUol)
             {
-                frameCanvas = linkedCanvas;
-                return true;
+                WzImageProperty linkedFrameNode = frameUol.GetLinkedWzImageProperty();
+                if (linkedFrameNode != null && !ReferenceEquals(linkedFrameNode, frameNode))
+                {
+                    return TryResolveMorphFrameCanvas(linkedFrameNode, seen, out frameCanvas);
+                }
             }
 
             return false;

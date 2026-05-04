@@ -3164,12 +3164,14 @@ namespace HaCreator.MapSimulator.Interaction
                             reader,
                             PacketCharacterDataMapTransferRecord.RegularGroup,
                             MapTransferRuntimeManager.RegularCapacity,
+                            sectionStart,
                             out int[] regularMapTransferFields);
                     IReadOnlyList<PacketCharacterDataMapTransferRecord> continentMapTransferRecordEntries =
                         ReadCharacterDataMapTransferRecords(
                             reader,
                             PacketCharacterDataMapTransferRecord.ContinentGroup,
                             MapTransferRuntimeManager.ContinentCapacity,
+                            sectionStart,
                             out int[] continentMapTransferFields);
                     decoratedSnapshot = decoratedSnapshot with
                     {
@@ -3575,6 +3577,7 @@ namespace HaCreator.MapSimulator.Interaction
             out int masterLevelRecordByteCount,
             out int nativeRecordCount)
         {
+            long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             nativeRecordCount = count;
             countByteCount = sizeof(ushort);
@@ -3588,6 +3591,7 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<int, int> rawMasterLevelsBySkillId = new(count);
             for (int i = 0; i < count; i++)
             {
+                long recordStart = reader.BaseStream.Position;
                 int skillId = reader.ReadInt32();
                 int rawSkillLevel = reader.ReadInt32();
                 bool hasMasterLevelData = IsSkillNeedMasterLevel(skillId);
@@ -3617,7 +3621,9 @@ namespace HaCreator.MapSimulator.Interaction
                         [nameof(PacketCharacterDataSkillRecord.RawMasterLevel)] = hasMasterLevelData ? sizeof(int) : 0
                     },
                     NativeIndex: i,
-                    IsSemanticRecord: skillId > 0);
+                    IsSemanticRecord: skillId > 0,
+                    SectionRecordStartOffset: checked((int)(recordStart - sectionStart)),
+                    SectionRecordEndOffset: checked((int)(reader.BaseStream.Position - sectionStart)));
                 nativeEntries.Add(nativeEntry);
                 if (skillId > 0)
                 {
@@ -3654,6 +3660,7 @@ namespace HaCreator.MapSimulator.Interaction
             out int nativeRecordCount,
             out IReadOnlyList<PacketCharacterDataSkillExpirationRecord> nativeRecordEntries)
         {
+            long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             nativeRecordCount = count;
             countByteCount = sizeof(ushort);
@@ -3663,6 +3670,7 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<int, long> recordsBySkillId = new(count);
             for (int i = 0; i < count; i++)
             {
+                long recordStart = reader.BaseStream.Position;
                 int key = reader.ReadInt32();
                 long value = reader.ReadInt64();
                 PacketCharacterDataSkillExpirationRecord nativeEntry = new(
@@ -3675,7 +3683,9 @@ namespace HaCreator.MapSimulator.Interaction
                         [nameof(PacketCharacterDataSkillExpirationRecord.ExpirationFileTime)] = sizeof(long)
                     },
                     NativeIndex: i,
-                    IsSemanticRecord: key > 0);
+                    IsSemanticRecord: key > 0,
+                    SectionRecordStartOffset: checked((int)(recordStart - sectionStart)),
+                    SectionRecordEndOffset: checked((int)(reader.BaseStream.Position - sectionStart)));
                 nativeEntries.Add(nativeEntry);
                 if (key > 0)
                 {
@@ -3726,6 +3736,7 @@ namespace HaCreator.MapSimulator.Interaction
             out int nativeRecordCount,
             out IReadOnlyList<PacketCharacterDataInt16ValueRecord> nativeRecordEntries)
         {
+            long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             nativeRecordCount = count;
             countByteCount = sizeof(ushort);
@@ -3735,6 +3746,7 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<int, int> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
             {
+                long recordStart = reader.BaseStream.Position;
                 int key = reader.ReadInt32();
                 int value = reader.ReadUInt16();
                 int normalizedValue = Math.Max(0, value);
@@ -3748,7 +3760,9 @@ namespace HaCreator.MapSimulator.Interaction
                         [nameof(PacketCharacterDataInt16ValueRecord.Value)] = sizeof(ushort)
                     },
                     NativeIndex: i,
-                    IsSemanticRecord: key > 0);
+                    IsSemanticRecord: key > 0,
+                    SectionRecordStartOffset: checked((int)(recordStart - sectionStart)),
+                    SectionRecordEndOffset: checked((int)(reader.BaseStream.Position - sectionStart)));
                 nativeEntries.Add(nativeEntry);
                 if (key > 0)
                 {
@@ -3790,7 +3804,9 @@ namespace HaCreator.MapSimulator.Interaction
                     checked((int)(reader.BaseStream.Position - recordStart)),
                     fieldByteCounts,
                     i,
-                    key > 0);
+                    key > 0,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
                 nativeEntries.Add(nativeEntry);
                 if (key > 0)
                 {
@@ -3832,7 +3848,9 @@ namespace HaCreator.MapSimulator.Interaction
                     checked((int)(reader.BaseStream.Position - recordStart)),
                     fieldByteCounts,
                     i,
-                    key > 0);
+                    key > 0,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
                 nativeEntries.Add(nativeEntry);
                 if (key > 0)
                 {
@@ -3874,7 +3892,9 @@ namespace HaCreator.MapSimulator.Interaction
                     checked((int)(reader.BaseStream.Position - recordStart)),
                     fieldByteCounts,
                     i,
-                    key > 0);
+                    key > 0,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
                 nativeEntries.Add(nativeEntry);
                 if (key > 0)
                 {
@@ -3916,7 +3936,9 @@ namespace HaCreator.MapSimulator.Interaction
                     checked((int)(reader.BaseStream.Position - recordStart)),
                     fieldByteCounts,
                     i,
-                    key > 0);
+                    key > 0,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
                 nativeEntries.Add(nativeEntry);
                 if (key > 0)
                 {
@@ -4244,12 +4266,14 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             string group,
             int count,
+            long sectionStart,
             out int[] fields)
         {
             fields = new int[count];
             PacketCharacterDataMapTransferRecord[] records = new PacketCharacterDataMapTransferRecord[count];
             for (int i = 0; i < count; i++)
             {
+                long recordStart = reader.BaseStream.Position;
                 Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
                 int fieldId = ReadTrackedCharacterDataField(reader, fieldByteCounts, nameof(PacketCharacterDataMapTransferRecord.FieldId), static fieldReader => fieldReader.ReadInt32());
                 fields[i] = fieldId;
@@ -4258,7 +4282,9 @@ namespace HaCreator.MapSimulator.Interaction
                     i,
                     fieldId,
                     sizeof(int),
-                    fieldByteCounts);
+                    fieldByteCounts,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
             }
 
             return records;
@@ -4287,6 +4313,7 @@ namespace HaCreator.MapSimulator.Interaction
             out int recordByteCount,
             out int nativeRecordCount)
         {
+            long sectionStart = reader.BaseStream.Position;
             ushort count = reader.ReadUInt16();
             nativeRecordCount = count;
             countByteCount = sizeof(ushort);
@@ -4299,6 +4326,7 @@ namespace HaCreator.MapSimulator.Interaction
             PacketCharacterDataFixedClientRecord[] records = new PacketCharacterDataFixedClientRecord[count];
             for (int i = 0; i < count; i++)
             {
+                long recordStart = reader.BaseStream.Position;
                 byte[] bytes = reader.ReadBytes(recordByteLength);
                 if (bytes.Length != recordByteLength)
                 {
@@ -4315,7 +4343,9 @@ namespace HaCreator.MapSimulator.Interaction
                         [nameof(PacketCharacterDataFixedClientRecord.RawBytes)] = recordByteLength
                     },
                     i,
-                    true);
+                    true,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
             }
 
             return records;
@@ -4369,7 +4399,9 @@ namespace HaCreator.MapSimulator.Interaction
                     checked((int)(reader.BaseStream.Position - recordStart)),
                     fieldByteCounts,
                     i,
-                    true));
+                    true,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart))));
             }
 
             recordByteCount = checked((int)(reader.BaseStream.Position - sectionStart) - countByteCount);
@@ -4690,7 +4722,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true);
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataSkillExpirationRecord(
         int SkillId,
@@ -4698,7 +4732,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true);
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataInt16ValueRecord(
         int Key,
@@ -4706,7 +4742,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true);
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataUInt16StringRecord(
         int Key,
@@ -4714,7 +4752,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true);
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataUInt16FileTimeRecord(
         int Key,
@@ -4722,7 +4762,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true);
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataUInt16ValueRecord(
         int Key,
@@ -4730,7 +4772,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true);
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataFixedClientRecord(
         string ClientOwner,
@@ -4739,7 +4783,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true)
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1)
     {
         internal const string MiniGameOwner = "GW_MiniGameRecord::Decode";
         internal const string CoupleOwner = "GW_CoupleRecord::Decode";
@@ -4754,7 +4800,9 @@ namespace HaCreator.MapSimulator.Interaction
         int Index,
         int FieldId,
         int DecodedByteCount = 0,
-        IReadOnlyDictionary<string, int> FieldByteCounts = null)
+        IReadOnlyDictionary<string, int> FieldByteCounts = null,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1)
     {
         internal const string RegularGroup = "Regular";
         internal const string ContinentGroup = "Continent";
@@ -4775,7 +4823,9 @@ namespace HaCreator.MapSimulator.Interaction
         int DecodedByteCount = 0,
         IReadOnlyDictionary<string, int> FieldByteCounts = null,
         int NativeIndex = -1,
-        bool IsSemanticRecord = true)
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1)
     {
         internal const string ClientDiscardStateKept = "X";
         internal const string ClientDiscardStateDiscarded = "O";

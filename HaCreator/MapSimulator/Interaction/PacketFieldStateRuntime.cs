@@ -179,13 +179,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 162:
                     return TryApplyDesc(payload, currentTick, out message);
                 case 166:
-                    _questTimers.Clear();
-                    _questTimerOwners.Clear();
-                    _questTimerHoveredQuestId = 0;
-                    _questTimerDraggedQuestId = -1;
-                    _statusMessage = "Cleared all packet-authored quest timers.";
-                    message = _statusMessage;
-                    return true;
+                    return TryApplyQuestClear(payload, out message);
                 case 167:
                     return TryApplyQuestTime(payload, currentTick, out message);
                 case 169:
@@ -453,6 +447,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (payload.Length != 1)
+            {
+                message = $"Field help packet has {payload.Length - 1} trailing byte(s); CField::OnDesc expects exactly one unsigned help-message index byte.";
+                return false;
+            }
+
             byte index = payload[0];
             if (index >= _mapHelpMessages.Count)
             {
@@ -464,6 +464,23 @@ namespace HaCreator.MapSimulator.Interaction
             _activeHelpMessage = new PacketHelpMessageState(text, currentTick, currentTick + HelpMessageDisplayDurationMs, index);
             _statusMessage = $"Displayed field help message #{index} on map {_boundMapId}.";
             message = $"{_statusMessage} {TrimForStatus(text)}";
+            return true;
+        }
+
+        private bool TryApplyQuestClear(byte[] payload, out string message)
+        {
+            if (payload != null && payload.Length != 0)
+            {
+                message = $"Quest-clear packet has {payload.Length} trailing byte(s); CField::OnSetQuestClear does not consume a payload in the packet-owned quest-timer clear seam.";
+                return false;
+            }
+
+            _questTimers.Clear();
+            _questTimerOwners.Clear();
+            _questTimerHoveredQuestId = 0;
+            _questTimerDraggedQuestId = -1;
+            _statusMessage = "Cleared all packet-authored quest timers.";
+            message = _statusMessage;
             return true;
         }
 

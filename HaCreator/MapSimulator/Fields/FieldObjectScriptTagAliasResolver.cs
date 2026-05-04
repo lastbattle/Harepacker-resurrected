@@ -945,12 +945,13 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(
+            if (TryResolveObjectNoArgumentCallAliasCandidate(
                     normalizedValue,
+                    localAliasMap,
                     objectMemberAliasMap,
-                    out string dottedNoArgumentCallAlias))
+                    out string objectNoArgumentCallAlias))
             {
-                AddAlias(dottedNoArgumentCallAlias);
+                AddAlias(objectNoArgumentCallAlias);
             }
 
             if (IsFunctionExpressionText(normalizedValue))
@@ -1075,12 +1076,13 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(
+            if (TryResolveObjectNoArgumentCallAliasCandidate(
                     normalizedValue,
+                    localAliasMap,
                     objectMemberAliasMap,
-                    out string dottedNoArgumentCallAlias))
+                    out string objectNoArgumentCallAlias))
             {
-                return dottedNoArgumentCallAlias;
+                return objectNoArgumentCallAlias;
             }
 
             if (TryResolveNoArgumentFunctionCallAliasCandidate(
@@ -2180,12 +2182,13 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(
+            if (TryResolveObjectNoArgumentCallAliasCandidate(
                     normalizedCandidate,
+                    localAliasMap,
                     objectMemberAliasMap,
-                    out string dottedNoArgumentCallAlias))
+                    out string objectNoArgumentCallAlias))
             {
-                yield return dottedNoArgumentCallAlias;
+                yield return objectNoArgumentCallAlias;
                 yield break;
             }
 
@@ -2401,9 +2404,9 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-            if (TryResolveDottedObjectNoArgumentCallAliasCandidate(value, objectMemberAliasMap, out string dottedCallAlias))
+            if (TryResolveObjectNoArgumentCallAliasCandidate(value, localAliasMap, objectMemberAliasMap, out string objectCallAlias))
             {
-                aliasName = dottedCallAlias;
+                aliasName = objectCallAlias;
                 return true;
             }
 
@@ -4303,8 +4306,9 @@ namespace HaCreator.MapSimulator.Fields
             return TryResolveObjectMemberAlias(objectName, memberKey, objectMemberAliasMap, out aliasName);
         }
 
-        private static bool TryResolveDottedObjectNoArgumentCallAliasCandidate(
+        private static bool TryResolveObjectNoArgumentCallAliasCandidate(
             string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
             IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
             out string aliasName)
         {
@@ -4333,7 +4337,13 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string calleeExpression = NormalizeOptionalChainingAliasAccess(normalizedValue[..openIndex].Trim());
-            if (!TryParseDottedObjectAccess(calleeExpression, out string objectName, out string memberKey))
+            if (TryParseDottedObjectAccess(calleeExpression, out string objectName, out string memberKey))
+            {
+                return TryResolveObjectMemberAlias(objectName, memberKey, objectMemberAliasMap, out aliasName);
+            }
+
+            if (!TryParseIndexedObjectAccess(calleeExpression, out objectName, out string indexExpression)
+                || !TryResolveBracketIndexKey(indexExpression, localAliasMap, out memberKey))
             {
                 return false;
             }

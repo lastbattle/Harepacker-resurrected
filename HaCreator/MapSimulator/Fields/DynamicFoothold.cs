@@ -473,6 +473,13 @@ namespace HaCreator.MapSimulator.Fields
 
         private static void UpdatePacketOwnedTwoPointWaypointMovement(DynamicPlatform platform, float movement, int currentTimeMs)
         {
+            if (HasPacketOwnedTwoPointDiagonalEndpointOrder(platform)
+                && HasPacketOwnedTwoPointDiagonalAxisDirectionConflict(platform))
+            {
+                UpdatePacketOwnedTwoPointDiagonalAxisMovement(platform, movement, currentTimeMs);
+                return;
+            }
+
             const int maxEndpointTurnsPerFrame = 8;
             int turnCount = 0;
             while (movement > 0f && turnCount <= maxEndpointTurnsPerFrame)
@@ -518,6 +525,23 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static void UpdatePacketOwnedTwoPointDiagonalAxisMovement(DynamicPlatform platform, float movement, int currentTimeMs)
+        {
+            if (platform == null)
+            {
+                return;
+            }
+
+            UpdatePacketOwnedHorizontalMovement(platform, movement);
+            UpdatePacketOwnedVerticalMovement(platform, movement);
+            RefreshPacketOwnedDiagonalWaypointIndex(platform);
+
+            if (platform.PauseDelay > 0 && platform.IsPaused)
+            {
+                platform.PauseStartTime = currentTimeMs;
+            }
+        }
+
         private static bool HasPacketOwnedTwoPointWaypointEndpointOrder(DynamicPlatform platform)
         {
             return platform?.MovementType == PlatformMovementType.Waypoint
@@ -526,6 +550,42 @@ namespace HaCreator.MapSimulator.Fields
                 && platform.PacketOwnedMovingX2 != null
                 && platform.PacketOwnedMovingY1 != null
                 && platform.PacketOwnedMovingY2 != null;
+        }
+
+        private static bool HasPacketOwnedTwoPointDiagonalEndpointOrder(DynamicPlatform platform)
+        {
+            return HasPacketOwnedTwoPointWaypointEndpointOrder(platform)
+                && platform.PacketOwnedMovingX1 != platform.PacketOwnedMovingX2
+                && platform.PacketOwnedMovingY1 != platform.PacketOwnedMovingY2;
+        }
+
+        private static bool HasPacketOwnedTwoPointDiagonalAxisDirectionConflict(DynamicPlatform platform)
+        {
+            if (platform?.PacketOwnedMovingX1 is not int x1
+                || platform.PacketOwnedMovingX2 is not int x2
+                || platform.PacketOwnedMovingY1 is not int y1
+                || platform.PacketOwnedMovingY2 is not int y2)
+            {
+                return false;
+            }
+
+            bool horizontalTowardSecond = platform.MovingRight == (x2 > x1);
+            bool verticalTowardSecond = platform.MovingDown == (y2 > y1);
+            return horizontalTowardSecond != verticalTowardSecond;
+        }
+
+        private static void RefreshPacketOwnedDiagonalWaypointIndex(DynamicPlatform platform)
+        {
+            if (platform?.Waypoints == null || platform.Waypoints.Count != 2)
+            {
+                return;
+            }
+
+            Vector2 first = platform.Waypoints[0];
+            Vector2 second = platform.Waypoints[1];
+            float firstDistance = Vector2.DistanceSquared(new Vector2(platform.X, platform.Y), first);
+            float secondDistance = Vector2.DistanceSquared(new Vector2(platform.X, platform.Y), second);
+            platform.CurrentWaypointIndex = firstDistance <= secondDistance ? 0 : 1;
         }
 
         private static void RefreshPacketOwnedHorizontalReverseFlag(DynamicPlatform platform)

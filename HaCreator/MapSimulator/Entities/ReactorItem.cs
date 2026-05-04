@@ -731,8 +731,7 @@ namespace HaCreator.MapSimulator.Entities
                 return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (!HasAuthoredState(state)
-                || !HasExactAuthoredEventIndex(state, properEventIndex))
+            if (!HasAuthoredState(state))
             {
                 return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
@@ -744,6 +743,11 @@ namespace HaCreator.MapSimulator.Entities
                 {
                     return true;
                 }
+            }
+
+            if (!HasExactAuthoredEventIndex(state, properEventIndex))
+            {
+                return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
             if (TryResolveStateHitSource(state, out sourceKind, out sourceProperty))

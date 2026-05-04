@@ -166,9 +166,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.GuildDataSnapshot => ApplyClientGuildDataSnapshot(packet),
                 SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
                     BuildClientGuildSkillRecordSummary(packet),
-                SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
-                    SocialListTab.Guild,
-                    BuildClientGuildResultNoticeSummary(packet)),
+                SocialListClientGuildResultKind.ResultNotice => ApplyClientGuildResultNoticeResult(packet),
                 SocialListClientGuildResultKind.Notice35
                     or SocialListClientGuildResultKind.Notice37
                     or SocialListClientGuildResultKind.Notice42
@@ -180,9 +178,7 @@ namespace HaCreator.MapSimulator.Interaction
                     or SocialListClientGuildResultKind.Notice56
                     or SocialListClientGuildResultKind.Notice57
                     or SocialListClientGuildResultKind.Notice58 => ApplyClientGuildDirectNoticeResult(packet),
-                _ => SetPacketSyncSummary(
-                    SocialListTab.Guild,
-                    BuildClientGuildResultFallbackNoticeSummary(packet))
+                _ => ApplyClientGuildResultFallbackNoticeResult(packet)
             };
         }
 
@@ -361,6 +357,37 @@ namespace HaCreator.MapSimulator.Interaction
 
             string notice = SocialListGuildResultClientText.GetSharedResultNoticeFallback();
             return $"Client OnGuildResult({(byte)packet.Kind}) fell back to shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice: {notice}.";
+        }
+
+        private string ApplyClientGuildResultFallbackNoticeResult(SocialListClientGuildResultPacket packet)
+        {
+            if (packet.UsesSharedResultNoticeFallback &&
+                TryBuildNoGuildContextOwnedResultIgnore(
+                    packet.RawSubtype,
+                    "shared guild-result notice",
+                    out string ignoredMessage))
+            {
+                return ignoredMessage;
+            }
+
+            return SetPacketSyncSummary(
+                SocialListTab.Guild,
+                BuildClientGuildResultFallbackNoticeSummary(packet));
+        }
+
+        private string ApplyClientGuildResultNoticeResult(SocialListClientGuildResultPacket packet)
+        {
+            if (TryBuildNoGuildContextOwnedResultIgnore(
+                    packet.RawSubtype,
+                    "guild-result notice",
+                    out string ignoredMessage))
+            {
+                return ignoredMessage;
+            }
+
+            return SetPacketSyncSummary(
+                SocialListTab.Guild,
+                BuildClientGuildResultNoticeSummary(packet));
         }
 
         private static string BuildClientGuildDirectNoticeSummary(SocialListClientGuildResultPacket packet)

@@ -252,6 +252,13 @@ namespace HaCreator.MapSimulator.UI
             return itemId == VegasSpellTenPercentId || itemId == VegasSpellSixtyPercentId;
         }
 
+        public static bool IsItemUpgradeConsumeCashConsumable(int itemId)
+        {
+            return !IsVegaSpellConsumable(itemId) &&
+                   TryGetConsumableDefinition(itemId, out EnhancementConsumableDefinition definition) &&
+                   definition.InventoryType == InventoryType.CASH;
+        }
+
         public static bool CanUpgrade(EquipSlot slot, CharacterPart part)
         {
             return part != null

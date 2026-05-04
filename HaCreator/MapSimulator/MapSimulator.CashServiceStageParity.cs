@@ -354,11 +354,12 @@ namespace HaCreator.MapSimulator
                         packetOwnedRewardSessionByte,
                         packetRewardSessionByte,
                         historyEntries);
-                    int selectorIndex = Math.Clamp(oneADayWindow.GetOneADaySelectorIndex(), 0, previousLaneEnabled ? 1 : 0);
-                    if (packetOwnedRewardSessionByte)
-                    {
-                        selectorIndex = previousLaneEnabled && (packetRewardSessionByte & 2) != 0 ? 1 : 0;
-                    }
+                    int selectorIndex = ResolveCashShopOneADayEffectiveSelectorIndex(
+                        packetOwnedRewardSessionByte,
+                        packetRewardSessionByte,
+                        oneADayWindow.IsOneADayPacketSeedAccepted(packetRewardSessionByte),
+                        oneADayWindow.GetOneADaySelectorIndex(),
+                        previousLaneEnabled);
 
                     int currentCommoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
                     TryResolveCashShopOneADayRemainingTime(
@@ -592,6 +593,7 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < CashShopOneADayHistorySlotCount; i++)
             {
                 bool hasHistoryEntry = i < historyCount;
+                CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState historyEntry = hasHistoryEntry ? historyEntries[i] : null;
                 string label = hasHistoryEntry && !string.IsNullOrWhiteSpace(historyEntries[i].ItemLabel)
                     ? historyEntries[i].ItemLabel.Trim()
                     : $"History {i + 1}";
@@ -607,11 +609,30 @@ namespace HaCreator.MapSimulator
                     IsLoaded = hasHistoryEntry,
                     IsEnabled = hasHistoryEntry,
                     IsFocused = i == 0,
-                    Label = label
+                    Label = label,
+                    HasPacketStateByte = historyEntry?.HasPacketStateByte == true,
+                    PacketStateByte = historyEntry?.PacketStateByte ?? 0,
+                    PacketStateByteOffset = historyEntry?.PacketStateByteOffset ?? -1
                 });
             }
 
             return buttons;
+        }
+
+        internal static int ResolveCashShopOneADayEffectiveSelectorIndex(
+            bool hasPacketRewardSessionByte,
+            int packetRewardSessionByte,
+            bool ownerRuntimeAcceptedPacketSeed,
+            int ownerSelectorIndex,
+            bool previousLaneEnabled)
+        {
+            int maxSelectorIndex = previousLaneEnabled ? 1 : 0;
+            if (hasPacketRewardSessionByte && !ownerRuntimeAcceptedPacketSeed)
+            {
+                return Math.Clamp(previousLaneEnabled && (packetRewardSessionByte & 2) != 0 ? 1 : 0, 0, maxSelectorIndex);
+            }
+
+            return Math.Clamp(ownerSelectorIndex, 0, maxSelectorIndex);
         }
 
         private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState> BuildCashShopOneADaySelectorEntryStates(

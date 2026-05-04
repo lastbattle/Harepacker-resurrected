@@ -1251,7 +1251,8 @@ namespace HaCreator.MapSimulator.UI
                 ? rowEntries
                     .OrderBy(entry => entry.DrawOrder)
                     .ThenBy(ResolveCtEntryKindDrawPriority)
-                : rowEntries;
+                : rowEntries
+                    .OrderBy(ResolveCtEntryKindDrawPriority);
         }
 
         private static int ResolveCtEntryKindDrawPriority(QuestDetailCtEntry entry)
@@ -3605,7 +3606,7 @@ namespace HaCreator.MapSimulator.UI
                 return SD.FontStyle.Bold;
             }
 
-            return normalizedStyleToken.StartsWith("B", StringComparison.OrdinalIgnoreCase)
+            return normalizedStyleToken.IndexOf('B', StringComparison.OrdinalIgnoreCase) >= 0
                 ? SD.FontStyle.Bold
                 : SD.FontStyle.Regular;
         }

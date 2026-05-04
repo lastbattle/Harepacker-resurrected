@@ -2510,9 +2510,100 @@ namespace HaCreator.MapSimulator
             deliveryType = QuestDetailDeliveryType.None;
             error = null;
 
-            if (payload == null || payload.Length < 8)
+            if (payload == null || payload.Length < sizeof(short) + sizeof(int))
             {
-                error = "Delivery-quest payload must contain questId and itemId Int32 values.";
+                error = "Delivery-quest payload must contain a questId and itemId header.";
+                return false;
+            }
+
+            List<PacketOwnedDeliveryQuestPayloadCandidate> candidates = new(2);
+            if (TryDecodePacketOwnedDeliveryQuestPayloadCandidate(
+                    payload,
+                    questIdWidth: sizeof(short),
+                    out PacketOwnedDeliveryQuestPayloadCandidate clientCandidate))
+            {
+                candidates.Add(clientCandidate);
+            }
+
+            if (TryDecodePacketOwnedDeliveryQuestPayloadCandidate(
+                    payload,
+                    questIdWidth: sizeof(int),
+                    out PacketOwnedDeliveryQuestPayloadCandidate legacyCandidate))
+            {
+                candidates.Add(legacyCandidate);
+            }
+
+            if (candidates.Count == 0)
+            {
+                error = TryDecodePacketOwnedDeliveryQuestPayloadCandidate(
+                    payload,
+                    questIdWidth: sizeof(short),
+                    out _,
+                    out string clientError)
+                    ? clientError
+                    : clientError ?? "Delivery-quest payload could not be decoded.";
+                return false;
+            }
+
+            PacketOwnedDeliveryQuestPayloadCandidate selected = SelectPacketOwnedDeliveryQuestPayloadCandidate(candidates);
+            questId = selected.QuestId;
+            itemId = selected.ItemId;
+            disallowedQuestIds = selected.DisallowedQuestIds;
+            deliveryType = selected.DeliveryType;
+            return true;
+        }
+
+        private readonly struct PacketOwnedDeliveryQuestPayloadCandidate
+        {
+            public PacketOwnedDeliveryQuestPayloadCandidate(
+                int questId,
+                int itemId,
+                int[] disallowedQuestIds,
+                QuestDetailDeliveryType deliveryType,
+                int questIdWidth)
+            {
+                QuestId = questId;
+                ItemId = itemId;
+                DisallowedQuestIds = disallowedQuestIds ?? Array.Empty<int>();
+                DeliveryType = deliveryType;
+                QuestIdWidth = questIdWidth;
+            }
+
+            public int QuestId { get; }
+            public int ItemId { get; }
+            public int[] DisallowedQuestIds { get; }
+            public QuestDetailDeliveryType DeliveryType { get; }
+            public int QuestIdWidth { get; }
+        }
+
+        private static bool TryDecodePacketOwnedDeliveryQuestPayloadCandidate(
+            byte[] payload,
+            int questIdWidth,
+            out PacketOwnedDeliveryQuestPayloadCandidate candidate)
+        {
+            return TryDecodePacketOwnedDeliveryQuestPayloadCandidate(payload, questIdWidth, out candidate, out _);
+        }
+
+        private static bool TryDecodePacketOwnedDeliveryQuestPayloadCandidate(
+            byte[] payload,
+            int questIdWidth,
+            out PacketOwnedDeliveryQuestPayloadCandidate candidate,
+            out string error)
+        {
+            candidate = default;
+            error = null;
+            if (payload == null || questIdWidth is not (sizeof(short) or sizeof(int)))
+            {
+                error = "Delivery-quest payload header width is unsupported.";
+                return false;
+            }
+
+            int headerLength = questIdWidth + sizeof(int);
+            if (payload.Length < headerLength)
+            {
+                error = questIdWidth == sizeof(short)
+                    ? "Delivery-quest payload must contain a UInt16 questId and Int32 itemId header."
+                    : "Delivery-quest legacy payload must contain questId and itemId Int32 values.";
                 return false;
             }
 
@@ -2520,10 +2611,12 @@ namespace HaCreator.MapSimulator
             {
                 using var stream = new MemoryStream(payload, writable: false);
                 using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-                questId = reader.ReadInt32();
-                itemId = reader.ReadInt32();
-                disallowedQuestIds = DecodePacketOwnedDeliveryQuestIdsWithOptionalCount(reader).ToArray();
-                if (!TryDecodePacketOwnedDeliveryType(reader, out deliveryType, out error))
+                int decodedQuestId = questIdWidth == sizeof(short)
+                    ? reader.ReadUInt16()
+                    : reader.ReadInt32();
+                int decodedItemId = reader.ReadInt32();
+                int[] decodedDisallowedQuestIds = DecodePacketOwnedDeliveryQuestIdsWithOptionalCount(reader).ToArray();
+                if (!TryDecodePacketOwnedDeliveryType(reader, out QuestDetailDeliveryType decodedDeliveryType, out error))
                 {
                     return false;
                 }
@@ -2534,6 +2627,12 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                candidate = new PacketOwnedDeliveryQuestPayloadCandidate(
+                    decodedQuestId,
+                    decodedItemId,
+                    decodedDisallowedQuestIds,
+                    decodedDeliveryType,
+                    questIdWidth);
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException)
@@ -2541,6 +2640,65 @@ namespace HaCreator.MapSimulator
                 error = ex.Message;
                 return false;
             }
+        }
+
+        private static PacketOwnedDeliveryQuestPayloadCandidate SelectPacketOwnedDeliveryQuestPayloadCandidate(
+            IReadOnlyList<PacketOwnedDeliveryQuestPayloadCandidate> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return default;
+            }
+
+            PacketOwnedDeliveryQuestPayloadCandidate best = candidates[0];
+            int bestScore = ScorePacketOwnedDeliveryQuestPayloadCandidate(best);
+            for (int i = 1; i < candidates.Count; i++)
+            {
+                int score = ScorePacketOwnedDeliveryQuestPayloadCandidate(candidates[i]);
+                if (score > bestScore)
+                {
+                    best = candidates[i];
+                    bestScore = score;
+                }
+            }
+
+            return best;
+        }
+
+        private static int ScorePacketOwnedDeliveryQuestPayloadCandidate(PacketOwnedDeliveryQuestPayloadCandidate candidate)
+        {
+            int score = 0;
+            if (candidate.QuestId > 0)
+            {
+                score += 2;
+            }
+
+            if (candidate.QuestId is > 0 and <= ushort.MaxValue)
+            {
+                score++;
+            }
+
+            if (IsPlausiblePacketOwnedDeliveryItemId(candidate.ItemId))
+            {
+                score += 4;
+            }
+
+            if (candidate.DisallowedQuestIds.All(questId => questId > 0 && questId <= ushort.MaxValue))
+            {
+                score++;
+            }
+
+            if (candidate.QuestIdWidth == sizeof(short))
+            {
+                score += 2;
+            }
+
+            return score;
+        }
+
+        private static bool IsPlausiblePacketOwnedDeliveryItemId(int itemId)
+        {
+            return itemId is >= 1000000 and <= 5999999;
         }
 
         private static bool TryExtractMapleStringClassCompetitionAuthKey(byte[] payload, out string authKey)
@@ -15793,7 +15951,7 @@ namespace HaCreator.MapSimulator
 
                 case "association":
                     route = new PacketOwnedChatRoute(
-                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Association]"),
+                        FormatPacketOwnedGroupChatLine(message, primaryTarget, "[Alliance]"),
                         5);
                     return true;
 
@@ -15958,7 +16116,7 @@ namespace HaCreator.MapSimulator
                 0 => (3, "[Friend]"),
                 1 => (2, "[Party]"),
                 2 => (4, "[Guild]"),
-                3 => (5, "[Association]"),
+                3 => (5, "[Alliance]"),
                 6 => (26, "[Expedition]"),
                 _ => (-1, string.Empty)
             };
@@ -18607,6 +18765,7 @@ namespace HaCreator.MapSimulator
                     payload,
                     equipInventory,
                     cashInventory,
+                    build,
                     out IReadOnlyList<CharacterEquipmentPacketParity.CharacterInventoryOperationMutation> mutations,
                     out string rejectReason))
             {

@@ -1297,7 +1297,7 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                matchedKnownTail = matchedKnownRemainder && opaquePrefixLength == 0;
+                matchedKnownTail = matchedKnownRemainder;
                 tailCandidateScore = Math.Min(
                     GetBoundedOpaqueTailCandidateScore(opaquePrefixLength),
                     remainderCandidateScore);

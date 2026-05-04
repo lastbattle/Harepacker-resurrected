@@ -2066,7 +2066,7 @@ namespace HaCreator.MapSimulator.Interaction
                 0 => (3, "[Friend]"),
                 1 => (2, "[Party]"),
                 2 => (4, "[Guild]"),
-                3 => (5, "[Association]"),
+                3 => (5, "[Alliance]"),
                 6 => (26, "[Expedition]"),
                 _ => (-1, string.Empty)
             };

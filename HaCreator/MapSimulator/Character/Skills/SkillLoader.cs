@@ -125,6 +125,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             "sourceskillid",
             "currentskill",
             "sourceskill",
+            "currentid",
+            "sourceid",
+            "srcskillid",
+            "srcskill",
+            "srcskillpath",
+            "from",
+            "fromid",
+            "fromskillid",
+            "fromskill",
+            "fromskillpath",
+            "entryskillid",
+            "skillentryid",
             "currentskillpath",
             "sourceskillpath",
             "summonedskillid",
@@ -150,20 +162,35 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] ClientTileUolPropertyNames =
         {
             "sTileUOL",
+            "sTileUOLPath",
+            "sTileUolPath",
             "tileUOL",
-            "tileUol"
+            "tileUol",
+            "tileUOLPath",
+            "tileUolPath",
+            "tilePath"
         };
         private static readonly string[] ClientBallUolPropertyNames =
         {
             "sBallUOL",
+            "sBallUOLPath",
+            "sBallUolPath",
             "ballUOL",
-            "ballUol"
+            "ballUol",
+            "ballUOLPath",
+            "ballUolPath",
+            "ballPath"
         };
         private static readonly string[] ClientFlipBallUolPropertyNames =
         {
             "sFlipBallUOL",
+            "sFlipBallUOLPath",
+            "sFlipBallUolPath",
             "flipBallUOL",
-            "flipBallUol"
+            "flipBallUol",
+            "flipBallUOLPath",
+            "flipBallUolPath",
+            "flipBallPath"
         };
         private const string ClientSummonedUolBranchName = "summon";
         private static readonly char[] ClientSummonedUolTokenTrimChars =
@@ -2918,7 +2945,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             foreach (string actionName in ShadowPartnerClientActionResolver.EnumeratePiecedShadowPartnerActionNames())
             {
-                if (string.IsNullOrWhiteSpace(actionName) || actionAnimations.ContainsKey(actionName))
+                if (string.IsNullOrWhiteSpace(actionName)
+                    || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames))
                 {
                     continue;
                 }
@@ -2939,7 +2968,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateRemappedShadowPartnerActionNames())
             {
-                if (string.IsNullOrWhiteSpace(actionName) || actionAnimations.ContainsKey(actionName))
+                if (string.IsNullOrWhiteSpace(actionName)
+                    || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames))
                 {
                     continue;
                 }
@@ -2972,6 +3003,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames)
                     || !TryGetShadowPartnerClientActionPieces(actionName, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
                 {
                     continue;
@@ -2997,6 +3029,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames)
                     || !TryGetShadowPartnerClientActionPieces(actionName, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
                 {
                     continue;
@@ -3022,6 +3055,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames)
                     || !TryGetShadowPartnerClientActionPieces(actionName, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
                 {
                     continue;
@@ -3047,6 +3081,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames)
                     || !TryGetShadowPartnerClientActionPieces(actionName, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
                 {
                     continue;
@@ -3091,6 +3126,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || actionNode?.WzProperties == null
                     || actionNode.WzProperties.Count == 0
                     || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames)
                     || !TryGetShadowPartnerClientActionPieces(
                         actionName,
                         out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
@@ -3123,7 +3159,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
                     || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase)
-                    || ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName))
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(actionName, supportedRawActionNames))
                 {
                     continue;
                 }
@@ -3187,10 +3223,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
-                    || (ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName)
-                        && !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(
-                            actionName,
-                            supportedRawActionNames))
+                    || !ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(
+                        actionName,
+                        supportedRawActionNames)
                     || !ShadowPartnerClientActionResolver.ShouldSynthesizeClientInitializedFallbackAction(actionName))
                 {
                     continue;
@@ -3292,7 +3327,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(pieceOwnerNode.WzProperties.Count);
-            int? ownerEventDelayMs = ResolveShadowPartnerClientActionPieceEventDelayMs(pieceOwnerNode);
+            int? ownerEventDelayMs = ResolveShadowPartnerClientActionPieceEventDelayMs(pieceOwnerNode)
+                ?? (ReferenceEquals(pieceOwnerNode, actionNode) ? null : ResolveShadowPartnerClientActionPieceEventDelayMs(actionNode));
             int fallbackSlotIndex = 0;
             foreach (WzImageProperty pieceNode in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(pieceOwnerNode))
             {
@@ -3372,6 +3408,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(frameOwnerNode.WzProperties.Count);
+            int? ownerEventDelayMs = ResolveShadowPartnerClientActionPieceEventDelayMs(frameOwnerNode)
+                ?? (ReferenceEquals(frameOwnerNode, actionNode) ? null : ResolveShadowPartnerClientActionPieceEventDelayMs(actionNode));
             int fallbackSlotIndex = 0;
             foreach (WzImageProperty frameNode in EnumerateMountedGhostShadowPartnerFrameRowsInClientOrder(frameOwnerNode))
             {
@@ -3394,7 +3432,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetInt(frameNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
                     IsClientActionManInitPiece: true,
-                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(frameNode),
+                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(frameNode)
+                        ?? (pieces.Count == 0 ? ownerEventDelayMs : null),
                     InlineCanvasChildNames: EnumerateShadowPartnerClientActionPieceInlineCanvasChildNames(frameNode)));
             }
 
@@ -7584,18 +7623,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            string decodedName = NormalizeClientSummonedUolFieldNameSyntax(name);
             int prefixLength = 0;
-            while (prefixLength < name.Length && char.IsLetterOrDigit(name[prefixLength]))
+            while (prefixLength < decodedName.Length && char.IsLetterOrDigit(decodedName[prefixLength]))
             {
                 prefixLength++;
             }
 
-            if (prefixLength <= 0 || prefixLength >= name.Length)
+            if (prefixLength <= 0 || prefixLength >= decodedName.Length)
             {
                 return false;
             }
 
-            normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name.Substring(0, prefixLength));
+            normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(decodedName.Substring(0, prefixLength));
             return !string.IsNullOrWhiteSpace(normalizedName);
         }
 
@@ -7606,7 +7646,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string decodedName = NormalizeClientSummonedUolEncodedPathSyntax(name);
+            string decodedName = NormalizeClientSummonedUolFieldNameSyntax(name);
             int prefixLength = 0;
             while (prefixLength < decodedName.Length && char.IsLetterOrDigit(decodedName[prefixLength]))
             {
@@ -7619,6 +7659,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return IsClientSummonedUolTableEntryValueName(decodedName.Substring(0, prefixLength));
+        }
+
+        private static string NormalizeClientSummonedUolFieldNameSyntax(string name)
+        {
+            return NormalizeClientSummonedUolEncodedPathSyntax(name)
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Trim();
         }
 
         private static string BuildClientSummonedUolTableEntryRelativePath(
@@ -7653,9 +7701,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
             return name.Equals("0", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("path", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uol", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("uolStr", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("uolString", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("tilePath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("tileUolPath", StringComparison.OrdinalIgnoreCase)
@@ -7680,17 +7731,35 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || name.Equals("targetUol", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetUolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("targetUolStr", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("targetUolString", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourceUol", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourceUolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourceUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("sourceUolStr", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("sourceUolString", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourcePath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("srcPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("asset", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("assetPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("clientPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("clientUol", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("clientUolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uolValue", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uolTarget", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("value", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("uolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("uolstring", StringComparison.Ordinal)
+                   || normalizedName.Equals("summonuol", StringComparison.Ordinal)
+                   || normalizedName.Equals("summonuolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("summoneduol", StringComparison.Ordinal)
+                   || normalizedName.Equals("summoneduolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("targetuol", StringComparison.Ordinal)
+                   || normalizedName.Equals("targetuolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("sourceuol", StringComparison.Ordinal)
+                   || normalizedName.Equals("sourceuolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("clientuol", StringComparison.Ordinal)
+                   || normalizedName.Equals("clientuolpath", StringComparison.Ordinal)
                    || ClientSummonedUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
                    || ClientTileUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
                    || ClientBallUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
@@ -11423,13 +11492,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             foreach (SkillData root in swallowRoots)
             {
-                int[] linkedDummySkillIds = root.DummySkillParents;
-                if (linkedDummySkillIds == null || linkedDummySkillIds.Length == 0)
-                {
-                    continue;
-                }
-
-                foreach (int linkedSkillId in linkedDummySkillIds)
+                foreach (int linkedSkillId in EnumerateReachableDummySkillIds(root, skillsById))
                 {
                     if (linkedSkillId > 0
                         && skillsById.TryGetValue(linkedSkillId, out SkillData linkedSkill)
@@ -11487,7 +11550,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            foreach (int linkedSkillId in skill.DummySkillParents)
+            return HasReachableAuthoredSwallowDummy(skill, skillsById);
+        }
+
+        private static bool HasReachableAuthoredSwallowDummy(
+            SkillData skill,
+            IReadOnlyDictionary<int, SkillData> skillsById)
+        {
+            foreach (int linkedSkillId in EnumerateReachableDummySkillIds(skill, skillsById))
             {
                 if (linkedSkillId > 0
                     && skillsById.TryGetValue(linkedSkillId, out SkillData linkedSkill)
@@ -11498,6 +11568,55 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static IEnumerable<int> EnumerateReachableDummySkillIds(
+            SkillData skill,
+            IReadOnlyDictionary<int, SkillData> skillsById)
+        {
+            if (skill?.DummySkillParents == null
+                || skill.DummySkillParents.Length == 0
+                || skillsById == null)
+            {
+                yield break;
+            }
+
+            const int maxDepth = 8;
+            HashSet<int> visited = new();
+            Queue<(int SkillId, int Depth)> pending = new();
+            foreach (int linkedSkillId in skill.DummySkillParents)
+            {
+                if (linkedSkillId > 0)
+                {
+                    pending.Enqueue((linkedSkillId, 1));
+                }
+            }
+
+            while (pending.Count > 0)
+            {
+                (int linkedSkillId, int depth) = pending.Dequeue();
+                if (linkedSkillId <= 0 || !visited.Add(linkedSkillId))
+                {
+                    continue;
+                }
+
+                yield return linkedSkillId;
+
+                if (depth >= maxDepth
+                    || !skillsById.TryGetValue(linkedSkillId, out SkillData linkedSkill)
+                    || linkedSkill?.DummySkillParents == null)
+                {
+                    continue;
+                }
+
+                foreach (int nestedSkillId in linkedSkill.DummySkillParents)
+                {
+                    if (nestedSkillId > 0 && !visited.Contains(nestedSkillId))
+                    {
+                        pending.Enqueue((nestedSkillId, depth + 1));
+                    }
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateSwallowFamilyActionNames(SkillData skill)
@@ -11754,6 +11873,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<string>();
             }
 
+            if (actionNode is WzUOLProperty
+                && ResolveMorphSkillActionNode(actionNode) is WzImageProperty linkedActionNode
+                && !ReferenceEquals(linkedActionNode, actionNode))
+            {
+                return GetActionNamesFromActionNode(linkedActionNode);
+            }
+
             var actionNames = new List<string>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -11775,6 +11901,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return actionNames;
+        }
+
+        private static WzImageProperty ResolveMorphSkillActionNode(WzImageProperty actionNode)
+        {
+            return ResolveMorphSkillActionNode(actionNode, new HashSet<WzImageProperty>());
+        }
+
+        private static WzImageProperty ResolveMorphSkillActionNode(
+            WzImageProperty actionNode,
+            ISet<WzImageProperty> seen)
+        {
+            if (actionNode == null
+                || actionNode is not WzUOLProperty
+                || seen == null
+                || !seen.Add(actionNode))
+            {
+                return actionNode;
+            }
+
+            WzImageProperty linkedActionNode = actionNode.GetLinkedWzImageProperty();
+            if (linkedActionNode == null || ReferenceEquals(linkedActionNode, actionNode))
+            {
+                return actionNode;
+            }
+
+            return ResolveMorphSkillActionNode(linkedActionNode, seen);
         }
 
         private static void AddActionNames(

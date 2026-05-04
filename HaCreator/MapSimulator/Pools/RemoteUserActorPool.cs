@@ -475,6 +475,14 @@ namespace HaCreator.MapSimulator.Pools
                                 layer.SimulatedSnapshotLayerHandleId,
                                 refCount: 0));
                         }
+
+                        if (layer.SimulatedRepeatAnimationStateId > 0)
+                        {
+                            operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.ReleaseRepeatAnimation(
+                                (int)layer.SourceLayer,
+                                layer.SimulatedRepeatAnimationStateId,
+                                refCount: 0));
+                        }
                     }
                 }
 
@@ -1003,6 +1011,8 @@ namespace HaCreator.MapSimulator.Pools
                 ClearActorFollowLinks(actor);
                 ClearRemoteActiveEffectMotionBlurState(actor);
                 ClearRemoteActiveEffectItemEffectState(actor);
+                ReleaseCarryItemEffectLayerReferenceForParity(actor);
+                ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                 ClearRemoteTransientItemEffectStates(actor);
                 ClearRemoteDragonCompanionState(actor);
                 NotifyActorRemoved(actor.CharacterId, actor.Name);
@@ -1034,6 +1044,8 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ReleaseCarryItemEffectLayerReferenceForParity(actor);
+                    ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
                     ClearRemoteDragonCompanionState(actor);
                     ClearPortableChairPairRecord(characterId);
@@ -1066,6 +1078,8 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ReleaseCarryItemEffectLayerReferenceForParity(actor);
+                    ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
                     ClearRemoteDragonCompanionState(actor);
                     ClearPortableChairPairRecord(characterId);
@@ -2499,6 +2513,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
+            ReleaseCarryItemEffectLayerReferenceForParity(actor);
             actor.CarryItemEffectId = normalizedCarryItemEffectId;
             if (!normalizedCarryItemEffectId.HasValue)
             {
@@ -2516,6 +2531,8 @@ namespace HaCreator.MapSimulator.Pools
             actor.CarryItemEffectAppliedTime = hasRestoredAnimationElapsed
                 ? unchecked(currentTime - restoredAnimationElapsedMs)
                 : currentTime;
+            actor.CarryItemEffectLayerHandleId = NextRemoteCarryItemEffectLayerHandleId();
+            UpdateCarryItemEffectLayerAdmissionForParity(actor);
         }
 
         private void ApplyCompletedSetItemEffectStateForParity(RemoteUserActor actor, int completedSetItemId, int currentTime)
@@ -2546,6 +2563,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
+            ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
             actor.CompletedSetItemId = normalizedSetItemId;
             if (normalizedSetItemId <= 0)
             {
@@ -2563,6 +2581,8 @@ namespace HaCreator.MapSimulator.Pools
             actor.CompletedSetItemEffectAppliedTime = hasRestoredAnimationElapsed
                 ? unchecked(currentTime - restoredAnimationElapsedMs)
                 : currentTime;
+            actor.CompletedSetItemEffectLayerHandleId = NextRemoteCompletedSetItemEffectLayerHandleId();
+            UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
         }
 
         public bool TrySetItemEffect(int characterId, int? itemId, int? pairCharacterId, int currentTime, out string message)
@@ -5316,6 +5336,8 @@ namespace HaCreator.MapSimulator.Pools
             ClearActorFollowLinks(actor);
             ClearRemoteActiveEffectMotionBlurState(actor);
             ClearRemoteActiveEffectItemEffectState(actor);
+            ReleaseCarryItemEffectLayerReferenceForParity(actor);
+            ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
             ClearRemoteTransientItemEffectStates(actor);
             ClearRemoteDragonCompanionState(actor);
             ClearPortableChairPairRecord(characterId);
@@ -5373,6 +5395,8 @@ namespace HaCreator.MapSimulator.Pools
                 UpdatePacketOwnedEmotionState(actor, currentTime);
                 UpdateRemoteActiveEffectMotionBlurState(actor, currentTime);
                 UpdateRemoteActiveEffectItemEffectLayerAdmission(actor);
+                UpdateCarryItemEffectLayerAdmissionForParity(actor);
+                UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
                 UpdateTransientItemEffects(actor, currentTime);
                 UpdateTransientSkillUseAvatarEffects(actor, currentTime);
                 actor.UpdateMeleeAfterImage(currentTime);
@@ -7801,6 +7825,55 @@ namespace HaCreator.MapSimulator.Pools
                 || IsRelationshipOverlayGhostAction(actionName);
         }
 
+        private static void UpdateCarryItemEffectLayerAdmissionForParity(RemoteUserActor actor)
+        {
+            if (actor == null || !actor.CarryItemEffectId.HasValue || actor.CarryItemEffectLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            if (ShouldSuppressCarryItemEffectForParity(actor))
+            {
+                actor.CarryItemEffectLayerHandleRefCount = 0;
+                actor.CarryItemEffectLayerSuppressed = true;
+                return;
+            }
+
+            actor.CarryItemEffectLayerHandleRefCount = 1;
+            actor.CarryItemEffectLayerSuppressed = false;
+        }
+
+        private static void ReleaseCarryItemEffectLayerReferenceForParity(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            actor.CarryItemEffectLayerHandleRefCount = 0;
+            actor.CarryItemEffectLayerSuppressed = true;
+        }
+
+        private static void UpdateCompletedSetItemEffectLayerAdmissionForParity(RemoteUserActor actor)
+        {
+            if (actor == null || actor.CompletedSetItemId <= 0 || actor.CompletedSetItemEffectLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            actor.CompletedSetItemEffectLayerHandleRefCount = 1;
+        }
+
+        private static void ReleaseCompletedSetItemEffectLayerReferenceForParity(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            actor.CompletedSetItemEffectLayerHandleRefCount = 0;
+        }
+
         private void DrawRelationshipOverlay(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -9244,6 +9317,16 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteCarryItemEffectLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
+        private static int NextRemoteCompletedSetItemEffectLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         private static int NextRemoteTemporaryStatAffectedLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -9277,6 +9360,16 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteEffectByItemLayerHandleIdForTesting()
         {
             return NextRemoteEffectByItemLayerHandleId();
+        }
+
+        internal static int NextRemoteCarryItemEffectLayerHandleIdForTesting()
+        {
+            return NextRemoteCarryItemEffectLayerHandleId();
+        }
+
+        internal static int NextRemoteCompletedSetItemEffectLayerHandleIdForTesting()
+        {
+            return NextRemoteCompletedSetItemEffectLayerHandleId();
         }
 
         internal static int NextRemoteDragonCompanionLayerHandleIdForTesting()
@@ -11796,6 +11889,16 @@ namespace HaCreator.MapSimulator.Pools
         internal static string ResolveRemoteCompletedSetItemEffectOwnerNameForTesting()
         {
             return RemoteCompletedSetItemEffectActionOwnerName;
+        }
+
+        internal static void UpdateCarryItemEffectLayerAdmissionForTesting(RemoteUserActor actor)
+        {
+            UpdateCarryItemEffectLayerAdmissionForParity(actor);
+        }
+
+        internal static void UpdateCompletedSetItemEffectLayerAdmissionForTesting(RemoteUserActor actor)
+        {
+            UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
         }
 
         internal static string ResolveRemoteQuestDeliveryOwnerNameForTesting()
@@ -16802,8 +16905,13 @@ namespace HaCreator.MapSimulator.Pools
         public int RemoteDragonAttackStartTime { get; set; } = int.MinValue;
         public int? CarryItemEffectId { get; set; }
         public int CarryItemEffectAppliedTime { get; set; } = int.MinValue;
+        public int CarryItemEffectLayerHandleId { get; set; }
+        public int CarryItemEffectLayerHandleRefCount { get; set; }
+        public bool CarryItemEffectLayerSuppressed { get; set; } = true;
         public int CompletedSetItemId { get; set; }
         public int CompletedSetItemEffectAppliedTime { get; set; } = int.MinValue;
+        public int CompletedSetItemEffectLayerHandleId { get; set; }
+        public int CompletedSetItemEffectLayerHandleRefCount { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
         public float? BattlefieldOriginalSpeed { get; set; }
         public int? BattlefieldAppliedTeamId { get; set; }

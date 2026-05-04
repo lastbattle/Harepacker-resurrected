@@ -1385,10 +1385,23 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 inputPos = SnapToPixel(new Vector2(this.Position.X + _chatInputPos.X, this.Position.Y + _chatInputPos.Y));
-            string inputText = chatState.InputText ?? string.Empty;
-            int cursorPosition = Math.Clamp(chatState.CursorPosition, 0, inputText.Length);
+            string inputText = chatState.HasCompositionText
+                ? chatState.CompositionPreviewText ?? string.Empty
+                : chatState.InputText ?? string.Empty;
+            int cursorPosition = chatState.HasCompositionText
+                ? Math.Clamp(chatState.CompositionCursorPosition, 0, inputText.Length)
+                : Math.Clamp(chatState.CursorPosition, 0, inputText.Length);
             string visibleText = ResolveVisibleInputText(inputText, cursorPosition, out int visibleCursorOffset);
             DrawTextWithShadow(sprite, visibleText, inputPos, Color.White, Color.Black);
+            int visibleStartIndex = cursorPosition - visibleCursorOffset;
+            DrawClientEditCompositionUnderline(
+                sprite,
+                chatState,
+                visibleText,
+                visibleStartIndex,
+                inputPos.X,
+                (int)Math.Round(inputPos.Y + ResolveFontLineSpacing() - 2),
+                Color.White);
 
             if (_pixelTexture == null || ((tickCount / 500) % 2) != 0)
             {
@@ -1678,8 +1691,12 @@ namespace HaCreator.MapSimulator.UI
                 comboBounds,
                 comboToggleBounds,
                 StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset);
-            string inputText = chatState?.InputText ?? string.Empty;
-            int cursorPosition = Math.Clamp(chatState?.CursorPosition ?? 0, 0, inputText.Length);
+            string inputText = chatState?.HasCompositionText == true
+                ? chatState.CompositionPreviewText ?? string.Empty
+                : chatState?.InputText ?? string.Empty;
+            int cursorPosition = chatState?.HasCompositionText == true
+                ? Math.Clamp(chatState.CompositionCursorPosition, 0, inputText.Length)
+                : Math.Clamp(chatState?.CursorPosition ?? 0, 0, inputText.Length);
             string visibleComboText = ResolveWhisperPickerModalComboVisibleText(
                 inputText,
                 cursorPosition,
@@ -1704,6 +1721,14 @@ namespace HaCreator.MapSimulator.UI
                     comboBounds.Y + comboTextTopInset),
                 new Color(24, 24, 24),
                 new Color(255, 255, 255, 160));
+            DrawClientEditCompositionUnderline(
+                sprite,
+                chatState,
+                visibleComboText,
+                visibleComboStartIndex,
+                comboTextX,
+                comboBounds.Y + comboTextTopInset + ResolveFontLineSpacing() - 2,
+                new Color(24, 24, 24));
 
             if (_pixelTexture == null
                 || !ShouldDrawWhisperPickerModalComboCaret(
@@ -1743,6 +1768,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_pixelTexture == null
                 || chatState?.HasSelection != true
+                || chatState.HasCompositionText
                 || string.IsNullOrEmpty(visibleText))
             {
                 return;
@@ -1767,6 +1793,43 @@ namespace HaCreator.MapSimulator.UI
                 _pixelTexture,
                 new Rectangle(selectionX, textY, selectionWidth, selectionHeight),
                 new Color(51, 103, 209, 160));
+        }
+
+        private void DrawClientEditCompositionUnderline(
+            SpriteBatch sprite,
+            MapSimulatorChatRenderState chatState,
+            string visibleText,
+            int visibleStartIndex,
+            float textX,
+            int underlineY,
+            Color color)
+        {
+            if (_pixelTexture == null
+                || chatState?.HasCompositionText != true
+                || string.IsNullOrEmpty(visibleText))
+            {
+                return;
+            }
+
+            int visibleEndIndex = visibleStartIndex + visibleText.Length;
+            int compositionStart = Math.Clamp(chatState.CompositionStart, visibleStartIndex, visibleEndIndex);
+            int compositionEnd = Math.Clamp(
+                chatState.CompositionStart + chatState.CompositionLength,
+                visibleStartIndex,
+                visibleEndIndex);
+            if (compositionEnd <= compositionStart)
+            {
+                return;
+            }
+
+            string textBeforeComposition = visibleText.Substring(0, compositionStart - visibleStartIndex);
+            string compositionText = visibleText.Substring(compositionStart - visibleStartIndex, compositionEnd - compositionStart);
+            int underlineX = (int)Math.Round(textX + MeasureChatText(textBeforeComposition).X);
+            int underlineWidth = Math.Max(1, (int)Math.Ceiling(MeasureChatText(compositionText).X));
+            sprite.Draw(
+                _pixelTexture,
+                new Rectangle(underlineX, underlineY, underlineWidth, 1),
+                color);
         }
 
         private void DrawWhisperPickerModalComboDropdownRow(

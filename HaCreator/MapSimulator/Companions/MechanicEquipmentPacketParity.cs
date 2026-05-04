@@ -49,10 +49,13 @@ namespace HaCreator.MapSimulator.Companions
         MechanicEquipAuthorityResultKind AuthorityResultKind = default,
         int ResolvedBuildStateToken = 0,
         int ResolvedMechanicStateToken = 0,
-        string RejectReason = null);
+        string RejectReason = null,
+        bool HasOwnerSessionContext = false);
 
     internal static class MechanicEquipmentPacketParity
     {
+        private const byte AuthorityResultOwnerSessionContextMarker = 0xEC;
+        private const int AuthorityResultOwnerSessionContextLength = sizeof(byte) + sizeof(byte) + sizeof(int) + sizeof(int);
         internal const int ClientChangeSlotPositionRequestOpcode = 77;
         internal const int ClientInventoryOperationPacketType = 28;
         internal const byte ClientEquipInventoryType = 1;
@@ -841,6 +844,14 @@ namespace HaCreator.MapSimulator.Companions
                             throw new InvalidOperationException($"Unsupported mechanic authority result kind '{payload.AuthorityResultKind}'.");
                     }
 
+                    if (payload.HasOwnerSessionContext)
+                    {
+                        writer.Write(AuthorityResultOwnerSessionContextMarker);
+                        writer.Write((byte)payload.OwnerKind);
+                        writer.Write(payload.OwnerSessionId);
+                        writer.Write(payload.ExpectedCharacterId);
+                    }
+
                     break;
                 default:
                     throw new InvalidOperationException($"Unsupported mechanic payload mode '{payload.Mode}'.");
@@ -1021,6 +1032,10 @@ namespace HaCreator.MapSimulator.Companions
                         MechanicEquipAuthorityResultKind resultKind = (MechanicEquipAuthorityResultKind)resultKindValue;
                         int resolvedBuildStateToken = reader.ReadInt32();
                         int resolvedMechanicStateToken = reader.ReadInt32();
+                        EquipmentChangeOwnerKind ownerKind = default;
+                        int ownerSessionId = 0;
+                        int expectedCharacterId = 0;
+                        bool hasOwnerSessionContext = false;
 
                         switch (resultKind)
                         {
@@ -1042,17 +1057,14 @@ namespace HaCreator.MapSimulator.Companions
                                     ResolvedMechanicStateToken: resolvedMechanicStateToken,
                                     AuthorityResultKind: resultKind,
                                     RejectReason: reader.ReadMapleString());
-                                return stream.Position == stream.Length
-                                    ? true
-                                    : FailWithTrailingBytes("Mechanic authority rejection payload should not contain extra bytes.", out decodedPayload, out errorMessage);
+                                return TryReadAuthorityResultOwnerSessionContextTrailer(
+                                    reader,
+                                    stream,
+                                    decodedPayload,
+                                    out decodedPayload,
+                                    out errorMessage);
                             case MechanicEquipAuthorityResultKind.LocalRequestAccept:
                             {
-                                if (stream.Position != stream.Length)
-                                {
-                                    errorMessage = "Mechanic local-request authority acceptance should not contain extra bytes.";
-                                    return false;
-                                }
-
                                 decodedPayload = new MechanicEquipPacketPayload(
                                     mode,
                                     null,
@@ -1063,11 +1075,17 @@ namespace HaCreator.MapSimulator.Companions
                                     AuthorityResultKind: resultKind,
                                     ResolvedBuildStateToken: resolvedBuildStateToken,
                                     ResolvedMechanicStateToken: resolvedMechanicStateToken);
-                                return true;
+                                return TryReadAuthorityResultOwnerSessionContextTrailer(
+                                    reader,
+                                    stream,
+                                    decodedPayload,
+                                    out decodedPayload,
+                                    out errorMessage);
                             }
                             case MechanicEquipAuthorityResultKind.SnapshotAccept:
                             {
-                                if (stream.Length - stream.Position != sizeof(int) * 5)
+                                if (stream.Length - stream.Position != sizeof(int) * 5
+                                    && stream.Length - stream.Position != sizeof(int) * 5 + AuthorityResultOwnerSessionContextLength)
                                 {
                                     errorMessage = "Mechanic snapshot authority acceptance must contain five Int32 item ids ordered as ENGINE, FRAME, TRANS, ARM, LEG.";
                                     return false;
@@ -1083,11 +1101,28 @@ namespace HaCreator.MapSimulator.Companions
                                     AuthorityResultKind: resultKind,
                                     ResolvedBuildStateToken: resolvedBuildStateToken,
                                     ResolvedMechanicStateToken: resolvedMechanicStateToken);
-                                return true;
+                                return TryReadAuthorityResultOwnerSessionContextTrailer(
+                                    reader,
+                                    stream,
+                                    decodedPayload,
+                                    out decodedPayload,
+                                    out errorMessage);
                             }
                             case MechanicEquipAuthorityResultKind.SlotMutationAccept:
                             {
                                 long slotMutationLength = stream.Length - stream.Position;
+                                bool hasContextTrailer = false;
+                                if (slotMutationLength == sizeof(int) * 2 + AuthorityResultOwnerSessionContextLength)
+                                {
+                                    slotMutationLength = sizeof(int) * 2;
+                                    hasContextTrailer = true;
+                                }
+                                else if (slotMutationLength == sizeof(byte) + sizeof(int) + AuthorityResultOwnerSessionContextLength)
+                                {
+                                    slotMutationLength = sizeof(byte) + sizeof(int);
+                                    hasContextTrailer = true;
+                                }
+
                                 if (slotMutationLength != sizeof(int) * 2
                                     && slotMutationLength != sizeof(byte) + sizeof(int))
                                 {
@@ -1110,12 +1145,20 @@ namespace HaCreator.MapSimulator.Companions
                                     AuthorityResultKind: resultKind,
                                     ResolvedBuildStateToken: resolvedBuildStateToken,
                                     ResolvedMechanicStateToken: resolvedMechanicStateToken);
-                                return true;
+                                return hasContextTrailer
+                                    ? TryReadAuthorityResultOwnerSessionContextTrailer(
+                                        reader,
+                                        stream,
+                                        decodedPayload,
+                                        out decodedPayload,
+                                        out errorMessage)
+                                    : true;
                             }
                             case MechanicEquipAuthorityResultKind.ClearAllAccept:
                             case MechanicEquipAuthorityResultKind.ResetDefaultsAccept:
                             {
-                                if (stream.Position != stream.Length)
+                                if (stream.Position != stream.Length
+                                    && stream.Length - stream.Position != AuthorityResultOwnerSessionContextLength)
                                 {
                                     errorMessage = resultKind == MechanicEquipAuthorityResultKind.ClearAllAccept
                                         ? "Mechanic clear-all authority acceptance should not contain extra bytes."
@@ -1133,7 +1176,12 @@ namespace HaCreator.MapSimulator.Companions
                                     AuthorityResultKind: resultKind,
                                     ResolvedBuildStateToken: resolvedBuildStateToken,
                                     ResolvedMechanicStateToken: resolvedMechanicStateToken);
-                                return true;
+                                return TryReadAuthorityResultOwnerSessionContextTrailer(
+                                    reader,
+                                    stream,
+                                    decodedPayload,
+                                    out decodedPayload,
+                                    out errorMessage);
                             }
                             default:
                                 errorMessage = $"Mechanic authority-result kind {resultKindValue} is unsupported.";
@@ -1248,6 +1296,52 @@ namespace HaCreator.MapSimulator.Companions
                     errorMessage = "Mechanic authority payload does not expose a final mechanic slot state.";
                     return false;
             }
+        }
+
+        private static bool TryReadAuthorityResultOwnerSessionContextTrailer(
+            BinaryReader reader,
+            Stream stream,
+            MechanicEquipPacketPayload decodedPayload,
+            out MechanicEquipPacketPayload payloadWithContext,
+            out string errorMessage)
+        {
+            payloadWithContext = decodedPayload;
+            errorMessage = null;
+
+            long remaining = stream.Length - stream.Position;
+            if (remaining == 0)
+            {
+                return true;
+            }
+
+            if (remaining != AuthorityResultOwnerSessionContextLength)
+            {
+                errorMessage = "Mechanic authority-result owner-session context trailer has an invalid length.";
+                return false;
+            }
+
+            byte marker = reader.ReadByte();
+            if (marker != AuthorityResultOwnerSessionContextMarker)
+            {
+                errorMessage = "Mechanic authority-result owner-session context marker is invalid.";
+                return false;
+            }
+
+            byte ownerKindValue = reader.ReadByte();
+            if (!Enum.IsDefined(typeof(EquipmentChangeOwnerKind), (int)ownerKindValue))
+            {
+                errorMessage = "Mechanic authority-result owner-session context owner kind is invalid.";
+                return false;
+            }
+
+            payloadWithContext = decodedPayload with
+            {
+                OwnerKind = (EquipmentChangeOwnerKind)ownerKindValue,
+                OwnerSessionId = reader.ReadInt32(),
+                ExpectedCharacterId = reader.ReadInt32(),
+                HasOwnerSessionContext = true
+            };
+            return true;
         }
 
         internal static bool HasExplicitAuthorityState(MechanicEquipPacketPayload payload)

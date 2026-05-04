@@ -2420,17 +2420,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             var seenNpcIds = new HashSet<int>();
+            var seenScriptNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool addedPickupTriggerLine = false;
 
             AppendScriptedUseEffectLinesFromProperty(
                 effectLines,
                 specProperty,
                 seenNpcIds,
+                seenScriptNames,
                 ref addedPickupTriggerLine);
             AppendScriptedUseEffectLinesFromProperty(
                 effectLines,
                 specExProperty,
                 seenNpcIds,
+                seenScriptNames,
                 ref addedPickupTriggerLine);
         }
 
@@ -2438,6 +2441,7 @@ namespace HaCreator.MapSimulator.UI
             ICollection<string> effectLines,
             WzSubProperty specProperty,
             ISet<int> seenNpcIds,
+            ISet<string> seenScriptNames,
             ref bool addedPickupTriggerLine)
         {
             if (effectLines == null || specProperty == null)
@@ -2454,10 +2458,21 @@ namespace HaCreator.MapSimulator.UI
                     : $"Opens NPC: {npcName}");
             }
 
-            string scriptName = (specProperty["script"] as WzStringProperty)?.Value?.Trim();
-            if (!string.IsNullOrWhiteSpace(scriptName))
+            WzImageProperty scriptProperty = specProperty["script"];
+            string scriptName = (scriptProperty as WzStringProperty)?.Value?.Trim();
+            AppendScriptedUseEffectLine(effectLines, scriptName, seenScriptNames);
+
+            if (scriptProperty is not WzStringProperty)
             {
-                effectLines.Add($"Uses script: {scriptName}");
+                IReadOnlyList<FieldObjectScriptPublication> publications =
+                    FieldObjectScriptPublicationParser.Parse(scriptProperty);
+                for (int index = 0; index < publications.Count; index++)
+                {
+                    AppendScriptedUseEffectLine(
+                        effectLines,
+                        publications[index]?.ScriptName,
+                        seenScriptNames);
+                }
             }
 
             if (!addedPickupTriggerLine && IsEnabledFlag(specProperty["runOnPickup"]))
@@ -2465,6 +2480,25 @@ namespace HaCreator.MapSimulator.UI
                 effectLines.Add("Runs immediately on pickup");
                 addedPickupTriggerLine = true;
             }
+        }
+
+        private static void AppendScriptedUseEffectLine(
+            ICollection<string> effectLines,
+            string scriptName,
+            ISet<string> seenScriptNames)
+        {
+            if (effectLines == null || string.IsNullOrWhiteSpace(scriptName))
+            {
+                return;
+            }
+
+            string normalizedScriptName = scriptName.Trim();
+            if (seenScriptNames != null && !seenScriptNames.Add(normalizedScriptName))
+            {
+                return;
+            }
+
+            effectLines.Add($"Uses script: {normalizedScriptName}");
         }
 
         private static void AppendPickupTriggerEffectLines(

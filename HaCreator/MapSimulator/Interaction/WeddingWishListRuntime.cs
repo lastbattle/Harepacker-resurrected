@@ -34,6 +34,15 @@ namespace HaCreator.MapSimulator.Interaction
         Candidate
     }
 
+    internal enum WeddingWishListModalKind
+    {
+        None,
+        GetConfirmation,
+        PutQuantity,
+        PutConfirmation,
+        InputConfirmation
+    }
+
     internal sealed class WeddingWishListRuntime
     {
         internal const int EngagementPacketOpcode = 161;
@@ -784,6 +793,8 @@ namespace HaCreator.MapSimulator.Interaction
                 IsPutQuantityPromptOpen = _isPutQuantityPromptOpen,
                 IsPutConfirmationArmed = _isPutConfirmationArmed,
                 IsInputConfirmationArmed = _inputConfirmationArmed,
+                ModalKind = ResolveModalKind(),
+                ModalText = ResolveModalText(),
                 HasPendingTransferRequest = _hasPendingTransferRequest,
                 HasPendingInputRequest = _hasPendingInputRequest,
                 CanGetSelectedItem = CanGetSelectedItem(),
@@ -1318,6 +1329,43 @@ namespace HaCreator.MapSimulator.Interaction
                 appendFallbackSuffix: true);
         }
 
+        private WeddingWishListModalKind ResolveModalKind()
+        {
+            if (_isGetConfirmationArmed)
+            {
+                return WeddingWishListModalKind.GetConfirmation;
+            }
+
+            if (_isPutQuantityPromptOpen)
+            {
+                return WeddingWishListModalKind.PutQuantity;
+            }
+
+            if (_isPutConfirmationArmed)
+            {
+                return WeddingWishListModalKind.PutConfirmation;
+            }
+
+            if (_inputConfirmationArmed)
+            {
+                return WeddingWishListModalKind.InputConfirmation;
+            }
+
+            return WeddingWishListModalKind.None;
+        }
+
+        private string ResolveModalText()
+        {
+            return ResolveModalKind() switch
+            {
+                WeddingWishListModalKind.GetConfirmation => GetWishListGiftClaimConfirmText(),
+                WeddingWishListModalKind.PutQuantity => $"{GetPutQuantityPromptText()} {ResolveItemLabel(_putQuantityPromptSourceItem)} [{_putQuantityPromptQuantity}/{GetPendingPutQuantityMax()}]",
+                WeddingWishListModalKind.PutConfirmation => GetPutConfirmationText(),
+                WeddingWishListModalKind.InputConfirmation => GetInputConfirmPromptText(),
+                _ => string.Empty
+            };
+        }
+
         private bool CanGetSelectedItem()
         {
             if (_mode != WeddingWishListDialogMode.Receive)
@@ -1798,6 +1846,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsPutQuantityPromptOpen { get; init; }
         public bool IsPutConfirmationArmed { get; init; }
         public bool IsInputConfirmationArmed { get; init; }
+        public WeddingWishListModalKind ModalKind { get; init; }
+        public string ModalText { get; init; } = string.Empty;
         public bool HasPendingTransferRequest { get; init; }
         public bool HasPendingInputRequest { get; init; }
         public bool CanGetSelectedItem { get; init; }

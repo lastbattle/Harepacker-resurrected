@@ -143,6 +143,9 @@ namespace HaCreator.MapSimulator.UI
                 public bool IsEnabled { get; init; } = true;
                 public bool IsFocused { get; init; }
                 public string Label { get; init; } = string.Empty;
+                public bool HasPacketStateByte { get; init; }
+                public int PacketStateByte { get; init; }
+                public int PacketStateByteOffset { get; init; } = -1;
             }
 
             public sealed class HistoryEntryState
@@ -399,6 +402,11 @@ namespace HaCreator.MapSimulator.UI
         public int GetOneADaySelectorIndex()
         {
             return _oneADaySelectorIndex;
+        }
+        public bool IsOneADayPacketSeedAccepted(int packetRewardSessionByte)
+        {
+            return _oneADayRuntimeSeeded
+                && _oneADayLastPacketRewardSessionByte == (packetRewardSessionByte & 0xFF);
         }
         public string CurrentOwnerStatusMessage => _statusMessage;
 
@@ -984,7 +992,7 @@ namespace HaCreator.MapSimulator.UI
                 string plateButtonLine = string.Join(
                     " ",
                     _oneADayPlateButtonRuntime.Take(6).Select(button =>
-                        $"{(button.IsFocused ? ">" : string.Empty)}{button.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{(button.IsLoaded ? "on" : "off")}{(button.HasCanvas ? string.Empty : "!")}"));
+                        $"{(button.IsFocused ? ">" : string.Empty)}{button.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{(button.IsLoaded ? "on" : "off")}{(button.HasCanvas ? string.Empty : "!")}{(button.HasPacketStateByte ? $"/0x{(button.PacketStateByte & 0xFF):X2}" : string.Empty)}"));
                 DrawWrapped(sprite, $"Plate buttons {plateButtonLine}", Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
             }
 
@@ -2775,11 +2783,16 @@ namespace HaCreator.MapSimulator.UI
                         SlotIndex = button.SlotIndex,
                         CommandKey = button.CommandKey,
                         Position = button.Position,
+                        Width = button.Width,
+                        Height = button.Height,
                         HasCanvas = button.HasCanvas,
                         IsLoaded = button.IsLoaded,
                         IsEnabled = button.IsEnabled,
                         IsFocused = button.SlotIndex == _oneADayPlateFocusIndex,
-                        Label = button.Label
+                        Label = button.Label,
+                        HasPacketStateByte = button.HasPacketStateByte,
+                        PacketStateByte = button.PacketStateByte,
+                        PacketStateByteOffset = button.PacketStateByteOffset
                     })
                     .ToArray();
                 return;

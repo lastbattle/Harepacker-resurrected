@@ -33,7 +33,7 @@ namespace HaCreator.MapSimulator.Character
 
     internal readonly struct PlayerMobStatusFrameState
     {
-        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, false, false, 100, 100, 100);
+        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, false, false, false, false, 100, 100, 100);
 
         public PlayerMobStatusFrameState(
             float moveSpeedMultiplier,
@@ -43,6 +43,8 @@ namespace HaCreator.MapSimulator.Character
             bool skillCastBlocked,
             bool inputReversed,
             int forcedHorizontalDirection,
+            bool forcedJump,
+            bool forcedControl,
             bool hpRecoveryReversed,
             bool pickupBlocked,
             bool recoveryBlocked,
@@ -57,6 +59,8 @@ namespace HaCreator.MapSimulator.Character
             SkillCastBlocked = skillCastBlocked;
             InputReversed = inputReversed;
             ForcedHorizontalDirection = forcedHorizontalDirection;
+            ForcedJump = forcedJump;
+            ForcedControl = forcedControl;
             HpRecoveryReversed = hpRecoveryReversed;
             PickupBlocked = pickupBlocked;
             RecoveryBlocked = recoveryBlocked;
@@ -72,6 +76,8 @@ namespace HaCreator.MapSimulator.Character
         public bool SkillCastBlocked { get; }
         public bool InputReversed { get; }
         public int ForcedHorizontalDirection { get; }
+        public bool ForcedJump { get; }
+        public bool ForcedControl { get; }
         public bool HpRecoveryReversed { get; }
         public bool PickupBlocked { get; }
         public bool RecoveryBlocked { get; }
@@ -164,7 +170,9 @@ namespace HaCreator.MapSimulator.Character
                                   HasStatus(PlayerMobStatusEffect.Banish);
             bool seduced = HasStatus(PlayerMobStatusEffect.Attract);
             bool banished = HasStatus(PlayerMobStatusEffect.Banish);
-            bool jumpBlocked = movementLocked || seduced || HasStatus(PlayerMobStatusEffect.Weakness);
+            int forcedHorizontalDirection = ResolveForcedHorizontalDirection();
+            bool forcedJump = ResolveForcedJump();
+            bool jumpBlocked = movementLocked || (seduced && !forcedJump) || HasStatus(PlayerMobStatusEffect.Weakness);
             bool polymorphed = HasStatus(PlayerMobStatusEffect.Polymorph);
             bool skillCastBlocked = movementLocked || seduced || banished || polymorphed || HasStatus(PlayerMobStatusEffect.Seal);
             bool pickupBlocked = movementLocked || seduced;
@@ -172,7 +180,6 @@ namespace HaCreator.MapSimulator.Character
             float additionalMissChance = ResolveAdditionalMissChance();
             bool inputReversed = HasStatus(PlayerMobStatusEffect.ReverseInput);
             bool hpRecoveryReversed = HasStatus(PlayerMobStatusEffect.Undead);
-            int forcedHorizontalDirection = ResolveForcedHorizontalDirection();
             bool recoveryBlocked = HasStatus(PlayerMobStatusEffect.StopPotion);
             int maxVitalPercentCap = ResolveCurseVitalCapPercent();
             int hpRecoveryDamagePercent = ResolveUndeadRecoveryDamagePercent();
@@ -185,6 +192,8 @@ namespace HaCreator.MapSimulator.Character
                 skillCastBlocked,
                 inputReversed,
                 forcedHorizontalDirection,
+                forcedJump,
+                seduced,
                 hpRecoveryReversed,
                 pickupBlocked,
                 recoveryBlocked,
@@ -943,12 +952,13 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
-            return entry.Value switch
-            {
-                < 0 => -1,
-                > 0 => 1,
-                _ => 0
-            };
+            return ResolveAuthoredSeduceHorizontalDirection(entry.Value);
+        }
+
+        private bool ResolveForcedJump()
+        {
+            return _entries.TryGetValue(PlayerMobStatusEffect.Attract, out PlayerMobStatusEntry entry)
+                   && IsAuthoredSeduceJumpMode(entry.Value);
         }
 
         private int ResolveCurseVitalCapPercent()
@@ -1089,15 +1099,15 @@ namespace HaCreator.MapSimulator.Character
 
             if (sourceX < _player.X)
             {
-                return -1;
+                return 1;
             }
 
             if (sourceX > _player.X)
             {
-                return 1;
+                return 2;
             }
 
-            return _player.FacingRight ? 1 : -1;
+            return _player.FacingRight ? 2 : 1;
         }
 
         internal static int ResolveAuthoredSeduceDirection(MobSkillRuntimeData runtimeData)
@@ -1107,7 +1117,22 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
-            return runtimeData.X < 0 ? -1 : 1;
+            return runtimeData.X;
+        }
+
+        internal static int ResolveAuthoredSeduceHorizontalDirection(int seduceMode)
+        {
+            return seduceMode switch
+            {
+                -1 or 1 or 6 => -1,
+                2 or 7 => 1,
+                _ => 0
+            };
+        }
+
+        internal static bool IsAuthoredSeduceJumpMode(int seduceMode)
+        {
+            return seduceMode is 3 or 6 or 7;
         }
 
         private void RemoveExpiredEffects(int currentTime)

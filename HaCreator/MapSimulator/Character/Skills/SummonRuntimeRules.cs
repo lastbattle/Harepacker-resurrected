@@ -1634,6 +1634,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.CurrentAnimationBranchName = null;
             summon.LastAttackAnimationStartTime = int.MinValue;
             summon.OneTimeActionFallbackAnimation = null;
+            summon.OneTimeActionFallbackActionCode = 0;
             summon.OneTimeActionFallbackStartTime = int.MinValue;
             summon.OneTimeActionFallbackAnimationTime = int.MinValue;
             summon.OneTimeActionFallbackEndTime = int.MinValue;

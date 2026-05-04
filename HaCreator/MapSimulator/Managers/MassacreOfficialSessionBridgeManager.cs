@@ -151,7 +151,9 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         internal bool HasLiveRecoveredInboundEvidence => _liveRecoveredInboundEvidence.HasValue;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
         public int UndecodedInboundCount { get; private set; }
+        public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Massacre official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -167,7 +169,10 @@ namespace HaCreator.MapSimulator.Managers
             string liveEvidence = HasLiveRecoveredInboundEvidence
                 ? "live recovered inbound evidence present"
                 : "no live recovered inbound evidence";
-            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {LastStatus}";
+            string sent = SentCount > 0
+                ? $"sent={SentCount}; lastSent={Convert.ToHexString(LastSentRawPacket)}"
+                : "sent=0";
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; {sent}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -558,6 +563,49 @@ namespace HaCreator.MapSimulator.Managers
             return LastStatus;
         }
 
+        public bool TrySendOutboundPacket(int opcode, byte[] payload, out string status)
+        {
+            if (!TryBuildOpcodeFramedPacket(opcode, payload, out byte[] rawPacket, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TrySendOutboundRawPacket(rawPacket, out status);
+        }
+
+        public bool TrySendOutboundRawPacket(byte[] rawPacket, out string status)
+        {
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                status = "Massacre outbound raw packet must include a 2-byte opcode prefix.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (HasPassiveEstablishedSocketPair)
+            {
+                status = "Massacre official-session bridge is only observing an already-established Maple socket pair; reconnect through the localhost proxy before outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedRawPacket = (byte[])rawPacket.Clone();
+            if (!_roleSessionProxy.TrySendToServer(clonedRawPacket, out string proxyStatus))
+            {
+                status = proxyStatus;
+                LastStatus = status;
+                return false;
+            }
+
+            SentCount++;
+            LastSentRawPacket = clonedRawPacket;
+            int opcode = TryDecodePacketOpcode(clonedRawPacket);
+            status = $"Injected Massacre outbound opcode 0x{opcode:X4} ({clonedRawPacket.Length} byte(s)) through the live official-session bridge.";
+            LastStatus = status;
+            return true;
+        }
+
         public bool TryMapInboundOpcode(int opcode, MassacrePacketInboxMessageKind kind, out string status)
         {
             if (opcode < 0 || opcode > ushort.MaxValue)
@@ -758,7 +806,26 @@ namespace HaCreator.MapSimulator.Managers
             _recentInboundPackets.Clear();
             _sessionValueInfoState.Clear();
             ReceivedCount = 0;
+            SentCount = 0;
+            LastSentRawPacket = Array.Empty<byte>();
             UndecodedInboundCount = 0;
+        }
+
+        internal static bool TryBuildOpcodeFramedPacket(int opcode, byte[] payload, out byte[] rawPacket, out string error)
+        {
+            rawPacket = Array.Empty<byte>();
+            error = null;
+            if (opcode < 0 || opcode > ushort.MaxValue)
+            {
+                error = "Massacre outbound opcode must fit in an unsigned 16-bit packet id.";
+                return false;
+            }
+
+            payload ??= Array.Empty<byte>();
+            rawPacket = new byte[sizeof(ushort) + payload.Length];
+            BinaryPrimitives.WriteUInt16LittleEndian(rawPacket, (ushort)opcode);
+            payload.CopyTo(rawPacket, sizeof(ushort));
+            return true;
         }
 
         private Dictionary<int, MassacrePacketInboxMessageKind> GetMappedInboundOpcodesSnapshot()

@@ -1213,8 +1213,28 @@ namespace HaCreator.MapSimulator.Interaction
 
             slotLimit = reader.ReadInt32();
             meso = reader.ReadInt64();
-            snapshot = new Dictionary<InventoryType, IReadOnlyList<InventorySlotData>>(SnapshotInventoryOrder.Length);
+            byte[] groupPayload = reader.ReadBytes((int)(stream.Length - stream.Position));
+            if (TryParseSnapshotGroups(groupPayload, rowsCarryNativeToken: true, out snapshot, out message) ||
+                TryParseSnapshotGroups(groupPayload, rowsCarryNativeToken: false, out snapshot, out message))
+            {
+                return true;
+            }
 
+            snapshot = null;
+            return false;
+        }
+
+        private static bool TryParseSnapshotGroups(
+            byte[] payload,
+            bool rowsCarryNativeToken,
+            out Dictionary<InventoryType, IReadOnlyList<InventorySlotData>> snapshot,
+            out string message)
+        {
+            snapshot = new Dictionary<InventoryType, IReadOnlyList<InventorySlotData>>(SnapshotInventoryOrder.Length);
+            message = null;
+
+            using MemoryStream stream = new(payload ?? Array.Empty<byte>(), writable: false);
+            using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
             foreach (InventoryType type in SnapshotInventoryOrder)
             {
                 if (stream.Length - stream.Position < sizeof(int))
@@ -1230,25 +1250,36 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
+                int rowByteWidth = sizeof(int) + sizeof(int) + (rowsCarryNativeToken ? sizeof(byte) : 0);
+                if (stream.Length - stream.Position < (long)rowByteWidth * count)
+                {
+                    message = $"Trunk snapshot packet ended while decoding {type} rows.";
+                    return false;
+                }
+
                 List<InventorySlotData> rows = new(count);
                 for (int i = 0; i < count; i++)
                 {
-                    if (stream.Length - stream.Position < sizeof(int) * 2)
-                    {
-                        message = $"Trunk snapshot packet ended while decoding {type} row {i.ToString(CultureInfo.InvariantCulture)}.";
-                        return false;
-                    }
-
+                    int nativeRowToken = rowsCarryNativeToken
+                        ? reader.ReadByte()
+                        : i + 1;
                     rows.Add(new InventorySlotData
                     {
                         ItemId = reader.ReadInt32(),
                         Quantity = Math.Max(1, reader.ReadInt32()),
                         PreferredInventoryType = type,
-                        ClientItemToken = i + 1
+                        ClientItemToken = nativeRowToken
                     });
                 }
 
                 snapshot[type] = rows;
+            }
+
+            if (stream.Position != stream.Length)
+            {
+                message = $"Trunk snapshot packet preserved {(stream.Length - stream.Position).ToString(CultureInfo.InvariantCulture)} trailing byte(s) outside the recovered row-token layout.";
+                snapshot = null;
+                return false;
             }
 
             return true;

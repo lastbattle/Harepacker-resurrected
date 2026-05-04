@@ -3385,7 +3385,8 @@ namespace HaCreator.MapSimulator.Pools
         internal static bool UsesPacketObjectIdForLocalTouch(ReactorRuntimeData data, int objectId)
         {
             return IsTransportableLocalTouchObjectId(objectId)
-                && data?.PacketObjectId == objectId;
+                && data?.IsPacketOwned == true
+                && data.PacketObjectId == objectId;
         }
 
         internal static bool IsTransportableLocalTouchObjectId(int objectId)

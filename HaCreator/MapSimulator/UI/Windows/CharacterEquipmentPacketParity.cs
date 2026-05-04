@@ -445,6 +445,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<byte> payload,
             IReadOnlyList<InventorySlotData> equipInventorySlots,
             IReadOnlyList<InventorySlotData> cashInventorySlots,
+            CharacterBuild currentBuild,
             out IReadOnlyList<CharacterInventoryOperationMutation> mutations,
             out string rejectReason)
         {
@@ -554,6 +555,19 @@ namespace HaCreator.MapSimulator.UI
                             bool sourceIsCharacter = TryResolveCharacterSlotFromClientPosition(fromPosition, out EquipSlot sourceSlot);
                             bool targetIsCharacter = TryResolveCharacterSlotFromClientPosition(toPosition, out EquipSlot targetSlot);
                             bool cashLayer = inventoryType == ClientCashInventoryType;
+                            if (sourceIsCharacter && targetIsCharacter)
+                            {
+                                int sourceItemId = ResolveCurrentCharacterLayerItemId(currentBuild, sourceSlot, cashLayer);
+                                int targetItemId = ResolveCurrentCharacterLayerItemId(currentBuild, targetSlot, cashLayer);
+                                if (sourceItemId > 0 || targetItemId > 0)
+                                {
+                                    recoveredMutations[(targetSlot, cashLayer)] = new CharacterInventoryOperationMutation(targetSlot, cashLayer, sourceItemId);
+                                    recoveredMutations[(sourceSlot, cashLayer)] = new CharacterInventoryOperationMutation(sourceSlot, cashLayer, targetItemId);
+                                }
+
+                                break;
+                            }
+
                             if (sourceIsCharacter && !targetIsCharacter)
                             {
                                 recoveredMutations[(sourceSlot, cashLayer)] = new CharacterInventoryOperationMutation(sourceSlot, cashLayer, 0);
@@ -635,6 +649,55 @@ namespace HaCreator.MapSimulator.UI
                 rejectReason = $"Inventory-operation payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        internal static bool TryDecodePassiveClientInventoryOperationMutations(
+            IReadOnlyList<byte> payload,
+            IReadOnlyList<InventorySlotData> equipInventorySlots,
+            IReadOnlyList<InventorySlotData> cashInventorySlots,
+            out IReadOnlyList<CharacterInventoryOperationMutation> mutations,
+            out string rejectReason)
+        {
+            return TryDecodePassiveClientInventoryOperationMutations(
+                payload,
+                equipInventorySlots,
+                cashInventorySlots,
+                currentBuild: null,
+                out mutations,
+                out rejectReason);
+        }
+
+        private static int ResolveCurrentCharacterLayerItemId(
+            CharacterBuild build,
+            EquipSlot slot,
+            bool cashLayer)
+        {
+            if (build == null || slot == EquipSlot.None)
+            {
+                return 0;
+            }
+
+            if (cashLayer)
+            {
+                return build.Equipment != null
+                       && build.Equipment.TryGetValue(slot, out CharacterPart visiblePart)
+                       && visiblePart?.IsCash == true
+                    ? visiblePart.ItemId
+                    : 0;
+            }
+
+            if (build.HiddenEquipment != null
+                && build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart)
+                && hiddenPart != null)
+            {
+                return hiddenPart.ItemId;
+            }
+
+            return build.Equipment != null
+                   && build.Equipment.TryGetValue(slot, out CharacterPart equippedPart)
+                   && equippedPart?.IsCash != true
+                ? equippedPart.ItemId
+                : 0;
         }
 
         private static bool TryReadPassiveClientInventoryOperationAddEntry(

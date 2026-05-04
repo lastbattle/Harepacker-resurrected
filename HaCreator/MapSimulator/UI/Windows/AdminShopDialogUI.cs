@@ -1291,7 +1291,9 @@ namespace HaCreator.MapSimulator.UI
                 _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype 4 advanced the packet-owned SearchItemName snapshot without mutating the active admin-shop owner row.");
                 message = hasResultCode && resultCode == 0
                     ? BuildPacketOwnedWishlistSearchSnapshotSummary()
-                    : $"Packet 366 subtype 4 search-result lane returned code {resultCode.ToString(CultureInfo.InvariantCulture)} and left the admin-shop owner state unchanged.";
+                    : AdminShopDialogClientParityText.IsModeledResultCode(resultCode)
+                        ? $"Packet 366 subtype 4 search-result lane returned code {resultCode.ToString(CultureInfo.InvariantCulture)} and left the admin-shop owner state unchanged."
+                        : AdminShopDialogClientParityText.BuildUnmodeledWishlistSearchResultCodeMessage(resultCode);
                 if (string.IsNullOrWhiteSpace(message))
                 {
                     message = "Packet 366 subtype 4 search-result lane updated the packet-owned wishlist search session state.";
@@ -5120,6 +5122,17 @@ namespace HaCreator.MapSimulator.UI
                             _packetOwnedAdminShopSession.ClearLastNotice();
                         }
 
+                        if (!AdminShopDialogClientParityText.IsModeledResultCode(resultCode))
+                        {
+                            ClearPendingPacketOwnedWishlistRegister();
+                            _packetOwnedAdminShopSession.ClearLastNotice();
+                            _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 returned an unrecovered wish-list register result code for a packet-authored row, so the simulator surfaced the raw code without fabricating a register rejection or reopen.");
+                            message = AdminShopDialogClientParityText.BuildUnmodeledWishlistRegisterResultCodeMessage(resultCode);
+                            _footerMessage = message;
+                            UpdateActionButtonStates();
+                            return true;
+                        }
+
                         ClearPendingPacketOwnedWishlistRegister();
                         string stateLabel = AdminShopDialogClientParityText.BuildResultStateLabel(resultCode);
                         _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 rejected the packet-authored wish-list register request by item id; no live NPC catalog row was available to focus.");
@@ -5153,6 +5166,17 @@ namespace HaCreator.MapSimulator.UI
                     UpdateActionButtonStates();
                 }
 
+                return true;
+            }
+
+            if (!AdminShopDialogClientParityText.IsModeledResultCode(resultCode))
+            {
+                ClearPendingPacketOwnedWishlistRegister();
+                _packetOwnedAdminShopSession.ClearLastNotice();
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 returned an unrecovered wish-list register result code, so the simulator preserved the selected catalog row and surfaced the packet-authored code without fabricating a register rejection or reopen.");
+                message = AdminShopDialogClientParityText.BuildUnmodeledWishlistRegisterResultCodeMessage(resultCode);
+                _footerMessage = message;
+                UpdateActionButtonStates();
                 return true;
             }
 

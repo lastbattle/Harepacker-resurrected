@@ -4,7 +4,7 @@ namespace HaCreator.MapSimulator
 {
     internal static class MassacreSessionCommandParsing
     {
-        internal const string SessionUsage = "Usage: /massacre session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result|stage|bonus>|unmap <opcode|all>|recent [count]|clearrecent|stop]";
+        internal const string SessionUsage = "Usage: /massacre session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result|stage|bonus>|unmap <opcode|all>|recent [count]|clearrecent|send <opcode> <hex-payload>|sendraw <opcode-framed-hex>|stop]";
         internal const string DiscoverUsage = "Usage: /massacre session discover <remotePort> [processName|pid] [localPort]";
         internal const string AttachUsage = "Usage: /massacre session attach <remotePort> [processName|pid] [localPort]";
         internal const string AttachProxyUsage = "Usage: /massacre session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]";
@@ -13,6 +13,8 @@ namespace HaCreator.MapSimulator
         internal const string MapUsage = "Usage: /massacre session map <opcode> <clock|context|inc|result|stage|bonus>";
         internal const string UnmapUsage = "Usage: /massacre session unmap <opcode|all>";
         internal const string RecentUsage = "Usage: /massacre session recent [count]";
+        internal const string SendUsage = "Usage: /massacre session send <opcode> <hex-payload>";
+        internal const string SendRawUsage = "Usage: /massacre session sendraw <opcode-framed-hex>";
 
         internal static bool TryParseProxyListenPort(string value, out int listenPort)
         {

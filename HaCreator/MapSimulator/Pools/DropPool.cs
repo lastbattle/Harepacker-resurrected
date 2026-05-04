@@ -942,12 +942,13 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Spawn an item drop
         /// </summary>
-        public DropItem SpawnItemDrop(float x, float y, string itemId, int quantity, int currentTime, int ownerId = 0, bool isRare = false)
+        public DropItem SpawnItemDrop(float x, float y, string itemId, int quantity, int currentTime, int ownerId = 0, bool isRare = false, int sourceId = 0)
         {
             var drop = GetOrCreateDrop();
             InitializeDrop(drop, DropType.Item, itemId, x, y, currentTime, ownerId);
             drop.Quantity = quantity;
             drop.IsRare = isRare;
+            drop.SourceId = Math.Max(0, sourceId);
 
             // Try to get item icon
             if (_itemIcons.TryGetValue(itemId, out var icon))

@@ -2370,6 +2370,7 @@ namespace HaCreator.MapSimulator.UI
             using BinaryReader reader = new(stream);
             _ = reader.ReadByte();
             int inventorySlot = Math.Max(0, (int)reader.ReadUInt16());
+            int itemBodyOffset = (int)stream.Position;
             bool hasDecodedItemBody = TryReadItemAttachment(
                 reader,
                 out int itemId,
@@ -2430,10 +2431,64 @@ namespace HaCreator.MapSimulator.UI
             _noticeState = inventorySlot > 0
                 ? $"CCSWnd_Inventory moved the selected locker cash item into inventory slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}."
                 : "CCSWnd_Inventory moved the selected locker cash item out of the locker.";
+            string retainedBodySummary = AppendCashInventoryRawTailPacketEntryIfNeeded(
+                payload,
+                startOffset: itemBodyOffset,
+                inventorySlot,
+                decodeError);
+            if (!string.IsNullOrWhiteSpace(retainedBodySummary))
+            {
+                _noticeState += $" {retainedBodySummary}";
+            }
+
             message = string.IsNullOrWhiteSpace(decodeError)
                 ? $"CCashShop::OnCashItemResMoveLtoSDone applied the locker-to-inventory mutation for {(inventorySlot > 0 ? $"slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}" : "the selected cash item")}."
                 : $"CCashShop::OnCashItemResMoveLtoSDone applied the locker-to-inventory mutation for {(inventorySlot > 0 ? $"slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}" : "the selected cash item")} (GW_ItemSlotBase decode fallback: {decodeError}).";
+            if (!string.IsNullOrWhiteSpace(retainedBodySummary))
+            {
+                message += $" {retainedBodySummary}";
+            }
+
             return true;
+        }
+
+        private string AppendCashInventoryRawTailPacketEntryIfNeeded(byte[] payload, int startOffset, int inventorySlot, string decodeError)
+        {
+            if (payload == null)
+            {
+                return string.Empty;
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            if (offset >= payload.Length)
+            {
+                return string.Empty;
+            }
+
+            int byteLength = payload.Length - offset;
+            byte[] tail = new byte[byteLength];
+            Buffer.BlockCopy(payload, offset, tail, 0, byteLength);
+            string fallback = string.IsNullOrWhiteSpace(decodeError)
+                ? "GW_ItemSlotBase body stayed client-exact."
+                : $"GW_ItemSlotBase decode fallback: {decodeError.Trim()}";
+            PacketCatalogEntry rawEntry = new()
+            {
+                Title = inventorySlot > 0
+                    ? $"Inventory slot {inventorySlot.ToString(CultureInfo.InvariantCulture)} raw body"
+                    : "Inventory raw body",
+                Detail = $"CCSWnd_Inventory retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw GW_ItemSlotBase byte(s) for the packet-owned locker-to-inventory mutation. {fallback}",
+                Seller = "CCSWnd_Inventory",
+                PriceLabel = $"Offset {offset.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Inventory body",
+                ListingId = Math.Max(0, inventorySlot),
+                PacketSource = "GW_ItemSlotBase",
+                PacketFieldSummary = $"Raw GW_ItemSlotBase packet body: offset {offset.ToString(CultureInfo.InvariantCulture)}, {byteLength.ToString(CultureInfo.InvariantCulture)} byte(s). {fallback}",
+                PacketRawByteLength = byteLength,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(tail)
+            };
+            _cashInventoryPacketEntries.Insert(0, rawEntry);
+            AppendCashPacketCatalogEntry("Packet inventory", "Inventory", ClonePacketCatalogEntry(rawEntry, "Inventory body"));
+            return $"Retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw GW_ItemSlotBase byte(s) at packet offset {offset.ToString(CultureInfo.InvariantCulture)} for CCSWnd_Inventory fallback.";
         }
 
         private bool TryApplyCashMoveStoLDone(byte[] payload, out string message)

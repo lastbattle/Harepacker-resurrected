@@ -67,7 +67,7 @@ namespace HaCreator.MapSimulator
             out string message)
         {
             _packetOwnedTeleportRequestActive = false;
-            ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
+            ConsumeSharedExclusiveRequestStateFromPacketTeleportResult();
             int currentTime = Environment.TickCount;
             _packetOwnedTeleportRequestCompletedAt = currentTime;
 
@@ -137,13 +137,13 @@ namespace HaCreator.MapSimulator
             if (!succeeded)
             {
                 _packetOwnedTeleportRequestActive = false;
-                ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
+                ConsumeSharedExclusiveRequestStateFromPacketTeleportResult();
                 message = $"Packet-owned teleport result rejected portal index {portalIndex}.";
                 return true;
             }
 
             _packetOwnedTeleportRequestActive = false;
-            ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
+            ConsumeSharedExclusiveRequestStateFromPacketTeleportResult();
             int currentTime = Environment.TickCount;
             _packetOwnedTeleportRequestCompletedAt = currentTime;
 
@@ -201,7 +201,7 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedTeleportRequestActive = false;
-            ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
+            ConsumeSharedExclusiveRequestStateFromPacketTeleportResult();
             message = string.IsNullOrWhiteSpace(target.TargetPortalName)
                 ? $"Packet-owned cross-map teleport could not resolve a landing point in map {target.MapId}."
                 : $"Packet-owned cross-map teleport could not resolve portal '{target.TargetPortalName}' in map {target.MapId}.";

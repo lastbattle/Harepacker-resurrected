@@ -119,7 +119,7 @@ namespace HaCreator.MapSimulator.Combat
                 MobStatusEffect.PImmune => x,
                 MobStatusEffect.MImmune => x,
                 MobStatusEffect.HardSkin => hp > 0 ? hp : x,
-                MobStatusEffect.Reflect => hp > 0 ? hp : 100,
+                MobStatusEffect.Reflect => 100,
                 MobStatusEffect.Rich => x,
                 _ => 0
             };

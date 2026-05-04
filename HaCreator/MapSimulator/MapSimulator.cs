@@ -3984,6 +3984,11 @@ namespace HaCreator.MapSimulator
             messengerWindow.SetActionHandlers(
                 slotIndex => _messengerRuntime.SelectSlot(slotIndex),
                 TryHandleMessengerClaimActionThroughClientSeam,
+                () => _messengerRuntime.TryOpenClaimDialogFromChat(out string claimNoticeMessage)
+                    ? claimNoticeMessage
+                    : claimNoticeMessage,
+                category => _messengerRuntime.SelectClaimDialogCategory(category),
+                () => _messengerRuntime.CancelClaimDialog(),
                 TryHandleMessengerLeaveActionThroughClientSeam,
                 forward => _messengerRuntime.CycleState(forward),
                 message => TryMirrorMessengerChatEditInput(message, out string mirroredMessage)
@@ -25398,6 +25403,16 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (suppressionWindowMs <= 0)
+            {
+                return true;
+            }
+
+            PruneExpiredRemotePickupNoticeReservations(
+                recentNoticeTimes,
+                currentTime,
+                suppressionWindowMs);
+
             int[] actorAliases = BuildPickupRemoteNoticeActorAliases(actorId, fallbackOwnerId, relatedActorIds);
             for (int i = 0; i < actorAliases.Length; i++)
             {
@@ -25419,6 +25434,38 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        internal static void PruneExpiredRemotePickupNoticeReservations(
+            IDictionary<long, int> recentNoticeTimes,
+            int currentTime,
+            int suppressionWindowMs)
+        {
+            if (recentNoticeTimes == null || recentNoticeTimes.Count == 0 || suppressionWindowMs <= 0)
+            {
+                return;
+            }
+
+            List<long> expiredKeys = null;
+            foreach (KeyValuePair<long, int> entry in recentNoticeTimes)
+            {
+                int elapsed = unchecked(currentTime - entry.Value);
+                if (elapsed >= suppressionWindowMs)
+                {
+                    expiredKeys ??= new List<long>();
+                    expiredKeys.Add(entry.Key);
+                }
+            }
+
+            if (expiredKeys == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < expiredKeys.Count; i++)
+            {
+                recentNoticeTimes.Remove(expiredKeys[i]);
+            }
         }
 
         internal static Pools.RecentPickupRecord ResolveRecentRemoteDropPickupRecord(
@@ -29005,8 +29052,8 @@ namespace HaCreator.MapSimulator
 
             bool isRepresentedByDedicatedFieldActor = IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant);
             bool hasEligibleMiniRoomOccupantRole = kind is not SocialRoomKind.MiniRoom
-                || isPacketOwnedMiniRoomParticipantName
-                || IsMiniRoomOccupantRoleEligibleForSyntheticHelper(occupant?.Role);
+                || IsMiniRoomOccupantRoleEligibleForSyntheticHelper(occupant?.Role)
+                || (isPacketOwnedMiniRoomParticipantName && occupant == null);
             bool hasEligibleTraderOccupantRole = kind is not SocialRoomKind.PersonalShop
                 && kind is not SocialRoomKind.EntrustedShop
                 || isRepresentedByDedicatedFieldActor;
@@ -31253,7 +31300,18 @@ namespace HaCreator.MapSimulator
 
             for (int i = 0; i < compact.Length; i++)
             {
-                if (!TryResolveLocalOwnedElementToken(compact[i].ToString(), out int charMask))
+                char elementToken = char.ToLowerInvariant(compact[i]);
+                if (elementToken != 'f'
+                    && elementToken != 'i'
+                    && elementToken != 'l'
+                    && elementToken != 's'
+                    && elementToken != 'h'
+                    && elementToken != 'd')
+                {
+                    return false;
+                }
+
+                if (!TryResolveLocalOwnedElementToken(elementToken.ToString(), out int charMask))
                 {
                     return false;
                 }
@@ -31547,6 +31605,7 @@ namespace HaCreator.MapSimulator
             UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
             bool initialQuizCapturesWindowInput = DoesInitialQuizOwnerCaptureWindowInput();
             bool initialQuizCapturesTextInput = ShouldCaptureInitialQuizOwnerTextInput();
+            bool npcOverlayCapturesKeyboardInput = _npcInteractionOverlay?.CapturesKeyboardInput == true;
             IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
             if (windows != null)
             {
@@ -31559,7 +31618,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (_npcInteractionOverlay?.CapturesKeyboardInput == true)
+            if (npcOverlayCapturesKeyboardInput)
             {
                 if (ShouldForwardInitialQuizOwnerImeToNpcOverlay(
                         initialQuizCapturesWindowInput,
@@ -31589,10 +31648,22 @@ namespace HaCreator.MapSimulator
             if (!ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInput))
             {
                 activeKeyboardWindow?.ClearCompositionText();
+                _chat?.ClearCompositionText();
                 return;
             }
 
             activeKeyboardWindow?.HandleCompositionText(compositionText);
+            if (!initialQuizCapturesTextInput
+                && !npcOverlayCapturesKeyboardInput
+                && activeKeyboardWindow == null
+                && _chat?.IsActive == true)
+            {
+                _chat.HandleCompositionText(compositionText);
+            }
+            else
+            {
+                _chat?.ClearCompositionText();
+            }
 
 
 
@@ -31609,6 +31680,7 @@ namespace HaCreator.MapSimulator
             UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
             bool initialQuizCapturesWindowInput = DoesInitialQuizOwnerCaptureWindowInput();
             bool initialQuizCapturesTextInput = ShouldCaptureInitialQuizOwnerTextInput();
+            bool npcOverlayCapturesKeyboardInput = _npcInteractionOverlay?.CapturesKeyboardInput == true;
             IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
             if (windows != null)
             {
@@ -31633,10 +31705,22 @@ namespace HaCreator.MapSimulator
             if (!ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInput))
             {
                 activeKeyboardWindow?.ClearCompositionText();
+                _chat?.ClearCompositionText();
                 return;
             }
 
             activeKeyboardWindow?.HandleCompositionState(compositionState ?? ImeCompositionState.Empty);
+            if (!initialQuizCapturesTextInput
+                && !npcOverlayCapturesKeyboardInput
+                && activeKeyboardWindow == null
+                && _chat?.IsActive == true)
+            {
+                _chat.HandleCompositionState(compositionState ?? ImeCompositionState.Empty);
+            }
+            else
+            {
+                _chat?.ClearCompositionText();
+            }
 
 
 
@@ -31653,6 +31737,7 @@ namespace HaCreator.MapSimulator
             UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
             bool initialQuizCapturesWindowInput = DoesInitialQuizOwnerCaptureWindowInput();
             bool initialQuizCapturesTextInput = ShouldCaptureInitialQuizOwnerTextInput();
+            bool npcOverlayCapturesKeyboardInput = _npcInteractionOverlay?.CapturesKeyboardInput == true;
             IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
             if (windows != null)
             {
@@ -31669,6 +31754,7 @@ namespace HaCreator.MapSimulator
             {
                 ClearInitialQuizOwnerImeCandidateList();
                 activeKeyboardWindow?.ClearImeCandidateList();
+                _chat?.ClearImeCandidateList();
                 return;
             }
 
@@ -31684,10 +31770,22 @@ namespace HaCreator.MapSimulator
             if (!ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInput))
             {
                 activeKeyboardWindow?.ClearImeCandidateList();
+                _chat?.ClearImeCandidateList();
                 return;
             }
 
             activeKeyboardWindow?.HandleImeCandidateList(candidateState);
+            if (!initialQuizCapturesTextInput
+                && !npcOverlayCapturesKeyboardInput
+                && activeKeyboardWindow == null
+                && _chat?.IsActive == true)
+            {
+                _chat.HandleImeCandidateList(candidateState);
+            }
+            else
+            {
+                _chat?.ClearImeCandidateList();
+            }
 
 
 
@@ -32509,15 +32607,22 @@ namespace HaCreator.MapSimulator
 
                 // Item/Consume/0238.img card entries are only=1 consume-on-pickup records, so keep
                 // simulator-authored Monster Card drops single-count as the fallback path while packet-
-                // owned drop enters keep ownership when they are active.
+                // owned drop enters keep ownership when they are active. When fallback is needed, keep
+                // the same owner/source shape the drop pool uses for client-authored pickup windows.
                 const int cardQuantity = 1;
+                int cardDropOwnerId = _playerManager?.Player?.Build?.Id ?? 0;
+                int cardDropSourceId = mob?.PoolId > 0
+                    ? mob.PoolId
+                    : killedMobId;
                 _dropPool.SpawnItemDrop(
                     mobX + 18f,
                     mobY,
                     monsterCardItemId.ToString(CultureInfo.InvariantCulture),
                     cardQuantity,
                     currentTick,
-                    isRare: true);
+                    ownerId: cardDropOwnerId,
+                    isRare: true,
+                    sourceId: cardDropSourceId);
             }
 
         }
@@ -33031,6 +33136,61 @@ namespace HaCreator.MapSimulator
         private void ConsumePassiveTransferRequestFromTransferLifecycle()
         {
             if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromTransferLifecycle(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
+        private void ConsumePassiveTransferRequestFromMapLoadLifecycle()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromMapLoadLifecycle(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
+        private void ConsumePassiveTransferRequestFromStageTransitionLifecycle()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromStageTransitionLifecycle(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
+        private void ConsumePassiveTransferRequestFromFieldFeedbackTransferFailure()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromFieldFeedbackTransferFailure(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
+        private void ConsumePassiveTransferRequestFromPacketTeleportResult()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromPacketTeleportResult(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
+        private void ConsumePassiveTransferRequestFromSameMapTeleport()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromSameMapTeleport(
                     _passiveTransferRequestPending))
             {
                 return;
@@ -34420,6 +34580,36 @@ namespace HaCreator.MapSimulator
             TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
         }
 
+        private void ConsumeSharedExclusiveRequestStateFromPacketTeleportResult()
+        {
+            // Packet-owned teleport result owns the same shared exclusive state but is
+            // tracked separately from transfer-failure and stage-transition responses.
+            ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+            ClearTransferFieldExclusiveRequestSent(preserveCooldown: false);
+            ConsumePassiveTransferRequestFromPacketTeleportResult();
+            TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
+        }
+
+        private void ConsumeSharedExclusiveRequestStateFromStageTransitionLifecycle()
+        {
+            // CStage response packets own the same shared exclusive state through the
+            // set-field/change-stage lifecycle rather than field-feedback failure.
+            ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+            ClearTransferFieldExclusiveRequestSent(preserveCooldown: false);
+            ConsumePassiveTransferRequestFromStageTransitionLifecycle();
+            TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
+        }
+
+        private void ConsumeSharedExclusiveRequestStateFromFieldFeedbackTransferFailure()
+        {
+            // CField transfer ignored packets clear outstanding transfer ownership
+            // before their user-facing feedback is shown.
+            ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+            ClearTransferFieldExclusiveRequestSent(preserveCooldown: false);
+            ConsumePassiveTransferRequestFromFieldFeedbackTransferFailure();
+            TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
+        }
+
         private void RegisterPortalCollisionRequestSource(int portalIndex)
         {
             _lastPortalCollisionSourcePortalIndex = portalIndex;
@@ -34761,7 +34951,7 @@ namespace HaCreator.MapSimulator
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
             _packetOwnedTeleportRequestActive = _pendingCrossMapTeleportTarget != null;
-            ConsumePassiveTransferRequestFromTransferLifecycle();
+            ConsumePassiveTransferRequestFromSameMapTeleport();
         }
 
 
@@ -37579,6 +37769,35 @@ namespace HaCreator.MapSimulator
             return ShouldRouteInlineReferenceToDemandDeliveryHandoff(reference);
         }
 
+        private static QuestDetailDeliveryType ResolveQuestDetailInlineDeliveryTypeForHandoff(
+            QuestDetailInlineReference reference,
+            QuestDetailDeliveryType detailDeliveryType)
+        {
+            if (detailDeliveryType == QuestDetailDeliveryType.None ||
+                !ShouldRouteInlineReferenceToDemandDeliveryHandoff(reference))
+            {
+                return QuestDetailDeliveryType.None;
+            }
+
+            return reference.Source switch
+            {
+                QuestDetailInlineReferenceSource.DeliveryAcceptRect => detailDeliveryType == QuestDetailDeliveryType.Accept
+                    ? QuestDetailDeliveryType.Accept
+                    : QuestDetailDeliveryType.None,
+                QuestDetailInlineReferenceSource.DeliveryCompleteRect => detailDeliveryType == QuestDetailDeliveryType.Complete
+                    ? QuestDetailDeliveryType.Complete
+                    : QuestDetailDeliveryType.None,
+                _ => detailDeliveryType
+            };
+        }
+
+        internal static QuestDetailDeliveryType ResolveQuestDetailInlineDeliveryTypeForHandoffForTesting(
+            QuestDetailInlineReference reference,
+            QuestDetailDeliveryType detailDeliveryType)
+        {
+            return ResolveQuestDetailInlineDeliveryTypeForHandoff(reference, detailDeliveryType);
+        }
+
         private QuestWindowActionResult OpenQuestDetailInlineReferenceWorldMap(QuestDetailInlineReference reference)
         {
             if (reference.TargetId <= 0)
@@ -37600,17 +37819,19 @@ namespace HaCreator.MapSimulator
                 _activeQuestDetailQuestId > 0)
             {
                 QuestWindowDetailState detailState = GetQuestWindowDetailStateWithPacketState(_activeQuestDetailQuestId);
+                QuestDetailDeliveryType inlineDeliveryType = detailState == null
+                    ? QuestDetailDeliveryType.None
+                    : ResolveQuestDetailInlineDeliveryTypeForHandoff(reference, detailState.DeliveryType);
                 bool routesToDeliveryHandoff = detailState != null &&
-                                               ShouldRouteInlineReferenceToDemandDeliveryHandoff(reference) &&
-                                               detailState.DeliveryType != QuestDetailDeliveryType.None &&
+                                               inlineDeliveryType != QuestDetailDeliveryType.None &&
                                                (detailState.TargetItemId == reference.TargetId ||
                                                 IsQuestDetailDeliveryRequirementItem(
                                                     _activeQuestDetailQuestId,
                                                     reference.TargetId,
-                                                    detailState.DeliveryType));
+                                                    inlineDeliveryType));
                 if (routesToDeliveryHandoff)
                 {
-                    bool completionPhase = detailState.DeliveryType == QuestDetailDeliveryType.Complete;
+                    bool completionPhase = inlineDeliveryType == QuestDetailDeliveryType.Complete;
                     int inlineTargetItemId = reference.TargetId > 0
                         ? reference.TargetId
                         : detailState.TargetItemId.GetValueOrDefault();
@@ -37622,7 +37843,7 @@ namespace HaCreator.MapSimulator
                             _activeQuestDetailQuestId,
                             inlineTargetItemId,
                             Array.Empty<int>(),
-                            detailState.DeliveryType),
+                            inlineDeliveryType),
                         targetItemIdOverride: inlineTargetItemId);
                 }
 
@@ -42614,6 +42835,12 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerOrdinal = buffEntry.TemporaryStatViewParentLayerOrdinal;
             renderData.TemporaryStatViewMainLayerOrdinal = buffEntry.TemporaryStatViewMainLayerOrdinal;
             renderData.TemporaryStatViewShadowLayerOrdinal = buffEntry.TemporaryStatViewShadowLayerOrdinal;
+            renderData.IsTemporaryStatViewReleased = buffEntry.IsTemporaryStatViewReleased;
+            renderData.TemporaryStatViewReleaseTime = buffEntry.TemporaryStatViewReleaseTime;
+            renderData.TemporaryStatViewObjectReleaseSequence = buffEntry.TemporaryStatViewObjectReleaseSequence;
+            renderData.TemporaryStatViewParentLayerReleaseSequence = buffEntry.TemporaryStatViewParentLayerReleaseSequence;
+            renderData.TemporaryStatViewMainLayerReleaseSequence = buffEntry.TemporaryStatViewMainLayerReleaseSequence;
+            renderData.TemporaryStatViewShadowLayerReleaseSequence = buffEntry.TemporaryStatViewShadowLayerReleaseSequence;
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
@@ -42630,6 +42857,7 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasReferenceCount = buffEntry.ShadowCanvasReferenceCount;
             renderData.ShadowCanvasRemoveSequence = buffEntry.ShadowCanvasRemoveSequence;
             renderData.ShadowCanvasInsertSequence = buffEntry.ShadowCanvasInsertSequence;
+            renderData.ShadowCanvasReleaseSequence = buffEntry.ShadowCanvasReleaseSequence;
             renderData.AlertLayerAnimationMode = buffEntry.AlertLayerAnimationMode;
             renderData.AlertLayerAnimationSequence = buffEntry.AlertLayerAnimationSequence;
         }
@@ -43818,6 +44046,16 @@ namespace HaCreator.MapSimulator
 
         private void DrainMonsterCarnivalPacketInbox(int currentTickCount)
         {
+            MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            if (carnivalField?.IsVisible == true)
+            {
+                while (_monsterCarnivalOfficialSessionBridge.TryDequeueObservedOutboundRequest(
+                    out MonsterCarnivalOfficialSessionBridgeManager.ObservedOutboundRequest observedRequest))
+                {
+                    carnivalField.MarkPendingOfficialClientRequest(observedRequest.Tab, observedRequest.EntryIndex);
+                }
+            }
+
             while (_monsterCarnivalOfficialSessionBridge.TryDequeue(out MonsterCarnivalPacketInboxMessage bridgeMessage))
             {
                 _monsterCarnivalPacketInbox.EnqueueProxy(bridgeMessage);

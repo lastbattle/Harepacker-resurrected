@@ -64,6 +64,9 @@ namespace HaCreator.MapSimulator.Interaction
             public bool IsRead { get; set; }
             public bool IsKept { get; set; }
             public bool IsQuickDelivery { get; init; }
+            public byte QuickDeliveryRawFlag { get; init; }
+            public byte[] QuickDeliveryReservedBytes { get; init; } = Array.Empty<byte>();
+            public bool HasQuickDeliveryReservedState { get; init; }
             public MemoAttachmentState Attachment { get; init; }
         }
 
@@ -109,6 +112,9 @@ namespace HaCreator.MapSimulator.Interaction
                     IsRead = memo.IsRead,
                     IsKept = memo.IsKept,
                     IsQuickDelivery = memo.IsQuickDelivery,
+                    QuickDeliveryRawFlag = memo.QuickDeliveryRawFlag,
+                    QuickDeliveryReservedBytes = memo.QuickDeliveryReservedBytes ?? Array.Empty<byte>(),
+                    HasQuickDeliveryReservedState = memo.HasQuickDeliveryReservedState,
                     HasAttachment = memo.Attachment != null,
                     CanClaimAttachment = CanClaimAttachment(memo),
                     IsAttachmentClaimed = memo.Attachment?.IsClaimed == true,
@@ -186,7 +192,10 @@ namespace HaCreator.MapSimulator.Interaction
                 AttachmentMeso = GetAttachmentMeso(memo.Attachment),
                 CanClaim = CanClaimAttachment(memo),
                 IsClaimed = memo.Attachment?.IsClaimed == true,
-                IsExpired = IsExpired(memo)
+                IsExpired = IsExpired(memo),
+                QuickDeliveryRawFlag = memo.QuickDeliveryRawFlag,
+                QuickDeliveryReservedBytes = memo.QuickDeliveryReservedBytes ?? Array.Empty<byte>(),
+                HasQuickDeliveryReservedState = memo.HasQuickDeliveryReservedState
             };
         }
 
@@ -307,6 +316,8 @@ namespace HaCreator.MapSimulator.Interaction
                         isRead: entry.IsRead,
                         isKept: entry.IsKept,
                         isQuickDelivery: entry.IsQuickDelivery,
+                        quickDeliveryRawFlag: entry.QuickDeliveryRawFlag,
+                        quickDeliveryReservedBytes: entry.QuickDeliveryReservedBytes,
                         attachmentItemId: entry.AttachmentItemId,
                         attachmentQuantity: entry.AttachmentQuantity,
                         attachmentMeso: attachmentMeso,
@@ -360,12 +371,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool delivered = TryDeliverPacketOwnedParcel(
-                entry.Sender,
-                ResolvePacketOwnedParcelSubject(entry),
-                ResolvePacketOwnedParcelBody(entry),
+                sender: entry.Sender,
+                subject: ResolvePacketOwnedParcelSubject(entry),
+                body: ResolvePacketOwnedParcelBody(entry),
                 isRead: entry.IsRead,
                 isKept: entry.IsKept,
                 isQuickDelivery: entry.IsQuickDelivery,
+                quickDeliveryRawFlag: entry.QuickDeliveryRawFlag,
+                quickDeliveryReservedBytes: entry.QuickDeliveryReservedBytes,
                 isClaimed: entry.IsAttachmentClaimed,
                 attachmentItemId: entry.AttachmentItemId,
                 attachmentQuantity: entry.AttachmentQuantity,
@@ -373,7 +386,7 @@ namespace HaCreator.MapSimulator.Interaction
                 memoId: entry.ParcelSerial > 0 ? entry.ParcelSerial : null,
                 deliveredAt: DateTimeOffset.Now,
                 expirationTimestampUtc: entry.ExpirationTimestampUtc,
-                out message);
+                message: out message);
             if (delivered && entry.IsQuickDelivery)
             {
                 _lastActionSummary = $"{message} (quick delivery)";
@@ -396,6 +409,8 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso,
             bool isQuickDelivery,
             bool isAttachmentClaimed,
+            byte quickDeliveryRawFlag = 0,
+            byte[] quickDeliveryReservedBytes = null,
             DateTimeOffset? expirationTimestampUtc = null,
             bool notifySocialText = false)
         {
@@ -422,6 +437,14 @@ namespace HaCreator.MapSimulator.Interaction
                 IsRead = isRead,
                 IsKept = isKept,
                 IsQuickDelivery = isQuickDelivery,
+                QuickDeliveryRawFlag = isQuickDelivery
+                    ? (quickDeliveryRawFlag == 0 ? (byte)1 : quickDeliveryRawFlag)
+                    : (byte)0,
+                QuickDeliveryReservedBytes = isQuickDelivery
+                    ? CloneQuickDeliveryReservedBytes(quickDeliveryReservedBytes)
+                    : Array.Empty<byte>(),
+                HasQuickDeliveryReservedState = isQuickDelivery
+                    && quickDeliveryReservedBytes?.Any(value => value != 0) == true,
                 Attachment = attachment
             });
 
@@ -609,6 +632,8 @@ namespace HaCreator.MapSimulator.Interaction
                 memoId: null,
                 deliveredAt: DateTimeOffset.Now,
                 expirationTimestampUtc: null,
+                quickDeliveryRawFlag: 0,
+                quickDeliveryReservedBytes: null,
                 out message);
         }
 
@@ -626,6 +651,8 @@ namespace HaCreator.MapSimulator.Interaction
             int? memoId,
             DateTimeOffset deliveredAt,
             DateTimeOffset? expirationTimestampUtc,
+            byte quickDeliveryRawFlag,
+            byte[] quickDeliveryReservedBytes,
             out string message)
         {
             if (string.IsNullOrWhiteSpace(sender) || string.IsNullOrWhiteSpace(body))
@@ -658,6 +685,8 @@ namespace HaCreator.MapSimulator.Interaction
                 attachmentMeso: attachmentMeso,
                 isQuickDelivery: isQuickDelivery,
                 isAttachmentClaimed: isClaimed,
+                quickDeliveryRawFlag: quickDeliveryRawFlag,
+                quickDeliveryReservedBytes: quickDeliveryReservedBytes,
                 expirationTimestampUtc: expirationTimestampUtc,
                 notifySocialText: true);
             _packetOwnedSessionEntrySignatures.Add(BuildPacketOwnedParcelEntrySignature(
@@ -670,7 +699,7 @@ namespace HaCreator.MapSimulator.Interaction
                 isClaimed,
                 stateFlags: 0,
                 isQuickDelivery,
-                quickDeliveryReservedBytes: Array.Empty<byte>(),
+                quickDeliveryReservedBytes: quickDeliveryReservedBytes ?? Array.Empty<byte>(),
                 attachmentItemId,
                 attachmentQuantity,
                 attachmentMeso,
@@ -1785,6 +1814,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return string.Join("-", bytes.Select(value => value.ToString("X2")));
+        }
+
+        private static byte[] CloneQuickDeliveryReservedBytes(byte[] bytes)
+        {
+            return bytes == null || bytes.Length == 0
+                ? Array.Empty<byte>()
+                : bytes.ToArray();
         }
 
         private static string ResolveItemName(int itemId)

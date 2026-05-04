@@ -571,12 +571,6 @@ namespace HaCreator.MapSimulator.Fields
             {
                 resolvedDestination = sourceMapFallbackDestination;
                 resolutionKind = RemoteTownPortalDestinationResolutionKind.SourceMapReturnFallback;
-                RememberRemoteTownPortalObservedFieldMetadata(
-                    packet.OwnerCharacterId,
-                    currentMapId,
-                    sourceMapFallbackDestination,
-                    currentTime,
-                    RemoteTownPortalObservationSource.WzReturnMapFallback);
             }
 
             if (!resolvedDestination.HasValue
@@ -584,12 +578,15 @@ namespace HaCreator.MapSimulator.Fields
             {
                 resolvedDestination = fallbackDestination;
                 resolutionKind = RemoteTownPortalDestinationResolutionKind.WzPreferredOrUniqueFallback;
-                RememberRemoteTownPortalObservedFieldMetadata(
-                    packet.OwnerCharacterId,
-                    currentMapId,
-                    fallbackDestination,
-                    currentTime,
-                    RemoteTownPortalObservationSource.WzReturnMapFallback);
+                if (ShouldRememberRemoteTownPortalWzObservedFieldMetadata(resolutionKind))
+                {
+                    RememberRemoteTownPortalObservedFieldMetadata(
+                        packet.OwnerCharacterId,
+                        currentMapId,
+                        fallbackDestination,
+                        currentTime,
+                        RemoteTownPortalObservationSource.WzReturnMapFallback);
+                }
             }
 
             if (!destination.HasValue
@@ -1943,6 +1940,12 @@ namespace HaCreator.MapSimulator.Fields
                        currentMapHasTownPortalPoint,
                        hasCurrentMapReturnTownMap,
                        currentMapReturnTownMapId);
+        }
+
+        private static bool ShouldRememberRemoteTownPortalWzObservedFieldMetadata(
+            RemoteTownPortalDestinationResolutionKind resolutionKind)
+        {
+            return resolutionKind == RemoteTownPortalDestinationResolutionKind.WzPreferredOrUniqueFallback;
         }
 
         private static bool TryResolveRemoteTownPortalPreferredWzFallbackDestination(
@@ -4311,6 +4314,12 @@ namespace HaCreator.MapSimulator.Fields
                 currentMapHasTownPortalPoint,
                 hasCurrentMapReturnTownMap,
                 currentMapReturnTownMapId);
+        }
+
+        internal static bool ShouldRememberRemoteTownPortalWzObservedFieldMetadataForTesting(
+            RemoteTownPortalDestinationResolutionKind resolutionKind)
+        {
+            return ShouldRememberRemoteTownPortalWzObservedFieldMetadata(resolutionKind);
         }
 
         internal static bool IsRemoteTownPortalSourceFallbackStartPortalForTesting(int? portalTypeId, string portalName)

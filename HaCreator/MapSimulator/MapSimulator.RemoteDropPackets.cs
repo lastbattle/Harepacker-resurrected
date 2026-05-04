@@ -1245,15 +1245,33 @@ namespace HaCreator.MapSimulator
 
             foreach (KeyValuePair<int, Vector2> observedEntry in observedPetActorPositions)
             {
-                int retainedActorId = 0;
                 if (TryDecodeRemotePetPickupActorId(observedEntry.Key, out int decodedOwnerId, out int decodedSlotIndex)
                     && decodedOwnerId == ownerCharacterId)
                 {
-                    retainedActorId = BuildRemotePetPickupActorId(
+                    int retainedActorId = BuildRemotePetPickupActorId(
                         ownerCharacterId,
                         NormalizeRemotePetPickupSlotIndexForPacketParity(decodedSlotIndex));
+                    predictedPetActorPositions[retainedActorId] = observedEntry.Value;
+                    continue;
                 }
-                else if (TryResolveObservedDropPartyLinkedOwnerAlias(
+
+                int[] linkedSlotIndexes = ResolveObservedDropPartyLinkedOwnerAliasSlots(
+                    actorParents,
+                    actorOwners,
+                    observedEntry.Key,
+                    ownerCharacterId);
+                if (linkedSlotIndexes.Length > 0)
+                {
+                    for (int i = 0; i < linkedSlotIndexes.Length; i++)
+                    {
+                        int retainedActorId = BuildRemotePetPickupActorId(ownerCharacterId, linkedSlotIndexes[i]);
+                        predictedPetActorPositions[retainedActorId] = observedEntry.Value;
+                    }
+
+                    continue;
+                }
+
+                if (TryResolveObservedDropPartyLinkedOwnerAlias(
                         actorParents,
                         actorOwners,
                         observedEntry.Key,
@@ -1261,13 +1279,9 @@ namespace HaCreator.MapSimulator
                         out int linkedSlotIndex)
                     && linkedOwnerCharacterId == ownerCharacterId)
                 {
-                    retainedActorId = BuildRemotePetPickupActorId(
+                    int retainedActorId = BuildRemotePetPickupActorId(
                         ownerCharacterId,
                         NormalizeRemotePetPickupSlotIndexForPacketParity(linkedSlotIndex));
-                }
-
-                if (retainedActorId != 0)
-                {
                     predictedPetActorPositions[retainedActorId] = observedEntry.Value;
                 }
             }
@@ -1785,6 +1799,56 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static int[] ResolveObservedDropPartyLinkedOwnerAliasSlots(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            IReadOnlyDictionary<int, int> actorOwners,
+            int actorId,
+            int ownerCharacterId)
+        {
+            if (actorParents == null || actorId == 0 || ownerCharacterId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> targetRoots = new();
+            if (actorParents.ContainsKey(actorId))
+            {
+                targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, actorId));
+            }
+
+            if (actorOwners != null
+                && actorOwners.TryGetValue(actorId, out int directOwnerCharacterId)
+                && directOwnerCharacterId == ownerCharacterId)
+            {
+                AddObservedDropPartyOwnerAliasRoots(actorParents, targetRoots, ownerCharacterId);
+            }
+
+            if (targetRoots.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            SortedSet<int> slotIndexes = new();
+            int[] linkedActorIds = EnumerateObservedDropPartyActorIds(actorParents);
+            for (int i = 0; i < linkedActorIds.Length; i++)
+            {
+                int linkedActorId = linkedActorIds[i];
+                int linkedActorRoot = FindObservedDropPartyActorRoot(actorParents, linkedActorId);
+                if (!targetRoots.Contains(linkedActorRoot)
+                    || !TryDecodeRemotePetPickupActorId(linkedActorId, out int decodedOwnerCharacterId, out int decodedSlotIndex)
+                    || decodedOwnerCharacterId != ownerCharacterId)
+                {
+                    continue;
+                }
+
+                slotIndexes.Add(NormalizeRemotePetPickupSlotIndexForPacketParity(decodedSlotIndex));
+            }
+
+            return slotIndexes.Count == 0
+                ? Array.Empty<int>()
+                : slotIndexes.ToArray();
         }
 
         private static void AddObservedDropPartyOwnerAliasRoots(

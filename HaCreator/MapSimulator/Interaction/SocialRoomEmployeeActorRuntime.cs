@@ -1901,7 +1901,7 @@ namespace HaCreator.MapSimulator.Interaction
             foreach (WzImageProperty child in source.WzProperties.OrderBy(GetFrameOrder))
             {
                 WzImageProperty resolvedFrame = ResolveLinkedProperty(child);
-                WzCanvasProperty canvas = ResolveCanvasProperty(child);
+                WzCanvasProperty canvas = ResolveMiniRoomBoardEffectCanvas(child);
                 Texture2D texture = LoadUiCanvasTexture(canvas, device);
                 if (texture == null)
                 {
@@ -1916,6 +1916,33 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return frames.ToArray();
+        }
+
+        private static WzCanvasProperty ResolveMiniRoomBoardEffectCanvas(WzImageProperty frameProperty)
+        {
+            WzCanvasProperty directCanvas = ResolveCanvasProperty(frameProperty);
+            if (directCanvas != null)
+            {
+                return directCanvas;
+            }
+
+            WzImageProperty resolvedFrame = ResolveLinkedProperty(frameProperty);
+            if (resolvedFrame == null)
+            {
+                return null;
+            }
+
+            return resolvedFrame.WzProperties
+                .Select((property, index) => new EmployeeFrameCanvasCandidate(ResolveCanvasProperty(property), index))
+                .Where(candidate => candidate.Canvas != null)
+                .OrderBy(candidate => candidate, EmployeeFrameCanvasCandidateComparer.Instance)
+                .Select(candidate => candidate.Canvas)
+                .FirstOrDefault();
+        }
+
+        internal static string ResolveMiniRoomBoardEffectCanvasNameForTesting(WzImageProperty frameProperty)
+        {
+            return ResolveMiniRoomBoardEffectCanvas(frameProperty)?.Name;
         }
 
         private static int ResolveMiniRoomBoardEffectFrameDelay(int? frameDelay, int? canvasDelay)

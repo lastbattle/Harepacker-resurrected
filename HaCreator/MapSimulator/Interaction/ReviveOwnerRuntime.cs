@@ -21,6 +21,14 @@ namespace HaCreator.MapSimulator.Interaction
         SpawnApproximation = 3,
     }
 
+    internal enum ReviveOwnerClientButtonRoute
+    {
+        None = 0,
+        Premium = 1,
+        Normal = 2,
+        Default = 3,
+    }
+
     internal readonly struct ReviveOwnerResolution
     {
         public ReviveOwnerResolution(
@@ -230,6 +238,20 @@ namespace HaCreator.MapSimulator.Interaction
             return premiumModifier || !hasPremiumChoice
                 ? ClientYesButtonId
                 : ClientNoButtonId;
+        }
+
+        public static ReviveOwnerClientButtonRoute ResolveClientButtonRoute(
+            bool hasPremiumChoice,
+            int buttonId)
+        {
+            return buttonId switch
+            {
+                ClientYesButtonId => hasPremiumChoice
+                    ? ReviveOwnerClientButtonRoute.Premium
+                    : ReviveOwnerClientButtonRoute.Default,
+                ClientNoButtonId or ClientCloseButtonId => ReviveOwnerClientButtonRoute.Normal,
+                _ => ReviveOwnerClientButtonRoute.None,
+            };
         }
 
         public static ReviveOwnerTransferRequest CreateTransferRequest(ReviveOwnerResolution resolution)

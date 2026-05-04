@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool IsActive(int currentTickCount)
         {
+            Update(currentTickCount);
             if (_avatarMessage?.IsActive(currentTickCount) == true)
             {
                 return true;
@@ -110,6 +111,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public LocalOverlayBalloonMessage GetAvatarMessage(int currentTickCount)
         {
+            Update(currentTickCount);
             return _avatarMessage?.IsActive(currentTickCount) == true
                 ? _avatarMessage
                 : null;
@@ -117,6 +119,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public IReadOnlyList<LocalOverlayBalloonMessage> GetFieldMessages(int currentTickCount)
         {
+            Update(currentTickCount);
             if (_fieldMessages.Count == 0)
             {
                 return Array.Empty<LocalOverlayBalloonMessage>();

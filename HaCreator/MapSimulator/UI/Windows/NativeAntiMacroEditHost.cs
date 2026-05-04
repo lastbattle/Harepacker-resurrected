@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.UI
         private const int EmReplaceSel = 0x00C2;
         private const int EmLimitText = 0x00C5;
         private const int EmCharFromPos = 0x00D7;
+        internal const string ClientEditWindowClassName = "EDIT";
         private const int EmSetMargins = 0x00D3;
         private const int EmPosFromChar = 0x00D6;
         private const int EcLeftMargin = 0x0001;
@@ -78,16 +79,20 @@ namespace HaCreator.MapSimulator.UI
         private const int WmLButtonUp = 0x0202;
         private const int WmLButtonDblClk = 0x0203;
         private const int WmMouseMove = 0x0200;
-        private const uint WsChild = 0x40000000;
-        private const uint WsVisible = 0x10000000;
-        private const uint WsTabStop = 0x00010000;
-        private const uint EsAutoHScroll = 0x0080;
-        private const uint EsNoHideSel = 0x0100;
-        private const uint ImeExcludeStyle = 0x0080;
+        internal const uint WsChild = 0x40000000;
+        internal const uint WsVisible = 0x10000000;
+        internal const uint WsTabStop = 0x00010000;
+        internal const uint EsAutoHScroll = 0x0080;
+        internal const uint EsNoHideSel = 0x0100;
+        internal const uint ClientEditWindowStyle = WsChild | WsVisible | WsTabStop | EsAutoHScroll | EsNoHideSel;
+        internal const uint ClientEditWindowExStyle = 0;
+        internal const int ClientEditLeftMargin = 0;
+        internal const int ClientEditRightMargin = 0;
+        internal const uint ImeExcludeStyle = 0x0080;
         private const int DlgcWantArrows = 0x0001;
         private const int DlgcHasSetSel = 0x0008;
         private const int DlgcWantChars = 0x0080;
-        private const int CandidateListCount = 4;
+        internal const int CandidateListCount = 4;
         private static readonly IntPtr HwndTop = IntPtr.Zero;
         private static readonly object HostMapLock = new();
         private static readonly Dictionary<IntPtr, NativeAntiMacroEditHost> HostByHandle = new();
@@ -142,9 +147,9 @@ namespace HaCreator.MapSimulator.UI
             _currentBounds = bounds;
             _editHandle = CreateWindowEx(
                 0,
-                "EDIT",
+                ClientEditWindowClassName,
                 string.Empty,
-                WsChild | WsVisible | WsTabStop | EsAutoHScroll | EsNoHideSel,
+                ClientEditWindowStyle,
                 bounds.X,
                 bounds.Y,
                 bounds.Width,
@@ -499,7 +504,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int marginLParam = 0;
+            int marginLParam = (ClientEditRightMargin << 16) | (ClientEditLeftMargin & 0xFFFF);
             SendMessage(_editHandle, EmSetMargins, new IntPtr(EcLeftMargin | EcRightMargin), new IntPtr(marginLParam));
         }
 

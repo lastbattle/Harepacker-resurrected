@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.UI;
@@ -84,12 +85,12 @@ namespace HaCreator.MapSimulator.Pools
 
         public bool IsExpired(int currentTime)
         {
-            return ExpireTime > 0 && currentTime >= ExpireTime;
+            return ExpireTime != 0 && HasAreaTickReached(currentTime, ExpireTime);
         }
 
         public bool IsActive(int currentTime)
         {
-            return currentTime >= StartTime
+            return HasAreaTickReached(currentTime, StartTime)
                    && !IsExpired(currentTime)
                    && !IsRemoving;
         }
@@ -97,9 +98,9 @@ namespace HaCreator.MapSimulator.Pools
         public bool IsRenderable(int currentTime)
         {
             return Animation?.Frames.Count > 0
-                   && currentTime >= StartTime
+                   && HasAreaTickReached(currentTime, StartTime)
                    && !IsExpired(currentTime)
-                   && !(IsRemoving && currentTime - RemoveStartTime >= AffectedAreaPool.RemoveFadeDurationMs);
+                   && !(IsRemoving && ResolveAreaTickElapsed(currentTime, RemoveStartTime) >= AffectedAreaPool.RemoveFadeDurationMs);
         }
 
         public bool Contains(float worldX, float worldY)
@@ -110,7 +111,27 @@ namespace HaCreator.MapSimulator.Pools
         public int AnimationTime(int currentTime)
         {
             int anchorTime = IsRemoving ? RemoveStartTime : StartTime;
-            return Math.Max(0, currentTime - anchorTime);
+            return ResolveAreaTickElapsed(currentTime, anchorTime);
+        }
+
+        internal static bool HasAreaTickReachedForTesting(int currentTime, int targetTime)
+        {
+            return HasAreaTickReached(currentTime, targetTime);
+        }
+
+        internal static int ResolveAreaTickElapsedForTesting(int currentTime, int startTime)
+        {
+            return ResolveAreaTickElapsed(currentTime, startTime);
+        }
+
+        internal static bool HasAreaTickReached(int currentTime, int targetTime)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, targetTime);
+        }
+
+        internal static int ResolveAreaTickElapsed(int currentTime, int startTime)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, startTime);
         }
     }
 
@@ -229,7 +250,8 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 bool shouldRemove = area.IsExpired(currentTime);
-                shouldRemove |= area.IsRemoving && currentTime - area.RemoveStartTime >= RemoveFadeDurationMs;
+                shouldRemove |= area.IsRemoving
+                                && ActiveAffectedArea.ResolveAreaTickElapsed(currentTime, area.RemoveStartTime) >= RemoveFadeDurationMs;
                 if (!shouldRemove)
                 {
                     continue;
@@ -276,12 +298,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int normalizedIntervalMs = Math.Max(100, intervalMs);
-            if (currentTime < area.NextGameplayTickTime)
+            if (!ActiveAffectedArea.HasAreaTickReached(currentTime, area.NextGameplayTickTime))
             {
                 return false;
             }
 
-            area.NextGameplayTickTime = currentTime + normalizedIntervalMs;
+            area.NextGameplayTickTime = unchecked(currentTime + normalizedIntervalMs);
             return true;
         }
 
@@ -586,7 +608,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolveExpireTime(int currentTime, int durationSeconds)
         {
-            return durationSeconds > 0 ? currentTime + (durationSeconds * 1000) : 0;
+            return durationSeconds > 0 ? unchecked(currentTime + (durationSeconds * 1000)) : 0;
         }
 
         private static int ResolveExpireTimeByDurationMs(int currentTime, int durationMs)
@@ -596,8 +618,7 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            long expireTime = (long)currentTime + durationMs;
-            return expireTime >= int.MaxValue ? int.MaxValue : (int)expireTime;
+            return unchecked(currentTime + durationMs);
         }
 
         private static int ResolveAreaBuffItemExpireTime(
@@ -607,7 +628,7 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation animation)
         {
             int durationMs = ResolveAreaBuffItemDurationMs(itemProperty, itemId, animation);
-            return durationMs > 0 ? startTime + durationMs : 0;
+            return durationMs > 0 ? unchecked(startTime + durationMs) : 0;
         }
 
         internal static int ResolveAreaBuffItemDurationMs(
@@ -629,7 +650,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolveStartTime(int currentTime, short startDelayUnits)
         {
-            return currentTime + (Math.Max(0, (int)startDelayUnits) * 100);
+            return unchecked(currentTime + (Math.Max(0, (int)startDelayUnits) * 100));
         }
 
         private static bool MatchesZoneType(string zoneType, params string[] expectedZoneTypes)
@@ -676,7 +697,7 @@ namespace HaCreator.MapSimulator.Pools
             int startX = area.WorldBounds.Left + tileWidth / 2;
             int startY = area.WorldBounds.Top + tileHeight / 2;
             float alpha = area.IsRemoving
-                ? MathHelper.Clamp(1f - ((currentTime - area.RemoveStartTime) / (float)RemoveFadeDurationMs), 0f, 1f)
+                ? MathHelper.Clamp(1f - (area.AnimationTime(currentTime) / (float)RemoveFadeDurationMs), 0f, 1f)
                 : 1f;
             Color tint = Color.White * alpha;
 

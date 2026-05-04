@@ -2308,6 +2308,11 @@ namespace HaCreator.MapSimulator.Character
             "ghostrope",
             "ghostfly",
             "ghostsit",
+            // Legacy helper create rows are authored in Character/00002000 alongside the
+            // mounted create2/3/4 branches. Keep their built-in piece plans available when
+            // the mounted rows are absent so create fallback does not collapse to idle.
+            "create0",
+            "create1",
             // Mounted raw rows 145..174 also publish concrete helper-piece tables
             // that are not runtime attack identities. Admit them only through the
             // loader fallback surface so missing mounted rows can still use the

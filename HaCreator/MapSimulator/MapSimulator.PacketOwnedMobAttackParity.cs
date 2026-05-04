@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Combat;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 
@@ -76,6 +77,7 @@ namespace HaCreator.MapSimulator
             }
 
             var liveMob = _mobPool.GetMob(decodedPacket.MobId);
+            MobAttackEntry packetAttack = liveMob?.AI?.GetAttackById(decodedPacket.AttackId);
             liveMob?.MovementInfo?.ApplyPacketMoveInterrupt(
                 decodedPacket.NotForceLandingWhenDiscard,
                 currentTime,
@@ -110,8 +112,13 @@ namespace HaCreator.MapSimulator
             bool sourceFacesRight = !decodedPacket.FacingLeft;
             bool hasMultiTargetOverrides = decodedPacket.MultiTargetForBall?.Count > 0;
             bool hasAreaDelayOverrides = decodedPacket.RandTimeForAreaAttack?.Count > 0;
-            bool hasAreaTargetMask = decodedPacket.TargetInfoRaw > 0;
-            MobTargetInfo lockedTargetOverride = MobMoveAttackPacketCodec.CreateLockedTargetOverride(decodedPacket.LockedTargetInfo);
+            ResolvePacketOwnedMobAttackTargetChannels(
+                packetAttack,
+                decodedPacket.TargetInfoRaw,
+                decodedPacket.LockedTargetInfo,
+                out MobTargetInfo lockedTargetOverride,
+                out int areaTargetMask);
+            bool hasAreaTargetMask = areaTargetMask > 0;
             bool hasLockedTargetOverride = lockedTargetOverride?.IsValid == true;
             if (!hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasLockedTargetOverride && !hasAreaTargetMask)
             {
@@ -132,7 +139,7 @@ namespace HaCreator.MapSimulator
                 decodedPacket.MultiTargetForBall,
                 decodedPacket.RandTimeForAreaAttack,
                 sourceFacesRight,
-                areaTargetMask: decodedPacket.TargetInfoRaw);
+                areaTargetMask: areaTargetMask);
 
             string multiTargetSummary = hasMultiTargetOverrides
                 ? $"{decodedPacket.MultiTargetForBall.Count} multiball lane point(s)"
@@ -149,6 +156,24 @@ namespace HaCreator.MapSimulator
             string facingSummary = sourceFacesRight ? "facing right" : "facing left";
             message = $"Queued packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with {lockedTargetSummary}, {multiTargetSummary}, {randDelaySummary}, {areaMaskSummary}, and {facingSummary}.";
             return true;
+        }
+
+        internal static void ResolvePacketOwnedMobAttackTargetChannels(
+            MobAttackEntry attack,
+            int targetInfoRaw,
+            MobMoveAttackPacketCodec.DecodedLockedTargetInfo? lockedTargetInfo,
+            out MobTargetInfo lockedTargetOverride,
+            out int areaTargetMask)
+        {
+            if (MobAttackSystem.ShouldUsePacketAreaTargetMask(attack, targetInfoRaw))
+            {
+                lockedTargetOverride = null;
+                areaTargetMask = targetInfoRaw;
+                return;
+            }
+
+            lockedTargetOverride = MobMoveAttackPacketCodec.CreateLockedTargetOverride(lockedTargetInfo);
+            areaTargetMask = 0;
         }
 
         private ChatCommandHandler.CommandResult HandleMobAttackPacketCommand(string[] args)
