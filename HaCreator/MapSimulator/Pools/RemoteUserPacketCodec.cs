@@ -7,6 +7,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using Microsoft.Xna.Framework;
 
@@ -464,7 +465,9 @@ namespace HaCreator.MapSimulator.Pools
         CollectionCounts = 1 << 20,
         MakerProgression = 1 << 21,
         PreviousWorldRank = 1 << 22,
-        PreviousJobRank = 1 << 23
+        PreviousJobRank = 1 << 23,
+        Marriage = 1 << 24,
+        PetProfileNames = 1 << 25
     }
 
     public readonly record struct RemoteUserProfilePacket(
@@ -507,7 +510,8 @@ namespace HaCreator.MapSimulator.Pools
           int? MakerDiscoveredRecipeCount = null,
           int? MakerUnlockedHiddenRecipeCount = null,
           int? PreviousWorldRank = null,
-          int? PreviousJobRank = null);
+          int? PreviousJobRank = null,
+          bool? IsMarried = null);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
     public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
@@ -2338,6 +2342,7 @@ namespace HaCreator.MapSimulator.Pools
                 int? jobRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.JobRank) ? reader.ReadInt32() : null;
                 int? previousWorldRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PreviousWorldRank) ? reader.ReadInt32() : null;
                 int? previousJobRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PreviousJobRank) ? reader.ReadInt32() : null;
+                bool? isMarried = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Marriage) ? reader.ReadByte() != 0 : null;
                 bool? hasRide = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Ride) ? reader.ReadByte() != 0 : null;
                 bool? hasPendantSlot = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PendantSlot) ? reader.ReadByte() != 0 : null;
                 bool? hasPocketSlot = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PocketSlot) ? reader.ReadByte() != 0 : null;
@@ -2352,6 +2357,10 @@ namespace HaCreator.MapSimulator.Pools
                 IReadOnlyList<RemotePetProfileSnapshot> petProfiles = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PetProfiles)
                     ? ReadProfilePetProfiles(reader)
                     : null;
+                if (petProfiles != null && HasProfileFlag(flags, RemoteUserProfilePacketFlags.PetProfileNames))
+                {
+                    petProfiles = ReadProfilePetNames(reader, petProfiles);
+                }
                 int? rideVehicleItemId = null;
                 int? rideSaddleItemId = null;
                 bool? isRidingInField = null;
@@ -2452,7 +2461,8 @@ namespace HaCreator.MapSimulator.Pools
                     makerDiscoveredRecipeCount,
                     makerUnlockedHiddenRecipeCount,
                     previousWorldRank,
-                    previousJobRank);
+                    previousJobRank,
+                    isMarried);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -2483,6 +2493,36 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return profiles;
+        }
+
+        private static IReadOnlyList<RemotePetProfileSnapshot> ReadProfilePetNames(
+            PacketReader reader,
+            IReadOnlyList<RemotePetProfileSnapshot> profiles)
+        {
+            int count = reader.ReadByte();
+            if (profiles == null || profiles.Count == 0)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    _ = reader.ReadString16();
+                }
+
+                return profiles ?? Array.Empty<RemotePetProfileSnapshot>();
+            }
+
+            RemotePetProfileSnapshot[] namedProfiles = profiles.ToArray();
+            int namesToApply = Math.Min(count, namedProfiles.Length);
+            for (int i = 0; i < count; i++)
+            {
+                string name = reader.ReadString16();
+                if (i < namesToApply && !string.IsNullOrWhiteSpace(name))
+                {
+                    RemotePetProfileSnapshot current = namedProfiles[i];
+                    namedProfiles[i] = current with { Name = name.Trim() };
+                }
+            }
+
+            return namedProfiles;
         }
 
         public static bool TryParseTemporaryStatSet(ReadOnlySpan<byte> payload, out RemoteUserTemporaryStatSetPacket packet, out string error)
@@ -4051,26 +4091,12 @@ namespace HaCreator.MapSimulator.Pools
 
             int nameStartIndex;
             int nameLength;
-            bool uses8BitLengthPayload = payload.Length >= HelperNamedPayloadMinimumLength
-                && payload.Length == sizeof(int) + sizeof(byte) + payload[4] + sizeof(byte);
-            if (uses8BitLengthPayload)
-            {
-                nameLength = payload[4];
-                nameStartIndex = 5;
-            }
-            else if (payload.Length >= HelperMapleStringNamedPayloadMinimumLength)
-            {
-                int mapleStringLength = payload[4] | (payload[5] << 8);
-                if (payload.Length != sizeof(int) + sizeof(ushort) + mapleStringLength + sizeof(byte))
-                {
-                    error = $"Remote user named helper packet length {payload.Length} does not match its marker name length.";
-                    return false;
-                }
-
-                nameLength = mapleStringLength;
-                nameStartIndex = 6;
-            }
-            else
+            int directionFlagIndex;
+            if (!TryResolveNamedHelperPayloadShape(
+                    payload,
+                    out nameStartIndex,
+                    out nameLength,
+                    out directionFlagIndex))
             {
                 error = $"Remote user named helper packet length {payload.Length} does not match its marker name length.";
                 return false;
@@ -4079,7 +4105,7 @@ namespace HaCreator.MapSimulator.Pools
             string markerName = nameLength == 0
                 ? "clear"
                 : Encoding.UTF8.GetString(payload.Slice(nameStartIndex, nameLength));
-            bool showDirectionOverlay = payload[^1] != 0;
+            bool showDirectionOverlay = payload[directionFlagIndex] != 0;
             if (TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType))
             {
                 packet = new RemoteUserHelperPacket(
@@ -4102,6 +4128,49 @@ namespace HaCreator.MapSimulator.Pools
 
             error = $"Remote user helper marker '{markerName}' is not recognized.";
             return false;
+        }
+
+        private static bool TryResolveNamedHelperPayloadShape(
+            ReadOnlySpan<byte> payload,
+            out int nameStartIndex,
+            out int nameLength,
+            out int directionFlagIndex)
+        {
+            nameStartIndex = 0;
+            nameLength = 0;
+            directionFlagIndex = 0;
+            if (payload.Length < HelperNamedPayloadMinimumLength)
+            {
+                return false;
+            }
+
+            int eightBitLength = payload[4];
+            int eightBitDirectionFlagIndex = sizeof(int) + sizeof(byte) + eightBitLength;
+            bool canReadEightBitPayload = eightBitDirectionFlagIndex < payload.Length;
+            if (canReadEightBitPayload)
+            {
+                nameStartIndex = sizeof(int) + sizeof(byte);
+                nameLength = eightBitLength;
+                directionFlagIndex = eightBitDirectionFlagIndex;
+                return true;
+            }
+
+            if (payload.Length < HelperMapleStringNamedPayloadMinimumLength)
+            {
+                return false;
+            }
+
+            int mapleStringLength = payload[4] | (payload[5] << 8);
+            int mapleStringDirectionFlagIndex = sizeof(int) + sizeof(ushort) + mapleStringLength;
+            if (mapleStringDirectionFlagIndex >= payload.Length)
+            {
+                return false;
+            }
+
+            nameStartIndex = sizeof(int) + sizeof(ushort);
+            nameLength = mapleStringLength;
+            directionFlagIndex = mapleStringDirectionFlagIndex;
+            return true;
         }
 
         private static bool TryResolveDefaultHelperAncillaryMarkerFallback(string markerName)

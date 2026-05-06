@@ -135,6 +135,15 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientPromptButtonWidth = 64;
         private const int ClientPromptButtonHeight = 22;
         private const int ClientDialogLeaveUpdateArgument = 2;
+        private const uint ClientDialogUpdateButtonOne = 1;
+        private const uint ClientDialogUpdateButtonTwo = 2;
+        private const uint ClientDialogUpdateButtonEight = 8;
+        private const uint ClientStartButtonId = 1001;
+        private const uint ClientTieButtonId = 1002;
+        private const uint ClientGiveUpButtonId = 1003;
+        private const uint ClientEndButtonId = 1004;
+        private const uint ClientReadyButtonId = 1007;
+        private const uint ClientBanButtonId = 1008;
         private static readonly IReadOnlyDictionary<int, MiniRoomGameMessageDefinition> MiniRoomGameMessages = new Dictionary<int, MiniRoomGameMessageDefinition>
         {
             [0] = new MiniRoomGameMessageDefinition(0x1C8, "[%s] have been expelled."),
@@ -1363,35 +1372,21 @@ namespace HaCreator.MapSimulator.Fields
 
                 switch (i)
                 {
-                case 0:
-                        return HandlePrimarySidebarAction(tickCount, out message);
+                    case 0:
+                        return TryDispatchClientButtonId(
+                            ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready
+                                ? ClientReadyButtonId
+                                : ClientStartButtonId,
+                            tickCount,
+                            out message);
                     case 1:
-                        if (!CanUseTieButton(out message))
-                        {
-                            return true;
-                        }
-
-                        TryPromptTieRequest(out message);
-                        return true;
+                        return TryDispatchClientButtonId(ClientTieButtonId, tickCount, out message);
                     case 2:
-                        if (!CanUseGiveUpButton(out message))
-                        {
-                            return true;
-                        }
-
-                        TryPromptGiveUp(_localPlayerIndex, out message);
-                        return true;
+                        return TryDispatchClientButtonId(ClientGiveUpButtonId, tickCount, out message);
                     case 3:
-                        TryRequestRoomExit(_localPlayerIndex, out message);
-                        return true;
+                        return TryDispatchClientButtonId(ClientEndButtonId, tickCount, out message);
                     case 4:
-                        if (!CanUseBanButton(out message))
-                        {
-                            return true;
-                        }
-
-                        TryPromptBanParticipant(out message);
-                        return true;
+                        return TryDispatchClientButtonId(ClientBanButtonId, tickCount, out message);
                 }
             }
 
@@ -1406,6 +1401,65 @@ namespace HaCreator.MapSimulator.Fields
 
             return true;
 
+        }
+
+        public bool TryDispatchClientButtonId(uint buttonId, int tickCount, out string message)
+        {
+            message = null;
+            if (_stage == RoomStage.Hidden
+                && buttonId != ClientDialogUpdateButtonOne
+                && buttonId != ClientDialogUpdateButtonTwo
+                && buttonId != ClientDialogUpdateButtonEight)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            switch (buttonId)
+            {
+                case ClientStartButtonId:
+                    TryClickStartButton(tickCount, out message);
+                    return true;
+                case ClientTieButtonId:
+                    if (!CanUseTieButton(out message))
+                    {
+                        return true;
+                    }
+
+                    TryPromptTieRequest(out message);
+                    return true;
+                case ClientGiveUpButtonId:
+                    if (!CanUseGiveUpButton(out message))
+                    {
+                        return true;
+                    }
+
+                    TryPromptGiveUp(_localPlayerIndex, out message);
+                    return true;
+                case ClientEndButtonId:
+                    TryRequestRoomExit(_localPlayerIndex, out message);
+                    return true;
+                case ClientReadyButtonId:
+                    TryClickReadyButton(tickCount, out message);
+                    return true;
+                case ClientBanButtonId:
+                    if (!CanUseBanButton(out message))
+                    {
+                        return true;
+                    }
+
+                    TryPromptBanParticipant(out message);
+                    return true;
+                case ClientDialogUpdateButtonOne:
+                case ClientDialogUpdateButtonTwo:
+                case ClientDialogUpdateButtonEight:
+                    _lastClientDialogUpdateArgument = (int)buttonId;
+                    message = $"Memory Game dialog Update({buttonId}) dispatched from client button id {buttonId}.";
+                    return true;
+                default:
+                    message = $"Unsupported Memory Game client button id {buttonId}.";
+                    return false;
+            }
         }
 
         private bool HandlePromptMouseClick(Point mousePosition, Rectangle outer, int tickCount, out string message)

@@ -1654,6 +1654,21 @@ namespace HaCreator.MapSimulator.Companions
             return 1f;
         }
 
+        internal static int ResolveNativePetWearCanvasCreateAddressForTesting()
+        {
+            return 0x4224EA;
+        }
+
+        internal static IReadOnlyList<int> ResolveNativePetWearCanvasCopyAddressesForTesting()
+        {
+            return new[] { 0x4225CB, 0x42267A };
+        }
+
+        internal static int ResolveNativePetWearCanvasCopyAlphaVariantTypeForTesting()
+        {
+            return 3;
+        }
+
         internal static SD.Color ResolveNativeCanvasCopyPixelForTesting(SD.Color destination, SD.Color source)
         {
             using var bitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);

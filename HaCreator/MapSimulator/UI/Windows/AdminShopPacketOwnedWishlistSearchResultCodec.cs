@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -68,6 +69,129 @@ namespace HaCreator.MapSimulator.UI
         private const byte RowFlagCategoryKey = 1 << 6;
         private const byte RowFlagPriceLabel = 1 << 7;
         private const byte RowFlag2CommoditySerialNumber = 1 << 0;
+
+        internal static byte[] EncodeVersion3(
+            int serviceSessionId,
+            int searchSessionId,
+            string query,
+            string categoryKey,
+            int priceRangeIndex,
+            IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> rows)
+        {
+            rows ??= Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
+            using PacketWriter writer = new();
+            writer.Write(Magic);
+            writer.WriteByte(Version3);
+            writer.WriteInt(serviceSessionId);
+            writer.WriteInt(searchSessionId);
+
+            byte flags = 0;
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                flags |= FlagQuery;
+            }
+
+            if (!string.IsNullOrWhiteSpace(categoryKey))
+            {
+                flags |= FlagCategory;
+            }
+
+            if (priceRangeIndex >= 0)
+            {
+                flags |= FlagPriceRange;
+            }
+
+            writer.WriteByte(flags);
+            WriteByteString(writer, query, (flags & FlagQuery) != 0);
+            WriteByteString(writer, categoryKey, (flags & FlagCategory) != 0);
+            if ((flags & FlagPriceRange) != 0)
+            {
+                writer.Write((short)Math.Clamp(priceRangeIndex, short.MinValue, short.MaxValue));
+            }
+
+            writer.Write((ushort)Math.Clamp(rows.Count, 0, ushort.MaxValue));
+            for (int i = 0; i < rows.Count && i < ushort.MaxValue; i++)
+            {
+                AdminShopPacketOwnedWishlistSearchResultRow row = rows[i] ?? new AdminShopPacketOwnedWishlistSearchResultRow();
+                byte rowFlags = 0;
+                byte rowFlags2 = 0;
+                if (row.ResultItemId > 0)
+                {
+                    rowFlags |= RowFlagResultItemId;
+                }
+
+                if (row.CommoditySerialNumber > 0)
+                {
+                    rowFlags2 |= RowFlag2CommoditySerialNumber;
+                }
+
+                if (row.Price != long.MinValue)
+                {
+                    rowFlags |= RowFlagPrice;
+                }
+
+                if (row.AlreadyWishlisted.HasValue)
+                {
+                    rowFlags |= RowFlagAlreadyWishlisted;
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.Title))
+                {
+                    rowFlags |= RowFlagTitle;
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.Seller))
+                {
+                    rowFlags |= RowFlagSeller;
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.Detail))
+                {
+                    rowFlags |= RowFlagDetail;
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.CategoryKey))
+                {
+                    rowFlags |= RowFlagCategoryKey;
+                }
+
+                if (!string.IsNullOrWhiteSpace(row.PriceLabel))
+                {
+                    rowFlags |= RowFlagPriceLabel;
+                }
+
+                writer.WriteInt(row.ItemId);
+                writer.WriteByte(rowFlags);
+                writer.WriteByte(rowFlags2);
+                if ((rowFlags & RowFlagResultItemId) != 0)
+                {
+                    writer.WriteInt(row.ResultItemId);
+                }
+
+                if ((rowFlags2 & RowFlag2CommoditySerialNumber) != 0)
+                {
+                    writer.WriteInt(row.CommoditySerialNumber);
+                }
+
+                if ((rowFlags & RowFlagPrice) != 0)
+                {
+                    writer.WriteInt((int)Math.Clamp(row.Price, int.MinValue, int.MaxValue));
+                }
+
+                if ((rowFlags & RowFlagAlreadyWishlisted) != 0)
+                {
+                    writer.WriteByte(row.AlreadyWishlisted == true ? (byte)1 : (byte)0);
+                }
+
+                WriteByteString(writer, row.Title, (rowFlags & RowFlagTitle) != 0);
+                WriteByteString(writer, row.Seller, (rowFlags & RowFlagSeller) != 0);
+                WriteByteString(writer, row.Detail, (rowFlags & RowFlagDetail) != 0);
+                WriteByteString(writer, row.CategoryKey, (rowFlags & RowFlagCategoryKey) != 0);
+                WriteByteString(writer, row.PriceLabel, (rowFlags & RowFlagPriceLabel) != 0);
+            }
+
+            return writer.ToArray();
+        }
 
         internal static bool TryDecode(
             byte[] payload,
@@ -267,6 +391,22 @@ namespace HaCreator.MapSimulator.UI
                 TrailingByteCount = Math.Max(0, payload.Length - offset)
             };
             return true;
+        }
+
+        private static void WriteByteString(PacketWriter writer, string value, bool present)
+        {
+            if (!present)
+            {
+                return;
+            }
+
+            byte[] encoded = Encoding.UTF8.GetBytes(value ?? string.Empty);
+            int byteLength = Math.Min(encoded.Length, byte.MaxValue);
+            writer.WriteByte((byte)byteLength);
+            if (byteLength > 0)
+            {
+                writer.Write(encoded.AsSpan(0, byteLength).ToArray());
+            }
         }
 
         private static bool TryReadUtf8String(

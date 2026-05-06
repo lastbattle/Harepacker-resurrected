@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int ScoreLayerScreenY = 30;
         private const int ScoreLayerWidth = 300;
         private const int ScoreLayerHeight = 300;
+        private const int ScoreLayerMaxVisibleRows = ScoreLayerHeight / RowSpacing;
         private const int IconX = 5;
         private const int NameX = 21;
         private const int ScoreX = 106;
@@ -576,7 +577,7 @@ namespace HaCreator.MapSimulator.Fields
         }
         private void DrawScoreboard(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font)
         {
-            int rowCount = Math.Min(_entries.Count, MaxRankEntries);
+            int rowCount = ResolveVisibleScoreRowCount(_entries.Count);
             for (int i = 0; i < rowCount; i++)
             {
                 int iconY = FirstIconY + (i * RowSpacing);
@@ -602,6 +603,10 @@ namespace HaCreator.MapSimulator.Fields
         internal static string FormatScoreTextForTesting(int score)
         {
             return FormatScoreText(score);
+        }
+        internal static int ResolveVisibleScoreRowCountForTesting(int scoreRowCount)
+        {
+            return ResolveVisibleScoreRowCount(scoreRowCount);
         }
         internal static string ResolveResultLayerPathForTesting()
         {
@@ -638,6 +643,10 @@ namespace HaCreator.MapSimulator.Fields
                 maxPlaceholderCount: 1,
                 out _);
             return string.Format(CultureInfo.InvariantCulture, format, Math.Clamp(score, 0, MaxScore));
+        }
+        private static int ResolveVisibleScoreRowCount(int scoreRowCount)
+        {
+            return Math.Clamp(scoreRowCount, 0, ScoreLayerMaxVisibleRows);
         }
         private static string ResolveRankIconPath(int iconIndex)
         {

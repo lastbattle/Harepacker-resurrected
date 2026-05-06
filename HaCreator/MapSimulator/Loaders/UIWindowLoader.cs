@@ -10071,6 +10071,11 @@ namespace HaCreator.MapSimulator.Loaders
                 ?? LoadButtonFromUiPath(PacketOwnedRewardResultRuntime.GetUtilDlgNoticeOkButtonResourcePath(), btClickSound, btOverSound, device, uiWindow2Image, uiWindowImage);
             UIObject closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device)
                 ?? LoadButtonFromUiPath(PacketOwnedRewardResultRuntime.GetUtilDlgNoticeCloseButtonResourcePath(), btClickSound, btOverSound, device, uiWindow2Image, uiWindowImage);
+            if (closeButton != null && !IsPacketOwnedRewardNoticeChromeCloseButton(closeButton))
+            {
+                closeButton = null;
+            }
+
             if (closeButton == null)
             {
                 WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
@@ -10088,6 +10093,19 @@ namespace HaCreator.MapSimulator.Loaders
             }
             window.InitializeButtons(okButton, closeButton);
             return window;
+        }
+
+        private static bool IsPacketOwnedRewardNoticeChromeCloseButton(UIObject closeButton)
+        {
+            if (closeButton == null)
+            {
+                return false;
+            }
+
+            BaseDXDrawableItem closeButtonDrawable = closeButton.GetBaseDXDrawableItemByState();
+            int width = closeButtonDrawable?.Frame0?.Width ?? closeButton.CanvasSnapshotWidth;
+            int height = closeButtonDrawable?.Frame0?.Height ?? closeButton.CanvasSnapshotHeight;
+            return PacketOwnedRewardNoticeWindow.IsClientChromeCloseButtonSize(width, height);
         }
 
         private static UIWindowBase CreateRandomMesoBagWindow(

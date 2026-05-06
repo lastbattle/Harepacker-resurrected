@@ -6,6 +6,7 @@ namespace HaCreator.MapSimulator.Animation
     {
         private static int _animationStateIdSource;
         private static int _layerHandleIdSource;
+        private static int _listNodeIdSource;
 
         public static int NextAnimationStateId()
         {
@@ -28,6 +29,18 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             Interlocked.Exchange(ref _layerHandleIdSource, 1);
+            return 1;
+        }
+
+        public static int NextListNodeId()
+        {
+            int next = Interlocked.Increment(ref _listNodeIdSource);
+            if (next > 0)
+            {
+                return next;
+            }
+
+            Interlocked.Exchange(ref _listNodeIdSource, 1);
             return 1;
         }
     }

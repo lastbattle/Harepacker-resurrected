@@ -1370,6 +1370,9 @@ namespace HaCreator.MapSimulator.Fields
         private int _season2SubDialogSelectedOkRouteCount;
         private int _season2SubDialogBtOkSendRouteCount;
         private int _season2SubDialogBtOkNoSendRouteCount;
+        private int _season2SubDialogBtOkPendingSendRouteCount;
+        private int _season2SubDialogBtOkAcceptedSendRouteCount;
+        private int _season2SubDialogBtOkRejectedSendRouteCount;
         private MonsterCarnivalTab? _season2SubDialogSelectedTab;
         private int _season2SubDialogSelectedIndex = -1;
         private string _season2SubDialogLastButtonRoute;
@@ -1441,6 +1444,9 @@ namespace HaCreator.MapSimulator.Fields
         public int Season2SubDialogSelectedOkRouteCount => _season2SubDialogSelectedOkRouteCount;
         public int Season2SubDialogBtOkSendRouteCount => _season2SubDialogBtOkSendRouteCount;
         public int Season2SubDialogBtOkNoSendRouteCount => _season2SubDialogBtOkNoSendRouteCount;
+        public int Season2SubDialogBtOkPendingSendRouteCount => _season2SubDialogBtOkPendingSendRouteCount;
+        public int Season2SubDialogBtOkAcceptedSendRouteCount => _season2SubDialogBtOkAcceptedSendRouteCount;
+        public int Season2SubDialogBtOkRejectedSendRouteCount => _season2SubDialogBtOkRejectedSendRouteCount;
         public MonsterCarnivalTab? Season2SubDialogSelectedTab => _season2SubDialogSelectedTab;
         public int Season2SubDialogSelectedIndex => _season2SubDialogSelectedIndex;
         public string Season2SubDialogRouteTrailSummary => BuildSeason2SubDialogRouteTrailSummary();
@@ -1478,6 +1484,31 @@ namespace HaCreator.MapSimulator.Fields
         public string LastDeathChatRoute => _lastDeathChatRoute;
         public MonsterCarnivalOwnedClockPhase OwnedClockPhase => _ownedClockPhase;
         public string OwnedClockSummary => _ownedClockSummary;
+
+        private void MarkSeason2SubDialogBtOkSendRouteResult(
+            PendingLocalRequestToken pendingToken,
+            bool accepted,
+            MonsterCarnivalEntry entry)
+        {
+            _season2SubDialogBtOkPendingSendRouteCount = Math.Max(0, _season2SubDialogBtOkPendingSendRouteCount - 1);
+            if (accepted)
+            {
+                _season2SubDialogBtOkAcceptedSendRouteCount++;
+            }
+            else
+            {
+                _season2SubDialogBtOkRejectedSendRouteCount++;
+            }
+
+            string tabText = entry != null
+                ? ((int)entry.Tab).ToString(CultureInfo.InvariantCulture)
+                : ((int)pendingToken.Tab).ToString(CultureInfo.InvariantCulture);
+            int index = entry?.Index ?? pendingToken.EntryIndex;
+            _season2SubDialogLastSendRoute =
+                $"btOK send route {(accepted ? "accepted" : "rejected")} tab={tabText}, index={index.ToString(CultureInfo.InvariantCulture)}.";
+            RecordSeason2SubDialogSendRouteEvent(
+                $"btOK-result({(accepted ? "accepted" : "rejected")},tab={tabText},index={index.ToString(CultureInfo.InvariantCulture)})");
+        }
 
         public void Configure(MapInfo mapInfo)
         {
@@ -1806,6 +1837,7 @@ namespace HaCreator.MapSimulator.Fields
                 _season2SubDialogSelectedOkRouteCount++;
                 MarkPendingOfficialClientRequest(selectedEntry.Tab, selectedEntry.Index);
                 _season2SubDialogBtOkSendRouteCount++;
+                _season2SubDialogBtOkPendingSendRouteCount++;
                 _season2SubDialogLastSendRoute =
                     $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK -> COutPacket(262) tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},cost={selectedEntry.Cost}";
                 RecordSeason2SubDialogSendRouteEvent($"btok-send(opcode=262,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
@@ -1977,10 +2009,12 @@ namespace HaCreator.MapSimulator.Fields
                 ? parsedTab
                 : _activeTab;
             bool isLocalRequestOwner = IsLocalRequestOwner(characterName);
+            bool hasMissingRequestOwner = string.IsNullOrWhiteSpace(characterName);
             bool consumedPendingLocalRequest = TryConsumePendingLocalRequestForResultOwnership(
                 tab,
                 entryIndex,
                 isLocalRequestOwner,
+                hasMissingRequestOwner,
                 out PendingLocalRequestToken consumedPendingToken);
             int resolvedRequestTab = consumedPendingLocalRequest
                 ? (int)consumedPendingToken.Tab
@@ -2010,6 +2044,7 @@ namespace HaCreator.MapSimulator.Fields
                         $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult recovered a local-owner success result with unresolved packet tab {(int)tab}, index {entryIndex} from pending tab {resolvedRequestTab}, index {resolvedRequestIndex}.",
                         pendingSuccessDefinition.HasValue ? new[] { pendingSuccessDefinition.Value.StringPoolId } : Array.Empty<int>());
                     UpdateSeason2SubDialogOnRequest(pendingEntry, success: true, reasonCode: null, tickCount);
+                    MarkSeason2SubDialogBtOkSendRouteResult(consumedPendingToken, accepted: true, pendingEntry);
                     return;
                 }
 
@@ -2059,6 +2094,7 @@ namespace HaCreator.MapSimulator.Fields
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult accepted tab {(int)tab}, index {entryIndex}, and reset the local request timer state.",
                 successDefinition.HasValue ? new[] { successDefinition.Value.StringPoolId } : Array.Empty<int>());
             UpdateSeason2SubDialogOnRequest(entry, success: true, reasonCode: null, tickCount);
+            MarkSeason2SubDialogBtOkSendRouteResult(consumedPendingToken, accepted: true, entry);
         }
 
         public void OnRequestFailure(int reasonCode, int tickCount)
@@ -2092,6 +2128,7 @@ namespace HaCreator.MapSimulator.Fields
                     : $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult rejected reason {reasonCode} and reset the local request timer state.",
                 definition.HasValue ? new[] { definition.Value.StringPoolId } : Array.Empty<int>());
             UpdateSeason2SubDialogOnRequest(entry: null, success: false, reasonCode: reasonCode, tickCount);
+            MarkSeason2SubDialogBtOkSendRouteResult(pendingToken, accepted: false, null);
         }
 
         public void OnShowGameResult(int resultCode, int tickCount)
@@ -3770,11 +3807,12 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalTab tab,
             int entryIndex,
             bool isLocalRequestOwner,
+            bool hasMissingRequestOwner,
             out PendingLocalRequestToken consumedToken)
         {
             consumedToken = default;
 
-            if (isLocalRequestOwner
+            if ((isLocalRequestOwner || hasMissingRequestOwner)
                 && TryConsumePendingLocalRequest(tab, entryIndex, ownershipPredicate: null, out consumedToken))
             {
                 return true;
@@ -3790,7 +3828,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return TryConsumeNextResolvablePendingLocalRequest(
-                pending => isLocalRequestOwner || pending.AcceptsOfficialClientResultOwner,
+                pending => isLocalRequestOwner || hasMissingRequestOwner || pending.AcceptsOfficialClientResultOwner,
                 out consumedToken);
         }
 

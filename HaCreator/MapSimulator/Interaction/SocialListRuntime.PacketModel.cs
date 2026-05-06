@@ -255,6 +255,15 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{GetHeaderTitle(tab)} packet summary updated.";
         }
 
+        internal string ClearPacketSyncSummary(SocialListTab tab, string summary)
+        {
+            _packetOwnedRosterByTab[tab] = true;
+            _lastPacketSyncSummaryByTab[tab] = null;
+            return string.IsNullOrWhiteSpace(summary)
+                ? $"{GetHeaderTitle(tab)} packet summary cleared."
+                : summary.Trim();
+        }
+
         internal string ResolvePacketOwnedRequest(SocialListTab tab, bool approved, string summary = null)
         {
             if (tab == SocialListTab.Guild && _pendingGuildDialogRequest.HasValue)

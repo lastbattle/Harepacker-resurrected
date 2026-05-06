@@ -2366,6 +2366,7 @@ namespace HaCreator.MapSimulator.Managers
                     TryCollectSg88ReplayParityMismatchPairsFromJsonPacketComparisonObject(
                         element,
                         normalizedByByte,
+                        insidePairContainer,
                         insidePacketComparisonContainer,
                         insidePayloadComparisonContainer);
 
@@ -2492,6 +2493,7 @@ namespace HaCreator.MapSimulator.Managers
         private static void TryCollectSg88ReplayParityMismatchPairsFromJsonPacketComparisonObject(
             JsonElement element,
             IDictionary<int, string> normalizedByByte,
+            bool insidePairContainer,
             bool insidePacketComparisonContainer,
             bool insidePayloadComparisonContainer)
         {
@@ -2507,7 +2509,12 @@ namespace HaCreator.MapSimulator.Managers
             foreach (JsonProperty property in element.EnumerateObject())
             {
                 if (!TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName)
-                    || (!insidePacketComparisonContainer && !IsSg88PacketComparisonByteArrayLabel(property.Name))
+                    || !ShouldInspectSg88PacketComparisonParticipant(
+                        property.Name,
+                        property.Value,
+                        insidePairContainer,
+                        insidePacketComparisonContainer,
+                        insidePayloadComparisonContainer)
                     || !TryParseSg88PacketComparisonJsonBytes(property.Value, out byte[] parsedBytes))
                 {
                     continue;
@@ -2517,11 +2524,13 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     case "observed":
                         observedBytes = parsedBytes;
-                        observedPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name);
+                        observedPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name)
+                                           || ContainsSg88PayloadComparisonByteArrayLabel(property.Value);
                         break;
                     case "rebuilt":
                         rebuiltBytes = parsedBytes;
-                        rebuiltPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name);
+                        rebuiltPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name)
+                                          || ContainsSg88PayloadComparisonByteArrayLabel(property.Value);
                         break;
                 }
             }
@@ -2543,6 +2552,54 @@ namespace HaCreator.MapSimulator.Managers
 
                 int byteIndex = i + byteIndexOffset;
                 normalizedByByte[byteIndex] = $"byte{byteIndex}:0x{observedBytes[i]:X2}->0x{rebuiltBytes[i]:X2}";
+            }
+        }
+
+        private static bool ShouldInspectSg88PacketComparisonParticipant(
+            string propertyName,
+            JsonElement propertyValue,
+            bool insidePairContainer,
+            bool insidePacketComparisonContainer,
+            bool insidePayloadComparisonContainer)
+        {
+            if (insidePacketComparisonContainer
+                || insidePayloadComparisonContainer
+                || IsSg88PacketComparisonByteArrayLabel(propertyName))
+            {
+                return true;
+            }
+
+            return insidePairContainer
+                   && propertyValue.ValueKind is JsonValueKind.Object or JsonValueKind.Array;
+        }
+
+        private static bool ContainsSg88PayloadComparisonByteArrayLabel(JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (JsonProperty property in value.EnumerateObject())
+                    {
+                        if (IsSg88PayloadComparisonByteArrayLabel(property.Name)
+                            || ContainsSg88PayloadComparisonByteArrayLabel(property.Value))
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                case JsonValueKind.Array:
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        if (ContainsSg88PayloadComparisonByteArrayLabel(item))
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                default:
+                    return false;
             }
         }
 

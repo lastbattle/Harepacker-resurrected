@@ -90,16 +90,14 @@ namespace HaCreator.MapSimulator.Entities
             return NormalizeRemoveAfterSecondsToMilliseconds(mobData.RemoveAfter);
         }
 
-        public static bool ShouldTriggerSelfDestructionHpThreshold(int currentHp, int maxHp, int thresholdPercent)
+        public static bool ShouldTriggerSelfDestructionHpThreshold(int currentHp, int maxHp, int thresholdHp)
         {
-            if (currentHp <= 0 || maxHp <= 0 || thresholdPercent < 0)
+            if (currentHp <= 0 || maxHp <= 0 || thresholdHp <= 0)
             {
                 return false;
             }
 
-            long currentPercentValue = (long)currentHp * 100L;
-            long thresholdValue = (long)maxHp * thresholdPercent;
-            return currentPercentValue <= thresholdValue;
+            return currentHp <= thresholdHp;
         }
 
         public static int ResolveEncounterTargetPriority(int? sourceTeam, int? targetTeam)

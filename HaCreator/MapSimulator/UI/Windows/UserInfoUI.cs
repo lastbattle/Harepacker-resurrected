@@ -1089,7 +1089,9 @@ namespace HaCreator.MapSimulator.UI
                 RemotePetProfileSnapshot? remotePetProfile = TryGetSelectedRemotePetProfile(out RemotePetProfileSnapshot resolvedProfile)
                     ? resolvedProfile
                     : null;
-                string petName = ResolveRemotePetDisplayName(remotePetItemId);
+                string petName = remotePetProfile.HasValue && !string.IsNullOrWhiteSpace(remotePetProfile.Value.Name)
+                    ? remotePetProfile.Value.Name.Trim()
+                    : ResolveRemotePetDisplayName(remotePetItemId);
                 Texture2D petIcon = TryResolveItemIcon(sprite, remotePetItemId);
                 if (petIcon != null)
                 {

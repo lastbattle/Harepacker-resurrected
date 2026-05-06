@@ -1600,7 +1600,11 @@ namespace HaCreator.MapSimulator.UI
             int clientAnalyzerLaneWidth = 0,
             int clientAnalyzerMargin = 0,
             int clientTextDrawBaseX = 0,
-            int clientTextDrawBaseY = 0)
+            int clientTextDrawBaseY = 0,
+            string clientSourcePayloadText = null,
+            string clientSourcePayloadPartText = null,
+            int clientSourcePayloadPartIndex = -1,
+            int clientSourcePayloadPartCount = 0)
         {
             return new CollectionBookRecordSnapshot
             {
@@ -1608,6 +1612,10 @@ namespace HaCreator.MapSimulator.UI
                 Role = role,
                 Text = text ?? string.Empty,
                 ClientSourceText = clientSourceText ?? text ?? string.Empty,
+                ClientSourcePayloadText = clientSourcePayloadText ?? clientSourceText ?? text ?? string.Empty,
+                ClientSourcePayloadPartText = clientSourcePayloadPartText ?? clientSourceText ?? text ?? string.Empty,
+                ClientSourcePayloadPartIndex = clientSourcePayloadPartIndex,
+                ClientSourcePayloadPartCount = Math.Max(0, clientSourcePayloadPartCount),
                 ClientTextBlockIndex = clientTextBlockIndex,
                 ClientTextLineIndex = clientTextLineIndex,
                 Left = left,

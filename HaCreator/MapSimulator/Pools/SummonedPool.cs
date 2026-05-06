@@ -774,7 +774,9 @@ namespace HaCreator.MapSimulator.Pools
                 OwnerIsLocal = ownerIsLocal,
                 AvatarLook = packet.AvatarLook,
                 TeslaCoilState = packet.TeslaCoilState,
-                TeslaTrianglePoints = packet.TeslaTrianglePoints?.ToArray() ?? Array.Empty<Point>(),
+                TeslaTrianglePoints = PacketOwnedSummonUpdateRules.ResolvePacketOwnedTeslaCreateTrianglePoints(
+                    packet.TeslaCoilState,
+                    packet.TeslaTrianglePoints),
                 LastMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
                     summon,
                     packet.MoveAction,
@@ -3940,7 +3942,8 @@ namespace HaCreator.MapSimulator.Pools
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
             int maxTargets,
             IReadOnlyList<int> preferredTargetMobIds = null,
-            float? ownerReferenceX = null)
+            float? ownerReferenceX = null,
+            int exceptMobObjectId = 0)
         {
             if (summon?.SkillData == null || candidates == null || maxTargets <= 0)
             {
@@ -3968,7 +3971,9 @@ namespace HaCreator.MapSimulator.Pools
                         || orderedTargetIds.Count >= maxTargets
                         || orderedTargetIds.Contains(preferredTargetMobId)
                         || !candidatesById.TryGetValue(preferredTargetMobId, out PacketOwnedExpiryTargetCandidate preferredCandidate)
-                        || !IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(preferredCandidate)
+                        || !IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
+                            preferredCandidate,
+                            exceptMobObjectId: exceptMobObjectId)
                         || !IsCandidateInEitherPacketOwnedSummonAttackRange(summon, preferredCandidate))
                     {
                         continue;
@@ -3989,13 +3994,15 @@ namespace HaCreator.MapSimulator.Pools
             bool fallbackFacingRight = ResolvePacketOwnedExpiryFallbackFacingRight(
                 summon,
                 unresolvedCandidates,
-                ownerReferenceX);
+                ownerReferenceX,
+                exceptMobObjectId);
 
             int[] findHitOrderedTargetIds = ResolvePacketOwnedExpiryFindHitMobInRectTargetOrder(
                 summon,
                 unresolvedCandidates,
                 maxTargets - orderedTargetIds.Count,
-                fallbackFacingRight);
+                fallbackFacingRight,
+                exceptMobObjectId);
             foreach (int targetId in findHitOrderedTargetIds)
             {
                 if (orderedTargetIds.Count >= maxTargets || orderedTargetIds.Contains(targetId))
@@ -4015,7 +4022,8 @@ namespace HaCreator.MapSimulator.Pools
                 summon,
                 unresolvedCandidates.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)),
                 maxTargets - orderedTargetIds.Count,
-                !fallbackFacingRight);
+                !fallbackFacingRight,
+                exceptMobObjectId);
             foreach (int targetId in oppositeFacingTargetIds)
             {
                 if (orderedTargetIds.Count >= maxTargets || orderedTargetIds.Contains(targetId))
@@ -4055,7 +4063,8 @@ namespace HaCreator.MapSimulator.Pools
             ActiveSummon summon,
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
             int maxTargets,
-            bool facingRight)
+            bool facingRight,
+            int exceptMobObjectId = 0)
         {
             if (summon?.SkillData == null || candidates == null || maxTargets <= 0)
             {
@@ -4069,12 +4078,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             IReadOnlyList<PacketOwnedExpiryTargetCandidate> orderedCandidates =
-                OrderPacketOwnedExpiryFallbackCandidates(summon, candidates, facingRight);
+                OrderPacketOwnedExpiryFallbackCandidates(
+                    summon,
+                    candidates,
+                    facingRight,
+                    exceptMobObjectId);
 
             return orderedCandidates
                 .Where(candidate => candidate.MobObjectId > 0
                                     && HasPacketOwnedExpiryCandidateHitbox(candidate)
-                                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
+                                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
+                                        candidate,
+                                        exceptMobObjectId: exceptMobObjectId)
                                     && IsPacketOwnedExpiryCandidateInSummonAttackRange(
                                         summon,
                                         summonBounds,
@@ -4089,7 +4104,8 @@ namespace HaCreator.MapSimulator.Pools
         internal static IReadOnlyList<PacketOwnedExpiryTargetCandidate> OrderPacketOwnedExpiryFallbackCandidates(
             ActiveSummon summon,
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
-            bool facingRight)
+            bool facingRight,
+            int exceptMobObjectId = 0)
         {
             if (summon == null || candidates == null)
             {
@@ -4099,7 +4115,9 @@ namespace HaCreator.MapSimulator.Pools
             return candidates
                 .Where(candidate => candidate.MobObjectId > 0
                                     && HasPacketOwnedExpiryCandidateHitbox(candidate)
-                                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate))
+                                    && IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
+                                        candidate,
+                                        exceptMobObjectId: exceptMobObjectId))
                 .Select(candidate => new
                 {
                     Candidate = candidate,
@@ -4162,7 +4180,8 @@ namespace HaCreator.MapSimulator.Pools
         internal static bool ResolvePacketOwnedExpiryFallbackFacingRight(
             ActiveSummon summon,
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
-            float? ownerReferenceX = null)
+            float? ownerReferenceX = null,
+            int exceptMobObjectId = 0)
         {
             if (summon?.SkillData == null || candidates == null)
             {
@@ -4171,7 +4190,12 @@ namespace HaCreator.MapSimulator.Pools
 
             IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidateList = candidates as IReadOnlyList<PacketOwnedExpiryTargetCandidate>
                 ?? candidates.ToArray();
-            if (TryResolvePacketOwnedExpiryProbeFacingRight(summon, candidateList, ownerReferenceX, out bool probeFacingRight))
+            if (TryResolvePacketOwnedExpiryProbeFacingRight(
+                    summon,
+                    candidateList,
+                    ownerReferenceX,
+                    out bool probeFacingRight,
+                    exceptMobObjectId))
             {
                 return probeFacingRight;
             }
@@ -4179,11 +4203,13 @@ namespace HaCreator.MapSimulator.Pools
             PacketOwnedExpiryFacingScore rightScore = ScorePacketOwnedExpiryFacingCandidates(
                 summon,
                 candidateList,
-                facingRight: true);
+                facingRight: true,
+                exceptMobObjectId);
             PacketOwnedExpiryFacingScore leftScore = ScorePacketOwnedExpiryFacingCandidates(
                 summon,
                 candidateList,
-                facingRight: false);
+                facingRight: false,
+                exceptMobObjectId);
             if (rightScore.InRangeCount != leftScore.InRangeCount)
             {
                 return rightScore.InRangeCount > leftScore.InRangeCount;
@@ -4216,7 +4242,8 @@ namespace HaCreator.MapSimulator.Pools
             ActiveSummon summon,
             IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidates,
             float? ownerReferenceX,
-            out bool facingRight)
+            out bool facingRight,
+            int exceptMobObjectId = 0)
         {
             facingRight = summon?.FacingRight ?? true;
             if (summon?.SkillData == null || candidates == null || candidates.Count == 0)
@@ -4227,11 +4254,13 @@ namespace HaCreator.MapSimulator.Pools
             bool hasRightHit = FindFirstPacketOwnedExpiryTargetInRange(
                 summon,
                 candidates,
-                facingRight: true) > 0;
+                facingRight: true,
+                exceptMobObjectId) > 0;
             bool hasLeftHit = FindFirstPacketOwnedExpiryTargetInRange(
                 summon,
                 candidates,
-                facingRight: false) > 0;
+                facingRight: false,
+                exceptMobObjectId) > 0;
             if (!hasRightHit && !hasLeftHit)
             {
                 return false;
@@ -4280,7 +4309,8 @@ namespace HaCreator.MapSimulator.Pools
         private static int FindFirstPacketOwnedExpiryTargetInRange(
             ActiveSummon summon,
             IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidates,
-            bool facingRight)
+            bool facingRight,
+            int exceptMobObjectId = 0)
         {
             if (summon?.SkillData == null || candidates == null || candidates.Count == 0)
             {
@@ -4298,7 +4328,9 @@ namespace HaCreator.MapSimulator.Pools
                 PacketOwnedExpiryTargetCandidate candidate = candidates[i];
                 if (candidate.MobObjectId <= 0
                     || !HasPacketOwnedExpiryCandidateHitbox(candidate)
-                    || !IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
+                    || !IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
+                        candidate,
+                        exceptMobObjectId: exceptMobObjectId)
                     || !IsPacketOwnedExpiryCandidateInSummonAttackRange(
                         summon,
                         summonBounds,
@@ -4317,7 +4349,8 @@ namespace HaCreator.MapSimulator.Pools
         private static PacketOwnedExpiryFacingScore ScorePacketOwnedExpiryFacingCandidates(
             ActiveSummon summon,
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
-            bool facingRight)
+            bool facingRight,
+            int exceptMobObjectId = 0)
         {
             Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, facingRight);
             if (summonBounds.IsEmpty)
@@ -4331,7 +4364,9 @@ namespace HaCreator.MapSimulator.Pools
             float nearestVerticalDistance = float.MaxValue;
             foreach (PacketOwnedExpiryTargetCandidate candidate in candidates)
             {
-                if (!IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(candidate)
+                if (!IsPacketOwnedExpiryCandidateEligibleForFindHitMobInRect(
+                        candidate,
+                        exceptMobObjectId: exceptMobObjectId)
                     || !IsPacketOwnedExpiryCandidateInSummonAttackRange(summon, summonBounds, candidate, facingRight))
                 {
                     continue;
@@ -4432,11 +4467,13 @@ namespace HaCreator.MapSimulator.Pools
             int wishMobId = 0,
             int wishTemplateId = 0,
             bool includeDazzledMob = false,
-            bool includeEscortMob = false)
+            bool includeEscortMob = false,
+            int exceptMobObjectId = 0)
         {
             return candidate.MobObjectId > 0
                    && candidate.InView
                    && !candidate.IsSuspended
+                   && (exceptMobObjectId <= 0 || candidate.MobObjectId != exceptMobObjectId)
                    && (wishMobId <= 0 || candidate.WishMobId == wishMobId || candidate.MobObjectId == wishMobId)
                    && (wishTemplateId <= 0 || candidate.TemplateId == wishTemplateId)
                    && (!candidate.IsDamagedByMob || includeEscortMob)

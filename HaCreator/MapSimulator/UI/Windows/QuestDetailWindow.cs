@@ -1235,24 +1235,33 @@ namespace HaCreator.MapSimulator.UI
 
         private static IEnumerable<QuestDetailCtEntry> OrderCtEntriesWithinClientRow(IEnumerable<QuestDetailCtEntry> entries)
         {
-            QuestDetailCtEntry[] rowEntries = entries?.Where(entry => entry != null).ToArray()
-                ?? Array.Empty<QuestDetailCtEntry>();
-            bool hasAuthoredDrawLayer = rowEntries.Any(entry => entry.DrawLayer.HasValue);
-            bool hasAuthoredDrawOrder = rowEntries.Any(entry => entry.DrawOrder != 0);
+            CtEntryWithSourceOrder[] rowEntries = entries?
+                .Where(entry => entry != null)
+                .Select((entry, sourceOrder) => new CtEntryWithSourceOrder(entry, sourceOrder))
+                .ToArray()
+                ?? Array.Empty<CtEntryWithSourceOrder>();
+            bool hasAuthoredDrawLayer = rowEntries.Any(entry => entry.Entry.DrawLayer.HasValue);
+            bool hasAuthoredDrawOrder = rowEntries.Any(entry => entry.Entry.DrawOrder != 0);
             if (hasAuthoredDrawLayer)
             {
                 return rowEntries
-                    .OrderBy(entry => entry.DrawLayer ?? 0)
-                    .ThenBy(entry => entry.DrawOrder)
-                    .ThenBy(ResolveCtEntryKindDrawPriority);
+                    .OrderBy(entry => entry.Entry.DrawLayer ?? 0)
+                    .ThenBy(entry => entry.Entry.DrawOrder)
+                    .ThenBy(entry => ResolveCtEntryKindDrawPriority(entry.Entry))
+                    .ThenBy(entry => entry.SourceOrder)
+                    .Select(entry => entry.Entry);
             }
 
             return hasAuthoredDrawOrder
                 ? rowEntries
-                    .OrderBy(entry => entry.DrawOrder)
-                    .ThenBy(ResolveCtEntryKindDrawPriority)
+                    .OrderBy(entry => entry.Entry.DrawOrder)
+                    .ThenBy(entry => ResolveCtEntryKindDrawPriority(entry.Entry))
+                    .ThenBy(entry => entry.SourceOrder)
+                    .Select(entry => entry.Entry)
                 : rowEntries
-                    .OrderBy(ResolveCtEntryKindDrawPriority);
+                    .OrderBy(entry => ResolveCtEntryKindDrawPriority(entry.Entry))
+                    .ThenBy(entry => entry.SourceOrder)
+                    .Select(entry => entry.Entry);
         }
 
         private static int ResolveCtEntryKindDrawPriority(QuestDetailCtEntry entry)
@@ -1386,6 +1395,18 @@ namespace HaCreator.MapSimulator.UI
 
             public IReadOnlyList<QuestDetailCtEntry> Entries { get; }
             public bool IsGrouped { get; }
+        }
+
+        private readonly struct CtEntryWithSourceOrder
+        {
+            public CtEntryWithSourceOrder(QuestDetailCtEntry entry, int sourceOrder)
+            {
+                Entry = entry;
+                SourceOrder = sourceOrder;
+            }
+
+            public QuestDetailCtEntry Entry { get; }
+            public int SourceOrder { get; }
         }
 
         private Texture2D ResolveCtEntryHeaderTexture(QuestDetailCtEntry entry)

@@ -389,12 +389,12 @@ namespace HaCreator.MapSimulator.Fields
         {
             foreach (WzImageProperty onlyUseSkillProperty in EnumerateInfoFieldProperties(mapInfo, "onlyUseSkill"))
             {
-                if (!HasClientIndexedIntValues(onlyUseSkillProperty))
+                if (!HasMeaningfulSkillInfoRule(onlyUseSkillProperty))
                 {
                     continue;
                 }
 
-                return MatchesListedSkill(onlyUseSkillProperty, skill.SkillId)
+                return MatchesSkillInfoRule(onlyUseSkillProperty, skill, matchFlatValuesAsSkillIds: true)
                     ? null
                     : "Only field-authorized skills can be used in this field.";
             }
@@ -461,6 +461,37 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private static bool HasMeaningfulSkillInfoRule(WzImageProperty skillInfoProperty)
+        {
+            if (HasClientIndexedIntValues(skillInfoProperty))
+            {
+                return true;
+            }
+
+            return HasMeaningfulNoSkillRule(skillInfoProperty);
+        }
+
+        private static bool MatchesSkillInfoRule(WzImageProperty skillInfoProperty, SkillData skill, bool matchFlatValuesAsSkillIds)
+        {
+            foreach (WzImageProperty classProperty in EnumerateNamedChildren(skillInfoProperty, "class"))
+            {
+                if (MatchesListedSkillClass(classProperty, skill))
+                {
+                    return true;
+                }
+            }
+
+            foreach (WzImageProperty skillProperty in EnumerateNamedChildren(skillInfoProperty, "skill"))
+            {
+                if (MatchesListedSkill(skillProperty, skill.SkillId))
+                {
+                    return true;
+                }
+            }
+
+            return matchFlatValuesAsSkillIds && MatchesListedSkill(skillInfoProperty, skill.SkillId);
         }
 
         private static IEnumerable<WzImageProperty> EnumerateAdditionalFieldProperties(MapInfo mapInfo, string propertyName)

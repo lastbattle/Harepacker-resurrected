@@ -752,7 +752,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
                 spineAnimation,
                 ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo),
-                SourceStageBackObject: property);
+                SourceStageBackObject: property,
+                SourceBackImgInfoObject: backImgInfo);
             return true;
         }
 
@@ -1667,6 +1668,7 @@ namespace HaCreator.MapSimulator.Interaction
         bool SpineRandomStart,
         bool UseSourceBackPieceFields = false,
         WzImageProperty SourceStageBackObject = null,
+        WzImageProperty SourceBackImgInfoObject = null,
         WzImageProperty SourceBackPieceObject = null);
 
     internal sealed class ContextOwnedStageUnitEnableState

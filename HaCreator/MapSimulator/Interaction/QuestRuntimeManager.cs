@@ -102,8 +102,6 @@ namespace HaCreator.MapSimulator.Interaction
             "runeAct",
             "dailyCommitment",
             "skinSelectNeed",
-            "marriaged",
-            "noMarriaged",
             "notInTeleportItemLimitedField",
             "questRecordAndOption",
             "questOrOption",
@@ -389,6 +387,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndTimeKeepFieldSetKeepTime { get; init; }
             public int? EndPvpGradeRequirement { get; init; }
             public int? EndGenderRequirement { get; init; }
+            public bool EndRequiresMarriage { get; init; }
+            public bool EndRequiresNoMarriage { get; init; }
             public IReadOnlyList<string> EndUnresolvedSideChannelDemandKeys { get; init; } = Array.Empty<string>();
             public int? EndInfoNumber { get; init; }
             public int? EndFakeQuestId { get; init; }
@@ -1129,6 +1129,16 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Completion gender demand is still unmet.");
             }
 
+            if (build != null &&
+                HasUnmetCompletionMarriageDemand(
+                    definition.EndRequiresMarriage,
+                    definition.EndRequiresNoMarriage,
+                    build.HasAuthoritativeProfileMarriage,
+                    build.IsProfileMarried))
+            {
+                issues.Add("Completion marriage demand is unresolved or unmet.");
+            }
+
             if (HasUnresolvedCompletionSideChannelDemands(definition.EndUnresolvedSideChannelDemandKeys))
             {
                 issues.Add("Completion demand includes unresolved side-channel state owners.");
@@ -1145,9 +1155,12 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.AllowedJobs,
                     definition.EndFameRequirement,
                     hasTraitRequirements: definition.EndTraitRequirements.Count > 0,
-                    genderRequirement: definition.EndGenderRequirement))
+                    genderRequirement: definition.EndGenderRequirement,
+                    hasMarriageRequirement: HasAuthoredCompletionMarriageDemand(
+                        definition.EndRequiresMarriage,
+                        definition.EndRequiresNoMarriage)))
             {
-                issues.Add("Completion demand includes build-scoped level/job/fame/trait/gender gates, but character build context is unavailable.");
+                issues.Add("Completion demand includes build-scoped level/job/fame/trait/gender/marriage gates, but character build context is unavailable.");
             }
 
             if (build != null &&
@@ -1559,6 +1572,30 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static bool HasUnmetCompletionMarriageDemand(
+            bool requiresMarriage,
+            bool requiresNoMarriage,
+            bool hasAuthoritativeMarriageState,
+            bool isMarried)
+        {
+            if (!HasAuthoredCompletionMarriageDemand(requiresMarriage, requiresNoMarriage))
+            {
+                return false;
+            }
+
+            if (!hasAuthoritativeMarriageState)
+            {
+                return true;
+            }
+
+            if (requiresMarriage && !isMarried)
+            {
+                return true;
+            }
+
+            return requiresNoMarriage && isMarried;
+        }
+
         internal static bool HasUnresolvedCompletionBuildContextDemand(
             int? minLevel,
             int? maxLevel,
@@ -1569,7 +1606,8 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<int> actionAllowedJobs,
             int? fameRequirement = null,
             bool hasTraitRequirements = false,
-            int? genderRequirement = null)
+            int? genderRequirement = null,
+            bool hasMarriageRequirement = false)
         {
             return minLevel.HasValue
                    || maxLevel.HasValue
@@ -1580,13 +1618,19 @@ namespace HaCreator.MapSimulator.Interaction
                    || (actionAllowedJobs?.Count ?? 0) > 0
                    || fameRequirement.HasValue
                    || hasTraitRequirements
-                   || HasAuthoredCompletionGenderDemand(genderRequirement);
+                   || HasAuthoredCompletionGenderDemand(genderRequirement)
+                   || hasMarriageRequirement;
         }
 
         private static bool HasAuthoredCompletionGenderDemand(int? genderRequirement)
         {
             return genderRequirement.HasValue &&
                    genderRequirement.Value != (int)CharacterGenderType.Both;
+        }
+
+        private static bool HasAuthoredCompletionMarriageDemand(bool requiresMarriage, bool requiresNoMarriage)
+        {
+            return requiresMarriage || requiresNoMarriage;
         }
 
         internal static bool HasUnmetCompletionActionJobDemand(IReadOnlyList<int> actionAllowedJobs, int currentJob)
@@ -5473,6 +5517,16 @@ namespace HaCreator.MapSimulator.Interaction
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId));
             bool hasUnresolvedPvpGradeRequirement = state == QuestStateType.Started &&
                 HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement);
+            bool hasUnmetGenderRequirement = state == QuestStateType.Started &&
+                build != null &&
+                HasUnmetCompletionGenderDemand(definition.EndGenderRequirement, build.Gender);
+            bool hasUnmetMarriageRequirement = state == QuestStateType.Started &&
+                build != null &&
+                HasUnmetCompletionMarriageDemand(
+                    definition.EndRequiresMarriage,
+                    definition.EndRequiresNoMarriage,
+                    build.HasAuthoritativeProfileMarriage,
+                    build.IsProfileMarried);
             bool hasUnmetUserInteractRequirement = state == QuestStateType.Started &&
                 HasUnmetCompletionUserInteractDemand(
                     definition.EndUserInteractDemand,
@@ -5513,6 +5567,8 @@ namespace HaCreator.MapSimulator.Interaction
                 stopPages,
                 lostPages,
                 hasUnmetUserInteractRequirement: hasUnmetUserInteractRequirement,
+                hasUnmetGenderRequirement: hasUnmetGenderRequirement,
+                hasUnmetMarriageRequirement: hasUnmetMarriageRequirement,
                 unmetMonsterBookStopBranchIds: GetUnmetMonsterBookCardRequirementIds(
                     definition.EndMonsterBookCardRequirements),
                 unresolvedSideChannelDemandKeys: unresolvedSideChannelDemandKeys);
@@ -5550,6 +5606,8 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
             IReadOnlyList<NpcInteractionPage> lostPages,
             bool hasUnmetUserInteractRequirement = false,
+            bool hasUnmetGenderRequirement = false,
+            bool hasUnmetMarriageRequirement = false,
             IReadOnlyList<int> unmetMonsterBookStopBranchIds = null,
             IReadOnlyList<string> unresolvedSideChannelDemandKeys = null)
         {
@@ -5895,6 +5953,30 @@ namespace HaCreator.MapSimulator.Interaction
                     "info"))
             {
                 return userInteractPages;
+            }
+
+            if (hasUnmetGenderRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> genderPages,
+                    "gender",
+                    "sex",
+                    "genderType"))
+            {
+                return genderPages;
+            }
+
+            if (hasUnmetMarriageRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> marriagePages,
+                    "marriage",
+                    "married",
+                    "marriaged",
+                    "noMarriage",
+                    "noMarriaged"))
+            {
+                return marriagePages;
             }
 
             if (TryGetSideChannelDemandStopPages(
@@ -7071,6 +7153,16 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Completion gender demand is still unmet.");
             }
 
+            if (build != null &&
+                HasUnmetCompletionMarriageDemand(
+                    definition.EndRequiresMarriage,
+                    definition.EndRequiresNoMarriage,
+                    build.HasAuthoritativeProfileMarriage,
+                    build.IsProfileMarried))
+            {
+                issues.Add("Completion marriage demand is unresolved or unmet.");
+            }
+
             if (HasUnresolvedCompletionSideChannelDemands(definition.EndUnresolvedSideChannelDemandKeys))
             {
                 issues.Add("Completion demand includes unresolved side-channel state owners.");
@@ -7087,9 +7179,12 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.AllowedJobs,
                     definition.EndFameRequirement,
                     hasTraitRequirements: definition.EndTraitRequirements.Count > 0,
-                    genderRequirement: definition.EndGenderRequirement))
+                    genderRequirement: definition.EndGenderRequirement,
+                    hasMarriageRequirement: HasAuthoredCompletionMarriageDemand(
+                        definition.EndRequiresMarriage,
+                        definition.EndRequiresNoMarriage)))
             {
-                issues.Add("Completion demand includes build-scoped level/job/fame/trait/gender gates, but character build context is unavailable.");
+                issues.Add("Completion demand includes build-scoped level/job/fame/trait/gender/marriage gates, but character build context is unavailable.");
             }
 
             if (build != null &&
@@ -9553,6 +9648,8 @@ namespace HaCreator.MapSimulator.Interaction
                 EndTimeKeepFieldSetKeepTime = ParseInt(endCheck?["fieldsetkeeptime"] ?? endCheck?["fieldSetKeepTime"]),
                 EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
                 EndGenderRequirement = ParseInt(endCheck?["gender"]),
+                EndRequiresMarriage = HasAuthoredCompletionSideChannelDemand(endCheck?["marriaged"]),
+                EndRequiresNoMarriage = HasAuthoredCompletionSideChannelDemand(endCheck?["noMarriaged"]),
                 EndUnresolvedSideChannelDemandKeys = ParseUnresolvedCompletionSideChannelDemandKeys(endCheck),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndFakeQuestId = ParsePositiveInt(endCheck?["fakeQuestID"]),

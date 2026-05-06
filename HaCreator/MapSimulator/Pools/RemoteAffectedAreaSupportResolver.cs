@@ -649,7 +649,8 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (IsFriendlyPlayerAreaSkillCore(supportSkill, levelData: null))
+                if (IsFriendlyPlayerAreaSkillCore(supportSkill, levelData: null)
+                    || IsLinkedFriendlySupportMetadataOwner(supportSkill, levelData))
                 {
                     return true;
                 }
@@ -1425,6 +1426,15 @@ namespace HaCreator.MapSimulator.Pools
                     || (levelData.Y != 0 && ContainsToken(skill.DescriptionHints ?? skill.Description, "attack speed", "weapon speed"))
                     || (levelData.Z > 0 && ContainsToken(skill.DescriptionHints ?? skill.Description, "dodge chance", "avoidability")));
             return hasDerivedSupportAliasMetadata && SupportsAlliedMembers(skill);
+        }
+
+        private static bool IsLinkedFriendlySupportMetadataOwner(SkillData supportSkill, SkillLevelData projectedLevelData)
+        {
+            return supportSkill != null
+                   && projectedLevelData != null
+                   && HasPositiveSupportMetadata(projectedLevelData)
+                   && SupportsAlliedMembers(supportSkill)
+                   && !HasHostileMobGameplay(supportSkill, projectedLevelData);
         }
 
         private static bool HasPositiveSupportMetadata(SkillLevelData levelData)

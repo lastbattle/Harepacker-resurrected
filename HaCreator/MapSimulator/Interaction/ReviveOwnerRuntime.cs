@@ -62,13 +62,16 @@ namespace HaCreator.MapSimulator.Interaction
             bool timedOut,
             ReviveOwnerVariant variant,
             string summary,
-            bool clientPremiumFlag = false)
+            bool clientPremiumFlag = false,
+            Vector2? clientRevivePoint = null)
         {
             Premium = premium;
             TimedOut = timedOut;
             Variant = variant;
             Summary = summary ?? string.Empty;
             ClientPremiumFlag = clientPremiumFlag;
+            ClientRevivePoint = clientRevivePoint.GetValueOrDefault();
+            HasClientRevivePoint = clientRevivePoint.HasValue;
         }
 
         public bool Premium { get; }
@@ -76,6 +79,19 @@ namespace HaCreator.MapSimulator.Interaction
         public ReviveOwnerVariant Variant { get; }
         public string Summary { get; }
         public bool ClientPremiumFlag { get; }
+        public Vector2 ClientRevivePoint { get; }
+        public bool HasClientRevivePoint { get; }
+
+        public ReviveOwnerTransferRequest WithClientRevivePoint(Vector2 clientRevivePoint)
+        {
+            return new ReviveOwnerTransferRequest(
+                Premium,
+                TimedOut,
+                Variant,
+                Summary,
+                ClientPremiumFlag,
+                clientRevivePoint);
+        }
     }
 
     internal readonly struct ReviveOwnerRespawnPointResolution

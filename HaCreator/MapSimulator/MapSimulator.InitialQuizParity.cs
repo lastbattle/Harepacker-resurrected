@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizTimerCommaUolStringPoolId = 0x0F74;
         private const int InitialQuizOkButtonUolStringPoolId = 0x0512;
         private const int InitialQuizOwnerOkButtonStringPoolId = InitialQuizOkButtonUolStringPoolId;
+        private const int InitialQuizOwnerOkButtonControlId = 1;
         private const int InitialQuizQuestionLabelStringPoolId = 0x0F75;
         private const int InitialQuizHintLabelStringPoolId = 3958;
         private const int InitialQuizAnswerLabelStringPoolId = 3959;
@@ -1700,7 +1701,7 @@ namespace HaCreator.MapSimulator
                 Created: true,
                 Generation: Math.Max(1, generation),
                 EditControlId: AntiMacroEditControl.ClientControlId,
-                OkButtonControlId: InitialQuizOwnerOkButtonStringPoolId,
+                OkButtonControlId: InitialQuizOwnerOkButtonControlId,
                 EditVisible: editVisible,
                 EditEnabled: editEnabled,
                 EditFocused: editVisible && editEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input,

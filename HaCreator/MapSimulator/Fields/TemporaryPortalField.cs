@@ -1790,7 +1790,8 @@ namespace HaCreator.MapSimulator.Fields
                 return existingState.Value.Destination.Value;
             }
 
-            if (incomingDestination.HasValue)
+            if (incomingDestination.HasValue
+                && (!preferredSourceMapId.HasValue || incomingDestination.Value.MapId == preferredSourceMapId.Value))
             {
                 return incomingDestination;
             }

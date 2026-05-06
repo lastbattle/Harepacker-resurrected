@@ -223,7 +223,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 bool autoSelectListenPort = listenPort <= 0;
-                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
@@ -247,9 +247,28 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                StopInternal(clearPending: true);
+                SessionDiscoveryCandidate? passiveSessionToPreserve = ResolvePassiveSessionToPreserve(resolvedRemoteHost, remotePort);
+                bool preservePassiveHandoff = passiveSessionToPreserve.HasValue;
+                StopInternal(clearPending: !preservePassiveHandoff);
 
-                return TryStartProxyListener(requestedListenPort, autoSelectListenPort, resolvedRemoteHost, remotePort, clearPassiveEstablishedSession: true, out status);
+                if (!TryStartProxyListener(
+                        requestedListenPort,
+                        autoSelectListenPort,
+                        resolvedRemoteHost,
+                        remotePort,
+                        clearPassiveEstablishedSession: true,
+                        clearPendingOnFailure: !preservePassiveHandoff,
+                        out status))
+                {
+                    if (preservePassiveHandoff)
+                    {
+                        _passiveEstablishedSession = passiveSessionToPreserve;
+                    }
+
+                    return false;
+                }
+
+                return true;
             }
         }
 
@@ -401,28 +420,60 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+
             lock (_sync)
             {
                 if (HasAttachedClient)
                 {
+                    if (MatchesDiscoveredTargetConfiguration(
+                            ListenPort,
+                            RemoteHost,
+                            RemotePort,
+                            requestedListenPort,
+                            candidate.RemoteEndpoint,
+                            autoSelectListenPort))
+                    {
+                        status = $"Dojo official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                        LastStatus = status;
+                        return true;
+                    }
+
                     status = $"Dojo official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
                     LastStatus = status;
                     return false;
                 }
 
+                if (IsRunning
+                    && MatchesDiscoveredTargetConfiguration(
+                        ListenPort,
+                        RemoteHost,
+                        RemotePort,
+                        requestedListenPort,
+                        candidate.RemoteEndpoint,
+                        autoSelectListenPort))
+                {
+                    _passiveEstablishedSession = candidate;
+                    status =
+                        $"Dojo official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
+                    LastStatus = status;
+                    return true;
+                }
+
                 StopInternal(clearPending: true);
                 _passiveEstablishedSession = candidate;
 
-                bool autoSelectListenPort = listenPort <= 0;
-                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
                 if (!TryStartProxyListener(
-                        requestedListenPort,
+                        listenPort,
                         autoSelectListenPort,
                         candidate.RemoteEndpoint.Address.ToString(),
                         candidate.RemoteEndpoint.Port,
                         clearPassiveEstablishedSession: false,
+                        clearPendingOnFailure: true,
                         out string startStatus))
                 {
+                    _passiveEstablishedSession = candidate;
                     LastStatus = $"Observed already-established Mu Lung Dojo Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
                     status = LastStatus;
                     return false;
@@ -819,37 +870,62 @@ namespace HaCreator.MapSimulator.Managers
             string resolvedRemoteHost,
             int remotePort,
             bool clearPassiveEstablishedSession,
+            bool clearPendingOnFailure,
             out string status)
         {
             try
             {
+                int listenPort = autoSelectListenPort ? 0 : requestedListenPort;
                 RemoteHost = resolvedRemoteHost;
                 RemotePort = remotePort;
-                ListenPort = requestedListenPort;
+                ListenPort = listenPort;
                 if (clearPassiveEstablishedSession)
                 {
                     _passiveEstablishedSession = null;
                 }
                 if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
                 {
-                    StopInternal(clearPending: true);
+                    StopInternal(clearPending: clearPendingOnFailure);
                     LastStatus = proxyStatus;
                     status = LastStatus;
                     return false;
                 }
 
+                ListenPort = _roleSessionProxy.ListenPort;
                 LastStatus = $"Dojo official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}. {proxyStatus}";
                 status = LastStatus;
                 return true;
             }
             catch (Exception ex)
             {
-                StopInternal(clearPending: true);
+                StopInternal(clearPending: clearPendingOnFailure);
                 LastStatus = $"Dojo official-session bridge failed to start: {ex.Message}";
                 status = LastStatus;
                 return false;
             }
         }
+
+        private SessionDiscoveryCandidate? ResolvePassiveSessionToPreserve(string remoteHost, int remotePort)
+        {
+            if (!_passiveEstablishedSession.HasValue)
+            {
+                return null;
+            }
+
+            SessionDiscoveryCandidate candidate = _passiveEstablishedSession.Value;
+            if (candidate.RemoteEndpoint == null
+                || candidate.RemoteEndpoint.Port != remotePort
+                || !string.Equals(
+                    NormalizeRemoteHost(candidate.RemoteEndpoint.Address.ToString()),
+                    NormalizeRemoteHost(remoteHost),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return candidate;
+        }
+
         private void OnRoleSessionServerPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
             if (e == null)

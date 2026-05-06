@@ -335,13 +335,18 @@ namespace HaCreator.MapSimulator.UI
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
             WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
-            return GetIntValue(infoProperty?["pickUpBlock"]) == 1;
+            return IsPickupBlocked(infoProperty);
         }
 
         internal static bool HasPetPickupRestriction(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
             return IsEnabledFlag(specProperty?["notPickupByPet"])
                 || IsEnabledFlag(specExProperty?["notPickupByPet"]);
+        }
+
+        internal static bool IsPickupBlocked(WzSubProperty infoProperty)
+        {
+            return IsEnabledFlag(infoProperty?["pickUpBlock"]);
         }
 
         public static bool TryResolveSkillBookUseMetadata(int itemId, out SkillBookUseMetadata metadata)
@@ -1581,6 +1586,11 @@ namespace HaCreator.MapSimulator.UI
             return IsOnlyPickup(specProperty, specExProperty);
         }
 
+        public static bool IsPickupBlockedForTests(WzSubProperty infoProperty)
+        {
+            return IsPickupBlocked(infoProperty);
+        }
+
         public static bool IsDeathMarkCureSpecForTests(WzSubProperty specProperty)
         {
             return IsDeathMarkCureSpec(specProperty);
@@ -2084,6 +2094,7 @@ namespace HaCreator.MapSimulator.UI
             AppendRandomMoveInFieldSetEffectLine(effectLines, effectSpecProperty["randomMoveInFieldSet"]);
             AppendExperienceEffectLines(effectLines, effectSpecProperty);
             AppendFixedDamageEffectLine(effectLines, effectSpecProperty["incFixedDamageR"]);
+            AppendPvpDamageEffectLine(effectLines, effectSpecProperty["incPVPDamage"]);
             AppendEventPointEffectLine(effectLines, effectSpecProperty["eventPoint"]);
             AppendDeathmarkEffectLine(effectLines, itemId, effectSpecProperty);
             AppendMobEffectLines(effectLines, effectSpecProperty["mob"] as WzSubProperty);
@@ -2772,6 +2783,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             effectLines.Add($"Fixed Damage {FormatSignedValue(fixedDamageRate)}%");
+        }
+
+        private static void AppendPvpDamageEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int pvpDamage = GetIntOrStringValue(property);
+            if (pvpDamage <= 0)
+            {
+                return;
+            }
+
+            effectLines.Add($"PVP Damage {FormatSignedValue(pvpDamage)}");
         }
 
         private static void AppendDeathmarkEffectLine(List<string> effectLines, int itemId, WzSubProperty specProperty)
@@ -4354,7 +4376,7 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Cannot be dropped");
             }
 
-            if (GetIntValue(infoProperty["pickUpBlock"]) == 1)
+            if (IsPickupBlocked(infoProperty))
             {
                 metadataLines.Add("Cannot be picked up");
             }

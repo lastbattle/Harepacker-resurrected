@@ -56,6 +56,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            LocalOverlayBalloonSkin skin = IsMobActionSpeechFloatNotice(mob.ActiveActionSpeechFloatNotice)
+                ? null
+                : ResolveMobActionSpeechBalloonSkin(mob.ActiveActionSpeechChatBalloon);
             bool isScreenNotice = ResolveMobActionSpeechScreenNotice(
                 mob.ActiveActionSpeechChatBalloon,
                 mob.ActiveActionSpeechFloatNotice);
@@ -78,7 +81,8 @@ namespace HaCreator.MapSimulator
                 renderContext.MapCenterX,
                 renderContext.MapCenterY,
                 renderContext.RenderParams.RenderWidth,
-                renderContext.RenderParams.RenderHeight);
+                renderContext.RenderParams.RenderHeight,
+                ResolveMobActionSpeechSkinMetrics(skin));
 
             if (bounds.Right < 0 ||
                 bounds.Bottom < 0 ||
@@ -98,9 +102,6 @@ namespace HaCreator.MapSimulator
                 out Color borderColor,
                 out Color textColor);
 
-            LocalOverlayBalloonSkin skin = IsMobActionSpeechFloatNotice(mob.ActiveActionSpeechFloatNotice)
-                ? null
-                : ResolveMobActionSpeechBalloonSkin(mob.ActiveActionSpeechChatBalloon);
             if (skin?.IsLoaded == true && !IsMobActionSpeechFloatNotice(mob.ActiveActionSpeechFloatNotice))
             {
                 textColor = skin.TextColor * MathHelper.Clamp(remainingAlpha, 0f, 1f);
@@ -116,7 +117,7 @@ namespace HaCreator.MapSimulator
                     !isScreenNotice);
             }
 
-            DrawMobActionSpeechText(textLayout, bounds, textColor);
+            DrawMobActionSpeechText(textLayout, bounds, textColor, ResolveMobActionSpeechSkinMetrics(skin));
         }
 
         private LocalOverlayBalloonSkin ResolveMobActionSpeechBalloonSkin(int chatBalloon)
@@ -319,8 +320,42 @@ namespace HaCreator.MapSimulator
             int renderWidth,
             int renderHeight)
         {
-            int boxWidth = Math.Max(MobActionSpeechHorizontalPadding, (int)Math.Ceiling(textSize.X) + MobActionSpeechHorizontalPadding);
-            int boxHeight = Math.Max(20, (int)Math.Ceiling(textSize.Y) + MobActionSpeechVerticalPadding);
+            return ResolveMobActionSpeechBounds(
+                textSize,
+                mobWorldX,
+                mobWorldTop,
+                chatBalloon,
+                floatNotice,
+                isScreenNotice,
+                mapShiftX,
+                mapShiftY,
+                mapCenterX,
+                mapCenterY,
+                renderWidth,
+                renderHeight,
+                null);
+        }
+
+        internal static Rectangle ResolveMobActionSpeechBounds(
+            Vector2 textSize,
+            int mobWorldX,
+            int mobWorldTop,
+            int chatBalloon,
+            int floatNotice,
+            bool isScreenNotice,
+            int mapShiftX,
+            int mapShiftY,
+            int mapCenterX,
+            int mapCenterY,
+            int renderWidth,
+            int renderHeight,
+            MobActionSpeechSkinMetrics skinMetrics)
+        {
+            ResolveMobActionSpeechBoxSize(
+                textSize,
+                skinMetrics,
+                out int boxWidth,
+                out int boxHeight);
 
             if (isScreenNotice)
             {
@@ -334,6 +369,99 @@ namespace HaCreator.MapSimulator
             int boxX = mobWorldX - mapShiftX + mapCenterX - (boxWidth / 2);
             int boxY = mobWorldTop - mapShiftY + mapCenterY - boxHeight - 24;
             return new Rectangle(boxX, boxY, boxWidth, boxHeight);
+        }
+
+        internal sealed class MobActionSpeechSkinMetrics
+        {
+            public int LeftTextInset { get; init; }
+            public int RightTextInset { get; init; }
+            public int TopTextInset { get; init; }
+            public int BottomTextInset { get; init; }
+            public int MinimumWidth { get; init; }
+            public int MinimumHeight { get; init; }
+        }
+
+        internal static MobActionSpeechSkinMetrics BuildMobActionSpeechSkinMetricsForTests(
+            int northWestWidth,
+            int northEastWidth,
+            int southWestHeight,
+            int northWestHeight,
+            int westWidth,
+            int eastWidth,
+            int centerWidth,
+            int centerHeight)
+        {
+            return BuildMobActionSpeechSkinMetrics(
+                northWestWidth,
+                northEastWidth,
+                southWestHeight,
+                northWestHeight,
+                westWidth,
+                eastWidth,
+                centerWidth,
+                centerHeight);
+        }
+
+        private static MobActionSpeechSkinMetrics ResolveMobActionSpeechSkinMetrics(LocalOverlayBalloonSkin skin)
+        {
+            return skin?.IsLoaded == true
+                ? BuildMobActionSpeechSkinMetrics(
+                    skin.NorthWest.Width,
+                    skin.NorthEast.Width,
+                    skin.SouthWest.Height,
+                    skin.NorthWest.Height,
+                    skin.West.Width,
+                    skin.East.Width,
+                    skin.Center.Width,
+                    skin.Center.Height)
+                : null;
+        }
+
+        private static MobActionSpeechSkinMetrics BuildMobActionSpeechSkinMetrics(
+            int northWestWidth,
+            int northEastWidth,
+            int southWestHeight,
+            int northWestHeight,
+            int westWidth,
+            int eastWidth,
+            int centerWidth,
+            int centerHeight)
+        {
+            int leftInset = Math.Max(0, Math.Max(northWestWidth, westWidth)) + 3;
+            int rightInset = Math.Max(0, Math.Max(northEastWidth, eastWidth)) + 3;
+            int topInset = Math.Max(0, northWestHeight);
+            int bottomInset = Math.Max(0, southWestHeight);
+
+            return new MobActionSpeechSkinMetrics
+            {
+                LeftTextInset = leftInset,
+                RightTextInset = rightInset,
+                TopTextInset = topInset,
+                BottomTextInset = bottomInset,
+                MinimumWidth = Math.Max(0, northWestWidth) + Math.Max(0, centerWidth) + Math.Max(0, northEastWidth),
+                MinimumHeight = Math.Max(0, northWestHeight) + Math.Max(0, centerHeight) + Math.Max(0, southWestHeight)
+            };
+        }
+
+        private static void ResolveMobActionSpeechBoxSize(
+            Vector2 textSize,
+            MobActionSpeechSkinMetrics skinMetrics,
+            out int boxWidth,
+            out int boxHeight)
+        {
+            if (skinMetrics == null)
+            {
+                boxWidth = Math.Max(MobActionSpeechHorizontalPadding, (int)Math.Ceiling(textSize.X) + MobActionSpeechHorizontalPadding);
+                boxHeight = Math.Max(20, (int)Math.Ceiling(textSize.Y) + MobActionSpeechVerticalPadding);
+                return;
+            }
+
+            boxWidth = Math.Max(
+                skinMetrics.MinimumWidth,
+                (int)Math.Ceiling(textSize.X) + skinMetrics.LeftTextInset + skinMetrics.RightTextInset);
+            boxHeight = Math.Max(
+                skinMetrics.MinimumHeight,
+                (int)Math.Ceiling(textSize.Y) + skinMetrics.TopTextInset + skinMetrics.BottomTextInset);
         }
 
         internal static MobActionSpeechTextLayout BuildMobActionSpeechTextLayout(
@@ -530,7 +658,11 @@ namespace HaCreator.MapSimulator
                 : string.Join(" ", text.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
         }
 
-        private void DrawMobActionSpeechText(MobActionSpeechTextLayout layout, Rectangle bounds, Color textColor)
+        private void DrawMobActionSpeechText(
+            MobActionSpeechTextLayout layout,
+            Rectangle bounds,
+            Color textColor,
+            MobActionSpeechSkinMetrics skinMetrics)
         {
             if (layout?.Lines == null || layout.Lines.Count == 0)
             {
@@ -538,7 +670,9 @@ namespace HaCreator.MapSimulator
             }
 
             float lineHeight = Math.Max(1f, MeasureChatTextWithFallback("Ay").Y);
-            Vector2 position = new Vector2(bounds.Left + 9, bounds.Top + 6);
+            int textInsetX = skinMetrics?.LeftTextInset ?? 9;
+            int textInsetY = skinMetrics?.TopTextInset ?? 6;
+            Vector2 position = new Vector2(bounds.Left + textInsetX, bounds.Top + textInsetY);
             foreach (string line in layout.Lines)
             {
                 DrawChatTextWithFallback(line, position, textColor);

@@ -714,12 +714,23 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("makersession", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("itemmakersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makerdelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerdelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makersessiondelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakersessiondelta", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("itemmakerinfo", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("makerinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("citemmakerinfo", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("professioninfo", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("professionsession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professiondelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professionsessiondelta", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onitemmakerinfo", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("onitemmakersession", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("onitemmakersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemmakerdelta", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onprofessioninfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onprofessionsession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onprofessiondelta", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = ItemMakerSessionPacketType;
                 return true;

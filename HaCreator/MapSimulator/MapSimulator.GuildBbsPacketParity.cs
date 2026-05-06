@@ -557,6 +557,19 @@ namespace HaCreator.MapSimulator
                 || (value >= 'A' && value <= 'F');
         }
 
+        internal static bool IsGuildBbsClientOpcodeCompatibleWithTarget(int packetType, string target, out string detail)
+        {
+            detail = null;
+            if (packetType == GuildBbsInboundResultOpcode
+                && !string.Equals(target, "board", StringComparison.OrdinalIgnoreCase))
+            {
+                detail = "CWvsContext::OnGuildBBSPacket opcode 59 only dispatches CUIGuildBBS result payloads 6, 7, and 8; use the explicit authority or cash override seams only for their own non-BBS packet captures.";
+                return false;
+            }
+
+            return true;
+        }
+
         private ChatCommandHandler.CommandResult HandleGuildBbsClientRawPacketCommand(string[] args)
         {
             if (args.Length == 0)
@@ -595,6 +608,11 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error(
                         $"Guild BBS packetclientraw opcode {packetType} is not mapped automatically. Use /guildbbs packetclientraw <authority|cash|board> <hex>, or send opcode {GuildBbsInboundResultOpcode} for CWvsContext::OnGuildBBSPacket.");
                 }
+            }
+
+            if (!IsGuildBbsClientOpcodeCompatibleWithTarget(packetType, target, out string compatibilityDetail))
+            {
+                return ChatCommandHandler.CommandResult.Error(compatibilityDetail);
             }
 
             string applyDetail = target.ToLowerInvariant() switch

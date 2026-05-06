@@ -312,6 +312,9 @@ namespace HaCreator.MapSimulator.Fields
         internal string LoseEffectPath => _loseEffectPath;
         internal string VictorySoundPath => _victorySoundPath;
         internal string LoseSoundPath => _loseSoundPath;
+        internal bool ResultAssetsLoadedForParity => _assetsLoaded;
+        internal string VictorySoundKeyForParity => _victorySoundKey;
+        internal string LoseSoundKeyForParity => _loseSoundKey;
         internal bool HasResultSoundManager => _soundManager != null;
         public int LocalTeam => _localTeam;
         public LocalTeamSelectionSource TeamSelectionSource => _localTeamSelectionSource;
@@ -1974,10 +1977,11 @@ namespace HaCreator.MapSimulator.Fields
             _authoredTotalCoconutCount = 0;
             _eventName = "Coconut harvest begins!";
             _eventObjectName = "Coconut";
-            _victoryEffectPath = "event/coconut/victory";
-            _loseEffectPath = "event/coconut/lose";
-            _victorySoundPath = "Coconut/Victory";
-            _loseSoundPath = "Coconut/Failed";
+            SetAuthoredResultAssetPaths(
+                "event/coconut/victory",
+                "event/coconut/lose",
+                "Coconut/Victory",
+                "Coconut/Failed");
             _avatarAppearanceContracts.Clear();
 
             if (mapImage?["coconut"] is not WzImageProperty coconutConfig)
@@ -2013,25 +2017,41 @@ namespace HaCreator.MapSimulator.Fields
             string authoredVictoryEffect = InfoTool.GetOptionalString(coconutConfig["effectWin"]);
             if (!string.IsNullOrWhiteSpace(authoredVictoryEffect))
             {
-                _victoryEffectPath = authoredVictoryEffect.Trim();
+                SetAuthoredResultAssetPaths(
+                    authoredVictoryEffect.Trim(),
+                    _loseEffectPath,
+                    _victorySoundPath,
+                    _loseSoundPath);
             }
 
             string authoredLoseEffect = InfoTool.GetOptionalString(coconutConfig["effectLose"]);
             if (!string.IsNullOrWhiteSpace(authoredLoseEffect))
             {
-                _loseEffectPath = authoredLoseEffect.Trim();
+                SetAuthoredResultAssetPaths(
+                    _victoryEffectPath,
+                    authoredLoseEffect.Trim(),
+                    _victorySoundPath,
+                    _loseSoundPath);
             }
 
             string authoredVictorySound = InfoTool.GetOptionalString(coconutConfig["soundWin"]);
             if (!string.IsNullOrWhiteSpace(authoredVictorySound))
             {
-                _victorySoundPath = authoredVictorySound.Trim();
+                SetAuthoredResultAssetPaths(
+                    _victoryEffectPath,
+                    _loseEffectPath,
+                    authoredVictorySound.Trim(),
+                    _loseSoundPath);
             }
 
             string authoredLoseSound = InfoTool.GetOptionalString(coconutConfig["soundLose"]);
             if (!string.IsNullOrWhiteSpace(authoredLoseSound))
             {
-                _loseSoundPath = authoredLoseSound.Trim();
+                SetAuthoredResultAssetPaths(
+                    _victoryEffectPath,
+                    _loseEffectPath,
+                    _victorySoundPath,
+                    authoredLoseSound.Trim());
             }
 
             if (coconutConfig["avatar"] is WzImageProperty avatarConfig)
@@ -2058,10 +2078,11 @@ namespace HaCreator.MapSimulator.Fields
             string victorySoundPath,
             string loseSoundPath)
         {
-            _victoryEffectPath = string.IsNullOrWhiteSpace(victoryEffectPath) ? "event/coconut/victory" : victoryEffectPath.Trim();
-            _loseEffectPath = string.IsNullOrWhiteSpace(loseEffectPath) ? "event/coconut/lose" : loseEffectPath.Trim();
-            _victorySoundPath = string.IsNullOrWhiteSpace(victorySoundPath) ? "Coconut/Victory" : victorySoundPath.Trim();
-            _loseSoundPath = string.IsNullOrWhiteSpace(loseSoundPath) ? "Coconut/Failed" : loseSoundPath.Trim();
+            SetAuthoredResultAssetPaths(
+                string.IsNullOrWhiteSpace(victoryEffectPath) ? "event/coconut/victory" : victoryEffectPath.Trim(),
+                string.IsNullOrWhiteSpace(loseEffectPath) ? "event/coconut/lose" : loseEffectPath.Trim(),
+                string.IsNullOrWhiteSpace(victorySoundPath) ? "Coconut/Victory" : victorySoundPath.Trim(),
+                string.IsNullOrWhiteSpace(loseSoundPath) ? "Coconut/Failed" : loseSoundPath.Trim());
         }
         internal void ConfigureAuthoredAvatarContractForTesting(int teamId, CharacterGender gender, int capItemId, int clothesItemId)
         {
@@ -2165,6 +2186,36 @@ namespace HaCreator.MapSimulator.Fields
 
             return WzInfoTools.GetRealProperty(current);
         }
+
+        private void SetAuthoredResultAssetPaths(
+            string victoryEffectPath,
+            string loseEffectPath,
+            string victorySoundPath,
+            string loseSoundPath)
+        {
+            bool changed = !string.Equals(_victoryEffectPath, victoryEffectPath, StringComparison.Ordinal)
+                || !string.Equals(_loseEffectPath, loseEffectPath, StringComparison.Ordinal)
+                || !string.Equals(_victorySoundPath, victorySoundPath, StringComparison.Ordinal)
+                || !string.Equals(_loseSoundPath, loseSoundPath, StringComparison.Ordinal);
+
+            _victoryEffectPath = victoryEffectPath;
+            _loseEffectPath = loseEffectPath;
+            _victorySoundPath = victorySoundPath;
+            _loseSoundPath = loseSoundPath;
+
+            if (!changed)
+            {
+                return;
+            }
+
+            _assetsLoaded = false;
+            _victoryFrames.Clear();
+            _loseFrames.Clear();
+            _victorySoundKey = null;
+            _loseSoundKey = null;
+            MarkBoardLayerDirty();
+        }
+
         private Dictionary<int, List<IDXObject>> CreateStateFramesForObject(
             ObjectInstance instance,
             out Dictionary<int, int> stateFrameRepeatModes)

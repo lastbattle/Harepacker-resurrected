@@ -6166,7 +6166,10 @@ namespace HaCreator.MapSimulator.Character
             int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
                 ? resolvedRawActionCode
                 : null;
-            if (!ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(_activeShadowPartner.SkillId, rawActionCode))
+            if (!ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(
+                    _activeShadowPartner.SkillId,
+                    rawActionCode,
+                    _activeShadowPartner.SupportedRawActionNames))
             {
                 return;
             }

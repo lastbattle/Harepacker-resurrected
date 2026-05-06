@@ -343,6 +343,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return ignoredMessage;
             }
 
+            if (packet.GuildQuestWaitStatus <= 0)
+            {
+                return ClearPacketSyncSummary(
+                    SocialListTab.Guild,
+                    BuildClientGuildQuestQueueNoticeSummary(packet));
+            }
+
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildQuestQueueNoticeSummary(packet));

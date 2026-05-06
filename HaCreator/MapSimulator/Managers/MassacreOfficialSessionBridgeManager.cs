@@ -150,6 +150,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && !_roleSessionProxy.HasAttachedClient;
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         internal bool HasLiveRecoveredInboundEvidence => _liveRecoveredInboundEvidence.HasValue;
+        internal InboundPacketTrace? LiveRecoveredInboundEvidence => _liveRecoveredInboundEvidence;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int UndecodedInboundCount { get; private set; }
@@ -167,7 +168,7 @@ namespace HaCreator.MapSimulator.Managers
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
             string liveEvidence = HasLiveRecoveredInboundEvidence
-                ? "live recovered inbound evidence present"
+                ? $"live recovered inbound evidence: {DescribeInboundPacketTrace(_liveRecoveredInboundEvidence.Value)}"
                 : "no live recovered inbound evidence";
             string sent = SentCount > 0
                 ? $"sent={SentCount}; lastSent={Convert.ToHexString(LastSentRawPacket)}"
@@ -780,7 +781,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _pendingMessages.Enqueue(message);
-            RecordInboundPacket(e.RawPacket, message, $"official-session:{e.SourceEndpoint}", e.SessionVersion, e.ProxySessionId);
+            RecordDecodedInboundPacketForRecovery(
+                e.RawPacket,
+                message,
+                $"official-session:{e.SourceEndpoint}",
+                e.SessionVersion,
+                e.ProxySessionId);
             ReceivedCount++;
             LastStatus = $"Queued {DescribeMessage(message)} from live session {e.SourceEndpoint}.";
         }
@@ -809,6 +815,7 @@ namespace HaCreator.MapSimulator.Managers
             SentCount = 0;
             LastSentRawPacket = Array.Empty<byte>();
             UndecodedInboundCount = 0;
+            _liveRecoveredInboundEvidence = null;
         }
 
         internal static bool TryBuildOpcodeFramedPacket(int opcode, byte[] payload, out byte[] rawPacket, out string error)
@@ -1297,21 +1304,38 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = $"Captured undecoded Massacre live-session packet opcode 0x{TryDecodePacketOpcode(rawPacket):X4} from {source}; use /massacre session recent to map or recover it.";
         }
 
-        private void RecordInboundPacket(
+        internal void RecordDecodedInboundPacketForRecovery(
             byte[] rawPacket,
             MassacrePacketInboxMessage message,
             string source,
             short? sessionVersion = null,
             long? proxySessionId = null)
         {
+            InboundPacketTrace trace = RecordInboundPacket(rawPacket, message, source, sessionVersion, proxySessionId);
+            if (trace.IsDecodedOwner)
+            {
+                _liveRecoveredInboundEvidence = trace;
+            }
+        }
+
+        private InboundPacketTrace RecordInboundPacket(
+            byte[] rawPacket,
+            MassacrePacketInboxMessage message,
+            string source,
+            short? sessionVersion = null,
+            long? proxySessionId = null)
+        {
+            InboundPacketTrace trace = BuildInboundPacketTrace(rawPacket, message, source, sessionVersion, proxySessionId);
             lock (_sync)
             {
-                _recentInboundPackets.Enqueue(BuildInboundPacketTrace(rawPacket, message, source, sessionVersion, proxySessionId));
+                _recentInboundPackets.Enqueue(trace);
                 while (_recentInboundPackets.Count > MaxRecentInboundPackets)
                 {
                     _recentInboundPackets.Dequeue();
                 }
             }
+
+            return trace;
         }
 
         internal static InboundPacketTrace BuildInboundPacketTrace(
@@ -1336,6 +1360,12 @@ namespace HaCreator.MapSimulator.Managers
                 Convert.ToHexString(message?.Payload ?? payload),
                 Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
                 source ?? string.Empty);
+        }
+
+        private static string DescribeInboundPacketTrace(InboundPacketTrace trace)
+        {
+            string owner = trace.IsDecodedOwner ? "decoded" : "undecoded";
+            return $"{owner} opcode=0x{trace.Opcode:X4} packetType={trace.PacketType} kind={trace.Kind} payloadLen={trace.PayloadLength} source={trace.Source}";
         }
 
         private static int TryDecodePacketOpcode(byte[] rawPacket)

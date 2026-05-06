@@ -96,29 +96,21 @@ namespace HaCreator.MapSimulator.Entities
                 return ownerPath;
             }
 
-            return string.IsNullOrWhiteSpace(loadedEffectPath)
-                ? null
-                : loadedEffectPath.Trim().Replace('\\', '/').TrimStart('/');
+            return NormalizeLoadedEffectPath(loadedEffectPath);
         }
 
         public static string ResolveLoadedEffectPath(string mobTemplateId, string authoredFullPath)
         {
-            string normalizedPath = string.IsNullOrWhiteSpace(authoredFullPath)
-                ? null
-                : authoredFullPath.Trim().Replace('\\', '/').TrimStart('/');
+            string normalizedPath = NormalizeLoadedEffectPath(authoredFullPath);
             if (!string.IsNullOrWhiteSpace(normalizedPath))
             {
-                int imageSuffixIndex = normalizedPath.IndexOf(".img", StringComparison.OrdinalIgnoreCase);
-                if (imageSuffixIndex >= 0)
-                {
-                    int imageNameStart = normalizedPath.LastIndexOf('/', imageSuffixIndex);
-                    string imageAndEffectPath = normalizedPath.Substring(imageNameStart + 1).TrimStart('/');
-                    return imageAndEffectPath.StartsWith("Mob/", StringComparison.OrdinalIgnoreCase)
-                        ? imageAndEffectPath
-                        : "Mob/" + imageAndEffectPath;
-                }
-
                 return normalizedPath;
+            }
+
+            string ownerPath = MapleStoryStringPool.ResolveMobAngerGaugeBurstPath(mobTemplateId);
+            if (!string.IsNullOrWhiteSpace(ownerPath))
+            {
+                return ownerPath;
             }
 
             return string.IsNullOrWhiteSpace(mobTemplateId)
@@ -183,6 +175,27 @@ namespace HaCreator.MapSimulator.Entities
         private static bool HasReachedTick(int currentTick, int targetTick)
         {
             return unchecked(currentTick - targetTick) >= 0;
+        }
+
+        private static string NormalizeLoadedEffectPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string normalizedPath = path.Trim().Replace('\\', '/').TrimStart('/');
+            int imageSuffixIndex = normalizedPath.IndexOf(".img", StringComparison.OrdinalIgnoreCase);
+            if (imageSuffixIndex < 0)
+            {
+                return normalizedPath;
+            }
+
+            int imageNameStart = normalizedPath.LastIndexOf('/', imageSuffixIndex);
+            string imageAndEffectPath = normalizedPath.Substring(imageNameStart + 1).TrimStart('/');
+            return imageAndEffectPath.StartsWith("Mob/", StringComparison.OrdinalIgnoreCase)
+                ? imageAndEffectPath
+                : "Mob/" + imageAndEffectPath;
         }
     }
 }

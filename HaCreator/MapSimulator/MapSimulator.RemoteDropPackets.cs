@@ -579,6 +579,17 @@ namespace HaCreator.MapSimulator
                 || observedPartyLinkEvaluator?.Invoke(ownerId, normalizedActorId) == true
                 || observedPartyLinkEvaluator?.Invoke(normalizedOwnerId, normalizedActorId) == true)
             {
+                if (HasDirectObservedDropPartyEvidence(
+                        ownerId,
+                        normalizedOwnerId,
+                        actorId,
+                        normalizedActorId,
+                        observedPartyAnchorEvaluator,
+                        observedPartyLinkedEvaluator))
+                {
+                    return true;
+                }
+
                 return packetTrackedOwner
                     || knownOwner
                     || legacyTrackedOwner
@@ -592,6 +603,26 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool HasDirectObservedDropPartyEvidence(
+            int ownerId,
+            int normalizedOwnerId,
+            int actorId,
+            int normalizedActorId,
+            Func<int, bool> observedPartyAnchorEvaluator,
+            Func<int, bool> observedPartyLinkedEvaluator)
+        {
+            bool ownerObserved = observedPartyAnchorEvaluator?.Invoke(ownerId) == true
+                || observedPartyAnchorEvaluator?.Invoke(normalizedOwnerId) == true
+                || observedPartyLinkedEvaluator?.Invoke(ownerId) == true
+                || observedPartyLinkedEvaluator?.Invoke(normalizedOwnerId) == true;
+            bool actorObserved = observedPartyAnchorEvaluator?.Invoke(actorId) == true
+                || observedPartyAnchorEvaluator?.Invoke(normalizedActorId) == true
+                || observedPartyLinkedEvaluator?.Invoke(actorId) == true
+                || observedPartyLinkedEvaluator?.Invoke(normalizedActorId) == true;
+
+            return ownerObserved && actorObserved;
         }
 
         private static bool HasUsableDropPartyActorId(int actorId, int normalizedActorId)

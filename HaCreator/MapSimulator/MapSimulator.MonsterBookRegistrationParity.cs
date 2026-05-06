@@ -323,26 +323,34 @@ namespace HaCreator.MapSimulator
                     pendingSaveRequestIndex >= 0 && pendingSaveRequestIndex < _pendingMonsterBookOwnershipSaveRequests.Count
                         ? _pendingMonsterBookOwnershipSaveRequests[pendingSaveRequestIndex]
                         : null;
-                bool persistedAckOwnedSnapshot = false;
-                if (pendingSaveRequest != null)
+                if (pendingSaveRequest == null)
                 {
-                    if (sync.SaveAccepted.GetValueOrDefault(true))
-                    {
-                        _monsterBookManager.ApplyOwnershipSync(
-                            pendingSaveRequest.Build,
-                            pendingSaveRequest.CharacterId,
-                            pendingSaveRequest.CharacterName,
-                            pendingSaveRequest.CardCountsByMob,
-                            registeredMobId: pendingSaveRequest.RegisteredMobId,
-                            replaceExisting: true);
-                        persistedAckOwnedSnapshot = true;
-                    }
-
-                    RemoveMatchedMonsterBookOwnershipSaveRequests(
-                        pendingSaveRequestIndex,
-                        pendingSaveRequest,
-                        sync.RequestId);
+                    string ackRequestIdText = sync.RequestId.HasValue && sync.RequestId.Value > 0
+                        ? $" request #{sync.RequestId.Value.ToString(CultureInfo.InvariantCulture)}"
+                        : string.Empty;
+                    message = AppendMonsterBookRegistrationStatusText(
+                        sync.StatusText,
+                        $"Monster Book ownership-save acknowledgement{ackRequestIdText} was ignored because it did not match a pending Monster Book save request.");
+                    return false;
                 }
+
+                bool persistedAckOwnedSnapshot = false;
+                if (sync.SaveAccepted.GetValueOrDefault(true))
+                {
+                    _monsterBookManager.ApplyOwnershipSync(
+                        pendingSaveRequest.Build,
+                        pendingSaveRequest.CharacterId,
+                        pendingSaveRequest.CharacterName,
+                        pendingSaveRequest.CardCountsByMob,
+                        registeredMobId: pendingSaveRequest.RegisteredMobId,
+                        replaceExisting: true);
+                    persistedAckOwnedSnapshot = true;
+                }
+
+                RemoveMatchedMonsterBookOwnershipSaveRequests(
+                    pendingSaveRequestIndex,
+                    pendingSaveRequest,
+                    sync.RequestId);
 
                 StampPacketOwnedUtilityRequestState();
                 string ackSummary = sync.SaveAccepted.HasValue && !sync.SaveAccepted.Value
@@ -350,12 +358,12 @@ namespace HaCreator.MapSimulator
                     : persistedAckOwnedSnapshot
                         ? "Monster Book ownership-save acknowledgement accepted and persisted the pending packet-owned ownership snapshot without forcing a synthetic ownership-sync payload."
                     : "Monster Book ownership-save acknowledgement was applied without forcing a synthetic ownership snapshot.";
-                string ackRequestIdText = sync.RequestId.HasValue && sync.RequestId.Value > 0
+                string persistedAckRequestIdText = sync.RequestId.HasValue && sync.RequestId.Value > 0
                     ? $" request #{sync.RequestId.Value.ToString(CultureInfo.InvariantCulture)}"
                     : string.Empty;
                 message = AppendMonsterBookRegistrationStatusText(
                     sync.StatusText,
-                    $"{ackSummary}{ackRequestIdText}");
+                    $"{ackSummary}{persistedAckRequestIdText}");
                 return true;
             }
 

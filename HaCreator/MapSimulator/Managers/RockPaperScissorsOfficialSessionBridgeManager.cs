@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.Managers
         private OutboundPacketTrace? _liveOutboundOpcode160Evidence;
         private InboundPacketTrace? _liveInboundOpcode371Evidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
+        private short? _currentInitializedSessionVersion;
+        private long? _currentInitializedProxySessionId;
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -165,7 +167,8 @@ namespace HaCreator.MapSimulator.Managers
             string pairedEvidence = HasPairedLiveOwnershipVerificationEvidence
                 ? "paired initialized live evidence present"
                 : "no paired initialized live evidence";
-            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}; {pairedEvidence}. {verification} {verificationEvidence} {LastStatus} {guidance}";
+            string initializedSession = DescribeCurrentInitializedProxySession();
+            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; {initializedSession}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}; {pairedEvidence}. {verification} {verificationEvidence} {LastStatus} {guidance}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -838,6 +841,8 @@ namespace HaCreator.MapSimulator.Managers
                 _hasObservedLiveInboundOpcode371 = false;
                 _liveOutboundOpcode160Evidence = null;
                 _liveInboundOpcode371Evidence = null;
+                _currentInitializedSessionVersion = null;
+                _currentInitializedProxySessionId = null;
             }
         }
 
@@ -879,6 +884,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
+                RecordInitializedProxySession(e.SessionVersion, e.ProxySessionId);
                 int flushed = FlushQueuedClientPacketsViaProxy();
                 LastStatus = flushed > 0
                     ? $"Rock-Paper-Scissors official-session bridge initialized Maple crypto and flushed {flushed} queued client packet(s)."
@@ -919,6 +925,17 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             LastStatus = _roleSessionProxy.LastStatus;
+        }
+
+        private void RecordInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        {
+            lock (_sync)
+            {
+                _currentInitializedSessionVersion = sessionVersion;
+                _currentInitializedProxySessionId = proxySessionId;
+                RefreshOutboundVerificationEvidence();
+                RefreshInboundVerificationEvidence();
+            }
         }
 
         internal static string DescribeLiveOwnershipVerificationStatus(
@@ -1254,7 +1271,7 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = _recentOutboundPackets.Count - 1; i >= 0; i--)
             {
                 OutboundPacketTrace candidate = _recentOutboundPackets[i];
-                if (IsLiveProxiedSource(candidate))
+                if (IsCurrentInitializedLiveProxiedSource(candidate))
                 {
                     latestLiveTrace = candidate;
                     break;
@@ -1271,7 +1288,7 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = _recentInboundPackets.Count - 1; i >= 0; i--)
             {
                 InboundPacketTrace candidate = _recentInboundPackets[i];
-                if (IsLiveProxiedSource(candidate))
+                if (IsCurrentInitializedLiveProxiedSource(candidate))
                 {
                     latestLiveTrace = candidate;
                     break;
@@ -1290,6 +1307,43 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsLiveProxiedSource(InboundPacketTrace trace)
         {
             return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId);
+        }
+
+        private bool IsCurrentInitializedLiveProxiedSource(OutboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace)
+                && MatchesCurrentInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+        }
+
+        private bool IsCurrentInitializedLiveProxiedSource(InboundPacketTrace trace)
+        {
+            return IsLiveProxiedSource(trace)
+                && MatchesCurrentInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+        }
+
+        private bool MatchesCurrentInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        {
+            if (!_currentInitializedSessionVersion.HasValue && !_currentInitializedProxySessionId.HasValue)
+            {
+                return true;
+            }
+
+            return _currentInitializedSessionVersion.HasValue
+                && _currentInitializedProxySessionId.HasValue
+                && sessionVersion.HasValue
+                && proxySessionId.HasValue
+                && sessionVersion.Value == _currentInitializedSessionVersion.Value
+                && proxySessionId.Value == _currentInitializedProxySessionId.Value;
+        }
+
+        private string DescribeCurrentInitializedProxySession()
+        {
+            lock (_sync)
+            {
+                return _currentInitializedSessionVersion.HasValue && _currentInitializedProxySessionId.HasValue
+                    ? $"initialized proxy session version={_currentInitializedSessionVersion.Value} proxySessionId={_currentInitializedProxySessionId.Value}"
+                    : "no initialized proxy session";
+            }
         }
 
         private static string DescribeTraceEvidenceKind(OutboundPacketTrace trace)

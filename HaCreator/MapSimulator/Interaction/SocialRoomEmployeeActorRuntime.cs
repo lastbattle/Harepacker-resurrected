@@ -1920,20 +1920,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static WzCanvasProperty ResolveMiniRoomBoardEffectCanvas(WzImageProperty frameProperty)
         {
-            WzCanvasProperty directCanvas = ResolveCanvasProperty(frameProperty);
-            if (directCanvas != null)
-            {
-                return directCanvas;
-            }
-
             WzImageProperty resolvedFrame = ResolveLinkedProperty(frameProperty);
             if (resolvedFrame == null)
             {
                 return null;
             }
 
-            return resolvedFrame.WzProperties
-                .Select((property, index) => new EmployeeFrameCanvasCandidate(ResolveCanvasProperty(property), index))
+            return CollectEmployeeFrameCanvasCandidates(resolvedFrame)
                 .Where(candidate => candidate.Canvas != null)
                 .OrderBy(candidate => candidate, EmployeeFrameCanvasCandidateComparer.Instance)
                 .Select(candidate => candidate.Canvas)

@@ -24,9 +24,9 @@ namespace HaCreator.MapSimulator.Managers
         private const int SentOutboundHistoryCapacity = 64;
         private const int ObservedClientOutboundHistoryCapacity = 64;
         private const int ReceivedInboundHistoryCapacity = 64;
-        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket, int SentOrdinal = 0);
-        private sealed record ObservedClientOutboundPacket(int Opcode, byte[] RawPacket, int ObservedOrdinal = 0);
-        private sealed record ReceivedInboundPacket(int PacketType, byte[] Payload, int ReceivedOrdinal = 0);
+        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket, int SentOrdinal = 0, long SequenceOrdinal = 0);
+        private sealed record ObservedClientOutboundPacket(int Opcode, byte[] RawPacket, int ObservedOrdinal = 0, long SequenceOrdinal = 0);
+        private sealed record ReceivedInboundPacket(int PacketType, byte[] Payload, int ReceivedOrdinal = 0, long SequenceOrdinal = 0);
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<ReceivedInboundPacket> _receivedInboundHistory = new();
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private long _packetSequenceOrdinal;
 
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
@@ -360,6 +361,88 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
+        public bool HasReceivedInboundPacketPayloadAfterOutboundSubmit(
+            int packetType,
+            IReadOnlyList<byte> payload,
+            int submitOpcode,
+            IReadOnlyList<byte> submitRawPacket,
+            int minimumSentCountExclusive,
+            int minimumObservedCountExclusive,
+            int minimumReceivedCountExclusive)
+        {
+            if (packetType < 0
+                || submitOpcode < ushort.MinValue
+                || submitOpcode > ushort.MaxValue
+                || payload == null
+                || submitRawPacket == null)
+            {
+                return false;
+            }
+
+            byte[] targetPayload = payload as byte[] ?? payload.ToArray();
+            byte[] targetSubmit = submitRawPacket as byte[] ?? submitRawPacket.ToArray();
+            long submitSequence = ResolveLatestOutboundSubmitSequence(
+                submitOpcode,
+                targetSubmit,
+                minimumSentCountExclusive,
+                minimumObservedCountExclusive);
+            if (submitSequence <= 0)
+            {
+                return false;
+            }
+
+            ReceivedInboundPacket[] history = _receivedInboundHistory.ToArray();
+            for (int i = history.Length - 1; i >= 0; i--)
+            {
+                ReceivedInboundPacket received = history[i];
+                if (received.PacketType == packetType
+                    && received.ReceivedOrdinal > minimumReceivedCountExclusive
+                    && received.SequenceOrdinal > submitSequence
+                    && received.Payload.AsSpan().SequenceEqual(targetPayload))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private long ResolveLatestOutboundSubmitSequence(
+            int opcode,
+            byte[] targetRawPacket,
+            int minimumSentCountExclusive,
+            int minimumObservedCountExclusive)
+        {
+            long sequence = 0;
+            PendingOutboundPacket[] sentHistory = _sentOutboundHistory.ToArray();
+            for (int i = sentHistory.Length - 1; i >= 0; i--)
+            {
+                PendingOutboundPacket sent = sentHistory[i];
+                if (sent.Opcode == opcode
+                    && sent.SentOrdinal > minimumSentCountExclusive
+                    && sent.RawPacket.AsSpan().SequenceEqual(targetRawPacket))
+                {
+                    sequence = Math.Max(sequence, sent.SequenceOrdinal);
+                    break;
+                }
+            }
+
+            ObservedClientOutboundPacket[] observedHistory = _observedClientOutboundHistory.ToArray();
+            for (int i = observedHistory.Length - 1; i >= 0; i--)
+            {
+                ObservedClientOutboundPacket observed = observedHistory[i];
+                if (observed.Opcode == opcode
+                    && observed.ObservedOrdinal > minimumObservedCountExclusive
+                    && observed.RawPacket.AsSpan().SequenceEqual(targetRawPacket))
+                {
+                    sequence = Math.Max(sequence, observed.SequenceOrdinal);
+                    break;
+                }
+            }
+
+            return sequence;
+        }
+
         internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
         {
             using PacketWriter writer = new();
@@ -512,6 +595,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             ReceivedCount = 0;
+            _packetSequenceOrdinal = 0;
         }
 
         private void RecordReceivedInboundPacket(int packetType, byte[] payload)
@@ -520,7 +604,8 @@ namespace HaCreator.MapSimulator.Managers
             _receivedInboundHistory.Enqueue(new ReceivedInboundPacket(
                 packetType,
                 payload ?? Array.Empty<byte>(),
-                ReceivedCount));
+                ReceivedCount,
+                ++_packetSequenceOrdinal));
             while (_receivedInboundHistory.Count > ReceivedInboundHistoryCapacity
                    && _receivedInboundHistory.TryDequeue(out _))
             {
@@ -532,7 +617,7 @@ namespace HaCreator.MapSimulator.Managers
             SentCount++;
             LastSentOpcode = opcode;
             LastSentRawPacket = rawPacket ?? Array.Empty<byte>();
-            _sentOutboundHistory.Enqueue(new PendingOutboundPacket(opcode, LastSentRawPacket, SentCount));
+            _sentOutboundHistory.Enqueue(new PendingOutboundPacket(opcode, LastSentRawPacket, SentCount, ++_packetSequenceOrdinal));
             while (_sentOutboundHistory.Count > SentOutboundHistoryCapacity
                    && _sentOutboundHistory.TryDequeue(out _))
             {
@@ -544,7 +629,8 @@ namespace HaCreator.MapSimulator.Managers
             _observedClientOutboundHistory.Enqueue(new ObservedClientOutboundPacket(
                 opcode,
                 rawPacket ?? Array.Empty<byte>(),
-                observedOrdinal));
+                observedOrdinal,
+                ++_packetSequenceOrdinal));
             while (_observedClientOutboundHistory.Count > ObservedClientOutboundHistoryCapacity
                    && _observedClientOutboundHistory.TryDequeue(out _))
             {
@@ -598,6 +684,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.AdminShopResultClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.ItemUpgradeResultClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.VegaResultClientPacketType
                 || packetType == MapleTvRuntime.PacketTypeSetMessage
                 || packetType == MapleTvRuntime.PacketTypeClearMessage
                 || packetType == MapleTvRuntime.PacketTypeSendMessageResult
@@ -640,6 +727,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
                 LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
                 LocalUtilityPacketInboxManager.ItemUpgradeResultClientPacketType => "OnItemUpgradeResult(425)",
+                LocalUtilityPacketInboxManager.VegaResultClientPacketType => "CUIVega::OnVegaResult(429)",
                 MapleTvRuntime.PacketTypeSetMessage => "CMapleTVMan::OnSetMessage(405)",
                 MapleTvRuntime.PacketTypeClearMessage => "CMapleTVMan::OnClearMessage(406)",
                 MapleTvRuntime.PacketTypeSendMessageResult => "CMapleTVMan::OnSendMessageResult(407)",

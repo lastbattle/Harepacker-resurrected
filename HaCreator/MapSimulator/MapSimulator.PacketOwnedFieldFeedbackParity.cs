@@ -70,6 +70,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClockRealtimeMeridiemPadding = 8;
         private const int PacketOwnedRewardRouletteMaxNumericSuffix = 31;
         private const byte PacketOwnedUiClientAlpha = 255;
+        private const int PacketOwnedUiClientLoadLayerCanvas = 0;
+        private const int PacketOwnedUiClientLoadLayerOption = unchecked((int)0xC00614A4);
+        private const int PacketOwnedUiClientLoadLayerReserved = 0;
         private const int PacketOwnedFieldClockReferenceWidth = 800;
         private const int PacketOwnedFieldClockReferenceHeight = 600;
         private const int PacketOwnedFieldClockDefaultWidth = 258;
@@ -2704,7 +2707,11 @@ namespace HaCreator.MapSimulator
                 PacketOwnedUiDrawOrder.ScreenEffect,
                 PacketOwnedUiClientAlpha,
                 layerOrder,
-                repeat);
+                repeat,
+                PacketOwnedUiClientLoadLayerCanvas,
+                PacketOwnedUiClientLoadLayerOption,
+                PacketOwnedUiClientLoadLayerReserved,
+                LoadLayerFlip: false);
         }
 
         private static PacketOwnedUiRegistration ResolvePacketOwnedRewardRouletteRegistration(
@@ -2728,7 +2735,11 @@ namespace HaCreator.MapSimulator
                 },
                 PacketOwnedUiClientAlpha,
                 LayerOrder: 0,
-                Repeat: false);
+                Repeat: false,
+                PacketOwnedUiClientLoadLayerCanvas,
+                PacketOwnedUiClientLoadLayerOption,
+                PacketOwnedUiClientLoadLayerReserved,
+                LoadLayerFlip: false);
         }
 
         private static int ScalePacketOwnedUiOffset(int referenceOffset, int actualSize, int referenceSize)
@@ -2932,6 +2943,20 @@ namespace HaCreator.MapSimulator
             return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
         }
 
+        internal static (int Canvas, int Option, int Alpha, int Reserved, bool Flip) GetPacketOwnedScreenEffectLoadLayerForTest()
+        {
+            PacketOwnedUiRegistration registration = ResolvePacketOwnedScreenEffectRegistration(
+                PacketOwnedUiReferenceWidth,
+                PacketOwnedUiReferenceHeight,
+                "screen:test");
+            return (
+                registration.LoadLayerCanvas,
+                registration.LoadLayerOption,
+                registration.Alpha,
+                registration.LoadLayerReserved,
+                registration.LoadLayerFlip);
+        }
+
         internal static string GetPacketOwnedScreenEffectAnimationKey(string descriptor)
         {
             return PacketOwnedScreenEffectAnimationOwnerKey;
@@ -2986,6 +3011,28 @@ namespace HaCreator.MapSimulator
                 "reward-roulette",
                 PacketOwnedRewardRouletteLayerRole.Part);
             return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
+        }
+
+        internal static (int Canvas, int Option, int Alpha, int Reserved, bool Flip) GetPacketOwnedRewardRouletteLoadLayerForTest(int layerIndex)
+        {
+            PacketOwnedRewardRouletteLayerRole layerRole = layerIndex switch
+            {
+                0 => PacketOwnedRewardRouletteLayerRole.Job,
+                1 => PacketOwnedRewardRouletteLayerRole.Part,
+                2 => PacketOwnedRewardRouletteLayerRole.Level,
+                _ => throw new ArgumentOutOfRangeException(nameof(layerIndex))
+            };
+            PacketOwnedUiRegistration registration = ResolvePacketOwnedRewardRouletteRegistration(
+                PacketOwnedUiReferenceWidth,
+                PacketOwnedUiReferenceHeight,
+                "reward-roulette",
+                layerRole);
+            return (
+                registration.LoadLayerCanvas,
+                registration.LoadLayerOption,
+                registration.Alpha,
+                registration.LoadLayerReserved,
+                registration.LoadLayerFlip);
         }
 
         internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedRewardRouletteRegistrationForTest(
@@ -3380,7 +3427,11 @@ namespace HaCreator.MapSimulator
             PacketOwnedUiDrawOrder DrawOrder,
             byte Alpha,
             int LayerOrder,
-            bool Repeat);
+            bool Repeat,
+            int LoadLayerCanvas,
+            int LoadLayerOption,
+            int LoadLayerReserved,
+            bool LoadLayerFlip);
 
         private readonly record struct PacketOwnedFieldClockLayout(
             PacketOwnedUiAnchorMode AnchorMode,

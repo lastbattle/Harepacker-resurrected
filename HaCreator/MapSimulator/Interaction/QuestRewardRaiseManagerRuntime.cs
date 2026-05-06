@@ -650,6 +650,19 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
         }
 
+        public QuestRewardRaiseState DestroyWindowWithOwnerItemId(int ownerItemId, int fallbackQuestId)
+        {
+            int questId = ItemToQuest(ownerItemId);
+            if (questId <= 0)
+            {
+                questId = Math.Max(0, fallbackQuestId);
+            }
+
+            return questId > 0
+                ? DestroyByQuestId(questId)
+                : null;
+        }
+
         public int QuestToItem(int questId)
         {
             questId = Math.Max(0, questId);

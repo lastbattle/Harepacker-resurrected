@@ -162,6 +162,8 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation UnderFaceSecondaryAnimation { get; set; }
             public int SimulatedAffectedLayerHandleId { get; set; }
             public int SimulatedAffectedLayerHandleRefCount { get; private set; }
+            public int SimulatedAffectedListNodeId { get; set; }
+            public int SimulatedAffectedListNodeRefCount { get; private set; }
             public bool TerminateRequested { get; private set; }
             public bool IsTerminated { get; private set; }
             public int AnimationStartTime { get; set; }
@@ -173,6 +175,7 @@ namespace HaCreator.MapSimulator.Pools
             public void CaptureAffectedLayerReference()
             {
                 SimulatedAffectedLayerHandleRefCount = SimulatedAffectedLayerHandleId > 0 ? 1 : 0;
+                SimulatedAffectedListNodeRefCount = SimulatedAffectedListNodeId > 0 ? 1 : 0;
                 TerminateRequested = false;
                 IsTerminated = false;
             }
@@ -182,6 +185,7 @@ namespace HaCreator.MapSimulator.Pools
                 TerminateRequested = true;
                 IsTerminated = true;
                 SimulatedAffectedLayerHandleRefCount = 0;
+                SimulatedAffectedListNodeRefCount = 0;
             }
         }
 
@@ -415,11 +419,12 @@ namespace HaCreator.MapSimulator.Pools
 
             public void ReleaseSnapshotLayerReferences(RemoteActiveEffectMotionBlurSnapshot snapshot)
             {
-                if (snapshot == null)
+                if (snapshot == null || snapshot.IsReleased)
                 {
                     return;
                 }
 
+                snapshot.MarkReleased();
                 var operations = SimulatedLayerReferenceOperations?.ToList()
                     ?? new List<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
                 if (snapshot.SimulatedOverlayLayerHandleId > 0
@@ -665,6 +670,12 @@ namespace HaCreator.MapSimulator.Pools
             public int SimulatedOverlayLayerHandleRefCount { get; init; }
             internal IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations { get; init; }
                 = Array.Empty<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
+            internal bool IsReleased { get; private set; }
+
+            internal void MarkReleased()
+            {
+                IsReleased = true;
+            }
         }
 
         public sealed class RemoteActiveEffectMotionBlurLayerSnapshot
@@ -7671,6 +7682,11 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            if (ShouldSuppressCompletedSetItemEffectForParity(actor))
+            {
+                return;
+            }
+
             ItemEffectAnimationSet effect = _loader.LoadCompletedSetItemEffectAnimationSet(actor.CompletedSetItemId);
             if (effect?.OwnerLayers == null || effect.OwnerLayers.Count == 0)
             {
@@ -7825,6 +7841,20 @@ namespace HaCreator.MapSimulator.Pools
                 || IsRelationshipOverlayGhostAction(actionName);
         }
 
+        internal static bool ShouldSuppressCompletedSetItemEffectForParity(RemoteUserActor actor)
+        {
+            return actor == null
+                || ShouldSuppressCompletedSetItemEffectForParity(actor.HasMorphTemplate, actor.ActionName);
+        }
+
+        internal static bool ShouldSuppressCompletedSetItemEffectForParity(
+            bool hasMorphTemplate,
+            string actionName)
+        {
+            return hasMorphTemplate
+                || IsRelationshipOverlayGhostAction(actionName);
+        }
+
         private static void UpdateCarryItemEffectLayerAdmissionForParity(RemoteUserActor actor)
         {
             if (actor == null || !actor.CarryItemEffectId.HasValue || actor.CarryItemEffectLayerHandleId <= 0)
@@ -7861,7 +7891,15 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            if (ShouldSuppressCompletedSetItemEffectForParity(actor))
+            {
+                actor.CompletedSetItemEffectLayerHandleRefCount = 0;
+                actor.CompletedSetItemEffectLayerSuppressed = true;
+                return;
+            }
+
             actor.CompletedSetItemEffectLayerHandleRefCount = 1;
+            actor.CompletedSetItemEffectLayerSuppressed = false;
         }
 
         private static void ReleaseCompletedSetItemEffectLayerReferenceForParity(RemoteUserActor actor)
@@ -7872,6 +7910,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.CompletedSetItemEffectLayerHandleRefCount = 0;
+            actor.CompletedSetItemEffectLayerSuppressed = true;
         }
 
         private void DrawRelationshipOverlay(
@@ -9330,6 +9369,11 @@ namespace HaCreator.MapSimulator.Pools
         private static int NextRemoteTemporaryStatAffectedLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
+        private static int NextRemoteTemporaryStatAffectedListNodeId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextListNodeId();
         }
 
         private static int NextRemoteDragonCompanionLayerHandleId()
@@ -12966,6 +13010,7 @@ namespace HaCreator.MapSimulator.Pools
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
                     UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
                     SimulatedAffectedLayerHandleId = nextState.SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId = nextState.SimulatedAffectedListNodeId,
                     AnimationStartTime = unchecked(currentTime - restoredAnimationElapsedMs),
                     TransitionStartTime = int.MinValue,
                     TransitionDurationMs = 0,
@@ -12994,6 +13039,7 @@ namespace HaCreator.MapSimulator.Pools
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
                     UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
                     SimulatedAffectedLayerHandleId = existingState.SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId = existingState.SimulatedAffectedListNodeId,
                     AnimationStartTime = ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
                         existingState.SkillId,
                         nextState.SkillId,
@@ -13070,6 +13116,7 @@ namespace HaCreator.MapSimulator.Pools
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
                     UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
                     SimulatedAffectedLayerHandleId = existingState.SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId = existingState.SimulatedAffectedListNodeId,
                     AnimationStartTime = ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
                         existingState.SkillId,
                         nextState.SkillId,
@@ -13228,6 +13275,7 @@ namespace HaCreator.MapSimulator.Pools
                 UnderFaceAnimation = source.UnderFaceAnimation,
                 UnderFaceSecondaryAnimation = source.UnderFaceSecondaryAnimation,
                 SimulatedAffectedLayerHandleId = source.SimulatedAffectedLayerHandleId,
+                SimulatedAffectedListNodeId = source.SimulatedAffectedListNodeId,
                 AnimationStartTime = source.AnimationStartTime,
                 TransitionStartTime = source.TransitionStartTime,
                 TransitionDurationMs = source.TransitionDurationMs,
@@ -13726,6 +13774,7 @@ namespace HaCreator.MapSimulator.Pools
                 UnderFaceAnimation = underFaceAnimation,
                 UnderFaceSecondaryAnimation = underFaceSecondaryAnimation,
                 SimulatedAffectedLayerHandleId = NextRemoteTemporaryStatAffectedLayerHandleId(),
+                SimulatedAffectedListNodeId = NextRemoteTemporaryStatAffectedListNodeId(),
                 AnimationStartTime = animationStartTime
             };
             state.CaptureAffectedLayerReference();
@@ -13850,12 +13899,16 @@ namespace HaCreator.MapSimulator.Pools
             bool hasMorphTemplate,
             bool hasMechanicMode,
             int? skillId,
-            int? rawActionCode)
+            int? rawActionCode,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             return hasShadowPartnerActionAnimations
                 && !hiddenLikeClient
                 && !hasMechanicMode
-                && ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(skillId, rawActionCode);
+                && ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(
+                    skillId,
+                    rawActionCode,
+                    supportedRawActionNames);
         }
 
         internal static bool ShouldUseRemoteShadowPartnerAttackObservationGateForTesting(
@@ -13980,7 +14033,8 @@ namespace HaCreator.MapSimulator.Pools
                 actor?.HasMorphTemplate == true,
                 actor?.TemporaryStats.KnownState.MechanicMode.HasValue == true,
                 actor?.TemporaryStatShadowPartnerSkillId,
-                rawActionCode);
+                rawActionCode,
+                actor?.TemporaryStatShadowPartnerSkill?.ShadowPartnerSupportedRawActionNames);
         }
 
         private static void DrawRemoteTemporaryStatAvatarEffects(
@@ -16912,6 +16966,7 @@ namespace HaCreator.MapSimulator.Pools
         public int CompletedSetItemEffectAppliedTime { get; set; } = int.MinValue;
         public int CompletedSetItemEffectLayerHandleId { get; set; }
         public int CompletedSetItemEffectLayerHandleRefCount { get; set; }
+        public bool CompletedSetItemEffectLayerSuppressed { get; set; } = true;
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
         public float? BattlefieldOriginalSpeed { get; set; }
         public int? BattlefieldAppliedTeamId { get; set; }

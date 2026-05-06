@@ -344,6 +344,16 @@ namespace HaCreator.MapSimulator.Interaction
         internal void Update(int currentTick)
         {
             _oneTimeAnimationDisplayer.Update(currentTick);
+            int pendingCountBeforePrune = _pendingConsumeRequests.Count;
+            PruneExpiredPendingConsumeRequests(currentTick);
+            if (pendingCountBeforePrune > 0 && _pendingConsumeRequests.Count < pendingCountBeforePrune)
+            {
+                int expiredCount = pendingCountBeforePrune - _pendingConsumeRequests.Count;
+                _statusMessage = expiredCount == 1
+                    ? "Timed out one pending CUserLocal::ConsumeCashItem message-box request before any packet 326/325 completion arrived."
+                    : $"Timed out {expiredCount} pending CUserLocal::ConsumeCashItem message-box requests before any packet 326/325 completion arrived.";
+            }
+
             if (_entries.Count == 0 && _leavingEntries.Count == 0)
             {
                 return;

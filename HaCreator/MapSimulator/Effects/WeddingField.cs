@@ -2712,6 +2712,12 @@ namespace HaCreator.MapSimulator.Effects
                     return true;
                 }
 
+                if (currentRecord.CharacterId.HasValue
+                    && currentRecord.CharacterId.Value == characterId.Value)
+                {
+                    return true;
+                }
+
                 return currentRecord.PairCharacterId.HasValue
                     && currentRecord.PairCharacterId.Value == characterId.Value;
             }

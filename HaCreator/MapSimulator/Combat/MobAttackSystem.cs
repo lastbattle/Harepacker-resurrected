@@ -234,7 +234,7 @@ namespace HaCreator.MapSimulator.Combat
             bool hasMultiTargetOverrides = multiTargetForBall != null && multiTargetForBall.Count > 0;
             bool hasAreaDelayOverrides = randTimeForAreaAttack != null && randTimeForAreaAttack.Count > 0;
             bool hasFacingOverride = sourceFacesRight.HasValue;
-            bool hasAreaTargetMask = areaTargetMask > 0;
+            bool hasAreaTargetMask = areaTargetMask != 0;
             if (!hasLockedTarget && !hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasFacingOverride && !hasAreaTargetMask)
             {
                 _pendingAttackPacketOverrides.Remove(mobPoolId);
@@ -1414,14 +1414,14 @@ namespace HaCreator.MapSimulator.Combat
             int areaTargetMask)
         {
             var selected = new List<Vector2>();
-            if (slotPositions == null || slotPositions.Count == 0 || attackCount <= 0 || areaTargetMask <= 0)
+            if (slotPositions == null || slotPositions.Count == 0 || attackCount <= 0 || areaTargetMask == 0)
             {
                 return selected;
             }
 
             int clampedCount = Math.Min(attackCount, slotPositions.Count);
-            uint mask = (uint)areaTargetMask;
-            for (int slotIndex = 0; slotIndex < slotPositions.Count && selected.Count < clampedCount && slotIndex < 31; slotIndex++)
+            uint mask = unchecked((uint)areaTargetMask);
+            for (int slotIndex = 0; slotIndex < slotPositions.Count && selected.Count < clampedCount && slotIndex < 32; slotIndex++)
             {
                 if ((mask & (1u << slotIndex)) == 0)
                 {
@@ -1436,7 +1436,7 @@ namespace HaCreator.MapSimulator.Combat
 
         internal static bool ShouldUsePacketAreaTargetMask(MobAttackEntry attack, int areaTargetMask)
         {
-            return areaTargetMask > 0 && (attack?.AttackType == 3 || attack?.AttackType == 4);
+            return areaTargetMask != 0 && (attack?.AttackType == 3 || attack?.AttackType == 4);
         }
 
         private List<Vector2> BuildEffectNodePositions(

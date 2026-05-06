@@ -84,6 +84,11 @@ namespace HaCreator.MapSimulator
                     AppendPacketOwnedQuestAvailabilityRefreshSummary(ref message, availableQuestIdsBeforePacket);
                 }
 
+                if (applied)
+                {
+                    ConsumePassiveTransferRequestFromPacketQuestResult();
+                }
+
                 return applied;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException || ex is InvalidDataException)

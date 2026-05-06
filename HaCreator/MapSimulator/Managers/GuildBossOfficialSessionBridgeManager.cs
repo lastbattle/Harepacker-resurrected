@@ -667,6 +667,7 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
+                int flushed = FlushQueuedPulleyRequestsViaProxy();
                 byte[] packet = BuildPulleyRequestPacket();
                 if (!_roleSessionProxy.TrySendToServer(packet, out string proxyStatus))
                 {
@@ -677,7 +678,9 @@ namespace HaCreator.MapSimulator.Managers
 
                 SentCount++;
                 RecordOutboundTrace(BuildOutboundTrace(packet, request.Sequence, "official-session:proxy-inject"));
-                status = $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session.";
+                status = flushed > 0
+                    ? $"Flushed {flushed} queued Guild Boss opcode {OutboundPulleyRequestOpcode} request(s), then injected opcode {OutboundPulleyRequestOpcode} into live session."
+                    : $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session.";
                 LastStatus = status;
                 return true;
             }

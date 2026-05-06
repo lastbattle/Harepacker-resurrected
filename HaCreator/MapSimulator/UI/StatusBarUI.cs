@@ -97,7 +97,12 @@ namespace HaCreator.MapSimulator.UI {
         public int ShadowCanvasRemoveSequence { get; set; }
         public int ShadowCanvasInsertSequence { get; set; }
         public int ShadowCanvasReleaseSequence { get; set; }
+        public int MainLayerAnimationMode { get; set; }
+        public string MainLayerAnimationModeName { get; set; }
+        public int ShadowLayerAnimationMode { get; set; }
+        public string ShadowLayerAnimationModeName { get; set; }
         public int AlertLayerAnimationMode { get; set; }
+        public string AlertLayerAnimationModeName { get; set; }
         public int AlertLayerAnimationSequence { get; set; }
     }
 
@@ -1090,7 +1095,7 @@ namespace HaCreator.MapSimulator.UI {
             StatusBarBuffRenderData buffEntry,
             int currentTime)
         {
-            if (buffEntry?.UseTemporaryStatViewArtworkOnly != true)
+            if (!ShouldDrawTemporaryStatViewForParity(buffEntry))
             {
                 return;
             }
@@ -1111,6 +1116,16 @@ namespace HaCreator.MapSimulator.UI {
                 buffEntry.ShadowCanvasAlphaStart,
                 buffEntry.ShadowCanvasAlphaEnd);
             sprite.Draw(shadowTexture, iconRect, new Color((byte)255, (byte)255, (byte)255, alpha));
+        }
+
+        internal static bool ShouldDrawTemporaryStatViewForParity(StatusBarBuffRenderData buffEntry)
+        {
+            return buffEntry?.UseTemporaryStatViewArtworkOnly == true
+                   && !buffEntry.IsTemporaryStatViewReleased
+                   && buffEntry.TemporaryStatViewParentLayerReferenceCount > 0
+                   && buffEntry.TemporaryStatViewMainLayerReferenceCount > 0
+                   && buffEntry.TemporaryStatViewShadowLayerReferenceCount > 0
+                   && buffEntry.ShadowCanvasReferenceCount > 0;
         }
 
         private static bool TryResolveTemporaryStatViewShadowTextureForParity(

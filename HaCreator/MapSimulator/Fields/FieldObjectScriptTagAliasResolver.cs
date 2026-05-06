@@ -2230,6 +2230,18 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
+            if (TryResolveBracketIndexKeyLiteral(normalizedCandidate, out string literalAliasCandidate)
+                && IsPotentialFunctionAliasName(literalAliasCandidate))
+            {
+                yield return literalAliasCandidate;
+                yield break;
+            }
+
+            if (TryParseIndexedObjectAccess(normalizedCandidate, out _, out _))
+            {
+                yield break;
+            }
+
             yield return normalizedCandidate;
 
             if (localAliasMap == null || localAliasMap.Count == 0)
@@ -3165,12 +3177,18 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             char quote = value[0];
-            if ((quote != '"' && quote != '\'') || value[^1] != quote)
+            if ((quote != '"' && quote != '\'' && quote != '`') || value[^1] != quote)
             {
                 return false;
             }
 
             string innerValue = value[1..^1];
+            if (quote == '`'
+                && innerValue.IndexOf("${", StringComparison.Ordinal) >= 0)
+            {
+                return false;
+            }
+
             if (innerValue.IndexOf(quote) >= 0)
             {
                 return false;

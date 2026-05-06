@@ -118,7 +118,7 @@ namespace HaCreator.MapSimulator
                 decodedPacket.LockedTargetInfo,
                 out MobTargetInfo lockedTargetOverride,
                 out int areaTargetMask);
-            bool hasAreaTargetMask = areaTargetMask > 0;
+            bool hasAreaTargetMask = areaTargetMask != 0;
             bool hasLockedTargetOverride = lockedTargetOverride?.IsValid == true;
             if (!hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasLockedTargetOverride && !hasAreaTargetMask)
             {

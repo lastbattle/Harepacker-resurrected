@@ -1557,12 +1557,13 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             byte alpha,
             AnimationFallingOwner owner,
-            string sourceUol)
+            string sourceUol,
+            int initialElapsedMs = 0)
         {
             if (frames == null || frames.Count == 0) return;
 
             FallingAnimation anim = _fallingPool.Count > 0 ? _fallingPool.Dequeue() : new FallingAnimation();
-            anim.Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, _random, alpha, owner, sourceUol);
+            anim.Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, _random, alpha, owner, sourceUol, initialElapsedMs);
             _fallingAnimations.Add(anim);
         }
 
@@ -1602,7 +1603,8 @@ namespace HaCreator.MapSimulator.Animation
             int count,
             float fallSpeed,
             int currentTimeMs,
-            byte alpha)
+            byte alpha,
+            int initialElapsedMs = 0)
         {
             AddFallingBurst(
                 frames,
@@ -1615,7 +1617,8 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs,
                 alpha,
                 AnimationFallingOwner.PacketOwnedFalling,
-                sourceUol);
+                sourceUol,
+                initialElapsedMs);
         }
 
         private void AddFallingBurst(
@@ -1629,7 +1632,8 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             byte alpha,
             AnimationFallingOwner owner,
-            string sourceUol)
+            string sourceUol,
+            int initialElapsedMs = 0)
         {
             for (int i = 0; i < count; i++)
             {
@@ -1638,7 +1642,19 @@ namespace HaCreator.MapSimulator.Animation
                 int delay = _random.Next(0, 300);
 
                 // Stagger the start times
-                AddFalling(frames, x, startY, endY, fallSpeed, drift, true, currentTimeMs + delay, alpha, owner, sourceUol);
+                AddFalling(
+                    frames,
+                    x,
+                    startY,
+                    endY,
+                    fallSpeed,
+                    drift,
+                    true,
+                    currentTimeMs + delay,
+                    alpha,
+                    owner,
+                    sourceUol,
+                    initialElapsedMs);
             }
         }
 
@@ -5892,6 +5908,12 @@ namespace HaCreator.MapSimulator.Animation
         internal void Initialize(List<IDXObject> frames, float startX, float startY, float endY,
             float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs, Random random, byte alpha, AnimationFallingOwner owner, string sourceUol)
         {
+            Initialize(frames, startX, startY, endY, fallSpeed, horizontalDrift, rotation, currentTimeMs, random, alpha, owner, sourceUol, initialElapsedMs: 0);
+        }
+
+        internal void Initialize(List<IDXObject> frames, float startX, float startY, float endY,
+            float fallSpeed, float horizontalDrift, bool rotation, int currentTimeMs, Random random, byte alpha, AnimationFallingOwner owner, string sourceUol, int initialElapsedMs)
+        {
             _frames = frames;
             _x = startX;
             _y = startY;
@@ -5909,6 +5931,11 @@ namespace HaCreator.MapSimulator.Animation
             _alpha = alpha;
             Owner = owner;
             SourceUol = sourceUol;
+
+            if (initialElapsedMs > 0)
+            {
+                SeekElapsed(initialElapsedMs, currentTimeMs);
+            }
         }
 
         public bool Update(int currentTimeMs, float deltaSeconds)
@@ -5949,6 +5976,56 @@ namespace HaCreator.MapSimulator.Animation
         internal static bool HasFrameDelayElapsedForTesting(int currentTimeMs, int lastFrameTimeMs, int frameDelayMs)
         {
             return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, lastFrameTimeMs) > frameDelayMs;
+        }
+
+        internal int CurrentFrameIndexForTesting => _currentFrame;
+
+        private void SeekElapsed(int elapsedMs, int currentTimeMs)
+        {
+            int resolvedElapsedMs = Math.Max(0, elapsedMs);
+            if (resolvedElapsedMs == 0)
+            {
+                return;
+            }
+
+            float elapsedSeconds = resolvedElapsedMs / 1000f;
+            _y = _startY + (_fallSpeed * elapsedSeconds);
+            _x += _horizontalDrift * _fallSpeed * elapsedSeconds * 0.5f;
+            _startTime = unchecked(currentTimeMs - resolvedElapsedMs);
+            _lastFrameTime = _startTime;
+            if (_rotation)
+            {
+                _rotationAngle += _rotationSpeed * elapsedSeconds;
+            }
+
+            if (_y >= _endY)
+            {
+                _finished = true;
+                return;
+            }
+
+            if (_frames == null || _frames.Count <= 1)
+            {
+                return;
+            }
+
+            int remainingMs = resolvedElapsedMs;
+            int guard = 0;
+            while (remainingMs > 0 && guard++ < 4096)
+            {
+                IDXObject frame = _frames[_currentFrame];
+                int frameDelay = Math.Max(1, frame?.Delay ?? 1);
+                if (remainingMs < frameDelay)
+                {
+                    _lastFrameTime = unchecked(currentTimeMs - remainingMs);
+                    return;
+                }
+
+                remainingMs -= frameDelay;
+                _currentFrame = (_currentFrame + 1) % _frames.Count;
+            }
+
+            _lastFrameTime = currentTimeMs;
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)

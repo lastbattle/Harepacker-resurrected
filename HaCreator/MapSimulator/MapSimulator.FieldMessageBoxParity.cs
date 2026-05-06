@@ -184,6 +184,43 @@ namespace HaCreator.MapSimulator
 
         private void DrainFieldMessageBoxOfficialSessionBridge()
         {
+            while (_fieldMessageBoxOfficialSessionBridge.TryDequeueObservedOutbound(out FieldMessageBoxPacketInboxMessage observedOutbound))
+            {
+                if (observedOutbound == null)
+                {
+                    continue;
+                }
+
+                bool observed;
+                string observedDetail;
+                if (TryResolveFieldMessageBoxRequestHostPosition(out Point hostPosition, out string hostStatus))
+                {
+                    observed = _fieldMessageBoxRuntime.TryObserveConsumeCashItemUseRequestPayload(
+                        observedOutbound.Payload,
+                        hostPosition,
+                        currTickCount,
+                        out observedDetail,
+                        observedOutbound.Source);
+                }
+                else
+                {
+                    observed = false;
+                    observedDetail = $"Ignored observed CUserLocal::ConsumeCashItem message-box request because {hostStatus}";
+                }
+
+                _fieldMessageBoxOfficialSessionBridge.RecordDispatchResult(
+                    observedOutbound.Source,
+                    observed,
+                    $"CUserLocal::ConsumeCashItem {observedOutbound.Opcode}: {observedDetail}");
+                if (!string.IsNullOrWhiteSpace(observedDetail))
+                {
+                    _chat?.AddMessage(
+                        observedDetail,
+                        observed ? Microsoft.Xna.Framework.Color.LightGreen : Microsoft.Xna.Framework.Color.OrangeRed,
+                        currTickCount);
+                }
+            }
+
             while (_fieldMessageBoxOfficialSessionBridge.TryDequeue(out FieldMessageBoxPacketInboxMessage packet))
             {
                 bool applied = TryApplyFieldMessageBoxPacket(packet.Opcode, packet.Payload, out string message);

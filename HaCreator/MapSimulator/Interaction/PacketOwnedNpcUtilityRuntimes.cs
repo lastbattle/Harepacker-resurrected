@@ -1720,24 +1720,16 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    if (!HasPendingFeeCalculationRequest || _pendingFeeCalculationOwnerRowIndex < 0)
-                    {
-                        StatusMessage = "CStoreBankDlg ignored packet 370 subtype 36 because no selected-row SendCalculateFeeRequest owner state is pending.";
-                        AppendNote(StatusMessage);
-                        message = StatusMessage;
-                        return true;
-                    }
-
                     if (payload.Length != 1 + (sizeof(int) * 2))
                     {
                         message = "Store-bank packet 370 subtype 36 requires exactly passing-day and fee integers.";
                         return false;
                     }
 
-                    int selectedOwnerRowIndex = _pendingFeeCalculationOwnerRowIndex;
-                    int selectedPacketRowIndex = _pendingFeeCalculationPacketRowIndex;
-                    int selectedItemId = _pendingFeeCalculationItemId;
-                    string selectedItemTitle = _pendingFeeCalculationItemTitle;
+                    int selectedOwnerRowIndex = HasPendingFeeCalculationRequest ? _pendingFeeCalculationOwnerRowIndex : -1;
+                    int selectedPacketRowIndex = HasPendingFeeCalculationRequest ? _pendingFeeCalculationPacketRowIndex : -1;
+                    int selectedItemId = HasPendingFeeCalculationRequest ? _pendingFeeCalculationItemId : 0;
+                    string selectedItemTitle = HasPendingFeeCalculationRequest ? _pendingFeeCalculationItemTitle : string.Empty;
                     _pendingGetAllPassingDay = BitConverter.ToInt32(payload, 1);
                     _pendingGetAllFee = BitConverter.ToInt32(payload, 5);
                     ResetTransientRequestState();

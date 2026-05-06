@@ -1290,6 +1290,12 @@ namespace HaCreator.MapSimulator.Fields
                         ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition,
                         normalizedTopLeft,
                         i));
+                    operations.Add(new ClientOwnedDrawViewrangeOperation(
+                        ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
+                        normalizedTopLeft,
+                        i,
+                        sourceWidth: sourceWidth,
+                        sourceHeight: sourceHeight));
                 }
 
                 operations.Add(new ClientOwnedDrawViewrangeOperation(

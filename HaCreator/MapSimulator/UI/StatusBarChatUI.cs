@@ -319,6 +319,9 @@ namespace HaCreator.MapSimulator.UI
         private const int WhisperPickerDropdownScrollRepeatInitialDelayMs = 400;
         private const int WhisperPickerDropdownScrollRepeatIntervalMs = 60;
         private const int WhisperPickerDropdownScrollWheelRangeRows = 15;
+        private const int ImeCandidateWindowMinimumWidth = 64;
+        private const int ImeCandidateWindowBorderPadding = 2;
+        private const int ImeCandidateWindowHorizontalPadding = 4;
         private Point _pointNotificationAnchor = new Point(512, 60);
         private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
         private Vector2 _chatEnterPos = new Vector2(4, 2);
@@ -1402,6 +1405,16 @@ namespace HaCreator.MapSimulator.UI
                 inputPos.X,
                 (int)Math.Round(inputPos.Y + ResolveFontLineSpacing() - 2),
                 Color.White);
+            DrawImeCandidateWindow(
+                sprite,
+                chatState,
+                new Rectangle(
+                    (int)Math.Round(inputPos.X),
+                    (int)Math.Round(inputPos.Y),
+                    Math.Max(1, _chatInputWidth),
+                    Math.Max(1, ResolveFontLineSpacing())),
+                Color.White,
+                Color.Black);
 
             if (_pixelTexture == null || ((tickCount / 500) % 2) != 0)
             {
@@ -1729,6 +1742,16 @@ namespace HaCreator.MapSimulator.UI
                 comboTextX,
                 comboBounds.Y + comboTextTopInset + ResolveFontLineSpacing() - 2,
                 new Color(24, 24, 24));
+            DrawImeCandidateWindow(
+                sprite,
+                chatState,
+                new Rectangle(
+                    (int)Math.Round(comboTextX),
+                    comboBounds.Y + comboTextTopInset,
+                    Math.Max(1, comboTextMaxWidth),
+                    Math.Max(1, ResolveFontLineSpacing())),
+                new Color(24, 24, 24),
+                new Color(255, 255, 255, 160));
 
             if (_pixelTexture == null
                 || !ShouldDrawWhisperPickerModalComboCaret(
@@ -1755,6 +1778,189 @@ namespace HaCreator.MapSimulator.UI
                     1,
                     caretHeight),
                 Color.White);
+        }
+
+        internal static Rectangle ResolveClientEditImeCandidateWindowBounds(
+            ImeCandidateListState candidateListState,
+            Rectangle editTextBounds,
+            int fontLineSpacing,
+            Func<string, Vector2> measureText,
+            int viewportWidth,
+            int viewportHeight)
+        {
+            if (candidateListState == null
+                || !candidateListState.HasCandidates
+                || measureText == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            int candidateCount = candidateListState.Candidates.Count;
+            int pageStart = Math.Clamp(candidateListState.PageStart, 0, candidateCount);
+            int pageSize = candidateListState.PageSize > 0
+                ? candidateListState.PageSize
+                : candidateCount;
+            int visibleCount = Math.Min(pageSize, candidateCount - pageStart);
+            if (visibleCount <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int safeFontLineSpacing = Math.Max(1, fontLineSpacing);
+            SkillMacroImeCandidateWindowMetrics metrics;
+            if (candidateListState.Vertical)
+            {
+                int widestEntryWidth = 0;
+                for (int i = 0; i < visibleCount; i++)
+                {
+                    int candidateIndex = pageStart + i;
+                    string candidateText = candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                    string numberText = $"{i + 1}.";
+                    int entryWidth = (int)Math.Ceiling(measureText(numberText).X + measureText(candidateText).X) + 2;
+                    widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+                }
+
+                metrics = SkillMacroImeCandidateWindowLayout.MeasureVerticalClientOwnerExact(
+                    safeFontLineSpacing,
+                    visibleCount,
+                    widestEntryWidth);
+            }
+            else
+            {
+                metrics = SkillMacroImeCandidateWindowLayout.MeasureHorizontal(
+                    safeFontLineSpacing,
+                    visibleCount);
+            }
+
+            int width = Math.Max(ImeCandidateWindowMinimumWidth, metrics.Width);
+            int height = Math.Max(4, metrics.Height);
+            int safeViewportWidth = Math.Max(1, viewportWidth);
+            int safeViewportHeight = Math.Max(1, viewportHeight);
+            Point preferredOrigin;
+            if (!SkillMacroImeCandidateWindowLayout.TryResolveWindowFormOrigin(
+                    candidateListState.WindowForm,
+                    safeViewportWidth,
+                    safeViewportHeight,
+                    height,
+                    out preferredOrigin))
+            {
+                preferredOrigin = new Point(
+                    editTextBounds.X,
+                    editTextBounds.Y + Math.Max(1, editTextBounds.Height) + 1);
+            }
+
+            int overflowY = editTextBounds.Y - height - 1;
+            return SkillMacroImeCandidateWindowLayout.ResolveClientOwnerBounds(
+                safeViewportWidth,
+                safeViewportHeight,
+                width,
+                height,
+                preferredOrigin,
+                overflowY);
+        }
+
+        private void DrawImeCandidateWindow(
+            SpriteBatch sprite,
+            MapSimulatorChatRenderState chatState,
+            Rectangle editTextBounds,
+            Color textColor,
+            Color shadowColor)
+        {
+            ImeCandidateListState candidateListState = chatState?.ImeCandidateList ?? ImeCandidateListState.Empty;
+            if (_pixelTexture == null
+                || candidateListState?.HasCandidates != true
+                || ImeCandidateWindowRendering.ShouldPreferNativeWindow(candidateListState, clientOwnedCandidateWindow: true))
+            {
+                return;
+            }
+
+            Rectangle bounds = ResolveClientEditImeCandidateWindowBounds(
+                candidateListState,
+                editTextBounds,
+                ResolveFontLineSpacing(),
+                value => MeasureChatText(value),
+                sprite.GraphicsDevice.Viewport.Width,
+                sprite.GraphicsDevice.Viewport.Height);
+            if (bounds.IsEmpty)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixelTexture, bounds, new Color(255, 255, 255, 232));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(54, 54, 54, 220));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(54, 54, 54, 220));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(54, 54, 54, 220));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(54, 54, 54, 220));
+
+            int pageStart = Math.Clamp(candidateListState.PageStart, 0, candidateListState.Candidates.Count);
+            int pageSize = candidateListState.PageSize > 0 ? candidateListState.PageSize : candidateListState.Candidates.Count;
+            int visibleCount = Math.Min(pageSize, candidateListState.Candidates.Count - pageStart);
+            if (candidateListState.Vertical)
+            {
+                int rowHeight = ResolveFontLineSpacing() + 1;
+                for (int i = 0; i < visibleCount; i++)
+                {
+                    int candidateIndex = pageStart + i;
+                    DrawImeCandidateEntry(
+                        sprite,
+                        $"{i + 1}. {candidateListState.Candidates[candidateIndex] ?? string.Empty}",
+                        new Vector2(bounds.X + ImeCandidateWindowHorizontalPadding, bounds.Y + ImeCandidateWindowBorderPadding + (i * rowHeight)),
+                        candidateIndex == candidateListState.Selection,
+                        bounds.Width - (ImeCandidateWindowHorizontalPadding * 2),
+                        rowHeight,
+                        textColor,
+                        shadowColor);
+                }
+
+                return;
+            }
+
+            int cellWidth = Math.Max(1, SkillMacroImeCandidateWindowLayout.MeasureHorizontal(ResolveFontLineSpacing(), visibleCount).CellWidth);
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = pageStart + i;
+                DrawImeCandidateEntry(
+                    sprite,
+                    $"{i + 1}. {candidateListState.Candidates[candidateIndex] ?? string.Empty}",
+                    new Vector2(bounds.X + 3 + (i * cellWidth), bounds.Y + 3),
+                    candidateIndex == candidateListState.Selection,
+                    Math.Max(1, cellWidth - 2),
+                    Math.Max(1, ResolveFontLineSpacing() + 1),
+                    textColor,
+                    shadowColor);
+            }
+        }
+
+        private void DrawImeCandidateEntry(
+            SpriteBatch sprite,
+            string text,
+            Vector2 position,
+            bool selected,
+            int maxWidth,
+            int rowHeight,
+            Color textColor,
+            Color shadowColor)
+        {
+            if (selected && _pixelTexture != null)
+            {
+                sprite.Draw(
+                    _pixelTexture,
+                    new Rectangle((int)position.X - 1, (int)position.Y, Math.Max(1, maxWidth), Math.Max(1, rowHeight)),
+                    new Color(51, 103, 209, 140));
+            }
+
+            string visibleText = ResolveWhisperPickerModalDropdownDisplayText(
+                text,
+                maxWidth,
+                leftPadding: 0,
+                rightPadding: 0,
+                measureWidth: value => MeasureChatText(value).X);
+            DrawTextWithShadow(
+                sprite,
+                visibleText,
+                position,
+                selected ? Color.White : textColor,
+                selected ? Color.Black : shadowColor);
         }
 
         private void DrawWhisperPickerModalComboSelection(

@@ -485,6 +485,63 @@ namespace HaCreator.MapSimulator.Character.Skills
             return operations ?? (IReadOnlyList<AfterimageLayerOperation>)Array.Empty<AfterimageLayerOperation>();
         }
 
+        public static IReadOnlyList<AfterimageLayerOperation> ResolveLayerOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int previousFrameElapsedMs,
+            int frameElapsedMs)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null || frames.Count == 0)
+            {
+                return Array.Empty<AfterimageLayerOperation>();
+            }
+
+            int previousElapsed = Math.Max(0, previousFrameElapsedMs);
+            int elapsed = Math.Max(0, frameElapsedMs);
+            if (elapsed < previousElapsed)
+            {
+                return ResolveLayerOperations(frameSet, frameElapsedMs);
+            }
+
+            List<AfterimageLayerOperation> operations = null;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int durationMs = ResolveClientInsertCanvasDurationMs(frame);
+                if (durationMs > 0 && elapsed >= durationMs)
+                {
+                    if (previousElapsed < durationMs)
+                    {
+                        operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                        operations.Add(CreateAfterimageLayerOperation(
+                            AfterimageLayerOperationKind.RemoveCanvas,
+                            frame,
+                            durationMs,
+                            durationMs));
+                    }
+
+                    continue;
+                }
+
+                int localFrameElapsed = durationMs > 0
+                    ? Math.Min(elapsed, durationMs)
+                    : elapsed;
+                operations ??= new List<AfterimageLayerOperation>(frames.Count);
+                operations.Add(CreateAfterimageLayerOperation(
+                    AfterimageLayerOperationKind.InsertCanvas,
+                    frame,
+                    localFrameElapsed,
+                    durationMs));
+            }
+
+            return operations ?? (IReadOnlyList<AfterimageLayerOperation>)Array.Empty<AfterimageLayerOperation>();
+        }
+
         internal static int ResolveClientInsertCanvasDurationMs(SkillFrame frame)
         {
             return Math.Max(0, frame?.Delay ?? 0);

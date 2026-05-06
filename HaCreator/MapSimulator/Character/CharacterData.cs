@@ -1912,7 +1912,8 @@ namespace HaCreator.MapSimulator.Character
         int ItemId,
         int Level,
         int Closeness,
-        int Fullness);
+        int Fullness,
+        string Name = null);
 
     #region Character Build
 

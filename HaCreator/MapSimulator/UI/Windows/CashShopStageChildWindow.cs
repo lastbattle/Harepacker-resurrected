@@ -115,6 +115,24 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class OneADayOwnerState
         {
+            public sealed class CommodityDrawLayoutState
+            {
+                public int TodayIconX { get; init; } = 14;
+                public int TodayIconY { get; init; } = 137;
+                public int PreviousIconX { get; init; } = 7;
+                public int PreviousIconY { get; init; } = 73;
+                public int TextX { get; init; } = 82;
+                public int NameY { get; init; } = 11;
+                public int DateY { get; init; } = 37;
+                public int DiscountX { get; init; } = 81;
+                public int DiscountY { get; init; } = 119;
+                public int TodayFontScale { get; init; } = 4;
+                public int PreviousFontScale { get; init; } = 2;
+                public bool HasDiscountNumberCanvases { get; init; }
+                public bool HasDiscountStartCanvas { get; init; }
+                public bool HasDiscountPercentCanvas { get; init; }
+            }
+
             public sealed class SelectorEntryState
             {
                 public int Index { get; init; }
@@ -207,6 +225,7 @@ namespace HaCreator.MapSimulator.UI
             public string PacketStateSignature { get; init; } = string.Empty;
             public IReadOnlyList<HistoryEntryState> HistoryEntries { get; init; } = Array.Empty<HistoryEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
+            public CommodityDrawLayoutState CommodityDrawLayout { get; init; } = new();
         }
 
         private readonly struct LayerInfo
@@ -969,6 +988,20 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(selectionDetail))
             {
                 DrawWrapped(sprite, selectionDetail, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+            if (state.CommodityDrawLayout != null)
+            {
+                OneADayOwnerState.CommodityDrawLayoutState layout = state.CommodityDrawLayout;
+                string iconLane = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive
+                    ? $"prev icon {layout.PreviousIconX.ToString(CultureInfo.InvariantCulture)},{layout.PreviousIconY.ToString(CultureInfo.InvariantCulture)} scale {layout.PreviousFontScale.ToString(CultureInfo.InvariantCulture)}"
+                    : $"today icon {layout.TodayIconX.ToString(CultureInfo.InvariantCulture)},{layout.TodayIconY.ToString(CultureInfo.InvariantCulture)} scale {layout.TodayFontScale.ToString(CultureInfo.InvariantCulture)}";
+                DrawWrapped(
+                    sprite,
+                    $"DrawCommodity {iconLane}; text {layout.TextX.ToString(CultureInfo.InvariantCulture)},{layout.NameY.ToString(CultureInfo.InvariantCulture)}/{layout.DateY.ToString(CultureInfo.InvariantCulture)}; discount {layout.DiscountX.ToString(CultureInfo.InvariantCulture)},{layout.DiscountY.ToString(CultureInfo.InvariantCulture)} digits {(layout.HasDiscountNumberCanvases ? "ready" : "missing")}.",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    contentBounds.Width - 24f,
+                    detailColor);
             }
             sprite.DrawString(
                 _font,

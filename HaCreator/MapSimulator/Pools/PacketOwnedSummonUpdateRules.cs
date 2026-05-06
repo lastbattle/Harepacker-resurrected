@@ -267,6 +267,23 @@ namespace HaCreator.MapSimulator.Pools
                 : (byte)0;
         }
 
+        internal static Point[] ResolvePacketOwnedTeslaCreateTrianglePoints(
+            byte packetCreateState,
+            IReadOnlyList<Point> packetTrianglePoints)
+        {
+            if (packetCreateState != 1 || packetTrianglePoints == null || packetTrianglePoints.Count < 3)
+            {
+                return Array.Empty<Point>();
+            }
+
+            return new[]
+            {
+                packetTrianglePoints[0],
+                packetTrianglePoints[1],
+                packetTrianglePoints[2]
+            };
+        }
+
         internal static byte ResolvePacketOwnedTeslaRuntimeStateAfterOneTimeAction(
             byte currentRuntimeState,
             bool hasActiveOneTimeActionPlayback)

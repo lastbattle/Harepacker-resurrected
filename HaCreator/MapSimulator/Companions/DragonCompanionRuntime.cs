@@ -1701,6 +1701,28 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
+        internal bool TryRecordClientDragonEndUpdateActiveKeyPadMemoryCapture(
+            IReadOnlyList<byte> bytes,
+            bool packedNibbles,
+            string source,
+            out string message)
+        {
+            message = null;
+            if (!TryDecodeClientDragonKeyPadStates(bytes, packedNibbles, out byte[] states, out string error))
+            {
+                message = error ?? "Captured dragon keypad memory states could not be decoded.";
+                return false;
+            }
+
+            _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates = states;
+            _lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource =
+                string.IsNullOrWhiteSpace(source) ? "manual keypad memory capture" : source.Trim();
+            _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession =
+                IsClientDragonOfficialSessionCaptureSource(_lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource);
+            message = DescribeClientVecCtrlEndUpdateActiveParityStatus();
+            return true;
+        }
+
         internal string DescribeClientVecCtrlEndUpdateActiveParityStatus()
         {
             ClientDragonFlushTailComparison comparison = CompareLastClientDragonFlushTailCapture();

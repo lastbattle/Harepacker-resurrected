@@ -473,7 +473,7 @@ namespace HaCreator.MapSimulator.Pools
             int skillLevel)
         {
             int durationSeconds = ResolveSkillAreaLevelDurationSeconds(levelData);
-            string zoneType = skill?.ZoneType;
+            string zoneType = ResolvePlayerSkillAreaZoneType(skill);
             SkillAnimation animation = HasRenderableAnimation(skill?.ZoneAnimation) ? skill.ZoneAnimation : null;
             if (skill == null || loadSkill == null || resolveLevelData == null)
             {
@@ -520,9 +520,9 @@ namespace HaCreator.MapSimulator.Pools
 
             SkillLevelData linkedLevelData = resolveLevelData(skill, skillLevel);
             durationSeconds = Math.Max(durationSeconds, ResolveSkillAreaLevelDurationSeconds(linkedLevelData));
-            if (string.IsNullOrWhiteSpace(zoneType) && !string.IsNullOrWhiteSpace(skill.ZoneType))
+            if (string.IsNullOrWhiteSpace(zoneType))
             {
-                zoneType = skill.ZoneType;
+                zoneType = ResolvePlayerSkillAreaZoneType(skill);
             }
 
             if (!HasRenderableAnimation(animation) && HasRenderableAnimation(skill.ZoneAnimation))
@@ -599,6 +599,18 @@ namespace HaCreator.MapSimulator.Pools
             return levelData == null
                 ? 0
                 : Math.Max(levelData.Time, levelData.DotTime);
+        }
+
+        private static string ResolvePlayerSkillAreaZoneType(SkillData skill)
+        {
+            if (!string.IsNullOrWhiteSpace(skill?.ZoneType))
+            {
+                return skill.ZoneType;
+            }
+
+            return skill?.HasInvincibleMetadata == true
+                ? "invincible"
+                : null;
         }
 
         private static bool HasRenderableAnimation(SkillAnimation animation)

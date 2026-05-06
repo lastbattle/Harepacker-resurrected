@@ -419,8 +419,16 @@ namespace HaCreator.MapSimulator.UI
 
                 if (TryRecognizeClientInventoryOperationCompletion(candidate, payload, out string candidateRejectReason))
                 {
+                    if (matchedRequest != null)
+                    {
+                        matchedRequest = null;
+                        rejectReason = "Inventory-operation payload matched multiple active character equipment packet-owned requests.";
+                        return false;
+                    }
+
                     matchedRequest = candidate;
-                    return true;
+                    rejectReason = null;
+                    continue;
                 }
 
                 if (IsCharacterInventoryOperationRequestMismatch(candidateRejectReason))
@@ -431,6 +439,12 @@ namespace HaCreator.MapSimulator.UI
 
                 structuralRejectReason = candidateRejectReason;
                 break;
+            }
+
+            if (matchedRequest != null)
+            {
+                rejectReason = null;
+                return true;
             }
 
             rejectReason = !string.IsNullOrWhiteSpace(structuralRejectReason)

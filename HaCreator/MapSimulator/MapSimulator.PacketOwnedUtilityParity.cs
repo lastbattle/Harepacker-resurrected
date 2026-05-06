@@ -69,6 +69,10 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedQuestGuideUnavailableNoticeStringPoolId = 0x19EA;
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
         private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
+        private const int PacketOwnedJobChangeEffectStringPoolId = 0;
+        private const string PacketOwnedJobChangeEffectFallbackDescriptor = "Effect/BasicEff.img/JobChanged";
+        private const int PacketOwnedJobChangeSoundStringPoolId = 0;
+        private const string PacketOwnedJobChangeSoundFallbackDescriptor = "Sound/Game.img/JobChanged";
         private const int QuestAlarmRegistrationSyncMaxQuestCount = 5;
         private static readonly char[] QuestAlarmRegistrationSyncListTokenSeparators =
         {
@@ -362,6 +366,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _packetOwnedTutorSummonMessageSequenceIdsByObjectId = new();
         private int _packetOwnedTutorObservedCharacterId;
         private int _packetOwnedTutorObservedLevel;
+        private int _packetOwnedTutorObservedJobId;
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private PacketOwnedBattleshipDurabilityPresentationState _packetOwnedBattleshipDurabilityPresentation;
         private int _packetQuestGuideQuestId;
@@ -5357,6 +5362,7 @@ namespace HaCreator.MapSimulator
             }
 
             StampPacketOwnedUtilityRequestState();
+            ConsumePassiveTransferRequestFromPacketChairSitResult();
             int currentTick = Environment.TickCount;
             _packetOwnedLocalUtilityContext.ObserveChairSitResult(currentTick);
 
@@ -7778,6 +7784,7 @@ namespace HaCreator.MapSimulator
                     out autoRegisterEnabled,
                     out clearHiddenAutoTombstones,
                     out questIds,
+                    out hiddenAutoQuestIds,
                     out error))
             {
                 hasQuestRegistrationList = true;
@@ -7791,6 +7798,7 @@ namespace HaCreator.MapSimulator
                 out autoRegisterEnabled,
                 out clearHiddenAutoTombstones,
                 out questIds,
+                out hiddenAutoQuestIds,
                 out error);
             hasQuestRegistrationList = decoded;
             return decoded;
@@ -7803,6 +7811,7 @@ namespace HaCreator.MapSimulator
             out bool? autoRegisterEnabled,
             out bool clearHiddenAutoTombstones,
             out int[] questIds,
+            out int[] hiddenAutoQuestIds,
             out string error)
         {
             opened = null;
@@ -7810,6 +7819,7 @@ namespace HaCreator.MapSimulator
             autoRegisterEnabled = null;
             clearHiddenAutoTombstones = false;
             questIds = Array.Empty<int>();
+            hiddenAutoQuestIds = Array.Empty<int>();
             error = null;
 
             using var stream = new MemoryStream(payload, writable: false);
@@ -7829,13 +7839,18 @@ namespace HaCreator.MapSimulator
             {
                 questIdByteWidth = sizeof(ushort);
             }
-            else if (remainingBytes == count * sizeof(int))
+            else if (remainingBytes == count * sizeof(int)
+                || TryResolveQuestAlarmRegistrationSyncHiddenTailWidth(remainingBytes, count, sizeof(int), out _))
             {
                 questIdByteWidth = sizeof(int);
             }
+            else if (TryResolveQuestAlarmRegistrationSyncHiddenTailWidth(remainingBytes, count, sizeof(ushort), out _))
+            {
+                questIdByteWidth = sizeof(ushort);
+            }
             else
             {
-                error = "Quest-alarm registration-sync payload quest-id list length does not match its count.";
+                error = "Quest-alarm registration-sync payload quest-id list length does not match its count or hidden-auto tail.";
                 return false;
             }
 
@@ -7844,6 +7859,14 @@ namespace HaCreator.MapSimulator
             autoRegisterEnabled = (flags & 0x04) != 0;
             clearHiddenAutoTombstones = (flags & 0x08) != 0;
             questIds = DecodeQuestAlarmRegistrationQuestIds(reader, count, questIdByteWidth);
+            hiddenAutoQuestIds = DecodeQuestAlarmRegistrationHiddenAutoTail(reader, questIdByteWidth, out error);
+            if (error != null)
+            {
+                questIds = Array.Empty<int>();
+                hiddenAutoQuestIds = Array.Empty<int>();
+                return false;
+            }
+
             return true;
         }
 
@@ -7854,6 +7877,7 @@ namespace HaCreator.MapSimulator
             out bool? autoRegisterEnabled,
             out bool clearHiddenAutoTombstones,
             out int[] questIds,
+            out int[] hiddenAutoQuestIds,
             out string error)
         {
             opened = null;
@@ -7861,6 +7885,7 @@ namespace HaCreator.MapSimulator
             autoRegisterEnabled = null;
             clearHiddenAutoTombstones = false;
             questIds = Array.Empty<int>();
+            hiddenAutoQuestIds = Array.Empty<int>();
             error = "Quest-alarm registration-sync payload quest-id list length does not match its count.";
 
             int expectedUShortLength = sizeof(byte) + (QuestAlarmRegistrationSyncMaxQuestCount * sizeof(ushort));
@@ -7871,11 +7896,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (payload.Length == expectedUShortLength)
+            if (payload.Length == expectedUShortLength
+                || TryResolveQuestAlarmRegistrationSyncHiddenTailWidth(
+                    payload.Length - sizeof(byte),
+                    QuestAlarmRegistrationSyncMaxQuestCount,
+                    sizeof(ushort),
+                    out _))
             {
                 questIdByteWidth = sizeof(ushort);
             }
-            else if (payload.Length == expectedInt32Length)
+            else if (payload.Length == expectedInt32Length
+                || TryResolveQuestAlarmRegistrationSyncHiddenTailWidth(
+                    payload.Length - sizeof(byte),
+                    QuestAlarmRegistrationSyncMaxQuestCount,
+                    sizeof(int),
+                    out _))
             {
                 questIdByteWidth = sizeof(int);
             }
@@ -7893,8 +7928,68 @@ namespace HaCreator.MapSimulator
             autoRegisterEnabled = (flags & 0x04) != 0;
             clearHiddenAutoTombstones = (flags & 0x08) != 0;
             questIds = DecodeQuestAlarmRegistrationQuestIds(reader, QuestAlarmRegistrationSyncMaxQuestCount, questIdByteWidth);
+            hiddenAutoQuestIds = DecodeQuestAlarmRegistrationHiddenAutoTail(reader, questIdByteWidth, out error);
+            if (error != null)
+            {
+                questIds = Array.Empty<int>();
+                hiddenAutoQuestIds = Array.Empty<int>();
+                return false;
+            }
+
             error = null;
             return true;
+        }
+
+        private static bool TryResolveQuestAlarmRegistrationSyncHiddenTailWidth(
+            long remainingBytes,
+            int registeredCount,
+            int questIdByteWidth,
+            out int hiddenCount)
+        {
+            hiddenCount = 0;
+            long registeredBytes = registeredCount * questIdByteWidth;
+            long tailBytes = remainingBytes - registeredBytes;
+            if (tailBytes < sizeof(byte))
+            {
+                return false;
+            }
+
+            long hiddenQuestBytes = tailBytes - sizeof(byte);
+            if (hiddenQuestBytes < 0 || hiddenQuestBytes % questIdByteWidth != 0)
+            {
+                return false;
+            }
+
+            hiddenCount = (int)(hiddenQuestBytes / questIdByteWidth);
+            return hiddenCount <= QuestAlarmRegistrationSyncMaxQuestCount;
+        }
+
+        private static int[] DecodeQuestAlarmRegistrationHiddenAutoTail(
+            BinaryReader reader,
+            int questIdByteWidth,
+            out string error)
+        {
+            error = null;
+            if (reader.BaseStream.Position >= reader.BaseStream.Length)
+            {
+                return Array.Empty<int>();
+            }
+
+            int hiddenCount = reader.ReadByte();
+            if (hiddenCount > QuestAlarmRegistrationSyncMaxQuestCount)
+            {
+                error = "Quest-alarm registration-sync hidden-auto tail cannot contain more than five quests.";
+                return Array.Empty<int>();
+            }
+
+            long remainingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
+            if (remainingBytes != hiddenCount * questIdByteWidth)
+            {
+                error = "Quest-alarm registration-sync hidden-auto tail length does not match its count.";
+                return Array.Empty<int>();
+            }
+
+            return DecodeQuestAlarmRegistrationQuestIds(reader, hiddenCount, questIdByteWidth);
         }
 
         private static int[] DecodeQuestAlarmRegistrationQuestIds(BinaryReader reader, int count, int questIdByteWidth)
@@ -10783,16 +10878,12 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                if (reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(uint))
+                if (reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(int))
                 {
-                    uint decodedTimeValue = reader.ReadUInt32();
-                    if (decodedTimeValue > int.MaxValue)
-                    {
-                        message = "Radio-schedule client payload timeValue exceeded the supported signed playback range.";
-                        return false;
-                    }
-
-                    timeValue = (int)decodedTimeValue;
+                    // CUserLocal::OnRadioSchedule reads the playhead with CInPacket::Decode4.
+                    // Keep the signed body intact here; CRadioManager playback normalization
+                    // handles negative authored values instead of rejecting the packet shape.
+                    timeValue = reader.ReadInt32();
                 }
                 else
                 {
@@ -12643,7 +12734,19 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedChatMessage = payloadMessage;
             }
 
-            PacketOwnedChatRoute route = ResolvePacketOwnedChatRoute(_lastPacketOwnedChatMessage, channel);
+            PacketOwnedChatRoute route;
+            if (IsPacketOwnedGroupFamilyChatChannel(channel))
+            {
+                if (!TryResolvePacketOwnedChatChannel(channel, _lastPacketOwnedChatMessage, out route))
+                {
+                    return $"Rejected packet-owned group chat channel '{channel}' because it is not a recovered CField::OnGroupMessage family.";
+                }
+            }
+            else
+            {
+                route = ResolvePacketOwnedChatRoute(_lastPacketOwnedChatMessage, channel);
+            }
+
             _chat?.AddClientChatMessage(
                 route.Line,
                 currentTick,
@@ -13766,18 +13869,26 @@ namespace HaCreator.MapSimulator
         private void ObservePacketOwnedTutorLevelGate(int runtimeCharacterId, int currentTickCount)
         {
             int currentLevel = Math.Max(0, _playerManager?.Player?.Build?.Level ?? 0);
+            int currentJobId = Math.Max(0, _playerManager?.Player?.Build?.Job ?? 0);
             if (_packetOwnedTutorObservedCharacterId != runtimeCharacterId)
             {
                 _packetOwnedTutorObservedCharacterId = runtimeCharacterId;
                 _packetOwnedTutorObservedLevel = currentLevel;
+                _packetOwnedTutorObservedJobId = currentJobId;
                 return;
             }
 
             int previousObservedLevel = _packetOwnedTutorObservedLevel;
-            ApplyPacketOwnedTutorAdjacentLevelUpEffects(previousObservedLevel, currentLevel);
+            int previousObservedJobId = _packetOwnedTutorObservedJobId;
+            ApplyPacketOwnedTutorAdjacentLevelUpEffects(
+                previousObservedLevel,
+                currentLevel,
+                previousObservedJobId,
+                currentJobId);
             if (!ShouldRemovePacketOwnedTutorForLevelTransition(_packetOwnedTutorObservedLevel, currentLevel))
             {
                 _packetOwnedTutorObservedLevel = currentLevel;
+                _packetOwnedTutorObservedJobId = currentJobId;
                 return;
             }
 
@@ -13808,6 +13919,7 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedTutorObservedLevel = currentLevel;
+            _packetOwnedTutorObservedJobId = currentJobId;
         }
 
         private int ResolvePacketOwnedApspSeedCharacterId()
@@ -13885,7 +13997,11 @@ namespace HaCreator.MapSimulator
                 && currentLevel == 2;
         }
 
-        private void ApplyPacketOwnedTutorAdjacentLevelUpEffects(int previousObservedLevel, int currentLevel)
+        private void ApplyPacketOwnedTutorAdjacentLevelUpEffects(
+            int previousObservedLevel,
+            int currentLevel,
+            int previousObservedJobId,
+            int currentJobId)
         {
             if (!ShouldApplyPacketOwnedTutorAdjacentLevelUpEffects(previousObservedLevel, currentLevel))
             {
@@ -13938,6 +14054,27 @@ namespace HaCreator.MapSimulator
                 : "No active pet auto-speaking owner accepted the packet-owned level-up event.";
             levelUpSummary = $"{levelUpSummary} {petSpeakingSummary}";
 
+            if (ShouldApplyPacketOwnedTutorJobChangeStatWindow(previousObservedJobId, currentJobId))
+            {
+                string jobChangeEffectDescriptor = MapleStoryStringPool.GetOrFallback(
+                    PacketOwnedJobChangeEffectStringPoolId,
+                    PacketOwnedJobChangeEffectFallbackDescriptor);
+                string jobChangeSoundDescriptor = MapleStoryStringPool.GetOrFallback(
+                    PacketOwnedJobChangeSoundStringPoolId,
+                    PacketOwnedJobChangeSoundFallbackDescriptor);
+                bool registeredJobChangeEffect = TryRegisterPacketOwnedTutorLevelUpGeneralEffect(
+                    jobChangeEffectDescriptor,
+                    out string resolvedJobChangeEffectDescriptor);
+                bool playedJobChangeSound = TryPlayPacketOwnedWzSound(
+                    jobChangeSoundDescriptor,
+                    "Game.img",
+                    out string resolvedJobChangeSoundDescriptor,
+                    out _,
+                    strictClientSoundFamily: true);
+                string statOwnerMessage = ShowPacketOwnedWindow(MapSimulatorWindowNames.Ability, "Stat");
+                levelUpSummary = $"{levelUpSummary} Job-change branch: {(registeredJobChangeEffect ? $"registered {resolvedJobChangeEffectDescriptor}" : $"could not resolve {jobChangeEffectDescriptor}")}; {(playedJobChangeSound ? $"played {resolvedJobChangeSoundDescriptor}" : "could not resolve job-change sound")}; {statOwnerMessage}";
+            }
+
             if (!ShouldApplyPacketOwnedTutorLevelTwoUiSideEffects(previousObservedLevel, currentLevel))
             {
                 NotifyEventAlarmOwnerActivity("packet-owned tutor level-up");
@@ -13960,6 +14097,14 @@ namespace HaCreator.MapSimulator
             }
 
             return !IsPacketOwnedTutorEvanJobChangeLevel(currentJobId, currentLevel);
+        }
+
+        internal static bool ShouldApplyPacketOwnedTutorJobChangeStatWindow(int previousJobId, int currentJobId)
+        {
+            return previousJobId > 0
+                && currentJobId > 0
+                && previousJobId != currentJobId
+                && (previousJobId % 1000 == 0 || previousJobId == 2001);
         }
 
         internal static bool IsPacketOwnedTutorEvanJobChangeLevel(int jobId, int level)
@@ -15823,6 +15968,18 @@ namespace HaCreator.MapSimulator
             return new PacketOwnedChatRoute(
                 FormatPacketOwnedChatLine(resolvedMessage, channel),
                 -1);
+        }
+
+        private static bool IsPacketOwnedGroupFamilyChatChannel(string channel)
+        {
+            if (string.IsNullOrWhiteSpace(channel))
+            {
+                return false;
+            }
+
+            string mode = channel.Split(':')[0].Trim();
+            return mode.Equals("group", StringComparison.OrdinalIgnoreCase)
+                || (mode.StartsWith("group", StringComparison.OrdinalIgnoreCase) && mode.Length > "group".Length);
         }
 
         private static bool TryParsePacketOwnedStructuredChatPayload(
@@ -20833,6 +20990,7 @@ namespace HaCreator.MapSimulator
                 EventEntryStatus status = TryParsePacketOwnedEventEntryStatus(statusText, out EventEntryStatus parsedStatus)
                     ? parsedStatus
                     : EventEntryStatus.Upcoming;
+                EventEntryRowLayoutSnapshot rowLayout = ResolvePacketOwnedEventRowLayoutSnapshotFromHtmlAttributes(attrs);
                 destination.Add(CreatePacketOwnedEventCalendarEntry(
                     scheduledAt,
                     title.Trim(),
@@ -20842,8 +21000,45 @@ namespace HaCreator.MapSimulator
                     int.MinValue,
                     ResolvePacketOwnedEventEntrySortPriority(status),
                     destination.Count,
-                    alarmText: alarmText?.Trim() ?? string.Empty));
+                    alarmText: alarmText?.Trim() ?? string.Empty,
+                    rowLayout: rowLayout));
             }
+        }
+
+        private static EventEntryRowLayoutSnapshot ResolvePacketOwnedEventRowLayoutSnapshotFromHtmlAttributes(string attrs)
+        {
+            if (string.IsNullOrWhiteSpace(attrs))
+            {
+                return new EventEntryRowLayoutSnapshot();
+            }
+
+            return new EventEntryRowLayoutSnapshot
+            {
+                TitleLeft = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-title-x", "data-title-left", "title-x", "title-left"),
+                TitleTop = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-title-y", "data-title-top", "title-y", "title-top"),
+                TitleWidth = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-title-width", "data-title-w", "title-width", "title-w"),
+                DetailLeft = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-detail-x", "data-detail-left", "detail-x", "detail-left"),
+                DetailTop = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-detail-y", "data-detail-top", "detail-y", "detail-top"),
+                DetailWidth = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-detail-width", "data-detail-w", "detail-width", "detail-w"),
+                StatusLeft = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-status-x", "data-status-left", "status-x", "status-left"),
+                StatusTop = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-status-y", "data-status-top", "status-y", "status-top"),
+                StatusWidth = TryExtractPacketOwnedHtmlIntAttribute(attrs, "data-status-width", "data-status-w", "status-width", "status-w")
+            };
+        }
+
+        private static int? TryExtractPacketOwnedHtmlIntAttribute(string attrs, params string[] names)
+        {
+            foreach (string name in names ?? Array.Empty<string>())
+            {
+                string value = TryExtractPacketOwnedHtmlAttribute(attrs, name);
+                if (!string.IsNullOrWhiteSpace(value)
+                    && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue))
+                {
+                    return parsedValue;
+                }
+            }
+
+            return null;
         }
 
         private static bool TryCreatePacketOwnedEventCalendarEntryFromHtmlCells(

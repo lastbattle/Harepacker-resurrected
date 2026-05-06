@@ -4140,10 +4140,9 @@ namespace HaCreator.MapSimulator
             WriteCashReceiveGiftMapleString(writer, giftSender);
             WriteCashReceiveGiftMapleString(writer, replyText ?? string.Empty);
             writer.Write((byte)1);
-            int zeroBasedGiftIndex = selectedGift?.PacketRowIndex > 0
-                ? selectedGift.PacketRowIndex - 1
-                : Math.Max(0, selectedGiftIndex);
-            writer.Write(Math.Max(0, zeroBasedGiftIndex));
+            // CCashShop::OnCashItemResLoadGiftDone writes the current GW_GiftList loop index,
+            // not the packet row label carried by the staged simulator entry.
+            writer.Write(Math.Max(0, selectedGiftIndex));
             writer.Write(selectedGift?.SerialNumber ?? 0L);
             writer.Flush();
             return stream.ToArray();

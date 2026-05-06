@@ -1869,6 +1869,11 @@ namespace HaCreator.MapSimulator.Companions
                 _ = reader.ReadInt64(); // liCashItemSN
             }
 
+            if (!TryEnsureRemaining(stream, sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
             _ = reader.ReadInt64(); // dateExpire
             bool matchedMechanicAddByHeader = TryMatchesMechanicInventoryOperationAdd(
                     request,
@@ -1965,6 +1970,11 @@ namespace HaCreator.MapSimulator.Companions
                 }
 
                 _ = reader.ReadInt64(); // liCashItemSN
+            }
+
+            if (!TryEnsureRemaining(stream, sizeof(long), out rejectReason))
+            {
+                return false;
             }
 
             _ = reader.ReadInt64(); // dateExpire

@@ -435,6 +435,7 @@ namespace HaCreator.MapSimulator.Interaction
             int DecodedBodyByteLength,
             int ResidualTailByteLength);
         private readonly record struct MerchantPacketItemRow(short Number, short Set, int Price, PacketOwnedTradeItem Item);
+        private readonly record struct MerchantShopRowRefresh(byte PacketSlotIndex, int ItemId, int BundleQuantity, int BundlePrice, string DecodeShape, PacketOwnedTradeItem? PacketItem);
         private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
@@ -6191,16 +6192,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyMerchantShopRowRefreshPacket(PacketReader reader, out string message)
         {
-            int packetSlotIndex = reader.ReadByte();
-            int itemId = reader.ReadInt();
-            int bundleQuantity = reader.ReadShort();
-            int bundlePrice = reader.ReadInt();
-            if (itemId <= 0)
+            byte[] payload = reader.ReadBytes(reader.Remaining);
+            if (!TryDecodeMerchantShopRowRefreshPayload(payload, out MerchantShopRowRefresh rowRefresh, out message))
             {
-                message = $"Merchant shop-row refresh packet carried invalid item id {itemId} for packet slot {packetSlotIndex}.";
                 return false;
             }
 
+            int packetSlotIndex = rowRefresh.PacketSlotIndex;
+            int itemId = rowRefresh.ItemId;
+            int bundleQuantity = rowRefresh.BundleQuantity;
+            int bundlePrice = rowRefresh.BundlePrice;
             int normalizedSlotIndex = Math.Max(0, packetSlotIndex);
             int normalizedQuantity = Math.Max(1, bundleQuantity);
             int normalizedPrice = Math.Max(0, bundlePrice);
@@ -6250,10 +6251,139 @@ namespace HaCreator.MapSimulator.Interaction
             EnsureMerchantPacketNotes();
             _notes[0] = $"Authoritative merchant subtype 25/base subtype 6 row refresh applied packet slot {normalizedSlotIndex}.";
             _notes[1] = $"{itemName} x{normalizedQuantity} is now listed for {normalizedPrice:N0} meso from the packet-owned row array.";
-            StatusMessage = $"CPersonalShopDlg::OnPacket applied subtype 15 shop-row refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: slot {normalizedSlotIndex}, {itemName} x{normalizedQuantity}, price {normalizedPrice:N0}.";
+            string packetItemDetail = rowRefresh.PacketItem.HasValue
+                ? $" {BuildTradingRoomPacketItemDetail("Merchant row refresh", normalizedSlotIndex, rowRefresh.PacketItem.Value)}"
+                : string.Empty;
+            StatusMessage = $"CPersonalShopDlg::OnPacket applied subtype 15 shop-row refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6 using {rowRefresh.DecodeShape}: slot {normalizedSlotIndex}, {itemName} x{normalizedQuantity}, price {normalizedPrice:N0}.{packetItemDetail}";
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private static bool TryDecodeMerchantShopRowRefreshPayload(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "Merchant shop-row refresh packet did not include a row body.";
+                return false;
+            }
+
+            if (TryDecodeLegacyMerchantShopRowRefreshPayload(payload, out rowRefresh, out message))
+            {
+                return true;
+            }
+
+            if (TryDecodeMerchantShopRowRefreshWithPacketItem(payload, out rowRefresh, out message))
+            {
+                return true;
+            }
+
+            message ??= $"Merchant shop-row refresh packet did not match the modeled legacy tuple or GW_ItemSlotBase row body shape ({payload.Length} byte(s)).";
+            return false;
+        }
+
+        private static bool TryDecodeLegacyMerchantShopRowRefreshPayload(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            const int legacyPayloadLength = sizeof(byte) + sizeof(int) + sizeof(short) + sizeof(int);
+            if (payload == null || payload.Length != legacyPayloadLength)
+            {
+                return false;
+            }
+
+            int offset = 0;
+            byte packetSlotIndex = payload[offset++];
+            int itemId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            offset += sizeof(int);
+            short bundleQuantity = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            offset += sizeof(short);
+            int bundlePrice = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            if (itemId <= 0)
+            {
+                message = $"Merchant shop-row refresh packet carried invalid item id {itemId} for packet slot {packetSlotIndex}.";
+                return false;
+            }
+
+            rowRefresh = new MerchantShopRowRefresh(
+                packetSlotIndex,
+                itemId,
+                Math.Max(1, (int)bundleQuantity),
+                Math.Max(0, bundlePrice),
+                "legacy simulator itemId/count/price tuple",
+                null);
+            return true;
+        }
+
+        private static bool TryDecodeMerchantShopRowRefreshWithPacketItem(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            if (payload == null || payload.Length < sizeof(byte) + sizeof(int) + 1)
+            {
+                return false;
+            }
+
+            byte packetSlotIndex = payload[0];
+            ReadOnlySpan<byte> body = payload.AsSpan(1);
+            if (TryDecodePacketItemThenPrice(packetSlotIndex, body, out rowRefresh, out message))
+            {
+                return true;
+            }
+
+            if (body.Length > sizeof(int))
+            {
+                int leadingPrice = BinaryPrimitives.ReadInt32LittleEndian(body[..sizeof(int)]);
+                if (TryDecodePacketOwnedTradeItem(body[sizeof(int)..], out PacketOwnedTradeItem leadingPriceItem, out string itemError))
+                {
+                    rowRefresh = new MerchantShopRowRefresh(
+                        packetSlotIndex,
+                        leadingPriceItem.ItemId,
+                        Math.Max(1, leadingPriceItem.Quantity),
+                        Math.Max(0, leadingPrice),
+                        "GW_ItemSlotBase merchant row body with leading price",
+                        leadingPriceItem);
+                    return true;
+                }
+
+                message = itemError;
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodePacketItemThenPrice(byte packetSlotIndex, ReadOnlySpan<byte> body, out MerchantShopRowRefresh rowRefresh, out string message)
+        {
+            rowRefresh = default;
+            message = null;
+            if (body.Length <= sizeof(int))
+            {
+                return false;
+            }
+
+            for (int priceOffset = body.Length - sizeof(int); priceOffset >= 1; priceOffset--)
+            {
+                ReadOnlySpan<byte> itemPayload = body[..priceOffset];
+                if (!TryDecodePacketOwnedTradeItem(itemPayload, out PacketOwnedTradeItem item, out _))
+                {
+                    continue;
+                }
+
+                int bundlePrice = BinaryPrimitives.ReadInt32LittleEndian(body.Slice(priceOffset, sizeof(int)));
+                rowRefresh = new MerchantShopRowRefresh(
+                    packetSlotIndex,
+                    item.ItemId,
+                    Math.Max(1, item.Quantity),
+                    Math.Max(0, bundlePrice),
+                    "GW_ItemSlotBase merchant row body with trailing price",
+                    item);
+                return true;
+            }
+
+            message = "Merchant shop-row refresh packet did not contain a decodable GW_ItemSlotBase body before the price field.";
+            return false;
         }
 
         private bool TryApplyPersonalShopMoveItemPacket(PacketReader reader, out string message)

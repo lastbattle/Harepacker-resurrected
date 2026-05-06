@@ -510,6 +510,7 @@ namespace HaCreator.MapSimulator.UI
 
             ResetDragState();
             ResetTransientHoverState();
+            ResetHoverTargets();
         }
 
         public void EnsureExpanded()
@@ -956,6 +957,7 @@ namespace HaCreator.MapSimulator.UI
             if (shouldResetTransientHoverState)
             {
                 ResetTransientHoverState();
+                ResetHoverTargets();
             }
 
             SyncFramePositionsFrom(previousFrame);

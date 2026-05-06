@@ -120,9 +120,9 @@ namespace HaCreator.MapSimulator.Fields
 
             return kind switch
             {
-                SocialRoomKind.PersonalShop when mapInfo?.personalShop == false =>
+                SocialRoomKind.PersonalShop when ResolveInfoBool(mapInfo, "personalShop", GetMapleBoolValue(mapInfo?.personalShop)) == false =>
                     "Personal shops cannot be opened in this map.",
-                SocialRoomKind.EntrustedShop when mapInfo?.entrustedShop == false =>
+                SocialRoomKind.EntrustedShop when ResolveInfoBool(mapInfo, "entrustedShop", GetMapleBoolValue(mapInfo?.entrustedShop)) == false =>
                     "Entrusted shops cannot be opened in this map.",
                 _ => null
             };
@@ -179,7 +179,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetDragonCompanionRestrictionMessage(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON
+            return GetInfoFieldType(mapInfo) == FieldType.FIELDTYPE_NODRAGON
                    || mapInfo?.vanishDragon == true
                    || IsInfoFlagSet(mapInfo, "vanishDragon")
                 ? "Dragon companion features are disabled in this map."
@@ -916,9 +916,9 @@ namespace HaCreator.MapSimulator.Fields
                 return transferRestrictionMessage;
             }
 
-            if (mapInfo.noMapCmd == true ||
-                (mapInfo.moveLimit.HasValue && mapInfo.moveLimit.Value > 0) ||
-                (mapInfo.fieldType.HasValue && mapInfo.fieldType.Value != FieldType.FIELDTYPE_DEFAULT))
+            if (HasNoMapCommand(mapInfo) ||
+                GetMoveLimit(mapInfo) > 0 ||
+                IsNonDefaultFieldType(mapInfo))
             {
                 return GenericMapTransferRegistrationRestrictionMessage;
             }
@@ -953,9 +953,9 @@ namespace HaCreator.MapSimulator.Fields
                 return MapTransferRuntimePacketResultCode.CannotSaveDestination;
             }
 
-            if (mapInfo.noMapCmd == true ||
-                (mapInfo.moveLimit.HasValue && mapInfo.moveLimit.Value > 0) ||
-                (mapInfo.fieldType.HasValue && mapInfo.fieldType.Value != FieldType.FIELDTYPE_DEFAULT))
+            if (HasNoMapCommand(mapInfo) ||
+                GetMoveLimit(mapInfo) > 0 ||
+                IsNonDefaultFieldType(mapInfo))
             {
                 return MapTransferRuntimePacketResultCode.CannotSaveDestination;
             }
@@ -1162,6 +1162,55 @@ namespace HaCreator.MapSimulator.Fields
                     ? value
                     : null;
             }
+        }
+
+        private static bool? ResolveInfoBool(MapInfo mapInfo, string propertyName, bool? typedValue)
+        {
+            if (typedValue.HasValue)
+            {
+                return typedValue.Value;
+            }
+
+            int? infoValue = GetInfoInt(mapInfo, propertyName);
+            return infoValue.HasValue
+                ? infoValue.Value != 0
+                : null;
+        }
+
+        private static bool HasNoMapCommand(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "noMapCmd", GetMapleBoolValue(mapInfo?.noMapCmd)) == true;
+        }
+
+        private static int GetMoveLimit(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.moveLimit ?? GetInfoInt(mapInfo, "moveLimit") ?? 0);
+        }
+
+        private static FieldType? GetInfoFieldType(MapInfo mapInfo)
+        {
+            if (mapInfo?.fieldType.HasValue == true)
+            {
+                return mapInfo.fieldType.Value;
+            }
+
+            int? fieldTypeValue = GetInfoInt(mapInfo, "fieldType");
+            return fieldTypeValue.HasValue
+                ? (FieldType)fieldTypeValue.Value
+                : null;
+        }
+
+        private static bool IsNonDefaultFieldType(MapInfo mapInfo)
+        {
+            FieldType? fieldType = GetInfoFieldType(mapInfo);
+            return fieldType.HasValue && fieldType.Value != FieldType.FIELDTYPE_DEFAULT;
+        }
+
+        private static bool? GetMapleBoolValue(MapleBool? value)
+        {
+            return value.HasValue && value.Value.HasValue
+                ? value.Value.Value
+                : null;
         }
 
         private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)

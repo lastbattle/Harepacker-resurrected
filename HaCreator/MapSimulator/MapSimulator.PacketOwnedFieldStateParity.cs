@@ -277,7 +277,7 @@ namespace HaCreator.MapSimulator
             }
 
             mapObject.DebugText =
-                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.LifecycleDebugSuffix}";
+                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.BuildSelectedStateDebugSuffix(stateIndex)}{metadata.LifecycleDebugSuffix}";
         }
 
         private int? TryGetPacketOwnedNamedObjectStateIndex(string objectName)
@@ -332,6 +332,55 @@ namespace HaCreator.MapSimulator
             return fallbackVisibleIndex;
         }
 
+        [Flags]
+        internal enum PacketOwnedNamedObjectMetadataLane
+        {
+            None = 0,
+            ChangingObject = 1 << 0,
+            ReflectionInfo = 1 << 1,
+            QuestVisible = 1 << 2
+        }
+
+        internal static PacketOwnedNamedObjectMetadataLane ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+            bool hasChangingObjectMetadata,
+            bool hasReflectionMetadata,
+            bool hasQuestVisibleMetadata)
+        {
+            PacketOwnedNamedObjectMetadataLane lanes = PacketOwnedNamedObjectMetadataLane.None;
+            if (hasChangingObjectMetadata)
+            {
+                lanes |= PacketOwnedNamedObjectMetadataLane.ChangingObject;
+            }
+
+            if (hasReflectionMetadata)
+            {
+                lanes |= PacketOwnedNamedObjectMetadataLane.ReflectionInfo;
+            }
+
+            if (hasQuestVisibleMetadata)
+            {
+                lanes |= PacketOwnedNamedObjectMetadataLane.QuestVisible;
+            }
+
+            return lanes;
+        }
+
+        internal static PacketOwnedNamedObjectMetadataLane ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+            bool reflection,
+            bool flow,
+            int? rx,
+            int? ry,
+            int? cx,
+            int? cy,
+            bool hasQuestVisibleMetadata)
+        {
+            bool hasChangingObjectMetadata = flow || rx.HasValue || ry.HasValue || cx.HasValue || cy.HasValue;
+            return ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+                hasChangingObjectMetadata,
+                reflection,
+                hasQuestVisibleMetadata);
+        }
+
         private sealed record PacketOwnedNamedObjectStateMetadata(
             string Name,
             string ObjectSet,
@@ -349,6 +398,8 @@ namespace HaCreator.MapSimulator
             int? Cy,
             string StateSfx,
             IReadOnlyDictionary<int, string> AuthoredStateSfxByIndex,
+            IReadOnlyDictionary<int, int> AuthoredStateRepeatByIndex,
+            PacketOwnedNamedObjectMetadataLane MetadataLanes,
             IReadOnlySet<int> AuthoredStateIndexes)
         {
             public string ObjectPath => $"Map/Obj/{ObjectSet}.img/{Layer0}/{Layer1}/{Layer2}";
@@ -371,6 +422,36 @@ namespace HaCreator.MapSimulator
                 return StateSfx;
             }
 
+            public int? ResolveStateRepeat(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateRepeatByIndex != null &&
+                    AuthoredStateRepeatByIndex.TryGetValue(stateIndex, out int repeat))
+                {
+                    return repeat;
+                }
+
+                return null;
+            }
+
+            public string BuildSelectedStateDebugSuffix(int stateIndex)
+            {
+                List<string> parts = new();
+                string stateSfx = ResolveStateSfx(stateIndex);
+                if (!string.IsNullOrWhiteSpace(stateSfx))
+                {
+                    parts.Add($"selectedSfx={stateSfx}");
+                }
+
+                int? repeat = ResolveStateRepeat(stateIndex);
+                if (repeat.HasValue)
+                {
+                    parts.Add($"selectedRepeat={repeat.Value}");
+                }
+
+                return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
+            }
+
             public string LifecycleDebugSuffix
             {
                 get
@@ -386,6 +467,16 @@ namespace HaCreator.MapSimulator
                         parts.Add($"authoredStates={string.Join("/", AuthoredStateIndexes.OrderBy(static state => state))}");
                     }
 
+                    if (AuthoredStateRepeatByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateRepeat={string.Join("/", AuthoredStateRepeatByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value}"))}");
+                    }
+
+                    if (MetadataLanes != PacketOwnedNamedObjectMetadataLane.None)
+                    {
+                        parts.Add($"metadata={FormatMetadataLanes(MetadataLanes)}");
+                    }
+
                     if (Flow != 0)
                     {
                         parts.Add("restartMoving");
@@ -393,6 +484,27 @@ namespace HaCreator.MapSimulator
 
                     return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
                 }
+            }
+
+            private static string FormatMetadataLanes(PacketOwnedNamedObjectMetadataLane lanes)
+            {
+                List<string> names = new();
+                if ((lanes & PacketOwnedNamedObjectMetadataLane.ChangingObject) != 0)
+                {
+                    names.Add("changing-object");
+                }
+
+                if ((lanes & PacketOwnedNamedObjectMetadataLane.ReflectionInfo) != 0)
+                {
+                    names.Add("reflection-info");
+                }
+
+                if ((lanes & PacketOwnedNamedObjectMetadataLane.QuestVisible) != 0)
+                {
+                    names.Add("quest-visible");
+                }
+
+                return names.Count == 0 ? "none" : string.Join("/", names);
             }
         }
 

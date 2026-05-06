@@ -229,7 +229,6 @@ namespace HaCreator.MapSimulator.UI
             public const int TradeRequest = 1;
             public const int Close = 2;
             public const int RegisterWishlistItem = 3;
-            public const int SearchWishlistItemName = 4;
         }
 
         private static class StorageExpansionFailureReason
@@ -547,7 +546,6 @@ namespace HaCreator.MapSimulator.UI
         private const int PacketOwnedAdminShopTradeRequestMode = PacketOwnedAdminShopOutboundMode.TradeRequest;
         private const int PacketOwnedAdminShopCloseMode = PacketOwnedAdminShopOutboundMode.Close;
         private const int PacketOwnedAdminShopWishlistRegisterMode = PacketOwnedAdminShopOutboundMode.RegisterWishlistItem;
-        private const int PacketOwnedAdminShopWishlistSearchMode = PacketOwnedAdminShopOutboundMode.SearchWishlistItemName;
 
         public AdminShopDialogUI(
             IDXObject frame,
@@ -2541,16 +2539,8 @@ namespace HaCreator.MapSimulator.UI
                 _packetOwnedWishlistPendingSearchQuery,
                 _packetOwnedWishlistPendingSearchCategoryKey,
                 _packetOwnedWishlistPendingSearchPriceRangeIndex);
-            if (TryBuildPacketOwnedAdminShopWishlistSearchRequest(
-                    _packetOwnedWishlistPendingSearchQuery,
-                    out PacketOwnedNpcUtilityOutboundRequest request,
-                    out _))
-            {
-                string outboundSummary = DispatchPacketOwnedAdminShopOutbound(request);
-                _packetOwnedAdminShopSession.SetWaitingForResult(true);
-                _packetOwnedAdminShopSession.SetLastOwnerState(
-                    $"CUIAdminShopWishList::SearchItemName sent opcode 74 mode 4 and is waiting for packet 366 subtype 4. {outboundSummary}");
-            }
+            _packetOwnedAdminShopSession.SetLastOwnerState(
+                "CUIAdminShopWishList::SearchItemName updated the owner-local no-space query, toggled the search-result child, reset it, and invalidated it without sending an admin-shop opcode 74 request.");
 
             AdvancePacketOwnedWishlistSearchStateToken();
         }
@@ -10247,22 +10237,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static int ResolveCashShopIncTrunkCountSelectedPaymentOption(int availablePaymentOptions)
         {
-            if ((availablePaymentOptions & 1) != 0)
-            {
-                return 1;
-            }
-
-            if ((availablePaymentOptions & 2) != 0)
-            {
-                return 2;
-            }
-
-            if ((availablePaymentOptions & 4) != 0)
-            {
-                return 4;
-            }
-
-            return 0;
+            return availablePaymentOptions & 0x7;
         }
 
         private static string BuildCashShopIncTrunkCountConfirmPrompt()
@@ -10423,31 +10398,6 @@ namespace HaCreator.MapSimulator.UI
                 74,
                 payload,
                 $"Mirrored CAdminShopDlg::SendTradeRequest opcode 74 mode 1 for SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} count {normalizedCount.ToString(CultureInfo.InvariantCulture)} pos {normalizedPosition.ToString(CultureInfo.InvariantCulture)}.");
-            return true;
-        }
-
-        internal static bool TryBuildPacketOwnedAdminShopWishlistSearchRequest(
-            string query,
-            out PacketOwnedNpcUtilityOutboundRequest request,
-            out string error)
-        {
-            request = default;
-            error = string.Empty;
-            string normalizedQuery = BuildClientWishlistSearchQuery(query?.Trim());
-            if (string.IsNullOrWhiteSpace(normalizedQuery))
-            {
-                error = "CUIAdminShopWishList::SearchItemName could not mirror opcode 74 mode 4 because the item-name query is empty.";
-                return false;
-            }
-
-            using PacketWriter writer = new();
-            writer.WriteByte(PacketOwnedAdminShopWishlistSearchMode);
-            writer.WriteMapleString(normalizedQuery);
-            byte[] payload = writer.ToArray();
-            request = new PacketOwnedNpcUtilityOutboundRequest(
-                74,
-                payload,
-                $"Mirrored CUIAdminShopWishList::SearchItemName opcode 74 mode 4 for query \"{normalizedQuery}\".");
             return true;
         }
 

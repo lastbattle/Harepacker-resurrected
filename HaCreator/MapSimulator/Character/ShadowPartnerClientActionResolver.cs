@@ -2907,7 +2907,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (IsClientInitializedShadowPartnerRawActionName(actionName))
             {
-                return true;
+                return IsSupportedRawActionName(actionName, supportedRawActionNames);
             }
 
             return false;
@@ -3557,7 +3557,10 @@ namespace HaCreator.MapSimulator.Character
                 (int)Math.Round(MathHelper.Lerp(startOffset.Y, targetOffset.Y, progress)));
         }
 
-        public static bool ShouldRenderClientShadowPartner(int? skillId, int? rawActionCode)
+        public static bool ShouldRenderClientShadowPartner(
+            int? skillId,
+            int? rawActionCode,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             if (skillId == SkillData.MirrorImageSkillId)
             {
@@ -3566,7 +3569,8 @@ namespace HaCreator.MapSimulator.Character
 
             if (rawActionCode.HasValue
                 && (rawActionCode.Value >= ClientInitializedShadowPartnerActionCodeLimitExclusive
-                    || ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode.Value)))
+                    || ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode.Value)
+                    || !IsSupportedRawActionCodeForFamily(rawActionCode.Value, supportedRawActionNames)))
             {
                 return false;
             }
@@ -4369,7 +4373,10 @@ namespace HaCreator.MapSimulator.Character
 
             if (!SupportedRawActionCanonicalNames.TryGetValue(actionName, out string canonicalActionName))
             {
-                return true;
+                return !IsClientInitializedShadowPartnerRawActionName(actionName)
+                       || supportedRawActionNames == null
+                       || supportedRawActionNames.Count == 0
+                       || supportedRawActionNames.Contains(actionName);
             }
 
             return supportedRawActionNames.Contains(canonicalActionName);
@@ -4380,6 +4387,15 @@ namespace HaCreator.MapSimulator.Character
             IReadOnlySet<string> supportedRawActionNames)
         {
             return IsSupportedRawActionName(actionName, supportedRawActionNames);
+        }
+
+        private static bool IsSupportedRawActionCodeForFamily(
+            int rawActionCode,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            return !CharacterPart.TryGetActionStringFromCode(rawActionCode, out string rawActionName)
+                   || string.IsNullOrWhiteSpace(rawActionName)
+                   || IsSupportedRawActionName(rawActionName, supportedRawActionNames);
         }
 
         private static bool IsFamilyUnsupportedClientRawActionName(

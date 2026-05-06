@@ -740,12 +740,50 @@ namespace HaCreator.MapSimulator
             HashSet<string> candidates = new(StringComparer.OrdinalIgnoreCase);
             AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, name);
 
-            foreach (string token in name.Split(new[] { ',', ';', '|', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (string token in SplitPacketOwnedDynamicObjectNameLookupTokens(name))
             {
                 AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, token);
             }
 
             return candidates.ToArray();
+        }
+
+        private static IEnumerable<string> SplitPacketOwnedDynamicObjectNameLookupTokens(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                yield break;
+            }
+
+            int tokenStart = -1;
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (IsPacketOwnedDynamicObjectNameTokenSeparator(name[i]))
+                {
+                    if (tokenStart >= 0)
+                    {
+                        yield return name[tokenStart..i];
+                        tokenStart = -1;
+                    }
+
+                    continue;
+                }
+
+                    tokenStart = i;
+            }
+
+            if (tokenStart >= 0)
+            {
+                yield return name[tokenStart..];
+            }
+        }
+
+        private static bool IsPacketOwnedDynamicObjectNameTokenSeparator(char value)
+        {
+            return value == ','
+                || value == ';'
+                || value == '|'
+                || char.IsControl(value);
         }
 
         private static void AddPacketOwnedDynamicObjectNameLookupCandidate(ISet<string> candidates, string name)

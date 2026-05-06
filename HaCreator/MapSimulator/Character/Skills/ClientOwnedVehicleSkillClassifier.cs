@@ -282,6 +282,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // vehicle id 1932016, and Character/TamingMob/01932016 publishes exact
                 // frame roots for them. Keep them in the explicit one-time renderable
                 // bucket instead of relying only on the broader current-action list.
+                9,   // swingT1
+                10,  // swingT2
                 218, // siege_pre
                 219, // siege
                 220, // siege_stand
@@ -311,6 +313,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // Character/TamingMob/01932016 does not publish these roots. Preserve
                 // the known owner without treating the names as renderable mount frames,
                 // even if a cache or later data set exposes an exact root.
+                64,  // rush2
+                65,  // sanctuary
+                116, // blade
+                209, // tripleBlow
+                211, // deathBlow
+                215, // cyclone
+                216, // cyclone_after
                 242, // doubleJump
                 243, // knockback
                 244, // swallow_pre

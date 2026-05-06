@@ -623,7 +623,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
 
-                string characterLevelResolvedUolPath = SelectPreferredUolPath(
+                string characterLevelResolvedUolPath = SelectClientCharacterLevelBallUolPath(
                     flip,
                     characterLevelFlipBallUolPath,
                     characterLevelBallUolPath);
@@ -695,6 +695,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 0,
                 renderableVariants.Count - 1);
             return renderableVariants[variantIndex];
+        }
+
+        private static string SelectClientCharacterLevelBallUolPath(
+            bool flip,
+            string flipBallUolPath,
+            string ballUolPath)
+        {
+            if (!flip)
+            {
+                return string.IsNullOrWhiteSpace(ballUolPath) ? null : ballUolPath;
+            }
+
+            if (string.IsNullOrWhiteSpace(flipBallUolPath))
+            {
+                return string.IsNullOrWhiteSpace(ballUolPath) ? null : ballUolPath;
+            }
+
+            return string.IsNullOrWhiteSpace(ballUolPath) ? null : ballUolPath;
         }
 
         private static string ResolveAnimationVariantPath(
@@ -2191,8 +2209,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool CanDrawMainAnimation(int currentTime)
         {
             return Presentation != null
-                   && currentTime >= Presentation.StartTime
-                   && currentTime < Presentation.EndTime;
+                   && SkillManager.HasBulletAnimationOwnerTickReached(currentTime, Presentation.StartTime)
+                   && !SkillManager.HasBulletAnimationOwnerTickReached(currentTime, Presentation.EndTime);
         }
     }
 
@@ -2228,10 +2246,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (RegisteredAnimationEndTime > RegisteredAnimationStartTime)
             {
-                return currentTime >= RegisteredAnimationEndTime;
+                return SkillManager.HasBulletAnimationOwnerTickReached(currentTime, RegisteredAnimationEndTime);
             }
 
-            return currentTime - StartTime >= Duration;
+            return SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(currentTime, StartTime) >= Duration;
         }
 
         public float ResolveAlpha(int currentTime)
@@ -2273,7 +2291,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             int lifetime = ResolveLifetimeMs();
             return MathHelper.Clamp(
-                (currentTime - StartTime) / (float)lifetime,
+                SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(currentTime, StartTime) / (float)lifetime,
                 0f,
                 1f);
         }
@@ -2282,7 +2300,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (RegisteredAnimationEndTime > RegisteredAnimationStartTime)
             {
-                return Math.Max(1, RegisteredAnimationEndTime - RegisteredAnimationStartTime);
+                return Math.Max(1, SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(RegisteredAnimationEndTime, RegisteredAnimationStartTime));
             }
 
             return Math.Max(1, Duration);
@@ -2453,6 +2471,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public int EffectSkillId { get; set; }
         public int SourceSkillId { get; set; }
+        public int? SkillLevel { get; set; }
         public int RequestTime { get; set; }
         public IReadOnlyList<string> BranchNames { get; set; }
         public int? EffectBranchLastIndex { get; set; }

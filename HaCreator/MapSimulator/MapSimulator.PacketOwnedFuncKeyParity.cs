@@ -1361,7 +1361,7 @@ namespace HaCreator.MapSimulator
                 || !player.IsAlive
                 || skills == null)
             {
-                _packetOwnedHeldRawCastInputOwnersByKey.Clear();
+                ReleasePacketOwnedHeldRawCastInputOwners(currentTime);
                 return;
             }
 
@@ -1995,6 +1995,37 @@ namespace HaCreator.MapSimulator
 
             owner = default;
             return false;
+        }
+
+        private void ReleasePacketOwnedHeldRawCastInputOwners(int currentTime)
+        {
+            if (_packetOwnedHeldRawCastInputOwnersByKey.Count == 0)
+            {
+                return;
+            }
+
+            SkillManager skills = _playerManager?.Skills;
+            if (skills == null)
+            {
+                _packetOwnedHeldRawCastInputOwnersByKey.Clear();
+                return;
+            }
+
+            foreach (KeyValuePair<Keys, PacketOwnedCastInputOwner> heldOwnerEntry in _packetOwnedHeldRawCastInputOwnersByKey.ToArray())
+            {
+                PacketOwnedCastInputOwner owner = heldOwnerEntry.Value;
+                if (owner.Entry.Type == PacketOwnedFuncKeySkillType && owner.Entry.Id > 0)
+                {
+                    int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(owner.ScanCode);
+                    skills.ReleasePacketOwnedFuncKeySkillIfActive(
+                        owner.Entry.Id,
+                        currentTime,
+                        ResolvePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken),
+                        ownerInputToken);
+                }
+
+                _packetOwnedHeldRawCastInputOwnersByKey.Remove(heldOwnerEntry.Key);
+            }
         }
 
         private void ReleasePacketOwnedHeldRawCastInputOwnersOnKeyUp(

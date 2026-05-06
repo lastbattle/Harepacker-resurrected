@@ -937,7 +937,9 @@ namespace HaCreator.MapSimulator.UI
                     CutSelectionToClipboard();
                     return true;
                 case VkLeft:
-                    MoveCaretHorizontally(moveRight: false, extendSelection: shiftHeld);
+                    MoveCaretHorizontally(
+                        moveRight: false,
+                        extendSelection: ShouldExtendClientOwnedNavigationSelection(virtualKey, shiftHeld));
                     if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
                     {
                         ForwardKeyToParent(WmKeyDown, wParam, lParam);
@@ -945,7 +947,9 @@ namespace HaCreator.MapSimulator.UI
 
                     return true;
                 case VkRight:
-                    MoveCaretHorizontally(moveRight: true, extendSelection: shiftHeld);
+                    MoveCaretHorizontally(
+                        moveRight: true,
+                        extendSelection: ShouldExtendClientOwnedNavigationSelection(virtualKey, shiftHeld));
                     if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
                     {
                         ForwardKeyToParent(WmKeyDown, wParam, lParam);
@@ -959,7 +963,9 @@ namespace HaCreator.MapSimulator.UI
                         return true;
                     }
 
-                    MoveCaretToBoundary(moveToEnd: false, extendSelection: shiftHeld);
+                    MoveCaretToBoundary(
+                        moveToEnd: false,
+                        extendSelection: ShouldExtendClientOwnedNavigationSelection(virtualKey, shiftHeld));
                     return true;
                 case VkEnd:
                     if (controlHeld)
@@ -968,7 +974,9 @@ namespace HaCreator.MapSimulator.UI
                         return true;
                     }
 
-                    MoveCaretToBoundary(moveToEnd: true, extendSelection: shiftHeld);
+                    MoveCaretToBoundary(
+                        moveToEnd: true,
+                        extendSelection: ShouldExtendClientOwnedNavigationSelection(virtualKey, shiftHeld));
                     return true;
                 case VkUp:
                 case VkDown:
@@ -1077,6 +1085,14 @@ namespace HaCreator.MapSimulator.UI
             // `CCtrlEdit::OnKey` falls through to the parent owner after handling
             // Enter and the arrow-navigation branch itself.
             return virtualKey is VkReturn or VkLeft or VkRight or VkUp or VkDown;
+        }
+
+        internal static bool ShouldExtendClientOwnedNavigationSelection(int virtualKey, bool shiftHeld)
+        {
+            // The recovered `CCtrlEdit::OnKey` only reads the Shift bit for
+            // Shift+Insert paste and Shift+Delete cut. Arrow/Home/End movement
+            // calls `MoveCaret` without a selection-extension branch.
+            return false;
         }
 
         internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive)

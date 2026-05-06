@@ -32,8 +32,10 @@ namespace HaCreator.MapSimulator.Managers
         public const byte RequestSubtypeEntrustedShopWithdrawMoney = 43;
         public const byte RequestSubtypeEntrustedShopVisitList = 46;
         public const byte RequestSubtypeEntrustedShopBlacklist = 47;
-        public const byte EntrustedShopBlacklistRequestModeAdd = 0;
-        public const byte EntrustedShopBlacklistRequestModeDelete = 1;
+        public const byte RequestSubtypeEntrustedShopBlacklistAdd = 48;
+        public const byte RequestSubtypeEntrustedShopBlacklistDelete = 49;
+        public const byte EntrustedShopBlacklistRequestModeAdd = RequestSubtypeEntrustedShopBlacklistAdd;
+        public const byte EntrustedShopBlacklistRequestModeDelete = RequestSubtypeEntrustedShopBlacklistDelete;
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxPendingResultExpectations = 32;
 
@@ -138,20 +140,19 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildEntrustedShopBlacklistAddOutboundPacket(string visitorName)
         {
-            return BuildEntrustedShopBlacklistMutationOutboundPacket(EntrustedShopBlacklistRequestModeAdd, visitorName);
+            return BuildEntrustedShopBlacklistMutationOutboundPacket(RequestSubtypeEntrustedShopBlacklistAdd, visitorName);
         }
 
         public static byte[] BuildEntrustedShopBlacklistDeleteOutboundPacket(string visitorName)
         {
-            return BuildEntrustedShopBlacklistMutationOutboundPacket(EntrustedShopBlacklistRequestModeDelete, visitorName);
+            return BuildEntrustedShopBlacklistMutationOutboundPacket(RequestSubtypeEntrustedShopBlacklistDelete, visitorName);
         }
 
-        private static byte[] BuildEntrustedShopBlacklistMutationOutboundPacket(byte mode, string visitorName)
+        private static byte[] BuildEntrustedShopBlacklistMutationOutboundPacket(byte requestSubtype, string visitorName)
         {
             using PacketWriter writer = new();
-            writer.WriteByte(mode);
             writer.WriteMapleString(NormalizeCharacterName(visitorName));
-            return BuildMerchantOutboundPacket(RequestSubtypeEntrustedShopBlacklist, writer.ToArray());
+            return BuildMerchantOutboundPacket(requestSubtype, writer.ToArray());
         }
 
         private static string NormalizeCharacterName(string visitorName)

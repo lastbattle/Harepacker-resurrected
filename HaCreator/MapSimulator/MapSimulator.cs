@@ -5791,6 +5791,12 @@ namespace HaCreator.MapSimulator
                 build.ProfilePreviousJobRank = Math.Max(0, packet.PreviousJobRank.Value);
             }
 
+            if (packet.IsMarried.HasValue)
+            {
+                build.IsProfileMarried = packet.IsMarried.Value;
+                build.HasAuthoritativeProfileMarriage = true;
+            }
+
             if (packet.HasRide.HasValue)
             {
                 build.HasMonsterRiding = packet.HasRide.Value;
@@ -21685,6 +21691,7 @@ namespace HaCreator.MapSimulator
             if (applied)
             {
                 _playerManager.PlayMobSkillHitEffect(skill.SkillId, skill.Level, currentTick);
+                ApplyBattlefieldFlagMobSkillSideEffect(skill.SkillId, runtimeData, currentTick);
             }
 
             if (applied)
@@ -21699,6 +21706,44 @@ namespace HaCreator.MapSimulator
 
             return applied;
 
+        }
+
+        private void ApplyBattlefieldFlagMobSkillSideEffect(int skillId, MobSkillRuntimeData runtimeData, int currentTick)
+        {
+            if (skillId != 799 || runtimeData == null)
+            {
+                return;
+            }
+
+            BattlefieldField battlefield = _specialFieldRuntime?.SpecialEffects?.Battlefield;
+            if (battlefield?.IsActive != true)
+            {
+                return;
+            }
+
+            int? teamId = ResolveBattlefieldFlagMobSkillTeamId(runtimeData);
+            if (!teamId.HasValue)
+            {
+                return;
+            }
+
+            battlefield.SetLocalTeam(teamId.Value, currentTick);
+            SyncBattlefieldLocalAppearance();
+        }
+
+        internal static int? ResolveBattlefieldFlagMobSkillTeamIdForTesting(MobSkillRuntimeData runtimeData)
+        {
+            return ResolveBattlefieldFlagMobSkillTeamId(runtimeData);
+        }
+
+        private static int? ResolveBattlefieldFlagMobSkillTeamId(MobSkillRuntimeData runtimeData)
+        {
+            if (runtimeData == null || runtimeData.X < 0)
+            {
+                return null;
+            }
+
+            return runtimeData.X;
         }
 
 
@@ -21944,30 +21989,51 @@ namespace HaCreator.MapSimulator
                 return Rectangle.Empty;
             }
 
+            return CreateMobSkillAreaCore(
+                sourceMob.CurrentX,
+                sourceMob.CurrentY,
+                sourceMob.MovementInfo?.FlipX == true,
+                runtimeData);
+        }
 
+        internal static Rectangle CreateMobSkillAreaForTesting(
+            float sourceX,
+            float sourceY,
+            bool flipX,
+            MobSkillRuntimeData runtimeData)
+        {
+            return CreateMobSkillAreaCore(sourceX, sourceY, flipX, runtimeData);
+        }
+
+        private static Rectangle CreateMobSkillAreaCore(
+            float sourceX,
+            float sourceY,
+            bool flipX,
+            MobSkillRuntimeData runtimeData)
+        {
             if (runtimeData?.Lt is not Point lt || runtimeData.Rb is not Point rb)
             {
                 const int defaultHalfWidth = 200;
                 const int defaultHalfHeight = 120;
                 return new Rectangle(
-                    (int)sourceMob.CurrentX - defaultHalfWidth,
-                    (int)sourceMob.CurrentY - defaultHalfHeight,
+                    (int)sourceX - defaultHalfWidth,
+                    (int)sourceY - defaultHalfHeight,
                     defaultHalfWidth * 2,
                     defaultHalfHeight * 2);
             }
 
-
             int left = Math.Min(lt.X, rb.X);
             int right = Math.Max(lt.X, rb.X);
-            if (sourceMob.MovementInfo?.FlipX == true)
+            if (flipX)
             {
                 (left, right) = (-right, -left);
             }
+
             int top = Math.Min(lt.Y, rb.Y);
             int bottom = Math.Max(lt.Y, rb.Y);
             return new Rectangle(
-                (int)sourceMob.CurrentX + left,
-                (int)sourceMob.CurrentY + top,
+                (int)sourceX + left,
+                (int)sourceY + top,
                 Math.Max(1, right - left),
                 Math.Max(1, bottom - top));
         }
@@ -33188,6 +33254,28 @@ namespace HaCreator.MapSimulator
             ClearPassiveTransferRequest();
         }
 
+        private void ConsumePassiveTransferRequestFromPacketChairSitResult()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromPacketChairSitResult(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
+        private void ConsumePassiveTransferRequestFromPacketQuestResult()
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromPacketQuestResult(
+                    _passiveTransferRequestPending))
+            {
+                return;
+            }
+
+            ClearPassiveTransferRequest();
+        }
+
         private void ConsumePassiveTransferRequestFromSameMapTeleport()
         {
             if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromSameMapTeleport(
@@ -42858,7 +42946,12 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasRemoveSequence = buffEntry.ShadowCanvasRemoveSequence;
             renderData.ShadowCanvasInsertSequence = buffEntry.ShadowCanvasInsertSequence;
             renderData.ShadowCanvasReleaseSequence = buffEntry.ShadowCanvasReleaseSequence;
+            renderData.MainLayerAnimationMode = buffEntry.MainLayerAnimationMode;
+            renderData.MainLayerAnimationModeName = buffEntry.MainLayerAnimationModeName;
+            renderData.ShadowLayerAnimationMode = buffEntry.ShadowLayerAnimationMode;
+            renderData.ShadowLayerAnimationModeName = buffEntry.ShadowLayerAnimationModeName;
             renderData.AlertLayerAnimationMode = buffEntry.AlertLayerAnimationMode;
+            renderData.AlertLayerAnimationModeName = buffEntry.AlertLayerAnimationModeName;
             renderData.AlertLayerAnimationSequence = buffEntry.AlertLayerAnimationSequence;
         }
 

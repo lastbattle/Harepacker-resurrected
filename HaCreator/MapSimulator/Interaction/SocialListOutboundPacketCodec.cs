@@ -8,10 +8,10 @@ namespace HaCreator.MapSimulator.Interaction
         public const byte FriendAddRequest = 1;
         public const byte FriendDeleteRequest = 2;
         public const byte PartyCreateRequest = 1;
+        public const byte PartyWithdrawRequest = 2;
         public const byte PartyInviteRequest = 4;
         public const byte PartyKickRequest = 5;
-        public const byte PartyWithdrawRequest = 6;
-        public const byte PartyChangeBossRequest = 7;
+        public const byte PartyChangeBossRequest = 6;
         public const byte GuildInviteRequest = 5;
         public const byte GuildKickRequest = 7;
         public const byte GuildWithdrawRequest = 9;
@@ -89,19 +89,25 @@ namespace HaCreator.MapSimulator.Interaction
             switch (draft.Kind)
             {
                 case SocialListOutboundRequestKind.PartyCreate:
-                case SocialListOutboundRequestKind.PartyWithdraw:
                 case SocialListOutboundRequestKind.GuildWithdraw:
                 case SocialListOutboundRequestKind.AllianceWithdraw:
                     return;
 
+                case SocialListOutboundRequestKind.PartyWithdraw:
+                    writer.Write((byte)0);
+                    return;
+
                 case SocialListOutboundRequestKind.FriendDelete:
-                case SocialListOutboundRequestKind.PartyKick:
-                case SocialListOutboundRequestKind.PartyChangeBoss:
                 case SocialListOutboundRequestKind.GuildKick:
                 case SocialListOutboundRequestKind.AllianceKick:
                 case SocialListOutboundRequestKind.BlacklistDelete:
                     writer.WriteInt(Math.Max(0, draft.MemberId));
                     writer.WriteMapleString(NormalizeTarget(draft.TargetName));
+                    return;
+
+                case SocialListOutboundRequestKind.PartyKick:
+                case SocialListOutboundRequestKind.PartyChangeBoss:
+                    writer.WriteInt(Math.Max(0, draft.MemberId));
                     return;
 
                 case SocialListOutboundRequestKind.GuildGradeChange:

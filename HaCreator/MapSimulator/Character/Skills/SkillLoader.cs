@@ -162,6 +162,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] ClientTileUolPropertyNames =
         {
             "sTileUOL",
+            "sTile",
             "sTileUOLPath",
             "sTileUolPath",
             "tileUOL",
@@ -173,6 +174,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] ClientBallUolPropertyNames =
         {
             "sBallUOL",
+            "sBall",
             "sBallUOLPath",
             "sBallUolPath",
             "ballUOL",
@@ -184,6 +186,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] ClientFlipBallUolPropertyNames =
         {
             "sFlipBallUOL",
+            "sFlipBall",
             "sFlipBallUOLPath",
             "sFlipBallUolPath",
             "flipBallUOL",
@@ -7416,6 +7419,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
+                if (IsClientSummonedUolTableTupleOwnerIndexName(child.Name))
+                {
+                    string tupleValue = GetClientSummonedUolCandidateValue(child);
+                    foreach (int tupleSkillId in EnumerateClientSummonedUolRecordTextFieldSkillIds(tupleValue))
+                    {
+                        if (tupleSkillId > 0)
+                        {
+                            skillId = tupleSkillId;
+                            return true;
+                        }
+                    }
+                }
+
                 if (!IsClientSummonedUolTableOwnerFieldName(child.Name))
                 {
                     continue;
@@ -7499,6 +7515,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                         }
                     }
                 }
+                else if (IsClientSummonedUolTableTupleOwnerIndexName(child.Name))
+                {
+                    string value = GetClientSummonedUolCandidateValue(child);
+                    foreach (int tupleSkillId in EnumerateClientSummonedUolRecordTextFieldSkillIds(value))
+                    {
+                        if (tupleSkillId > 0)
+                        {
+                            skillId = tupleSkillId;
+                            return true;
+                        }
+                    }
+                }
                 else if (TryReadClientSummonedUolTableOwnerSkillIdFromFieldName(child.Name, out skillId))
                 {
                     return true;
@@ -7545,6 +7573,34 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
             return ClientSummonedUolTableOwnerFieldNames.Contains(normalizedName, StringComparer.Ordinal);
+        }
+
+        private static bool IsClientSummonedUolTableTupleOwnerIndexName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalizedName = NormalizeClientSummonedUolFieldNameSyntax(name);
+            return normalizedName.Equals("0", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("owner0", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("key0", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsClientSummonedUolTableTupleValueIndexName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalizedName = NormalizeClientSummonedUolFieldNameSyntax(name);
+            return normalizedName.Equals("1", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("2", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("value1", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("path1", StringComparison.OrdinalIgnoreCase)
+                   || normalizedName.Equals("uol1", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryReadClientSummonedUolTableOwnerSkillIdFromFieldName(string name, out int skillId)
@@ -7704,6 +7760,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
             return name.Equals("0", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("path", StringComparison.OrdinalIgnoreCase)
+                   || IsClientSummonedUolTableTupleValueIndexName(name)
                    || name.Equals("uol", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uolStr", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uolString", StringComparison.OrdinalIgnoreCase)

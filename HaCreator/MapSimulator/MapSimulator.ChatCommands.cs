@@ -505,12 +505,28 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTradingRoomInboxCommand(string[] args, int actionIndex)
         {
-            const string inboxUsage = "Usage: /socialroom tradingroom [packet] inbox [status]";
+            const string inboxUsage = "Usage: /socialroom tradingroom [packet] inbox [status|packetraw <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]";
             string inboxAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
             switch (inboxAction.ToLowerInvariant())
             {
                 case "status":
                     return ChatCommandHandler.CommandResult.Info(DescribeTradingRoomPacketInboxStatus());
+
+                case "packetraw":
+                case "packetrecv":
+                case "recv":
+                case "packetclientraw":
+                case "clientraw":
+                    if (!TradingRoomPacketInboxManager.TryParsePacketLine(
+                            string.Join(' ', args.Skip(actionIndex + 1)),
+                            out byte[] payload,
+                            out string error))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(error ?? inboxUsage);
+                    }
+
+                    _tradingRoomPacketInbox.EnqueueLocal(payload, $"chat:/socialroom tradingroom inbox {inboxAction}");
+                    return ChatCommandHandler.CommandResult.Ok(_tradingRoomPacketInbox.LastStatus);
 
                 case "start":
                 case "stop":
@@ -2173,23 +2189,17 @@ namespace HaCreator.MapSimulator
                 return "MapleTV consume-cash item request requires a positive inventory position.";
             }
 
-            _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
-            if (!_mapleTvRuntime.TryBuildConsumeCashItemUseRequestPayload(
-                    currTickCount,
-                    inventoryPosition,
-                    itemId,
-                    out byte[] payload,
-                    out string error))
+            bool mirrored = TryMirrorMapleTvConsumeCashItemUseClientRequest(
+                inventoryPosition,
+                itemId,
+                queueOnly: false,
+                out string mirrorStatus);
+            if (!mirrored)
             {
-                return error;
+                StampPacketOwnedUtilityRequestState();
             }
 
-            _localUtilityPacketInbox.EnqueueLocal(
-                LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType,
-                payload,
-                "CUserLocal::ConsumeCashItem MapleTV send request");
-            StampPacketOwnedUtilityRequestState();
-            return $"CUserLocal::ConsumeCashItem MapleTV SendConsumeCashItemUseRequest mirrored at inventory position {inventoryPosition}.";
+            return mirrorStatus;
         }
 
         private void RegisterChatCommands()

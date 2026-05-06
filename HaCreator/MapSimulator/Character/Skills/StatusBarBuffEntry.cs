@@ -62,7 +62,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ShadowCanvasRemoveSequence { get; set; }
         public int ShadowCanvasInsertSequence { get; set; }
         public int ShadowCanvasReleaseSequence { get; set; }
+        public int MainLayerAnimationMode { get; set; }
+        public string MainLayerAnimationModeName { get; set; }
+        public int ShadowLayerAnimationMode { get; set; }
+        public string ShadowLayerAnimationModeName { get; set; }
         public int AlertLayerAnimationMode { get; set; }
+        public string AlertLayerAnimationModeName { get; set; }
         public int AlertLayerAnimationSequence { get; set; }
     }
 }

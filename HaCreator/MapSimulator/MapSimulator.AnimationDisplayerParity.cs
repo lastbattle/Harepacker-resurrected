@@ -150,6 +150,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, Dictionary<string, AnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerState>> _animationDisplayerLocalPacketOwnedBasicOneTimeOwnerStates = new();
         private readonly Dictionary<string, AnimationDisplayerPacketOwnedMobOneTimeOwnerState> _animationDisplayerPacketOwnedMobOneTimeOwnerStates = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, AnimationDisplayerPacketOwnedAreaOneTimeOwnerState> _animationDisplayerPacketOwnedAreaOneTimeOwnerStates = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, AnimationDisplayerPacketOwnedFallingOneTimeOwnerState> _animationDisplayerPacketOwnedFallingOneTimeOwnerStates = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private readonly List<AnimationDisplayerPendingReservedOwnerEffect> _animationDisplayerPendingReservedOwnerEffects = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
@@ -328,6 +329,21 @@ namespace HaCreator.MapSimulator
             public int UpdateCount { get; init; }
             public int UpdateNextMs { get; init; }
             public int DurationMs { get; init; }
+            public int AnimationStartTime { get; init; }
+        }
+
+        private sealed class AnimationDisplayerPacketOwnedFallingOneTimeOwnerState
+        {
+            public string EffectUol { get; init; }
+            public Rectangle StartArea { get; init; }
+            public int OffsetX { get; init; }
+            public int OffsetY { get; init; }
+            public int FallDistance { get; init; }
+            public int UpdateIntervalMs { get; init; }
+            public int UpdateCount { get; init; }
+            public int UpdateNextMs { get; init; }
+            public int DurationMs { get; init; }
+            public int Alpha { get; init; }
             public int AnimationStartTime { get; init; }
         }
 
@@ -1079,6 +1095,19 @@ namespace HaCreator.MapSimulator
             float centerX = profile.StartArea.Left + (profile.StartArea.Width / 2f) + profile.OffsetX;
             float endY = profile.StartArea.Bottom + profile.OffsetY;
             float startY = endY - profile.EffectiveFallDistance;
+            int initialElapsedMs = ResolveAnimationDisplayerPacketOwnedFallingOneTimeInitialElapsed(
+                BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKey(effectUol),
+                effectUol,
+                profile.StartArea,
+                profile.OffsetX,
+                profile.OffsetY,
+                profile.EffectiveFallDistance,
+                profile.UpdateIntervalMs,
+                profile.EffectiveUpdateCount,
+                profile.UpdateNextMs,
+                profile.EffectiveDurationMs,
+                profile.EffectiveAlpha,
+                currTickCount);
             _animationEffects.AddPacketOwnedFallingBurst(
                 frames,
                 effectUol,
@@ -1089,7 +1118,8 @@ namespace HaCreator.MapSimulator
                 profile.EffectiveUpdateCount,
                 Math.Max(120f, profile.EffectiveFallSpeed),
                 currTickCount + profile.UpdateNextMs,
-                profile.EffectiveAlpha);
+                profile.EffectiveAlpha,
+                initialElapsedMs);
             message = $"Registered falling animation-displayer effect from {effectUol} ({profile.EffectiveUpdateCount} drops).";
             return true;
         }
@@ -4101,11 +4131,12 @@ namespace HaCreator.MapSimulator
             {
                 consumed = true;
                 // Client evidence (`RESERVEDINFO::Update`, case 5):
-                // sound/BGM handoff is local-user owned. WZ direction rows use
+                // sound/BGM handoff is CAnimationDisplayer/global sound owned, not
+                // CUserLocal-gated. WZ direction rows use
                 // Effect/*.img sound descriptors here, while Bgm* descriptors remain BGM overrides.
-                if (ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(
-                        presentation.CharacterId,
-                        localCharacterId))
+                if (ShouldApplyAnimationDisplayerReservedGlobalSoundOwnerEffect(
+                        metadata.Type,
+                        metadata.SoundEffectDescriptor))
                 {
                     switch (ResolveAnimationDisplayerReservedType5SoundOwnerKind(metadata.Type, metadata.SoundEffectDescriptor))
                     {
@@ -4354,6 +4385,14 @@ namespace HaCreator.MapSimulator
             return metadataType == 6
                 && emotionId >= 0
                 && ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(effectCharacterId, localCharacterId);
+        }
+
+        internal static bool ShouldApplyAnimationDisplayerReservedGlobalSoundOwnerEffect(
+            int metadataType,
+            string descriptor)
+        {
+            return metadataType == 5
+                && !string.IsNullOrWhiteSpace(descriptor);
         }
 
         private bool TryApplyAnimationDisplayerReservedLocalUtilityActionOwnerEffect(
@@ -5725,6 +5764,81 @@ namespace HaCreator.MapSimulator
             return initialElapsedMs;
         }
 
+        private int ResolveAnimationDisplayerPacketOwnedFallingOneTimeInitialElapsed(
+            string ownerSlotKey,
+            string effectUol,
+            Rectangle startArea,
+            int offsetX,
+            int offsetY,
+            int fallDistance,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int alpha,
+            int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(ownerSlotKey)
+                || string.IsNullOrWhiteSpace(effectUol)
+                || startArea.Width <= 0
+                || startArea.Height <= 0
+                || fallDistance <= 0
+                || updateIntervalMs <= 0
+                || updateCount <= 0
+                || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_animationDisplayerPacketOwnedFallingOneTimeOwnerStates.TryGetValue(
+                    ownerSlotKey,
+                    out AnimationDisplayerPacketOwnedFallingOneTimeOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerPacketOwnedFallingOneTimeRestoreElapsedCore(
+                    existingState.EffectUol,
+                    existingState.StartArea,
+                    existingState.OffsetX,
+                    existingState.OffsetY,
+                    existingState.FallDistance,
+                    existingState.UpdateIntervalMs,
+                    existingState.UpdateCount,
+                    existingState.UpdateNextMs,
+                    existingState.DurationMs,
+                    existingState.Alpha,
+                    existingState.AnimationStartTime,
+                    effectUol,
+                    startArea,
+                    offsetX,
+                    offsetY,
+                    fallDistance,
+                    updateIntervalMs,
+                    updateCount,
+                    updateNextMs,
+                    durationMs,
+                    alpha,
+                    currentTime);
+            }
+
+            _animationDisplayerPacketOwnedFallingOneTimeOwnerStates[ownerSlotKey] =
+                new AnimationDisplayerPacketOwnedFallingOneTimeOwnerState
+                {
+                    EffectUol = effectUol,
+                    StartArea = startArea,
+                    OffsetX = offsetX,
+                    OffsetY = offsetY,
+                    FallDistance = fallDistance,
+                    UpdateIntervalMs = updateIntervalMs,
+                    UpdateCount = updateCount,
+                    UpdateNextMs = updateNextMs,
+                    DurationMs = durationMs,
+                    Alpha = alpha,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs)
+                };
+            return initialElapsedMs;
+        }
+
         private int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsed(
             int characterId,
             byte effectType,
@@ -6253,6 +6367,50 @@ namespace HaCreator.MapSimulator
             return elapsedMs < currentDurationMs ? elapsedMs : 0;
         }
 
+        private static int ResolveAnimationDisplayerPacketOwnedFallingOneTimeRestoreElapsedCore(
+            string previousEffectUol,
+            Rectangle previousStartArea,
+            int previousOffsetX,
+            int previousOffsetY,
+            int previousFallDistance,
+            int previousUpdateIntervalMs,
+            int previousUpdateCount,
+            int previousUpdateNextMs,
+            int previousDurationMs,
+            int previousAlpha,
+            int previousAnimationStartTime,
+            string currentEffectUol,
+            Rectangle currentStartArea,
+            int currentOffsetX,
+            int currentOffsetY,
+            int currentFallDistance,
+            int currentUpdateIntervalMs,
+            int currentUpdateCount,
+            int currentUpdateNextMs,
+            int currentDurationMs,
+            int currentAlpha,
+            int currentTime)
+        {
+            if (currentDurationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousStartArea != currentStartArea
+                || previousOffsetX != currentOffsetX
+                || previousOffsetY != currentOffsetY
+                || previousFallDistance != currentFallDistance
+                || previousUpdateIntervalMs != currentUpdateIntervalMs
+                || previousUpdateCount != currentUpdateCount
+                || previousUpdateNextMs != currentUpdateNextMs
+                || previousDurationMs != currentDurationMs
+                || previousAlpha != currentAlpha
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase))
+            {
+                return 0;
+            }
+
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
+            return elapsedMs < currentDurationMs ? elapsedMs : 0;
+        }
+
         internal static int ResolveAnimationDisplayerOneTimeFrameDurationMsForTesting(IReadOnlyList<IDXObject> frames)
         {
             return ResolveAnimationDisplayerOneTimeFrameDurationMs(frames);
@@ -6580,6 +6738,55 @@ namespace HaCreator.MapSimulator
                 currentUpdateCount,
                 currentUpdateNextMs,
                 currentDurationMs,
+                currentTime);
+        }
+
+        internal static int ResolveAnimationDisplayerPacketOwnedFallingOneTimeRestoreElapsedForTesting(
+            string previousEffectUol,
+            Rectangle previousStartArea,
+            int previousOffsetX,
+            int previousOffsetY,
+            int previousFallDistance,
+            int previousUpdateIntervalMs,
+            int previousUpdateCount,
+            int previousUpdateNextMs,
+            int previousDurationMs,
+            int previousAlpha,
+            int previousAnimationStartTime,
+            string currentEffectUol,
+            Rectangle currentStartArea,
+            int currentOffsetX,
+            int currentOffsetY,
+            int currentFallDistance,
+            int currentUpdateIntervalMs,
+            int currentUpdateCount,
+            int currentUpdateNextMs,
+            int currentDurationMs,
+            int currentAlpha,
+            int currentTime)
+        {
+            return ResolveAnimationDisplayerPacketOwnedFallingOneTimeRestoreElapsedCore(
+                previousEffectUol,
+                previousStartArea,
+                previousOffsetX,
+                previousOffsetY,
+                previousFallDistance,
+                previousUpdateIntervalMs,
+                previousUpdateCount,
+                previousUpdateNextMs,
+                previousDurationMs,
+                previousAlpha,
+                previousAnimationStartTime,
+                currentEffectUol,
+                currentStartArea,
+                currentOffsetX,
+                currentOffsetY,
+                currentFallDistance,
+                currentUpdateIntervalMs,
+                currentUpdateCount,
+                currentUpdateNextMs,
+                currentDurationMs,
+                currentAlpha,
                 currentTime);
         }
 
@@ -9131,23 +9338,37 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var points = new List<Vector2>();
-            for (int index = 0; index < childCount; index++)
+            var indexedPoints = new List<(int Index, Vector2 Point)>();
+            var seenSegments = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < childCount; i++)
             {
-                WzImageProperty indexedRow =
-                    resolvedGenerationPointProperty[index.ToString(CultureInfo.InvariantCulture)];
-                if (indexedRow == null)
+                WzImageProperty indexedRow = children[i];
+                string childName = indexedRow?.Name;
+                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childName, out int index)
+                    || !seenSegments.Add(childName))
                 {
-                    break;
+                    continue;
                 }
 
                 WzImageProperty resolvedChild = ResolveAnimationDisplayerLinkedRealProperty(indexedRow);
                 if (resolvedChild is not WzVectorProperty point)
                 {
-                    break;
+                    continue;
                 }
 
-                points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
+                indexedPoints.Add((index, new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0)));
+            }
+
+            if (indexedPoints.Count == 0)
+            {
+                return null;
+            }
+
+            indexedPoints.Sort(static (left, right) => left.Index.CompareTo(right.Index));
+            var points = new List<Vector2>(indexedPoints.Count);
+            for (int i = 0; i < indexedPoints.Count; i++)
+            {
+                points.Add(indexedPoints[i].Point);
             }
 
             return points.Count > 0

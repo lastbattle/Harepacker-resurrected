@@ -97,6 +97,11 @@ namespace HaCreator.MapSimulator.Managers
             DamageMeterSharedTimingResetValue = 0;
             DamageMeterSharedTimingUpdatedAt = currentTickCount;
 
+            if (HasDamageMeterTimer(currentTickCount))
+            {
+                return;
+            }
+
             DamageMeterDurationSeconds = normalizedDuration;
             DamageMeterStartedAt = normalizedDuration > 0 ? currentTickCount : int.MinValue;
             DamageMeterExpiresAt = normalizedDuration > 0
@@ -206,7 +211,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Update(int currentTickCount)
         {
-            if (DamageMeterExpiresAt != int.MinValue && unchecked(currentTickCount - DamageMeterExpiresAt) > 0)
+            if (DamageMeterExpiresAt != int.MinValue && unchecked(currentTickCount - DamageMeterExpiresAt) >= 0)
             {
                 DamageMeterDurationSeconds = 0;
                 DamageMeterStartedAt = int.MinValue;
@@ -214,7 +219,7 @@ namespace HaCreator.MapSimulator.Managers
                 DamageMeterFloatNoticeOwnerIdentity = 0;
             }
 
-            if (LastFieldHazardNoticeExpiresAt != int.MinValue && unchecked(currentTickCount - LastFieldHazardNoticeExpiresAt) > 0)
+            if (LastFieldHazardNoticeExpiresAt != int.MinValue && unchecked(currentTickCount - LastFieldHazardNoticeExpiresAt) >= 0)
             {
                 ClearFieldHazardNotice();
             }

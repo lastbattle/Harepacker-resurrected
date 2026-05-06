@@ -456,18 +456,26 @@ namespace HaCreator.MapSimulator.Character
             return null;
         }
 
-        private CharacterAnimation LoadMorphAnimation(WzImageProperty node, string actionName)
+        private CharacterAnimation LoadMorphAnimation(
+            WzImageProperty node,
+            string actionName,
+            string actionRootUolForDirectCanvas = null)
         {
             if (node == null || string.IsNullOrWhiteSpace(actionName))
             {
                 return null;
             }
 
-            if (node is WzUOLProperty
-                && ResolveMorphActionNode(node) is WzImageProperty linkedActionNode
-                && !ReferenceEquals(linkedActionNode, node))
+            if (TryResolveMorphActionRootLink(
+                    node,
+                    actionRootUolForDirectCanvas,
+                    out WzImageProperty linkedActionNode,
+                    out string linkedActionRootUolForDirectCanvas))
             {
-                return LoadMorphAnimation(linkedActionNode, actionName);
+                return LoadMorphAnimation(
+                    linkedActionNode,
+                    actionName,
+                    linkedActionRootUolForDirectCanvas);
             }
 
             var animation = new CharacterAnimation
@@ -478,7 +486,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (node is WzCanvasProperty canvas)
             {
-                CharacterFrame frame = LoadMorphFrame(canvas, node, "0", frameUol: null);
+                CharacterFrame frame = LoadMorphFrame(canvas, node, "0", actionRootUolForDirectCanvas);
                 if (frame != null)
                 {
                     animation.Frames.Add(frame);
@@ -503,6 +511,28 @@ namespace HaCreator.MapSimulator.Character
 
             animation.CalculateTotalDuration();
             return animation.Frames.Count > 0 ? animation : null;
+        }
+
+        private static bool TryResolveMorphActionRootLink(
+            WzImageProperty node,
+            string actionRootUolForDirectCanvas,
+            out WzImageProperty linkedActionNode,
+            out string linkedActionRootUolForDirectCanvas)
+        {
+            linkedActionNode = null;
+            linkedActionRootUolForDirectCanvas = actionRootUolForDirectCanvas;
+            if (node is not WzUOLProperty actionUol
+                || ResolveMorphActionNode(node) is not WzImageProperty resolvedActionNode
+                || ReferenceEquals(resolvedActionNode, node))
+            {
+                return false;
+            }
+
+            linkedActionNode = resolvedActionNode;
+            linkedActionRootUolForDirectCanvas = string.IsNullOrWhiteSpace(actionRootUolForDirectCanvas)
+                ? actionUol.Value
+                : actionRootUolForDirectCanvas;
+            return true;
         }
 
         private static IEnumerable<KeyValuePair<string, WzImageProperty>> EnumerateMorphFrameNodes(WzSubProperty actionNode)
@@ -3349,6 +3379,23 @@ namespace HaCreator.MapSimulator.Character
         internal static WzImageProperty ResolveMorphActionNodeForTesting(WzImageProperty actionNode)
         {
             return ResolveMorphActionNode(actionNode);
+        }
+
+        internal static string ResolveMorphActionRootDirectCanvasFrameUolForTesting(WzImageProperty actionNode)
+        {
+            string actionRootUolForDirectCanvas = null;
+            WzImageProperty currentNode = actionNode;
+            while (TryResolveMorphActionRootLink(
+                       currentNode,
+                       actionRootUolForDirectCanvas,
+                       out WzImageProperty linkedActionNode,
+                       out string linkedActionRootUolForDirectCanvas))
+            {
+                actionRootUolForDirectCanvas = linkedActionRootUolForDirectCanvas;
+                currentNode = linkedActionNode;
+            }
+
+            return currentNode is WzCanvasProperty ? actionRootUolForDirectCanvas : null;
         }
 
         [Conditional("DEBUG")]

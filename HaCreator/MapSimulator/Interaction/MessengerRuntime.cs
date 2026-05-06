@@ -2952,6 +2952,8 @@ namespace HaCreator.MapSimulator.Interaction
                 RecordPacketSummary($"Decoded Messenger leave packet for local slot {packet.SlotIndex}.");
                 TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
                     $"CUIMessenger::OnDestroy leave request acknowledged by OnLeave slot {packet.SlotIndex}.");
+                TryResolveDeleteGateAfterStateChange(
+                    "Messenger close gate passed after OnLeave acknowledged the local slot.");
                 return _lastActionSummary;
             }
 
@@ -2963,6 +2965,8 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary($"Decoded Messenger leave packet for slot {packet.SlotIndex} ({participant.Name}).");
             TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
                 $"CUIMessenger::OnDestroy leave request progressed after OnLeave removed slot {packet.SlotIndex} ({participant.Name}).");
+            TryResolveDeleteGateAfterStateChange(
+                "Messenger close gate passed after OnLeave removed the last remote slot.");
             return _lastActionSummary;
         }
 

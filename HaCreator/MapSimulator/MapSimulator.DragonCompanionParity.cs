@@ -96,7 +96,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleDragonCompanionCommand(string[] args)
         {
-            const string usage = "Usage: /dragoncompanion [status|capture <auto|payload|packet|keypad|keypadpacked> <hex> [-- source...]]";
+            const string usage = "Usage: /dragoncompanion [status|capture <auto|payload|packet|keypad|keypadpacked|keypadmemory|keypadmemorypacked> <hex> [-- source...]]";
             DragonCompanionRuntime dragonRuntime = _playerManager?.Dragon;
             if (dragonRuntime == null)
             {
@@ -122,6 +122,7 @@ namespace HaCreator.MapSimulator
             bool autoDetectPacketShape = false;
             bool keyPadCapture = false;
             bool packedKeyPadCapture = false;
+            bool keyPadMemoryCapture = false;
             if (string.Equals(args[1], "auto", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[1], "detect", StringComparison.OrdinalIgnoreCase))
             {
@@ -150,6 +151,22 @@ namespace HaCreator.MapSimulator
                 keyPadCapture = true;
                 packedKeyPadCapture = true;
             }
+            else if (string.Equals(args[1], "keypadmemory", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "keypadmem", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "makeypadstate", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "m_aKeyPadState", StringComparison.OrdinalIgnoreCase))
+            {
+                keyPadCapture = true;
+                keyPadMemoryCapture = true;
+            }
+            else if (string.Equals(args[1], "keypadmemorypacked", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "packedkeypadmemory", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[1], "packedmakeypadstate", StringComparison.OrdinalIgnoreCase))
+            {
+                keyPadCapture = true;
+                packedKeyPadCapture = true;
+                keyPadMemoryCapture = true;
+            }
             else
             {
                 return ChatCommandHandler.CommandResult.Error(usage);
@@ -163,18 +180,27 @@ namespace HaCreator.MapSimulator
             if (string.IsNullOrWhiteSpace(source))
             {
                 source = keyPadCapture
-                    ? packedKeyPadCapture ? "packed keypad capture" : "keypad capture"
+                    ? keyPadMemoryCapture
+                        ? packedKeyPadCapture ? "packed m_aKeyPadState capture" : "m_aKeyPadState capture"
+                        : packedKeyPadCapture ? "packed keypad capture" : "keypad capture"
                     : autoDetectPacketShape ? "auto-detected capture"
                     : opcodeFramed ? "opcode-framed capture" : "payload capture";
             }
 
             if (keyPadCapture)
             {
-                return dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadStateCapture(
+                bool recorded = keyPadMemoryCapture
+                    ? dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadMemoryCapture(
                         bytes,
                         packedKeyPadCapture,
                         source,
                         out string keyPadMessage)
+                    : dragonRuntime.TryRecordClientDragonEndUpdateActiveKeyPadStateCapture(
+                        bytes,
+                        packedKeyPadCapture,
+                        source,
+                        out keyPadMessage);
+                return recorded
                     ? ChatCommandHandler.CommandResult.Ok(keyPadMessage)
                     : ChatCommandHandler.CommandResult.Error(keyPadMessage);
             }

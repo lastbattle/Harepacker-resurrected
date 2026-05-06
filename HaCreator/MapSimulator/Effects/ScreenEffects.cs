@@ -15,14 +15,21 @@ namespace HaCreator.MapSimulator.Effects
     {
         #region Screen Tremble (Effect_Tremble from CAnimationDisplayer)
 
+        internal const int TrembleHeavyDurationMs = 1500;
+        internal const int TrembleNormalDurationMs = 2000;
+        internal const double TrembleAdditionalTimeReduction = 1.0;
+        internal const double TrembleHeavyReduction = 0.85;
+        internal const double TrembleNormalReduction = 0.92;
+
         // Tremble state
         private bool _trembleActive = false;
         private double _trembleForce = 0;
-        private double _trembleReduction = 0.92;
+        private double _trembleReduction = TrembleNormalReduction;
         private int _trembleStartTime = 0;
         private int _trembleEndTime = 0;
         private Random _random = new Random();
         private bool _trembleEnabled = true;
+        private ScreenTrembleRecoveredState _lastTrembleRecoveredState;
 
         // Current tremble offset applied to rendering
         private float _trembleOffsetX = 0;
@@ -46,6 +53,7 @@ namespace HaCreator.MapSimulator.Effects
         internal double TrembleReduction => _trembleReduction;
         internal int TrembleStartTime => _trembleStartTime;
         internal int TrembleEndTime => _trembleEndTime;
+        internal ScreenTrembleRecoveredState LastTrembleRecoveredState => _lastTrembleRecoveredState;
 
         /// <summary>
         /// Whether tremble effects are enabled unless explicitly enforced.
@@ -71,31 +79,58 @@ namespace HaCreator.MapSimulator.Effects
         public void TriggerTremble(double trembleForce, bool heavyAndShort, int delayMs,
             int additionalTimeMs, bool enforce, int currentTimeMs)
         {
-            if (!_trembleEnabled && !enforce)
+            ScreenTrembleRecoveredState recoveredState = BuildRecoveredTrembleState(
+                trembleForce,
+                heavyAndShort,
+                delayMs,
+                additionalTimeMs,
+                enforce,
+                currentTimeMs,
+                _trembleEnabled);
+            _lastTrembleRecoveredState = recoveredState;
+
+            if (!recoveredState.AllowedByConfigGate)
                 return;
 
             _trembleForce = trembleForce;
-            _trembleStartTime = currentTimeMs + delayMs;
-
-            // Duration based on type
-            int baseDuration = heavyAndShort ? 1500 : 2000;
-            _trembleEndTime = _trembleStartTime + additionalTimeMs + baseDuration;
-
-            // Reduction factor based on type
-            if (additionalTimeMs != 0)
-            {
-                _trembleReduction = 1.0; // No reduction during additional time
-            }
-            else if (heavyAndShort)
-            {
-                _trembleReduction = 0.85;
-            }
-            else
-            {
-                _trembleReduction = 0.92;
-            }
+            _trembleStartTime = recoveredState.StartTimeMs;
+            _trembleEndTime = recoveredState.EndTimeMs;
+            _trembleReduction = recoveredState.Reduction;
 
             _trembleActive = true;
+        }
+
+        internal static ScreenTrembleRecoveredState BuildRecoveredTrembleState(
+            double trembleForce,
+            bool heavyAndShort,
+            int delayMs,
+            int additionalTimeMs,
+            bool enforce,
+            int currentTimeMs,
+            bool trembleEnabled)
+        {
+            int baseDuration = heavyAndShort ? TrembleHeavyDurationMs : TrembleNormalDurationMs;
+            int startTimeMs = unchecked(currentTimeMs + delayMs);
+            int endTimeMs = unchecked(startTimeMs + additionalTimeMs + baseDuration);
+            double reduction = additionalTimeMs != 0
+                ? TrembleAdditionalTimeReduction
+                : heavyAndShort
+                    ? TrembleHeavyReduction
+                    : TrembleNormalReduction;
+
+            return new ScreenTrembleRecoveredState(
+                trembleForce,
+                heavyAndShort,
+                delayMs,
+                additionalTimeMs,
+                enforce,
+                currentTimeMs,
+                trembleEnabled,
+                trembleEnabled || enforce,
+                baseDuration,
+                startTimeMs,
+                endTimeMs,
+                reduction);
         }
 
         /// <summary>
@@ -882,4 +917,18 @@ namespace HaCreator.MapSimulator.Effects
         byte TargetGreenTone,
         byte TargetBlueTone,
         int FadeInEndTime);
+
+    internal readonly record struct ScreenTrembleRecoveredState(
+        double Force,
+        bool HeavyAndShort,
+        int DelayMs,
+        int AdditionalTimeMs,
+        bool Enforce,
+        int CurrentTimeMs,
+        bool TrembleEnabled,
+        bool AllowedByConfigGate,
+        int BaseDurationMs,
+        int StartTimeMs,
+        int EndTimeMs,
+        double Reduction);
 }

@@ -775,31 +775,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static IReadOnlyList<string> EnumerateFallbackCountryNameDataSourceDirectories(string currentDirectoryPath)
         {
-            if (string.IsNullOrWhiteSpace(currentDirectoryPath) || !Directory.Exists(currentDirectoryPath))
-            {
-                return Array.Empty<string>();
-            }
-
-            DirectoryInfo parentDirectory = Directory.GetParent(currentDirectoryPath);
-            if (parentDirectory == null || !parentDirectory.Exists)
-            {
-                return Array.Empty<string>();
-            }
-
-            string normalizedCurrentPath = Path.GetFullPath(currentDirectoryPath);
-            string preferredPrefix = ExtractComparableVersionPrefix(Path.GetFileName(normalizedCurrentPath));
-            return parentDirectory
-                .EnumerateDirectories()
-                .Where(directory => !string.Equals(
-                    Path.GetFullPath(directory.FullName),
-                    normalizedCurrentPath,
-                    StringComparison.OrdinalIgnoreCase))
-                .Where(directory => File.Exists(Path.Combine(directory.FullName, "manifest.json")))
-                .Where(directory => File.Exists(Path.Combine(directory.FullName, "Etc", "CountryName.img")))
-                .OrderByDescending(directory => HasComparableVersionPrefix(directory.Name, preferredPrefix))
-                .ThenBy(directory => directory.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(directory => directory.FullName)
-                .ToArray();
+            return AccountMoreInfoOwnerStringPoolText.EnumerateFallbackCountryNameDataSourceDirectories(currentDirectoryPath);
         }
 
         internal static IReadOnlyList<string> PrioritizePreferredDataSourceDirectory(
@@ -829,29 +805,6 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return ordered;
-        }
-
-        private static string ExtractComparableVersionPrefix(string directoryName)
-        {
-            if (string.IsNullOrWhiteSpace(directoryName))
-            {
-                return string.Empty;
-            }
-
-            int separatorIndex = directoryName.IndexOfAny(new[] { '_', '-', ' ' });
-            return separatorIndex >= 0
-                ? directoryName.Substring(0, separatorIndex)
-                : directoryName;
-        }
-
-        private static bool HasComparableVersionPrefix(string directoryName, string preferredPrefix)
-        {
-            if (string.IsNullOrWhiteSpace(directoryName) || string.IsNullOrWhiteSpace(preferredPrefix))
-            {
-                return false;
-            }
-
-            return directoryName.StartsWith(preferredPrefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private static int AdjustAreaGroup(int currentAreaGroup, int delta)

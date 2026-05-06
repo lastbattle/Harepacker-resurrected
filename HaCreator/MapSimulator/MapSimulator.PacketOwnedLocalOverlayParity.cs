@@ -4466,8 +4466,9 @@ namespace HaCreator.MapSimulator
                 using var stream = new MemoryStream(payload, writable: false);
                 using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
                 text = ReadPacketOwnedMapleString(reader);
-                width = reader.ReadInt32();
-                lifetimeMs = reader.ReadInt32();
+                width = reader.ReadInt16();
+                int lifetimeSeconds = reader.ReadInt16();
+                lifetimeMs = lifetimeSeconds * 1000;
                 attachToAvatar = reader.ReadByte() != 0;
                 if (!attachToAvatar)
                 {

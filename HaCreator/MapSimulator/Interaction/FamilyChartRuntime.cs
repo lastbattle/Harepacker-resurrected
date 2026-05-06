@@ -394,9 +394,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string profile = tokens[0];
+            bool? packetChartOwnership = TryParsePacketChartOwnership(tokens.Skip(1));
             if (!IsCustomAuthorityProfile(profile))
             {
-                return SetAuthorityProfileFromPacket(profile);
+                string message = SetAuthorityProfileFromPacket(profile);
+                return ApplyPacketChartOwnership(packetChartOwnership, message);
             }
 
             if (!TryParseAuthorityFlags(tokens.Skip(1), out FamilyAuthorityState authorityState, out string error))
@@ -405,7 +407,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _authorityState = authorityState;
-            return $"Family authority now follows custom packet flags ({authorityState.SourceLabel}).";
+            return ApplyPacketChartOwnership(
+                packetChartOwnership,
+                $"Family authority now follows custom packet flags ({authorityState.SourceLabel}).");
         }
 
         internal bool TryApplyClientPacketPayload(int opcode, byte[] payload, out string message)
@@ -2155,6 +2159,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private bool? TryParsePacketChartOwnership(IEnumerable<string> tokens)
+        {
+            foreach (string token in tokens ?? Array.Empty<string>())
+            {
+                if (string.Equals(token, "mine", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "localchartmine", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (string.Equals(token, "remote", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "viewer", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(token, "localchartremote", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return null;
+        }
+
+        private string ApplyPacketChartOwnership(bool? isMine, string message)
+        {
+            if (!isMine.HasValue)
+            {
+                return message;
+            }
+
+            _packetChartIsMine = isMine.Value;
+            string ownership = isMine.Value ? "local-owned" : "remote-viewed";
+            return $"{message} Family local-chart ownership now follows the client `m_bMine` {ownership} branch.";
         }
 
         private static string ResolvePacketJobName(short jobId)

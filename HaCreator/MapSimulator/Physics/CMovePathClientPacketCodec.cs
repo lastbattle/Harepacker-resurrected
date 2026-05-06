@@ -600,25 +600,30 @@ namespace HaCreator.MapSimulator.Physics
         {
             left = NormalizePortalOwnedClientMakeMovePathElement(left);
             right = NormalizePortalOwnedClientMakeMovePathElement(right);
-            if (left.MovePathAttribute != right.MovePathAttribute
-                || left.X != right.X
-                || left.Y != right.Y
-                || left.VelocityX != right.VelocityX
-                || left.VelocityY != right.VelocityY
-                || left.FootholdId != right.FootholdId
-                || left.FallStartFootholdId != right.FallStartFootholdId
-                || left.Action != right.Action
-                || left.FacingRight != right.FacingRight
-                || left.Duration != right.Duration
-                || left.XOffset != right.XOffset
-                || left.YOffset != right.YOffset)
+            return TryEncodeElementShape(left, includeClientRandomCounts, out byte[] leftShape)
+                   && TryEncodeElementShape(right, includeClientRandomCounts, out byte[] rightShape)
+                   && leftShape.AsSpan().SequenceEqual(rightShape);
+        }
+
+        private static bool TryEncodeElementShape(
+            MovePathElement element,
+            bool includeClientRandomCounts,
+            out byte[] shape)
+        {
+            shape = Array.Empty<byte>();
+            try
+            {
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream);
+                WriteElement(writer, element, includeClientRandomCounts);
+                writer.Flush();
+                shape = stream.ToArray();
+                return true;
+            }
+            catch
             {
                 return false;
             }
-
-            return !includeClientRandomCounts
-                   || (left.RandomCount == right.RandomCount
-                       && left.ActualRandomCount == right.ActualRandomCount);
         }
 
         private static bool HasEncodedShape(

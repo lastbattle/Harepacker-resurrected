@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.Interaction
         public byte QuickDeliveryRawFlag { get; init; }
         public byte[] QuickDeliveryReservedBytes { get; init; } = Array.Empty<byte>();
         public bool HasQuickDeliveryReservedState { get; init; }
+        public int FixedBodyMeso { get; init; }
+        public bool HasFixedBodyMeso => FixedBodyMeso > 0;
         public DateTimeOffset? ExpirationTimestampUtc { get; init; }
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }
@@ -165,6 +167,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuickDeliveryRawFlag = source.QuickDeliveryRawFlag,
                 QuickDeliveryReservedBytes = source.QuickDeliveryReservedBytes ?? Array.Empty<byte>(),
                 HasQuickDeliveryReservedState = source.HasQuickDeliveryReservedState,
+                FixedBodyMeso = source.FixedBodyMeso,
                 ExpirationTimestampUtc = source.ExpirationTimestampUtc,
                 IsRead = source.IsRead,
                 IsKept = source.IsKept,
@@ -247,9 +250,10 @@ namespace HaCreator.MapSimulator.Interaction
             string sender = ReadFixedAscii(parcelBytes, ParcelSenderOffset, ParcelSenderLength);
             string memoText = ExtractMemoText(parcelBytes, sender);
             int serial = BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(0, sizeof(int)));
-            int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
+            int fixedBodyMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
+            int attachmentMeso = fixedBodyMeso;
             bool hasMesoAttachment = postBodyState.HasMesoAttachment;
             if (!hasMesoAttachment)
             {
@@ -273,6 +277,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuickDeliveryRawFlag = quickDeliveryRawFlag,
                 QuickDeliveryReservedBytes = quickDeliveryReservedBytes,
                 HasQuickDeliveryReservedState = hasQuickDeliveryReservedState,
+                FixedBodyMeso = fixedBodyMeso,
                 ExpirationTimestampUtc = expirationTimestampUtc,
                 IsRead = postBodyState.IsRead,
                 IsKept = postBodyState.IsKept,

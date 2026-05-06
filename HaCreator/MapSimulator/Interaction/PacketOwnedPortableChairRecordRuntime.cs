@@ -14,7 +14,12 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public int TotalAddCount { get; private set; }
         public int TotalRemoveCount { get; private set; }
+        public int TotalRejectedCount { get; private set; }
         public ushort LastObservedOpcode { get; private set; }
+        public int LastOwnerCharacterId { get; private set; }
+        public int LastPayloadLength { get; private set; }
+        public string LastOperation { get; private set; } = "none";
+        public string LastSource { get; private set; } = "none";
         public string LastDispatchSummary { get; private set; } = "Packet-owned portable-chair record runtime idle.";
         private readonly Dictionary<ushort, int> _observedAddCountByOpcode = new();
         private readonly Dictionary<ushort, int> _observedRemoveCountByOpcode = new();
@@ -23,7 +28,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             TotalAddCount = 0;
             TotalRemoveCount = 0;
+            TotalRejectedCount = 0;
             LastObservedOpcode = 0;
+            LastOwnerCharacterId = 0;
+            LastPayloadLength = 0;
+            LastOperation = "none";
+            LastSource = "none";
             _observedAddCountByOpcode.Clear();
             _observedRemoveCountByOpcode.Clear();
             LastDispatchSummary = "Packet-owned portable-chair record runtime idle.";
@@ -61,28 +71,37 @@ namespace HaCreator.MapSimulator.Interaction
             payload ??= Array.Empty<byte>();
             string normalizedSource = string.IsNullOrWhiteSpace(source) ? "remote-user-packet" : source.Trim();
             ushort observedOpcode = ResolveObservedOpcodeForParity(normalizedSource);
+            LastObservedOpcode = observedOpcode;
+            LastPayloadLength = payload.Length;
+            LastSource = normalizedSource;
 
             switch ((RemoteUserPacketType)packetType)
             {
                 case RemoteUserPacketType.UserCoupleChairRecordAdd:
+                    LastOperation = "add";
                     if (!RemoteUserPacketCodec.TryParsePortableChairRecordAdd(
                             payload,
                             out RemoteUserPortableChairRecordAddPacket addPacket,
                             out string addError))
                     {
+                        TotalRejectedCount++;
                         message = addError;
                         LastDispatchSummary = $"Rejected {DescribePacketKind(packetType)} from {normalizedSource}: {addError}";
                         return false;
                     }
 
+                    LastOwnerCharacterId = addPacket.CharacterId;
                     bool addApplied = remoteUserPool.TryApplyPortableChairRecordAdd(addPacket, out string addDetail);
                     if (addApplied)
                     {
                         TotalAddCount++;
                         RememberObservedOpcode(_observedAddCountByOpcode, observedOpcode);
                     }
+                    else
+                    {
+                        TotalRejectedCount++;
+                    }
 
-                    LastObservedOpcode = observedOpcode;
                     message = addDetail;
                     LastDispatchSummary = BuildDispatchSummary(
                         normalizedSource,
@@ -93,24 +112,30 @@ namespace HaCreator.MapSimulator.Interaction
                     return addApplied;
 
                 case RemoteUserPacketType.UserCoupleChairRecordRemove:
+                    LastOperation = "remove";
                     if (!RemoteUserPacketCodec.TryParsePortableChairRecordRemove(
                             payload,
                             out RemoteUserPortableChairRecordRemovePacket removePacket,
                             out string removeError))
                     {
+                        TotalRejectedCount++;
                         message = removeError;
                         LastDispatchSummary = $"Rejected {DescribePacketKind(packetType)} from {normalizedSource}: {removeError}";
                         return false;
                     }
 
+                    LastOwnerCharacterId = removePacket.CharacterId;
                     bool removeApplied = remoteUserPool.TryApplyPortableChairRecordRemove(removePacket, out string removeDetail);
                     if (removeApplied)
                     {
                         TotalRemoveCount++;
                         RememberObservedOpcode(_observedRemoveCountByOpcode, observedOpcode);
                     }
+                    else
+                    {
+                        TotalRejectedCount++;
+                    }
 
-                    LastObservedOpcode = observedOpcode;
                     message = removeDetail;
                     LastDispatchSummary = BuildDispatchSummary(
                         normalizedSource,
@@ -131,9 +156,15 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Packet-owned portable-chair record runtime: adds={0}, removes={1}. {2}",
+                "Packet-owned portable-chair record runtime: adds={0}, removes={1}, rejected={2}, last={3}@{4} owner={5} payloadBytes={6} source={7}. {8}",
                 TotalAddCount,
                 TotalRemoveCount,
+                TotalRejectedCount,
+                LastOperation,
+                LastObservedOpcode == 0 ? "none" : LastObservedOpcode.ToString(CultureInfo.InvariantCulture),
+                LastOwnerCharacterId == 0 ? "none" : LastOwnerCharacterId.ToString(CultureInfo.InvariantCulture),
+                LastPayloadLength,
+                LastSource,
                 $"{DescribeObservedOpcodes()} {LastDispatchSummary}");
         }
 

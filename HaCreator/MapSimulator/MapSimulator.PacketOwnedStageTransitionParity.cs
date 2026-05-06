@@ -413,6 +413,15 @@ namespace HaCreator.MapSimulator
                     objInst.cy,
                     ResolvePacketOwnedNamedObjectStateSfx(objectInfo),
                     ResolvePacketOwnedNamedObjectAuthoredStateSfxByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateRepeatByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+                        objInst.r,
+                        objInst.flow,
+                        objInst.rx,
+                        objInst.ry,
+                        objInst.cx,
+                        objInst.cy,
+                        objInst.QuestInfo?.Count > 0),
                     ResolvePacketOwnedNamedObjectAuthoredStateIndexes(objectInfo?.ParentObject as WzImageProperty));
             }
         }
@@ -470,6 +479,10 @@ namespace HaCreator.MapSimulator
                 branchesByState[stateIndex] = branchItem;
                 branchItems.Add(branchItem);
                 _packetStageTransitionObjectVisibility[branchItem] = false;
+                if (_packetStageTransitionNamedObjectMetadata.TryGetValue(mapItem, out PacketOwnedNamedObjectStateMetadata metadata))
+                {
+                    _packetStageTransitionNamedObjectMetadata[branchItem] = metadata;
+                }
 
                 QuestGatedMapObjectState? questState = BuildQuestGatedMapObjectState(objInst);
                 if (questState.HasValue)
@@ -535,6 +548,32 @@ namespace HaCreator.MapSimulator
             }
 
             return stateSfxByIndex;
+        }
+
+        internal static IReadOnlyDictionary<int, int> ResolvePacketOwnedNamedObjectAuthoredStateRepeatByIndex(WzImageProperty objectProperty)
+        {
+            Dictionary<int, int> repeatByIndex = new();
+            if (objectProperty == null)
+            {
+                return repeatByIndex;
+            }
+
+            foreach (WzImageProperty child in objectProperty.WzProperties)
+            {
+                if (!TryResolvePacketOwnedNamedObjectAuthoredStateIndex(child?.Name, out int stateIndex))
+                {
+                    continue;
+                }
+
+                WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
+                WzIntProperty repeatProperty = realChild?["repeat"] as WzIntProperty;
+                if (repeatProperty != null)
+                {
+                    repeatByIndex[stateIndex] = repeatProperty.Value;
+                }
+            }
+
+            return repeatByIndex;
         }
 
         internal static IReadOnlySet<int> ResolvePacketOwnedNamedObjectAuthoredStateIndexes(WzImageProperty objectProperty)

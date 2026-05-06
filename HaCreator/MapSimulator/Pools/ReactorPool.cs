@@ -635,7 +635,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (pollResults != null)
             {
-                foreach (LocalTouchOwnershipPollResult pollResult in pollResults)
+                foreach (LocalTouchOwnershipPollResult pollResult in CoalesceClientTouchOwnershipPollResults(pollResults))
                 {
                     if (pollResult.ObjectId == 0)
                     {
@@ -689,6 +689,44 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return deltas;
+        }
+
+        private static IReadOnlyList<LocalTouchOwnershipPollResult> CoalesceClientTouchOwnershipPollResults(
+            IReadOnlyList<LocalTouchOwnershipPollResult> pollResults)
+        {
+            if (pollResults == null || pollResults.Count <= 1)
+            {
+                return pollResults ?? Array.Empty<LocalTouchOwnershipPollResult>();
+            }
+
+            Dictionary<int, int> lastResultIndexByObjectId = new();
+            for (int i = 0; i < pollResults.Count; i++)
+            {
+                int objectId = pollResults[i].ObjectId;
+                if (objectId != 0)
+                {
+                    lastResultIndexByObjectId[objectId] = i;
+                }
+            }
+
+            if (lastResultIndexByObjectId.Count == pollResults.Count)
+            {
+                return pollResults;
+            }
+
+            List<LocalTouchOwnershipPollResult> coalesced = new(pollResults.Count);
+            for (int i = 0; i < pollResults.Count; i++)
+            {
+                LocalTouchOwnershipPollResult pollResult = pollResults[i];
+                if (pollResult.ObjectId == 0
+                    || !lastResultIndexByObjectId.TryGetValue(pollResult.ObjectId, out int lastIndex)
+                    || lastIndex == i)
+                {
+                    coalesced.Add(pollResult);
+                }
+            }
+
+            return coalesced;
         }
 
         public List<ReactorTouchStateChange> DrainPendingPacketTouchStateChanges()

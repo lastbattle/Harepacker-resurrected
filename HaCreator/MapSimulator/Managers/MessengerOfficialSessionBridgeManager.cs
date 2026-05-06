@@ -51,7 +51,9 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
         private readonly List<PendingResultExpectation> _pendingResultExpectations = new();
         private readonly HashSet<ushort> _observedInboundOpcodes = new();
+        private readonly HashSet<ushort> _observedOutboundOpcodes = new();
         private readonly HashSet<byte> _observedMessengerInboundSubtypes = new();
+        private readonly HashSet<byte> _observedMessengerOutboundSubtypes = new();
         private readonly HashSet<byte> _observedMapleTvSendResultCodes = new();
         private readonly Dictionary<ushort, int> _passiveInboundOpcodeHitCounts = new();
         private readonly Dictionary<ushort, HashSet<byte>> _passiveInboundSubtypeObservations = new();
@@ -262,10 +264,11 @@ namespace HaCreator.MapSimulator.Managers
                         : $"observed subtypes={string.Join("/", _observedMessengerInboundSubtypes.OrderBy(code => code))}");
                 string recoveredCoverage = DescribeRecoveredInboundCoverage();
                 string ownerBranchCoverage = DescribeOwnerBranchCoverage();
+                string outboundCoverage = DescribeRecoveredOutboundCoverage();
                 string passiveEvidence = DescribePassiveInboundEvidence();
                 string outboundSamples = DescribeObservedOutboundSamples();
                 string inboundSamples = DescribeObservedInboundSamples();
-                return $"{_ownerName} recovered-table verification: {recoveredCoverage}; observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; {ownerBranchCoverage}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; outbound samples {outboundSamples}; inbound samples {inboundSamples}; passive {passiveEvidence}.";
+                return $"{_ownerName} recovered-table verification: {recoveredCoverage}; {outboundCoverage}; observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; {ownerBranchCoverage}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}; outbound samples {outboundSamples}; inbound samples {inboundSamples}; passive {passiveEvidence}.";
             }
         }
 
@@ -275,7 +278,9 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _pendingResultExpectations.Clear();
                 _observedInboundOpcodes.Clear();
+                _observedOutboundOpcodes.Clear();
                 _observedMessengerInboundSubtypes.Clear();
+                _observedMessengerOutboundSubtypes.Clear();
                 _observedMapleTvSendResultCodes.Clear();
                 _passiveInboundOpcodeHitCounts.Clear();
                 _passiveInboundSubtypeObservations.Clear();
@@ -792,6 +797,17 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 string summary = IsTrackedOutboundOpcode(opcode) ? "tracked" : "observed";
+                if (IsTrackedOutboundOpcode(opcode))
+                {
+                    _observedOutboundOpcodes.Add((ushort)opcode);
+                    if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
+                        && payload.Length > 0
+                        && PacketOwnedSocialUtilityPacketTable.GetRecoveredMessengerOutboundSubtypeHandlers().ContainsKey(requestType))
+                    {
+                        _observedMessengerOutboundSubtypes.Add(requestType);
+                    }
+                }
+
                 if (PacketOwnedSocialUtilityPacketTable.TryBuildRecoveredResultExpectation(
                         _ownerName,
                         opcode,
@@ -1154,6 +1170,64 @@ namespace HaCreator.MapSimulator.Managers
             return $"recovered inbound opcode coverage observed={observed} missing={missing}";
         }
 
+        private string DescribeRecoveredOutboundCoverage()
+        {
+            ushort[] recoveredOpcodes = PacketOwnedSocialUtilityPacketTable.GetRecoveredOutboundOpcodes(_ownerName)
+                .Where(opcode => opcode > 0)
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray();
+            if (recoveredOpcodes.Length == 0)
+            {
+                return "recovered outbound opcode coverage unavailable";
+            }
+
+            ushort[] observedRecoveredOpcodes = _observedOutboundOpcodes
+                .Where(opcode => recoveredOpcodes.Contains(opcode))
+                .Distinct()
+                .OrderBy(opcode => opcode)
+                .ToArray();
+            ushort[] missingOpcodes = recoveredOpcodes
+                .Where(opcode => !observedRecoveredOpcodes.Contains(opcode))
+                .ToArray();
+            string observed = observedRecoveredOpcodes.Length == 0
+                ? "none"
+                : string.Join("/", observedRecoveredOpcodes);
+            string missing = missingOpcodes.Length == 0
+                ? "none"
+                : string.Join("/", missingOpcodes);
+            string ownerBranchCoverage = DescribeRecoveredOutboundBranchCoverage();
+            return $"recovered outbound opcode coverage observed={observed} missing={missing}; {ownerBranchCoverage}";
+        }
+
+        private string DescribeRecoveredOutboundBranchCoverage()
+        {
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
+            {
+                byte[] recoveredSubtypes = PacketOwnedSocialUtilityPacketTable.GetRecoveredMessengerOutboundSubtypes()
+                    .OrderBy(subtype => subtype)
+                    .ToArray();
+                byte[] missingSubtypes = recoveredSubtypes
+                    .Where(subtype => !_observedMessengerOutboundSubtypes.Contains(subtype))
+                    .ToArray();
+                string observed = _observedMessengerOutboundSubtypes.Count == 0
+                    ? "none"
+                    : string.Join("/", _observedMessengerOutboundSubtypes.OrderBy(subtype => subtype));
+                string missing = missingSubtypes.Length == 0
+                    ? "none"
+                    : string.Join("/", missingSubtypes);
+                return $"Messenger outbound subtype coverage observed={observed} missing={missing}";
+            }
+
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                bool observedConsume = _observedOutboundOpcodes.Contains(PacketOwnedSocialUtilityPacketTable.MapleTvOutboundConsumeCashItemOpcode);
+                return $"MapleTV outbound request coverage consume-cash={(observedConsume ? "observed" : "missing")}";
+            }
+
+            return "owner outbound branch coverage not modeled";
+        }
+
         private string DescribeOwnerBranchCoverage()
         {
             if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
@@ -1267,7 +1341,9 @@ namespace HaCreator.MapSimulator.Managers
         private void ResetInboundState()
         {
             _observedInboundOpcodes.Clear();
+            _observedOutboundOpcodes.Clear();
             _observedMessengerInboundSubtypes.Clear();
+            _observedMessengerOutboundSubtypes.Clear();
             _observedMapleTvSendResultCodes.Clear();
             _passiveInboundOpcodeHitCounts.Clear();
             _passiveInboundSubtypeObservations.Clear();

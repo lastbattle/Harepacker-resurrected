@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientSelectButtonWidth = 52;
         private const int ClientSelectButtonHeight = 18;
         private const int ClientSelectionHighlightPadding = 4;
+        private const int ClientTooltipAnchorOffset = 20;
         private const int CloseButtonSize = 16;
 
         private readonly Texture2D _pixel;
@@ -91,7 +92,9 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
             _currentMouseState = mouseState;
-            _hoveredEntryIndex = ResolveHoveredEntryIndex(mouseState.Position);
+            _hoveredEntryIndex = IsVisible
+                ? ResolveHoveredEntryIndex(mouseState.Position)
+                : -1;
 
             if (IsVisible)
             {
@@ -130,6 +133,7 @@ namespace HaCreator.MapSimulator.UI
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 if (Released(mouseState))
                 {
+                    ClearClientTooltipState();
                     ShowFeedback(_closeHandler?.Invoke());
                     _previousMouseState = mouseState;
                     return true;
@@ -148,6 +152,7 @@ namespace HaCreator.MapSimulator.UI
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     if (Released(mouseState))
                     {
+                        ClearClientTooltipState();
                         ActivateSelection(i);
                         _previousMouseState = mouseState;
                         return true;
@@ -322,7 +327,7 @@ namespace HaCreator.MapSimulator.UI
 
             int width = Math.Max(72, (int)Math.Ceiling(maxWidth) + (padding * 2));
             int height = (lines.Length * lineHeight) + (padding * 2);
-            Point anchor = new(_currentMouseState.X + 20, _currentMouseState.Y + 20);
+            Point anchor = ResolveClientTooltipAnchor(_currentMouseState.Position);
             Rectangle bounds = new(anchor.X, anchor.Y, width, height);
             int viewportWidth = _pixel?.GraphicsDevice?.Viewport.Width ?? DefaultWidth;
             int viewportHeight = _pixel?.GraphicsDevice?.Viewport.Height ?? DefaultHeight;
@@ -384,7 +389,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            ClearClientTooltipState();
             ShowFeedback(_selectHandler?.Invoke(index));
+        }
+
+        private void ClearClientTooltipState()
+        {
+            _hoveredEntryIndex = -1;
         }
 
         private Texture2D ResolveItemIcon(int itemId)
@@ -440,6 +451,13 @@ namespace HaCreator.MapSimulator.UI
                 origin.Y + ClientIconBottom - ClientItemIconSize,
                 ClientItemIconSize,
                 ClientItemIconSize);
+        }
+
+        internal static Point ResolveClientTooltipAnchor(Point mousePosition)
+        {
+            return new Point(
+                mousePosition.X + ClientTooltipAnchorOffset,
+                mousePosition.Y + ClientTooltipAnchorOffset);
         }
 
         internal static Rectangle GetClientSelectButtonBounds(Point origin, int index, LogoutGiftButtonSkin skin = null)

@@ -14,6 +14,8 @@ internal static class ClientShootAttackFamilyResolver
         1932031,
         1932032,
         1932033,
+        1932034,
+        1932035,
         1932036
     };
 

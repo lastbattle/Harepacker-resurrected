@@ -349,7 +349,8 @@ namespace HaCreator.MapSimulator.Companions
             {
                 if (pickupAllowed && AutoLootEnabled && owner.State != PlayerState.Ladder && owner.State != PlayerState.Rope)
                 {
-                    Func<DropItem, DropPickupFailureReason> pickupValidator = ValidateAutoLootDropForPetSkillMask;
+                    Func<DropItem, DropPickupFailureReason> pickupValidator =
+                        drop => ValidateAutoLootDropForPetSkillMask(drop, ownerId, currentTime);
                     PetDropTarget target = dropPool.UpdateChasingDropForPet(
                         RuntimeId,
                         X,
@@ -385,9 +386,12 @@ namespace HaCreator.MapSimulator.Companions
             _animation.UpdateFrame(currentTime);
         }
 
-        private DropPickupFailureReason ValidateAutoLootDropForPetSkillMask(DropItem drop)
+        private DropPickupFailureReason ValidateAutoLootDropForPetSkillMask(
+            DropItem drop,
+            int ownerId,
+            int currentTime)
         {
-            return ShouldAutoLootDropForPetSkillMask(drop?.Type ?? DropType.Item, SkillMask)
+            return ShouldAutoLootDropForPetSkillMask(drop, SkillMask, ownerId, currentTime)
                 ? DropPickupFailureReason.None
                 : DropPickupFailureReason.NoDropInRange;
         }
@@ -397,6 +401,47 @@ namespace HaCreator.MapSimulator.Companions
             return dropType == DropType.Meso
                 || PetSkillFlag.PickupItem.Check(skillMask)
                 || PetSkillFlag.PickupAll.Check(skillMask);
+        }
+
+        internal static bool ShouldAutoLootDropForPetSkillMask(
+            DropItem drop,
+            int skillMask,
+            int ownerId,
+            int currentTime)
+        {
+            if (drop == null)
+            {
+                return false;
+            }
+
+            if (!ShouldAutoLootDropForPetSkillMask(drop.Type, skillMask))
+            {
+                return false;
+            }
+
+            // CDropPool::TryPickUpDropByPet gates post-owner-window pickup of
+            // another character's sourced drops behind the pet's pickupOthers bit.
+            if (IsOtherCharacterDropPastOwnerWindow(drop, ownerId, currentTime)
+                && !PetSkillFlag.PickupAll.Check(skillMask))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool IsOtherCharacterDropPastOwnerWindow(
+            DropItem drop,
+            int ownerId,
+            int currentTime)
+        {
+            return drop != null
+                && drop.SourceId != 0
+                && drop.OwnershipType == DropOwnershipType.Character
+                && drop.OwnerId > 0
+                && ownerId > 0
+                && drop.OwnerId != ownerId
+                && currentTime >= drop.OwnerExpireTime;
         }
 
         public bool TryExecuteCommand(string message, int currentTime)
