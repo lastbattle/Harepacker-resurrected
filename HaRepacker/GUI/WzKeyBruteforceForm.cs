@@ -212,7 +212,7 @@ namespace HaRepacker.GUI
                     wzKeyBruteforceCompleted = true;
 
 
-                    PacketWriter writer = new PacketWriter(4);
+                    PacketWriter writer = new PacketWriter();
                     writer.WriteBytes(bytes);
 
                     string hexStr = HexTool.ToString(writer.ToArray());
