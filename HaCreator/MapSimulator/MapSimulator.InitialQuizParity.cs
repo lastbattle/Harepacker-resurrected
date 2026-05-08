@@ -135,6 +135,34 @@ namespace HaCreator.MapSimulator
             OwnerWithEditFocus
         }
 
+        internal enum InitialQuizOwnerDrawTextSource
+        {
+            Title,
+            QuestionLabel,
+            QuestionText,
+            HintLabel,
+            HintText,
+            AnswerLabel,
+            AnswerNotice,
+            TimeoutNotice
+        }
+
+        internal enum InitialQuizOwnerDrawTextFont
+        {
+            White,
+            Red
+        }
+
+        internal readonly record struct InitialQuizOwnerDrawTextCall(
+            InitialQuizOwnerDrawTextSource Source,
+            int Left,
+            int Top,
+            int Width,
+            int Height,
+            int StringPoolId,
+            InitialQuizOwnerDrawTextFont Font,
+            string Text);
+
         internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
         {
             internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
@@ -723,57 +751,20 @@ namespace HaCreator.MapSimulator
             DrawInitialQuizOwnerTimerDigits(ownerBounds, displayedRemainingSeconds);
             DrawInitialQuizOwnerAnimationFrame(ownerBounds, currentTickCount);
 
-            DrawInitialQuizOwnerSingleLineText(
-                snapshot.Title,
-                new Rectangle(ownerBounds.X + 30, ownerBounds.Y + 84, 190, 18),
-                Color.White,
-                InitialQuizOwnerTextScale);
-            if (ShouldShowInitialQuizOwnerQuestion(snapshot.ProblemText))
-            {
-                DrawInitialQuizOwnerQuestionLabel(ownerBounds);
-                DrawInitialQuizOwnerSingleLineText(
-                    snapshot.ProblemText,
-                    new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 110, 146, 18),
-                    Color.White,
-                    InitialQuizOwnerTextScale);
-            }
-
-            if (ShouldShowInitialQuizOwnerHint(snapshot.HintText))
-            {
-                string hintLabel = MapleStoryStringPool.GetOrFallback(InitialQuizHintLabelStringPoolId, "Clue:");
-                DrawInitialQuizOwnerSingleLineText(
-                    hintLabel.Trim(),
-                    new Rectangle(ownerBounds.X + 52, ownerBounds.Y + 130, 38, 18),
-                    Color.White,
-                    InitialQuizOwnerSecondaryTextScale);
-                DrawInitialQuizOwnerSingleLineText(
-                    snapshot.HintText,
-                    new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 130, 146, 18),
-                    Color.White,
-                    InitialQuizOwnerSecondaryTextScale);
-            }
-
             _initialQuizOwnerChildControlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
             bool showInput = _initialQuizOwnerChildControlState.EditVisible;
-            DrawInitialQuizOwnerAnswerLabel(inputBounds);
+            foreach (InitialQuizOwnerDrawTextCall textCall in ResolveInitialQuizOwnerDrawTextCalls(snapshot, showInput))
+            {
+                DrawInitialQuizOwnerSingleLineText(
+                    textCall.Text,
+                    new Rectangle(ownerBounds.X + textCall.Left, ownerBounds.Y + textCall.Top, textCall.Width, textCall.Height),
+                    ResolveInitialQuizOwnerDrawTextColor(textCall.Font),
+                    ResolveInitialQuizOwnerDrawTextScale(textCall.Source));
+            }
+
             if (showInput)
             {
                 DrawInitialQuizOwnerInputField(ownerBounds, inputBounds, currentTickCount);
-            }
-
-            DrawInitialQuizOwnerSingleLineText(
-                MapleStoryStringPool.GetOrFallback(InitialQuizAnswerNoticeStringPoolId, "Enter your answer."),
-                new Rectangle(ownerBounds.X + 38, ownerBounds.Y + 202, 190, 18),
-                new Color(255, 80, 80),
-                InitialQuizOwnerLabelTextScale);
-
-            if (!showInput)
-            {
-                DrawInitialQuizOwnerSingleLineText(
-                    MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time is over."),
-                    new Rectangle(ownerBounds.X + 119, ownerBounds.Y + 158, 120, 18),
-                    new Color(255, 80, 80),
-                    InitialQuizOwnerLabelTextScale);
             }
 
             InitialQuizButtonFrame okButtonFrame = ResolveInitialQuizOwnerOkButtonFrame(_initialQuizOwnerChildControlState.OkButtonEnabled);
@@ -786,26 +777,6 @@ namespace HaCreator.MapSimulator
                 DrawPacketScriptOwnerFrame(okButtonBounds, new Color(82, 63, 39, 220), new Color(222, 197, 140));
                 DrawPacketScriptOwnerWrappedText("OK", okButtonBounds, Color.White, 0.42f, maxLines: 1);
             }
-        }
-
-        private void DrawInitialQuizOwnerAnswerLabel(Rectangle inputBounds)
-        {
-            string answerLabel = MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer:");
-            DrawInitialQuizOwnerSingleLineText(
-                answerLabel,
-                new Rectangle(inputBounds.X - 64, inputBounds.Y, 60, inputBounds.Height),
-                Color.White,
-                0.37f);
-        }
-
-        private void DrawInitialQuizOwnerQuestionLabel(Rectangle ownerBounds)
-        {
-            string questionLabel = MapleStoryStringPool.GetOrFallback(InitialQuizQuestionLabelStringPoolId, "Question:");
-            DrawInitialQuizOwnerSingleLineText(
-                questionLabel,
-                new Rectangle(ownerBounds.X + 52, ownerBounds.Y + 110, 38, 18),
-                Color.White,
-                InitialQuizOwnerSecondaryTextScale);
         }
 
         private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)
@@ -1606,6 +1577,130 @@ namespace HaCreator.MapSimulator
         private static Rectangle ResolveInitialQuizOwnerInputBounds(Rectangle ownerBounds)
         {
             return new Rectangle(ownerBounds.X + 109, ownerBounds.Y + 157, 150, 13);
+        }
+
+        internal static IReadOnlyList<InitialQuizOwnerDrawTextCall> ResolveInitialQuizOwnerDrawTextCalls(
+            InitialQuizOwnerSnapshot snapshot,
+            bool showInput)
+        {
+            if (snapshot == null)
+            {
+                return Array.Empty<InitialQuizOwnerDrawTextCall>();
+            }
+
+            var calls = new List<InitialQuizOwnerDrawTextCall>
+            {
+                new(
+                    InitialQuizOwnerDrawTextSource.Title,
+                    34,
+                    18,
+                    198,
+                    18,
+                    0,
+                    InitialQuizOwnerDrawTextFont.White,
+                    snapshot.Title)
+            };
+
+            if (ShouldShowInitialQuizOwnerQuestion(snapshot.ProblemText))
+            {
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.QuestionLabel,
+                    36,
+                    74,
+                    48,
+                    14,
+                    InitialQuizQuestionLabelStringPoolId,
+                    InitialQuizOwnerDrawTextFont.Red,
+                    MapleStoryStringPool.GetOrFallback(InitialQuizQuestionLabelStringPoolId, "Question")));
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.QuestionText,
+                    82,
+                    74,
+                    142,
+                    36,
+                    0,
+                    InitialQuizOwnerDrawTextFont.White,
+                    snapshot.ProblemText));
+            }
+
+            if (ShouldShowInitialQuizOwnerHint(snapshot.HintText))
+            {
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.HintLabel,
+                    36,
+                    113,
+                    48,
+                    14,
+                    InitialQuizHintLabelStringPoolId,
+                    InitialQuizOwnerDrawTextFont.Red,
+                    MapleStoryStringPool.GetOrFallback(InitialQuizHintLabelStringPoolId, "Hint")));
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.HintText,
+                    82,
+                    113,
+                    142,
+                    28,
+                    0,
+                    InitialQuizOwnerDrawTextFont.White,
+                    snapshot.HintText));
+            }
+
+            if (showInput)
+            {
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.AnswerLabel,
+                    36,
+                    156,
+                    66,
+                    14,
+                    InitialQuizAnswerLabelStringPoolId,
+                    InitialQuizOwnerDrawTextFont.Red,
+                    MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer")));
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.AnswerNotice,
+                    36,
+                    176,
+                    188,
+                    18,
+                    InitialQuizAnswerNoticeStringPoolId,
+                    InitialQuizOwnerDrawTextFont.White,
+                    MapleStoryStringPool.GetOrFallback(InitialQuizAnswerNoticeStringPoolId, string.Empty)));
+            }
+            else
+            {
+                calls.Add(new InitialQuizOwnerDrawTextCall(
+                    InitialQuizOwnerDrawTextSource.TimeoutNotice,
+                    36,
+                    156,
+                    188,
+                    30,
+                    InitialQuizTimeoutNoticeStringPoolId,
+                    InitialQuizOwnerDrawTextFont.Red,
+                    MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time over")));
+            }
+
+            return calls;
+        }
+
+        internal static Color ResolveInitialQuizOwnerDrawTextColor(InitialQuizOwnerDrawTextFont font)
+        {
+            return font == InitialQuizOwnerDrawTextFont.Red
+                ? new Color(196, 65, 45)
+                : new Color(255, 255, 255);
+        }
+
+        internal static float ResolveInitialQuizOwnerDrawTextScale(InitialQuizOwnerDrawTextSource source)
+        {
+            return source switch
+            {
+                InitialQuizOwnerDrawTextSource.Title => InitialQuizOwnerTextScale,
+                InitialQuizOwnerDrawTextSource.QuestionLabel
+                    or InitialQuizOwnerDrawTextSource.HintLabel
+                    or InitialQuizOwnerDrawTextSource.AnswerLabel => InitialQuizOwnerLabelTextScale,
+                InitialQuizOwnerDrawTextSource.AnswerNotice
+                    or InitialQuizOwnerDrawTextSource.TimeoutNotice => InitialQuizOwnerSecondaryTextScale,
+                _ => InitialQuizOwnerSecondaryTextScale
+            };
         }
 
         private void EnsureInitialQuizOwnerPixelTexture()

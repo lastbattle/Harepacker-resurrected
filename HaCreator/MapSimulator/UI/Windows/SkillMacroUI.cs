@@ -3252,50 +3252,15 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryResolveCandidateWindowOriginFromWindowForm(Viewport viewport, int width, int height, out Point origin)
         {
-            ImeCandidateWindowForm windowForm = _candidateListState?.WindowForm;
-            if (windowForm == null || !windowForm.HasPlacementData)
-            {
-                origin = Point.Zero;
-                return false;
-            }
-
             int viewportWidth = Math.Max(1, Math.Min(viewport.Width, SkillMacroImeCandidateWindowLayout.ClientViewportWidth));
             int viewportHeight = Math.Max(1, Math.Min(viewport.Height, SkillMacroImeCandidateWindowLayout.ClientViewportHeight));
-            uint style = windowForm.Style;
-
-            int x = windowForm.CurrentX;
-            int y = windowForm.CurrentY;
-
-            if ((style & CandidateWindowStyleExclude) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
-            {
-                x = windowForm.CurrentX;
-                y = windowForm.AreaY + windowForm.AreaHeight + 1;
-                if (y + height > viewportHeight)
-                {
-                    y = windowForm.AreaY - height - 1;
-                }
-            }
-            else if ((style & (CandidateWindowStyleForcePosition | CandidateWindowStyleCandidatePosition | CandidateWindowStylePoint)) != 0)
-            {
-                y = windowForm.CurrentY + 1;
-            }
-            else if ((style & CandidateWindowStyleRect) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
-            {
-                x = windowForm.AreaX;
-                y = windowForm.AreaY + windowForm.AreaHeight + 1;
-                if (y + height > viewportHeight)
-                {
-                    y = windowForm.AreaY - height - 1;
-                }
-            }
-            else
-            {
-                origin = Point.Zero;
-                return false;
-            }
-
-            origin = new Point(x, y);
-            return true;
+            _ = width;
+            return SkillMacroImeCandidateWindowLayout.TryResolveWindowFormOrigin(
+                _candidateListState?.WindowForm,
+                viewportWidth,
+                viewportHeight,
+                height,
+                out origin);
         }
 
         private string ResolveCompositionAnchorPrefix()

@@ -1306,8 +1306,8 @@ namespace HaCreator.MapSimulator.UI
                 .Select((entry, sourceOrder) => new CtEntryWithSourceOrder(entry, sourceOrder))
                 .ToArray()
                 ?? Array.Empty<CtEntryWithSourceOrder>();
-            bool hasAuthoredDrawLayer = rowEntries.Any(entry => entry.Entry.DrawLayer.HasValue);
-            bool hasAuthoredDrawOrder = rowEntries.Any(entry => entry.Entry.DrawOrder != 0);
+            bool hasAuthoredDrawLayer = rowEntries.All(entry => entry.Entry.DrawLayer.HasValue);
+            bool hasAuthoredDrawOrder = rowEntries.All(entry => entry.Entry.DrawOrder != 0);
             if (hasAuthoredDrawLayer)
             {
                 return rowEntries
@@ -2586,8 +2586,8 @@ namespace HaCreator.MapSimulator.UI
                 "hinttext" or "hint" => QuestDetailInlineReferenceSource.HintText,
                 "summarytext" or "summary" => QuestDetailInlineReferenceSource.SummaryText,
                 "deliveryinset" or "delivery" => QuestDetailInlineReferenceSource.DeliveryInset,
-                "deliveryacceptrect" or "acceptdeliveryrect" or "questdeliveryacceptrect" => QuestDetailInlineReferenceSource.DeliveryAcceptRect,
-                "deliverycompleterect" or "completedeliveryrect" or "questdeliverycompleterect" => QuestDetailInlineReferenceSource.DeliveryCompleteRect,
+                "deliveryacceptrect" or "acceptdeliveryrect" or "questdeliveryacceptrect" or "demandacceptrect" or "acceptdemandrect" => QuestDetailInlineReferenceSource.DeliveryAcceptRect,
+                "deliverycompleterect" or "completedeliveryrect" or "questdeliverycompleterect" or "demandcompleterect" or "completedemandrect" => QuestDetailInlineReferenceSource.DeliveryCompleteRect,
                 _ => QuestDetailInlineReferenceSource.Unknown
             };
 

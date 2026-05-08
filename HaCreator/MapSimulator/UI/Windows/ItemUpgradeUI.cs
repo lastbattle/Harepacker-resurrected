@@ -941,9 +941,10 @@ namespace HaCreator.MapSimulator.UI
                 forcedSuccess,
                 previewOnly: false);
 
-            if (!suppressHammerPresentation &&
-                preparedConsumable?.EffectType == ConsumableEffectType.Hammer &&
-                result.Success.HasValue)
+            if (ShouldPlayViciousHammerResultPresentation(
+                    preparedConsumable,
+                    result,
+                    suppressHammerPresentation))
             {
                 _productionEnhancementAnimationDisplayer?.PlayViciousHammerResult(Environment.TickCount);
             }
@@ -964,6 +965,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return result;
+        }
+
+        private static bool ShouldPlayViciousHammerResultPresentation(
+            EnhancementConsumable consumable,
+            ItemUpgradeAttemptResult result,
+            bool suppressHammerPresentation)
+        {
+            // CUIItemUpgrade::ShowResult only emits Effect_ViciousHammer(..., 1)
+            // when m_nReturnResult == 61 and m_nResult == 0.
+            return !suppressHammerPresentation &&
+                   consumable?.EffectType == ConsumableEffectType.Hammer &&
+                   consumable.Definition.HammerBehavior == HammerBehavior.Vicious &&
+                   result.Success == false;
         }
 
         private ItemUpgradeAttemptResult TryApplyPreparedUpgradeCore(
@@ -5229,6 +5243,34 @@ namespace HaCreator.MapSimulator.UI
             return TryGetConsumableDefinition(consumableItemId, out EnhancementConsumableDefinition definition)
                 ? GetRequiredEquipItemIds(definition)
                 : Array.Empty<int>();
+        }
+
+        internal static bool ShouldPlayViciousHammerResultPresentationForTests(
+            bool isViciousHammer,
+            bool? success,
+            bool suppressHammerPresentation)
+        {
+            EnhancementConsumableDefinition definition = new(
+                isViciousHammer ? ViciousHammerId : GoldenHammerIds[0],
+                isViciousHammer ? "Vicious' Hammer" : "Golden Hammer",
+                0,
+                false,
+                false,
+                1.0f,
+                isViciousHammer ? InventoryType.CASH : InventoryType.USE,
+                ConsumableEffectType.Hammer,
+                PotentialTier.Rare,
+                0f,
+                CubeBehavior.Miracle,
+                ModifierBehavior.None,
+                0f,
+                0,
+                isViciousHammer ? HammerBehavior.Vicious : HammerBehavior.None);
+
+            return ShouldPlayViciousHammerResultPresentation(
+                new EnhancementConsumable(definition),
+                new ItemUpgradeAttemptResult(success, string.Empty, definition.ItemId),
+                suppressHammerPresentation);
         }
 
         internal static IReadOnlyCollection<int> GetStarterEnhancementEquipItemIds()

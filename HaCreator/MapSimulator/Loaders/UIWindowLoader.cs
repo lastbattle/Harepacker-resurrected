@@ -8119,6 +8119,20 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
+            if (property is WzUOLProperty uolProperty)
+            {
+                if (TryResolveMapleTvMediaIndexFromText(uolProperty.Value, availableIndices, out mediaIndex))
+                {
+                    return true;
+                }
+
+                WzImageProperty linkedProperty = property.GetLinkedWzImageProperty();
+                if (!ReferenceEquals(linkedProperty, property))
+                {
+                    return TryResolveMapleTvMediaIndexFromProperty(linkedProperty, availableIndices, out mediaIndex);
+                }
+            }
+
             int candidateValue;
             switch (property)
             {
@@ -8134,9 +8148,16 @@ namespace HaCreator.MapSimulator.Loaders
                     candidateValue = (int)longProperty.Value;
                     break;
 
-                case WzStringProperty stringProperty when int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue):
-                    candidateValue = parsedValue;
+                case WzFloatProperty floatProperty when Math.Abs(floatProperty.Value % 1f) < float.Epsilon:
+                    candidateValue = (int)floatProperty.Value;
                     break;
+
+                case WzDoubleProperty doubleProperty when Math.Abs(doubleProperty.Value % 1d) < double.Epsilon:
+                    candidateValue = (int)doubleProperty.Value;
+                    break;
+
+                case WzStringProperty stringProperty:
+                    return TryResolveMapleTvMediaIndexFromText(stringProperty.Value, availableIndices, out mediaIndex);
 
                 default:
                     return false;
@@ -8149,6 +8170,39 @@ namespace HaCreator.MapSimulator.Loaders
 
             mediaIndex = candidateValue;
             return true;
+        }
+
+        private static bool TryResolveMapleTvMediaIndexFromText(
+            string value,
+            ISet<int> availableIndices,
+            out int mediaIndex)
+        {
+            mediaIndex = -1;
+            if (string.IsNullOrWhiteSpace(value) || availableIndices == null || availableIndices.Count == 0)
+            {
+                return false;
+            }
+
+            string normalized = value.Trim().Replace('\\', '/');
+            if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out int directValue)
+                && availableIndices.Contains(directValue))
+            {
+                mediaIndex = directValue;
+                return true;
+            }
+
+            string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                if (int.TryParse(segments[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int segmentValue)
+                    && availableIndices.Contains(segmentValue))
+                {
+                    mediaIndex = segmentValue;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
 

@@ -193,7 +193,9 @@ namespace HaCreator.MapSimulator.Effects
             Point SourceOrigin,
             int SourceWidth,
             int SourceHeight,
-            Point CanvasOffset);
+            Point CanvasOffset,
+            CanvasLayerRecoveredInsertCanvasSettings RecoveredInsertCanvasSettings,
+            AnimationCanvasLayerBlendMode RecoveredBlendMode);
         internal enum DamageNumberRecoveredCompositionOperationKind
         {
             CreateCanvas,
@@ -874,7 +876,9 @@ namespace HaCreator.MapSimulator.Effects
                     digitSet?.Origins[digit.Digit] ?? Point.Zero,
                     digitSet?.Widths[digit.Digit] ?? 0,
                     digitSet?.Heights[digit.Digit] ?? 0,
-                    new Point(digit.DrawOffsetX, digit.DrawOffsetY));
+                    new Point(digit.DrawOffsetX, digit.DrawOffsetY),
+                    ResolveRecoveredTemporaryCanvasInsertSettings(),
+                    AnimationCanvasLayerBlendMode.AlphaBlend);
             }
 
             return new PreparedDamageNumberCompositionTrace(
@@ -922,7 +926,9 @@ namespace HaCreator.MapSimulator.Effects
                 sourceOrigin,
                 sourceWidth,
                 sourceHeight,
-                new Point(specialSprite.Value.DrawOffsetX, specialSprite.Value.DrawOffsetY));
+                new Point(specialSprite.Value.DrawOffsetX, specialSprite.Value.DrawOffsetY),
+                ResolveRecoveredTemporaryCanvasInsertSettings(),
+                AnimationCanvasLayerBlendMode.AlphaBlend);
 
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
@@ -962,6 +968,14 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return operations;
+        }
+
+        internal static CanvasLayerRecoveredInsertCanvasSettings ResolveRecoveredTemporaryCanvasInsertSettings()
+        {
+            return new CanvasLayerRecoveredInsertCanvasSettings(
+                DurationMs: 0,
+                StartAlphaValue: 255,
+                EndAlphaValue: 255);
         }
 
         internal static string BuildBasicEffCanvasPath(string setName, string spriteName)
@@ -1155,7 +1169,13 @@ namespace HaCreator.MapSimulator.Effects
                         ? CanvasLayerRecoveredTemporaryCanvasOperationKind.CreateCanvas
                         : CanvasLayerRecoveredTemporaryCanvasOperationKind.InsertCanvas,
                     operation.CanvasSettings,
-                    sourceTrace);
+                    sourceTrace,
+                    operation.Kind == DamageNumberRecoveredCompositionOperationKind.InsertCanvas
+                        ? operation.InsertCommand.RecoveredInsertCanvasSettings
+                        : default,
+                    operation.Kind == DamageNumberRecoveredCompositionOperationKind.InsertCanvas
+                        ? operation.InsertCommand.RecoveredBlendMode
+                        : default);
             }
 
             PreparedSpriteDrawInfo? overlaySprite = compositionTrace.CriticalBannerLayerSprite;

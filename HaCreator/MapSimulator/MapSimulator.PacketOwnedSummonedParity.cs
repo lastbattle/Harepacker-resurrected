@@ -87,54 +87,31 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int localPlayerId = _playerManager?.Player?.Build?.Id ?? 0;
-
-            Effects.BattlefieldField battlefield = _specialFieldRuntime?.SpecialEffects?.Battlefield;
-            if (battlefield?.IsActive == true && battlefield.LocalTeamId.HasValue)
-            {
-                if (ownerCharacterId == localPlayerId)
-                {
-                    ownerTeam = battlefield.LocalTeamId.Value;
-                    return true;
-                }
-
-                int? remoteBattlefieldTeamId = ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId(ownerCharacterId);
-                if (remoteBattlefieldTeamId.HasValue)
-                {
-                    ownerTeam = remoteBattlefieldTeamId.Value;
-                    return true;
-                }
-            }
-
             Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
-            if (carnival?.IsVisible == true)
-            {
-                if (ownerCharacterId == localPlayerId)
-                {
-                    ownerTeam = (int)carnival.LocalTeam;
-                    return true;
-                }
-
-                string ownerName = ResolveRemoteAffectedAreaOwnerName(ownerCharacterId);
-                if (!string.IsNullOrWhiteSpace(ownerName)
-                    && carnival.TryResolveCharacterTeam(ownerName, out Fields.MonsterCarnivalTeam carnivalTeam))
-                {
-                    ownerTeam = (int)carnivalTeam;
-                    return true;
-                }
-            }
-
-            if (TryResolvePacketOwnedExpiryLocalTeamContextForParity(
-                    _specialFieldRuntime?.Minigames?.Coconut,
-                    _specialFieldRuntime?.PartyRaid,
-                    localPlayerId,
-                    ownerCharacterId,
+            if (TryResolvePacketOwnedExpiryMonsterCarnivalLocalTeamContextForParity(
+                    carnival?.IsVisible == true,
+                    (int)(carnival?.LocalTeam ?? Fields.MonsterCarnivalTeam.Team0),
                     out ownerTeam))
             {
                 return true;
             }
 
             return false;
+        }
+
+        internal static bool TryResolvePacketOwnedExpiryMonsterCarnivalLocalTeamContextForParity(
+            bool carnivalVisible,
+            int carnivalLocalTeam,
+            out int ownerTeam)
+        {
+            ownerTeam = default;
+            if (!carnivalVisible)
+            {
+                return false;
+            }
+
+            ownerTeam = carnivalLocalTeam == 1 ? 1 : 0;
+            return true;
         }
 
         internal static bool TryResolvePacketOwnedExpiryLocalTeamContextForParity(

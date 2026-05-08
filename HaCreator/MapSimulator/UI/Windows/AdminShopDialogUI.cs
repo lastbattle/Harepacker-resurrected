@@ -10291,7 +10291,18 @@ namespace HaCreator.MapSimulator.UI
 
         private static int ResolveCashShopIncTrunkCountSelectedPaymentOption(int availablePaymentOptions)
         {
-            return availablePaymentOptions & 0x7;
+            int maskedOptions = availablePaymentOptions & 0x7;
+            if ((maskedOptions & 2) != 0)
+            {
+                return 2;
+            }
+
+            if ((maskedOptions & 4) != 0)
+            {
+                return 4;
+            }
+
+            return maskedOptions & 1;
         }
 
         private static string BuildCashShopIncTrunkCountConfirmPrompt()

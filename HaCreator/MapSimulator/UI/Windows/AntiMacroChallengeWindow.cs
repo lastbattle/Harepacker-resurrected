@@ -141,9 +141,19 @@ namespace HaCreator.MapSimulator.UI
 
         public void TryAttachNativeEditHost(IntPtr parentWindowHandle)
         {
-            if (_nativeEditHost.TryAttach(parentWindowHandle, GetNativeInputBounds()))
+            bool attached = _nativeEditHost.TryAttach(parentWindowHandle, GetNativeInputBounds());
+            if (attached)
             {
                 _nativeEditHost.SetVisible(IsVisible);
+                if (ShouldFocusHostedEditAfterAttach(attached, IsVisible, _nativeEditHost.HasFocus))
+                {
+                    _nativeEditHost.Focus();
+                }
+            }
+            else if (ShouldFocusManagedEditAfterAttachFailure(attached, IsVisible, _editControl.HasFocus))
+            {
+                _editControl.ActivateByOwner();
+                NotifyEditFocusGained();
             }
         }
 
@@ -839,6 +849,19 @@ namespace HaCreator.MapSimulator.UI
             // `CCtrlEdit::OnSetFocus(true)` calls `CUserLocal::OnKeyDownSkillEnd`
             // before clearing composition and disabling IME for the focused edit.
             return hasFocus;
+        }
+
+        internal static bool ShouldFocusHostedEditAfterAttach(bool attachSucceeded, bool ownerVisible, bool hostHasFocus)
+        {
+            // `CUIAntiMacro::OnCreate` and `CUIAdminAntiMacro::OnCreate` finish by
+            // making the edit the focused child; late native-host attachment should
+            // preserve that owner contract when the dialog is already visible.
+            return attachSucceeded && ownerVisible && !hostHasFocus;
+        }
+
+        internal static bool ShouldFocusManagedEditAfterAttachFailure(bool attachSucceeded, bool ownerVisible, bool managedHasFocus)
+        {
+            return !attachSucceeded && ownerVisible && !managedHasFocus;
         }
     }
 }

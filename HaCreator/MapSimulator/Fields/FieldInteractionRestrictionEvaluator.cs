@@ -1154,27 +1154,15 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsInfoFlagSet(MapInfo mapInfo, string propertyName)
         {
-            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
             {
-                return false;
+                if (TryReadInfoFlag(property, out bool enabled))
+                {
+                    return enabled;
+                }
             }
 
-            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
-            if (property == null)
-            {
-                return false;
-            }
-
-            try
-            {
-                return property.GetInt() != 0;
-            }
-            catch
-            {
-                return property is WzStringProperty stringProperty
-                       && int.TryParse(stringProperty.Value, out int value)
-                       && value != 0;
-            }
+            return false;
         }
 
         private static bool IsInfoFlagSetWithCopiedBranchFallback(MapInfo mapInfo, string propertyName)
@@ -1265,23 +1253,15 @@ namespace HaCreator.MapSimulator.Fields
 
         private static int? GetInfoInt(MapInfo mapInfo, string propertyName)
         {
-            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
-            if (property == null)
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
             {
-                return null;
+                if (TryReadInfoInt(property, out int value))
+                {
+                    return value;
+                }
             }
 
-            try
-            {
-                return property.GetInt();
-            }
-            catch
-            {
-                return property is WzStringProperty stringProperty
-                       && int.TryParse(stringProperty.Value, out int value)
-                    ? value
-                    : null;
-            }
+            return null;
         }
 
         private static bool? ResolveInfoBool(MapInfo mapInfo, string propertyName, bool? typedValue)
@@ -1331,6 +1311,32 @@ namespace HaCreator.MapSimulator.Fields
             return value.HasValue && value.Value.HasValue
                 ? value.Value.Value
                 : null;
+        }
+
+        private static bool TryReadInfoInt(WzImageProperty property, out int value)
+        {
+            value = 0;
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = property.GetInt();
+                return true;
+            }
+            catch
+            {
+                if (property is WzStringProperty stringProperty
+                    && int.TryParse(stringProperty.Value, out value))
+                {
+                    return true;
+                }
+
+                value = 0;
+                return false;
+            }
         }
 
         private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)

@@ -586,7 +586,8 @@ namespace HaCreator.MapSimulator.Pools
                             : 1));
                 }
 
-                SimulatedLayerReferenceOperations = operations;
+                SimulatedLayerReferenceOperations =
+                    AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
                 TerminateRequested = false;
                 IsTerminated = false;
             }
@@ -649,7 +650,8 @@ namespace HaCreator.MapSimulator.Pools
                 SimulatedLayerHandleRefCounts = SimulatedLayerHandleRefCounts?
                     .ToDictionary(static entry => entry.Key, static _ => 0)
                     ?? new Dictionary<AvatarRenderLayer, int>();
-                SimulatedLayerReferenceOperations = operations;
+                SimulatedLayerReferenceOperations =
+                    AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
             }
 
             public void ReleaseSnapshotLayerReferences(RemoteActiveEffectMotionBlurSnapshot snapshot)
@@ -721,7 +723,8 @@ namespace HaCreator.MapSimulator.Pools
                     }
                 }
 
-                SimulatedLayerReferenceOperations = operations;
+                SimulatedLayerReferenceOperations =
+                    AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
             }
 
             internal IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> CaptureSnapshotLayerReferences(
@@ -742,10 +745,13 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (layerSnapshots == null)
                 {
-                    SimulatedLayerReferenceOperations = SimulatedLayerReferenceOperations
-                        .Concat(operations)
-                        .ToArray();
-                    return operations;
+                    IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> normalizedEmptySnapshotOperations =
+                        AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                    SimulatedLayerReferenceOperations =
+                        AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(
+                            (SimulatedLayerReferenceOperations ?? Array.Empty<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>())
+                            .Concat(normalizedEmptySnapshotOperations));
+                    return normalizedEmptySnapshotOperations;
                 }
 
                 foreach (RemoteActiveEffectMotionBlurLayerSnapshot snapshot in EnumerateRemoteActiveEffectMotionBlurLayerSnapshotCopyOrder(layerSnapshots))
@@ -785,10 +791,13 @@ namespace HaCreator.MapSimulator.Pools
                     }
                 }
 
-                SimulatedLayerReferenceOperations = SimulatedLayerReferenceOperations
-                    .Concat(operations)
-                    .ToArray();
-                return operations;
+                IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> normalizedSnapshotOperations =
+                    AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                SimulatedLayerReferenceOperations =
+                    AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(
+                        (SimulatedLayerReferenceOperations ?? Array.Empty<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>())
+                        .Concat(normalizedSnapshotOperations));
+                return normalizedSnapshotOperations;
             }
 
             private int ResolveRemoteActiveEffectMotionBlurOwnerLayerHandleRefCount(int handleId)
@@ -1280,6 +1289,7 @@ namespace HaCreator.MapSimulator.Pools
                 ClearActorFollowLinks(actor);
                 ClearRemoteActiveEffectMotionBlurState(actor);
                 ClearRemoteActiveEffectItemEffectState(actor);
+                ClearRemoteTemporaryStatAvatarEffectStates(actor);
                 ReleaseCarryItemEffectLayerReferenceForParity(actor);
                 ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                 ClearRemoteTransientItemEffectStates(actor);
@@ -1313,6 +1323,7 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ClearRemoteTemporaryStatAvatarEffectStates(actor);
                     ReleaseCarryItemEffectLayerReferenceForParity(actor);
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
@@ -1347,6 +1358,7 @@ namespace HaCreator.MapSimulator.Pools
                     ClearActorFollowLinks(actor);
                     ClearRemoteActiveEffectMotionBlurState(actor);
                     ClearRemoteActiveEffectItemEffectState(actor);
+                    ClearRemoteTemporaryStatAvatarEffectStates(actor);
                     ReleaseCarryItemEffectLayerReferenceForParity(actor);
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
@@ -5602,6 +5614,7 @@ namespace HaCreator.MapSimulator.Pools
             ClearActorFollowLinks(actor);
             ClearRemoteActiveEffectMotionBlurState(actor);
             ClearRemoteActiveEffectItemEffectState(actor);
+            ClearRemoteTemporaryStatAvatarEffectStates(actor);
             ReleaseCarryItemEffectLayerReferenceForParity(actor);
             ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
             ClearRemoteTransientItemEffectStates(actor);
@@ -9200,6 +9213,58 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.ActiveEffectItemEffect?.MarkTerminated();
             actor.ActiveEffectItemEffect = null;
+        }
+
+        private static void ClearRemoteTemporaryStatAvatarEffectStates(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            var releasedStates = new HashSet<RemoteTemporaryStatAvatarEffectState>();
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatSoulArrowEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatWeaponChargeEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatAuraEffect, releasedStates);
+            foreach (RemoteTemporaryStatAvatarEffectState tailState in actor.TemporaryStatAuraEffectTails)
+            {
+                ReleaseRemoteTemporaryStatAvatarEffectReference(tailState, releasedStates);
+            }
+
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatMoreWildEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatBarrierEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatBlessingArmorEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatRepeatEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatMagicShieldEffect, releasedStates);
+            ReleaseRemoteTemporaryStatAvatarEffectReference(actor.TemporaryStatFinalCutEffect, releasedStates);
+
+            actor.TemporaryStatSoulArrowEffect = null;
+            actor.TemporaryStatWeaponChargeEffect = null;
+            actor.TemporaryStatAuraEffect = null;
+            actor.TemporaryStatAuraEffectTails.Clear();
+            actor.TemporaryStatMoreWildEffect = null;
+            actor.TemporaryStatBarrierEffect = null;
+            actor.TemporaryStatBlessingArmorEffect = null;
+            actor.TemporaryStatRepeatEffect = null;
+            actor.TemporaryStatMagicShieldEffect = null;
+            actor.TemporaryStatFinalCutEffect = null;
+            actor.TemporaryStatAffectedLayerLastSyncTime = int.MinValue;
+            actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount = 0;
+        }
+
+        private static void ReleaseRemoteTemporaryStatAvatarEffectReference(
+            RemoteTemporaryStatAvatarEffectState state,
+            ISet<RemoteTemporaryStatAvatarEffectState> releasedStates)
+        {
+            if (state == null
+                || releasedStates == null
+                || !releasedStates.Add(state)
+                || state.IsTerminated)
+            {
+                return;
+            }
+
+            state.ReleaseAffectedLayerReference();
         }
 
         private static void ClearRemoteDragonCompanionState(RemoteUserActor actor)
@@ -13289,6 +13354,11 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime,
                     out RemoteTemporaryStatAvatarEffectState nextState))
             {
+                if (existingState != null && !existingState.IsTerminated)
+                {
+                    existingState.ReleaseAffectedLayerReference();
+                }
+
                 return null;
             }
 
@@ -13398,6 +13468,11 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime,
                     out RemoteTemporaryStatAvatarEffectState nextState))
             {
+                if (existingState != null && !existingState.IsTerminated)
+                {
+                    existingState.ReleaseAffectedLayerReference();
+                }
+
                 return null;
             }
 

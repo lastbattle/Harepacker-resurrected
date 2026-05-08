@@ -13,6 +13,75 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class CashShopStageChildWindow : UIWindowBase
     {
+        public sealed class ScrollBarControlRuntimeState
+        {
+            public int ControlId { get; init; }
+            public int UpButtonId { get; init; }
+            public int DownButtonId { get; init; }
+            public Point Position { get; init; }
+            public int Height { get; init; }
+            public int WheelRange { get; init; }
+            public int Offset { get; init; }
+            public int MaxOffset { get; init; }
+            public bool IsDragging { get; init; }
+        }
+
+        public sealed class SelectorControlRuntimeState
+        {
+            public int ControlId { get; init; }
+            public int InitArg { get; init; }
+            public Point Position { get; init; }
+            public int StartX { get; init; }
+            public int StartY { get; init; }
+            public int StartWidth { get; init; }
+            public int StartHeight { get; init; }
+            public int ActiveIndex { get; init; }
+            public int VisibleOffset { get; init; }
+            public int VisibleCount { get; init; }
+            public int TotalCount { get; init; }
+            public int NormalColor { get; init; }
+            public int SelectedColor { get; init; }
+            public int OutlineColor { get; init; }
+            public string FocusLabel { get; init; } = string.Empty;
+            public IReadOnlyList<string> Labels { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class TabControlRuntimeState
+        {
+            public int ControlId { get; init; }
+            public int ItemCount { get; init; }
+            public Point Position { get; init; }
+            public int Width { get; init; }
+            public bool SameWidth { get; init; }
+            public int NormalStringPoolId { get; init; }
+            public int SelectedStringPoolId { get; init; }
+            public int ActiveIndex { get; init; }
+            public string ActiveTabName { get; init; } = string.Empty;
+            public IReadOnlyList<string> TabNames { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class NumberCanvasRuntimeState
+        {
+            public int ExpectedCanvasCount { get; init; }
+            public int LoadedCanvasCount { get; init; }
+            public int ReadyMask { get; init; }
+            public string RenderedText { get; init; } = string.Empty;
+            public IReadOnlyList<bool> DigitReadyStates { get; init; } = Array.Empty<bool>();
+        }
+
+        public sealed class RewardSessionRuntimeState
+        {
+            public bool PacketOwned { get; init; }
+            public int SessionByte { get; init; }
+            public int SessionByteOffset { get; init; } = -1;
+            public bool IsPending { get; init; }
+            public int PayloadLength { get; init; }
+            public int DecodedByteLength { get; init; }
+            public int TrailingByteCount { get; init; }
+            public string TrailingPayloadHex { get; init; } = string.Empty;
+            public string PacketStateSignature { get; init; } = string.Empty;
+        }
+
         public sealed class LockerOwnerState
         {
             public string AccountLabel { get; init; } = string.Empty;
@@ -29,6 +98,8 @@ namespace HaCreator.MapSimulator.UI
             public int ScrollBarY { get; init; } = -1;
             public int ScrollBarHeight { get; init; } = -1;
             public IReadOnlyList<string> SharedCharacterNames { get; init; } = Array.Empty<string>();
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
         }
 
         public sealed class InventoryOwnerState
@@ -75,6 +146,9 @@ namespace HaCreator.MapSimulator.UI
             public string PacketFocusSignature { get; init; } = string.Empty;
             public string PacketFocusMessage { get; init; } = string.Empty;
             public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
+            public TabControlRuntimeState TabRuntime { get; init; }
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
         }
 
         public sealed class ListOwnerEntryState
@@ -126,6 +200,8 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
             public IReadOnlyList<ListOwnerEntryState> VisibleEntries { get; init; } = Array.Empty<ListOwnerEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
         }
 
         public sealed class StatusOwnerState
@@ -253,6 +329,9 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<HistoryEntryState> HistoryEntries { get; init; } = Array.Empty<HistoryEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
             public CommodityDrawLayoutState CommodityDrawLayout { get; init; } = new();
+            public SelectorControlRuntimeState SelectorRuntime { get; init; }
+            public NumberCanvasRuntimeState NumberCanvasRuntime { get; init; }
+            public RewardSessionRuntimeState RewardSessionRuntime { get; init; }
         }
 
         private readonly struct LayerInfo

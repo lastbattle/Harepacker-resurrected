@@ -236,6 +236,7 @@ namespace HaCreator.Wz
                         MapleBool r = InfoTool.GetOptionalBool(obj["r"]);
                         MapleBool hide = InfoTool.GetOptionalBool(obj["hide"]);
                         MapleBool reactor = InfoTool.GetOptionalBool(obj["reactor"]);
+                        MapleBool dynamicObject = InfoTool.GetOptionalBool(obj["dynamic"]);
                         MapleBool flow = InfoTool.GetOptionalBool(obj["flow"]);
                         int? rx = InfoTool.GetOptionalTranslatedInt(obj["rx"]);
                         int? ry = InfoTool.GetOptionalTranslatedInt(obj["ry"]);
@@ -260,7 +261,7 @@ namespace HaCreator.Wz
                             continue;
 
                         Layer l = mapBoard.Layers[layer];
-                        mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false));
+                        mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false, dynamicObject));
                         l.zMList.Add(zM);
                     }
                 }

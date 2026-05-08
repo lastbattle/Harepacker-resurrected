@@ -10,6 +10,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort MessengerInboundOpcode = 372;
         internal const ushort MessengerOutboundOpcode = 143;
         internal const ushort MessengerClaimRequestOpcode = 118;
+        internal const ushort MessengerClaimResultOpcode = 44;
+        internal const ushort MessengerClaimServerAvailableTimeOpcode = 45;
+        internal const ushort MessengerClaimServerStatusChangedOpcode = 46;
         internal const ushort MerchantInboundOpcode = 373;
         internal const ushort MerchantOutboundOpcode = 144;
 
@@ -26,7 +29,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort FamilyUsePrivilegeRequestOpcode = 175;
         internal const ushort FamilySetPreceptRequestOpcode = 176;
 
-        private static readonly ushort[] MessengerInboundOpcodeSet = { MessengerInboundOpcode };
+        private static readonly ushort[] MessengerInboundOpcodeSet =
+        {
+            MessengerInboundOpcode,
+            MessengerClaimResultOpcode,
+            MessengerClaimServerAvailableTimeOpcode,
+            MessengerClaimServerStatusChangedOpcode
+        };
         private static readonly ushort[] MessengerOutboundOpcodeSet =
         {
             MessengerOutboundOpcode,
@@ -62,7 +71,7 @@ namespace HaCreator.MapSimulator.Interaction
                 [0] = "CUIMessenger::OnEnter",
                 [1] = "CUIMessenger::OnSelfEnterResult",
                 [2] = "CUIMessenger::OnLeave",
-                [3] = "CUIMessenger::OnInvite",
+                [3] = "CUIMessenger::OnInvite (static invite branch before singleton gate)",
                 [4] = "CUIMessenger::OnInviteResult",
                 [5] = "CUIMessenger::OnBlocked",
                 [6] = "CUIMessenger::OnChat",
@@ -126,6 +135,19 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<byte> GetRecoveredMessengerInboundSubtypes()
         {
             return MessengerInboundSubtypeHandlers.Keys.OrderBy(key => key).ToArray();
+        }
+
+        internal static IReadOnlyList<byte> GetRecoveredMessengerInstanceInboundSubtypes()
+        {
+            return MessengerInboundSubtypeHandlers.Keys
+                .Where(key => key != 3)
+                .OrderBy(key => key)
+                .ToArray();
+        }
+
+        internal static byte GetRecoveredMessengerStaticInviteSubtype()
+        {
+            return 3;
         }
 
         internal static IReadOnlyList<byte> GetRecoveredMessengerOutboundSubtypes()
@@ -279,7 +301,7 @@ namespace HaCreator.MapSimulator.Interaction
             string outboundSubtypes = string.Join(
                 ", ",
                 MessengerOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
-            return $"Recovered Messenger packet table: inbound opcode {inboundSet} to CUIMessenger::OnPacket (subtypes {inboundSubtypes}); outbound opcode {MessengerOutboundOpcode} (subtypes {outboundSubtypes}); claim-request opcode {MessengerClaimRequestOpcode} via CWvsContext::SendClaimRequest.";
+            return $"Recovered Messenger packet table: inbound opcode {MessengerInboundOpcode} to CUIMessenger::OnPacket (subtypes {inboundSubtypes}); subtype 3 is the static invite branch that runs before the CUIMessenger singleton/window gate, while subtypes 0/1/2/4/5/6/7/8 dispatch on the live Messenger instance; claim-result opcode {MessengerClaimResultOpcode} to CWvsContext::OnClaimResult, claim-server time opcode {MessengerClaimServerAvailableTimeOpcode}, claim-server status opcode {MessengerClaimServerStatusChangedOpcode}; inbound opcode set {inboundSet}; outbound opcode {MessengerOutboundOpcode} (subtypes {outboundSubtypes}); claim-request opcode {MessengerClaimRequestOpcode} via CWvsContext::SendClaimRequest.";
         }
 
         internal static string DescribeMapleTvRecoveredPacketTable()
@@ -433,6 +455,13 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (requestOpcode == MessengerClaimRequestOpcode)
+            {
+                expectedInboundOpcodes = new[] { (int)MessengerClaimResultOpcode };
+                expectationSummary = "expect CWvsContext::OnClaimResult (opcode 44)";
+                return true;
+            }
+
             if (requestOpcode != MessengerOutboundOpcode || payload.Length == 0)
             {
                 return false;
@@ -541,6 +570,27 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 branchSummary = $"CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket subtype {inboundSubtype}";
+                return true;
+            }
+
+            if (inboundOpcode == MessengerClaimResultOpcode)
+            {
+                resultCode = payload.Length > 0 ? payload[0] : byte.MaxValue;
+                branchSummary = resultCode == byte.MaxValue
+                    ? "CWvsContext::OnClaimResult"
+                    : $"CWvsContext::OnClaimResult resultCode={resultCode}";
+                return true;
+            }
+
+            if (inboundOpcode == MessengerClaimServerAvailableTimeOpcode)
+            {
+                branchSummary = "CWvsContext::OnSetClaimSvrAvailableTime";
+                return true;
+            }
+
+            if (inboundOpcode == MessengerClaimServerStatusChangedOpcode)
+            {
+                branchSummary = "CWvsContext::OnClaimSvrStatusChanged";
                 return true;
             }
 

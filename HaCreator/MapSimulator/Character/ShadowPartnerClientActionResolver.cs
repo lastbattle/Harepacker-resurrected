@@ -1963,6 +1963,78 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(10, "stabO1", 1, 90, move: new Point(-23, 0)),
                     CreateIndexedPiece(11, "stabO1", 1, 90, move: new Point(-23, 0))
                 },
+                // Mounted helper rows immediately after the recovered CActionMan::Init
+                // walk remain part of the same action-data surface consumed by
+                // LoadShadowPartnerAction. Keep them source-gated below so only skills
+                // whose recovered action set names these rows can synthesize them.
+                ["ride2"] = CreateIndexedPieces(
+                    ("alert", 0, 60),
+                    ("alert", 0, 60),
+                    ("alert", 0, 60),
+                    ("swingPF", 3, 60),
+                    ("swingPF", 3, 60),
+                    ("swingPF", 3, 60),
+                    ("swingPF", 3, 60),
+                    ("swingPF", 3, 60),
+                    ("swingPF", 3, 60),
+                    ("jump", 0, 60),
+                    ("swingOF", 1, 60),
+                    ("swingOF", 2, 60),
+                    ("jump", 0, 60),
+                    ("sit", 0, 60),
+                    ("sit", 0, 60),
+                    ("sit", 0, 60)),
+                ["getoff2"] = CreateIndexedPieces(
+                    ("sit", 0, 240),
+                    ("sit", 0, 240),
+                    ("sit", 0, 240),
+                    ("jump", 0, 60),
+                    ("swingOF", 2, 60),
+                    ("swingOF", 1, 60),
+                    ("jump", 0, 60),
+                    ("swingPF", 3, 30),
+                    ("swingPF", 3, 30),
+                    ("swingPF", 3, 30),
+                    ("swingPF", 3, 30),
+                    ("swingPF", 3, 30),
+                    ("swingPF", 3, 30),
+                    ("alert", 0, 30),
+                    ("alert", 0, 30),
+                    ("alert", 0, 30)),
+                ["flamethrower_pre2"] = CreateRepeatedIndexedPieces("sit", 0, 90, 3),
+                ["flamethrower2"] = CreateRepeatedIndexedPieces("sit", 0, 90, 3),
+                ["flamethrower_after2"] = CreateRepeatedIndexedPieces("sit", 0, 90, 4),
+                ["flamethrower_pre"] = CreateRepeatedIndexedPieces("sit", 0, 90, 3),
+                ["flamethrower"] = CreateRepeatedIndexedPieces("sit", 0, 90, 3),
+                ["flamethrower_after"] = CreateRepeatedIndexedPieces("sit", 0, 90, 4),
+                ["gatlingshot"] = CreateIndexedPieces(
+                    ("sit", 0, 810)),
+                ["battlecharge"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingOF", 0, -110),
+                    CreateIndexedPiece(1, "swingOF", 1, -110, move: new Point(0, -52)),
+                    CreateIndexedPiece(2, "stabT1", 2, -110, move: new Point(0, -80)),
+                    CreateIndexedPiece(3, "stabT1", 2, -110, flip: true, move: new Point(0, -84)),
+                    CreateIndexedPiece(4, "stabT1", 0, 100),
+                    CreateIndexedPiece(5, "stabT1", 0, 90),
+                    CreateIndexedPiece(6, "alert", 1, 150)
+                },
+                ["mRush"] = CreateIndexedPieces(
+                    ("sit", 0, 180)),
+                ["herbalism_mechanic"] = CreateIndexedPieces(
+                    ("sit", 0, 180)),
+                ["mining_mechanic"] = CreateIndexedPieces(
+                    ("sit", 0, 180)),
+                ["gather0"] = CreateIndexedPieces(
+                    ("swingT2", 2, -90),
+                    ("swingT1", 2, 210),
+                    ("swingT1", 1, 210),
+                    ("swingT1", 0, 210)),
+                ["gather1"] = CreateIndexedPieces(
+                    ("swingT1", 0, -90),
+                    ("swingT1", 2, 210),
+                    ("swingT1", 1, 210),
+                    ("swingT1", 0, 210)),
 
                 // `Character/00002000.img/alert8/0` is another mounted indexed-alert
                 // helper row; it reuses the authored jump helper frame with its own delay.
@@ -2334,6 +2406,28 @@ namespace HaCreator.MapSimulator.Character
             "OnixProtection",
             "OnixWill",
             "Awakening"
+        };
+
+        private static readonly HashSet<string> ClientActionDataFallbackOnlyActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // These rows are mounted in Character/00002000 beside the client-init helper
+            // table, but the recovered init loop stops before them. Admit them only as
+            // source-gated action-data fallback rows, not as generic runtime actions.
+            "ride2",
+            "getoff2",
+            "flamethrower_pre2",
+            "flamethrower2",
+            "flamethrower_after2",
+            "flamethrower_pre",
+            "flamethrower",
+            "flamethrower_after",
+            "gatlingshot",
+            "battlecharge",
+            "mRush",
+            "herbalism_mechanic",
+            "mining_mechanic",
+            "gather0",
+            "gather1"
         };
 
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -2979,6 +3073,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             foreach (string actionName in GenericHelperSurfaceActionNames)
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in ClientActionDataFallbackOnlyActionNames)
             {
                 if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
                 {
@@ -3996,6 +4098,8 @@ namespace HaCreator.MapSimulator.Character
                    || IsGenericHelperSurfaceActionName(actionName)
                    || IsClientInitializedBuiltInPieceActionName(actionName)
                    || (!string.IsNullOrWhiteSpace(actionName)
+                       && ClientActionDataFallbackOnlyActionNames.Contains(actionName))
+                   || (!string.IsNullOrWhiteSpace(actionName)
                        && ClientInitializedFallbackOnlyActionNames.Contains(actionName));
         }
 
@@ -4390,6 +4494,11 @@ namespace HaCreator.MapSimulator.Character
 
             if (!SupportedRawActionCanonicalNames.TryGetValue(actionName, out string canonicalActionName))
             {
+                if (ClientActionDataFallbackOnlyActionNames.Contains(actionName))
+                {
+                    return supportedRawActionNames.Contains(actionName);
+                }
+
                 return !IsClientInitializedShadowPartnerRawActionName(actionName)
                        || supportedRawActionNames == null
                        || supportedRawActionNames.Count == 0
@@ -4546,6 +4655,31 @@ namespace HaCreator.MapSimulator.Character
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
                     pieceFrames[i].DelayOverrideMs,
+                    IsClientActionManInitPiece: true);
+            }
+
+            return pieces;
+        }
+
+        private static ShadowPartnerActionPiece[] CreateRepeatedIndexedPieces(
+            string pieceActionName,
+            int sourceFrameIndex,
+            int delayOverrideMs,
+            int count)
+        {
+            if (count <= 0)
+            {
+                return Array.Empty<ShadowPartnerActionPiece>();
+            }
+
+            var pieces = new ShadowPartnerActionPiece[count];
+            for (int i = 0; i < count; i++)
+            {
+                pieces[i] = new ShadowPartnerActionPiece(
+                    i,
+                    pieceActionName,
+                    sourceFrameIndex,
+                    delayOverrideMs,
                     IsClientActionManInitPiece: true);
             }
 

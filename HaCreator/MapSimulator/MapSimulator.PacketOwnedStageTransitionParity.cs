@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<BaseDXDrawableItem, Dictionary<int, BaseDXDrawableItem>> _packetStageTransitionAuthoredStateBranchItems = new();
         private readonly Dictionary<BaseDXDrawableItem, bool> _packetStageTransitionObjectVisibility = new();
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectMovingState> _packetStageTransitionNamedObjectMovingStates = new();
+        private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectSideLaneLifecycleSnapshot> _packetStageTransitionNamedObjectSideLaneLifecycle = new();
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
         private int _packetStageTransitionBackEffectDurationMs;
         private byte _packetStageTransitionBackEffectStartAlpha = byte.MaxValue;
@@ -406,6 +407,7 @@ namespace HaCreator.MapSimulator
                     objInst.Y,
                     objInst.Z,
                     objInst.PlatformNumber,
+                    objInst.Dynamic,
                     (byte)objInst.flow,
                     objInst.rx,
                     objInst.ry,
@@ -423,6 +425,7 @@ namespace HaCreator.MapSimulator
                     ResolvePacketOwnedNamedObjectAuthoredStateMotionByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectAuthoredStateMetadataLanesByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+                        objInst.Dynamic,
                         objInst.r,
                         objInst.flow,
                         objInst.rx,
@@ -627,8 +630,10 @@ namespace HaCreator.MapSimulator
 
                 WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
                 PacketOwnedNamedObjectMotionProfile motionProfile = PacketOwnedNamedObjectMotionProfile.FromWzProperty(realChild);
+                bool dynamicObject = TryReadPacketOwnedNamedObjectIntProperty(realChild, "dynamic", out int dynamicValue) &&
+                    dynamicValue != 0;
                 PacketOwnedNamedObjectMetadataLane lanes = ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
-                    hasChangingObjectMetadata: motionProfile != null,
+                    hasChangingObjectMetadata: dynamicObject || motionProfile != null,
                     hasReflectionMetadata: false,
                     hasQuestVisibleMetadata: realChild?["quest"] is WzImageProperty);
                 if (lanes != PacketOwnedNamedObjectMetadataLane.None)
@@ -689,6 +694,7 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionNamedObjects.Clear();
             _packetStageTransitionNamedObjectMetadata.Clear();
             _packetStageTransitionAuthoredStateBranchItems.Clear();
+            _packetStageTransitionNamedObjectSideLaneLifecycle.Clear();
             ResetPacketOwnedLogoutGiftRuntimeState(clearConfig: true, hideWindow: true, summary: "Packet-owned logout-gift owner cleared with stage-transition state.");
         }
 
@@ -696,6 +702,7 @@ namespace HaCreator.MapSimulator
         {
             _packetStageTransitionObjectVisibility.Clear();
             _packetStageTransitionNamedObjectMovingStates.Clear();
+            _packetStageTransitionNamedObjectSideLaneLifecycle.Clear();
             RestorePacketOwnedBackEffect();
             _packetStageTransitionRuntime.Clear();
             ClearPacketOwnedScriptSelectablePets();

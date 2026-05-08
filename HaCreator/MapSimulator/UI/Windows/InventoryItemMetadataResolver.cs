@@ -1466,12 +1466,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IReadOnlyList<int> dropItemIds = ResolveRaiseDropItemEntries(infoProperty);
+            int incrementExpUnit = GetIntOrStringValue(infoProperty["exp"]);
+            int grade = GetIntOrStringValue(infoProperty["grade"]);
+            if (!CanCreateRaiseWindow(incrementExpUnit, grade))
+            {
+                return false;
+            }
+
             metadata = new QuestRewardRaiseItemMetadata
             {
                 OwnerItemId = ownerItemId,
                 QuestId = questId,
-                IncrementExpUnit = GetIntOrStringValue(infoProperty["exp"]),
-                Grade = GetIntOrStringValue(infoProperty["grade"]),
+                IncrementExpUnit = incrementExpUnit,
+                Grade = grade,
                 MaxDropCount = dropItemIds.Count,
                 Name = (infoProperty["name"] as WzStringProperty)?.Value?.Trim() ?? string.Empty,
                 UiData = uiData,
@@ -1479,6 +1486,11 @@ namespace HaCreator.MapSimulator.UI
                 DropItemIds = dropItemIds
             };
             return true;
+        }
+
+        private static bool CanCreateRaiseWindow(int incrementExpUnit, int grade)
+        {
+            return incrementExpUnit <= 0 || grade > 0;
         }
 
         private static IReadOnlyList<int> ResolveRaiseDropItemEntries(WzSubProperty infoProperty)
@@ -5162,19 +5174,30 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < visibleCount; i++)
             {
                 RewardEntryMetadata entry = entries[i];
-                if (entry.ItemId <= 0)
+                if (entry.ItemId > 0)
+                {
+                    string itemLabel = ResolveTooltipItemLabel(entry.ItemId);
+                    string chanceSuffix = entry.Probability > 0
+                        ? $" ({entry.Probability.ToString(CultureInfo.InvariantCulture)}%)"
+                        : string.Empty;
+                    string periodSuffix = entry.PeriodMinutes > 0
+                        ? $", expires after {FormatMinuteDuration(entry.PeriodMinutes)}"
+                        : string.Empty;
+                    lines.Add($"Reward: {itemLabel} x{entry.Count.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}{periodSuffix}");
+                    AppendRewardWorldMessageLine(lines, entry.WorldMessage);
+                    continue;
+                }
+
+                if (entry.MesoAmount <= 0)
                 {
                     continue;
                 }
 
-                string itemLabel = ResolveTooltipItemLabel(entry.ItemId);
-                string chanceSuffix = entry.Probability > 0
+                string mesoChanceSuffix = entry.Probability > 0
                     ? $" ({entry.Probability.ToString(CultureInfo.InvariantCulture)}%)"
                     : string.Empty;
-                string periodSuffix = entry.PeriodMinutes > 0
-                    ? $", expires after {FormatMinuteDuration(entry.PeriodMinutes)}"
-                    : string.Empty;
-                lines.Add($"Reward: {itemLabel} x{entry.Count.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}{periodSuffix}");
+                lines.Add($"Reward: {entry.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos{mesoChanceSuffix}");
+                AppendRewardWorldMessageLine(lines, entry.WorldMessage);
             }
 
             int remaining = entries.Count - visibleCount;
@@ -5184,6 +5207,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines;
+        }
+
+        private static void AppendRewardWorldMessageLine(List<string> lines, string worldMessage)
+        {
+            string normalizedMessage = NormalizeTooltipText(worldMessage);
+            if (!string.IsNullOrWhiteSpace(normalizedMessage))
+            {
+                lines.Add($"Reward message: {normalizedMessage}");
+            }
         }
 
         private static List<RewardEntryMetadata> GetNumericNamedRewardEntries(WzSubProperty rewardProperty)
@@ -5205,7 +5237,7 @@ namespace HaCreator.MapSimulator.UI
                 RewardEntryMetadata entry = linkedChild is WzSubProperty structuredEntry
                     ? BuildRewardEntryMetadata(structuredEntry)
                     : BuildRewardEntryMetadata(linkedChild ?? child);
-                if (entry.ItemId <= 0)
+                if (entry.ItemId <= 0 && entry.MesoAmount <= 0)
                 {
                     continue;
                 }
@@ -5239,7 +5271,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int itemId = ResolveRewardEntryItemId(entry);
-            if (itemId <= 0)
+            int mesoAmount = Math.Max(0, GetIntOrStringValue(entry["meso"]));
+            if (itemId <= 0 && mesoAmount <= 0)
             {
                 return RewardEntryMetadata.Empty;
             }
@@ -5247,10 +5280,12 @@ namespace HaCreator.MapSimulator.UI
             return new RewardEntryMetadata
             {
                 ItemId = itemId,
+                MesoAmount = mesoAmount,
                 Count = Math.Max(1, GetIntOrStringValue(entry["count"])),
                 Probability = Math.Max(0, GetIntOrStringValue(entry["prob"])),
                 PeriodMinutes = Math.Max(0, GetIntOrStringValue(entry["period"])),
-                EffectPath = GetStringValue(entry["Effect"]) ?? string.Empty
+                EffectPath = GetStringValue(entry["Effect"]) ?? string.Empty,
+                WorldMessage = GetStringValue(entry["worldMsg"]) ?? string.Empty
             };
         }
 
@@ -5849,10 +5884,12 @@ namespace HaCreator.MapSimulator.UI
             public static readonly RewardEntryMetadata Empty = new();
 
             public int ItemId { get; init; }
+            public int MesoAmount { get; init; }
             public int Count { get; init; } = 1;
             public int Probability { get; init; }
             public int PeriodMinutes { get; init; }
             public string EffectPath { get; init; } = string.Empty;
+            public string WorldMessage { get; init; } = string.Empty;
         }
     }
 }

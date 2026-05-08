@@ -372,6 +372,7 @@ namespace HaCreator.MapSimulator.Character
             public int PreparedCurrentTime { get; set; } = int.MinValue;
             public int PreparedSourceLayerCurrentTime { get; set; } = int.MinValue;
             public int PreparedTransitionStartTime { get; set; } = int.MinValue;
+            public int PreparedRelMoveEndTime { get; set; } = int.MinValue;
             public int LastInsertCanvasTime { get; set; } = int.MinValue;
             public int LastInsertCanvasSourceLayerCurrentTime { get; set; } = int.MinValue;
             public int LastInsertCanvasLayerObjectId { get; set; }
@@ -388,6 +389,7 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasPreparedLayerZ { get; set; } = int.MinValue;
             public int LastInsertCanvasPreparedLayerColor { get; set; }
             public int LastInsertCanvasPreparedLayerTargetOffsetSignature { get; set; }
+            public int LastInsertCanvasPreparedLayerRelMoveEndTime { get; set; } = int.MinValue;
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -2065,7 +2067,7 @@ namespace HaCreator.MapSimulator.Character
                 int attackDuration = ResolveCurrentClientActionLayerDuration();
                 if (attackDuration > 0)
                 {
-                    if (currentTime - _animationStartTime >= attackDuration
+                    if (ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, _animationStartTime) >= attackDuration
                         && !ShouldHoldClientOwnedOneTimeAction(currentTime))
                     {
                         BeginMeleeAfterImageFade(currentTime);
@@ -2077,7 +2079,7 @@ namespace HaCreator.MapSimulator.Character
                 else
                 {
                     // No animation found - return to standing after short delay
-                    if (currentTime - _animationStartTime >= 300
+                    if (ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, _animationStartTime) >= 300
                         && !ShouldHoldClientOwnedOneTimeAction(currentTime))
                     {
                         ClearForcedActionName();
@@ -2207,7 +2209,7 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
-            return currentTime - _animationStartTime;
+            return ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, _animationStartTime);
         }
 
         private int ResolveCurrentClientActionLayerDuration()
@@ -4390,7 +4392,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (_activeExternalAvatarTransform == null ||
                 _activeExternalAvatarTransformExpiresAt == int.MaxValue ||
-                currentTime < _activeExternalAvatarTransformExpiresAt)
+                !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, _activeExternalAvatarTransformExpiresAt))
             {
                 return;
             }
@@ -6499,6 +6501,7 @@ namespace HaCreator.MapSimulator.Character
                     PreparedCurrentTime = int.MinValue,
                     PreparedSourceLayerCurrentTime = int.MinValue,
                     PreparedTransitionStartTime = int.MinValue,
+                    PreparedRelMoveEndTime = int.MinValue,
                     LastInsertCanvasTime = int.MinValue,
                     LastInsertCanvasSourceLayerCurrentTime = int.MinValue,
                     LastInsertCanvasLayerObjectId = 0,
@@ -6509,6 +6512,7 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasSourceLayerOriginSignature = 0,
                     LastInsertCanvasSourceLayerClockSignature = 0,
                     LastInsertCanvasSourceFrameSignature = 0,
+                    LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue,
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
@@ -6752,7 +6756,9 @@ namespace HaCreator.MapSimulator.Character
                 ResolveMirrorImagePreparedLayerColorSignature(preparedLayer.PreparedLayerColor),
                 preparedLayer.LastInsertCanvasPreparedLayerColor,
                 ResolveMirrorImagePreparedLayerTargetOffsetSignature(preparedLayer.PreparedTargetOffsetPx),
-                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature);
+                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature,
+                preparedLayer.PreparedRelMoveEndTime,
+                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -6766,7 +6772,8 @@ namespace HaCreator.MapSimulator.Character
                     insertsLiveSourceCanvas: true,
                     sourceLayerClockSignature: liveSourceLayerClockSignature,
                     sourceFrameSignature: liveSourceFrameSignature,
-                    overlayParentSignature: liveOverlayParentSignature);
+                    overlayParentSignature: liveOverlayParentSignature,
+                    preparedLayerRelMoveEndTime: preparedLayer.PreparedRelMoveEndTime);
             }
 
             return shouldUseLiveSourceLayer;
@@ -6835,6 +6842,7 @@ namespace HaCreator.MapSimulator.Character
                     mirrorStartTime: _activeMirrorImage?.StartTime ?? currentTime,
                     sourceLayerCurrentTime: refreshedSourceLayerCurrentTime,
                     currentTime);
+                preparedLayer.PreparedRelMoveEndTime = ResolveMirrorImagePreparedLayerRelMoveEndTime(refreshedSourceLayerCurrentTime);
                 preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                     preparedLayer.PreparedLayerObjectId,
                     preservesExistingLayerObject: true);
@@ -6886,6 +6894,7 @@ namespace HaCreator.MapSimulator.Character
                     mirrorStartTime: _activeMirrorImage?.StartTime ?? currentTime,
                     sourceLayerCurrentTime: refreshedSourceLayerCurrentTime,
                     currentTime);
+                preparedLayer.PreparedRelMoveEndTime = ResolveMirrorImagePreparedLayerRelMoveEndTime(refreshedSourceLayerCurrentTime);
                 preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                     preparedLayer.PreparedLayerObjectId,
                     preservesExistingLayerObject: true);
@@ -6950,6 +6959,7 @@ namespace HaCreator.MapSimulator.Character
                 _activeMirrorImage?.StartTime ?? currentTime,
                 sourceLayerCurrentTime,
                 currentTime);
+            preparedLayer.PreparedRelMoveEndTime = ResolveMirrorImagePreparedLayerRelMoveEndTime(sourceLayerCurrentTime);
             preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                 preparedLayer.PreparedLayerObjectId,
                 preservesPreparedLayerObject);
@@ -6998,6 +7008,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedCurrentTime = int.MinValue;
             preparedLayer.PreparedSourceLayerCurrentTime = int.MinValue;
             preparedLayer.PreparedTransitionStartTime = int.MinValue;
+            preparedLayer.PreparedRelMoveEndTime = int.MinValue;
             preparedLayer.LastInsertCanvasTime = int.MinValue;
             preparedLayer.LastInsertCanvasSourceLayerCurrentTime = int.MinValue;
             preparedLayer.LastInsertCanvasLayerObjectId = 0;
@@ -7014,6 +7025,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
             preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
             preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
+            preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -7033,7 +7045,8 @@ namespace HaCreator.MapSimulator.Character
             bool insertsLiveSourceCanvas,
             int sourceLayerClockSignature = 0,
             int sourceFrameSignature = 0,
-            int overlayParentSignature = 0)
+            int overlayParentSignature = 0,
+            int preparedLayerRelMoveEndTime = int.MinValue)
         {
             if (preparedLayer == null)
             {
@@ -7064,6 +7077,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
                 preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
                 preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
+                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue;
                 preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             }
 
@@ -7138,6 +7152,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = ResolveMirrorImageLastInsertCanvasPreparedLayerTargetOffsetSignature(
                 preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature,
                 ResolveMirrorImagePreparedLayerTargetOffsetSignature(preparedLayer.PreparedTargetOffsetPx),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime = ResolveMirrorImageLastInsertCanvasPreparedLayerRelMoveEndTime(
+                preparedLayer.LastInsertCanvasPreparedLayerRelMoveEndTime,
+                preparedLayerRelMoveEndTime,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
                 preparedLayer.LastInsertedLiveSourceParts,
@@ -7875,6 +7893,23 @@ namespace HaCreator.MapSimulator.Character
             return Math.Max(mirrorStartTime, currentTime - sourceElapsedForTransition);
         }
 
+        internal static int ResolveMirrorImagePreparedLayerRelMoveEndTime(int sourceLayerCurrentTime)
+        {
+            return sourceLayerCurrentTime == int.MinValue
+                ? int.MinValue
+                : sourceLayerCurrentTime + MirrorImageTransitionDurationMs;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerRelMoveEndTime(
+            int existingRelMoveEndTime,
+            int currentRelMoveEndTime,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentRelMoveEndTime != int.MinValue
+                ? currentRelMoveEndTime
+                : existingRelMoveEndTime;
+        }
+
         internal static bool CanUseLiveMirrorImageSourceLayer(
             string preparedActionName,
             string currentActionName,
@@ -7937,7 +7972,9 @@ namespace HaCreator.MapSimulator.Character
             int preparedLayerColor = 0,
             int lastInsertCanvasPreparedLayerColor = 0,
             int preparedLayerTargetOffsetSignature = 0,
-            int lastInsertCanvasPreparedLayerTargetOffsetSignature = 0)
+            int lastInsertCanvasPreparedLayerTargetOffsetSignature = 0,
+            int preparedLayerRelMoveEndTime = int.MinValue,
+            int lastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -8040,6 +8077,9 @@ namespace HaCreator.MapSimulator.Character
             bool preparedLayerTargetOffsetChanged = preparedLayerTargetOffsetSignature != 0
                 && lastInsertCanvasPreparedLayerTargetOffsetSignature != 0
                 && preparedLayerTargetOffsetSignature != lastInsertCanvasPreparedLayerTargetOffsetSignature;
+            bool preparedLayerRelMoveEndTimeChanged = preparedLayerRelMoveEndTime != int.MinValue
+                && lastInsertCanvasPreparedLayerRelMoveEndTime != int.MinValue
+                && preparedLayerRelMoveEndTime != lastInsertCanvasPreparedLayerRelMoveEndTime;
             bool sourceSignatureChanged = sourceSignature != 0
                 && lastInsertedSourceSignature != 0
                 && sourceSignature != lastInsertedSourceSignature;
@@ -8057,6 +8097,7 @@ namespace HaCreator.MapSimulator.Character
                 || preparedLayerZChanged
                 || preparedLayerColorChanged
                 || preparedLayerTargetOffsetChanged
+                || preparedLayerRelMoveEndTimeChanged
                 || sourceSignatureChanged
                 || sourceCanvasSignatureChanged)
             {
@@ -8089,6 +8130,8 @@ namespace HaCreator.MapSimulator.Character
                 && (preparedLayerColor == 0 || lastInsertCanvasPreparedLayerColor == 0);
             bool preparedLayerTargetOffsetMetadataMissing = (preparedLayerTargetOffsetSignature != 0 || lastInsertCanvasPreparedLayerTargetOffsetSignature != 0)
                 && (preparedLayerTargetOffsetSignature == 0 || lastInsertCanvasPreparedLayerTargetOffsetSignature == 0);
+            bool preparedLayerRelMoveEndTimeMetadataMissing = (preparedLayerRelMoveEndTime != int.MinValue || lastInsertCanvasPreparedLayerRelMoveEndTime != int.MinValue)
+                && (preparedLayerRelMoveEndTime == int.MinValue || lastInsertCanvasPreparedLayerRelMoveEndTime == int.MinValue);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
                 || sourceSignatureMetadataMissing
                 || sourceCanvasSignatureMetadataMissing
@@ -8101,7 +8144,8 @@ namespace HaCreator.MapSimulator.Character
                 || preparedLayerFilterMetadataMissing
                 || preparedLayerZMetadataMissing
                 || preparedLayerColorMetadataMissing
-                || preparedLayerTargetOffsetMetadataMissing;
+                || preparedLayerTargetOffsetMetadataMissing
+                || preparedLayerRelMoveEndTimeMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;
@@ -11950,21 +11994,33 @@ namespace HaCreator.MapSimulator.Character
                 return int.MinValue;
             }
 
-            long minimumEndTime = (long)startTime + minimumDurationMs;
-            if (minimumEndTime > int.MaxValue)
-            {
-                return int.MaxValue;
-            }
-
-            return minimumEndTime < int.MinValue
-                ? int.MinValue
-                : (int)minimumEndTime;
+            return unchecked(startTime + minimumDurationMs);
         }
 
         private bool ShouldHoldClientOwnedOneTimeAction(int currentTime)
         {
             return _clientOwnedOneTimeActionMinimumEndTime != int.MinValue
-                && currentTime < _clientOwnedOneTimeActionMinimumEndTime;
+                && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(
+                    currentTime,
+                    _clientOwnedOneTimeActionMinimumEndTime);
+        }
+
+        internal static bool ShouldHoldClientOwnedOneTimeActionForTesting(
+            int currentTime,
+            int actionStartTime,
+            int minimumDurationMs)
+        {
+            int minimumEndTime = ResolveClientOwnedOneTimeActionMinimumEndTime(
+                actionStartTime,
+                minimumDurationMs);
+            return minimumEndTime != int.MinValue
+                && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, minimumEndTime);
+        }
+
+        internal static bool IsExternalAvatarTransformExpiredForTesting(int currentTime, int expirationTime)
+        {
+            return expirationTime != int.MaxValue
+                && ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, expirationTime);
         }
 
         private void ClearMountedActionLayerState()

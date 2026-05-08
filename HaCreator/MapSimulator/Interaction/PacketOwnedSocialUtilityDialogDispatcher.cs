@@ -414,6 +414,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool ShouldCloseOwnerWindowAfterApply { get; private set; }
         internal ParcelAlarmPromptSnapshot LastAlarmPrompt { get; private set; }
         internal IReadOnlyList<string> LastArrivalNotices => _lastArrivalNotices;
+        internal int CurrentDialogMode => _currentDialogMode;
+        internal string LastLaunchSource { get; private set; } = "CParcelDlg packet owner idle.";
 
         internal bool TryApplyPacket(byte[] payload, out string message)
         {
@@ -440,11 +442,19 @@ namespace HaCreator.MapSimulator.Interaction
                 case 25:
                     return TryApplyAlarmPacket(payload, expectsSender: true, out message);
                 case 26:
+                    if (IsOpen)
+                    {
+                        StatusMessage = "CParcelDlg packet 26 rejected quick-delivery owner creation because the packet-owned unique modeless parcel owner is already open.";
+                        message = StatusMessage;
+                        return false;
+                    }
+
                     _openCount++;
                     IsOpen = true;
                     ShouldShowOwnerWindowAfterApply = true;
                     _currentDialogMode = 1;
                     _memoMailbox.ApplyPacketOwnedDialogMode(_currentDialogMode);
+                    LastLaunchSource = "CParcelDlg::OnPacket subtype 26 constructed CParcelDlg(mode 1) directly; CWvsContext::UI_Open has no parcel case in the recovered client.";
                     StatusMessage = "CParcelDlg packet 26 opened the packet-owned quick-delivery owner.";
                     message = StatusMessage;
                     return true;
@@ -530,6 +540,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyOpenPacket(byte[] payload, out string message)
         {
+            if (IsOpen)
+            {
+                StatusMessage = "CParcelDlg packet 8 rejected receive/send owner creation because the packet-owned unique modeless parcel owner is already open.";
+                message = StatusMessage;
+                return false;
+            }
+
             if (payload.Length < 2)
             {
                 message = "Parcel dialog packet 8 requires the follow-up mode flag byte.";
@@ -547,6 +564,9 @@ namespace HaCreator.MapSimulator.Interaction
             IsOpen = true;
             ShouldShowOwnerWindowAfterApply = true;
             _currentDialogMode = modeTwoOpen ? 2 : 0;
+            LastLaunchSource = modeTwoOpen
+                ? "CParcelDlg::OnPacket subtype 8 constructed CParcelDlg(mode 2) directly from the packet mode flag; CWvsContext::UI_Open has no parcel case in the recovered client."
+                : "CParcelDlg::OnPacket subtype 8 constructed CParcelDlg(mode 0) directly from the packet mode flag; CWvsContext::UI_Open has no parcel case in the recovered client.";
             ParcelDialogTab activeTab = !modeTwoOpen && session.ReceiveEntries.Count == 0
                 ? ParcelDialogTab.Send
                 : ParcelDialogTab.Receive;

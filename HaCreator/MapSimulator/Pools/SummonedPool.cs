@@ -2730,7 +2730,9 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
             if (!hasHitAnimation)
             {
-                int elapsed = Math.Max(0, currentTime - state.Summon.StartTime);
+                int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                    currentTime,
+                    state.Summon.StartTime);
                 SkillAnimation fallbackAnimation = ResolvePreHitSummonAnimation(state.Summon, currentTime, elapsed, out int fallbackAnimationTime);
                 state.OneTimeActionClip = CreatePacketOwnedOneTimeActionClip(fallbackAnimation, fallbackAnimationTime, currentTime);
             }
@@ -2771,9 +2773,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SkillAnimation removalAnimation = skill.SummonRemovalAnimation;
-            if (removalAnimation?.Frames.Count > 0 && summon.RemovalAnimationStartTime != int.MinValue)
+            if (removalAnimation?.Frames.Count > 0
+                && summon.RemovalAnimationStartTime != int.MinValue
+                && SummonRuntimeRules.HasClientTickReached(currentTime, summon.RemovalAnimationStartTime))
             {
-                int removalElapsed = currentTime - summon.RemovalAnimationStartTime;
+                int removalElapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                    currentTime,
+                    summon.RemovalAnimationStartTime);
                 int removalDuration = GetSkillAnimationDuration(removalAnimation) ?? 0;
                 if (removalElapsed >= 0 && removalDuration > 0 && removalElapsed < removalDuration)
                 {
@@ -2792,7 +2798,9 @@ namespace HaCreator.MapSimulator.Pools
             if (ShouldUseSummonPrepareAnimation(summon, skill)
                 && prepareAnimation?.Frames.Count > 0)
             {
-                int prepareElapsed = Math.Max(0, currentTime - summon.LastStateChangeTime);
+                int prepareElapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                    currentTime,
+                    summon.LastStateChangeTime);
                 int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
                 if (prepareDuration <= 0 || prepareElapsed < prepareDuration)
                 {
@@ -10354,7 +10362,9 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int elapsed = Math.Max(0, currentTime - summon.StartTime);
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                currentTime,
+                summon.StartTime);
             SkillAnimation animation = ResolveSummonAnimation(summon, currentTime, elapsed, out int animationTime);
             SkillFrame frame = null;
             float frameAlpha = 1f;
@@ -10487,7 +10497,9 @@ namespace HaCreator.MapSimulator.Pools
 
         private Rectangle GetSummonHitbox(ActiveSummon summon, int currentTime)
         {
-            int elapsed = Math.Max(0, currentTime - summon.StartTime);
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                currentTime,
+                summon.StartTime);
             SkillAnimation animation = ResolveSummonAnimation(summon, currentTime, elapsed, out int animationTime)
                 ?? summon.SkillData?.AffectedEffect
                 ?? summon.SkillData?.Effect;
@@ -10569,9 +10581,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SkillAnimation removalAnimation = skill.SummonRemovalAnimation;
-            if (removalAnimation?.Frames.Count > 0 && summon.RemovalAnimationStartTime != int.MinValue)
+            if (removalAnimation?.Frames.Count > 0
+                && summon.RemovalAnimationStartTime != int.MinValue
+                && SummonRuntimeRules.HasClientTickReached(currentTime, summon.RemovalAnimationStartTime))
             {
-                int removalElapsed = currentTime - summon.RemovalAnimationStartTime;
+                int removalElapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                    currentTime,
+                    summon.RemovalAnimationStartTime);
                 int removalDuration = GetSkillAnimationDuration(removalAnimation) ?? 0;
                 if (removalElapsed >= 0 && removalDuration > 0 && removalElapsed < removalDuration)
                 {
@@ -10581,9 +10597,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SkillAnimation hitAnimation = skill.SummonHitAnimation;
-            if (hitAnimation?.Frames.Count > 0 && summon.LastHitAnimationStartTime != int.MinValue)
+            if (hitAnimation?.Frames.Count > 0
+                && summon.LastHitAnimationStartTime != int.MinValue
+                && SummonRuntimeRules.HasClientTickReached(currentTime, summon.LastHitAnimationStartTime))
             {
-                int hitElapsed = currentTime - summon.LastHitAnimationStartTime;
+                int hitElapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                    currentTime,
+                    summon.LastHitAnimationStartTime);
                 int hitDuration = GetSkillAnimationDuration(hitAnimation) ?? 0;
                 if (hitElapsed >= 0 && hitDuration > 0 && hitElapsed < hitDuration)
                 {
@@ -10603,7 +10623,9 @@ namespace HaCreator.MapSimulator.Pools
             if (ShouldUseSummonPrepareAnimation(summon, skill)
                 && prepareAnimation?.Frames.Count > 0)
             {
-                int prepareElapsed = Math.Max(0, currentTime - summon.LastStateChangeTime);
+                int prepareElapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                    currentTime,
+                    summon.LastStateChangeTime);
                 int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
                 if (prepareDuration <= 0 || prepareElapsed < prepareDuration)
                 {
@@ -10769,7 +10791,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
+            if (!SummonRuntimeRules.HasClientTickReached(currentTime, summon.LastAttackAnimationStartTime))
+            {
+                return false;
+            }
+
+            int attackElapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                currentTime,
+                summon.LastAttackAnimationStartTime);
             int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
             int totalDuration = (hasActionPlayback ? 0 : prepareDuration) + attackDuration;
             if (attackElapsed < 0 || totalDuration <= 0 || attackElapsed >= totalDuration)
@@ -10837,11 +10866,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int elapsed = currentTime - summon.LastAttackAnimationStartTime;
-            if (elapsed < 0)
+            if (!SummonRuntimeRules.HasClientTickReached(currentTime, summon.LastAttackAnimationStartTime))
             {
                 return false;
             }
+
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(
+                currentTime,
+                summon.LastAttackAnimationStartTime);
 
             int prepareDuration = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
                 skill,
@@ -10890,7 +10922,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return currentTime - attackStartTime >= playbackDuration;
+            return SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, attackStartTime) >= playbackDuration;
         }
 
         internal static int ResolveSummonAttackPlaybackDurationMs(ActiveSummon summon)

@@ -1209,6 +1209,12 @@ namespace HaCreator.MapSimulator.Character
             int authoredIntervalMs = ResolveTickInterval(runtimeData, 0);
             if (authoredIntervalMs > 0)
             {
+                int frameIntervalMs = ResolveClientFrameIntervalMilliseconds(runtimeData, authoredIntervalMs);
+                if (frameIntervalMs > 0)
+                {
+                    return frameIntervalMs;
+                }
+
                 return authoredIntervalMs;
             }
 
@@ -1218,6 +1224,28 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return ResolveTickInterval(runtimeData, fallbackMs);
+        }
+
+        private static int ResolveClientFrameIntervalMilliseconds(MobSkillRuntimeData runtimeData, int authoredIntervalMs)
+        {
+            if (runtimeData == null ||
+                runtimeData.Count <= 0 ||
+                runtimeData.DurationMs <= 0 ||
+                authoredIntervalMs <= 0 ||
+                (long)authoredIntervalMs * runtimeData.Count <= runtimeData.DurationMs)
+            {
+                return 0;
+            }
+
+            // WZ periodic-status intervals such as MobSkill.img/134 interval=48
+            // and 138 interval=90 cannot be seconds when paired with their
+            // authored duration/count. In that lane the WZ value behaves as frame
+            // ticks, so normalize the already-second-scaled runtime value.
+            int authoredFrameCount = Math.Max(1, (int)Math.Round(authoredIntervalMs / 1000d));
+            int frameIntervalMs = Math.Max(1, (int)Math.Round(authoredFrameCount * (1000d / 60d)));
+            return (long)frameIntervalMs * runtimeData.Count <= runtimeData.DurationMs
+                ? frameIntervalMs
+                : Math.Max(1, (int)Math.Ceiling(runtimeData.DurationMs / (runtimeData.Count + 1d)));
         }
 
         internal static int ResolveSkillStatusDurationMs(int skillId, MobSkillRuntimeData runtimeData)

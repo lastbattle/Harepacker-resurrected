@@ -23,10 +23,10 @@ namespace HaCreator.MapSimulator.UI
         private const int NextButtonY = 21;
         private const int RegisterButtonX = 145;
         private const int RegisterButtonY = 248;
-        private const int ListX = 16;
-        private const int ListY = 52;
-        private const int ListWidth = 246;
-        private const int RowHeight = 24;
+        private const int ListX = 20;
+        private const int ListY = 43;
+        private const int ListWidth = 170;
+        private const int RowHeight = 20;
         private const int ResultsPerPage = 10;
         private const int HeaderX = 16;
         private const int HeaderY = 14;
@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.UI
         private int _selectedIndex;
         private int _pageIndex;
         private int _ownerSessionToken;
+        private int _hoverVisibleRow = -1;
         private bool _isRegisterConfirmationOpen;
         private bool _confirmAcceptFocused = true;
         private string _statusMessage = string.Empty;
@@ -148,6 +149,7 @@ namespace HaCreator.MapSimulator.UI
             _selectedIndex = -1;
             _pageIndex = UseOwnerSession ? _owner.GetWishlistSearchResultSessionPageIndex() : 0;
             _ownerSessionToken = owner?.GetWishlistSearchResultSessionToken() ?? 0;
+            _hoverVisibleRow = -1;
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
             _statusMessage = owner?.GetStatusMessage() ?? string.Empty;
@@ -182,6 +184,7 @@ namespace HaCreator.MapSimulator.UI
             _selectedIndex = -1;
             _pageIndex = 0;
             _ownerSessionToken = 0;
+            _hoverVisibleRow = -1;
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
             _statusMessage = string.Empty;
@@ -212,6 +215,7 @@ namespace HaCreator.MapSimulator.UI
             SyncOwnerSessionState();
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
+            UpdateHoverRow(mouseState);
             HandleKeyboardInput(keyboardState);
             if (!IsVisible)
             {
@@ -342,10 +346,28 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopDialogUI.WishlistSearchResult result = visibleResults[visibleRow];
                 Rectangle rowBounds = GetRowBounds(visibleRow);
                 bool selected = string.Equals(result.EntryKey, GetSelectedResult()?.EntryKey, StringComparison.Ordinal);
-                sprite.Draw(_pixelTexture, rowBounds, selected ? new Color(255, 255, 255, 120) : new Color(255, 255, 255, 32));
-                sprite.DrawString(_font, TrimToWidth(result.Title, 176f), new Vector2(rowBounds.X + 6, rowBounds.Y + 3), selected ? new Color(40, 55, 96) : Color.White);
-                sprite.DrawString(_font, TrimToWidth(result.PriceLabel, 54f), new Vector2(rowBounds.Right - 58, rowBounds.Y + 3), selected ? new Color(40, 55, 96) : new Color(255, 233, 160));
-                sprite.DrawString(_font, TrimToWidth(result.Seller, 140f), new Vector2(rowBounds.X + 6, rowBounds.Y + 13), selected ? new Color(40, 55, 96) : new Color(214, 223, 236));
+                bool hovered = visibleRow == _hoverVisibleRow;
+                if (hovered)
+                {
+                    sprite.Draw(_pixelTexture, rowBounds, new Color(187, 199, 217, 185));
+                }
+
+                if (selected)
+                {
+                    sprite.Draw(_pixelTexture, rowBounds, new Color(91, 120, 158, 210));
+                }
+
+                Rectangle rowIconBounds = new(rowBounds.X, rowBounds.Y + 5, 8, 8);
+                if (_iconPlaceholderTexture != null)
+                {
+                    sprite.Draw(_iconPlaceholderTexture, rowIconBounds.Location.ToVector2(), Color.White);
+                }
+
+                sprite.DrawString(
+                    _font,
+                    TrimToWidth(result.Title, 153f),
+                    new Vector2(rowBounds.X + 12, rowBounds.Y + 4),
+                    selected ? Color.White : new Color(28, 36, 50));
             }
 
             string pageLabel = GetResultCount() == 0
@@ -800,6 +822,7 @@ namespace HaCreator.MapSimulator.UI
             _ownerSessionToken = liveSessionToken;
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
+            _hoverVisibleRow = -1;
             _statusMessage = _owner.GetStatusMessage();
             if (_owner.HasWishlistSearchResultSession())
             {
@@ -814,6 +837,25 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateButtons();
+        }
+
+        private void UpdateHoverRow(MouseState mouseState)
+        {
+            _hoverVisibleRow = -1;
+            if (_isRegisterConfirmationOpen)
+            {
+                return;
+            }
+
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> visibleResults = GetVisibleResults();
+            for (int i = 0; i < visibleResults.Count; i++)
+            {
+                if (GetRowBounds(i).Contains(mouseState.Position))
+                {
+                    _hoverVisibleRow = i;
+                    return;
+                }
+            }
         }
 
         internal static IReadOnlyList<(string Text, Color Color)> BuildFooterInfoLines(

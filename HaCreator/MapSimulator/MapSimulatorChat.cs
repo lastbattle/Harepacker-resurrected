@@ -560,6 +560,7 @@ namespace HaCreator.MapSimulator
                     _lastKeyRepeatTime = tickCount;
                 }
 
+                _imeCandidateListState = ResolveClientEditImeCandidateDownKeySelection(_imeCandidateListState);
                 return true;
             }
 
@@ -3391,6 +3392,50 @@ namespace HaCreator.MapSimulator
             // edit-owned candidate child exists. Other arrows keep their existing
             // edit/history/combo owner paths in this modeled status-bar seam.
             return key == Keys.Down && candidateListState?.HasCandidates == true;
+        }
+
+        internal static ImeCandidateListState ResolveClientEditImeCandidateDownKeySelection(
+            ImeCandidateListState candidateListState)
+        {
+            if (candidateListState?.HasCandidates != true)
+            {
+                return ImeCandidateListState.Empty;
+            }
+
+            int candidateCount = candidateListState.Candidates.Count;
+            int pageSize = candidateListState.PageSize > 0
+                ? Math.Min(candidateListState.PageSize, candidateCount)
+                : candidateCount;
+            int selection = Math.Clamp(candidateListState.Selection, 0, candidateCount - 1);
+            if (candidateListState.Selection < 0)
+            {
+                selection = Math.Clamp(candidateListState.PageStart, 0, candidateCount - 1);
+            }
+            else if (selection < candidateCount - 1)
+            {
+                selection++;
+            }
+
+            int maxPageStart = Math.Max(0, candidateCount - pageSize);
+            int pageStart = Math.Clamp(candidateListState.PageStart, 0, maxPageStart);
+            if (selection < pageStart)
+            {
+                pageStart = selection;
+            }
+            else if (selection >= pageStart + pageSize)
+            {
+                pageStart = selection - pageSize + 1;
+            }
+
+            pageStart = Math.Clamp(pageStart, 0, maxPageStart);
+            return new ImeCandidateListState(
+                candidateListState.Candidates,
+                pageStart,
+                pageSize,
+                selection,
+                candidateListState.Vertical,
+                candidateListState.ListIndex,
+                candidateListState.WindowForm);
         }
 
         internal static bool ShouldForwardClientEditParentOnlyKey(

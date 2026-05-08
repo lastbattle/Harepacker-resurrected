@@ -934,8 +934,18 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                _currentInitializedSessionVersion = sessionVersion;
-                _currentInitializedProxySessionId = proxySessionId;
+                if (sessionVersion.HasValue && proxySessionId.HasValue)
+                {
+                    _currentInitializedSessionVersion = sessionVersion;
+                    _currentInitializedProxySessionId = proxySessionId;
+                    _initializedProxySessions.Add(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
+                }
+                else
+                {
+                    _currentInitializedSessionVersion = null;
+                    _currentInitializedProxySessionId = null;
+                }
+
                 RefreshOutboundVerificationEvidence();
                 RefreshInboundVerificationEvidence();
             }

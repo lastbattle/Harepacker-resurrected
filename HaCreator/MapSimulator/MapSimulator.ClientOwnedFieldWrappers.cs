@@ -109,8 +109,8 @@ namespace HaCreator.MapSimulator
                 ? $"client owner CField_Balrog::GetFieldType = {(int)FieldType.FIELDTYPE_BALROG} ({FieldType.FIELDTYPE_BALROG})"
                 : $"client owner CField_ContiMove via fieldType {(int)FieldType.FIELDTYPE_CONTIMOVE} ({FieldType.FIELDTYPE_CONTIMOVE})";
             string payloadDescription = string.IsNullOrWhiteSpace(definition.ShipObjectPath)
-                ? "WZ shipObj payload without an object path"
-                : $"WZ shipObj payload path {definition.ShipObjectPath}";
+                ? $"WZ shipObj payload from {definition.SourceDescription} without an object path"
+                : $"WZ shipObj payload from {definition.SourceDescription} path {definition.ShipObjectPath}";
             contract = new TransportationWrapperContract(
                 kind,
                 $"{ownerDescription}, {payloadDescription}",

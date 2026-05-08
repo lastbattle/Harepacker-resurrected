@@ -2669,12 +2669,15 @@ namespace HaCreator.MapSimulator.Effects
                     continue;
                 }
 
-                if (!candidate.PairItemSerial.HasValue || candidate.PairItemSerial.Value != pairLookupSerial)
+                if (!DoesWeddingRelationshipRecordContainSerial(candidate, pairLookupSerial))
                 {
                     continue;
                 }
 
-                ownerCharacterId = participant.CharacterId;
+                ownerCharacterId = ResolveWeddingRelationshipRecordOwnerForLookupSerial(
+                    participant.CharacterId,
+                    candidate,
+                    pairLookupSerial);
                 relationshipRecord = candidate;
                 return true;
             }
@@ -2696,6 +2699,38 @@ namespace HaCreator.MapSimulator.Effects
 
             relationshipRecord = GetRelationshipRecord(mappedParticipant.AvatarModifiedState.Value, relationshipType);
             return relationshipRecord.IsActive;
+        }
+
+        private static bool DoesWeddingRelationshipRecordContainSerial(
+            RemoteUserRelationshipRecord relationshipRecord,
+            long lookupSerial)
+        {
+            return (relationshipRecord.ItemSerial.HasValue && relationshipRecord.ItemSerial.Value == lookupSerial)
+                || (relationshipRecord.PairItemSerial.HasValue && relationshipRecord.PairItemSerial.Value == lookupSerial);
+        }
+
+        private static int ResolveWeddingRelationshipRecordOwnerForLookupSerial(
+            int participantCharacterId,
+            RemoteUserRelationshipRecord relationshipRecord,
+            long lookupSerial)
+        {
+            int ownerCharacterId = relationshipRecord.CharacterId.GetValueOrDefault();
+            int pairCharacterId = relationshipRecord.PairCharacterId.GetValueOrDefault();
+            if (relationshipRecord.ItemSerial.HasValue
+                && relationshipRecord.ItemSerial.Value == lookupSerial
+                && ownerCharacterId > 0)
+            {
+                return ownerCharacterId;
+            }
+
+            if (relationshipRecord.PairItemSerial.HasValue
+                && relationshipRecord.PairItemSerial.Value == lookupSerial
+                && pairCharacterId > 0)
+            {
+                return pairCharacterId;
+            }
+
+            return participantCharacterId;
         }
 
         private static bool ApplyRelationshipRecordRemove(

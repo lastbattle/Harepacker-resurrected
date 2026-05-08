@@ -26,6 +26,13 @@ namespace HaCreator.MapSimulator.UI
             bool CashLayer,
             int ItemId);
 
+        internal readonly record struct CharacterInventoryOperationInventoryMutation(
+            InventoryType InventoryType,
+            int SlotIndex,
+            int ItemId,
+            bool HasCashSerial,
+            long CashItemSerialNumber);
+
         private readonly record struct CharacterInventoryOperationContext(
             bool SawPositiveEquipRemove,
             bool SawExpectedPositiveEquipRemove,
@@ -469,7 +476,27 @@ namespace HaCreator.MapSimulator.UI
             out IReadOnlyList<CharacterInventoryOperationMutation> mutations,
             out string rejectReason)
         {
+            return TryDecodePassiveClientInventoryOperationMutations(
+                payload,
+                equipInventorySlots,
+                cashInventorySlots,
+                currentBuild,
+                out mutations,
+                out _,
+                out rejectReason);
+        }
+
+        internal static bool TryDecodePassiveClientInventoryOperationMutations(
+            IReadOnlyList<byte> payload,
+            IReadOnlyList<InventorySlotData> equipInventorySlots,
+            IReadOnlyList<InventorySlotData> cashInventorySlots,
+            CharacterBuild currentBuild,
+            out IReadOnlyList<CharacterInventoryOperationMutation> mutations,
+            out IReadOnlyList<CharacterInventoryOperationInventoryMutation> inventoryMutations,
+            out string rejectReason)
+        {
             mutations = Array.Empty<CharacterInventoryOperationMutation>();
+            inventoryMutations = Array.Empty<CharacterInventoryOperationInventoryMutation>();
             rejectReason = null;
             if (payload == null || payload.Count < sizeof(byte) * 2)
             {
@@ -491,6 +518,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 Dictionary<(EquipSlot Slot, bool CashLayer), CharacterInventoryOperationMutation> recoveredMutations = new();
+                Dictionary<(InventoryType InventoryType, int SlotIndex), CharacterInventoryOperationInventoryMutation> recoveredInventoryMutations = new();
                 bool requiresSecondaryStatChangedPointTrailer = false;
                 bool terminatedAfterHeader = false;
                 for (int i = 0; i < operationCount; i++)
@@ -516,10 +544,11 @@ namespace HaCreator.MapSimulator.UI
                                     remainingOperationCount: operationCount - i - 1,
                                     reservedTrailerBytes: requiresSecondaryStatChangedPointTrailer ? sizeof(byte) : 0,
                                     out CharacterInventoryOperationMutation? passiveAddMutation,
+                                    out CharacterInventoryOperationInventoryMutation? passiveInventoryAddMutation,
                                     out bool terminateAfterHeader,
                                     out rejectReason))
                             {
-                                if (recoveredMutations.Count > 0
+                                if ((recoveredMutations.Count > 0 || recoveredInventoryMutations.Count > 0)
                                     && IsPassiveAddEntryRecoveryTerminatorReason(rejectReason))
                                 {
                                     terminatedAfterHeader = true;
@@ -534,6 +563,12 @@ namespace HaCreator.MapSimulator.UI
                             {
                                 CharacterInventoryOperationMutation mutation = passiveAddMutation.Value;
                                 recoveredMutations[(mutation.Slot, mutation.CashLayer)] = mutation;
+                            }
+
+                            if (passiveInventoryAddMutation.HasValue)
+                            {
+                                CharacterInventoryOperationInventoryMutation mutation = passiveInventoryAddMutation.Value;
+                                recoveredInventoryMutations[(mutation.InventoryType, mutation.SlotIndex)] = mutation;
                             }
 
                             if (terminateAfterHeader)
@@ -591,11 +626,23 @@ namespace HaCreator.MapSimulator.UI
                             if (sourceIsCharacter && !targetIsCharacter)
                             {
                                 recoveredMutations[(sourceSlot, cashLayer)] = new CharacterInventoryOperationMutation(sourceSlot, cashLayer, 0);
+                                int sourceItemId = ResolveCurrentCharacterLayerItemId(currentBuild, sourceSlot, cashLayer);
+                                AddPassiveInventoryMutation(
+                                    recoveredInventoryMutations,
+                                    inventoryType,
+                                    toPosition,
+                                    sourceItemId);
                                 break;
                             }
 
                             if (!sourceIsCharacter && targetIsCharacter)
                             {
+                                int displacedItemId = ResolveCurrentCharacterLayerItemId(currentBuild, targetSlot, cashLayer);
+                                AddPassiveInventoryMutation(
+                                    recoveredInventoryMutations,
+                                    inventoryType,
+                                    fromPosition,
+                                    displacedItemId);
                                 if (!TryResolvePassiveInventoryItemId(
                                         inventoryType == ClientCashInventoryType ? cashInventorySlots : equipInventorySlots,
                                         fromPosition,
@@ -617,6 +664,14 @@ namespace HaCreator.MapSimulator.UI
                             {
                                 bool cashLayer = inventoryType == ClientCashInventoryType;
                                 recoveredMutations[(removedSlot, cashLayer)] = new CharacterInventoryOperationMutation(removedSlot, cashLayer, 0);
+                            }
+                            else
+                            {
+                                AddPassiveInventoryMutation(
+                                    recoveredInventoryMutations,
+                                    inventoryType,
+                                    fromPosition,
+                                    itemId: 0);
                             }
 
                             break;
@@ -640,7 +695,7 @@ namespace HaCreator.MapSimulator.UI
                         requiresSecondaryStatChangedPointTrailer,
                         out rejectReason))
                 {
-                    if (!(recoveredMutations.Count > 0
+                    if (!((recoveredMutations.Count > 0 || recoveredInventoryMutations.Count > 0)
                           && IsRecoverableInventoryOperationTrailerReason(rejectReason)))
                     {
                         return false;
@@ -649,7 +704,7 @@ namespace HaCreator.MapSimulator.UI
                     rejectReason = null;
                 }
 
-                if (recoveredMutations.Count == 0)
+                if (recoveredMutations.Count == 0 && recoveredInventoryMutations.Count == 0)
                 {
                     rejectReason = "Inventory-operation payload did not include a character equipment mutation that can be recovered passively.";
                     return false;
@@ -662,6 +717,13 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 mutations = mutationList;
+                List<CharacterInventoryOperationInventoryMutation> inventoryMutationList = new(recoveredInventoryMutations.Count);
+                foreach (CharacterInventoryOperationInventoryMutation mutation in recoveredInventoryMutations.Values)
+                {
+                    inventoryMutationList.Add(mutation);
+                }
+
+                inventoryMutations = inventoryMutationList;
                 return true;
             }
             catch (Exception ex)
@@ -847,10 +909,12 @@ namespace HaCreator.MapSimulator.UI
             int remainingOperationCount,
             int reservedTrailerBytes,
             out CharacterInventoryOperationMutation? mutation,
+            out CharacterInventoryOperationInventoryMutation? inventoryMutation,
             out bool terminateAfterHeader,
             out string rejectReason)
         {
             mutation = null;
+            inventoryMutation = null;
             terminateAfterHeader = false;
             rejectReason = null;
             if (!TryEnsureRemaining(reader?.BaseStream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
@@ -867,6 +931,7 @@ namespace HaCreator.MapSimulator.UI
 
             int itemId = reader.ReadInt32();
             bool hasCashSerial = reader.ReadByte() != 0;
+            long cashItemSerialNumber = 0;
             if (hasCashSerial)
             {
                 if (!TryEnsureRemaining(reader.BaseStream, sizeof(long), out rejectReason))
@@ -874,7 +939,7 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                _ = reader.ReadInt64();
+                cashItemSerialNumber = reader.ReadInt64();
             }
 
             if (!TryEnsureRemaining(reader.BaseStream, sizeof(long), out rejectReason))
@@ -933,8 +998,56 @@ namespace HaCreator.MapSimulator.UI
                     inventoryType == ClientCashInventoryType,
                     itemId);
             }
+            else if (TryResolveClientInventoryType(inventoryType, out InventoryType resolvedInventoryType)
+                     && targetPosition > 0
+                     && itemId > 0)
+            {
+                inventoryMutation = new CharacterInventoryOperationInventoryMutation(
+                    resolvedInventoryType,
+                    targetPosition - 1,
+                    itemId,
+                    hasCashSerial,
+                    cashItemSerialNumber);
+            }
 
             return true;
+        }
+
+        private static void AddPassiveInventoryMutation(
+            IDictionary<(InventoryType InventoryType, int SlotIndex), CharacterInventoryOperationInventoryMutation> mutations,
+            byte inventoryType,
+            short clientPosition,
+            int itemId)
+        {
+            if (mutations == null || !TryResolveClientInventoryType(inventoryType, out InventoryType resolvedInventoryType))
+            {
+                return;
+            }
+
+            int slotIndex = clientPosition - 1;
+            if (slotIndex < 0)
+            {
+                return;
+            }
+
+            mutations[(resolvedInventoryType, slotIndex)] = new CharacterInventoryOperationInventoryMutation(
+                resolvedInventoryType,
+                slotIndex,
+                Math.Max(0, itemId),
+                HasCashSerial: false,
+                CashItemSerialNumber: 0);
+        }
+
+        private static bool TryResolveClientInventoryType(byte inventoryType, out InventoryType resolvedInventoryType)
+        {
+            if (Enum.IsDefined(typeof(InventoryType), (int)inventoryType))
+            {
+                resolvedInventoryType = (InventoryType)inventoryType;
+                return true;
+            }
+
+            resolvedInventoryType = default;
+            return false;
         }
 
         private static bool TryResolvePassiveInventoryItemId(

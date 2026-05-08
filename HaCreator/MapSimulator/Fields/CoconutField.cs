@@ -94,6 +94,15 @@ namespace HaCreator.MapSimulator.Fields
         }
         internal enum ClientBoardLayerOperationKind
         {
+            LoadBoardCanvasResource,
+            CreateBoardCanvas,
+            CopyBoardBackgroundToCanvas,
+            CreateBoardLayer,
+            InsertBoardCanvas,
+            BindBoardLayerToOriginRt,
+            SetBoardLayerZ,
+            MoveBoardLayer,
+            DrawInitialBoard,
             AcquireBoardLayerCanvas,
             EnsureBoardLayerSize,
             SetBoardLayerRenderTarget,
@@ -259,6 +268,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<AttackPacketRequest> _pendingAttackPacketRequests = new();
         private int? _lastPacketType;
         private int? _lastScorePacketTick;
+        private bool _clientBoardLayerLifecycleInitialized;
         private int _previewTreeHitCount = DefaultPreviewTreeHitCount;
         private int _defaultRoundDurationSeconds = DefaultRoundDurationSecondsValue;
         private int _expandRoundDurationSeconds = DefaultRoundDurationSecondsValue;
@@ -307,6 +317,7 @@ namespace HaCreator.MapSimulator.Fields
         internal bool HasClientClock => _finishTick != 0;
         internal int ClientFinishTick => _finishTick;
         internal bool IsBoardLayerDirty => _boardLayerDirty;
+        internal bool IsClientBoardLayerLifecycleInitialized => _clientBoardLayerLifecycleInitialized;
         internal int LastBoardLayerRedrawTick => _lastBoardLayerRedrawTick;
         internal string VictoryEffectPath => _victoryEffectPath;
         internal string LoseEffectPath => _loseEffectPath;
@@ -335,6 +346,19 @@ namespace HaCreator.MapSimulator.Fields
                 CanUseBoardLayerCache(),
                 _boardLayerRenderTarget != null,
                 _boardLayerDirty,
+                HasClientClock,
+                FormatClientBoardScore(_team0Score),
+                FormatClientBoardScore(_team1Score),
+                FormatClientBoardTimer(boardTimeRemaining));
+        }
+
+        internal IReadOnlyList<ClientBoardLayerOperation> BuildClientBoardLayerInitializationOperationPlanForParity(int screenWidth, int tickCount)
+        {
+            int boardTimeRemaining = ResolveClientBoardTimeRemaining(tickCount);
+            return BuildClientBoardLayerInitializationOperationPlan(
+                screenWidth,
+                CanUseBoardLayerCache(),
+                _clientBoardLayerLifecycleInitialized,
                 HasClientClock,
                 FormatClientBoardScore(_team0Score),
                 FormatClientBoardScore(_team1Score),
@@ -395,6 +419,66 @@ namespace HaCreator.MapSimulator.Fields
                     ? ClientBoardLayerOperationKind.PresentBoardLayer
                     : ClientBoardLayerOperationKind.DrawDirectBoardContents,
                 boardPosition));
+            return operations;
+        }
+
+        internal static IReadOnlyList<ClientBoardLayerOperation> BuildClientBoardLayerInitializationOperationPlan(
+            int screenWidth,
+            bool canUseBoardLayerCache,
+            bool lifecycleInitialized,
+            bool hasClientClock,
+            string team0Text,
+            string team1Text,
+            string timerText)
+        {
+            if (!canUseBoardLayerCache || lifecycleInitialized)
+            {
+                return Array.Empty<ClientBoardLayerOperation>();
+            }
+
+            Point boardPosition = ResolveClientBoardLayerPosition(screenWidth);
+            List<ClientBoardLayerOperation> operations = new()
+            {
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.LoadBoardCanvasResource,
+                    new Point(BoardWidth, BoardHeight),
+                    "Map/Obj/etc.img/coconut/backgrnd"),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.CreateBoardCanvas,
+                    new Point(BoardWidth, BoardHeight)),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.CopyBoardBackgroundToCanvas,
+                    Point.Zero),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.CreateBoardLayer,
+                    Point.Zero),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.InsertBoardCanvas,
+                    Point.Zero),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.BindBoardLayerToOriginRt,
+                    Point.Zero,
+                    "Origin_RT"),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.SetBoardLayerZ,
+                    new Point(-1, 0)),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.MoveBoardLayer,
+                    new Point(-BoardRightOffsetX, BoardTopY)),
+                new ClientBoardLayerOperation(
+                    ClientBoardLayerOperationKind.PresentBoardLayer,
+                    boardPosition)
+            };
+            AddClientBoardLayerContentOperations(
+                operations,
+                Point.Zero,
+                hasClientClock,
+                team0Text,
+                team1Text,
+                timerText);
+            operations.Add(new ClientBoardLayerOperation(
+                ClientBoardLayerOperationKind.DrawInitialBoard,
+                Point.Zero));
             return operations;
         }
 
@@ -730,7 +814,10 @@ namespace HaCreator.MapSimulator.Fields
                     : "idle";
             int pendingRequests = _pendingAttackPacketRequests.Count;
             int unsentRequests = PendingUndispatchedAttackPacketRequestCount;
-            return $"Coconut runtime active, coconuts={_coconuts.Count}, authoredTotal={_authoredTotalCoconutCount}, localTeam={_localTeam}, teamSource={_localTeamSelectionSource}, objectName={_eventObjectName}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, defaultTime={_defaultRoundDurationSeconds}, expandTime={_expandRoundDurationSeconds}, result={_lastRoundResult}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
+            string boardLayerState = CanUseBoardLayerCache()
+                ? $"client-layer-init={_clientBoardLayerLifecycleInitialized}, dirty={_boardLayerDirty}, lastRedraw={_lastBoardLayerRedrawTick}, anchor=(-{BoardRightOffsetX},{BoardTopY}), z=-1, canvas={BoardWidth}x{BoardHeight}"
+                : "direct-board-draw";
+            return $"Coconut runtime active, coconuts={_coconuts.Count}, authoredTotal={_authoredTotalCoconutCount}, localTeam={_localTeam}, teamSource={_localTeamSelectionSource}, objectName={_eventObjectName}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, defaultTime={_defaultRoundDurationSeconds}, expandTime={_expandRoundDurationSeconds}, result={_lastRoundResult}, boardLayer={boardLayerState}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
         }
         #endregion
         #region Simulation (for testing)
@@ -1525,6 +1612,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _boardLayerRenderTarget?.Dispose();
                 _boardLayerRenderTarget = new RenderTarget2D(_graphicsDevice, BoardWidth, BoardHeight, false, SurfaceFormat.Color, DepthFormat.None);
+                _clientBoardLayerLifecycleInitialized = true;
                 _boardLayerDirty = true;
             }
         }
@@ -1573,6 +1661,7 @@ namespace HaCreator.MapSimulator.Fields
             _boardLayerSpriteBatch = null;
             _boardLayerRenderTarget?.Dispose();
             _boardLayerRenderTarget = null;
+            _clientBoardLayerLifecycleInitialized = false;
             _boardLayerDirty = true;
         }
 

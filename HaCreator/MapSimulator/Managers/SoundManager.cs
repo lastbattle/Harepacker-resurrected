@@ -18,13 +18,22 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public class SoundManager : IDisposable
     {
+        internal enum BgmRequestAction
+        {
+            None = 0,
+            Stop,
+            Start
+        }
+
         private readonly ConcurrentDictionary<string, SoundEffect> _soundSources;
         private readonly List<OneShotSound> _activeSounds;
         private readonly ConcurrentDictionary<string, LoopingSound> _activeLoopingSounds;
+        private readonly ConcurrentDictionary<uint, string> _loopingSoundHandles;
         private readonly object _lock = new object();
         private float _volume = 0.5f;
         private bool _disposed;
         private bool _focusActive = true;
+        private uint _nextLoopingSerial;
 
         // Maximum concurrent sounds per effect type to prevent resource exhaustion
         private const int MaxConcurrentSoundsPerType = 8;
@@ -35,6 +44,7 @@ namespace HaCreator.MapSimulator.Managers
             _soundSources = new ConcurrentDictionary<string, SoundEffect>();
             _activeSounds = new List<OneShotSound>();
             _activeLoopingSounds = new ConcurrentDictionary<string, LoopingSound>();
+            _loopingSoundHandles = new ConcurrentDictionary<uint, string>();
             _activeSoundCounts = new ConcurrentDictionary<string, int>();
         }
 
@@ -78,26 +88,49 @@ namespace HaCreator.MapSimulator.Managers
         /// <param name="volumeScale">Per-call volume multiplier clamped to 0.0-1.0</param>
         public void PlaySound(string name, float volumeScale)
         {
-            if (_disposed) return;
-            if (!_focusActive) return;
+            TryPlaySound(name, volumeScale, suppressWhileActive: false, out _);
+        }
+
+        internal bool TryPlaySound(string name, float volumeScale, bool suppressWhileActive, out string reason)
+        {
+            reason = null;
+            if (_disposed)
+            {
+                reason = "disposed";
+                return false;
+            }
+
+            if (!_focusActive)
+            {
+                reason = "focus-paused";
+                return false;
+            }
 
             if (!_soundSources.TryGetValue(name, out var soundSource))
             {
+                reason = "not-registered";
                 Debug.WriteLine($"[SoundManager] Sound '{name}' not registered");
-                return;
+                return false;
             }
 
             // Check if we're at the limit for this sound type
             int currentCount = _activeSoundCounts.GetOrAdd(name, 0);
+            if (ShouldSuppressDuplicatePlayback(currentCount, suppressWhileActive))
+            {
+                reason = "duplicate-active";
+                return false;
+            }
+
             if (currentCount >= MaxConcurrentSoundsPerType)
             {
+                reason = "concurrent-limit";
                 Debug.WriteLine($"[SoundManager] Max concurrent sounds reached for '{name}' ({currentCount})");
-                return;
+                return false;
             }
 
             try
             {
-                float resolvedVolume = Math.Max(0f, Math.Min(1f, _volume * Math.Max(0f, volumeScale)));
+                float resolvedVolume = ResolveClientVolumeScale(volumeScale, _volume);
                 var oneShot = new OneShotSound(soundSource, name, resolvedVolume, OnSoundCompleted);
 
                 lock (_lock)
@@ -107,10 +140,14 @@ namespace HaCreator.MapSimulator.Managers
 
                 _activeSoundCounts.AddOrUpdate(name, 1, (_, c) => c + 1);
                 oneShot.Play();
+                reason = "played";
+                return true;
             }
             catch (Exception ex)
             {
+                reason = "play-failed";
                 Debug.WriteLine($"[SoundManager] Failed to play sound '{name}': {ex.Message}");
+                return false;
             }
         }
 
@@ -121,28 +158,50 @@ namespace HaCreator.MapSimulator.Managers
 
         public void PlayLoopingSound(string name, float volumeScale)
         {
-            if (_disposed) return;
+            PlayLoopingSoundHandle(name, volumeScale);
+        }
+
+        internal uint PlayLoopingSoundHandle(string name, float volumeScale = 1f)
+        {
+            if (_disposed)
+            {
+                return 0;
+            }
 
             if (!_soundSources.TryGetValue(name, out var soundSource))
             {
                 Debug.WriteLine($"[SoundManager] Looping sound '{name}' not registered");
-                return;
+                return 0;
             }
 
             try
             {
                 LoopingSound loopingSound = _activeLoopingSounds.GetOrAdd(
                     name,
-                    _ => new LoopingSound(soundSource, Math.Max(0f, Math.Min(1f, _volume * Math.Max(0f, volumeScale)))));
-                loopingSound.Volume = Math.Max(0f, Math.Min(1f, _volume * Math.Max(0f, volumeScale)));
+                    _ =>
+                    {
+                        return new LoopingSound(soundSource, ResolveClientVolumeScale(volumeScale, _volume));
+                    });
+                loopingSound.Volume = ResolveClientVolumeScale(volumeScale, _volume);
                 if (_focusActive)
                 {
                     loopingSound.Play();
                 }
+
+                uint existingHandle = ResolveLoopingSoundHandle(name);
+                if (existingHandle != 0)
+                {
+                    return existingHandle;
+                }
+
+                uint handle = AllocateLoopingSoundHandle();
+                _loopingSoundHandles[handle] = name;
+                return handle;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SoundManager] Failed to play looping sound '{name}': {ex.Message}");
+                return 0;
             }
         }
 
@@ -156,6 +215,27 @@ namespace HaCreator.MapSimulator.Managers
             if (_activeLoopingSounds.TryRemove(name, out LoopingSound loopingSound))
             {
                 loopingSound.Dispose();
+            }
+
+            foreach (KeyValuePair<uint, string> pair in _loopingSoundHandles)
+            {
+                if (string.Equals(pair.Value, name, StringComparison.Ordinal))
+                {
+                    _loopingSoundHandles.TryRemove(pair.Key, out _);
+                }
+            }
+        }
+
+        internal void StopLoopingSound(uint handle)
+        {
+            if (handle == 0)
+            {
+                return;
+            }
+
+            if (_loopingSoundHandles.TryRemove(handle, out string name))
+            {
+                StopLoopingSound(name);
             }
         }
 
@@ -242,12 +322,23 @@ namespace HaCreator.MapSimulator.Managers
                 foreach (var sound in _activeSounds)
                 {
                     sound.Stop();
+                    if (sound.SoundName != null)
+                    {
+                        _activeSoundCounts.AddOrUpdate(sound.SoundName, 0, (_, _) => 0);
+                    }
+
+                    sound.Dispose();
                 }
+                _activeSounds.Clear();
 
                 foreach (LoopingSound sound in _activeLoopingSounds.Values)
                 {
                     sound.Stop();
+                    sound.Dispose();
                 }
+
+                _activeLoopingSounds.Clear();
+                _loopingSoundHandles.Clear();
             }
         }
 
@@ -272,9 +363,81 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _activeLoopingSounds.Clear();
+            _loopingSoundHandles.Clear();
 
             _soundSources.Clear();
             _activeSoundCounts.Clear();
+        }
+
+        internal int ActiveOneShotCount
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _activeSounds.Count;
+                }
+            }
+        }
+
+        internal int ActiveLoopingCount => _activeLoopingSounds.Count;
+
+        internal static bool ShouldSuppressDuplicatePlayback(int activeCount, bool suppressWhileActive)
+        {
+            return suppressWhileActive && activeCount > 0;
+        }
+
+        internal static float ResolveClientVolumeScale(float perCallVolumeScale, float masterVolume)
+        {
+            return Math.Clamp(Math.Max(0f, perCallVolumeScale) * Math.Clamp(masterVolume, 0f, 1f), 0f, 1f);
+        }
+
+        internal static float ResolveClientVolumePercentScale(uint startVolumePercent, uint sharedVolumePercent)
+        {
+            double nativeVolume = startVolumePercent * (double)sharedVolumePercent / 100.0d;
+            return (float)Math.Clamp(nativeVolume / 100.0d, 0.0d, 1.0d);
+        }
+
+        internal static BgmRequestAction ResolveBgmRequestAction(
+            string currentPath,
+            string requestedPath,
+            bool forceRestart,
+            bool hasActiveBgm)
+        {
+            if (string.IsNullOrWhiteSpace(requestedPath))
+            {
+                return hasActiveBgm ? BgmRequestAction.Stop : BgmRequestAction.None;
+            }
+
+            return !forceRestart && string.Equals(currentPath, requestedPath, StringComparison.Ordinal)
+                ? BgmRequestAction.None
+                : BgmRequestAction.Start;
+        }
+
+        internal static bool ShouldMuteBgmForRadio(bool radioPlaying, bool radioMuted)
+        {
+            return radioPlaying && !radioMuted;
+        }
+
+        private uint ResolveLoopingSoundHandle(string name)
+        {
+            foreach (KeyValuePair<uint, string> pair in _loopingSoundHandles)
+            {
+                if (string.Equals(pair.Value, name, StringComparison.Ordinal))
+                {
+                    return pair.Key;
+                }
+            }
+
+            return 0;
+        }
+
+        private uint AllocateLoopingSoundHandle()
+        {
+            uint handle = ++_nextLoopingSerial;
+            return handle == 0
+                ? ++_nextLoopingSerial
+                : handle;
         }
 
         /// <summary>

@@ -68,6 +68,9 @@ namespace HaCreator.MapSimulator.Effects
         private static readonly Point MonsterOrigin = new(160, 28);
         private const int EnergyOffsetX = 20;
         private const int EnergyOffsetY = 130;
+        private const int EnergyGaugeLayerAnchorX = 17;
+        private const int EnergyGaugeLayerAnchorY = 86;
+        private static readonly Point EnergyGaugeLayerAnchor = new(EnergyGaugeLayerAnchorX, EnergyGaugeLayerAnchorY);
         private const int TimerMinuteX = 0;
         private const int TimerSecondX = 68;
         private const int TimerDigitSpacing = 23;
@@ -83,8 +86,11 @@ namespace HaCreator.MapSimulator.Effects
         private const int EnergyGaugeWidth = 9;
         private const int EnergyGaugeHeight = 77;
         private static readonly Point EnergyOrigin = new(11, 50);
-        private const int EnergyGaugeOffsetX = 4;
-        private const int EnergyGaugeOffsetY = 6;
+        private const int EnergyGaugeOriginX = 4;
+        private const int EnergyGaugeOriginY = 0;
+        private static readonly Point EnergyGaugeOrigin = new(EnergyGaugeOriginX, EnergyGaugeOriginY);
+        private const int EnergyGaugeOffsetX = EnergyGaugeLayerAnchorX - (EnergyOffsetX - 11) - EnergyGaugeOriginX;
+        private const int EnergyGaugeOffsetY = EnergyGaugeLayerAnchorY - (EnergyOffsetY - 50) - EnergyGaugeOriginY;
         private static readonly Point EnergyFullTopLeft = new(9, 80);
         private const int ResultPresentationTransferDelayMs = 2400;
         private const int EnergyMax = 10000;
@@ -165,6 +171,8 @@ namespace HaCreator.MapSimulator.Effects
             PlayerGaugeRightOffsetX,
             BarGaugeOffsetY,
             EnergyOrigin,
+            EnergyGaugeLayerAnchor,
+            EnergyGaugeOrigin,
             EnergyGaugeOffsetX,
             EnergyGaugeOffsetY,
             EnergyFullTopLeft);
@@ -2237,6 +2245,8 @@ namespace HaCreator.MapSimulator.Effects
             int PlayerGaugeRightOffsetX,
             int BarGaugeOffsetY,
             Point EnergyOrigin,
+            Point EnergyGaugeLayerAnchor,
+            Point EnergyGaugeOrigin,
             int EnergyGaugeOffsetX,
             int EnergyGaugeOffsetY,
             Point EnergyFullTopLeft);

@@ -763,7 +763,7 @@ namespace HaCreator.MapSimulator
             int tokenStart = -1;
             for (int i = 0; i < name.Length; i++)
             {
-                if (IsPacketOwnedDynamicObjectNameTokenSeparator(name[i], splitComma))
+                if (IsPacketOwnedDynamicObjectNameTokenSeparator(name, i, splitComma))
                 {
                     if (tokenStart >= 0)
                     {
@@ -786,12 +786,60 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static bool IsPacketOwnedDynamicObjectNameTokenSeparator(char value, bool splitComma)
+        private static bool IsPacketOwnedDynamicObjectNameTokenSeparator(string value, int index, bool splitComma)
         {
-            return (splitComma && value == ',')
-                || value == ';'
-                || value == '|'
-                || char.IsControl(value);
+            char current = value[index];
+            return (splitComma
+                    && current == ','
+                    && !IsPacketOwnedDynamicObjectNameCoordinateComma(value, index))
+                || current == ';'
+                || current == '|'
+                || char.IsControl(current);
+        }
+
+        private static bool IsPacketOwnedDynamicObjectNameCoordinateComma(string value, int commaIndex)
+        {
+            if (string.IsNullOrEmpty(value)
+                || commaIndex <= 0
+                || commaIndex >= value.Length - 1)
+            {
+                return false;
+            }
+
+            int leftIndex = commaIndex - 1;
+            while (leftIndex >= 0 && char.IsDigit(value[leftIndex]))
+            {
+                leftIndex--;
+            }
+
+            bool hasLeftNumber = leftIndex < commaIndex - 1;
+            if (leftIndex >= 0 && value[leftIndex] == '-')
+            {
+                leftIndex--;
+            }
+
+            if (!hasLeftNumber || (leftIndex >= 0 && value[leftIndex] != '/'))
+            {
+                return false;
+            }
+
+            int rightIndex = commaIndex + 1;
+            if (rightIndex < value.Length && value[rightIndex] == '-')
+            {
+                rightIndex++;
+            }
+
+            int rightStart = rightIndex;
+            while (rightIndex < value.Length && char.IsDigit(value[rightIndex]))
+            {
+                rightIndex++;
+            }
+
+            return rightIndex > rightStart
+                && (rightIndex >= value.Length
+                    || value[rightIndex] == ';'
+                    || value[rightIndex] == '|'
+                    || char.IsControl(value[rightIndex]));
         }
 
         private static void AddPacketOwnedDynamicObjectNameLookupCandidate(ISet<string> candidates, string name)

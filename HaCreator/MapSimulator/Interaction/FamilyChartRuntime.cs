@@ -379,6 +379,20 @@ namespace HaCreator.MapSimulator.Interaction
             return SetPreceptCore(precept, packetAuthored: true);
         }
 
+        internal bool TryBuildPendingSetPreceptRequestPayload(out byte[] payload, out string precept)
+        {
+            payload = Array.Empty<byte>();
+            precept = string.Empty;
+            if (_pendingManagementRequest?.Kind != FamilyManagementRequestKind.Precept)
+            {
+                return false;
+            }
+
+            precept = _pendingManagementRequest.Precept;
+            payload = FamilyPacketCodec.BuildSetFamilyPreceptRequestPayload(precept);
+            return true;
+        }
+
         internal string SetAuthorityProfileFromPacket(string profile)
         {
             FamilyAuthorityState authorityState = ResolveAuthorityProfile(profile, out string resolvedProfile);

@@ -187,11 +187,7 @@ namespace HaCreator.MapSimulator.Pools
 
             foreach (ActiveAffectedArea area in areas)
             {
-                if (area == null
-                    || !area.IsActive(currentTime)
-                    || area.SourceKind != AffectedAreaSourceKind.PlayerSkill
-                    || area.Type != 4
-                    || !area.WorldBounds.Intersects(worldBounds))
+                if (!IsClientExclusiveInsertBlockingArea(area, worldBounds, currentTime))
                 {
                     continue;
                 }
@@ -200,6 +196,19 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return true;
+        }
+
+        private static bool IsClientExclusiveInsertBlockingArea(
+            ActiveAffectedArea area,
+            Rectangle worldBounds,
+            int currentTime)
+        {
+            return area != null
+                   && !area.IsExpired(currentTime)
+                   && !area.IsRemoving
+                   && area.SourceKind == AffectedAreaSourceKind.PlayerSkill
+                   && area.Type == 4
+                   && area.WorldBounds.Intersects(worldBounds);
         }
 
         public bool Upsert(AffectedAreaCreateInfo createInfo, int currentTime)

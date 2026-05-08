@@ -359,6 +359,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? StartFakeQuestId { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> StartInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> StartInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
+            public IReadOnlyList<string> StartUnresolvedSideChannelDemandKeys { get; init; } = Array.Empty<string>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
@@ -1575,6 +1576,12 @@ namespace HaCreator.MapSimulator.Interaction
             return ParseUnresolvedCompletionSideChannelDemandKeys(property);
         }
 
+        internal static IReadOnlyList<string> ParseUnresolvedSideChannelDemandKeysForTesting(
+            WzSubProperty property)
+        {
+            return ParseUnresolvedSideChannelDemandKeys(property);
+        }
+
         internal static bool HasUnmetCompletionGenderDemand(int? requiredGender, CharacterGender currentGender)
         {
             if (!requiredGender.HasValue || requiredGender.Value == (int)CharacterGenderType.Both)
@@ -1882,6 +1889,30 @@ namespace HaCreator.MapSimulator.Interaction
                         _packetOwnedQuestAlarmTitleTooltips.Remove(staleQuestIds[i]);
                     }
                 }
+            }
+
+            return appliedCount;
+        }
+
+        public int ApplyPacketOwnedQuestAlarmRecentUpdateSnapshot(IEnumerable<int> questIds)
+        {
+            EnsureDefinitionsLoaded();
+            if (questIds == null)
+            {
+                return 0;
+            }
+
+            int appliedCount = 0;
+            HashSet<int> appliedQuestIds = new();
+            foreach (int questId in questIds)
+            {
+                if (questId <= 0 || !appliedQuestIds.Add(questId) || !_definitions.ContainsKey(questId))
+                {
+                    continue;
+                }
+
+                MarkQuestAlarmUpdated(questId);
+                appliedCount++;
             }
 
             return appliedCount;
@@ -5602,7 +5633,7 @@ namespace HaCreator.MapSimulator.Interaction
                     TryResolveCompletionUserInteractDemandRecordValue(definition));
             IReadOnlyList<string> unresolvedSideChannelDemandKeys = state == QuestStateType.Started
                 ? definition.EndUnresolvedSideChannelDemandKeys
-                : Array.Empty<string>();
+                : definition.StartUnresolvedSideChannelDemandKeys;
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -9730,6 +9761,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StartFakeQuestId = ParsePositiveInt(startCheck?["fakeQuestID"]),
                 StartInfoRequirements = ParseQuestRecordTextRequirements(startCheck?["info"]),
                 StartInfoExRequirements = ParseQuestRecordValueRequirements(startCheck?["infoex"]),
+                StartUnresolvedSideChannelDemandKeys = ParseUnresolvedSideChannelDemandKeys(startCheck),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
@@ -10782,6 +10814,11 @@ namespace HaCreator.MapSimulator.Interaction
             return demandKeys.Count == 0
                 ? Array.Empty<string>()
                 : demandKeys;
+        }
+
+        private static IReadOnlyList<string> ParseUnresolvedSideChannelDemandKeys(WzSubProperty property)
+        {
+            return ParseUnresolvedCompletionSideChannelDemandKeys(property);
         }
 
         private static bool HasAuthoredCompletionSideChannelDemand(WzImageProperty property)

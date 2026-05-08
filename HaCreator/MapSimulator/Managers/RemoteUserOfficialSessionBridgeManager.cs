@@ -877,6 +877,7 @@ namespace HaCreator.MapSimulator.Managers
                 _learnedTutorPacketMapByBuild.Clear();
                 _pendingTutorInferenceMap.Clear();
                 _tutorInferenceConflictMap.Clear();
+                ClearPortableChairRecordCaptureStateNoLock();
                 foreach (KeyValuePair<ushort, int> entry in DefaultPacketMap)
                 {
                     _packetMap[entry.Key] = entry.Value;
@@ -2208,8 +2209,17 @@ namespace HaCreator.MapSimulator.Managers
             {
                 ReceivedCount = 0;
                 ForwardedOutboundCount = 0;
+                ClearPortableChairRecordCaptureStateNoLock();
                 ClearLearnedTutorMappingsNoLock();
             }
+        }
+
+        private void ClearPortableChairRecordCaptureStateNoLock()
+        {
+            _portableChairRecordInferenceMap.Clear();
+            _portableChairRecordAddOpcodeByCharacterByBuild.Clear();
+            _portableChairRecordOpcodeEvidenceByBuild.Clear();
+            _portableChairRecordCaptureOrder.Clear();
         }
 
         private void ClearLearnedTutorMappingsNoLock()

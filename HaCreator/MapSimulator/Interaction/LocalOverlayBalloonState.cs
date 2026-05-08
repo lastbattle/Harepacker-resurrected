@@ -117,6 +117,32 @@ namespace HaCreator.MapSimulator.Interaction
             return _fieldMessages.ToArray();
         }
 
+        public IReadOnlyList<LocalOverlayBalloonMessage> GetRenderableFieldMessages(int currentTickCount)
+        {
+            Update(currentTickCount);
+            if (_fieldMessages.Count == 0)
+            {
+                return Array.Empty<LocalOverlayBalloonMessage>();
+            }
+
+            List<LocalOverlayBalloonMessage> activeMessages = null;
+            for (int i = 0; i < _fieldMessages.Count; i++)
+            {
+                LocalOverlayBalloonMessage message = _fieldMessages[i];
+                if (message?.IsActive(currentTickCount) != true)
+                {
+                    continue;
+                }
+
+                activeMessages ??= new List<LocalOverlayBalloonMessage>(_fieldMessages.Count - i);
+                activeMessages.Add(message);
+            }
+
+            return activeMessages == null
+                ? Array.Empty<LocalOverlayBalloonMessage>()
+                : activeMessages.ToArray();
+        }
+
         private static LocalOverlayBalloonMessage CreateMessage(
             string text,
             int requestedWidth,

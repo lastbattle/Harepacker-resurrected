@@ -307,7 +307,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         float Zoom = 1f,
         int CanvasObjectId = 0,
         int CanvasOrdinal = -1,
-        int? RawActionCode = null);
+        int? RawActionCode = null,
+        string ActionName = null);
 
     public enum AfterimageLayerOperationKind
     {
@@ -328,7 +329,29 @@ namespace HaCreator.MapSimulator.Character.Skills
         int EndZoom,
         int CanvasObjectId = 0,
         int CanvasOrdinal = -1,
-        int? RawActionCode = null);
+        int? RawActionCode = null,
+        string ActionName = null,
+        int RemoveCanvasIndex = 0);
+
+    public enum AfterimageLayerReferenceOperationKind
+    {
+        AddCanvasRef,
+        AddLayerRef,
+        InsertCanvas,
+        ReleaseLayerRef,
+        ReleaseCanvasRef,
+        ReleaseTargetLayerRef
+    }
+
+    public readonly record struct AfterimageLayerReferenceOperation(
+        AfterimageLayerReferenceOperationKind Kind,
+        int TargetLayerObjectId,
+        int CanvasObjectId = 0,
+        int CanvasOrdinal = -1,
+        int? RawActionCode = null,
+        string ActionName = null,
+        int CanvasRefDelta = 0,
+        int LayerRefDelta = 0);
 
     /// <summary>
     /// Skill effect animation

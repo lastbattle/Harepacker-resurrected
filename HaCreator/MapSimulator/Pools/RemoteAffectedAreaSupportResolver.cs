@@ -915,6 +915,15 @@ namespace HaCreator.MapSimulator.Pools
                     PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
+            if (ContainsToken(hostileSearchText, "buffLimit"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Seal,
+                    durationMs,
+                    1,
+                    PropPercent: primaryStatusPropPercent));
+            }
+
             if (ContainsToken(hostileSearchText, "blind", "dark", "darkness"))
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
@@ -931,6 +940,15 @@ namespace HaCreator.MapSimulator.Pools
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20, preferSpeed: true),
                     PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
+            if (ContainsToken(hostileSearchText, "restrict"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.StopMotion,
+                    durationMs,
+                    1,
+                    PropPercent: primaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "weak") || levelData.Jump < 0)
@@ -976,6 +994,15 @@ namespace HaCreator.MapSimulator.Pools
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 1),
                     PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
+            if (ContainsToken(hostileSearchText, "attackLimit", "incapacitate"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Stun,
+                    durationMs,
+                    1,
+                    PropPercent: primaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "amplifyDamage"))
@@ -1059,7 +1086,11 @@ namespace HaCreator.MapSimulator.Pools
                     "dark",
                     "blind",
                     "poison",
-                    "burn"))
+                    "burn",
+                    "buffLimit",
+                    "restrict",
+                    "attackLimit",
+                    "incapacitate"))
             {
                 return true;
             }

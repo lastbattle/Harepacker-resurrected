@@ -294,6 +294,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             };
 
+        private static readonly IReadOnlyDictionary<int, string[]> ShadowPartnerNoActionSourceSkillFallbacksBySkillId =
+            new Dictionary<int, string[]>
+            {
+                // WZ-first: these v95 first-job Shadow Partner source skills are present but
+                // do not publish an `action` node. Keep their client raw attack families at
+                // the shared supported-source boundary so later helper synthesis stays gated.
+                [4001334] = new[] { "stabO1" },
+                [4001344] = new[] { "shoot1" },
+                [14001004] = new[] { "shoot1" }
+            };
+
         private static readonly IReadOnlyDictionary<int, int[]> ClientFlagOnlyMorphTemplateOverridesBySkillId =
             new Dictionary<int, int[]>
             {
@@ -3021,8 +3032,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (WzImageProperty sourceSkillNode in sourceSkillNodes)
             {
+                bool foundActionNode = false;
                 foreach (WzImageProperty actionNode in EnumerateShadowPartnerSourceActionNodes(sourceSkillNode))
                 {
+                    foundActionNode = true;
                     string rawActionName = actionNode?.GetString();
                     if (!string.IsNullOrWhiteSpace(rawActionName) && yielded.Add(rawActionName))
                     {
@@ -3043,7 +3056,41 @@ namespace HaCreator.MapSimulator.Character.Skills
                         }
                     }
                 }
+
+                if (!foundActionNode
+                    && TryGetShadowPartnerNoActionSourceSkillFallbacks(
+                        sourceSkillNode,
+                        out IReadOnlyList<string> fallbackRawActionNames))
+                {
+                    foreach (string fallbackRawActionName in fallbackRawActionNames)
+                    {
+                        if (!string.IsNullOrWhiteSpace(fallbackRawActionName)
+                            && yielded.Add(fallbackRawActionName))
+                        {
+                            yield return fallbackRawActionName;
+                        }
+                    }
+                }
             }
+        }
+
+        private static bool TryGetShadowPartnerNoActionSourceSkillFallbacks(
+            WzImageProperty sourceSkillNode,
+            out IReadOnlyList<string> fallbackRawActionNames)
+        {
+            fallbackRawActionNames = Array.Empty<string>();
+            if (sourceSkillNode == null
+                || !int.TryParse(sourceSkillNode.Name, out int sourceSkillId)
+                || !ShadowPartnerNoActionSourceSkillFallbacksBySkillId.TryGetValue(
+                    sourceSkillId,
+                    out string[] mappedRawActionNames)
+                || mappedRawActionNames.Length == 0)
+            {
+                return false;
+            }
+
+            fallbackRawActionNames = mappedRawActionNames;
+            return true;
         }
 
         private static IEnumerable<WzImageProperty> EnumerateShadowPartnerSourceActionNodes(WzImageProperty sourceSkillNode)
@@ -6932,6 +6979,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (TryReadClientSkillAssetUolRecordVariantLevel(
+                    tableEntry.Name,
+                    out isCharacterLevelVariant,
+                    out variantLevel))
+            {
+                return true;
+            }
+
             foreach (WzImageProperty child in tableEntry.WzProperties)
             {
                 if (child == null || string.IsNullOrWhiteSpace(child.Name))
@@ -7007,6 +7062,82 @@ namespace HaCreator.MapSimulator.Character.Skills
                         FieldValue,
                         out isCharacterLevelVariant,
                         out variantLevel))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryReadNestedClientSkillAssetUolTableEntryVariantLevel(
+            WzImageProperty rowNode,
+            out bool isCharacterLevelVariant,
+            out int variantLevel,
+            int depthRemaining)
+        {
+            isCharacterLevelVariant = false;
+            variantLevel = 0;
+            if (rowNode?.WzProperties == null || depthRemaining <= 0)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in rowNode.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                if (TryParseClientSummonedUolRecordTextField(
+                        child.Name,
+                        out string encodedFieldName,
+                        out string encodedFieldValue)
+                    && TryReadClientSkillAssetUolRecordVariantLevel(
+                        encodedFieldName,
+                        encodedFieldValue,
+                        out isCharacterLevelVariant,
+                        out variantLevel))
+                {
+                    return true;
+                }
+
+                string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(child.Name);
+                bool characterLevelField = ClientSkillAssetCharacterLevelFieldNames.Contains(
+                    normalizedName,
+                    StringComparer.Ordinal);
+                bool skillLevelField = ClientSkillAssetSkillLevelFieldNames.Contains(
+                    normalizedName,
+                    StringComparer.Ordinal);
+                if (characterLevelField || skillLevelField)
+                {
+                    string value = GetClientSummonedUolCandidateValue(child);
+                    if (TryParseClientSkillAssetUolVariantLevelValue(value, out int parsedLevel))
+                    {
+                        isCharacterLevelVariant = characterLevelField;
+                        variantLevel = parsedLevel;
+                        return true;
+                    }
+                }
+                else if (TryReadClientSkillAssetUolRecordVariantLevel(
+                             child.Name,
+                             out isCharacterLevelVariant,
+                             out variantLevel))
+                {
+                    return true;
+                }
+
+                if (child.WzProperties == null)
+                {
+                    continue;
+                }
+
+                if (TryReadNestedClientSkillAssetUolTableEntryVariantLevel(
+                        child,
+                        out isCharacterLevelVariant,
+                        out variantLevel,
+                        depthRemaining - 1))
                 {
                     return true;
                 }
@@ -7555,7 +7686,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
                     ? child.Name
                     : $"{relativePathPrefix}/{child.Name}";
-                if (IsClientSummonedUolTableEntryValueName(child.Name))
+                if (!IsClientSummonedUolTableTupleOwnerIndexName(child.Name)
+                    && IsClientSummonedUolTableEntryValueName(child.Name))
                 {
                     yield return (child, relativePath, UseNameAsValue: false);
                 }
@@ -12332,6 +12464,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (!ReferenceEquals(traversalNode, node)
+                    && IsMorphActionNodeName(traversalNode.Name))
+                {
+                    yield return traversalNode;
+                    continue;
+                }
+
                 foreach (WzImageProperty child in traversalNode.WzProperties?
                              .Where(static child => child != null)
                              .Reverse()
@@ -13107,7 +13246,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "max hp",
                 "maxhp",
                 "maximum hp",
-                "maximum health");
+                "maximum health",
+                "hp",
+                "health");
             levelData.MaxMPPercent = ApplyDescriptionBackedLabelAliases(
                 levelData.MaxMPPercent,
                 normalizedSurface,
@@ -13116,7 +13257,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "max mp",
                 "maxmp",
                 "maximum mp",
-                "maximum mana");
+                "maximum mana",
+                "mp",
+                "mana");
             levelData.DefensePercent = ApplyDescriptionBackedLabelAliases(
                 levelData.DefensePercent,
                 normalizedSurface,

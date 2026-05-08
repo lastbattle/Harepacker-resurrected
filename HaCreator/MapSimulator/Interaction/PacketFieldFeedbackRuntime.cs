@@ -1203,7 +1203,7 @@ namespace HaCreator.MapSimulator.Interaction
             int resetCount = _obstacleStates.Count;
             foreach (string tag in _obstacleStates.Keys.ToList())
             {
-                callbacks?.SetObjectTagState?.Invoke(tag, false, 0, currentTick);
+                ApplyObjectStateIndex(tag, 0, currentTick, callbacks);
             }
 
             _obstacleStates.Clear();
@@ -1711,21 +1711,17 @@ namespace HaCreator.MapSimulator.Interaction
         private static void TryAddOutgoingWhisperEcho(string target, PacketFieldFeedbackCallbacks callbacks)
         {
             string outgoingText = callbacks?.GetLastOutgoingWhisperText?.Invoke();
-            if (string.IsNullOrWhiteSpace(outgoingText))
+            if (string.IsNullOrEmpty(outgoingText))
             {
                 return;
             }
 
-            string outgoingTarget = callbacks?.GetLastOutgoingWhisperTarget?.Invoke();
-            string resolvedTarget = string.IsNullOrWhiteSpace(outgoingTarget)
-                ? target?.Trim() ?? string.Empty
-                : outgoingTarget.Trim();
             callbacks?.AddClientChatMessage?.Invoke(
                 FormatFieldFeedbackStringPoolText(
                     OutgoingWhisperLogStringPoolId,
                     OutgoingWhisperLogFallback,
-                    resolvedTarget,
-                    outgoingText.Trim()),
+                    target ?? string.Empty,
+                    outgoingText),
                 1,
                 null);
         }

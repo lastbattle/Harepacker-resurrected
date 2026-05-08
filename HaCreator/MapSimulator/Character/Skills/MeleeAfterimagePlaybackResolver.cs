@@ -436,7 +436,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ResolveFrameZoom(frame, localFrameElapsed),
                     ResolveAfterimageCanvasObjectId(frame),
                     ResolveAfterimageCanvasOrdinal(frame),
-                    frame.AfterimageActionRawCode));
+                    frame.AfterimageActionRawCode,
+                    frame.AfterimageActionName));
             }
 
             return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();
@@ -456,7 +457,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     255,
                     255,
                     100,
-                    100),
+                    100,
+                    RemoveCanvasIndex: 0),
                 new(
                     AfterimageLayerOperationKind.RemoveAllCanvases,
                     null,
@@ -465,7 +467,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     255,
                     255,
                     100,
-                    100)
+                    100,
+                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex)
             };
 
             if (frames == null || frames.Count == 0)
@@ -487,6 +490,87 @@ namespace HaCreator.MapSimulator.Character.Skills
                     0,
                     ResolveClientInsertCanvasDurationMs(frame)));
             }
+
+            return operations;
+        }
+
+        public const int ClientRemoveAllCanvasesIndex = -2;
+
+        public static IReadOnlyList<AfterimageLayerReferenceOperation> ResolveCreateAfterimageLayerReferenceOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int targetLayerObjectId)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null || frames.Count == 0)
+            {
+                return new[]
+                {
+                    new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.ReleaseTargetLayerRef,
+                        targetLayerObjectId,
+                        LayerRefDelta: -1)
+                };
+            }
+
+            var operations = new List<AfterimageLayerReferenceOperation>((frames.Count * 5) + 1);
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int canvasObjectId = ResolveAfterimageCanvasObjectId(frame);
+                int canvasOrdinal = ResolveAfterimageCanvasOrdinal(frame);
+                int? rawActionCode = frame.AfterimageActionRawCode;
+                string actionName = frame.AfterimageActionName;
+
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.AddCanvasRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    CanvasRefDelta: 1));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.AddLayerRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LayerRefDelta: 1));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.InsertCanvas,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ReleaseLayerRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    LayerRefDelta: -1));
+                operations.Add(new AfterimageLayerReferenceOperation(
+                    AfterimageLayerReferenceOperationKind.ReleaseCanvasRef,
+                    targetLayerObjectId,
+                    canvasObjectId,
+                    canvasOrdinal,
+                    rawActionCode,
+                    actionName,
+                    CanvasRefDelta: -1));
+            }
+
+            operations.Add(new AfterimageLayerReferenceOperation(
+                AfterimageLayerReferenceOperationKind.ReleaseTargetLayerRef,
+                targetLayerObjectId,
+                LayerRefDelta: -1));
 
             return operations;
         }
@@ -633,7 +717,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 endZoom,
                 ResolveAfterimageCanvasObjectId(frame),
                 ResolveAfterimageCanvasOrdinal(frame),
-                frame?.AfterimageActionRawCode);
+                frame?.AfterimageActionRawCode,
+                frame?.AfterimageActionName,
+                kind == AfterimageLayerOperationKind.RemoveAllCanvases
+                    ? ClientRemoveAllCanvasesIndex
+                    : 0);
         }
 
         internal static int ResolveAfterimageCanvasObjectId(SkillFrame frame)

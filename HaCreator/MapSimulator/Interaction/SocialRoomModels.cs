@@ -5102,6 +5102,11 @@ namespace HaCreator.MapSimulator.Interaction
                     packetLength = 1 + sizeof(int);
                     return remaining >= packetLength;
                 case MerchantShopRowRefreshPacketType:
+                    if (Kind == SocialRoomKind.TradingRoom)
+                    {
+                        return TryMeasureMiniRoomSubtype6TradingRoomPutItemPacketLength(payload, offset, out packetLength);
+                    }
+
                     packetLength = 1 + sizeof(byte) + sizeof(int) + sizeof(short) + sizeof(int);
                     return remaining >= packetLength;
                 case PersonalShopSoldItemResultPacketType:
@@ -5116,6 +5121,104 @@ namespace HaCreator.MapSimulator.Interaction
                 default:
                     return false;
             }
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6TradingRoomPutItemPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset + 1 + sizeof(byte) + sizeof(byte) >= payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1 + sizeof(byte) + sizeof(byte);
+            if (!TryMeasurePacketOwnedTradeItemLength(payload, cursor, out int itemLength))
+            {
+                return false;
+            }
+
+            packetLength = cursor - offset + itemLength;
+            return packetLength > 0 && offset + packetLength <= payload.Length;
+        }
+
+        private static bool TryMeasurePacketOwnedTradeItemLength(byte[] payload, int offset, out int itemLength)
+        {
+            itemLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset;
+            byte slotType = payload[cursor++];
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                return false;
+            }
+
+            if (!TryAdvanceFixed(payload, ref cursor, sizeof(int) + sizeof(byte)))
+            {
+                return false;
+            }
+
+            bool hasCashSerialNumber = payload[offset + 1 + sizeof(int)] != 0;
+            if (hasCashSerialNumber && !TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+            {
+                return false;
+            }
+
+            if (!TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+            {
+                return false;
+            }
+
+            int itemId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset + 1, sizeof(int)));
+            switch (slotType)
+            {
+                case 1:
+                    if (!TryAdvanceFixed(payload, ref cursor, (sizeof(byte) * 2) + (sizeof(short) * 15))
+                        || !TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor)
+                        || !TryAdvanceFixed(payload, ref cursor, sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5))
+                        || (!hasCashSerialNumber && !TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+                        || !TryAdvanceFixed(payload, ref cursor, sizeof(long) + sizeof(int)))
+                    {
+                        return false;
+                    }
+                    break;
+                case 2:
+                    if (!TryAdvanceFixed(payload, ref cursor, sizeof(ushort))
+                        || !TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor)
+                        || !TryAdvanceFixed(payload, ref cursor, sizeof(short)))
+                    {
+                        return false;
+                    }
+
+                    if (itemId / 10000 is 207 or 233 && !TryAdvanceFixed(payload, ref cursor, sizeof(long)))
+                    {
+                        return false;
+                    }
+                    break;
+                case 3:
+                    if (!TryAdvanceFixed(payload, ref cursor, 13 + sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short)))
+                    {
+                        return false;
+                    }
+                    break;
+            }
+
+            itemLength = cursor - offset;
+            return itemLength > 0;
+        }
+
+        private static bool TryAdvanceFixed(byte[] payload, ref int cursor, int byteCount)
+        {
+            if (payload == null || byteCount < 0 || cursor < 0 || cursor + byteCount > payload.Length)
+            {
+                return false;
+            }
+
+            cursor += byteCount;
+            return true;
         }
 
         private static bool TryMeasureMiniRoomSubtype6SoldItemResultPacketLength(byte[] payload, int offset, out int packetLength)

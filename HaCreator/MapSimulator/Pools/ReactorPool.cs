@@ -643,7 +643,7 @@ namespace HaCreator.MapSimulator.Pools
                     }
 
                     seenObjectIds.Add(pollResult.ObjectId);
-                    bool wasTouched = reactorsOnLocalUser.TryGetValue(pollResult.ObjectId, out int previousIndex);
+                    bool wasTouched = reactorsOnLocalUser.ContainsKey(pollResult.ObjectId);
                     if (pollResult.IsTouchingNow)
                     {
                         reactorsOnLocalUser[pollResult.ObjectId] = pollResult.Index;
@@ -665,7 +665,7 @@ namespace HaCreator.MapSimulator.Pools
 
                     reactorsOnLocalUser.Remove(pollResult.ObjectId);
                     deltas.Add(new LocalTouchOwnershipDelta(
-                        previousIndex,
+                        pollResult.Index,
                         pollResult.ObjectId,
                         IsTouching: false));
                 }

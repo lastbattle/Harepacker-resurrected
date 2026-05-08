@@ -25,8 +25,17 @@ namespace HaCreator.MapSimulator
         private const byte PacketOwnedTeleportSyntheticFieldKey = 0;
         private const string PacketOwnedTeleportGeneralEffectImageName = "BasicEff.img";
         private const string PacketOwnedTeleportGeneralEffectPath = "Teleport";
+        private const string PacketOwnedTeleportGeneralEffectSourceUol = "Effect/BasicEff.img/Teleport";
         private const float PacketOwnedTeleportPortalExactTolerance = 0.5f;
         private const float PacketOwnedTeleportPortalNearestTolerance = 12f;
+        private readonly Dictionary<string, AnimationDisplayerPacketOwnedTeleportOneTimeOwnerState> _animationDisplayerPacketOwnedTeleportOneTimeOwnerStates = new(StringComparer.OrdinalIgnoreCase);
+
+        private sealed class AnimationDisplayerPacketOwnedTeleportOneTimeOwnerState
+        {
+            public string EffectUol { get; init; }
+            public Vector2 Position { get; init; }
+            public int AnimationStartTime { get; init; }
+        }
 
         private bool TryApplyPacketOwnedTeleportResult(float targetX, float targetY, out string message)
         {
@@ -2699,16 +2708,112 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _animationEffects?.AddOneTime(
-                drawableFrames,
+            Vector2 effectPosition = new(
                 (int)MathF.Round(targetX),
-                (int)MathF.Round(targetY),
-                flip: false,
+                (int)MathF.Round(targetY));
+            int initialElapsedMs = ResolveAnimationDisplayerPacketOwnedTeleportOneTimeInitialElapsed(
+                BuildAnimationDisplayerPacketOwnedTeleportOwnerSlotKey(PacketOwnedTeleportGeneralEffectSourceUol),
+                PacketOwnedTeleportGeneralEffectSourceUol,
+                effectPosition,
                 currentTime,
-                zOrder: 1);
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(drawableFrames));
+            _animationEffects?.AddPacketOwnedTeleport(
+                drawableFrames,
+                PacketOwnedTeleportGeneralEffectSourceUol,
+                effectPosition.X,
+                effectPosition.Y,
+                currentTime,
+                zOrder: 1,
+                initialElapsedMs);
             _lastPacketOwnedTeleportEffectTick = currentTime;
-            _lastPacketOwnedTeleportEffectPath = $"{PacketOwnedTeleportGeneralEffectImageName}/{PacketOwnedTeleportGeneralEffectPath}";
+            _lastPacketOwnedTeleportEffectPath = PacketOwnedTeleportGeneralEffectSourceUol;
             return true;
+        }
+
+        private static string BuildAnimationDisplayerPacketOwnedTeleportOwnerSlotKey(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
+                "aux.packetOwnedTeleport.oneTime",
+                effectUol);
+        }
+
+        private int ResolveAnimationDisplayerPacketOwnedTeleportOneTimeInitialElapsed(
+            string slotKey,
+            string effectUol,
+            Vector2 position,
+            int currentTime,
+            int durationMs)
+        {
+            if (string.IsNullOrWhiteSpace(slotKey))
+            {
+                return 0;
+            }
+
+            _animationDisplayerPacketOwnedTeleportOneTimeOwnerStates.TryGetValue(
+                slotKey,
+                out AnimationDisplayerPacketOwnedTeleportOneTimeOwnerState previousState);
+            int initialElapsedMs = previousState == null
+                ? 0
+                : ResolveAnimationDisplayerPacketOwnedTeleportOneTimeRestoreElapsedCore(
+                    previousState.EffectUol,
+                    previousState.Position,
+                    previousState.AnimationStartTime,
+                    effectUol,
+                    position,
+                    currentTime,
+                    durationMs);
+            _animationDisplayerPacketOwnedTeleportOneTimeOwnerStates[slotKey] = new AnimationDisplayerPacketOwnedTeleportOneTimeOwnerState
+            {
+                EffectUol = effectUol,
+                Position = position,
+                AnimationStartTime = currentTime
+            };
+            return initialElapsedMs;
+        }
+
+        private static int ResolveAnimationDisplayerPacketOwnedTeleportOneTimeRestoreElapsedCore(
+            string previousEffectUol,
+            Vector2 previousPosition,
+            int previousAnimationStartTime,
+            string currentEffectUol,
+            Vector2 currentPosition,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousPosition != currentPosition
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase))
+            {
+                return 0;
+            }
+
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
+        internal static string BuildAnimationDisplayerPacketOwnedTeleportOwnerSlotKeyForTesting(string effectUol)
+        {
+            return BuildAnimationDisplayerPacketOwnedTeleportOwnerSlotKey(effectUol);
+        }
+
+        internal static int ResolveAnimationDisplayerPacketOwnedTeleportOneTimeRestoreElapsedForTesting(
+            string previousEffectUol,
+            Vector2 previousPosition,
+            int previousAnimationStartTime,
+            string currentEffectUol,
+            Vector2 currentPosition,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveAnimationDisplayerPacketOwnedTeleportOneTimeRestoreElapsedCore(
+                previousEffectUol,
+                previousPosition,
+                previousAnimationStartTime,
+                currentEffectUol,
+                currentPosition,
+                currentTime,
+                durationMs);
         }
 
         private bool TryBuildPacketOwnedTeleportPortalRequest(PortalInstance sourcePortal, out byte[] payload, out string summary)

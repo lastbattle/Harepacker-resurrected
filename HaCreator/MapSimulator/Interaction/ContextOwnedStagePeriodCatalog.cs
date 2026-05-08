@@ -204,6 +204,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal IEnumerable<ContextOwnedStageAffectedMapEntry> EnumerateAffectedMapEntries()
+        {
+            foreach (IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries in _affectedMapsByFieldId.Values)
+            {
+                foreach (ContextOwnedStageAffectedMapEntry entry in entries)
+                {
+                    yield return entry;
+                }
+            }
+        }
+
         private static Dictionary<string, ContextOwnedStageThemeCatalogEntry> BuildThemes(IEnumerable<WzImageProperty> themeProperties)
         {
             Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes = new(StringComparer.OrdinalIgnoreCase);
@@ -463,13 +474,17 @@ namespace HaCreator.MapSimulator.Interaction
                 backContainer,
                 front: false,
                 entries,
-                sourceStageBackImageObject: backContainer != null ? stageBackImageGroup : null);
+                sourceStageBackImageObject: backContainer != null ? stageBackImageGroup : null,
+                sourceBackgroundSetObject: stageBackImageGroup,
+                sourceStageBackSideObject: backContainer);
             AppendNativeStageBackImageEntries(
                 backgroundSet,
                 frontContainer,
                 front: true,
                 entries,
-                sourceStageBackImageObject: frontContainer != null ? stageBackImageGroup : null);
+                sourceStageBackImageObject: frontContainer != null ? stageBackImageGroup : null,
+                sourceBackgroundSetObject: stageBackImageGroup,
+                sourceStageBackSideObject: frontContainer);
             if (entries.Count != entryCountBeforeWrapperParse)
             {
                 return;
@@ -482,7 +497,9 @@ namespace HaCreator.MapSimulator.Interaction
                 stageBackImageGroup,
                 front: false,
                 entries,
-                sourceStageBackImageObject: null);
+                sourceStageBackImageObject: null,
+                sourceBackgroundSetObject: stageBackImageGroup,
+                sourceStageBackSideObject: null);
         }
 
         private static void AppendNativeStageBackSideContainerEntries(
@@ -502,7 +519,9 @@ namespace HaCreator.MapSimulator.Interaction
                     backgroundSetProperty,
                     front,
                     entries,
-                    sourceStageBackImageObject: null);
+                    sourceStageBackImageObject: null,
+                    sourceBackgroundSetObject: backgroundSetProperty,
+                    sourceStageBackSideObject: sideContainer);
             }
         }
 
@@ -529,7 +548,9 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty container,
             bool front,
             List<ContextOwnedStageBackImageEntry> entries,
-            WzImageProperty sourceStageBackImageObject)
+            WzImageProperty sourceStageBackImageObject,
+            WzImageProperty sourceBackgroundSetObject,
+            WzImageProperty sourceStageBackSideObject)
         {
             if (string.IsNullOrWhiteSpace(backgroundSet) || container == null || entries == null)
             {
@@ -543,7 +564,9 @@ namespace HaCreator.MapSimulator.Interaction
                     property,
                     front,
                     entries,
-                    sourceStageBackImageObject))
+                    sourceStageBackImageObject,
+                    sourceBackgroundSetObject,
+                    sourceStageBackSideObject))
                 {
                     continue;
                 }
@@ -555,7 +578,9 @@ namespace HaCreator.MapSimulator.Interaction
                         child,
                         front,
                         entries,
-                        sourceStageBackImageObject);
+                        sourceStageBackImageObject,
+                        property,
+                        sourceStageBackSideObject);
                 }
             }
         }
@@ -565,7 +590,9 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty property,
             bool front,
             List<ContextOwnedStageBackImageEntry> entries,
-            WzImageProperty sourceStageBackImageObject)
+            WzImageProperty sourceStageBackImageObject,
+            WzImageProperty sourceBackgroundSetObject,
+            WzImageProperty sourceStageBackSideObject)
         {
             if (string.IsNullOrWhiteSpace(backgroundSet)
                 || property == null
@@ -596,7 +623,11 @@ namespace HaCreator.MapSimulator.Interaction
                 false,
                 UseSourceBackPieceFields: true,
                 SourceStageBackObject: property,
-                SourceStageBackImageObject: sourceStageBackImageObject);
+                SourceStageBackImageObject: sourceStageBackImageObject,
+                SourceBackgroundSetObject: sourceBackgroundSetObject,
+                SourceStageBackSideObject: sourceStageBackSideObject,
+                NativeObjectKey: number,
+                NativeObjectRawName: property.Name);
             UpsertNativeStageBackImageEntry(entries, entry);
             return true;
         }
@@ -1147,7 +1178,7 @@ namespace HaCreator.MapSimulator.Interaction
                     byFieldId[fieldId] = entries;
                 }
 
-                entries.Add(row.CreateEntry(fieldId));
+                entries.Add(row.CreateEntry(fieldId, property));
             }
 
             foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
@@ -1706,7 +1737,11 @@ namespace HaCreator.MapSimulator.Interaction
         WzImageProperty SourceStageBackObject = null,
         WzImageProperty SourceBackImgInfoObject = null,
         WzImageProperty SourceBackPieceObject = null,
-        WzImageProperty SourceStageBackImageObject = null);
+        WzImageProperty SourceStageBackImageObject = null,
+        WzImageProperty SourceBackgroundSetObject = null,
+        WzImageProperty SourceStageBackSideObject = null,
+        int? NativeObjectKey = null,
+        string NativeObjectRawName = null);
 
     internal sealed class ContextOwnedStageUnitEnableState
     {
@@ -1843,7 +1878,7 @@ namespace HaCreator.MapSimulator.Interaction
                 || string.Equals(propertyName, "stageList", StringComparison.OrdinalIgnoreCase);
         }
 
-        internal ContextOwnedStageAffectedMapEntry CreateEntry(int fieldId)
+        internal ContextOwnedStageAffectedMapEntry CreateEntry(int fieldId, WzImageProperty sourceAffectedMapObject = null)
         {
             return new ContextOwnedStageAffectedMapEntry(
                 fieldId,
@@ -1852,7 +1887,8 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestId.GetValueOrDefault(),
                 QuestState.GetValueOrDefault(),
                 HasQuestStateGate,
-                RandomTimeSeconds.GetValueOrDefault());
+                RandomTimeSeconds.GetValueOrDefault(),
+                sourceAffectedMapObject);
         }
 
         internal bool IsStructurallyValidForRuntimeMatch()
@@ -2043,7 +2079,8 @@ namespace HaCreator.MapSimulator.Interaction
         int QuestId,
         int QuestState,
         bool HasQuestStateGate,
-        int RandomTimeSeconds)
+        int RandomTimeSeconds,
+        WzImageProperty SourceAffectedMapObject = null)
     {
         internal bool Matches(
             ContextOwnedStagePeriodCatalogEntry period,

@@ -22,13 +22,17 @@ namespace HaCreator.MapSimulator.Managers
                 ? authoritativeResponse.FocusSlotIndex
                 : ResolveAuthoritativeFocusSlotIndex(authoritativeResponse, request, predictedResponse);
 
+            string resolvedTargetUserName = authoritativeResponse.TargetUserName ?? predictedResponse?.TargetUserName;
+            string resolvedFailureMessage = ResolveFailureMessage(
+                authoritativeResponse,
+                predictedResponse,
+                resolvedTargetUserName);
+
             return new MapTransferRuntimeResponse
             {
                 Applied = authoritativeResponse.Applied,
-                FailureMessage = !string.IsNullOrWhiteSpace(authoritativeResponse.FailureMessage)
-                    ? authoritativeResponse.FailureMessage
-                    : predictedResponse?.FailureMessage,
-                TargetUserName = authoritativeResponse.TargetUserName ?? predictedResponse?.TargetUserName,
+                FailureMessage = resolvedFailureMessage,
+                TargetUserName = resolvedTargetUserName,
                 FocusMapId = resolvedFocusMapId,
                 FocusSlotIndex = resolvedFocusSlotIndex,
                 ResultType = authoritativeResponse.ResultType,
@@ -36,6 +40,24 @@ namespace HaCreator.MapSimulator.Managers
                 CanTransferContinent = authoritativeResponse.CanTransferContinent,
                 FieldList = authoritativeResponse.FieldList ?? Array.Empty<int>()
             };
+        }
+
+        private static string ResolveFailureMessage(
+            MapTransferRuntimeResponse authoritativeResponse,
+            MapTransferRuntimeResponse predictedResponse,
+            string targetUserName)
+        {
+            if (authoritativeResponse?.PacketResultCode is MapTransferRuntimePacketResultCode.OfficialFailure6 or MapTransferRuntimePacketResultCode.OfficialFailure7 &&
+                !string.IsNullOrWhiteSpace(targetUserName))
+            {
+                return HaCreator.MapSimulator.Interaction.MapTransferClientParityText.ResolveFailureMessage(
+                    authoritativeResponse.PacketResultCode,
+                    targetUserName);
+            }
+
+            return !string.IsNullOrWhiteSpace(authoritativeResponse?.FailureMessage)
+                ? authoritativeResponse.FailureMessage
+                : predictedResponse?.FailureMessage;
         }
 
         internal static int ResolvePendingRequestIndex(

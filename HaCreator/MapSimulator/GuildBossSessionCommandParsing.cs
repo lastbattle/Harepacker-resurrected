@@ -1,4 +1,5 @@
 using System;
+using HaCreator.MapSimulator.Effects;
 
 namespace HaCreator.MapSimulator
 {
@@ -35,6 +36,36 @@ namespace HaCreator.MapSimulator
         internal static bool TryParsePulleyRequestTick(string value, out int tick)
         {
             return int.TryParse(value, out tick);
+        }
+
+        internal static bool TryParsePulleyRequest(
+            string[] args,
+            int valueIndex,
+            int defaultTick,
+            out GuildBossField.PulleyPacketRequest request)
+        {
+            request = default;
+            if (args == null || valueIndex < 0 || args.Length > valueIndex + 2)
+            {
+                return false;
+            }
+
+            int sequence = 0;
+            int tick = defaultTick;
+            if (args.Length > valueIndex
+                && !TryParsePulleyRequestSequence(args[valueIndex], out sequence))
+            {
+                return false;
+            }
+
+            if (args.Length > valueIndex + 1
+                && !TryParsePulleyRequestTick(args[valueIndex + 1], out tick))
+            {
+                return false;
+            }
+
+            request = new GuildBossField.PulleyPacketRequest(tick, sequence);
+            return true;
         }
     }
 }

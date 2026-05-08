@@ -1751,7 +1751,7 @@ namespace HaCreator.MapSimulator.AI
                     entry.Value > 0 &&
                     currentTick >= entry.NextTickTime)
                 {
-                    ApplyStatusTickDamage(entry.Value, currentTick);
+                    ApplyStatusTickDamage(entry.Effect, entry.Value, currentTick);
                     entry.NextTickTime = currentTick + entry.TickIntervalMs;
                 }
             }
@@ -1870,7 +1870,13 @@ namespace HaCreator.MapSimulator.AI
         #region Helpers
         private int FindAvailableAttackIndex(int currentTick)
         {
-            if (IsDoomed || !_target.IsValid || (_target.TargetType == MobTargetType.Player && !CanTargetPlayerNow))
+            if (IsDoomed ||
+                IsStunned ||
+                IsFrozen ||
+                IsSealed ||
+                HasStatusEffect(MobStatusEffect.Web) ||
+                !_target.IsValid ||
+                (_target.TargetType == MobTargetType.Player && !CanTargetPlayerNow))
             {
                 return -1;
             }
@@ -2458,15 +2464,21 @@ namespace HaCreator.MapSimulator.AI
                    string.Equals(attack.AnimationName, $"attack{_selfDestructAction}", StringComparison.OrdinalIgnoreCase);
         }
 
-        private void ApplyStatusTickDamage(int damage, int currentTick)
+        private void ApplyStatusTickDamage(MobStatusEffect effect, int damage, int currentTick)
         {
             if (damage <= 0 || IsDead)
             {
                 return;
             }
 
-            _currentHp -= damage;
-            AddDamageDisplay(damage, currentTick, false);
+            int effectiveDamage = ResolveStatusTickDamage(effect, damage);
+            if (effectiveDamage <= 0)
+            {
+                return;
+            }
+
+            _currentHp -= effectiveDamage;
+            AddDamageDisplay(effectiveDamage, currentTick, false);
 
             if (_currentHp <= 0)
             {
@@ -2475,6 +2487,17 @@ namespace HaCreator.MapSimulator.AI
                 _deathTime = currentTick;
                 SetState(MobAIState.Death, currentTick);
             }
+        }
+
+        private int ResolveStatusTickDamage(MobStatusEffect effect, int damage)
+        {
+            int clampedDamage = Math.Max(0, damage);
+            if (effect == MobStatusEffect.Poison || effect == MobStatusEffect.Venom)
+            {
+                return Math.Min(clampedDamage, Math.Max(0, _currentHp - 1));
+            }
+
+            return clampedDamage;
         }
 
         private void ResolveAngerGaugeAfterAttack(int attackIndex)

@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -51,6 +52,20 @@ namespace HaCreator.MapSimulator.UI
         private const int FooterY = 221;
         internal const int InitialRequestOpcode = 72;
         internal const int InitialRequestSubtype = 5;
+        internal const int ChildCloseButtonId = 1000;
+        internal const int ChildPreviousButtonId = 1001;
+        internal const int ChildNextButtonId = 1002;
+        internal const int ChildOkButtonId = 1003;
+        internal const int SearchResultPageSize = 10;
+        internal const int ShopLinkSuccessResultCode = 0;
+        internal const int ShopLinkNoShopResultCode = 1;
+        internal const int ShopLinkAlreadyMovedResultCode = 2;
+        internal const int ShopLinkUnknownItemResultCode = 3;
+        internal const int ShopLinkCannotEnterResultCode = 4;
+        internal const int ShopLinkNoMesoResultCode = 7;
+        internal const int ShopLinkNoShopChannelResultCode = 17;
+        internal const int ShopLinkExpiredResultCode = 18;
+        internal const int ShopLinkTooFarResultCode = 23;
         private static readonly object ScannerIndexLock = new();
         private static IReadOnlyList<ScannerIndexEntry> _scannerIndex;
 
@@ -78,6 +93,13 @@ namespace HaCreator.MapSimulator.UI
         private string _statusMessage = "CUIShopScanner::OnCreate waits on the scanner item-name feed.";
         private int _initialRequestCount;
         private ScannerAddOnMode _activeAddOnMode;
+        private int _searchResultPageIndex;
+        private int _searchResultTotalPages;
+        private int _lastRequestedScanItemId;
+        private bool _lastRequestedScanDescending;
+        private int _lastRequestedScanTick;
+        private int? _lastShopLinkResultCode;
+        private string _lastShopLinkResultSummary = "No scanner shop-link result packet has been applied.";
 
         public ShopScannerWindow(
             IDXObject frame,
@@ -132,6 +154,7 @@ namespace HaCreator.MapSimulator.UI
         public int InitialRequestCount => _initialRequestCount;
         public string LastInitialRequestSummary { get; private set; } = string.Empty;
         public Func<int, IReadOnlyList<byte>, string> InitialScannerRequestDispatcher { get; set; }
+        public Func<int, IReadOnlyList<byte>, string> ShopLinkRequestDispatcher { get; set; }
 
         private enum ScannerAddOnMode
         {
@@ -139,6 +162,21 @@ namespace HaCreator.MapSimulator.UI
             HotList,
             Category,
             SearchResult
+        }
+
+        public sealed class ScannerChildOwnerSnapshot
+        {
+            public string ActiveOwner { get; init; } = "none";
+            public int ResultCount { get; init; }
+            public int SelectedIndex { get; init; }
+            public int SelectedItemId { get; init; }
+            public int PageIndex { get; init; }
+            public int TotalPages { get; init; }
+            public int LastRequestedScanItemId { get; init; }
+            public bool LastRequestedScanDescending { get; init; }
+            public int LastRequestedScanTick { get; init; }
+            public int? LastShopLinkResultCode { get; init; }
+            public string LastShopLinkResultSummary { get; init; } = string.Empty;
         }
 
         public override void Show()
@@ -225,41 +263,77 @@ namespace HaCreator.MapSimulator.UI
 
         public IReadOnlyList<ScannerResult> Search(string query, int maxResults = 100)
         {
-            string normalizedQuery = NormalizeSearchText(query);
-            string collapsedQuery = CollapseSpaces(normalizedQuery);
-            if (string.IsNullOrWhiteSpace(normalizedQuery))
+            string collapsedQuery = NormalizeScannerQuery(query);
+            if (string.IsNullOrWhiteSpace(collapsedQuery))
             {
                 return Array.Empty<ScannerResult>();
             }
 
             return GetScannerIndex()
                 .Where(entry => !entry.IsBlockedByScanBlock && !entry.IsScannerItem)
-                .Select(entry => new
-                {
-                    Entry = entry,
-                    Score = ScoreEntry(entry, normalizedQuery, collapsedQuery)
-                })
-                .Where(candidate => candidate.Score > 0)
-                .OrderByDescending(candidate => candidate.Score)
-                .ThenBy(candidate => candidate.Entry.ClientListOrder)
-                .ThenBy(candidate => candidate.Entry.ItemId)
+                .Where(entry => entry.NoSpaceName.Contains(collapsedQuery, StringComparison.Ordinal))
+                .OrderBy(entry => entry.ClientListOrder)
                 .Take(Math.Max(1, maxResults))
-                .Select(candidate => new ScannerResult
-                {
-                    ItemId = candidate.Entry.ItemId,
-                    Name = candidate.Entry.Name,
-                    NoSpaceName = candidate.Entry.NoSpaceName,
-                    InventoryType = candidate.Entry.InventoryType,
-                    ClientListOrder = candidate.Entry.ClientListOrder,
-                    IsBlockedByScanBlock = candidate.Entry.IsBlockedByScanBlock,
-                    IsScannerItem = candidate.Entry.IsScannerItem
-                })
+                .Select(ToScannerResult)
                 .ToList();
         }
 
         public string GetStatusSummary()
         {
             return $"{LastInitialRequestSummary} Index rows: {GetScannerIndex().Count.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        public ScannerChildOwnerSnapshot GetChildOwnerSnapshot()
+        {
+            ScannerResult selected = _selectedIndex >= 0 && _selectedIndex < _results.Count
+                ? _results[_selectedIndex]
+                : null;
+            return new ScannerChildOwnerSnapshot
+            {
+                ActiveOwner = _activeAddOnMode.ToString(),
+                ResultCount = _results.Count,
+                SelectedIndex = _selectedIndex,
+                SelectedItemId = selected?.ItemId ?? 0,
+                PageIndex = _searchResultPageIndex,
+                TotalPages = _searchResultTotalPages,
+                LastRequestedScanItemId = _lastRequestedScanItemId,
+                LastRequestedScanDescending = _lastRequestedScanDescending,
+                LastRequestedScanTick = _lastRequestedScanTick,
+                LastShopLinkResultCode = _lastShopLinkResultCode,
+                LastShopLinkResultSummary = _lastShopLinkResultSummary
+            };
+        }
+
+        public bool ApplyShopLinkResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 1)
+            {
+                message = "Shop-scanner link-result payload must contain the client result code byte.";
+                return false;
+            }
+
+            int resultCode = payload[0];
+            _lastShopLinkResultCode = resultCode;
+            _lastShopLinkResultSummary = GetShopLinkResultSummary(resultCode, _lastRequestedScanItemId);
+            _statusMessage = _lastShopLinkResultSummary;
+            if (resultCode == ShopLinkSuccessResultCode)
+            {
+                Hide();
+            }
+            else if (_lastRequestedScanItemId > 0)
+            {
+                ScannerResult result = _results.FirstOrDefault(row => row.ItemId == _lastRequestedScanItemId);
+                if (result != null)
+                {
+                    _selectedIndex = _results.IndexOf(result);
+                    SyncSearchResultPageToSelection();
+                }
+            }
+
+            message = _lastShopLinkResultSummary;
+            RefreshRows();
+            return true;
         }
 
         protected override void DrawContents(
@@ -347,10 +421,10 @@ namespace HaCreator.MapSimulator.UI
             string query = _searchQuery?.Trim() ?? string.Empty;
             _results = Search(query, 200).ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
-            _scrollOffset = 0;
             _activeAddOnMode = ScannerAddOnMode.SearchResult;
+            ResetSearchResultPaging();
             _statusMessage = _results.Count > 0
-                ? $"Scanner index matched {_results.Count.ToString(CultureInfo.InvariantCulture)} item-name row(s)."
+                ? $"CUIShopScannerSearchResult staged {_results.Count.ToString(CultureInfo.InvariantCulture)} item-name row(s) for \"{NormalizeScannerQuery(query)}\"."
                 : "Scanner index found no item-name rows for that query.";
             RefreshRows();
         }
@@ -362,6 +436,8 @@ namespace HaCreator.MapSimulator.UI
             _results.Clear();
             _selectedIndex = -1;
             _scrollOffset = 0;
+            _searchResultPageIndex = 0;
+            _searchResultTotalPages = 0;
             _activeAddOnMode = ScannerAddOnMode.None;
             _searchFieldFocused = true;
             _statusMessage = "Scanner search reset; edit focus restored.";
@@ -378,13 +454,13 @@ namespace HaCreator.MapSimulator.UI
 
             _results = GetScannerIndex()
                 .Where(entry => !entry.IsBlockedByScanBlock && !entry.IsScannerItem)
-                .Take(10)
+                .Take(20)
                 .Select(ToScannerResult)
                 .ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
-            _scrollOffset = 0;
             _activeAddOnMode = ScannerAddOnMode.HotList;
-            _statusMessage = "CUIShopScanner hot-list add-on toggled from button 2000.";
+            ResetSearchResultPaging();
+            _statusMessage = "CUIShopScannerHotList child owner toggled from button 2000; child paging uses buttons 1001/1002.";
             RefreshRows();
         }
 
@@ -410,9 +486,9 @@ namespace HaCreator.MapSimulator.UI
                 })
                 .ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
-            _scrollOffset = 0;
             _activeAddOnMode = ScannerAddOnMode.Category;
-            _statusMessage = "CUIShopScanner category add-on toggled from button 2001.";
+            ResetSearchResultPaging();
+            _statusMessage = "CUIShopScannerCategory child owner toggled from button 2001; category selections feed the result child.";
             RefreshRows();
         }
 
@@ -445,6 +521,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 MoveSelection(1);
             }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                MoveChildPage(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                MoveChildPage(1);
+            }
         }
 
         private void SelectVisibleRow(int visibleRow)
@@ -456,6 +540,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedIndex = index;
+            SyncSearchResultPageToSelection();
             _statusMessage = $"Selected {_results[index].Name} ({_results[index].ItemId.ToString(CultureInfo.InvariantCulture)}).";
         }
 
@@ -476,7 +561,89 @@ namespace HaCreator.MapSimulator.UI
                 _scrollOffset = _selectedIndex - VisibleRows + 1;
             }
 
+            SyncSearchResultPageToSelection();
             _statusMessage = $"Selected {_results[_selectedIndex].Name}.";
+        }
+
+        private void MoveChildPage(int delta)
+        {
+            if (_results.Count == 0 || _searchResultTotalPages <= 1)
+            {
+                return;
+            }
+
+            int nextPage = Math.Clamp(_searchResultPageIndex + delta, 0, _searchResultTotalPages - 1);
+            if (nextPage == _searchResultPageIndex)
+            {
+                return;
+            }
+
+            _searchResultPageIndex = nextPage;
+            _selectedIndex = Math.Clamp(_searchResultPageIndex * SearchResultPageSize, 0, _results.Count - 1);
+            _scrollOffset = Math.Min(_selectedIndex, Math.Max(0, _results.Count - VisibleRows));
+            _statusMessage = $"CUIShopScanner child owner moved to page {(_searchResultPageIndex + 1).ToString(CultureInfo.InvariantCulture)} / {_searchResultTotalPages.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        public bool HandleChildButton(int buttonId)
+        {
+            switch (buttonId)
+            {
+                case ChildCloseButtonId:
+                    ClearSearch();
+                    return true;
+                case ChildPreviousButtonId:
+                    MoveChildPage(-1);
+                    return true;
+                case ChildNextButtonId:
+                    MoveChildPage(1);
+                    return true;
+                case ChildOkButtonId:
+                    return TrySendSelectedShopLinkRequest(descendingOrder: false, Environment.TickCount, out _);
+                default:
+                    return false;
+            }
+        }
+
+        public bool TrySendSelectedShopLinkRequest(bool descendingOrder, int currentTick, out string message)
+        {
+            message = null;
+            if (_selectedIndex < 0 || _selectedIndex >= _results.Count)
+            {
+                message = "CUIShopScannerSearchResult has no selected item row for button 1003.";
+                return false;
+            }
+
+            ScannerResult selected = _results[_selectedIndex];
+            byte[] payload = BuildShopLinkRequestPayload(selected.ItemId, descendingOrder, currentTick);
+            string dispatchSummary = ShopLinkRequestDispatcher?.Invoke(InitialRequestOpcode, Array.AsReadOnly(payload));
+            _lastRequestedScanItemId = selected.ItemId;
+            _lastRequestedScanDescending = descendingOrder;
+            _lastRequestedScanTick = currentTick;
+            message = string.IsNullOrWhiteSpace(dispatchSummary)
+                ? $"CUIShopScanner::SendScanPacket staged opcode {InitialRequestOpcode} for {selected.Name} ({selected.ItemId.ToString(CultureInfo.InvariantCulture)}) simulator-local."
+                : dispatchSummary;
+            _statusMessage = message;
+            return true;
+        }
+
+        private void ResetSearchResultPaging()
+        {
+            _searchResultPageIndex = 0;
+            _searchResultTotalPages = _results.Count == 0
+                ? 0
+                : (int)Math.Ceiling(_results.Count / (double)SearchResultPageSize);
+            _scrollOffset = 0;
+        }
+
+        private void SyncSearchResultPageToSelection()
+        {
+            if (_selectedIndex < 0 || _results.Count == 0)
+            {
+                _searchResultPageIndex = 0;
+                return;
+            }
+
+            _searchResultPageIndex = Math.Clamp(_selectedIndex / SearchResultPageSize, 0, Math.Max(0, _searchResultTotalPages - 1));
         }
 
         private void RefreshRows()
@@ -597,41 +764,18 @@ namespace HaCreator.MapSimulator.UI
             return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
         }
 
-        private static int ScoreEntry(ScannerIndexEntry entry, string normalizedQuery, string collapsedQuery)
-        {
-            if (entry == null || string.IsNullOrWhiteSpace(normalizedQuery))
-            {
-                return 0;
-            }
-
-            string normalizedName = NormalizeSearchText(entry.Name);
-            if (string.Equals(normalizedName, normalizedQuery, StringComparison.OrdinalIgnoreCase))
-            {
-                return 500;
-            }
-
-            if (normalizedName.StartsWith(normalizedQuery, StringComparison.OrdinalIgnoreCase))
-            {
-                return 420;
-            }
-
-            if (normalizedName.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
-            {
-                return 320;
-            }
-
-            if (!string.IsNullOrWhiteSpace(collapsedQuery)
-                && entry.NoSpaceName.Contains(collapsedQuery, StringComparison.OrdinalIgnoreCase))
-            {
-                return 300;
-            }
-
-            return 0;
-        }
-
         internal static byte[] BuildInitialScannerRequestPayload()
         {
             return new[] { unchecked((byte)InitialRequestSubtype) };
+        }
+
+        internal static byte[] BuildShopLinkRequestPayload(int itemId, bool descendingOrder, int currentTick)
+        {
+            byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), itemId);
+            payload[sizeof(int)] = descendingOrder ? (byte)1 : (byte)0;
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(byte), sizeof(int)), currentTick);
+            return payload;
         }
 
         private static ScannerResult ToScannerResult(ScannerIndexEntry entry)
@@ -679,7 +823,7 @@ namespace HaCreator.MapSimulator.UI
                     {
                         ItemId = itemId,
                         Name = itemName,
-                        NoSpaceName = CollapseSpaces(itemName),
+                        NoSpaceName = NormalizeScannerQuery(itemName),
                         InventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId),
                         ClientListOrder = clientListOrder++,
                         IsBlockedByScanBlock = scanBlockedItemIds.Contains(itemId),
@@ -706,7 +850,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static HashSet<int> LoadScanBlockedItemIds()
+        internal static HashSet<int> LoadScanBlockedItemIds()
         {
             HashSet<int> blocked = new();
             WzImage scanBlockImage = global::HaCreator.Program.FindImage("Etc", "ScanBlock.img")
@@ -738,9 +882,27 @@ namespace HaCreator.MapSimulator.UI
             return string.Concat(text.Where(character => !char.IsWhiteSpace(character)));
         }
 
-        private static string NormalizeSearchText(string text)
+        internal static string NormalizeScannerQuery(string text)
         {
-            return text?.Trim() ?? string.Empty;
+            return CollapseSpaces(text).ToUpperInvariant();
+        }
+
+        internal static string GetShopLinkResultSummary(int resultCode, int itemId)
+        {
+            string itemSuffix = itemId > 0 ? $" for item {itemId.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
+            return resultCode switch
+            {
+                ShopLinkSuccessResultCode => $"CUIShopScanResult::OnShopLinkResult accepted shop link{itemSuffix} and closed the scanner.",
+                ShopLinkNoShopResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: target shop is unavailable.",
+                ShopLinkAlreadyMovedResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: target shop owner already moved.",
+                ShopLinkUnknownItemResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: target item is no longer listed.",
+                ShopLinkCannotEnterResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: current field cannot enter that shop.",
+                ShopLinkNoMesoResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: not enough meso for the scan.",
+                ShopLinkNoShopChannelResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: no shop was found on this channel.",
+                ShopLinkExpiredResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: scanner data expired.",
+                ShopLinkTooFarResultCode => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: shop link target is too far away.",
+                _ => $"CUIShopScanResult::OnShopLinkResult rejected shop link{itemSuffix}: unrecovered result code {resultCode.ToString(CultureInfo.InvariantCulture)}."
+            };
         }
 
         private static string TrimToWidth(string text, int maxChars)

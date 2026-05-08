@@ -699,10 +699,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _resultCount++;
-            IsOpen = true;
             _lastSubtype = payload[0];
             _lastTemplateStringPoolId = -1;
             _lastTemplateArgument = 0;
+            if (!IsOpen)
+            {
+                StatusMessage = $"CShopDlg ignored packet 365 subtype {_lastSubtype.ToString(CultureInfo.InvariantCulture)} because no packet-owned CShopDlg unique-modeless owner is open.";
+                _lastTemplateNote = "The recovered CShopDlg::OnPacket result branch only applies when the current unique-modeless owner is a CShopDlg.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return true;
+            }
 
             switch (_lastSubtype)
             {
@@ -1746,14 +1753,6 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 37:
-                    if (!IsOpen)
-                    {
-                        StatusMessage = "CStoreBankDlg ignored packet 370 subtype 37 because no store-bank unique-modeless owner is open.";
-                        AppendNote(StatusMessage);
-                        message = StatusMessage;
-                        return true;
-                    }
-
                     ResetTransientRequestState();
                     if (payload.Length < 1 + (sizeof(int) * 2) + sizeof(byte))
                     {
@@ -1765,30 +1764,19 @@ namespace HaCreator.MapSimulator.Interaction
                     _lastPromptTokenValue = BitConverter.ToInt32(payload, 5);
                     _lastPromptChannelId = payload[9];
                     _lastShipmentPromptText = BuildShipmentPromptText();
-                    IsOpen = true;
                     StatusMessage = _lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999
-                        ? $"CStoreBankDlg showed the fallback shipment prompt branch: {_lastShipmentPromptText}"
-                        : $"CStoreBankDlg showed the channel-routed shipment prompt: {_lastShipmentPromptText}";
+                        ? $"CStoreBankDlg packet 370 subtype 37 showed the fallback shipment prompt branch without requiring an open StoreBank owner: {_lastShipmentPromptText}"
+                        : $"CStoreBankDlg packet 370 subtype 37 showed the channel-routed shipment prompt without requiring an open StoreBank owner: {_lastShipmentPromptText}";
                     break;
 
                 case 38:
-                    if (!IsOpen)
-                    {
-                        StatusMessage = "CStoreBankDlg ignored packet 370 subtype 38 because no store-bank unique-modeless owner is open.";
-                        AppendNote(StatusMessage);
-                        message = StatusMessage;
-                        return true;
-                    }
-
                     ResetTransientRequestState();
-                    IsOpen = true;
-                    StatusMessage = $"CStoreBankDlg showed notice {FormatStoreBankStringPoolId(0x0DC3)}: {ResolveStoreBankNoticeText(0x0DC3, "Store-bank notice 38.")}";
+                    StatusMessage = $"CStoreBankDlg packet 370 subtype 38 showed notice {FormatStoreBankStringPoolId(0x0DC3)} without requiring an open StoreBank owner: {ResolveStoreBankNoticeText(0x0DC3, "Store-bank notice 38.")}";
                     break;
 
                 default:
                     ResetTransientRequestState();
-                    IsOpen = true;
-                    StatusMessage = $"CStoreBankDlg packet 370 subtype {_lastSubtype.ToString(CultureInfo.InvariantCulture)} is not modeled beyond owner tracking.";
+                    StatusMessage = $"CStoreBankDlg ignored packet 370 subtype {_lastSubtype.ToString(CultureInfo.InvariantCulture)} because the recovered OnPacket switch returns for unsupported store-bank subtypes.";
                     break;
             }
 

@@ -208,6 +208,7 @@ namespace HaCreator.MapSimulator.Character
             Buttons.Start,
             Buttons.LeftStick,
             Buttons.RightStick,
+            Buttons.BigButton,
         };
 
         private static readonly Buttons[] ClientJoypadNativeButtons =
@@ -222,6 +223,7 @@ namespace HaCreator.MapSimulator.Character
             Buttons.Start,
             Buttons.LeftStick,
             Buttons.RightStick,
+            Buttons.BigButton,
         };
 
         #region Key Bindings
@@ -477,6 +479,7 @@ namespace HaCreator.MapSimulator.Character
                 Buttons.Start => capabilities.HasStartButton,
                 Buttons.LeftStick => capabilities.HasLeftStickButton,
                 Buttons.RightStick => capabilities.HasRightStickButton,
+                Buttons.BigButton => capabilities.HasBigButton,
                 Buttons.DPadUp => capabilities.HasDPadUpButton,
                 Buttons.DPadDown => capabilities.HasDPadDownButton,
                 Buttons.DPadLeft => capabilities.HasDPadLeftButton,

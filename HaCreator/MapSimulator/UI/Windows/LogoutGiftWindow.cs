@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCashPackageItemFamily = 910;
         private const int ClientCashItemTooltipFamily = 5430;
         private const int ClientEquipExtItemFamily = 555;
+        private const int ClientCashItemTopLevelFamily = 5;
         private const int CloseButtonSize = 16;
 
         private readonly Texture2D _pixel;
@@ -472,9 +473,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            // Mirrors CUILogoutGift::ShowItemToolTip's initial gate: cash SNs,
+            // cash packages, slot expansion items, and ordinary cash items.
             return IsClientCashCommoditySerialNumber(commoditySerialNumber)
                 || IsClientCashPackageItem(itemId)
                 || IsClientSlotIncreaseItem(itemId)
+                || IsClientCashItem(itemId)
                 || IsClientCashItemTooltipFamily(itemId)
                 || IsClientEquipExtItemFamily(itemId);
         }
@@ -493,6 +497,11 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsClientCashItemTooltipFamily(int itemId)
         {
             return itemId / 1000 == ClientCashItemTooltipFamily;
+        }
+
+        private static bool IsClientCashItem(int itemId)
+        {
+            return itemId / 100000 == ClientCashItemTopLevelFamily;
         }
 
         private static bool IsClientEquipExtItemFamily(int itemId)

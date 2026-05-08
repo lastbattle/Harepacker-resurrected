@@ -1406,6 +1406,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedTeleportSetItemBackgroundActive = false;
                 _lastPacketOwnedTeleportEffectTick = int.MinValue;
                 _lastPacketOwnedTeleportEffectPath = null;
+                _animationDisplayerPacketOwnedTeleportOneTimeOwnerStates.Clear();
                 _lastPacketOwnedTeleportOutboundOpcode = -1;
                 _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
                 _lastPacketOwnedTeleportOutboundSummary = null;

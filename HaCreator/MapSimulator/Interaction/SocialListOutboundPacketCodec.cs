@@ -16,10 +16,10 @@ namespace HaCreator.MapSimulator.Interaction
         public const byte GuildKickRequest = 7;
         public const byte GuildWithdrawRequest = 9;
         public const byte GuildGradeChangeRequest = 15;
-        public const byte AllianceInviteRequest = 4;
+        public const byte AllianceInviteRequest = 3;
         public const byte AllianceKickRequest = 6;
-        public const byte AllianceWithdrawRequest = 8;
-        public const byte AllianceGradeChangeRequest = 11;
+        public const byte AllianceWithdrawRequest = 2;
+        public const byte AllianceGradeChangeRequest = 9;
         public const byte BlacklistAddRequest = 18;
         public const byte BlacklistDeleteRequest = 19;
 
@@ -40,6 +40,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (!TryResolveSubtype(draft.Kind, out byte subtype))
             {
                 error = $"No social-list outbound request subtype is mapped for {draft.Kind}.";
+                return false;
+            }
+
+            if (draft.Kind == SocialListOutboundRequestKind.AllianceKick
+                && (draft.MemberId <= 0 || draft.SecondaryValue <= 0))
+            {
+                error = "Alliance kick requires the client-owned target guild id and alliance id payload.";
                 return false;
             }
 
@@ -90,6 +97,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case SocialListOutboundRequestKind.PartyCreate:
                 case SocialListOutboundRequestKind.GuildWithdraw:
+                    return;
+
                 case SocialListOutboundRequestKind.AllianceWithdraw:
                     return;
 
@@ -99,10 +108,14 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case SocialListOutboundRequestKind.FriendDelete:
                 case SocialListOutboundRequestKind.GuildKick:
-                case SocialListOutboundRequestKind.AllianceKick:
                 case SocialListOutboundRequestKind.BlacklistDelete:
                     writer.WriteInt(Math.Max(0, draft.MemberId));
                     writer.WriteMapleString(NormalizeTarget(draft.TargetName));
+                    return;
+
+                case SocialListOutboundRequestKind.AllianceKick:
+                    writer.WriteInt(draft.MemberId);
+                    writer.WriteInt(draft.SecondaryValue);
                     return;
 
                 case SocialListOutboundRequestKind.PartyKick:
@@ -111,10 +124,14 @@ namespace HaCreator.MapSimulator.Interaction
                     return;
 
                 case SocialListOutboundRequestKind.GuildGradeChange:
-                case SocialListOutboundRequestKind.AllianceGradeChange:
                     writer.WriteInt(Math.Max(0, draft.MemberId));
                     writer.Write(draft.Value >= 0 ? (byte)1 : (byte)0);
                     writer.WriteMapleString(NormalizeTarget(draft.TargetName));
+                    return;
+
+                case SocialListOutboundRequestKind.AllianceGradeChange:
+                    writer.WriteInt(Math.Max(0, draft.MemberId));
+                    writer.Write(draft.Value >= 0 ? (byte)1 : (byte)0);
                     return;
 
                 default:

@@ -473,7 +473,7 @@ namespace HaCreator.MapSimulator
                 occupiedBounds.Add(avatarLayout.CanvasBounds);
             }
 
-            IReadOnlyList<LocalOverlayBalloonMessage> fieldMessages = _packetOwnedBalloonState.GetFieldMessages(currentTickCount);
+            IReadOnlyList<LocalOverlayBalloonMessage> fieldMessages = _packetOwnedBalloonState.GetRenderableFieldMessages(currentTickCount);
             for (int i = 0; i < fieldMessages.Count; i++)
             {
                 if (!TryBuildPacketOwnedBalloonLayout(fieldMessages[i], currentTickCount, mapCenterX, mapCenterY, occupiedBounds, out PacketOwnedBalloonLayout fieldLayout))

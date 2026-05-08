@@ -645,7 +645,10 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private string ShowPacketOwnedAdminShopOwnerWindow(AdminShopDialogUI adminShopWindow, string defaultMessage)
+        private string ShowPacketOwnedAdminShopOwnerWindow(
+            AdminShopDialogUI adminShopWindow,
+            string defaultMessage,
+            bool allowCashShopFamilyBlocker = false)
         {
             if (adminShopWindow == null)
             {
@@ -668,7 +671,9 @@ namespace HaCreator.MapSimulator
             }
 
             string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
-            if (!string.IsNullOrWhiteSpace(blockingOwner))
+            bool allowCashShopFamilyOwner = allowCashShopFamilyBlocker
+                && IsVisibleCashShopFamilyUniqueModelessOwner();
+            if (!string.IsNullOrWhiteSpace(blockingOwner) && !allowCashShopFamilyOwner)
             {
                 adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
                     $"CAdminShopDlg owner surface stayed hidden because {blockingOwner} already owned the unique-modeless slot.",
@@ -719,7 +724,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop)))
+            string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
+            if (!string.IsNullOrWhiteSpace(blockingOwner)
+                && (!restoreAfterCashShopFamilyVisible || !IsVisibleCashShopFamilyUniqueModelessOwner()))
             {
                 return;
             }
@@ -729,7 +736,8 @@ namespace HaCreator.MapSimulator
                 : "CAdminShopDlg surfaced the staged packet 367 payload after the unique-modeless blocker cleared.";
             string restoreSummary = ShowPacketOwnedAdminShopOwnerWindow(
                 adminShopWindow,
-                restoreReason);
+                restoreReason,
+                allowCashShopFamilyBlocker: restoreAfterCashShopFamilyVisible);
             if (!string.IsNullOrWhiteSpace(restoreSummary))
             {
                 ShowUtilityFeedbackMessage(restoreSummary);
@@ -767,6 +775,16 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private bool IsVisibleCashShopFamilyUniqueModelessOwner()
+        {
+            if (uiWindowManager == null)
+            {
+                return false;
+            }
+
+            return uiWindowManager.GetWindow(MapSimulatorWindowNames.CashTradingRoom)?.IsVisible == true;
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedNpcShopCommand(string[] args)

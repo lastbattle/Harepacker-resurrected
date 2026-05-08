@@ -142,6 +142,7 @@ namespace HaCreator.MapSimulator
                 if (selected)
                 {
                     mapObject.RestartAnimation(currentTick);
+                    ApplyPacketOwnedNamedObjectAnimationRepeatMode(mapObject, stateIndex, currentTick);
                     ApplyPacketOwnedNamedObjectSelectedStateLifecycle(mapObject, stateIndex);
                 }
 
@@ -170,6 +171,7 @@ namespace HaCreator.MapSimulator
                 _packetStageTransitionObjectVisibility[baseObject] = true;
                 HidePacketOwnedAuthoredStateBranches(baseObject);
                 baseObject.RestartAnimation(currentTick);
+                ApplyPacketOwnedNamedObjectAnimationRepeatMode(baseObject, metadata, stateIndex, currentTick);
                 ApplyPacketOwnedNamedObjectSelectedStateLifecycle(baseObject, stateIndex);
                 return true;
             }
@@ -182,6 +184,7 @@ namespace HaCreator.MapSimulator
 
             _packetStageTransitionObjectVisibility[baseObject] = false;
             _packetStageTransitionNamedObjectMovingStates.Remove(baseObject);
+            _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(baseObject);
             baseObject.Position = Point.Zero;
             foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
             {
@@ -190,6 +193,7 @@ namespace HaCreator.MapSimulator
                 if (selected)
                 {
                     branch.Value.RestartAnimation(currentTick);
+                    ApplyPacketOwnedNamedObjectAnimationRepeatMode(branch.Value, metadata, stateIndex, currentTick);
                     ApplyPacketOwnedNamedObjectSelectedStateLifecycle(branch.Value, metadata, stateIndex);
                 }
             }
@@ -212,6 +216,7 @@ namespace HaCreator.MapSimulator
                 {
                     _packetStageTransitionObjectVisibility[branchObject] = false;
                     _packetStageTransitionNamedObjectMovingStates.Remove(branchObject);
+                    _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(branchObject);
                     branchObject.Position = Point.Zero;
                 }
             }
@@ -237,6 +242,32 @@ namespace HaCreator.MapSimulator
             ApplyPacketOwnedNamedObjectSelectedStateLifecycle(mapObject, metadata, stateIndex);
         }
 
+        private void ApplyPacketOwnedNamedObjectAnimationRepeatMode(BaseDXDrawableItem mapObject, int stateIndex, int currentTick)
+        {
+            if (mapObject == null ||
+                !_packetStageTransitionNamedObjectMetadata.TryGetValue(mapObject, out PacketOwnedNamedObjectStateMetadata metadata))
+            {
+                return;
+            }
+
+            ApplyPacketOwnedNamedObjectAnimationRepeatMode(mapObject, metadata, stateIndex, currentTick);
+        }
+
+        private static void ApplyPacketOwnedNamedObjectAnimationRepeatMode(
+            BaseDXDrawableItem mapObject,
+            PacketOwnedNamedObjectStateMetadata metadata,
+            int stateIndex,
+            int currentTick)
+        {
+            int? repeat = metadata?.ResolveStateRepeat(stateIndex);
+            if (!repeat.HasValue)
+            {
+                return;
+            }
+
+            mapObject?.ApplyMapObjectAnimationRepeatMode(repeat.Value, currentTick);
+        }
+
         private void ApplyPacketOwnedNamedObjectSelectedStateLifecycle(
             BaseDXDrawableItem mapObject,
             PacketOwnedNamedObjectStateMetadata metadata,
@@ -247,7 +278,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (TryBuildPacketOwnedNamedObjectMovingState(metadata, stateIndex, currTickCount, out PacketOwnedNamedObjectMovingState movingState))
+            bool hasMovingState = TryBuildPacketOwnedNamedObjectMovingState(metadata, stateIndex, currTickCount, out PacketOwnedNamedObjectMovingState movingState);
+            if (hasMovingState)
             {
                 _packetStageTransitionNamedObjectMovingStates[mapObject] = movingState;
                 movingState.Apply(mapObject, currTickCount);
@@ -256,6 +288,21 @@ namespace HaCreator.MapSimulator
             {
                 _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
                 mapObject.Position = Point.Zero;
+            }
+
+            PacketOwnedNamedObjectSideLaneLifecycleSnapshot sideLaneSnapshot =
+                BuildPacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+                    metadata.ResolveMetadataLanes(stateIndex),
+                    stateIndex,
+                    currTickCount,
+                    hasMovingState);
+            if (sideLaneSnapshot.HasSideLane)
+            {
+                _packetStageTransitionNamedObjectSideLaneLifecycle[mapObject] = sideLaneSnapshot;
+            }
+            else
+            {
+                _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(mapObject);
             }
 
             string stateSfx = metadata.ResolveStateSfx(stateIndex);
@@ -279,8 +326,14 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            string sideLaneSuffix =
+                _packetStageTransitionNamedObjectSideLaneLifecycle.TryGetValue(mapObject, out PacketOwnedNamedObjectSideLaneLifecycleSnapshot sideLaneSnapshot) &&
+                sideLaneSnapshot?.HasSideLane == true
+                    ? $" (sideLaneLifecycle={sideLaneSnapshot.BuildDebugText()})"
+                    : string.Empty;
+
             mapObject.DebugText =
-                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.BuildSelectedStateDebugSuffix(stateIndex)}{metadata.LifecycleDebugSuffix}";
+                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.BuildSelectedStateDebugSuffix(stateIndex)}{metadata.LifecycleDebugSuffix}{sideLaneSuffix}";
         }
 
         private int? TryGetPacketOwnedNamedObjectStateIndex(string objectName)
@@ -368,6 +421,53 @@ namespace HaCreator.MapSimulator
             return lanes;
         }
 
+        internal static bool TryReadPacketOwnedNamedObjectIntProperty(WzImageProperty property, string childName, out int value)
+        {
+            value = 0;
+            WzImageProperty child = property?[childName];
+            switch (child)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    value = (int)longProperty.Value;
+                    return true;
+
+                case WzStringProperty stringProperty:
+                    return int.TryParse(
+                        stringProperty.Value?.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out value);
+
+                default:
+                    return false;
+            }
+        }
+
+        internal static PacketOwnedNamedObjectMetadataLane ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+            bool dynamicObject,
+            bool reflection,
+            bool flow,
+            int? rx,
+            int? ry,
+            int? cx,
+            int? cy,
+            bool hasQuestVisibleMetadata)
+        {
+            bool hasChangingObjectMetadata = dynamicObject || flow || rx.HasValue || ry.HasValue || cx.HasValue || cy.HasValue;
+            return ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+                hasChangingObjectMetadata,
+                reflection,
+                hasQuestVisibleMetadata);
+        }
+
         internal static PacketOwnedNamedObjectMetadataLane ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
             bool reflection,
             bool flow,
@@ -377,11 +477,69 @@ namespace HaCreator.MapSimulator
             int? cy,
             bool hasQuestVisibleMetadata)
         {
-            bool hasChangingObjectMetadata = flow || rx.HasValue || ry.HasValue || cx.HasValue || cy.HasValue;
             return ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
-                hasChangingObjectMetadata,
+                dynamicObject: false,
                 reflection,
+                flow,
+                rx,
+                ry,
+                cx,
+                cy,
                 hasQuestVisibleMetadata);
+        }
+
+        internal static PacketOwnedNamedObjectSideLaneLifecycleSnapshot BuildPacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+            PacketOwnedNamedObjectMetadataLane lanes,
+            int stateIndex,
+            int appliedTick,
+            bool hasMovingState)
+        {
+            return new PacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+                stateIndex,
+                appliedTick,
+                lanes,
+                AllocatesChangingObject: (lanes & PacketOwnedNamedObjectMetadataLane.ChangingObject) != 0,
+                HasChangingObjectMotion: hasMovingState,
+                MutatesReflectionInfo: (lanes & PacketOwnedNamedObjectMetadataLane.ReflectionInfo) != 0,
+                UpdatesQuestVisible: (lanes & PacketOwnedNamedObjectMetadataLane.QuestVisible) != 0);
+        }
+
+        internal sealed record PacketOwnedNamedObjectSideLaneLifecycleSnapshot(
+            int StateIndex,
+            int AppliedTick,
+            PacketOwnedNamedObjectMetadataLane Lanes,
+            bool AllocatesChangingObject,
+            bool HasChangingObjectMotion,
+            bool MutatesReflectionInfo,
+            bool UpdatesQuestVisible)
+        {
+            public bool HasSideLane =>
+                AllocatesChangingObject ||
+                MutatesReflectionInfo ||
+                UpdatesQuestVisible;
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new();
+                if (AllocatesChangingObject)
+                {
+                    parts.Add(HasChangingObjectMotion ? "changing-object:motion" : "changing-object:metadata");
+                }
+
+                if (MutatesReflectionInfo)
+                {
+                    parts.Add("reflection-info:update");
+                }
+
+                if (UpdatesQuestVisible)
+                {
+                    parts.Add("quest-visible:update");
+                }
+
+                return parts.Count == 0
+                    ? "none"
+                    : string.Join("/", parts);
+            }
         }
 
         private sealed record PacketOwnedNamedObjectStateMetadata(
@@ -394,6 +552,7 @@ namespace HaCreator.MapSimulator
             int Y,
             int Z,
             int PlatformNumber,
+            bool Dynamic,
             byte Flow,
             int? Rx,
             int? Ry,
@@ -541,6 +700,11 @@ namespace HaCreator.MapSimulator
                         parts.Add("restartMoving");
                     }
 
+                    if (Dynamic)
+                    {
+                        parts.Add("dynamic");
+                    }
+
                     return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
                 }
             }
@@ -593,13 +757,13 @@ namespace HaCreator.MapSimulator
                     return null;
                 }
 
-                byte flow = TryReadPacketOwnedNamedObjectInt(property, "flow", out int flowValue)
+                byte flow = TryReadPacketOwnedNamedObjectIntProperty(property, "flow", out int flowValue)
                     ? (byte)Math.Clamp(flowValue, byte.MinValue, byte.MaxValue)
                     : (byte)0;
-                int? rx = TryReadPacketOwnedNamedObjectInt(property, "rx", out int rxValue) ? rxValue : null;
-                int? ry = TryReadPacketOwnedNamedObjectInt(property, "ry", out int ryValue) ? ryValue : null;
-                int? cx = TryReadPacketOwnedNamedObjectInt(property, "cx", out int cxValue) ? cxValue : null;
-                int? cy = TryReadPacketOwnedNamedObjectInt(property, "cy", out int cyValue) ? cyValue : null;
+                int? rx = TryReadPacketOwnedNamedObjectIntProperty(property, "rx", out int rxValue) ? rxValue : null;
+                int? ry = TryReadPacketOwnedNamedObjectIntProperty(property, "ry", out int ryValue) ? ryValue : null;
+                int? cx = TryReadPacketOwnedNamedObjectIntProperty(property, "cx", out int cxValue) ? cxValue : null;
+                int? cy = TryReadPacketOwnedNamedObjectIntProperty(property, "cy", out int cyValue) ? cyValue : null;
                 return FromMapObject(flow, rx, ry, cx, cy);
             }
 
@@ -621,36 +785,6 @@ namespace HaCreator.MapSimulator
             private static bool HasMotion(byte flow, int? rx, int? ry, int? cx, int? cy)
             {
                 return flow != 0 || rx.HasValue || ry.HasValue || cx.HasValue || cy.HasValue;
-            }
-
-            private static bool TryReadPacketOwnedNamedObjectInt(WzImageProperty property, string childName, out int value)
-            {
-                value = 0;
-                WzImageProperty child = property?[childName];
-                switch (child)
-                {
-                    case WzIntProperty intProperty:
-                        value = intProperty.Value;
-                        return true;
-
-                    case WzShortProperty shortProperty:
-                        value = shortProperty.Value;
-                        return true;
-
-                    case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
-                        value = (int)longProperty.Value;
-                        return true;
-
-                    case WzStringProperty stringProperty:
-                        return int.TryParse(
-                            stringProperty.Value?.Trim(),
-                            NumberStyles.Integer,
-                            CultureInfo.InvariantCulture,
-                            out value);
-
-                    default:
-                        return false;
-                }
             }
 
             private static void AddNullableIntDebugPart(List<string> parts, string name, int? value)
@@ -1391,6 +1525,12 @@ namespace HaCreator.MapSimulator
                 PacketFieldSpecificDataOwnerHint ownerHint = packetType == PartyRaidField.ClientFieldSetVariablePacketType
                     ? PacketFieldSpecificDataOwnerHint.Field
                     : PacketFieldSpecificDataOwnerHint.Session;
+                PacketFieldSpecificDataOwnerHint prefixedOwnerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
+                if (prefixedOwnerHint != PacketFieldSpecificDataOwnerHint.None)
+                {
+                    ownerHint = prefixedOwnerHint;
+                }
+
                 pairs = new[] { new PortalSessionValueImpactIngress(key, value, packetType, ownerHint) };
                 if (!string.IsNullOrWhiteSpace(relayEvidence))
                 {

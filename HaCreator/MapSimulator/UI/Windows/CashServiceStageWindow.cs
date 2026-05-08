@@ -3142,36 +3142,120 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildCashStockAwareFailureMessage(byte[] payload, string ownerName)
         {
-            string failureMessage = BuildCashTransferAwareFailureMessage(payload, ownerName);
             int reason = payload?.Length >= 2 ? payload[1] : -1;
-            int commoditySerialNumber = 0;
             if (reason is 29 or 30 && payload?.Length >= 2 + sizeof(int))
             {
-                commoditySerialNumber = Math.Max(0, BitConverter.ToInt32(payload, 2));
-                string stockSummary =
-                    $"Client stock/limit owner consumed commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} for failure reason {reason.ToString(CultureInfo.InvariantCulture)} and refreshed CCSWnd_List page ownership.";
-                failureMessage += $" {stockSummary}";
-                _noticeState = failureMessage;
-                ApplyCashStockFailureStateToCatalogEntries(commoditySerialNumber, reason);
-                AppendCashPacketCatalogEntry("Packet limit-goods", "Limit", new PacketCatalogEntry
-                {
-                    Title = commoditySerialNumber > 0
-                        ? $"Limit goods {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
-                        : "Limit goods",
-                    Detail = stockSummary,
-                    Seller = "CCSWnd_List",
-                    PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
-                    StateLabel = reason == 29 ? "Stock update" : "Limit update",
-                    ListingId = commoditySerialNumber,
-                    CommodityId = commoditySerialNumber,
-                    PacketSource = ownerName,
-                    PacketFieldSummary = $"Failure reason={reason.ToString(CultureInfo.InvariantCulture)}, nCommoditySN={commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}",
-                    PacketRawByteLength = payload?.Length ?? 0,
-                    PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
-                });
+                return BuildCashStockLimitFailureMessage(payload, ownerName, reason);
             }
 
+            if (reason == 68 && payload?.Length >= 3)
+            {
+                return BuildCashAvatarPurchaseCountFailureMessage(payload, ownerName);
+            }
+
+            return BuildCashTransferAwareFailureMessage(payload, ownerName);
+        }
+
+        private string BuildCashStockLimitFailureMessage(byte[] payload, string ownerName, int reason)
+        {
+            ResolveCashFailureCatalogTarget(
+                ownerName,
+                out string paneLabel,
+                out string browseModeLabel,
+                out string seller,
+                out string stateLabel);
+
+            int commoditySerialNumber = Math.Max(0, BitConverter.ToInt32(payload, 2));
+            string stockSummary =
+                $"Client stock/limit owner consumed commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} for failure reason {reason.ToString(CultureInfo.InvariantCulture)} and refreshed CCSWnd_List page ownership.";
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                startOffset: 2 + sizeof(int),
+                maxCount: 2,
+                paneLabel: "Packet limit-goods",
+                browseModeLabel: "Limit",
+                titlePrefix: "Stock-limit failure body",
+                seller: "CCSWnd_List",
+                stateLabel: "Stock body");
+            string failureMessage =
+                $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}. {stockSummary}";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                failureMessage += $" {trailingSummary}";
+            }
+
+            _noticeState = failureMessage;
+            ApplyCashStockFailureStateToCatalogEntries(commoditySerialNumber, reason);
+            AppendCashPacketCatalogEntry("Packet limit-goods", "Limit", new PacketCatalogEntry
+            {
+                Title = commoditySerialNumber > 0
+                    ? $"Limit goods {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : "Limit goods",
+                Detail = stockSummary,
+                Seller = "CCSWnd_List",
+                PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = reason == 29 ? "Stock update" : "Limit update",
+                ListingId = commoditySerialNumber,
+                CommodityId = commoditySerialNumber,
+                PacketSource = ownerName,
+                PacketFieldSummary = $"Failure reason={reason.ToString(CultureInfo.InvariantCulture)}, nCommoditySN={commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.",
+                PacketRawByteLength = Math.Min(payload?.Length ?? 0, 2 + sizeof(int)),
+                PacketPayloadRawHex = BuildCompactPayloadHex(payload, 0, Math.Min(payload?.Length ?? 0, 2 + sizeof(int)))
+            });
+            AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, new PacketCatalogEntry
+            {
+                Title = ownerName,
+                Detail = failureMessage,
+                Seller = seller,
+                PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = stateLabel,
+                ListingId = commoditySerialNumber,
+                CommodityId = commoditySerialNumber,
+                PacketSource = ownerName,
+                PacketFieldSummary = $"Failure reason={reason.ToString(CultureInfo.InvariantCulture)}, nCommoditySN={commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.",
+                PacketRawByteLength = Math.Min(payload?.Length ?? 0, 2 + sizeof(int)),
+                PacketPayloadRawHex = BuildCompactPayloadHex(payload, 0, Math.Min(payload?.Length ?? 0, 2 + sizeof(int)))
+            });
+
             return failureMessage;
+        }
+
+        private string BuildCashAvatarPurchaseCountFailureMessage(byte[] payload, string ownerName)
+        {
+            int reason = payload[1];
+            int rawCount = payload[2];
+            int boundedCount = rawCount < 12 ? rawCount + 1 : 1;
+            string message =
+                $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}; client avatar-purchase owner decoded count byte {rawCount.ToString(CultureInfo.InvariantCulture)} and formatted purchase count {boundedCount.ToString(CultureInfo.InvariantCulture)} from StringPool[0x16C9].";
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                startOffset: 3,
+                maxCount: 2,
+                paneLabel: "Packet purchase",
+                browseModeLabel: "Buy",
+                titlePrefix: "Avatar purchase failure body",
+                seller: "CCSWnd_Char",
+                stateLabel: "Avatar body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+            }
+
+            _noticeState = message;
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
+            {
+                Title = "Avatar purchase failure",
+                Detail = message,
+                Seller = "CCSWnd_Char",
+                PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Avatar purchase count",
+                Quantity = boundedCount,
+                PacketSource = ownerName,
+                PacketFieldSummary = $"Failure reason={reason.ToString(CultureInfo.InvariantCulture)}, avatarCountByte={rawCount.ToString(CultureInfo.InvariantCulture)}, formattedCount={boundedCount.ToString(CultureInfo.InvariantCulture)}, StringPool=0x16C9.",
+                PacketRawByteLength = Math.Min(payload?.Length ?? 0, 3),
+                PacketPayloadRawHex = BuildCompactPayloadHex(payload, 0, Math.Min(payload?.Length ?? 0, 3))
+            });
+            return message;
         }
 
         private string BuildCashCouponFailureMessage(byte[] payload, string ownerName)

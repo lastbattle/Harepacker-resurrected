@@ -229,6 +229,7 @@ namespace HaCreator.MapSimulator
                 PlayFieldSound = descriptor => TryPlayPacketOwnedFieldFeedbackSound(descriptor),
                 PlaySummonEffectSound = TryPlayPacketOwnedSummonEffectSound,
                 SetObjectTagState = (tag, state, transition, currentTime) => SetDynamicObjectTagState(tag, state, transition, currentTime),
+                SetObjectTagStateIndex = (tag, stateIndex, transition, currentTime) => SetDynamicObjectTagState(tag, stateIndex != 0, transition, currentTime, stateIndex),
                 ShowSummonEffectVisual = TryShowPacketOwnedSummonEffect,
                 ShowScreenEffectVisual = TryShowPacketOwnedScreenEffect,
                 ShowRewardRouletteVisual = TryShowPacketOwnedRewardRouletteEffect,

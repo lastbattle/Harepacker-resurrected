@@ -4307,12 +4307,25 @@ namespace HaCreator.MapSimulator
             WriteCashReceiveGiftMapleString(writer, giftSender);
             WriteCashReceiveGiftMapleString(writer, replyText ?? string.Empty);
             writer.Write((byte)1);
-            // CCashShop::OnCashItemResLoadGiftDone writes the current GW_GiftList loop index,
-            // not the packet row label carried by the staged simulator entry.
-            writer.Write(Math.Max(0, selectedGiftIndex));
+            writer.Write(ResolveCashReceiveGiftAcceptLoopIndex(selectedGift, selectedGiftIndex));
             writer.Write(selectedGift?.SerialNumber ?? 0L);
             writer.Flush();
             return stream.ToArray();
+        }
+
+        private static int ResolveCashReceiveGiftAcceptLoopIndex(
+            CashServiceStageWindow.PacketCatalogEntry selectedGift,
+            int selectedGiftIndex)
+        {
+            // CCashShop::OnCashItemResLoadGiftDone writes the original GW_GiftList loop index.
+            // PacketRowIndex is the simulator's 1-based label for that decoded row; the visible
+            // queue index can shift after earlier modal-owned gift rows are accepted.
+            if (selectedGift?.PacketRowIndex > 0)
+            {
+                return Math.Max(0, selectedGift.PacketRowIndex - 1);
+            }
+
+            return Math.Max(0, selectedGiftIndex);
         }
 
         private static void WriteCashReceiveGiftMapleString(BinaryWriter writer, string text)

@@ -190,6 +190,14 @@ namespace HaCreator.MapSimulator.Companions
             public Rectangle CapturedBounds { get; }
         }
 
+        private sealed class ClientDragonFlushTailCaptureRecord
+        {
+            public ClientDragonFlushTail Tail { get; init; }
+            public bool HasBounds { get; init; }
+            public string Source { get; init; }
+            public bool FromOfficialSession { get; init; }
+        }
+
         private readonly GraphicsDevice _device;
         private readonly DragonActionLoader _actionLoader;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
@@ -246,6 +254,7 @@ namespace HaCreator.MapSimulator.Companions
         private string _lastCapturedVecCtrlEndUpdateActiveFlushSource;
         private bool _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession;
         private string _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
+        private readonly Queue<ClientDragonFlushTailCaptureRecord> _recentCapturedVecCtrlEndUpdateActiveFlushTails = new();
         private byte[] _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates;
         private string _lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource;
         private bool _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession;
@@ -284,6 +293,7 @@ namespace HaCreator.MapSimulator.Companions
         internal const int ClientVecCtrlDragonMovePacketOpcode214 = ClientVecCtrlDragonMovePacketOpcode;
         private const int ClientVecCtrlDragonFlushThresholdMilliseconds = 1000;
         private const int MaxPendingClientVecCtrlFlushPackets = 128;
+        private const int MaxRecentClientVecCtrlFlushTailCaptures = 32;
         private const int MaxClientVecCtrlMovePathElements = 128;
         private const float QuestInfoHorizontalOffset = 20f;
         private const float QuestInfoVerticalGap = 15f;

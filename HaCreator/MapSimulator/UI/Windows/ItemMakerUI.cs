@@ -333,7 +333,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _pendingPacketOwnedRecipeKey = pendingRequest.RecipeKey ?? string.Empty;
-            _pendingPacketOwnedRecipeOutputItemId = pendingRequest.ExpectedRewardItemId;
+            _pendingPacketOwnedRecipeOutputItemId = pendingRequest.RecipeOutputItemId > 0
+                ? pendingRequest.RecipeOutputItemId
+                : pendingRequest.ExpectedRewardItemId;
         }
 
         internal bool TryApplyPacketOwnedSessionState(PacketOwnedItemMakerSessionState sessionState, out string message)
@@ -2054,6 +2056,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            int clientRecipeClass = PacketOwnedItemMakerRequestRuntime.ResolveCraftRecipeClass(recipe.IsHidden);
+            int clientTargetItemId = PacketOwnedItemMakerRequestRuntime.ResolveCraftRequestTargetItemId(
+                recipe.OutputItemId,
+                recipe.IsHidden);
+
             _pendingPacketOwnedRequest = new PacketOwnedItemMakerPendingRequest
             {
                 IsDisassembly = false,
@@ -2065,9 +2072,10 @@ namespace HaCreator.MapSimulator.UI
                 ExpectedRewardQuantity = recipe.UsesRandomReward ? 0 : Math.Max(1, recipe.OutputQuantity),
                 MesoCost = recipe.MesoCost,
                 CatalystItemId = recipe.CatalystItemId,
-                ClientRecipeClass = PacketOwnedItemMakerRequestRuntime.ClientCraftRecipeClass,
+                ClientRecipeClass = clientRecipeClass,
                 ClientRequestPayload = PacketOwnedItemMakerRequestRuntime.BuildCraftRequestPayload(
-                    recipe.OutputItemId,
+                    clientRecipeClass,
+                    clientTargetItemId,
                     catalystMounted: recipe.CatalystItemId > 0,
                     mountedGemItemIds: Array.Empty<int>()),
                 Materials = recipe.Materials

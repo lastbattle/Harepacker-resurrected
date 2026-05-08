@@ -401,6 +401,12 @@ namespace HaCreator.MapSimulator.Combat
 
             foreach (var groundAttack in _activeMobGroundAttacks)
             {
+                if (!groundAttack.Triggered &&
+                    !ShouldDrawGroundWarning(currentTime, groundAttack.WarningStartTime))
+                {
+                    continue;
+                }
+
                 IDXObject warningFrame = !groundAttack.Triggered
                     ? GetLoopingFrame(groundAttack.WarningFrames, currentTime, groundAttack.WarningStartTime)
                     : null;
@@ -595,7 +601,7 @@ namespace HaCreator.MapSimulator.Combat
                         WarningFrames = warningFrames,
                         Area = CreateGroundArea(target, areaWidth, areaHeight),
                         EffectPosition = target,
-                        WarningStartTime = currentTime,
+                        WarningStartTime = ResolveGroundWarningStartTime(currentTime, randomDelay),
                         TriggerTime = currentTime + triggerDelay + randomDelay,
                         ExpireTime = currentTime + triggerDelay + randomDelay + 350
                     });
@@ -2740,6 +2746,16 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return expandedDelays;
+        }
+
+        internal static int ResolveGroundWarningStartTime(int currentTime, int areaStartDelay)
+        {
+            return currentTime + Math.Max(0, areaStartDelay);
+        }
+
+        internal static bool ShouldDrawGroundWarning(int currentTime, int warningStartTime)
+        {
+            return currentTime >= warningStartTime;
         }
 
         internal static List<Vector2> ExtractPacketProjectileLanePoints(

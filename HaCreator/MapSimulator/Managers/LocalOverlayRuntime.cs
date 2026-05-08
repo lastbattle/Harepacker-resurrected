@@ -32,6 +32,10 @@ namespace HaCreator.MapSimulator.Managers
         public int DamageMeterSharedTimingResetValue { get; private set; }
         public int DamageMeterSharedTimingUpdatedAt { get; private set; } = int.MinValue;
         public int LastDamageMeterPacketTick { get; private set; } = int.MinValue;
+        public int DamageMeterTotalDamage { get; private set; }
+        public int DamageMeterAverageDamage { get; private set; }
+        public int DamageMeterMaxAverageDamage { get; private set; }
+        public int LastDamageMeterDamageTick { get; private set; } = int.MinValue;
 
         public int LastFieldHazardDamage { get; private set; }
         public string LastFieldHazardMessage { get; private set; } = string.Empty;
@@ -110,6 +114,10 @@ namespace HaCreator.MapSimulator.Managers
             DamageMeterFloatNoticeOwnerIdentity = normalizedDuration > 0
                 ? AllocateStatusBarFloatNoticeOwnerIdentity()
                 : 0;
+            DamageMeterTotalDamage = 0;
+            DamageMeterAverageDamage = 0;
+            DamageMeterMaxAverageDamage = 0;
+            LastDamageMeterDamageTick = int.MinValue;
         }
 
         public void ClearDamageMeter(int currentTickCount, bool updateSharedTiming)
@@ -118,11 +126,27 @@ namespace HaCreator.MapSimulator.Managers
             DamageMeterStartedAt = int.MinValue;
             DamageMeterExpiresAt = int.MinValue;
             DamageMeterFloatNoticeOwnerIdentity = 0;
+            DamageMeterTotalDamage = 0;
+            DamageMeterAverageDamage = 0;
+            DamageMeterMaxAverageDamage = 0;
+            LastDamageMeterDamageTick = int.MinValue;
             if (updateSharedTiming)
             {
                 DamageMeterSharedTimingResetValue = 0;
                 DamageMeterSharedTimingUpdatedAt = currentTickCount;
             }
+        }
+
+        public void RecordDamageMeterDamage(int damage, int currentTickCount)
+        {
+            if (damage <= 0 || !HasDamageMeterTimer(currentTickCount))
+            {
+                return;
+            }
+
+            DamageMeterTotalDamage = SaturatingAdd(DamageMeterTotalDamage, damage);
+            LastDamageMeterDamageTick = currentTickCount;
+            UpdateDamageMeterDamageInfo(currentTickCount);
         }
 
         public bool HasActiveFieldHazardNotice(int currentTickCount)
@@ -211,6 +235,11 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Update(int currentTickCount)
         {
+            if (HasDamageMeterTimer(currentTickCount))
+            {
+                UpdateDamageMeterDamageInfo(currentTickCount);
+            }
+
             if (DamageMeterExpiresAt != int.MinValue && unchecked(currentTickCount - DamageMeterExpiresAt) >= 0)
             {
                 DamageMeterDurationSeconds = 0;
@@ -222,6 +251,27 @@ namespace HaCreator.MapSimulator.Managers
             if (LastFieldHazardNoticeExpiresAt != int.MinValue && unchecked(currentTickCount - LastFieldHazardNoticeExpiresAt) >= 0)
             {
                 ClearFieldHazardNotice();
+            }
+        }
+
+        private void UpdateDamageMeterDamageInfo(int currentTickCount)
+        {
+            if (!HasDamageMeterTimer(currentTickCount) || DamageMeterDurationSeconds <= 0)
+            {
+                return;
+            }
+
+            int elapsedSeconds = Math.Max(0, DamageMeterDurationSeconds - GetRemainingDamageMeterSeconds(currentTickCount));
+            if (elapsedSeconds <= 1)
+            {
+                return;
+            }
+
+            int averageDamage = DamageMeterTotalDamage / elapsedSeconds;
+            DamageMeterAverageDamage = averageDamage;
+            if (DamageMeterMaxAverageDamage < averageDamage)
+            {
+                DamageMeterMaxAverageDamage = averageDamage;
             }
         }
 
@@ -245,6 +295,12 @@ namespace HaCreator.MapSimulator.Managers
 
             int elapsedMs = unchecked(currentTickCount - startedAt);
             return elapsedMs > 0 ? elapsedMs : 0;
+        }
+
+        private static int SaturatingAdd(int left, int right)
+        {
+            long value = (long)Math.Max(0, left) + Math.Max(0, right);
+            return value > int.MaxValue ? int.MaxValue : (int)value;
         }
 
         private void ExtendFieldHazardNoticeExpiry(int currentTickCount, int extensionMs)
@@ -292,7 +348,13 @@ namespace HaCreator.MapSimulator.Managers
                 DamageMeterDurationSeconds,
                 GetRemainingDamageMeterSeconds(currentTickCount),
                 DamageMeterSharedTimingResetValue,
-                GetDamageMeterSharedTimingAgeMs(currentTickCount));
+                GetDamageMeterSharedTimingAgeMs(currentTickCount))
+                + string.Format(
+                    CultureInfo.InvariantCulture,
+                    " damageTotal={0} average={1} maxAverage={2}",
+                    DamageMeterTotalDamage,
+                    DamageMeterAverageDamage,
+                    DamageMeterMaxAverageDamage);
         }
 
         public string DescribeFieldHazardStatus(int currentTickCount)

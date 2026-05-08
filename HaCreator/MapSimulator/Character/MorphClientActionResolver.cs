@@ -906,6 +906,7 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
+            actionName = actionName.Trim();
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             if (ShouldPreferExactPublishedAction(morphPart, actionName) && yielded.Add(actionName))
@@ -977,6 +978,26 @@ namespace HaCreator.MapSimulator.Character
                     yield return candidate;
                 }
             }
+        }
+
+        internal static bool TryGetClientMorphActionNameFromRawCode(int rawActionCode, out string actionName)
+        {
+            actionName = null;
+            if (rawActionCode < 0
+                || !CharacterPart.TryGetActionStringFromCode(rawActionCode, out actionName)
+                || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (rawActionCode == ClientMorphActionTableSkippedRawActionCode)
+            {
+                actionName = null;
+                return false;
+            }
+
+            return rawActionCode < ClientMorphActionTableExclusiveUpperBound
+                   || IsClientConfirmedMorphActionName(actionName);
         }
 
         private static IEnumerable<string> EnumerateClientPublishedPostureAliases(CharacterPart morphPart, string actionName)

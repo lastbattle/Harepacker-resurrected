@@ -206,8 +206,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static float ResolveBodyWrapWidth(bool hasTitle, bool tightLine)
         {
-            // CUtilDlg::Draw uses the tighter 234px body-width branch when no title is present.
-            return tightLine || !hasTitle
+            // CUtilDlg::SetUtilDlg selects the 234px branch only when bIsTightLine is set.
+            return tightLine
                 ? TightLineBodyWrapWidth
                 : NormalBodyWrapWidth;
         }

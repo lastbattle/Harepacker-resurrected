@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator
         private ReviveOwnerPendingOpen? _pendingReviveOwnerOpen;
         private ReviveOwnerTransferRequest? _pendingReviveOwnerTransferRequest;
         private int _pendingReviveOwnerTransferTick = int.MinValue;
+        private ReviveOwnerRespawnPointResolution? _activeReviveOwnerPremiumRespawnResolution;
         private bool _packetOwnedRevivePremiumSafetyCharmLastObservedOfficialSessionConnected;
         private ReviveOwnerUpgradeTombAnimationOwnerState _reviveOwnerUpgradeTombAnimationOwnerState;
 
@@ -117,6 +118,7 @@ namespace HaCreator.MapSimulator
                 premiumDetail,
                 variant,
                 premiumRespawnResolution.Point,
+                premiumRespawnResolution.Source,
                 currentTick);
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
         }
@@ -135,6 +137,7 @@ namespace HaCreator.MapSimulator
                 _pendingReviveOwnerOpen = null;
                 _pendingReviveOwnerTransferRequest = null;
                 _pendingReviveOwnerTransferTick = int.MinValue;
+                _activeReviveOwnerPremiumRespawnResolution = null;
                 return;
             }
 
@@ -215,7 +218,16 @@ namespace HaCreator.MapSimulator
         {
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
             _pendingReviveOwnerOpen = null;
-            _pendingReviveOwnerTransferRequest = ReviveOwnerRuntime.CreateTransferRequest(resolution);
+            ReviveOwnerTransferRequest request = ReviveOwnerRuntime.CreateTransferRequest(resolution);
+            if (request.Premium
+                && ReviveOwnerRuntime.UsesCurrentFieldRespawn(request.Variant)
+                && _activeReviveOwnerPremiumRespawnResolution.HasValue)
+            {
+                request = request.WithClientRevivePoint(_activeReviveOwnerPremiumRespawnResolution.Value.Point);
+            }
+
+            _activeReviveOwnerPremiumRespawnResolution = null;
+            _pendingReviveOwnerTransferRequest = request;
             _pendingReviveOwnerTransferTick = currentTick;
         }
 
@@ -244,6 +256,9 @@ namespace HaCreator.MapSimulator
                 pendingOpen.PremiumDetail,
                 pendingOpen.Variant,
                 currentTick);
+            _activeReviveOwnerPremiumRespawnResolution = new ReviveOwnerRespawnPointResolution(
+                pendingOpen.PremiumRespawnPoint,
+                pendingOpen.PremiumRespawnPointSource);
 
             ApplyReviveOwnerWindowPlacement();
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Revive);
@@ -300,7 +315,12 @@ namespace HaCreator.MapSimulator
                 Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(request));
                 ApplyReviveOwnerClientReviveState(request, currentTick);
                 Vector2 deathPoint = new(_playerManager.Player.DeathX, _playerManager.Player.DeathY);
-                Vector2 respawnPoint = ResolveCurrentFieldReviveRespawnPoint(request.Variant, deathPoint);
+                Vector2 spawnPoint = _playerManager.GetSpawnPoint();
+                Vector2 respawnPoint = ResolveCurrentFieldReviveRespawnPointForRequest(
+                    request,
+                    _mapBoard?.MapInfo,
+                    spawnPoint,
+                    deathPoint);
                 _playerManager.RespawnAt(respawnPoint.X, respawnPoint.Y);
                 ShowReviveOwnerClientResultNotice(request);
                 return;
@@ -578,6 +598,22 @@ namespace HaCreator.MapSimulator
         private Vector2 ResolveCurrentFieldReviveRespawnPoint(ReviveOwnerVariant variant, Vector2 fallbackPoint)
         {
             return ResolveCurrentFieldReviveRespawnPointResolution(variant, fallbackPoint).Point;
+        }
+
+        internal static Vector2 ResolveCurrentFieldReviveRespawnPointForRequest(
+            ReviveOwnerTransferRequest request,
+            MapInfo mapInfo,
+            Vector2 spawnPoint,
+            Vector2 fallbackPoint)
+        {
+            if (request.Premium
+                && request.HasClientRevivePoint
+                && ReviveOwnerRuntime.UsesCurrentFieldRespawn(request.Variant))
+            {
+                return request.ClientRevivePoint;
+            }
+
+            return ResolveCurrentFieldReviveRespawnPoint(mapInfo, spawnPoint, fallbackPoint);
         }
 
         private ReviveOwnerRespawnPointResolution ResolveCurrentFieldReviveRespawnPointResolution(
@@ -1629,6 +1665,7 @@ namespace HaCreator.MapSimulator
                 string premiumDetail,
                 ReviveOwnerVariant variant,
                 Vector2 premiumRespawnPoint,
+                ReviveOwnerRespawnPointSource premiumRespawnPointSource,
                 int armedAtTick)
             {
                 MapName = mapName ?? string.Empty;
@@ -1636,6 +1673,7 @@ namespace HaCreator.MapSimulator
                 PremiumDetail = premiumDetail ?? string.Empty;
                 Variant = variant;
                 PremiumRespawnPoint = premiumRespawnPoint;
+                PremiumRespawnPointSource = premiumRespawnPointSource;
                 ArmedAtTick = armedAtTick;
             }
 
@@ -1644,6 +1682,7 @@ namespace HaCreator.MapSimulator
             public string PremiumDetail { get; }
             public ReviveOwnerVariant Variant { get; }
             public Vector2 PremiumRespawnPoint { get; }
+            public ReviveOwnerRespawnPointSource PremiumRespawnPointSource { get; }
             public int ArmedAtTick { get; }
         }
     }

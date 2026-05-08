@@ -643,6 +643,16 @@ namespace HaCreator.MapSimulator.Physics
         }
 
         /// <summary>
+        /// Client overload used by movement skills: stamp the move-path attribute before
+        /// queuing the pending impact.
+        /// </summary>
+        public void SetImpactNext(int movePathAttribute, double vx, double vy, int? timeStampMs = null)
+        {
+            SetMovePathAttribute(movePathAttribute, timeStampMs: timeStampMs);
+            SetImpactNext(vx, vy);
+        }
+
+        /// <summary>
         /// Apply pending impact to velocity and clear it
         /// </summary>
         public void ApplyPendingImpact()

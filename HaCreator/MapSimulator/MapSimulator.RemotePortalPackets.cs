@@ -1,10 +1,14 @@
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using System;
 
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int LocalOpenGateRemoveNoticeStringPoolId = 0x18DE;
+        private const string LocalOpenGateRemoveNoticeFallback = "The Open Gate has been closed.";
+
         private ChatCommandHandler.CommandResult ApplyRemotePortalPacketCommand(int packetType, byte[] payload)
         {
             if (_temporaryPortalField == null || _mapBoard?.MapInfo == null)
@@ -30,7 +34,32 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error(result ?? $"Failed to apply remote portal packet {packetType}.");
             }
 
+            if (ShouldShowLocalOpenGateRemoveNotice(packetType, payload, _playerManager?.Player?.Build?.Id ?? 0))
+            {
+                ShowUtilityFeedbackMessage(MapleStoryStringPool.GetOrFallback(
+                    LocalOpenGateRemoveNoticeStringPoolId,
+                    LocalOpenGateRemoveNoticeFallback));
+            }
+
             return ChatCommandHandler.CommandResult.Ok($"{result} {_temporaryPortalField.DescribeRemotePortalStatus(_mapBoard.MapInfo.id)}");
+        }
+
+        private static bool ShouldShowLocalOpenGateRemoveNotice(int packetType, byte[] payload, int localCharacterId)
+        {
+            if (packetType != (int)RemotePortalPacketType.OpenGateRemove
+                || localCharacterId <= 0
+                || !RemotePortalPacketCodec.TryParseOpenGateRemoved(payload, out RemoteOpenGateRemovedPacket packet, out _))
+            {
+                return false;
+            }
+
+            return packet.State == 0
+                   && packet.OwnerCharacterId == unchecked((uint)localCharacterId);
+        }
+
+        internal static bool ShouldShowLocalOpenGateRemoveNoticeForTesting(int packetType, byte[] payload, int localCharacterId)
+        {
+            return ShouldShowLocalOpenGateRemoveNotice(packetType, payload, localCharacterId);
         }
 
         private static bool TryParseOpenGateSlot(string token, out bool isFirstSlot)

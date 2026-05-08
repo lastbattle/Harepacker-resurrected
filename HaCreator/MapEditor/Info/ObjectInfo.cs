@@ -174,9 +174,9 @@ namespace HaCreator.MapEditor.Info
             return instance;
         }
 
-        public BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, int zM, MapleBool r, MapleBool hide, MapleBool reactor, MapleBool flow, int? rx, int? ry, int? cx, int? cy, string name, string tags, List<ObjectInstanceQuest> questInfo, bool flip, bool parseOffsets)
+        public BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, int zM, MapleBool r, MapleBool hide, MapleBool reactor, MapleBool flow, int? rx, int? ry, int? cx, int? cy, string name, string tags, List<ObjectInstanceQuest> questInfo, bool flip, bool parseOffsets, MapleBool dynamicObject = default)
         {
-            ObjectInstance instance = new ObjectInstance(this, layer, board, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip);
+            ObjectInstance instance = new ObjectInstance(this, layer, board, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, dynamicObject);
             if (parseOffsets) ParseOffsets(instance, board, x, y);
             return instance;
         }

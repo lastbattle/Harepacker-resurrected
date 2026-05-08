@@ -930,7 +930,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<string> compactClauses = ResolveCompactDetailClauses(detail);
             if (compactClauses.Count >= 2 && ShouldUseCompactDetailLedgerSplit(entry))
             {
-                AddCompactDetailClauseRecords(records, compactClauses, leftStyleIndex, rightStyleIndex, top, measureTextWidth);
+                AddCompactDetailClauseRecords(records, compactClauses, detail, leftStyleIndex, rightStyleIndex, top, measureTextWidth);
                 return;
             }
 
@@ -984,6 +984,7 @@ namespace HaCreator.MapSimulator.UI
         private static void AddCompactDetailClauseRecords(
             List<CollectionBookRecordSnapshot> records,
             IReadOnlyList<string> compactClauses,
+            string sourcePayloadText,
             int leftStyleIndex,
             int rightStyleIndex,
             int top,
@@ -997,6 +998,7 @@ namespace HaCreator.MapSimulator.UI
             int clauseIndex = 0;
             int rowTop = top;
             int rowBottom = top;
+            string resolvedSourcePayloadText = sourcePayloadText ?? string.Join("  ", compactClauses);
             while (clauseIndex + 1 < compactClauses.Count)
             {
                 string leftClause = compactClauses[clauseIndex];
@@ -1015,7 +1017,7 @@ namespace HaCreator.MapSimulator.UI
                         CollectionBookTextAlignment.Left,
                         CollectionBookRecordRole.Detail,
                         measureTextWidth,
-                        clientSourcePayloadText: string.Join("  ", compactClauses),
+                        clientSourcePayloadText: resolvedSourcePayloadText,
                         clientSourcePayloadPartText: leftClause,
                         clientSourcePayloadPartIndex: clauseIndex,
                         clientSourcePayloadPartCount: compactClauses.Count);
@@ -1033,7 +1035,7 @@ namespace HaCreator.MapSimulator.UI
                         CollectionBookTextAlignment.Right,
                         CollectionBookRecordRole.Detail,
                         measureTextWidth,
-                        clientSourcePayloadText: string.Join("  ", compactClauses),
+                        clientSourcePayloadText: resolvedSourcePayloadText,
                         clientSourcePayloadPartText: rightClause,
                         clientSourcePayloadPartIndex: clauseIndex + 1,
                         clientSourcePayloadPartCount: compactClauses.Count);
@@ -1074,7 +1076,7 @@ namespace HaCreator.MapSimulator.UI
                         rightLaneSpill ? CollectionBookTextAlignment.Right : CollectionBookTextAlignment.Left,
                         CollectionBookRecordRole.Detail,
                         measureTextWidth,
-                        clientSourcePayloadText: string.Join("  ", compactClauses),
+                        clientSourcePayloadText: resolvedSourcePayloadText,
                         clientSourcePayloadPartText: spillClause,
                         clientSourcePayloadPartIndex: clauseIndex,
                         clientSourcePayloadPartCount: compactClauses.Count);

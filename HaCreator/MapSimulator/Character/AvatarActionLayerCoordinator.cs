@@ -451,8 +451,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (isMorphAvatar)
             {
-                return CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
-                       && MorphClientActionResolver.IsClientConfirmedMorphActionName(actionName);
+                return MorphClientActionResolver.TryGetClientMorphActionNameFromRawCode(rawActionCode, out _);
             }
 
             if (rawActionCode < 273)

@@ -80,6 +80,9 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly Regex Sg88VecCtrlFieldValueRegex = new(
             @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88TextPacketComparisonAssignmentRegex = new(
+            @"(?<name>[A-Za-z][A-Za-z0-9_\-]*(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)[A-Za-z0-9_\-]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-]*(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)[A-Za-z0-9_\-]*\s*[:=])|[;\r\n]|$)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
         public const int Sg88ManualAttackConfirmPacketType = 1021;
@@ -2285,7 +2288,18 @@ namespace HaCreator.MapSimulator.Managers
 
             if (normalizedByByte.Count == 0)
             {
+                TryExtractSg88ReplayParityMismatchPairsFromTextComparison(rawPairSegment, normalizedByByte);
+            }
+
+            if (normalizedByByte.Count == 0)
+            {
                 TryExtractSg88ReplayParityMismatchPairsJsonLike(rawPairSegment, normalizedByByte);
+                if (normalizedByByte.Count == 0
+                    && !ReferenceEquals(rawPairSegment, decodeDetail))
+                {
+                    TryExtractSg88ReplayParityMismatchPairsFromTextComparison(decodeDetail, normalizedByByte);
+                }
+
                 if (normalizedByByte.Count == 0
                     && !ReferenceEquals(rawPairSegment, decodeDetail))
                 {
@@ -2307,6 +2321,56 @@ namespace HaCreator.MapSimulator.Managers
                 .OrderBy(entry => entry.Key)
                 .Select(entry => entry.Value)
                 .ToArray();
+            return true;
+        }
+
+        private static bool TryExtractSg88ReplayParityMismatchPairsFromTextComparison(
+            string rawSegment,
+            IDictionary<int, string> normalizedByByte)
+        {
+            if (string.IsNullOrWhiteSpace(rawSegment)
+                || normalizedByByte == null)
+            {
+                return false;
+            }
+
+            byte[] observedBytes = null;
+            byte[] rebuiltBytes = null;
+            bool observedPayload = false;
+            bool rebuiltPayload = false;
+            foreach (Match match in Sg88TextPacketComparisonAssignmentRegex.Matches(rawSegment).Cast<Match>())
+            {
+                string name = match.Groups["name"].Value;
+                if (!TryNormalizeSg88MismatchPairJsonPropertyName(name, out string normalizedName)
+                    || normalizedName is not ("observed" or "rebuilt")
+                    || !TryParseSg88PacketComparisonHexBytes(match.Groups["value"].Value, out byte[] parsedBytes))
+                {
+                    continue;
+                }
+
+                bool isPayload = IsSg88PayloadComparisonByteArrayLabel(name);
+                if (normalizedName == "observed")
+                {
+                    observedBytes = parsedBytes;
+                    observedPayload = isPayload;
+                }
+                else
+                {
+                    rebuiltBytes = parsedBytes;
+                    rebuiltPayload = isPayload;
+                }
+            }
+
+            if (observedBytes == null || rebuiltBytes == null)
+            {
+                return false;
+            }
+
+            AddSg88PacketComparisonMismatchPairs(
+                observedBytes,
+                rebuiltBytes,
+                observedPayload && rebuiltPayload ? sizeof(ushort) : 0,
+                normalizedByByte);
             return true;
         }
 

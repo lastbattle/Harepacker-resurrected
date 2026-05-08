@@ -572,7 +572,7 @@ namespace HaCreator.MapSimulator.Entities
             _transientHitLayerSourceState = state;
             _transientHitLayerProperEventIndex = properEventIndex;
 
-            IDXObject[] transientFrames = ResolveTransientHitFrames(frames);
+            IDXObject[] transientFrames = ResolveTransientHitFrames(frames, state);
             if (transientFrames.Length > 0)
             {
                 _transientFrames = transientFrames;
@@ -584,14 +584,14 @@ namespace HaCreator.MapSimulator.Entities
             return duration > 0;
         }
 
-        private IDXObject[] ResolveTransientHitFrames(IDXObject[] sourceFrames)
+        private IDXObject[] ResolveTransientHitFrames(IDXObject[] sourceFrames, int sourceState)
         {
             if (sourceFrames != null && sourceFrames.Length > 0)
             {
                 return sourceFrames;
             }
 
-            IDXObject[] substituteFrames = ResolveStateFrames(_activeState);
+            IDXObject[] substituteFrames = ResolveStateFrames(sourceState);
             return substituteFrames?.Length > 0
                 ? substituteFrames
                 : Array.Empty<IDXObject>();

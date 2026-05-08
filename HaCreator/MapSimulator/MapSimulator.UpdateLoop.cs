@@ -1116,6 +1116,9 @@ namespace HaCreator.MapSimulator
                     CheckReactorTouch(updatedPlayerPosition.X, updatedPlayerPosition.Y, currentTick: currTickCount);
                 }
 
+                // Native Update runs TryAutoRequestFollowCharacter before TryPassiveTransferField.
+                HandleQueuedPassiveTransferFieldRetry(currTickCount);
+
 
                 // Update camera controller based on player/camera mode
 

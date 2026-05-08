@@ -538,19 +538,37 @@ namespace HaCreator.MapSimulator.Companions
                             bool targetIsMechanic = TryResolveMechanicSlotFromClientPosition(toPosition, out MechanicEquipSlot targetMechanicSlot);
                             if (sourceIsMechanic && !targetIsMechanic)
                             {
+                                if (TryResolvePassiveEquipInventorySlotState(equipInventorySlots, toPosition, out int targetItemId)
+                                    && targetItemId > 0)
+                                {
+                                    if (!TryValidateMechanicItemFamilyForSlot(targetItemId, sourceMechanicSlot, out rejectReason))
+                                    {
+                                        return false;
+                                    }
+
+                                    recoveredMutations[sourceMechanicSlot] = targetItemId;
+                                    break;
+                                }
+
                                 recoveredMutations[sourceMechanicSlot] = 0;
                                 break;
                             }
 
                             if (!sourceIsMechanic && targetIsMechanic)
                             {
-                                if (!TryResolvePassiveEquipInventoryItemId(equipInventorySlots, fromPosition, out int sourceItemId))
+                                if (!TryResolvePassiveEquipInventorySlotState(equipInventorySlots, fromPosition, out int sourceItemId))
                                 {
                                     // CWvsContext::OnInventoryOperation mode 2 only carries source
                                     // and target positions. The pre-swap mechanic target item is not
                                     // proof of the positive inventory source item, so passive
                                     // equip-in recovery must wait for a live equip-inventory source
                                     // snapshot or a mode-0 add entry that carries the item id.
+                                    break;
+                                }
+
+                                if (sourceItemId <= 0)
+                                {
+                                    recoveredMutations[targetMechanicSlot] = 0;
                                     break;
                                 }
 
@@ -2345,7 +2363,7 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
-        private static bool TryResolvePassiveEquipInventoryItemId(
+        private static bool TryResolvePassiveEquipInventorySlotState(
             IReadOnlyList<InventorySlotData> equipInventorySlots,
             short sourcePosition,
             out int itemId)
@@ -2363,7 +2381,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             itemId = equipInventorySlots[sourceIndex]?.ItemId ?? 0;
-            return itemId > 0;
+            return true;
         }
 
         private static bool TryReadClientInventoryOperationEquipBody(

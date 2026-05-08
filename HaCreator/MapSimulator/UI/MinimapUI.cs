@@ -1865,12 +1865,38 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (kind == ClientHoverTargetKind.RemoteDirection
+                && TryMergeRemoteDirectionHoverTarget(tooltipText, bounds))
+            {
+                return;
+            }
+
             HoverTargetEntry hoverTarget = GetOrCreateHoverTarget(_hoverTargetCount++);
             hoverTarget.Bounds = bounds;
             hoverTarget.TooltipText = tooltipText;
             hoverTarget.Npc = null;
             hoverTarget.Portal = null;
             hoverTarget.Kind = kind;
+        }
+
+        private bool TryMergeRemoteDirectionHoverTarget(string tooltipText, Rectangle bounds)
+        {
+            for (int i = 0; i < _hoverTargetCount; i++)
+            {
+                HoverTargetEntry hoverTarget = _hoverTargets[i];
+                if (hoverTarget.Kind != ClientHoverTargetKind.RemoteDirection
+                    || hoverTarget.Bounds != bounds)
+                {
+                    continue;
+                }
+
+                hoverTarget.TooltipText = MergeRemoteDirectionTooltipTextForTesting(
+                    hoverTarget.TooltipText,
+                    tooltipText);
+                return true;
+            }
+
+            return false;
         }
 
         private void AddHoverTarget(NpcItem npc, Rectangle bounds)
@@ -2145,6 +2171,63 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return singleLine.ToString().Trim();
+        }
+
+        internal static string MergeRemoteDirectionTooltipTextForTesting(string currentTooltipText, string nextTooltipText)
+        {
+            string current = NormalizeTooltipTextForDisplayForTesting(currentTooltipText, ClientHoverTargetKind.RemoteDirection);
+            string next = NormalizeTooltipTextForDisplayForTesting(nextTooltipText, ClientHoverTargetKind.RemoteDirection);
+            if (string.IsNullOrWhiteSpace(current))
+            {
+                return next;
+            }
+
+            if (string.IsNullOrWhiteSpace(next))
+            {
+                return current;
+            }
+
+            HashSet<string> existingLines = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string line in SplitRemoteDirectionTooltipLines(current))
+            {
+                existingLines.Add(line);
+            }
+
+            StringBuilder merged = new(current);
+            foreach (string line in SplitRemoteDirectionTooltipLines(next))
+            {
+                if (!existingLines.Add(line))
+                {
+                    continue;
+                }
+
+                if (merged.Length > 0)
+                {
+                    merged.Append("\r\n");
+                }
+
+                merged.Append(line);
+            }
+
+            return merged.ToString();
+        }
+
+        private static IEnumerable<string> SplitRemoteDirectionTooltipLines(string tooltipText)
+        {
+            if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                yield break;
+            }
+
+            string[] lines = tooltipText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i]?.Trim();
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    yield return line;
+                }
+            }
         }
 
         private void SetHoveredTooltip(string tooltipText, Point anchorPoint, ClientHoverTargetKind kind)

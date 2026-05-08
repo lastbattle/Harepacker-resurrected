@@ -1069,7 +1069,9 @@ namespace HaCreator.MapSimulator
             _predictedRemotePetPickupActorPositions[petActorId] = position;
         }
 
-        private void RememberPredictedRemotePetPickupActorPositionsForOwnerState(RemoteUserActor ownerActor)
+        private void RememberPredictedRemotePetPickupActorPositionsForOwnerState(
+            RemoteUserActor ownerActor,
+            bool preserveExistingPositions = false)
         {
             if (ownerActor == null || ownerActor.CharacterId <= 0)
             {
@@ -1081,7 +1083,8 @@ namespace HaCreator.MapSimulator
                 ownerActor.CharacterId,
                 ownerActor.Position,
                 ownerActor.FacingRight,
-                ownerActor.Build?.RemotePetItemIds);
+                ownerActor.Build?.RemotePetItemIds,
+                preserveExistingPositions);
         }
 
         internal static void RememberPredictedRemotePetPickupActorPositionsForOwnerState(
@@ -1089,7 +1092,8 @@ namespace HaCreator.MapSimulator
             int ownerCharacterId,
             Vector2 ownerPosition,
             bool ownerFacingRight,
-            IReadOnlyList<int> remotePetItemIds)
+            IReadOnlyList<int> remotePetItemIds,
+            bool preserveExistingPositions = false)
         {
             if (predictedPetActorPositions == null || ownerCharacterId <= 0)
             {
@@ -1118,6 +1122,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 int petActorId = BuildRemotePetPickupActorId(ownerCharacterId, resolvedSlotIndex);
+                if (preserveExistingPositions && predictedPetActorPositions.ContainsKey(petActorId))
+                {
+                    continue;
+                }
+
                 predictedPetActorPositions[petActorId] = predictedPosition;
             }
         }

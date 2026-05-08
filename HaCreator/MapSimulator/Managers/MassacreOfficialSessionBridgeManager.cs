@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Managers
         private const string StartAutoCommandUsage = "/massacre session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]";
 
         private readonly ConcurrentQueue<MassacrePacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<byte[]> _pendingOutboundPackets = new();
         private readonly Dictionary<int, MassacrePacketInboxMessageKind> _mappedInboundOpcodes = new();
         private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
         private readonly object _sync = new();
@@ -153,6 +154,8 @@ namespace HaCreator.MapSimulator.Managers
         internal InboundPacketTrace? LiveRecoveredInboundEvidence => _liveRecoveredInboundEvidence;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        public int QueuedCount { get; private set; }
+        public int PendingOutboundPacketCount => _pendingOutboundPackets.Count;
         public int UndecodedInboundCount { get; private set; }
         public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Massacre official-session bridge inactive.";
@@ -173,7 +176,7 @@ namespace HaCreator.MapSimulator.Managers
             string sent = SentCount > 0
                 ? $"sent={SentCount}; lastSent={Convert.ToHexString(LastSentRawPacket)}"
                 : "sent=0";
-            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; {sent}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {LastStatus}";
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; {sent}; pendingOutbound={PendingOutboundPacketCount}; queued={QueuedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -267,7 +270,9 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                StopInternal(clearPending: true);
+                SessionDiscoveryCandidate? passiveSessionToPreserve = ResolvePassiveSessionToPreserve(resolvedRemoteHost, remotePort);
+                bool preservePassiveHandoff = passiveSessionToPreserve.HasValue;
+                StopInternal(clearPending: !preservePassiveHandoff);
 
                 try
                 {
@@ -276,7 +281,12 @@ namespace HaCreator.MapSimulator.Managers
                     RemotePort = remotePort;
                     if (!_roleSessionProxy.Start(ListenPort, RemoteHost, RemotePort, out string proxyStatus))
                     {
-                        StopInternal(clearPending: true);
+                        StopInternal(clearPending: !preservePassiveHandoff);
+                        if (preservePassiveHandoff)
+                        {
+                            _passiveEstablishedSession = passiveSessionToPreserve;
+                        }
+
                         LastStatus = proxyStatus;
                         status = LastStatus;
                         return false;
@@ -290,7 +300,12 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 catch (Exception ex)
                 {
-                    StopInternal(clearPending: true);
+                    StopInternal(clearPending: !preservePassiveHandoff);
+                    if (preservePassiveHandoff)
+                    {
+                        _passiveEstablishedSession = passiveSessionToPreserve;
+                    }
+
                     LastStatus = $"Massacre official-session bridge failed to start: {ex.Message}";
                     status = LastStatus;
                     return false;
@@ -396,11 +411,11 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                StopInternal(clearPending: true);
+                StopInternal(clearPending: false);
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
-                LastStatus = $"Observed already-established Massacre Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. This path cannot decrypt post-handshake Massacre clock/context/result traffic or inject wrapper packets after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
+                LastStatus = $"Observed already-established Massacre Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. This path cannot decrypt post-handshake Massacre clock/context/result traffic or inject wrapper packets after the Maple handshake; queued outbound packets will flush after reconnect through the localhost proxy.";
                 status = LastStatus;
                 return true;
             }
@@ -484,7 +499,7 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                StopInternal(clearPending: true);
+                StopInternal(clearPending: false);
                 _passiveEstablishedSession = candidate;
 
                 if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
@@ -497,7 +512,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 LastStatus =
                     $"Observed already-established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}. " +
-                    $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover Massacre decrypt/inject ownership for clock/context/result traffic through the existing bridge seam.";
+                    $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover Massacre decrypt/inject ownership for clock/context/result traffic through the existing bridge seam and flush {PendingOutboundPacketCount} queued outbound packet(s).";
                 status = LastStatus;
                 return true;
             }
@@ -584,11 +599,9 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (HasPassiveEstablishedSocketPair)
+            if (!HasConnectedSession)
             {
-                status = "Massacre official-session bridge is only observing an already-established Maple socket pair; reconnect through the localhost proxy before outbound injection.";
-                LastStatus = status;
-                return false;
+                return TryQueueOutboundRawPacket(rawPacket, out status);
             }
 
             byte[] clonedRawPacket = (byte[])rawPacket.Clone();
@@ -603,6 +616,27 @@ namespace HaCreator.MapSimulator.Managers
             LastSentRawPacket = clonedRawPacket;
             int opcode = TryDecodePacketOpcode(clonedRawPacket);
             status = $"Injected Massacre outbound opcode 0x{opcode:X4} ({clonedRawPacket.Length} byte(s)) through the live official-session bridge.";
+            LastStatus = status;
+            return true;
+        }
+
+        private bool TryQueueOutboundRawPacket(byte[] rawPacket, out string status)
+        {
+            if (!IsRunning && !HasAttachedClient && !HasPassiveEstablishedSocketPair)
+            {
+                status = "Massacre official-session bridge has no active Maple session and is not armed for deferred outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedRawPacket = (byte[])rawPacket.Clone();
+            _pendingOutboundPackets.Enqueue(clonedRawPacket);
+            QueuedCount++;
+            LastSentRawPacket = clonedRawPacket;
+            int opcode = TryDecodePacketOpcode(clonedRawPacket);
+            status = HasPassiveEstablishedSocketPair
+                ? $"Queued Massacre outbound opcode 0x{opcode:X4} ({clonedRawPacket.Length} byte(s)) while observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Reconnect through the localhost proxy to flush it after the Maple handshake initializes."
+                : $"Queued Massacre outbound opcode 0x{opcode:X4} ({clonedRawPacket.Length} byte(s)) for deferred injection after the Maple handshake initializes.";
             LastStatus = status;
             return true;
         }
@@ -763,7 +797,10 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
-                LastStatus = _roleSessionProxy.LastStatus;
+                int flushed = FlushQueuedOutboundPacketsViaProxy();
+                LastStatus = flushed > 0
+                    ? $"Massacre official-session bridge initialized Maple crypto and flushed {flushed} queued outbound packet(s)."
+                    : _roleSessionProxy.LastStatus;
                 return;
             }
 
@@ -809,13 +846,59 @@ namespace HaCreator.MapSimulator.Managers
             {
             }
 
+            while (_pendingOutboundPackets.TryDequeue(out _))
+            {
+            }
+
             _recentInboundPackets.Clear();
             _sessionValueInfoState.Clear();
             ReceivedCount = 0;
             SentCount = 0;
+            QueuedCount = 0;
             LastSentRawPacket = Array.Empty<byte>();
             UndecodedInboundCount = 0;
             _liveRecoveredInboundEvidence = null;
+        }
+
+        private SessionDiscoveryCandidate? ResolvePassiveSessionToPreserve(string remoteHost, int remotePort)
+        {
+            if (!_passiveEstablishedSession.HasValue)
+            {
+                return null;
+            }
+
+            SessionDiscoveryCandidate candidate = _passiveEstablishedSession.Value;
+            if (candidate.RemoteEndpoint == null
+                || candidate.RemoteEndpoint.Port != remotePort
+                || !string.Equals(
+                    NormalizeRemoteHost(candidate.RemoteEndpoint.Address.ToString()),
+                    NormalizeRemoteHost(remoteHost),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return candidate;
+        }
+
+        private int FlushQueuedOutboundPacketsViaProxy()
+        {
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryDequeue(out byte[] rawPacket))
+            {
+                if (!_roleSessionProxy.TrySendToServer(rawPacket, out string proxyStatus))
+                {
+                    _pendingOutboundPackets.Enqueue(rawPacket);
+                    LastStatus = proxyStatus;
+                    break;
+                }
+
+                flushed++;
+                SentCount++;
+                LastSentRawPacket = (byte[])rawPacket.Clone();
+            }
+
+            return flushed;
         }
 
         internal static bool TryBuildOpcodeFramedPacket(int opcode, byte[] payload, out byte[] rawPacket, out string error)

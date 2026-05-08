@@ -2077,6 +2077,8 @@ namespace HaCreator.MapSimulator.Character
         public int ProfileMakerUnlockedHiddenRecipeCount { get; set; }
         public bool HasAuthoritativeProfileMarriage { get; set; }
         public bool IsProfileMarried { get; set; }
+        public string ProfileLocationSummary { get; set; } = string.Empty;
+        public int ProfileChannel { get; set; }
         public string GuildName { get; set; } = string.Empty;
         public int? GuildMarkBackgroundId { get; set; }
         public int? GuildMarkBackgroundColor { get; set; }
@@ -3658,6 +3660,8 @@ namespace HaCreator.MapSimulator.Character
                 ProfileMakerUnlockedHiddenRecipeCount = ProfileMakerUnlockedHiddenRecipeCount,
                 HasAuthoritativeProfileMarriage = HasAuthoritativeProfileMarriage,
                 IsProfileMarried = IsProfileMarried,
+                ProfileLocationSummary = ProfileLocationSummary,
+                ProfileChannel = ProfileChannel,
                 GuildName = GuildName,
                 GuildMarkBackgroundId = GuildMarkBackgroundId,
                 GuildMarkBackgroundColor = GuildMarkBackgroundColor,

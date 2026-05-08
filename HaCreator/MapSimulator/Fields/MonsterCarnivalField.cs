@@ -1373,6 +1373,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _season2SubDialogBtOkPendingSendRouteCount;
         private int _season2SubDialogBtOkAcceptedSendRouteCount;
         private int _season2SubDialogBtOkRejectedSendRouteCount;
+        private int _season2SubDialogBtOkObservedSendRouteCount;
         private MonsterCarnivalTab? _season2SubDialogSelectedTab;
         private int _season2SubDialogSelectedIndex = -1;
         private string _season2SubDialogLastButtonRoute;
@@ -1447,6 +1448,7 @@ namespace HaCreator.MapSimulator.Fields
         public int Season2SubDialogBtOkPendingSendRouteCount => _season2SubDialogBtOkPendingSendRouteCount;
         public int Season2SubDialogBtOkAcceptedSendRouteCount => _season2SubDialogBtOkAcceptedSendRouteCount;
         public int Season2SubDialogBtOkRejectedSendRouteCount => _season2SubDialogBtOkRejectedSendRouteCount;
+        public int Season2SubDialogBtOkObservedSendRouteCount => _season2SubDialogBtOkObservedSendRouteCount;
         public MonsterCarnivalTab? Season2SubDialogSelectedTab => _season2SubDialogSelectedTab;
         public int Season2SubDialogSelectedIndex => _season2SubDialogSelectedIndex;
         public string Season2SubDialogRouteTrailSummary => BuildSeason2SubDialogRouteTrailSummary();
@@ -1552,7 +1554,16 @@ namespace HaCreator.MapSimulator.Fields
             _pendingLocalRequests.Enqueue(new PendingLocalRequestToken(tab, entryIndex));
         }
 
-        public void MarkPendingOfficialClientRequest(MonsterCarnivalTab tab, int entryIndex)
+        public void MarkPendingOfficialClientRequest(MonsterCarnivalTab tab, int entryIndex, string source = null)
+        {
+            MarkPendingOfficialClientRequestCore(tab, entryIndex, recordObservedSendRoute: true, source);
+        }
+
+        private void MarkPendingOfficialClientRequestCore(
+            MonsterCarnivalTab tab,
+            int entryIndex,
+            bool recordObservedSendRoute,
+            string source = null)
         {
             if (entryIndex < 0)
             {
@@ -1560,11 +1571,55 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _pendingLocalRequests.Enqueue(new PendingLocalRequestToken(tab, entryIndex, AcceptsOfficialClientResultOwner: true));
+            if (_definition?.IsSeason2Mode != true || !recordObservedSendRoute)
+            {
+                return;
+            }
+
+            MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
+            string sourceText = NormalizeRouteSource(source);
+            string routeText = entry == null
+                ? $"tab={(int)tab},index={entryIndex}"
+                : $"tab={(int)entry.Tab},index={entry.Index},id={entry.Id},cost={entry.Cost}";
+            _season2SubDialogBtOkSendRouteCount++;
+            _season2SubDialogBtOkPendingSendRouteCount++;
+            _season2SubDialogBtOkObservedSendRouteCount++;
+            _season2SubDialogLastSendRoute =
+                $"{_definition.ClientOwnerLabel} observed UIWindow2/MonsterCarnival/sub/BtOK -> COutPacket(262) {routeText} from {sourceText}";
+            RecordSeason2SubDialogSendRouteEvent(
+                entry == null
+                    ? $"btok-observed(opcode=262,tab={(int)tab},index={entryIndex},source={sourceText})"
+                    : $"btok-observed(opcode=262,tab={(int)entry.Tab},index={entry.Index},id={entry.Id},source={sourceText})");
         }
 
         public bool TryResolveCharacterTeam(string characterName, out MonsterCarnivalTeam team)
         {
             return TryResolveKnownCharacterTeam(characterName, out team);
+        }
+
+        public bool TryValidateRequestEntry(MonsterCarnivalTab tab, int entryIndex, out string message)
+        {
+            if (!_isVisible || _definition == null)
+            {
+                message = "Monster Carnival runtime inactive.";
+                return false;
+            }
+
+            if (entryIndex < 0)
+            {
+                message = $"Monster Carnival request index must be non-negative, got {entryIndex}.";
+                return false;
+            }
+
+            MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
+            if (entry == null)
+            {
+                message = $"Monster Carnival request tab={(int)tab}, index={entryIndex} is not present in the loaded WZ request table.";
+                return false;
+            }
+
+            message = $"{entry.Name} (tab={(int)tab}, index={entryIndex}) is WZ-backed.";
+            return true;
         }
 
         public void OnEnter(
@@ -1840,7 +1895,7 @@ namespace HaCreator.MapSimulator.Fields
             if (selectedEntry != null)
             {
                 _season2SubDialogSelectedOkRouteCount++;
-                MarkPendingOfficialClientRequest(selectedEntry.Tab, selectedEntry.Index);
+                MarkPendingOfficialClientRequestCore(selectedEntry.Tab, selectedEntry.Index, recordObservedSendRoute: false);
                 _season2SubDialogBtOkSendRouteCount++;
                 _season2SubDialogBtOkPendingSendRouteCount++;
                 _season2SubDialogLastSendRoute =
@@ -2970,6 +3025,7 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogBtOkPendingSendRouteCount = 0;
             _season2SubDialogBtOkAcceptedSendRouteCount = 0;
             _season2SubDialogBtOkRejectedSendRouteCount = 0;
+            _season2SubDialogBtOkObservedSendRouteCount = 0;
             _season2SubDialogSelectedTab = null;
             _season2SubDialogSelectedIndex = -1;
             _season2SubDialogLastButtonRoute = null;
@@ -5095,7 +5151,7 @@ namespace HaCreator.MapSimulator.Fields
             string chatTrail = BuildSeason2ChatRouteTrailSummary();
             string sendTrail = BuildSeason2SubDialogSendRouteTrailSummary();
             string selectedRouteText = BuildSeason2SubDialogSelectedRouteText(out _);
-            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},sendTrail={sendTrail}";
+            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},sendTrail={sendTrail}";
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
                 ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},selected={selectedRouteText},okSelectedRoutes={_season2SubDialogSelectedOkRouteCount},{sendText},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"
@@ -5117,6 +5173,32 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return $"tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},cost={selectedEntry.Cost}";
+        }
+
+        private static string NormalizeRouteSource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return "official-session";
+            }
+
+            string trimmed = source.Trim();
+            StringBuilder builder = new(trimmed.Length);
+            foreach (char ch in trimmed)
+            {
+                if (char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' or ':')
+                {
+                    builder.Append(ch);
+                }
+                else if (char.IsWhiteSpace(ch))
+                {
+                    builder.Append('-');
+                }
+            }
+
+            return builder.Length == 0
+                ? "official-session"
+                : builder.ToString();
         }
 
         private void InitializeClientOwnedUiWindowState(MonsterCarnivalFieldDefinition definition)

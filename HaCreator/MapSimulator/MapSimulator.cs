@@ -387,6 +387,7 @@ namespace HaCreator.MapSimulator
         private const int NpcQuestAlertVerticalGap = 4;
         private readonly Random _npcIdleSpeechRandom = new();
         private readonly Random _setupConsumeItemRandom = new();
+        private readonly Random _randomPickupConsumeRandom = new();
         private int _nextNpcIdleSpeechTick;
         private int _lastObservedPetSpeechLevel = -1;
         private int _nextPetPreLevelSpeechTick;
@@ -4066,6 +4067,8 @@ namespace HaCreator.MapSimulator
             string guildRoleLabel = _socialListRuntime.GetLocalGuildRoleLabel();
             GuildBbsPermissionMask? linkedPermissionMask = null;
             string linkedPermissionSourceLabel = null;
+            bool hasLinkedBoardAuthKey = false;
+            string linkedBoardAuthKeySourceLabel = null;
             if (_socialListRuntime.TryGetGuildBbsLinkedAuthority(
                 out string linkedRoleLabel,
                 out GuildBbsPermissionMask resolvedLinkedPermissionMask,
@@ -4074,6 +4077,13 @@ namespace HaCreator.MapSimulator
                 guildRoleLabel = linkedRoleLabel;
                 linkedPermissionMask = resolvedLinkedPermissionMask;
                 linkedPermissionSourceLabel = resolvedLinkedPermissionSourceLabel;
+            }
+            if (_socialListRuntime.TryGetGuildBbsLinkedBoardAuthKey(
+                out _,
+                out string resolvedLinkedBoardAuthKeySourceLabel))
+            {
+                hasLinkedBoardAuthKey = true;
+                linkedBoardAuthKeySourceLabel = resolvedLinkedBoardAuthKeySourceLabel;
             }
 
             _guildBbsRuntime.ConfigureEmoticonCatalog(guildBbsWindow.BasicEmoticonSlotCount, guildBbsWindow.CashEmoticonSlotCount);
@@ -4084,7 +4094,9 @@ namespace HaCreator.MapSimulator
                 guildRoleLabel,
                 ResolveOwnedGuildBbsCashEmoticonIds(guildBbsWindow.CashEmoticonSlotCount),
                 linkedPermissionMask,
-                linkedPermissionSourceLabel);
+                linkedPermissionSourceLabel,
+                hasLinkedBoardAuthKey,
+                linkedBoardAuthKeySourceLabel);
         }
 
 
@@ -4385,7 +4397,7 @@ namespace HaCreator.MapSimulator
                 return 0f;
             }
 
-            return packetOwnedRadioPlaying && !packetOwnedRadioMuted
+            return SoundManager.ShouldMuteBgmForRadio(packetOwnedRadioPlaying, packetOwnedRadioMuted)
                 ? 0f
                 : normalizedDefaultVolume;
         }
@@ -20411,7 +20423,12 @@ namespace HaCreator.MapSimulator
 
         private void ApplyRequestedBgm(string bgmName)
         {
-            if (string.Equals(_currentBgmName, bgmName, StringComparison.Ordinal))
+            SoundManager.BgmRequestAction action = SoundManager.ResolveBgmRequestAction(
+                _currentBgmName,
+                bgmName,
+                forceRestart: false,
+                hasActiveBgm: _audio != null);
+            if (action == SoundManager.BgmRequestAction.None)
             {
                 return;
             }
@@ -28256,7 +28273,7 @@ namespace HaCreator.MapSimulator
             Func<int, string, string> authoredTooltipResolver,
             Func<int, string> mapDisplayNameResolver)
         {
-            if (hideTooltip == MapleBool.True
+            if (!MinimapUI.IsClientOptionalBoolZeroOrMissingForTesting(hideTooltip)
                 || !IsClientMinimapTooltipPortalType(portalType)
                 || targetMapId == -1)
             {
@@ -33219,27 +33236,6 @@ namespace HaCreator.MapSimulator
 
             if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
-                PassiveTransferFieldQueuedReplayDecision replayDecision =
-                    PassiveTransferFieldReadinessEvaluator.EvaluateQueuedReplayDecision(
-                        _passiveTransferRequestPending,
-                        queuedRetryDecision,
-                        ResolvePassiveTransferFieldReplayState(currentTime));
-
-                if (replayDecision.ShouldStopSkillMacro)
-                {
-                    StopSkillMacroForHandleUpKeyDown();
-                }
-
-                if (replayDecision.ShouldReplayHandleUpKeyDown)
-                {
-                    TryHandlePortalInteractCore(currentTime);
-                }
-
-                if (replayDecision.ShouldClearQueuedRetry)
-                {
-                    ClearPassiveTransferRequest();
-                }
-
                 return;
             }
 
@@ -33307,6 +33303,43 @@ namespace HaCreator.MapSimulator
             }
 
             ArmPassiveTransferRequest(ResolvePassiveTransferFieldQueuedRetryWriterFromHandleUpKeyDown());
+        }
+
+        private void HandleQueuedPassiveTransferFieldRetry(int currentTime)
+        {
+            PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision queuedRetryDecision =
+                EvaluatePassiveTransferFieldQueuedRetryDecision(currentTime);
+
+            if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
+            {
+                PassiveTransferFieldQueuedReplayDecision replayDecision =
+                    PassiveTransferFieldReadinessEvaluator.EvaluateQueuedReplayDecision(
+                        _passiveTransferRequestPending,
+                        queuedRetryDecision,
+                        ResolvePassiveTransferFieldReplayState(currentTime));
+
+                if (replayDecision.ShouldStopSkillMacro)
+                {
+                    StopSkillMacroForHandleUpKeyDown();
+                }
+
+                if (replayDecision.ShouldReplayHandleUpKeyDown)
+                {
+                    TryHandlePortalInteractCore(currentTime);
+                }
+
+                if (replayDecision.ShouldClearQueuedRetry)
+                {
+                    ClearPassiveTransferRequest();
+                }
+
+                return;
+            }
+
+            if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.Clear)
+            {
+                ClearPassiveTransferRequest();
+            }
         }
 
         private void StopSkillMacroForHandleUpKeyDown()

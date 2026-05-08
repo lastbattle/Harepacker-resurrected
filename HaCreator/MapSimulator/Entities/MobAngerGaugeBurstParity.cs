@@ -143,6 +143,24 @@ namespace HaCreator.MapSimulator.Entities
                 && hasActiveAnimationDisplayer;
         }
 
+        public static int ResolveOwnerTriggerDelayMs(MobAttackEntry currentAttack)
+        {
+            if (currentAttack?.IsSpecialAttack != true
+                || !currentAttack.AttackAfterIsAuthored
+                || currentAttack.AttackAfter <= 0)
+            {
+                return 0;
+            }
+
+            return currentAttack.AttackAfter;
+        }
+
+        public static bool HasOwnerTriggerDelayElapsed(int elapsedMs, MobAttackEntry currentAttack)
+        {
+            int triggerDelayMs = ResolveOwnerTriggerDelayMs(currentAttack);
+            return triggerDelayMs > 0 && elapsedMs >= triggerDelayMs;
+        }
+
         public static bool TryResolveOwnerRegistrationCadence(
             IReadOnlyList<IDXObject> frames,
             string effectPath,

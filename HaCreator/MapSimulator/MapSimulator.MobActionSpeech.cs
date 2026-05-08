@@ -108,7 +108,7 @@ namespace HaCreator.MapSimulator
                 textColor = skin.TextColor * MathHelper.Clamp(remainingAlpha, 0f, 1f);
             }
 
-            bool drewAuthoredSkin = DrawMobActionSpeechBalloonSkin(skin, bounds, remainingAlpha);
+            bool drewAuthoredSkin = DrawMobActionSpeechBalloonSkin(skin, bounds, remainingAlpha, ShouldDrawMobActionSpeechArrow(isScreenNotice));
             if (!drewAuthoredSkin)
             {
                 DrawMobActionSpeechFallbackFrame(
@@ -198,7 +198,7 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private bool DrawMobActionSpeechBalloonSkin(LocalOverlayBalloonSkin skin, Rectangle bounds, float alpha)
+        private bool DrawMobActionSpeechBalloonSkin(LocalOverlayBalloonSkin skin, Rectangle bounds, float alpha, bool includeArrow)
         {
             if (skin?.IsLoaded != true)
             {
@@ -209,7 +209,7 @@ namespace HaCreator.MapSimulator
             DrawMobActionSpeechNineSlice(skin, bounds, tint);
 
             LocalOverlayBalloonArrowSprite arrow = skin.Arrow;
-            if (arrow?.IsLoaded == true)
+            if (includeArrow && arrow?.IsLoaded == true)
             {
                 int arrowX = bounds.Left + (bounds.Width / 2) - arrow.Origin.X;
                 int arrowY = bounds.Bottom - arrow.Origin.Y;
@@ -736,6 +736,19 @@ namespace HaCreator.MapSimulator
         internal static bool IsMobActionSpeechScreenNotice(int chatBalloon, int floatNotice)
         {
             return IsMobActionSpeechScreenChat(chatBalloon) || IsMobActionSpeechFloatNotice(floatNotice);
+        }
+
+        internal static bool ShouldDrawMobActionSpeechArrowForTests(bool isScreenNotice)
+        {
+            return ShouldDrawMobActionSpeechArrow(isScreenNotice);
+        }
+
+        private static bool ShouldDrawMobActionSpeechArrow(bool isScreenNotice)
+        {
+            // CChatBalloon::MakeMobBalloon routes UI/ChatBalloon.img/mob/<id> skins
+            // with screenChat=1 through MakeScreenBalloon instead of the owner-anchored
+            // MakeBalloon(type 1004) path, so screen notices do not keep the owner arrow.
+            return !isScreenNotice;
         }
 
         private bool ResolveMobActionSpeechScreenNotice(int chatBalloon, int floatNotice)

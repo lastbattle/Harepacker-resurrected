@@ -1151,48 +1151,48 @@ namespace HaCreator.MapSimulator.Fields
             int viewrangeHeight,
             Rectangle? darkLayerBounds)
         {
-            List<Vector2> currentMaskTopLefts = new();
-            if (localMaskTopLeft.HasValue)
-            {
-                currentMaskTopLefts.Add(localMaskTopLeft.Value);
-            }
-
-            List<ClientOwnedDrawViewrangeOperation> delayedRemoteSkips = new();
-            if (shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null)
-            {
-                for (int i = 0; i < remoteMaskTargets.Count; i++)
-                {
-                    ClientOwnedRemoteViewrangeTarget target = remoteMaskTargets[i];
-                    if (target.IsDelayedLoad)
-                    {
-                        delayedRemoteSkips.Add(new ClientOwnedDrawViewrangeOperation(
-                            ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseDelayedLoad,
-                            NormalizeClientOwnedMaskTopLeft(target.TopLeft),
-                            i + 1));
-                        continue;
-                    }
-
-                    currentMaskTopLefts.Add(target.TopLeft);
-                }
-            }
-
             List<ClientOwnedDrawViewrangeOperation> operations = new(BuildClientOwnedDrawViewrangeOperationPlan(
                 previousMaskTopLefts,
-                currentMaskTopLefts,
+                localMaskTopLeft.HasValue
+                    ? new[] { localMaskTopLeft.Value }
+                    : Array.Empty<Vector2>(),
                 viewrangeWidth,
                 viewrangeHeight,
                 darkLayerBounds));
 
-            if (shareView && localMaskTopLeft.HasValue && delayedRemoteSkips.Count > 0)
+            if (shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null && remoteMaskTargets.Count > 0)
             {
-                int remoteLoopIndex = operations.FindIndex(operation => operation.Kind == ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop);
-                int insertIndex = remoteLoopIndex >= 0
-                    ? remoteLoopIndex + 1
-                    : operations.Count;
-                operations.InsertRange(insertIndex, delayedRemoteSkips);
-            }
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop,
+                    Vector2.Zero,
+                    -1));
 
-            if (!shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null && remoteMaskTargets.Count > 0)
+                for (int i = 0; i < remoteMaskTargets.Count; i++)
+                {
+                    ClientOwnedRemoteViewrangeTarget target = remoteMaskTargets[i];
+                    Vector2 normalizedTopLeft = NormalizeClientOwnedMaskTopLeft(target.TopLeft);
+                    int maskIndex = i + 1;
+                    if (target.IsDelayedLoad)
+                    {
+                        operations.Add(new ClientOwnedDrawViewrangeOperation(
+                            ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseDelayedLoad,
+                            normalizedTopLeft,
+                            maskIndex));
+                        continue;
+                    }
+
+                    AddClientOwnedViewrangeCopyOperations(
+                        operations,
+                        normalizedTopLeft,
+                        maskIndex,
+                        ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange,
+                        viewrangeWidth,
+                        viewrangeHeight,
+                        darkLayerBounds,
+                        includeRemotePositionResolution: true);
+                }
+            }
+            else if (!shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null && remoteMaskTargets.Count > 0)
             {
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop,
@@ -1354,129 +1354,17 @@ namespace HaCreator.MapSimulator.Fields
                 ClientOwnedDrawViewrangeOperationKind copyKind = i == 0
                     ? ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange
                     : ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange;
-                if (i > 0)
-                {
-                    operations.Add(new ClientOwnedDrawViewrangeOperation(
-                        ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition,
-                        normalizedTopLeft,
-                        i));
-                    operations.Add(new ClientOwnedDrawViewrangeOperation(
-                        ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
-                        normalizedTopLeft,
-                        i,
-                        sourceWidth: sourceWidth,
-                        sourceHeight: sourceHeight));
-                }
-
-                operations.Add(new ClientOwnedDrawViewrangeOperation(
-                    ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles,
+                bool appendedCopy = AddClientOwnedViewrangeCopyOperations(
+                    operations,
                     normalizedTopLeft,
                     i,
-                    sourceWidth: sourceWidth,
-                    sourceHeight: sourceHeight,
-                    usesRemoveAlphaCopy: true));
-                Rectangle effectiveDestinationRect = new(
-                    (int)MathF.Round(normalizedTopLeft.X),
-                    (int)MathF.Round(normalizedTopLeft.Y),
-                    sourceWidth,
-                    sourceHeight);
-                Rectangle effectiveSourceRect = new(0, 0, sourceWidth, sourceHeight);
-                if (darkLayerBounds.HasValue)
-                {
-                    bool hasClippedCopy = TryResolveClientOwnedViewrangeCopyRectangles(
-                        (int)MathF.Round(normalizedTopLeft.X),
-                        (int)MathF.Round(normalizedTopLeft.Y),
-                        sourceWidth,
-                        sourceHeight,
-                        sourceX: 0,
-                        sourceY: 0,
-                        sourceWidth,
-                        sourceHeight,
-                        darkLayerBounds.Value,
-                        out Rectangle destinationRect,
-                        out Rectangle sourceRect);
-                    operations.Add(new ClientOwnedDrawViewrangeOperation(
-                        hasClippedCopy
-                            ? ClientOwnedDrawViewrangeOperationKind.ClipViewrangeCopyRectangles
-                            : ClientOwnedDrawViewrangeOperationKind.SkipViewrangeCopyOutsideDarkLayer,
-                        normalizedTopLeft,
-                        i,
-                        sourceX: sourceRect.X,
-                        sourceY: sourceRect.Y,
-                        sourceWidth: sourceRect.Width,
-                        sourceHeight: sourceRect.Height,
-                        destinationX: destinationRect.X,
-                        destinationY: destinationRect.Y,
-                        destinationWidth: destinationRect.Width,
-                        destinationHeight: destinationRect.Height,
-                        usesRemoveAlphaCopy: true));
-
-                    if (!hasClippedCopy)
-                    {
-                        continue;
-                    }
-
-                    effectiveDestinationRect = destinationRect;
-                    effectiveSourceRect = sourceRect;
-                }
-
-                operations.Add(new ClientOwnedDrawViewrangeOperation(
-                    ClientOwnedDrawViewrangeOperationKind.CaptureCurrentSmallDarkPatch,
-                    normalizedTopLeft,
-                    i,
-                    sourceX: effectiveSourceRect.X,
-                    sourceY: effectiveSourceRect.Y,
-                    sourceWidth: effectiveSourceRect.Width,
-                    sourceHeight: effectiveSourceRect.Height,
-                    destinationX: effectiveDestinationRect.X,
-                    destinationY: effectiveDestinationRect.Y,
-                    destinationWidth: effectiveDestinationRect.Width,
-                    destinationHeight: effectiveDestinationRect.Height));
-
-                operations.Add(new ClientOwnedDrawViewrangeOperation(
-                    ClientOwnedDrawViewrangeOperationKind.AcquireCopyDestinationCanvas,
-                    normalizedTopLeft,
-                    i,
-                    sourceX: effectiveSourceRect.X,
-                    sourceY: effectiveSourceRect.Y,
-                    sourceWidth: effectiveSourceRect.Width,
-                    sourceHeight: effectiveSourceRect.Height,
-                    destinationX: effectiveDestinationRect.X,
-                    destinationY: effectiveDestinationRect.Y,
-                    destinationWidth: effectiveDestinationRect.Width,
-                    destinationHeight: effectiveDestinationRect.Height));
-                operations.Add(new ClientOwnedDrawViewrangeOperation(
-                    ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy,
-                    normalizedTopLeft,
-                    i,
-                    sourceX: effectiveSourceRect.X,
-                    sourceY: effectiveSourceRect.Y,
-                    sourceWidth: effectiveSourceRect.Width,
-                    sourceHeight: effectiveSourceRect.Height,
-                    destinationX: effectiveDestinationRect.X,
-                    destinationY: effectiveDestinationRect.Y,
-                    destinationWidth: effectiveDestinationRect.Width,
-                    destinationHeight: effectiveDestinationRect.Height,
-                    usesRemoveAlphaCopy: true));
-                operations.Add(new ClientOwnedDrawViewrangeOperation(
                     copyKind,
-                    normalizedTopLeft,
-                    i,
-                    sourceX: effectiveSourceRect.X,
-                    sourceY: effectiveSourceRect.Y,
-                    sourceWidth: effectiveSourceRect.Width,
-                    sourceHeight: effectiveSourceRect.Height,
-                    destinationX: effectiveDestinationRect.X,
-                    destinationY: effectiveDestinationRect.Y,
-                    destinationWidth: effectiveDestinationRect.Width,
-                    destinationHeight: effectiveDestinationRect.Height,
-                    usesRemoveAlphaCopy: true));
-                operations.Add(new ClientOwnedDrawViewrangeOperation(
-                    ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory,
-                    normalizedTopLeft,
-                    i));
+                    sourceWidth,
+                    sourceHeight,
+                    darkLayerBounds,
+                    includeRemotePositionResolution: i > 0);
 
-                if (i == 0 && currentMaskTopLefts.Count > 1)
+                if (appendedCopy && i == 0 && currentMaskTopLefts.Count > 1)
                 {
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop,
@@ -1486,6 +1374,140 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return operations;
+        }
+
+        private static bool AddClientOwnedViewrangeCopyOperations(
+            List<ClientOwnedDrawViewrangeOperation> operations,
+            Vector2 normalizedTopLeft,
+            int maskIndex,
+            ClientOwnedDrawViewrangeOperationKind copyKind,
+            int sourceWidth,
+            int sourceHeight,
+            Rectangle? darkLayerBounds,
+            bool includeRemotePositionResolution)
+        {
+            if (includeRemotePositionResolution)
+            {
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition,
+                    normalizedTopLeft,
+                    maskIndex));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
+                    normalizedTopLeft,
+                    maskIndex,
+                    sourceWidth: sourceWidth,
+                    sourceHeight: sourceHeight));
+            }
+
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles,
+                normalizedTopLeft,
+                maskIndex,
+                sourceWidth: sourceWidth,
+                sourceHeight: sourceHeight,
+                usesRemoveAlphaCopy: true));
+            Rectangle effectiveDestinationRect = new(
+                (int)MathF.Round(normalizedTopLeft.X),
+                (int)MathF.Round(normalizedTopLeft.Y),
+                sourceWidth,
+                sourceHeight);
+            Rectangle effectiveSourceRect = new(0, 0, sourceWidth, sourceHeight);
+            if (darkLayerBounds.HasValue)
+            {
+                bool hasClippedCopy = TryResolveClientOwnedViewrangeCopyRectangles(
+                    (int)MathF.Round(normalizedTopLeft.X),
+                    (int)MathF.Round(normalizedTopLeft.Y),
+                    sourceWidth,
+                    sourceHeight,
+                    sourceX: 0,
+                    sourceY: 0,
+                    sourceWidth,
+                    sourceHeight,
+                    darkLayerBounds.Value,
+                    out Rectangle destinationRect,
+                    out Rectangle sourceRect);
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    hasClippedCopy
+                        ? ClientOwnedDrawViewrangeOperationKind.ClipViewrangeCopyRectangles
+                        : ClientOwnedDrawViewrangeOperationKind.SkipViewrangeCopyOutsideDarkLayer,
+                    normalizedTopLeft,
+                    maskIndex,
+                    sourceX: sourceRect.X,
+                    sourceY: sourceRect.Y,
+                    sourceWidth: sourceRect.Width,
+                    sourceHeight: sourceRect.Height,
+                    destinationX: destinationRect.X,
+                    destinationY: destinationRect.Y,
+                    destinationWidth: destinationRect.Width,
+                    destinationHeight: destinationRect.Height,
+                    usesRemoveAlphaCopy: true));
+
+                if (!hasClippedCopy)
+                {
+                    return false;
+                }
+
+                effectiveDestinationRect = destinationRect;
+                effectiveSourceRect = sourceRect;
+            }
+
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.CaptureCurrentSmallDarkPatch,
+                normalizedTopLeft,
+                maskIndex,
+                sourceX: effectiveSourceRect.X,
+                sourceY: effectiveSourceRect.Y,
+                sourceWidth: effectiveSourceRect.Width,
+                sourceHeight: effectiveSourceRect.Height,
+                destinationX: effectiveDestinationRect.X,
+                destinationY: effectiveDestinationRect.Y,
+                destinationWidth: effectiveDestinationRect.Width,
+                destinationHeight: effectiveDestinationRect.Height));
+
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.AcquireCopyDestinationCanvas,
+                normalizedTopLeft,
+                maskIndex,
+                sourceX: effectiveSourceRect.X,
+                sourceY: effectiveSourceRect.Y,
+                sourceWidth: effectiveSourceRect.Width,
+                sourceHeight: effectiveSourceRect.Height,
+                destinationX: effectiveDestinationRect.X,
+                destinationY: effectiveDestinationRect.Y,
+                destinationWidth: effectiveDestinationRect.Width,
+                destinationHeight: effectiveDestinationRect.Height));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.PrepareRemoveAlphaViewrangeCopy,
+                normalizedTopLeft,
+                maskIndex,
+                sourceX: effectiveSourceRect.X,
+                sourceY: effectiveSourceRect.Y,
+                sourceWidth: effectiveSourceRect.Width,
+                sourceHeight: effectiveSourceRect.Height,
+                destinationX: effectiveDestinationRect.X,
+                destinationY: effectiveDestinationRect.Y,
+                destinationWidth: effectiveDestinationRect.Width,
+                destinationHeight: effectiveDestinationRect.Height,
+                usesRemoveAlphaCopy: true));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                copyKind,
+                normalizedTopLeft,
+                maskIndex,
+                sourceX: effectiveSourceRect.X,
+                sourceY: effectiveSourceRect.Y,
+                sourceWidth: effectiveSourceRect.Width,
+                sourceHeight: effectiveSourceRect.Height,
+                destinationX: effectiveDestinationRect.X,
+                destinationY: effectiveDestinationRect.Y,
+                destinationWidth: effectiveDestinationRect.Width,
+                destinationHeight: effectiveDestinationRect.Height,
+                usesRemoveAlphaCopy: true));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory,
+                normalizedTopLeft,
+                maskIndex));
+            return true;
         }
 
         internal static Vector2 NormalizeClientOwnedMaskTopLeft(Vector2 topLeft)

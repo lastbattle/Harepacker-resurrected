@@ -64,8 +64,6 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClientEmployeeActionRandomModulo = 50;
         private const int ClientEmployeeDefaultFrameDelayMs = 180;
         private const int ClientEmployeeFrameAdvanceStepMs = 30;
-        private const int MaxEmployeeActionCacheEntries = 512;
-        private const int MaxEmployeeImageCacheEntries = 128;
         private const int ClientEmployeeCacheSweepIntervalMs = 60000;
         private const int ClientEmployeeCacheEntryLifetimeMs = 300000;
 
@@ -780,7 +778,6 @@ namespace HaCreator.MapSimulator.Interaction
                 employeeRoot,
                 GetClientTickCountMs());
             _cashEmployeeImgEntryCache[templateId] = entry;
-            TrimEmployeeImageEntryCacheIfNeeded();
             return entry;
         }
 
@@ -831,7 +828,6 @@ namespace HaCreator.MapSimulator.Interaction
             EmployeeActionCacheEntry entry = new(templateId, actionEntry.ActionName, frames, GetClientTickCountMs());
             _cashActionCache[cacheKey] = entry;
             _cashActionKeyByName[actionCacheAlias] = cacheKey;
-            TrimEmployeeActionCacheIfNeeded();
             return entry.Frames;
         }
 
@@ -891,34 +887,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void TrimEmployeeImageEntryCacheIfNeeded()
-        {
-            if (_cashEmployeeImgEntryCache.Count <= MaxEmployeeImageCacheEntries)
-            {
-                return;
-            }
-
-            int currentTickMs = GetClientTickCountMs();
-            int removeCount = Math.Max(1, _cashEmployeeImgEntryCache.Count - MaxEmployeeImageCacheEntries);
-            KeyValuePair<int, EmployeeImageEntry>[] toRemove = _cashEmployeeImgEntryCache
-                .OrderByDescending(pair => pair.Value == null ? uint.MaxValue : GetElapsedCacheTimeMs(currentTickMs, pair.Value.LastAccessTickMs))
-                .ThenBy(pair => pair.Key)
-                .Take(removeCount)
-                .ToArray();
-
-            for (int i = 0; i < toRemove.Length; i++)
-            {
-                int templateId = toRemove[i].Key;
-                _cashEmployeeImgEntryCache.Remove(templateId);
-                _cashActionCatalogCache.Remove(templateId);
-                _cashEmployeeNameTagCache.Remove(templateId);
-                _cashEmployeeNameTagMissingTemplates.Remove(templateId);
-                _cashEmployeeMiniRoomBoardCache.Remove(templateId);
-                _cashEmployeeMiniRoomBoardMissingTemplates.Remove(templateId);
-                PurgeEmployeeActionCacheForTemplate(templateId);
-            }
-        }
-
         private void TouchEmployeeActionCacheEntry(uint cacheKey, EmployeeActionCacheEntry entry, string actionCacheAlias)
         {
             if (entry == null)
@@ -934,34 +902,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void TrimEmployeeActionCacheIfNeeded()
-        {
-            if (_cashActionCache.Count <= MaxEmployeeActionCacheEntries)
-            {
-                return;
-            }
-
-            int currentTickMs = GetClientTickCountMs();
-            int removeCount = Math.Max(1, _cashActionCache.Count - MaxEmployeeActionCacheEntries);
-            KeyValuePair<uint, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
-                .OrderByDescending(pair => pair.Value == null ? uint.MaxValue : GetElapsedCacheTimeMs(currentTickMs, pair.Value.LastAccessTickMs))
-                .ThenBy(pair => pair.Key)
-                .Take(removeCount)
-                .ToArray();
-
-            for (int i = 0; i < toRemove.Length; i++)
-            {
-                KeyValuePair<uint, EmployeeActionCacheEntry> pair = toRemove[i];
-                _cashActionCache.Remove(pair.Key);
-                RemoveActionCacheAliasesByCacheKey(pair.Key);
-            }
-        }
-
         private void SweepEmployeeCachesIfNeeded()
         {
             int currentTickMs = GetClientTickCountMs();
-            if (_lastEmployeeCacheSweepTickMs != 0
-                && GetElapsedCacheTimeMs(currentTickMs, _lastEmployeeCacheSweepTickMs) < (uint)ClientEmployeeCacheSweepIntervalMs)
+            if (!ShouldSweepEmployeeCaches(_lastEmployeeCacheSweepTickMs, currentTickMs))
             {
                 return;
             }
@@ -987,7 +931,6 @@ namespace HaCreator.MapSimulator.Interaction
                 _cashEmployeeNameTagMissingTemplates.Remove(templateId);
                 _cashEmployeeMiniRoomBoardCache.Remove(templateId);
                 _cashEmployeeMiniRoomBoardMissingTemplates.Remove(templateId);
-                PurgeEmployeeActionCacheForTemplate(templateId);
             }
         }
 
@@ -1023,25 +966,24 @@ namespace HaCreator.MapSimulator.Interaction
             return GetElapsedCacheTimeMs(currentTickMs, lastAccessTickMs) >= (uint)ClientEmployeeCacheEntryLifetimeMs;
         }
 
+        private static bool ShouldSweepEmployeeCaches(int lastSweepTickMs, int currentTickMs)
+        {
+            return GetElapsedCacheTimeMs(currentTickMs, lastSweepTickMs) >= (uint)ClientEmployeeCacheSweepIntervalMs;
+        }
+
+        internal static bool ShouldSweepEmployeeCachesForTesting(int lastSweepTickMs, int currentTickMs)
+        {
+            return ShouldSweepEmployeeCaches(lastSweepTickMs, currentTickMs);
+        }
+
+        internal static bool HasEmployeeCacheEntryExpiredForTesting(int lastAccessTickMs, int currentTickMs)
+        {
+            return HasCacheEntryExpired(lastAccessTickMs, currentTickMs);
+        }
+
         private static uint GetElapsedCacheTimeMs(int currentTickMs, int previousTickMs)
         {
             return unchecked((uint)(currentTickMs - previousTickMs));
-        }
-
-        internal static IReadOnlyList<int> OrderEmployeeCacheKeysForEvictionTesting(
-            IEnumerable<(int Key, int LastAccessTickMs)> entries,
-            int currentTickMs)
-        {
-            if (entries == null)
-            {
-                return Array.Empty<int>();
-            }
-
-            return entries
-                .OrderByDescending(entry => GetElapsedCacheTimeMs(currentTickMs, entry.LastAccessTickMs))
-                .ThenBy(entry => entry.Key)
-                .Select(entry => entry.Key)
-                .ToArray();
         }
 
         private static int GetClientTickCountMs()

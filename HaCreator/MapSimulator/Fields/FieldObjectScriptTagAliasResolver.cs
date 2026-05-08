@@ -197,13 +197,11 @@ namespace HaCreator.MapSimulator.Fields
                 for (int i = firstDelayCandidateIndex; i < call.Arguments.Count; i++)
                 {
                     string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
-                    if (!TryResolvePositiveDelayMs(argument, localAliasMap, out int parsedDelayMs))
+                    foreach (int parsedDelayMs in EnumeratePositiveDelayMsCandidates(argument, localAliasMap))
                     {
-                        continue;
+                        delayMs = Math.Max(delayMs, parsedDelayMs);
+                        foundDelay = true;
                     }
-
-                    delayMs = Math.Max(delayMs, parsedDelayMs);
-                    foundDelay = true;
                 }
             }
 
@@ -3849,74 +3847,78 @@ namespace HaCreator.MapSimulator.Fields
             {
                 if (!IsScriptCallbackFunctionName(call.FunctionName)
                     || call.Arguments.Count == 0
-                    || !TryResolveCallbackCallDelayMs(
+                    || !TryResolveCallbackCallDelayCandidates(
                         call.FunctionName,
                         call.Arguments,
                         localAliasMap,
-                        out int callbackDelayMs))
+                        out IReadOnlyList<int> callbackDelayCandidates))
                 {
                     continue;
                 }
 
-                int dueDelayMs = inheritedDelayMs >= int.MaxValue - callbackDelayMs
-                    ? int.MaxValue
-                    : inheritedDelayMs + callbackDelayMs;
                 int firstDelayCandidateIndex = IsDelayedCallbackFunctionName(call.FunctionName) && call.Arguments.Count > 1
                     ? 1
                     : call.Arguments.Count;
-                for (int i = 0; i < call.Arguments.Count; i++)
+                for (int delayIndex = 0; delayIndex < callbackDelayCandidates.Count; delayIndex++)
                 {
-                    string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
-                    if (string.IsNullOrWhiteSpace(argument)
-                        || (i >= firstDelayCandidateIndex && TryResolvePositiveDelayMs(argument, localAliasMap, out _)))
+                    int callbackDelayMs = callbackDelayCandidates[delayIndex];
+                    int dueDelayMs = inheritedDelayMs >= int.MaxValue - callbackDelayMs
+                        ? int.MaxValue
+                        : inheritedDelayMs + callbackDelayMs;
+                    for (int i = 0; i < call.Arguments.Count; i++)
                     {
-                        continue;
-                    }
-
-                    if (TryResolveNoArgumentFunctionCallAliasCandidates(
-                            argument,
-                            localAliasCandidateMap,
-                            out IReadOnlyList<string> noArgumentCallAliases))
-                    {
-                        for (int aliasIndex = 0; aliasIndex < noArgumentCallAliases.Count; aliasIndex++)
+                        string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
+                        if (string.IsNullOrWhiteSpace(argument)
+                            || (i >= firstDelayCandidateIndex && IsRecoverableDelayArgument(argument, localAliasMap)))
                         {
-                            AddPublication(
-                                noArgumentCallAliases[aliasIndex],
+                            continue;
+                        }
+
+                        if (TryResolveNoArgumentFunctionCallAliasCandidates(
+                                argument,
+                                localAliasCandidateMap,
+                                out IReadOnlyList<string> noArgumentCallAliases))
+                        {
+                            for (int aliasIndex = 0; aliasIndex < noArgumentCallAliases.Count; aliasIndex++)
+                            {
+                                AddPublication(
+                                    noArgumentCallAliases[aliasIndex],
+                                    dueDelayMs,
+                                    publications,
+                                    seen,
+                                    localAliasMap,
+                                    objectMemberAliasMap);
+                            }
+
+                            continue;
+                        }
+
+                        foreach (string canonicalArgument in EnumerateCanonicalAliasCandidates(
+                                     argument,
+                                     localAliasMap,
+                                     objectMemberAliasMap))
+                        {
+                            string untimedArgument = RemoveNestedTimerCallbackCalls(canonicalArgument);
+                            if (!string.IsNullOrWhiteSpace(untimedArgument))
+                            {
+                                AddPublication(
+                                    untimedArgument,
+                                    dueDelayMs,
+                                    publications,
+                                    seen,
+                                    localAliasMap,
+                                    objectMemberAliasMap);
+                            }
+
+                            CollectTimerCallbackPublications(
+                                canonicalArgument,
                                 dueDelayMs,
                                 publications,
                                 seen,
                                 localAliasMap,
-                                objectMemberAliasMap);
+                                objectMemberAliasMap,
+                                localAliasCandidateMap);
                         }
-
-                        continue;
-                    }
-
-                    foreach (string canonicalArgument in EnumerateCanonicalAliasCandidates(
-                                 argument,
-                                 localAliasMap,
-                                 objectMemberAliasMap))
-                    {
-                        string untimedArgument = RemoveNestedTimerCallbackCalls(canonicalArgument);
-                        if (!string.IsNullOrWhiteSpace(untimedArgument))
-                        {
-                            AddPublication(
-                                untimedArgument,
-                                dueDelayMs,
-                                publications,
-                                seen,
-                                localAliasMap,
-                                objectMemberAliasMap);
-                        }
-
-                        CollectTimerCallbackPublications(
-                            canonicalArgument,
-                            dueDelayMs,
-                            publications,
-                            seen,
-                            localAliasMap,
-                            objectMemberAliasMap,
-                            localAliasCandidateMap);
                     }
                 }
             }
@@ -3988,16 +3990,134 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = firstDelayCandidateIndex; i < arguments.Count; i++)
             {
                 string argument = NormalizeFunctionAliasArgument(arguments[i]);
-                if (!TryResolvePositiveDelayMs(argument, localAliasMap, out int parsedDelayMs))
+                foreach (int parsedDelayMs in EnumeratePositiveDelayMsCandidates(argument, localAliasMap))
                 {
-                    continue;
+                    delayMs = Math.Max(delayMs, parsedDelayMs);
+                    foundDelay = true;
                 }
-
-                delayMs = Math.Max(delayMs, parsedDelayMs);
-                foundDelay = true;
             }
 
             return foundDelay;
+        }
+
+        private static bool TryResolveCallbackCallDelayCandidates(
+            string functionName,
+            IReadOnlyList<string> arguments,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            out IReadOnlyList<int> delayCandidates)
+        {
+            delayCandidates = Array.Empty<int>();
+            if (arguments == null || arguments.Count == 0)
+            {
+                return false;
+            }
+
+            if (!IsDelayedCallbackFunctionName(functionName))
+            {
+                if (!IsZeroDelayCallbackFunctionName(functionName))
+                {
+                    return false;
+                }
+
+                delayCandidates = new[] { 0 };
+                return true;
+            }
+
+            if (arguments.Count == 1)
+            {
+                delayCandidates = new[] { 0 };
+                return true;
+            }
+
+            var candidates = new List<int>();
+            var seenCandidates = new HashSet<int>();
+            for (int i = 1; i < arguments.Count; i++)
+            {
+                string argument = NormalizeFunctionAliasArgument(arguments[i]);
+                foreach (int delayCandidate in EnumeratePositiveDelayMsCandidates(argument, localAliasMap))
+                {
+                    if (seenCandidates.Add(delayCandidate))
+                    {
+                        candidates.Add(delayCandidate);
+                    }
+                }
+            }
+
+            delayCandidates = candidates.Count == 0 ? Array.Empty<int>() : candidates;
+            return candidates.Count > 0;
+        }
+
+        private static bool IsRecoverableDelayArgument(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap)
+        {
+            foreach (int _ in EnumeratePositiveDelayMsCandidates(value, localAliasMap))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<int> EnumeratePositiveDelayMsCandidates(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap)
+        {
+            return EnumeratePositiveDelayMsCandidates(
+                value,
+                localAliasMap,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static IEnumerable<int> EnumeratePositiveDelayMsCandidates(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            ISet<string> seenDelayExpressions)
+        {
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                yield break;
+            }
+
+            if (TryResolvePositiveDelayMs(normalizedValue, localAliasMap, seenDelayExpressions, out int parsedDelayMs))
+            {
+                yield return parsedDelayMs;
+                yield break;
+            }
+
+            foreach (string conditionalBranch in EnumerateConditionalExpressionBranches(normalizedValue))
+            {
+                foreach (int branchDelay in EnumeratePositiveDelayMsCandidates(
+                             conditionalBranch,
+                             localAliasMap,
+                             seenDelayExpressions))
+                {
+                    yield return branchDelay;
+                }
+            }
+
+            foreach (string logicalBranch in EnumerateLogicalExpressionBranches(normalizedValue))
+            {
+                foreach (int branchDelay in EnumeratePositiveDelayMsCandidates(
+                             logicalBranch,
+                             localAliasMap,
+                             seenDelayExpressions))
+                {
+                    yield return branchDelay;
+                }
+            }
+
+            foreach (string sequenceTail in EnumerateSequenceExpressionTailCandidates(normalizedValue))
+            {
+                foreach (int branchDelay in EnumeratePositiveDelayMsCandidates(
+                             sequenceTail,
+                             localAliasMap,
+                             seenDelayExpressions))
+                {
+                    yield return branchDelay;
+                }
+            }
         }
 
         private static bool TryResolvePositiveDelayMs(

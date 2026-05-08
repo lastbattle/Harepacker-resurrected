@@ -225,7 +225,7 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < actors.Length; i++)
             {
                 ForgetObservedDropPacketActorState(actors[i].CharacterId);
-                RememberPredictedRemotePetPickupActorPositionsForOwnerState(actors[i]);
+                RememberPredictedRemotePetPickupActorPositionsForOwnerState(actors[i], preserveExistingPositions: true);
             }
             _packetOwnedRelationshipRecordRuntime.Clear();
             _packetOwnedPortableChairRecordRuntime.Clear();
@@ -715,7 +715,7 @@ namespace HaCreator.MapSimulator
         {
             ClearAnimationDisplayerRemotePresentationOwners(characterId);
             ForgetObservedDropPacketActorState(characterId);
-            RememberPredictedRemotePetPickupActorPositionsForOwnerState(removedActor);
+            RememberPredictedRemotePetPickupActorPositionsForOwnerState(removedActor, preserveExistingPositions: true);
             return ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} removed.");
         }
 
@@ -1707,7 +1707,7 @@ namespace HaCreator.MapSimulator
                         _summonedPool.RemoveOwnerSummons(leavePacket.CharacterId, currentTime);
                         ClearAnimationDisplayerRemotePresentationOwners(leavePacket.CharacterId);
                         ForgetObservedDropPacketActorState(leavePacket.CharacterId);
-                        RememberPredictedRemotePetPickupActorPositionsForOwnerState(leavingActor);
+                        RememberPredictedRemotePetPickupActorPositionsForOwnerState(leavingActor, preserveExistingPositions: true);
 
                         if (leavePosition.HasValue)
                         {

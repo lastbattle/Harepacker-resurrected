@@ -278,6 +278,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "flamethrower2",
             "flamethrower_after2",
             "gatlingshot",
+            "tank_siegepre",
             "mRush",
             "herbalism_mechanic",
             "mining_mechanic"
@@ -356,7 +357,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             "tank_stand",
             "tank_after",
             "tank_laser",
-            "tank_siegepre",
             "tank_siegeattack",
             "tank_siegestand",
             "tank_siegeafter",

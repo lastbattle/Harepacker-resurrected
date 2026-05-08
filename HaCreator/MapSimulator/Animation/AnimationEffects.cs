@@ -125,7 +125,7 @@ namespace HaCreator.MapSimulator.Animation
             private readonly Dictionary<int, int> _simulatedLayerOwnerRefCountsByHandle = new();
             private readonly Dictionary<int, int> _simulatedLayerSnapshotRefCountsByHandle = new();
             private readonly HashSet<SecondaryMotionBlurSnapshotReleaseKey> _releasedSnapshotTraces = new();
-            private static readonly int[] ClientLayerCopyOrder =
+            internal static readonly int[] ClientLayerCopyOrder =
             {
                 (int)AvatarRenderLayer.Face,
                 (int)AvatarRenderLayer.OverFace,
@@ -157,7 +157,8 @@ namespace HaCreator.MapSimulator.Animation
                 {
                     SimulatedLayerHandleIdsByLayerCode = new Dictionary<int, int>();
                     SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
-                    SimulatedLayerReferenceOperations = operations;
+                    SimulatedLayerReferenceOperations =
+                        SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
                     return;
                 }
 
@@ -176,7 +177,8 @@ namespace HaCreator.MapSimulator.Animation
                             : 1));
                 }
 
-                SimulatedLayerReferenceOperations = operations;
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
             }
 
             internal void ReleaseRegisteredLayerReferences()
@@ -196,7 +198,8 @@ namespace HaCreator.MapSimulator.Animation
                     || SimulatedLayerHandleRefCountsByLayerCode.Count == 0)
                 {
                     SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
-                    SimulatedLayerReferenceOperations = operations;
+                    SimulatedLayerReferenceOperations =
+                        SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
                     return;
                 }
 
@@ -234,7 +237,8 @@ namespace HaCreator.MapSimulator.Animation
                 _simulatedLayerOwnerRefCountsByHandle.Clear();
                 SimulatedLayerHandleRefCountsByLayerCode = SimulatedLayerHandleRefCountsByLayerCode
                     .ToDictionary(static entry => entry.Key, static _ => 0);
-                SimulatedLayerReferenceOperations = operations;
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
             }
 
             internal void ReleaseSnapshotLayerReferences(SecondaryMotionBlurSnapshotTrace trace)
@@ -322,7 +326,8 @@ namespace HaCreator.MapSimulator.Animation
                     }
                 }
 
-                SimulatedLayerReferenceOperations = operations;
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
             }
 
             internal IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> CaptureSnapshotLayerReferences(
@@ -405,10 +410,13 @@ namespace HaCreator.MapSimulator.Animation
                 }
 
                 layerHandleRefCounts = resolvedLayerHandleRefCounts;
-                SimulatedLayerReferenceOperations = SimulatedLayerReferenceOperations
-                    .Concat(operations)
-                    .ToArray();
-                return operations;
+                IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> normalizedSnapshotOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                SimulatedLayerReferenceOperations =
+                    SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(
+                        (SimulatedLayerReferenceOperations ?? Array.Empty<SecondaryMotionBlurLayerReferenceOperation>())
+                        .Concat(normalizedSnapshotOperations));
+                return normalizedSnapshotOperations;
             }
 
             private int ResolveOwnerLayerHandleRefCount(int handleId)
@@ -569,8 +577,49 @@ namespace HaCreator.MapSimulator.Animation
             SecondaryMotionBlurLayerReferenceOperationKind Kind,
             int LayerCode,
             int SimulatedLayerHandleId,
-            int SimulatedLayerHandleRefCount)
+            int SimulatedLayerHandleRefCount,
+            int OperationIndex = -1,
+            int ClientLayerCopyIndex = -1)
         {
+            internal static IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> NormalizeTraceOrder(
+                IEnumerable<SecondaryMotionBlurLayerReferenceOperation> operations)
+            {
+                if (operations == null)
+                {
+                    return Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
+                }
+
+                var ordered = new List<SecondaryMotionBlurLayerReferenceOperation>();
+                foreach (SecondaryMotionBlurLayerReferenceOperation operation in operations)
+                {
+                    ordered.Add(operation with
+                    {
+                        OperationIndex = ordered.Count,
+                        ClientLayerCopyIndex = ResolveClientLayerCopyIndex(operation.LayerCode)
+                    });
+                }
+
+                return ordered;
+            }
+
+            private static int ResolveClientLayerCopyIndex(int layerCode)
+            {
+                if (layerCode < 0)
+                {
+                    return -1;
+                }
+
+                for (int i = 0; i < SecondaryMotionBlurAnimationState.ClientLayerCopyOrder.Length; i++)
+                {
+                    if (SecondaryMotionBlurAnimationState.ClientLayerCopyOrder[i] == layerCode)
+                    {
+                        return i;
+                    }
+                }
+
+                return SecondaryMotionBlurAnimationState.ClientLayerCopyOrder.Length + layerCode;
+            }
+
             public static SecondaryMotionBlurLayerReferenceOperation CaptureOwnerReference(
                 int layerCode,
                 int handleId,
@@ -1035,6 +1084,27 @@ namespace HaCreator.MapSimulator.Animation
                 y,
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedUpgradeTomb,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedTeleport(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedTeleport,
                 zOrder,
                 initialElapsedMs);
         }
@@ -3761,7 +3831,8 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedMobSwallow = 12,
         PacketOwnedAreaExplosion = 13,
         PacketOwnedDropExplosion = 14,
-        PacketOwnedUpgradeTomb = 15
+        PacketOwnedUpgradeTomb = 15,
+        PacketOwnedTeleport = 16
     }
 
     internal enum AnimationFallingOwner
@@ -4307,7 +4378,9 @@ namespace HaCreator.MapSimulator.Animation
     internal readonly record struct CanvasLayerRecoveredTemporaryCanvasOperation(
         CanvasLayerRecoveredTemporaryCanvasOperationKind Kind,
         CanvasLayerRecoveredCanvasSettings CanvasSettings,
-        CanvasLayerRecoveredPreparedSourceTrace Source);
+        CanvasLayerRecoveredPreparedSourceTrace Source,
+        CanvasLayerRecoveredInsertCanvasSettings InsertCanvasSettings,
+        AnimationCanvasLayerBlendMode BlendMode);
 
     /// <summary>
     /// Owner-side prepared canvas provenance preserved alongside the managed registration payload.
@@ -4864,10 +4937,7 @@ namespace HaCreator.MapSimulator.Animation
                     null,
                     operation.Source.CanvasOffset,
                     0,
-                    new CanvasLayerRecoveredInsertCanvasSettings(
-                        DurationMs: 0,
-                        StartAlphaValue: 255,
-                        EndAlphaValue: 255),
+                    operation.InsertCanvasSettings,
                     new CanvasLayerRecoveredMoveSettings(
                         operation.Source.CanvasOffset,
                         operation.Source.CanvasOffset),
@@ -7301,10 +7371,10 @@ namespace HaCreator.MapSimulator.Animation
 
         private List<IDXObject> _frames;
         private Rectangle _area;
-        private int _effectiveWidth;
-        private int _effectiveHeight;
         private int _updateIntervalMs;
         private int _remainingUpdates;
+        private int _totalUpdates;
+        private int _completedUpdates;
         private int _nextUpdateAt;
         private int _expiresAt;
         private bool _hasFiniteDuration;
@@ -7362,14 +7432,10 @@ namespace HaCreator.MapSimulator.Animation
             Id = ++_nextId;
             _frames = frames;
             _area = area;
-            _effectiveWidth = owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
-                ? ResolvePacketOwnedExplosionInitialSpawnWidth(area)
-                : ResolveAreaAnimationSpawnWidth(area);
-            _effectiveHeight = owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
-                ? ResolvePacketOwnedExplosionInitialSpawnHeight(area)
-                : ResolveAreaAnimationSpawnHeight(area);
             _updateIntervalMs = Math.Max(1, updateIntervalMs);
             _remainingUpdates = Math.Max(0, updateCount);
+            _totalUpdates = Math.Max(0, updateCount);
+            _completedUpdates = 0;
             _nextUpdateAt = unchecked(currentTimeMs + Math.Max(0, updateNextMs));
             _hasFiniteDuration = durationMs > 0;
             _expiresAt = _hasFiniteDuration
@@ -7408,10 +7474,12 @@ namespace HaCreator.MapSimulator.Animation
                 if (shouldSpawn)
                 {
                     Rectangle spawnArea = Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
-                        ? ResolvePacketOwnedExplosionInitialSpawnArea(_area)
+                        ? ResolvePacketOwnedExplosionSpawnArea(_area, _completedUpdates, _totalUpdates)
                         : _area;
-                    float x = spawnArea.Left + random.Next(_effectiveWidth);
-                    float y = spawnArea.Top + random.Next(_effectiveHeight);
+                    int spawnWidth = ResolveAreaAnimationSpawnWidth(spawnArea);
+                    int spawnHeight = ResolveAreaAnimationSpawnHeight(spawnArea);
+                    float x = spawnArea.Left + random.Next(spawnWidth);
+                    float y = spawnArea.Top + random.Next(spawnHeight);
                     if (Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
                         && !string.IsNullOrWhiteSpace(SourceUol))
                     {
@@ -7434,6 +7502,7 @@ namespace HaCreator.MapSimulator.Animation
                 }
 
                 _remainingUpdates--;
+                _completedUpdates++;
                 _nextUpdateAt = unchecked(_nextUpdateAt + _updateIntervalMs);
             }
 
@@ -7467,6 +7536,39 @@ namespace HaCreator.MapSimulator.Animation
             int x = area.Left + (area.Width - width) / 2;
             int y = area.Top + (area.Height - height) / 2;
             return new Rectangle(x, y, width, height);
+        }
+
+        internal static Rectangle ResolvePacketOwnedExplosionSpawnArea(
+            Rectangle area,
+            int completedUpdates,
+            int totalUpdates)
+        {
+            int updateIndex = Math.Max(0, completedUpdates);
+            int updateCount = Math.Max(1, totalUpdates);
+            int initialWidth = ResolvePacketOwnedExplosionInitialSpawnWidth(area);
+            int initialHeight = ResolvePacketOwnedExplosionInitialSpawnHeight(area);
+            int fullWidth = ResolveAreaAnimationSpawnWidth(area);
+            int fullHeight = ResolveAreaAnimationSpawnHeight(area);
+            if (updateIndex <= 0 || updateCount <= 1)
+            {
+                return CenterPacketOwnedExplosionSpawnArea(area, initialWidth, initialHeight);
+            }
+
+            if (updateIndex >= updateCount - 1)
+            {
+                return CenterPacketOwnedExplosionSpawnArea(area, fullWidth, fullHeight);
+            }
+
+            int width = initialWidth + ((fullWidth - initialWidth) * updateIndex / (updateCount - 1));
+            int height = initialHeight + ((fullHeight - initialHeight) * updateIndex / (updateCount - 1));
+            return CenterPacketOwnedExplosionSpawnArea(area, width, height);
+        }
+
+        private static Rectangle CenterPacketOwnedExplosionSpawnArea(Rectangle area, int width, int height)
+        {
+            int x = area.Left + (area.Width - width) / 2;
+            int y = area.Top + (area.Height - height) / 2;
+            return new Rectangle(x, y, Math.Max(1, width), Math.Max(1, height));
         }
 
         internal static bool HasScheduledTimeReachedForTesting(int currentTimeMs, int scheduledTimeMs)

@@ -1426,6 +1426,11 @@ namespace HaCreator.MapSimulator.Pools
                 break;
             }
 
+            if (selectedDrop == null)
+            {
+                return null;
+            }
+
             MarkClientDropPickupAttempt(selectedDrop, currentTime);
             return ResolveRemotePickup(
                 selectedDrop,
