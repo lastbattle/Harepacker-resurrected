@@ -509,15 +509,18 @@ namespace HaCreator.MapSimulator
 
             foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas.ToArray())
             {
+                if (ShouldRetainRemoteAffectedAreaRuntimeSnapshot(area, currentTime))
+                {
+                    activeAreaIdsForRuntimePruning.Add(area.ObjectId);
+                    if (area.OwnerId > 0)
+                    {
+                        activeAreaOwnerIds.Add(area.OwnerId);
+                    }
+                }
+
                 if (area?.IsActive(currentTime) != true)
                 {
                     continue;
-                }
-
-                activeAreaIdsForRuntimePruning.Add(area.ObjectId);
-                if (area.OwnerId > 0)
-                {
-                    activeAreaOwnerIds.Add(area.OwnerId);
                 }
 
                 CacheRemoteAffectedAreaOwnerRuntimeState(area.ObjectId, area.OwnerId);
@@ -706,24 +709,45 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal static bool ShouldRetainRemoteAffectedAreaRuntimeSnapshot(ActiveAffectedArea area, int currentTime)
+        {
+            return area != null
+                   && area.ObjectId > 0
+                   && !area.IsRemoving
+                   && !area.IsExpired(currentTime);
+        }
+
         private bool TryBeginRemoteAffectedAreaLocalPlayerTick(
             int areaObjectId,
             int currentTime,
             int intervalMs)
         {
-            if (areaObjectId <= 0)
+            return TryBeginRemoteAffectedAreaLocalPlayerTickForTesting(
+                areaObjectId,
+                currentTime,
+                intervalMs,
+                _remoteAffectedAreaLocalPlayerTickTimes);
+        }
+
+        internal static bool TryBeginRemoteAffectedAreaLocalPlayerTickForTesting(
+            int areaObjectId,
+            int currentTime,
+            int intervalMs,
+            IDictionary<int, int> localPlayerTickTimes)
+        {
+            if (areaObjectId <= 0 || localPlayerTickTimes == null)
             {
                 return false;
             }
 
             int normalizedIntervalMs = Math.Max(100, intervalMs);
-            if (_remoteAffectedAreaLocalPlayerTickTimes.TryGetValue(areaObjectId, out int nextTickTime)
-                && currentTime < nextTickTime)
+            if (localPlayerTickTimes.TryGetValue(areaObjectId, out int nextTickTime)
+                && !ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, nextTickTime))
             {
                 return false;
             }
 
-            _remoteAffectedAreaLocalPlayerTickTimes[areaObjectId] = currentTime + normalizedIntervalMs;
+            localPlayerTickTimes[areaObjectId] = unchecked(currentTime + normalizedIntervalMs);
             return true;
         }
 

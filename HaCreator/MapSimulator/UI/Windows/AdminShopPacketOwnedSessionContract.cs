@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
         public int BlockedByOwnerCount { get; private set; }
         public int ResultCount { get; private set; }
         public int MalformedResultWithoutSubtypeCount { get; private set; }
+        public int ResultRejectedBeforeSubtypeDecodeCount { get; private set; }
         public int InboundPacketCount { get; private set; }
         public int InboundOpenPacketCount { get; private set; }
         public int InboundResultPacketCount { get; private set; }
@@ -68,6 +69,10 @@ namespace HaCreator.MapSimulator.UI
         public int LastResultCode { get; private set; } = -1;
         public bool LastResultHadResultCode { get; private set; }
         public bool LastResultMissingSubtype { get; private set; }
+        public bool LastResultRejectedBeforeSubtypeDecode { get; private set; }
+        public int LastPreDecodeRejectedResultByteCount { get; private set; }
+        public string LastPreDecodeRejectedResultPayloadSignature { get; private set; } = "none";
+        public IReadOnlyList<byte> LastPreDecodeRejectedResultPayload => _preDecodeRejectedResultPayload;
         public int LastOutboundOpcode { get; private set; } = -1;
         public byte[] LastOutboundPayload { get; private set; } = Array.Empty<byte>();
         public string LastNotice { get; private set; } = string.Empty;
@@ -109,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
             = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
         private byte[] _trailingPayload = Array.Empty<byte>();
         private byte[] _resultTrailingPayload = Array.Empty<byte>();
+        private byte[] _preDecodeRejectedResultPayload = Array.Empty<byte>();
         private readonly Queue<AdminShopPacketOwnedDeferredResultSnapshot> _deferredOwnerGatedResults = new();
 
         public void BeginOpen(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string ownerState = null)
@@ -137,6 +143,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = -1;
             LastResultHadResultCode = false;
             LastResultMissingSubtype = false;
+            ClearPreDecodeRejectedResult();
             ServiceSessionId = AdvanceSessionId(ServiceSessionId);
             WishlistSearchSessionId = -1;
             LastOutboundOpcode = -1;
@@ -214,6 +221,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = -1;
             LastResultHadResultCode = false;
             LastResultMissingSubtype = false;
+            ClearPreDecodeRejectedResult();
             ServiceSessionId = -1;
             WishlistSearchSessionId = -1;
             LastNotice = noticeText ?? string.Empty;
@@ -245,6 +253,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = -1;
             LastResultHadResultCode = false;
             LastResultMissingSubtype = false;
+            ClearPreDecodeRejectedResult();
             WishlistSearchSessionId = -1;
             LastNotice = string.Empty;
             LastOutboundSummary = outboundSummary ?? string.Empty;
@@ -278,6 +287,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = -1;
             LastResultHadResultCode = false;
             LastResultMissingSubtype = false;
+            ClearPreDecodeRejectedResult();
             ServiceSessionId = AdvanceSessionId(ServiceSessionId);
             WishlistSearchSessionId = -1;
             LastOutboundOpcode = -1;
@@ -314,6 +324,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;
             LastResultMissingSubtype = false;
+            ClearPreDecodeRejectedResult();
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
@@ -367,6 +378,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;
             LastResultMissingSubtype = false;
+            ClearPreDecodeRejectedResult();
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
@@ -402,6 +414,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = -1;
             LastResultHadResultCode = false;
             LastResultMissingSubtype = true;
+            ClearPreDecodeRejectedResult();
             ResultTrailingByteCount = 0;
             ResultTrailingPayloadSignature = "none";
             _resultTrailingPayload = Array.Empty<byte>();
@@ -420,6 +433,38 @@ namespace HaCreator.MapSimulator.UI
                 ClearPendingWishlistSearch();
             }
 
+            TouchWishlistSearchStateToken();
+        }
+
+        public void RecordResultRejectedBeforeSubtypeDecode(
+            string ownerState,
+            int rawPayloadByteCount,
+            string rawPayloadSignature,
+            byte[] rawPayload,
+            bool keepSessionActive = true)
+        {
+            ResultCount++;
+            ResultRejectedBeforeSubtypeDecodeCount++;
+            LastSubtype = -1;
+            LastResultCode = -1;
+            LastResultHadResultCode = false;
+            LastResultMissingSubtype = false;
+            LastResultRejectedBeforeSubtypeDecode = true;
+            ResultTrailingByteCount = 0;
+            ResultTrailingPayloadSignature = "none";
+            _resultTrailingPayload = Array.Empty<byte>();
+            LastPreDecodeRejectedResultByteCount = Math.Max(0, rawPayloadByteCount);
+            LastPreDecodeRejectedResultPayloadSignature = LastPreDecodeRejectedResultByteCount > 0
+                ? NormalizePayloadSignature(rawPayloadSignature)
+                : "none";
+            _preDecodeRejectedResultPayload = NormalizeTrailingPayload(rawPayload, LastPreDecodeRejectedResultByteCount);
+            IsWaitingForResult = false;
+            WouldDisconnect = true;
+            IsActive = keepSessionActive && (IsActive || OpenCount > 0 || DecodedItemCount > 0 || NpcTemplateId > 0);
+            LastOwnerState = ownerState ?? string.Empty;
+            ClearDeferredOwnerGatedResultCore(touchStateToken: false);
+            ClearPendingWishlistRegister();
+            ClearPendingWishlistSearch();
             TouchWishlistSearchStateToken();
         }
 
@@ -725,7 +770,9 @@ namespace HaCreator.MapSimulator.UI
             string rowText = DecodedItemCount > 0
                 ? $"rows {DecodedItemCount}"
                 : "rows 0";
-            string resultStateText = LastResultMissingSubtype
+            string resultStateText = LastResultRejectedBeforeSubtypeDecode
+                ? "last result rejected before subtype decode"
+                : LastResultMissingSubtype
                 ? "last result missing subtype byte"
                 : LastSubtype >= 0
                 ? $"last {DescribeLastResultState()}"
@@ -773,6 +820,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 lines.Add($"{phaseText}; {LastNotice}");
             }
+            else if (LastResultRejectedBeforeSubtypeDecode)
+            {
+                lines.Add($"{phaseText}; packet 366 rejected before subtype decode");
+            }
             else if (LastResultMissingSubtype)
             {
                 lines.Add($"{phaseText}; packet 366 missing subtype byte");
@@ -815,7 +866,9 @@ namespace HaCreator.MapSimulator.UI
                 : "NPC unresolved";
             int buyRowCount = rows.Count(row => row != null && row.Price > 0);
             int sellRowCount = rows.Count(row => row != null && row.Price <= 0);
-            string resultText = LastResultMissingSubtype
+            string resultText = LastResultRejectedBeforeSubtypeDecode
+                ? "last result rejected before subtype decode"
+                : LastResultMissingSubtype
                 ? "last result missing subtype byte"
                 : LastSubtype >= 0
                 ? LastResultHadResultCode
@@ -832,6 +885,9 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string resultTrailingText = ResultTrailingByteCount > 0
                 ? $", result opaque tail {ResultTrailingByteCount} byte(s) ({ResultTrailingPayloadSignature})"
+                : string.Empty;
+            string preDecodeResultText = LastPreDecodeRejectedResultByteCount > 0
+                ? $", pre-decode result payload {LastPreDecodeRejectedResultByteCount} byte(s) ({LastPreDecodeRejectedResultPayloadSignature})"
                 : string.Empty;
             string packetRowShapeText = BuildPacketOwnedRowShapeSummary(rows);
             string waitText = IsWaitingForResult
@@ -861,7 +917,7 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string inboundSourceText = DescribeInboundSourceSummary();
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}{packetRowShapeText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}{pendingWishlistSearchText}{deferredResultText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}{preDecodeResultText}{packetRowShapeText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}{pendingWishlistSearchText}{deferredResultText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
         }
 
         private static string BuildPacketOwnedRowShapeSummary(IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> rows)
@@ -1125,6 +1181,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 TouchWishlistSearchStateToken();
             }
+        }
+
+        private void ClearPreDecodeRejectedResult()
+        {
+            LastResultRejectedBeforeSubtypeDecode = false;
+            LastPreDecodeRejectedResultByteCount = 0;
+            LastPreDecodeRejectedResultPayloadSignature = "none";
+            _preDecodeRejectedResultPayload = Array.Empty<byte>();
         }
     }
 }

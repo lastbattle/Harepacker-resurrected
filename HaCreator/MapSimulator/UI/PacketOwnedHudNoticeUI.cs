@@ -8,7 +8,16 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class PacketOwnedHudNoticeUI
     {
         private const int ReferenceClientHeight = 578;
+        private const int ReferenceClientWidth = 800;
         private const int TopMargin = 44;
+        private const int ClientDamageMeterClockX = 271;
+        private const int ClientDamageMeterClockY = 30;
+        private const int ClientDamageMeterClockWidth = 258;
+        private const int ClientDamageMeterClockHeight = 58;
+        private const int ClientDamageBoardX = 200;
+        private const int ClientDamageBoardY = 100;
+        private const int ClientDamageBoardWidth = 400;
+        private const int ClientDamageBoardHeight = 300;
         private const int DefaultDamageMeterPanelWidth = 266;
         private const int DefaultDamageMeterMinimumHeight = 96;
         private const int DefaultHazardPanelWidth = 258;
@@ -86,9 +95,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 int damageMeterWidth = GetFrameWidth(_damageMeterTop, _damageMeterCenter, _damageMeterBottom, DefaultDamageMeterPanelWidth);
                 int damageMeterHeight = GetMinimumFrameHeight(_damageMeterTop, _damageMeterCenter, _damageMeterBottom, DefaultDamageMeterMinimumHeight);
-                Rectangle damageMeterBounds = new(
-                    Math.Max(0, (_screenWidth - damageMeterWidth) / 2),
-                    panelY,
+                Rectangle clockBounds = ResolveClientDamageMeterClockBounds(_screenWidth, _screenHeight);
+                Rectangle damageMeterBounds = ResolveFrameAroundClockBounds(
+                    clockBounds,
                     damageMeterWidth,
                     damageMeterHeight);
                 DrawDamageMeter(spriteBatch, runtime, damageMeterBounds, currentTickCount);
@@ -348,6 +357,50 @@ namespace HaCreator.MapSimulator.UI
             return authoredHeight > 0
                 ? authoredHeight
                 : Math.Max(1, fallbackHeight);
+        }
+
+        internal static Rectangle ResolveClientDamageMeterClockBounds(int screenWidth, int screenHeight)
+        {
+            return ResolveClientAbsoluteBounds(
+                screenWidth,
+                ClientDamageMeterClockX,
+                ClientDamageMeterClockY,
+                ClientDamageMeterClockWidth,
+                ClientDamageMeterClockHeight);
+        }
+
+        internal static Rectangle ResolveClientDamageBoardBounds(int screenWidth, int screenHeight)
+        {
+            return ResolveClientAbsoluteBounds(
+                screenWidth,
+                ClientDamageBoardX,
+                ClientDamageBoardY,
+                ClientDamageBoardWidth,
+                ClientDamageBoardHeight);
+        }
+
+        internal static Rectangle ResolveFrameAroundClockBounds(Rectangle clockBounds, int frameWidth, int frameHeight)
+        {
+            int width = Math.Max(1, frameWidth);
+            int height = Math.Max(1, frameHeight);
+            return new Rectangle(
+                clockBounds.X - Math.Max(0, (width - clockBounds.Width) / 2),
+                clockBounds.Y,
+                width,
+                height);
+        }
+
+        private static Rectangle ResolveClientAbsoluteBounds(int screenWidth, int clientX, int clientY, int clientWidth, int clientHeight)
+        {
+            int centeredClientOffsetX = screenWidth > ReferenceClientWidth
+                ? (screenWidth - ReferenceClientWidth) / 2
+                : 0;
+
+            return new Rectangle(
+                Math.Max(0, centeredClientOffsetX + clientX),
+                Math.Max(0, clientY),
+                Math.Max(1, clientWidth),
+                Math.Max(1, clientHeight));
         }
 
         private string TrimText(string value, float scale, int maxWidth)

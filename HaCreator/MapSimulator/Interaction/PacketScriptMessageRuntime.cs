@@ -115,7 +115,8 @@ namespace HaCreator.MapSimulator.Interaction
                             ResolveInputMinLength(entry),
                             ResolveInputMinValue(entry),
                             ResolveInputMaxValue(entry),
-                            ResolveInputMaxLength(entry));
+                            ResolveInputMaxLength(entry),
+                            ResolveAllowedPetSerialNumbers(decoded.DedicatedOwner));
                     _statusMessage = decoded.StatusMessage ?? $"Ignored packet-authored script payload for {speaker.DisplayName}.";
                     message = _statusMessage;
                     return true;
@@ -160,7 +161,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ResolveInputMinLength(entry),
                     ResolveInputMinValue(entry),
                     ResolveInputMaxValue(entry),
-                    ResolveInputMaxLength(entry));
+                    ResolveInputMaxLength(entry),
+                    ResolveAllowedPetSerialNumbers(decoded.DedicatedOwner));
 
                 _statusMessage = $"Opened packet-authored script dialog: {entry.Title} for {speaker.DisplayName}.";
                 message = _statusMessage;
@@ -1348,6 +1350,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (context.MessageType != 4)
             {
+                if (context.MessageType is 10 or 11 &&
+                    context.AllowedPetSerialNumbers?.Count > 0 &&
+                    long.TryParse(submittedValue, out long submittedPetSerialNumber) &&
+                    submittedPetSerialNumber > 0 &&
+                    !context.AllowedPetSerialNumbers.Contains(submittedPetSerialNumber))
+                {
+                    error = $"{context.EntryTitle} submissions must use a pet cash serial decoded from the packet-owned prompt.";
+                    return false;
+                }
+
                 return true;
             }
 
@@ -1401,6 +1413,28 @@ namespace HaCreator.MapSimulator.Interaction
         private static int ResolveInputMaxLength(NpcInteractionEntry entry)
         {
             return entry?.Pages?.FirstOrDefault()?.InputRequest?.MaxLength ?? int.MaxValue;
+        }
+
+        private static IReadOnlySet<long> ResolveAllowedPetSerialNumbers(PacketScriptDedicatedOwnerRequest dedicatedOwner)
+        {
+            if (dedicatedOwner?.Kind is not (PacketScriptDedicatedOwnerKind.PetSelection or PacketScriptDedicatedOwnerKind.MultiPetSelection) ||
+                dedicatedOwner.Choices == null ||
+                dedicatedOwner.Choices.Count == 0)
+            {
+                return null;
+            }
+
+            HashSet<long> serialNumbers = new();
+            foreach (NpcInteractionChoice choice in dedicatedOwner.Choices)
+            {
+                if (long.TryParse(choice?.SubmissionValue, out long serialNumber) &&
+                    serialNumber > 0)
+                {
+                    serialNumbers.Add(serialNumber);
+                }
+            }
+
+            return serialNumbers.Count == 0 ? null : serialNumbers;
         }
 
         private static NpcInteractionChoice CreateResponseChoice(string label, string responseLabel, int responseValue)
@@ -2122,7 +2156,8 @@ namespace HaCreator.MapSimulator.Interaction
             int MinLength = 0,
             int MinValue = int.MinValue,
             int MaxValue = int.MaxValue,
-            int MaxLength = int.MaxValue);
+            int MaxLength = int.MaxValue,
+            IReadOnlySet<long> AllowedPetSerialNumbers = null);
 
         private sealed record SlideMenuOption(int SelectionId, string Label);
         private sealed record PacketScriptPetPacketEntry(long PetSerialNumber, byte CashSlotHint);

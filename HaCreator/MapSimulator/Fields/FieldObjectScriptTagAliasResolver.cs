@@ -88,6 +88,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>push|unshift|splice)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ArrayReverseAliasCallPattern = new(
+            @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*reverse\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex ArrayConcatAliasAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*concat\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -713,6 +717,18 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            foreach (string objectName in EnumerateArrayReverseAliasCalls(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(objectName)
+                    || !objectMemberAliasMap.TryGetValue(objectName, out IReadOnlyDictionary<string, string> existingMemberAliasMap)
+                    || existingMemberAliasMap is not Dictionary<string, string> memberAliasMap)
+                {
+                    continue;
+                }
+
+                ReverseArrayMemberAliases(memberAliasMap);
+            }
+
             foreach ((string TargetName, IReadOnlyList<string> Arguments) assignCall in EnumerateObjectAssignAliasCalls(scriptName))
             {
                 if (!IsPotentialFunctionAliasName(assignCall.TargetName) || assignCall.Arguments.Count == 0)
@@ -1185,6 +1201,40 @@ namespace HaCreator.MapSimulator.Fields
 
                 string argumentText = value[(openIndex + 1)..closeIndex];
                 yield return (objectName, methodName, new List<string>(SplitFunctionArguments(argumentText)));
+            }
+        }
+
+        private static IEnumerable<string> EnumerateArrayReverseAliasCalls(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ArrayReverseAliasCallPattern.Matches(value))
+            {
+                string objectName = NormalizeFunctionAliasArgument(match.Groups["object"]?.Value);
+                if (!IsPotentialFunctionAliasName(objectName))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(value[(openIndex + 1)..closeIndex]))
+                {
+                    yield return objectName;
+                }
             }
         }
 
@@ -1796,6 +1846,40 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = 0; i < removedKeys.Count; i++)
             {
                 memberAliasMap.Remove(removedKeys[i]);
+            }
+        }
+
+        private static void ReverseArrayMemberAliases(IDictionary<string, string> memberAliasMap)
+        {
+            if (memberAliasMap == null || memberAliasMap.Count <= 1)
+            {
+                return;
+            }
+
+            var indexedAliases = new List<(int Index, string AliasName)>();
+            foreach (KeyValuePair<string, string> memberAlias in memberAliasMap)
+            {
+                if (int.TryParse(memberAlias.Key, out int parsedIndex) && parsedIndex >= 0)
+                {
+                    indexedAliases.Add((parsedIndex, memberAlias.Value));
+                }
+            }
+
+            if (indexedAliases.Count <= 1)
+            {
+                return;
+            }
+
+            indexedAliases.Sort((left, right) => left.Index.CompareTo(right.Index));
+            for (int i = 0; i < indexedAliases.Count; i++)
+            {
+                memberAliasMap.Remove(indexedAliases[i].Index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            for (int i = 0; i < indexedAliases.Count; i++)
+            {
+                string memberKey = indexedAliases[i].Index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                memberAliasMap[memberKey] = indexedAliases[indexedAliases.Count - i - 1].AliasName;
             }
         }
 
@@ -3146,6 +3230,123 @@ namespace HaCreator.MapSimulator.Fields
             return tokens;
         }
 
+        private static IReadOnlyList<(char Operator, string Term)> SplitTopLevelByAdditiveOperators(string value)
+        {
+            return SplitTopLevelByOperators(value, new[] { '+', '-' });
+        }
+
+        private static IReadOnlyList<(char Operator, string Factor)> SplitTopLevelByMultiplicativeOperators(string value)
+        {
+            return SplitTopLevelByOperators(value, new[] { '*', '/' });
+        }
+
+        private static IReadOnlyList<(char Operator, string Term)> SplitTopLevelByOperators(string value, IReadOnlyList<char> operators)
+        {
+            if (string.IsNullOrWhiteSpace(value) || operators == null || operators.Count == 0)
+            {
+                return Array.Empty<(char Operator, string Term)>();
+            }
+
+            var tokens = new List<(char Operator, string Term)>();
+            int tokenStart = 0;
+            char currentOperator = '+';
+            int groupingDepth = 0;
+            char quote = '\0';
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current is '"' or '\'' or '`')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '(' || current == '[' || current == '{')
+                {
+                    groupingDepth++;
+                    continue;
+                }
+
+                if (current == ')' || current == ']' || current == '}')
+                {
+                    if (groupingDepth > 0)
+                    {
+                        groupingDepth--;
+                    }
+
+                    continue;
+                }
+
+                if (groupingDepth > 0 || !ContainsOperator(operators, current))
+                {
+                    continue;
+                }
+
+                if ((current == '+' || current == '-')
+                    && IsUnarySign(value, i, tokenStart))
+                {
+                    continue;
+                }
+
+                tokens.Add((currentOperator, value[tokenStart..i].Trim()));
+                currentOperator = current;
+                tokenStart = i + 1;
+            }
+
+            if (tokens.Count == 0)
+            {
+                return Array.Empty<(char Operator, string Term)>();
+            }
+
+            tokens.Add((currentOperator, value[tokenStart..].Trim()));
+            return tokens;
+        }
+
+        private static bool ContainsOperator(IReadOnlyList<char> operators, char value)
+        {
+            for (int i = 0; i < operators.Count; i++)
+            {
+                if (operators[i] == value)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsUnarySign(string value, int signIndex, int tokenStart)
+        {
+            for (int i = signIndex - 1; i >= tokenStart; i--)
+            {
+                char previous = value[i];
+                if (char.IsWhiteSpace(previous))
+                {
+                    continue;
+                }
+
+                return previous is '(' or '[' or '{' or '+' or '-' or '*' or '/';
+            }
+
+            return true;
+        }
+
         private static string StripOuterBalancedParentheses(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -3782,34 +3983,117 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            IReadOnlyList<string> plusTerms = SplitTopLevelByPlus(StripOuterBalancedParentheses(normalizedValue));
-            if (plusTerms.Count <= 1)
-            {
-                return false;
-            }
+            return TryResolveArithmeticDelayExpression(
+                normalizedValue,
+                localAliasMap,
+                seenDelayExpressions,
+                out parsedInt);
+        }
 
-            int delaySum = 0;
-            bool sawResolvedTerm = false;
-            for (int i = 0; i < plusTerms.Count; i++)
+        private static bool TryResolveArithmeticDelayExpression(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            ISet<string> seenDelayExpressions,
+            out int parsedInt)
+        {
+            parsedInt = 0;
+            IReadOnlyList<(char Operator, string Term)> additiveTerms =
+                SplitTopLevelByAdditiveOperators(StripOuterBalancedParentheses(value));
+            if (additiveTerms.Count <= 1)
             {
-                string term = NormalizeFunctionAliasArgument(plusTerms[i]).TrimEnd(';');
-                if (!TryResolvePositiveDelayMs(term, localAliasMap, seenDelayExpressions, out int termDelay))
+                IReadOnlyList<(char Operator, string Factor)> factors =
+                    SplitTopLevelByMultiplicativeOperators(StripOuterBalancedParentheses(value));
+                if (factors.Count <= 1
+                    || !TryResolveMultiplicativeDelayTerm(value, localAliasMap, seenDelayExpressions, out double multiplicativeDelay))
                 {
                     return false;
                 }
 
-                delaySum = delaySum >= int.MaxValue - termDelay
+                parsedInt = multiplicativeDelay >= int.MaxValue
                     ? int.MaxValue
-                    : delaySum + termDelay;
-                sawResolvedTerm = true;
+                    : checked((int)Math.Round(multiplicativeDelay, MidpointRounding.AwayFromZero));
+                return parsedInt > 0;
             }
 
-            if (!sawResolvedTerm || delaySum <= 0)
+            double delayValue = 0;
+            for (int i = 0; i < additiveTerms.Count; i++)
+            {
+                if (!TryResolveMultiplicativeDelayTerm(
+                        additiveTerms[i].Term,
+                        localAliasMap,
+                        seenDelayExpressions,
+                        out double termDelay))
+                {
+                    return false;
+                }
+
+                delayValue = additiveTerms[i].Operator == '-'
+                    ? delayValue - termDelay
+                    : delayValue + termDelay;
+            }
+
+            if (delayValue <= 0)
             {
                 return false;
             }
 
-            parsedInt = delaySum;
+            parsedInt = delayValue >= int.MaxValue
+                ? int.MaxValue
+                : checked((int)Math.Round(delayValue, MidpointRounding.AwayFromZero));
+            return parsedInt > 0;
+        }
+
+        private static bool TryResolveMultiplicativeDelayTerm(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            ISet<string> seenDelayExpressions,
+            out double delayValue)
+        {
+            delayValue = 0;
+            IReadOnlyList<(char Operator, string Factor)> factors =
+                SplitTopLevelByMultiplicativeOperators(StripOuterBalancedParentheses(value));
+            if (factors.Count <= 1)
+            {
+                string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+                if (!TryResolvePositiveDelayMs(normalizedValue, localAliasMap, seenDelayExpressions, out int parsedInt))
+                {
+                    return false;
+                }
+
+                delayValue = parsedInt;
+                return true;
+            }
+
+            double product = 1;
+            for (int i = 0; i < factors.Count; i++)
+            {
+                string factor = NormalizeFunctionAliasArgument(factors[i].Factor).TrimEnd(';');
+                if (!TryResolvePositiveDelayMs(factor, localAliasMap, seenDelayExpressions, out int parsedFactor))
+                {
+                    return false;
+                }
+
+                if (factors[i].Operator == '/')
+                {
+                    if (parsedFactor == 0)
+                    {
+                        return false;
+                    }
+
+                    product /= parsedFactor;
+                }
+                else
+                {
+                    product *= parsedFactor;
+                }
+            }
+
+            if (product <= 0)
+            {
+                return false;
+            }
+
+            delayValue = product;
             return true;
         }
 

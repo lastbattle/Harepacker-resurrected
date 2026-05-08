@@ -1131,8 +1131,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (IsRemoteInspectionActive())
             {
+                string message = GetDisplayedBuild()?.HasAuthoritativeProfilePets == true
+                    ? "No server-authored remote pet slots were present on the inspected profile."
+                    : "Remote pet progression is unavailable for this inspected target.";
                 DrawPlainText(sprite,
-                    "No remote pet slots were present on the inspected build.",
+                    message,
                     new Vector2(Position.X + 20, Position.Y + 54),
                     MutedColor,
                     0.62f);

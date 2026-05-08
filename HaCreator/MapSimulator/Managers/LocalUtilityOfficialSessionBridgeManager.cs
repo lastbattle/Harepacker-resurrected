@@ -77,7 +77,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,193,234,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1019,1023,1024,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,214,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,161,193,234,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1018,1019,1023,1024,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,161,191,193,214,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -662,6 +662,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.FollowCharacterClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetGenderPacketType
                 || packetType == LocalUtilityPacketInboxManager.AccountMoreInfoPacketType
+                || packetType == LocalUtilityPacketInboxManager.EngagementRequestPacketType
                 || packetType == LocalUtilityPacketInboxManager.TeleportClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
@@ -688,11 +689,13 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == MapleTvRuntime.PacketTypeSetMessage
                 || packetType == MapleTvRuntime.PacketTypeClearMessage
                 || packetType == MapleTvRuntime.PacketTypeSendMessageResult
+                || packetType == LocalUtilityPacketInboxManager.MarriageResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.AntiMacroResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.PetConsumeResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType
+                || packetType == LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmContextPacketType
                 || packetType == LocalUtilityPacketInboxManager.MechanicEquipStatePacketType
                 || packetType == LocalUtilityPacketInboxManager.CharacterEquipStatePacketType;
         }
@@ -704,6 +707,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.InventoryOperationClientPacketType => "OnInventoryOperation(28)",
                 LocalUtilityPacketInboxManager.SetGenderPacketType => "SetGender(58)",
                 LocalUtilityPacketInboxManager.AccountMoreInfoPacketType => "AccountMoreInfo(133)",
+                LocalUtilityPacketInboxManager.EngagementRequestPacketType => "CEngageDlg/SendEngagementRequest(161)",
                 LocalUtilityPacketInboxManager.TeleportClientPacketType => "OnTeleport(234)",
                 LocalUtilityPacketInboxManager.FollowCharacterClientPacketType => "FollowCharacter(193)",
                 LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType => "SetDirectionMode(253)",
@@ -731,11 +735,13 @@ namespace HaCreator.MapSimulator.Managers
                 MapleTvRuntime.PacketTypeSetMessage => "CMapleTVMan::OnSetMessage(405)",
                 MapleTvRuntime.PacketTypeClearMessage => "CMapleTVMan::OnClearMessage(406)",
                 MapleTvRuntime.PacketTypeSendMessageResult => "CMapleTVMan::OnSendMessageResult(407)",
+                LocalUtilityPacketInboxManager.MarriageResultPacketType => "CWvsContext::OnMarriageResult(1018)",
                 LocalUtilityPacketInboxManager.AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 LocalUtilityPacketInboxManager.PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
                 LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",
                 LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType => "MonsterBookRegistrationResult(1047)",
                 LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType => "MonsterBookOwnershipSync(1048)",
+                LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmContextPacketType => "RevivePremiumSafetyCharmContext(1049) / CWvsContext[2073]",
                 LocalUtilityPacketInboxManager.MechanicEquipStatePacketType => "MechanicEquipState(1023)",
                 LocalUtilityPacketInboxManager.CharacterEquipStatePacketType => "CharacterEquipState(1034)",
                 _ => $"packet {packetType}"

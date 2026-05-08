@@ -2042,7 +2042,11 @@ namespace HaCreator.MapSimulator.UI
                     IsDisassembly = true,
                     SourceSlotIndex = recipe.SourceSlotIndex,
                     SourceItemId = recipe.OutputItemId,
-                    MesoCost = recipe.MesoCost
+                    MesoCost = recipe.MesoCost,
+                    ClientRecipeClass = PacketOwnedItemMakerRequestRuntime.ClientDisassembleEquipRecipeClass,
+                    ClientRequestPayload = PacketOwnedItemMakerRequestRuntime.BuildDisassembleEquipRequestPayload(
+                        recipe.OutputItemId,
+                        recipe.SourceSlotIndex)
                 };
                 _pendingPacketOwnedDisassemblySlotIndex = recipe.SourceSlotIndex;
                 _pendingPacketOwnedDisassemblyItemId = recipe.OutputItemId;
@@ -2061,6 +2065,11 @@ namespace HaCreator.MapSimulator.UI
                 ExpectedRewardQuantity = recipe.UsesRandomReward ? 0 : Math.Max(1, recipe.OutputQuantity),
                 MesoCost = recipe.MesoCost,
                 CatalystItemId = recipe.CatalystItemId,
+                ClientRecipeClass = PacketOwnedItemMakerRequestRuntime.ClientCraftRecipeClass,
+                ClientRequestPayload = PacketOwnedItemMakerRequestRuntime.BuildCraftRequestPayload(
+                    recipe.OutputItemId,
+                    catalystMounted: recipe.CatalystItemId > 0,
+                    mountedGemItemIds: Array.Empty<int>()),
                 Materials = recipe.Materials
                     .Select(material => new PacketOwnedItemMakerMaterialCost(material.InventoryType, material.ItemId, material.Quantity))
                     .ToArray()

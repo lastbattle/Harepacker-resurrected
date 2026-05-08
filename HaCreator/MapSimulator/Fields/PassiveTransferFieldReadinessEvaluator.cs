@@ -543,6 +543,13 @@ namespace HaCreator.MapSimulator.Fields
                    && state.IsOnFoothold;
         }
 
+        public static bool CanHandleFreshHandleUpKeyDown(PassiveTransferFieldReplayState state)
+        {
+            return state.HasOneTimeActionCompleted
+                   && !state.IsImmovable
+                   && state.IsOnFoothold;
+        }
+
         public static bool CanAttemptHandleUpKeyDownReplay(PassiveTransferFieldReplayState state)
         {
             return state.HasOneTimeActionCompleted

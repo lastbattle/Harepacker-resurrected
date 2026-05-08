@@ -681,6 +681,125 @@ namespace HaCreator.MapSimulator.UI
                 out rejectReason);
         }
 
+        internal static bool TryBuildAuthoritySlotStatesFromPassiveMutations(
+            CharacterBuild currentBuild,
+            IReadOnlyList<CharacterInventoryOperationMutation> mutations,
+            out IReadOnlyList<CharacterEquipmentAuthoritySlotState> slotStates,
+            out string rejectReason)
+        {
+            slotStates = Array.Empty<CharacterEquipmentAuthoritySlotState>();
+            rejectReason = null;
+            if (currentBuild == null)
+            {
+                rejectReason = "Character equipment runtime is unavailable.";
+                return false;
+            }
+
+            if (mutations == null || mutations.Count == 0)
+            {
+                rejectReason = "Inventory-operation payload did not include a character equipment mutation that can be converted to authority state.";
+                return false;
+            }
+
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> states = new();
+            for (int i = 0; i < mutations.Count; i++)
+            {
+                CharacterInventoryOperationMutation mutation = mutations[i];
+                if (mutation.Slot == EquipSlot.None)
+                {
+                    rejectReason = "Inventory-operation character equipment mutation did not resolve a valid slot.";
+                    return false;
+                }
+
+                CharacterEquipmentAuthoritySlotState state = states.TryGetValue(mutation.Slot, out CharacterEquipmentAuthoritySlotState existingState)
+                    ? existingState
+                    : CaptureAuthoritySlotState(currentBuild, mutation.Slot);
+
+                state = ApplyPassiveMutationToAuthoritySlotState(state, mutation);
+                if (state.HiddenItemId > 0 && state.VisibleItemId <= 0)
+                {
+                    rejectReason = "Inventory-operation authority state cannot keep a hidden item without a visible cash item.";
+                    return false;
+                }
+
+                states[mutation.Slot] = state;
+            }
+
+            List<CharacterEquipmentAuthoritySlotState> result = new(states.Count);
+            foreach (CharacterEquipmentAuthoritySlotState state in states.Values)
+            {
+                result.Add(state);
+            }
+
+            slotStates = result;
+            return true;
+        }
+
+        private static CharacterEquipmentAuthoritySlotState CaptureAuthoritySlotState(CharacterBuild build, EquipSlot slot)
+        {
+            int visibleItemId = build?.Equipment != null
+                                && build.Equipment.TryGetValue(slot, out CharacterPart visiblePart)
+                                && visiblePart != null
+                ? visiblePart.ItemId
+                : 0;
+            int hiddenItemId = build?.HiddenEquipment != null
+                               && build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart)
+                               && hiddenPart != null
+                ? hiddenPart.ItemId
+                : 0;
+            return new CharacterEquipmentAuthoritySlotState(slot, visibleItemId, hiddenItemId);
+        }
+
+        private static CharacterEquipmentAuthoritySlotState ApplyPassiveMutationToAuthoritySlotState(
+            CharacterEquipmentAuthoritySlotState state,
+            CharacterInventoryOperationMutation mutation)
+        {
+            int visibleItemId = state.VisibleItemId;
+            int hiddenItemId = state.HiddenItemId;
+            if (mutation.CashLayer)
+            {
+                if (mutation.ItemId <= 0)
+                {
+                    visibleItemId = hiddenItemId;
+                    hiddenItemId = 0;
+                }
+                else
+                {
+                    if (visibleItemId > 0 && hiddenItemId <= 0)
+                    {
+                        hiddenItemId = visibleItemId;
+                    }
+
+                    visibleItemId = mutation.ItemId;
+                }
+            }
+            else if (mutation.ItemId <= 0)
+            {
+                if (hiddenItemId > 0)
+                {
+                    hiddenItemId = 0;
+                }
+                else
+                {
+                    visibleItemId = 0;
+                }
+            }
+            else if (visibleItemId > 0 && hiddenItemId > 0)
+            {
+                hiddenItemId = mutation.ItemId;
+            }
+            else if (visibleItemId > 0)
+            {
+                hiddenItemId = mutation.ItemId;
+            }
+            else
+            {
+                visibleItemId = mutation.ItemId;
+            }
+
+            return new CharacterEquipmentAuthoritySlotState(state.Slot, visibleItemId, hiddenItemId);
+        }
+
         private static int ResolveCurrentCharacterLayerItemId(
             CharacterBuild build,
             EquipSlot slot,

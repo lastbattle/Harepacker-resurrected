@@ -162,9 +162,6 @@ namespace HaCreator.MapSimulator.Fields
             if (RemoveSuppressedLocalRankEntry())
             {
                 SortAndAssignRankIcons();
-                _scoreRefreshSerial++;
-                _showScoreboard = true;
-                _showResult = false;
             }
         }
         public void OnUserScore(string userName, int score)
@@ -646,7 +643,7 @@ namespace HaCreator.MapSimulator.Fields
         }
         private static int ResolveVisibleScoreRowCount(int scoreRowCount)
         {
-            return Math.Clamp(scoreRowCount, 0, ScoreLayerMaxVisibleRows);
+            return Math.Clamp(scoreRowCount, 0, Math.Min(MaxRankEntries, ScoreLayerMaxVisibleRows));
         }
         private static string ResolveRankIconPath(int iconIndex)
         {

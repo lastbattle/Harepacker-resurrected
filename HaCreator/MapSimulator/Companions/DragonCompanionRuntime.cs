@@ -1735,9 +1735,13 @@ namespace HaCreator.MapSimulator.Companions
                     : $"capture keypad={comparison.CapturedKeyPadStates}, bounds unavailable"
                 : _lastCapturedVecCtrlEndUpdateActiveFlushSummary;
 
+            string memoryProofText = ResolveClientDragonKeyPadMemoryProofText(comparison);
             if (!comparison.HasCapturedTail)
             {
-                return $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}";
+                string status = $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}";
+                return string.IsNullOrWhiteSpace(memoryProofText)
+                    ? status
+                    : $"{status}. {memoryProofText}";
             }
 
             string matchText = comparison.HasSimulatorTail
@@ -1746,7 +1750,9 @@ namespace HaCreator.MapSimulator.Companions
                     : $"keypad {(comparison.KeyPadStatesMatch ? "match" : "mismatch")}, bounds waiting for full packet capture"
                 : "waiting for simulator tail";
             string proofText = ResolveClientDragonFlushTailProofText(comparison);
-            return $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}; {matchText}. {proofText}";
+            return string.IsNullOrWhiteSpace(memoryProofText)
+                ? $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}; {matchText}. {proofText}"
+                : $"Dragon vecctrl opcode {ClientVecCtrlDragonMovePacketOpcode} parity: {simulatorText}; {capturedText}; {matchText}. {proofText} {memoryProofText}";
         }
 
         internal ClientDragonFlushTailComparison CompareLastClientDragonFlushTailCapture()
@@ -1764,6 +1770,12 @@ namespace HaCreator.MapSimulator.Companions
                 && hasCapturedTail
                 && _lastCapturedVecCtrlEndUpdateActiveFlushHasBounds
                 && simulatorBounds == capturedBounds;
+            bool hasCapturedKeyPadMemoryStates = _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null;
+            bool keyPadMemoryStatesMatch = hasCapturedKeyPadMemoryStates
+                && hasSimulatorTail
+                && AreClientDragonFlushKeyPadStatesEqual(
+                    simulatorTail.KeyPadStates,
+                    _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates);
             return new ClientDragonFlushTailComparison(
                 hasSimulatorTail,
                 hasCapturedTail,
@@ -1776,19 +1788,15 @@ namespace HaCreator.MapSimulator.Companions
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession,
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession && keyPadStatesMatch,
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession && keyPadStatesMatch && boundsMatch,
-                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null,
-                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null
-                    && hasSimulatorTail
-                    && AreClientDragonFlushKeyPadStatesEqual(
-                        simulatorTail.KeyPadStates,
-                        _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates),
-                _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null
+                hasCapturedKeyPadMemoryStates,
+                keyPadMemoryStatesMatch,
+                hasCapturedKeyPadMemoryStates
                     ? FormatClientDragonFlushKeyPadStates(_lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates)
                     : "none",
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource,
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession,
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession
-                    && _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates != null,
+                    && keyPadMemoryStatesMatch,
                 simulatorBounds,
                 capturedBounds);
         }
@@ -1835,6 +1843,28 @@ namespace HaCreator.MapSimulator.Companions
             return comparison.BoundsMatch
                 ? "Official-session keypad and move-bounds byte proof matched."
                 : "Official-session keypad byte proof matched; move-bounds byte proof differs.";
+        }
+
+        private static string ResolveClientDragonKeyPadMemoryProofText(ClientDragonFlushTailComparison comparison)
+        {
+            if (!comparison.HasCapturedKeyPadMemoryStates)
+            {
+                return null;
+            }
+
+            if (!comparison.CapturedKeyPadMemoryFromOfficialSession)
+            {
+                return "Manual m_aKeyPadState memory capture recorded; official-session memory byte proof still pending.";
+            }
+
+            if (!comparison.HasSimulatorTail)
+            {
+                return "Official-session m_aKeyPadState memory capture recorded; waiting for simulator tail to compare.";
+            }
+
+            return comparison.KeyPadMemoryStatesMatch
+                ? "Official-session m_aKeyPadState memory byte proof matched."
+                : "Official-session m_aKeyPadState memory byte proof failed; captured memory states differ from the simulator tail.";
         }
 
         private static bool AreClientDragonFlushKeyPadStatesEqual(IReadOnlyList<byte> left, IReadOnlyList<byte> right)

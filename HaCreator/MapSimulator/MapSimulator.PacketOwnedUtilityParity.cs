@@ -157,6 +157,14 @@ namespace HaCreator.MapSimulator
             public int MaxValue { get; init; }
         }
 
+        internal readonly record struct PacketOwnedBattleshipTemporaryStatMutationPlan(
+            bool HasPassiveTemporaryStatTrackingOwner,
+            bool IsVehiclePresentationActive,
+            bool HasPassiveTemporaryStatObject,
+            bool AllocatePassiveTemporaryStatObject,
+            bool CanUpdatePassively,
+            bool RecordPassiveTemporaryStatUpdate);
+
         private sealed class PacketOwnedRadioTrackResolution
         {
             public WzBinaryProperty AudioProperty { get; init; }
@@ -181,7 +189,9 @@ namespace HaCreator.MapSimulator
             bool AilQuickLoadMemAttempted,
             bool AilQuickMsLengthAttempted,
             bool AilQuickSetMsPositionAttempted,
+            bool AilQuickMsPositionAttempted,
             bool AilQuickPlayAttempted,
+            bool AilQuickUnloadAttempted,
             bool Started,
             int MsLength,
             int MsPosition,
@@ -3433,12 +3443,35 @@ namespace HaCreator.MapSimulator
             }
 
             navigateUrl = HydrateClassCompetitionNavigateUrlWithAuthKey(navigateUrl, authKey);
+            IReadOnlyList<ClassCompetitionRemotePagePayload> embeddedPayloads =
+                ExtractClassCompetitionEmbeddedRemotePageJsonPayloads(text);
+            foreach (ClassCompetitionRemotePagePayload embeddedPayload in embeddedPayloads)
+            {
+                if (string.IsNullOrWhiteSpace(authKey)
+                    && TryNormalizeClassCompetitionAuthKey(embeddedPayload.AuthKey, out string embeddedAuthKey))
+                {
+                    authKey = embeddedAuthKey;
+                }
+
+                if (string.IsNullOrWhiteSpace(navigateUrl)
+                    && !string.IsNullOrWhiteSpace(embeddedPayload.NavigateUrl))
+                {
+                    navigateUrl = embeddedPayload.NavigateUrl;
+                }
+            }
+
+            navigateUrl = HydrateClassCompetitionNavigateUrlWithAuthKey(navigateUrl, authKey);
             IReadOnlyList<string> ladderLines = NormalizeClassCompetitionRemoteLines(
-                ExtractClassCompetitionHtmlTableRows(text),
+                embeddedPayloads.SelectMany(payload => payload.LadderLines ?? Array.Empty<string>())
+                    .Concat(ExtractClassCompetitionHtmlTableRows(text)),
                 PacketOwnedClassCompetitionMaxRemoteLadderLines);
             IReadOnlyList<string> pageLines = NormalizeClassCompetitionRemoteLines(
-                ExtractClassCompetitionHtmlPageLines(text, ladderLines),
+                embeddedPayloads.SelectMany(payload => payload.PageLines ?? Array.Empty<string>())
+                    .Concat(ExtractClassCompetitionHtmlPageLines(text, ladderLines)),
                 PacketOwnedClassCompetitionMaxRemotePageLines);
+            string source = embeddedPayloads
+                .Select(payload => payload.Source)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
             if (string.IsNullOrWhiteSpace(authKey)
                 && string.IsNullOrWhiteSpace(navigateUrl)
@@ -3452,11 +3485,179 @@ namespace HaCreator.MapSimulator
             {
                 AuthKey = authKey,
                 NavigateUrl = navigateUrl,
-                Source = "packet class-competition html snapshot",
+                Source = string.IsNullOrWhiteSpace(source)
+                    ? "packet class-competition html snapshot"
+                    : source,
                 PageLines = pageLines,
                 LadderLines = ladderLines
             };
             return true;
+        }
+
+        private static IReadOnlyList<ClassCompetitionRemotePagePayload> ExtractClassCompetitionEmbeddedRemotePageJsonPayloads(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<ClassCompetitionRemotePagePayload>();
+            }
+
+            var payloads = new List<ClassCompetitionRemotePagePayload>();
+            foreach (string candidate in EnumerateClassCompetitionEmbeddedJsonCandidates(text))
+            {
+                if (TryDecodePacketOwnedClassCompetitionRemotePageJsonPayload(candidate, out ClassCompetitionRemotePagePayload payload)
+                    && payload != null)
+                {
+                    payloads.Add(payload);
+                }
+            }
+
+            return payloads;
+        }
+
+        private static IEnumerable<string> EnumerateClassCompetitionEmbeddedJsonCandidates(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Match scriptMatch in Regex.Matches(
+                         text,
+                         @"<script\b(?<attrs>[^>]*)>(?<body>.*?)</script>",
+                         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant))
+            {
+                string attrs = scriptMatch.Groups["attrs"].Value;
+                string body = WebUtility.HtmlDecode(scriptMatch.Groups["body"].Value)?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(body))
+                {
+                    continue;
+                }
+
+                if (attrs.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0
+                    && IsLikelyClassCompetitionEmbeddedJsonContext(attrs + " " + body)
+                    && body.StartsWith("{", StringComparison.Ordinal)
+                    && body.EndsWith("}", StringComparison.Ordinal))
+                {
+                    if (seen.Add(body))
+                    {
+                        yield return body;
+                    }
+                }
+
+                foreach (string candidate in EnumerateClassCompetitionEmbeddedJsonObjects(body))
+                {
+                    if (seen.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+
+            foreach (string candidate in EnumerateClassCompetitionEmbeddedJsonObjects(text))
+            {
+                if (seen.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClassCompetitionEmbeddedJsonObjects(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            foreach (Match match in Regex.Matches(
+                         text,
+                         @"(?:classCompetition|class_competition|classBattle|classbattle|classMatch|class_match|classRanking|class_ranking|pageData|webPayload|remotePage|remote_page)\s*(?:=|:)\s*\{",
+                         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                int openBraceIndex = text.IndexOf('{', match.Index + match.Length - 1);
+                if (openBraceIndex >= 0
+                    && TryExtractClassCompetitionBalancedJsonObject(text, openBraceIndex, out string json))
+                {
+                    yield return json;
+                }
+            }
+        }
+
+        private static bool IsLikelyClassCompetitionEmbeddedJsonContext(string text)
+        {
+            return !string.IsNullOrWhiteSpace(text)
+                && (text.Contains("classCompetition", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("class_competition", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("classbattle", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("classMatch", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("ladder", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("ranking", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool TryExtractClassCompetitionBalancedJsonObject(string text, int openBraceIndex, out string json)
+        {
+            json = string.Empty;
+            if (string.IsNullOrEmpty(text)
+                || openBraceIndex < 0
+                || openBraceIndex >= text.Length
+                || text[openBraceIndex] != '{')
+            {
+                return false;
+            }
+
+            int depth = 0;
+            bool inString = false;
+            bool escapeNext = false;
+            for (int i = openBraceIndex; i < text.Length; i++)
+            {
+                char ch = text[i];
+                if (escapeNext)
+                {
+                    escapeNext = false;
+                    continue;
+                }
+
+                if (inString)
+                {
+                    if (ch == '\\')
+                    {
+                        escapeNext = true;
+                    }
+                    else if (ch == '"')
+                    {
+                        inString = false;
+                    }
+
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch == '{')
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (ch != '}')
+                {
+                    continue;
+                }
+
+                depth--;
+                if (depth == 0)
+                {
+                    json = text.Substring(openBraceIndex, i - openBraceIndex + 1);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool LooksLikeClassCompetitionRemoteHtmlPayload(string text)
@@ -7528,6 +7729,8 @@ namespace HaCreator.MapSimulator
                     out bool hasQuestRegistrationList,
                     out int[] questIds,
                     out int[] hiddenAutoQuestIds,
+                    out Dictionary<int, string> titleTooltipByQuestId,
+                    out bool clearUnspecifiedTitleTooltips,
                     out string decodeError))
             {
                 message = decodeError ?? "Quest-alarm registration-sync payload could not be decoded.";
@@ -7552,6 +7755,14 @@ namespace HaCreator.MapSimulator
                 effectiveOpened,
                 effectiveMinimized,
                 clearHiddenAutoTombstones);
+            int appliedTooltipCount = 0;
+            if ((titleTooltipByQuestId != null && titleTooltipByQuestId.Count > 0) || clearUnspecifiedTitleTooltips)
+            {
+                appliedTooltipCount = _questRuntime.ApplyPacketOwnedQuestAlarmTitleTooltipSnapshot(
+                    titleTooltipByQuestId,
+                    clearUnspecifiedTitleTooltips);
+            }
+
             RefreshQuestUiState();
             if (hasQuestRegistrationList)
             {
@@ -7563,6 +7774,14 @@ namespace HaCreator.MapSimulator
             {
                 message = "Applied packet-owned Quest Alarm window directives without replacing local registrations.";
             }
+
+            if (appliedTooltipCount > 0 || clearUnspecifiedTitleTooltips)
+            {
+                message += clearUnspecifiedTitleTooltips
+                    ? $" Packet-authored row tooltips were replaced with {appliedTooltipCount} row(s)."
+                    : $" Packet-authored row tooltips were updated for {appliedTooltipCount} row(s).";
+            }
+
             return true;
         }
 
@@ -7583,6 +7802,8 @@ namespace HaCreator.MapSimulator
                 out clearHiddenAutoTombstones,
                 out _,
                 out questIds,
+                out _,
+                out _,
                 out _,
                 out error);
             ResolveQuestAlarmRegistrationDirectiveForTests(
@@ -7613,6 +7834,8 @@ namespace HaCreator.MapSimulator
                 out _,
                 out questIds,
                 out _,
+                out _,
+                out _,
                 out error);
         }
 
@@ -7636,6 +7859,28 @@ namespace HaCreator.MapSimulator
                 out hasQuestRegistrationList,
                 out questIds,
                 out hiddenAutoQuestIds,
+                out _,
+                out _,
+                out error);
+        }
+
+        internal static bool TryDecodeQuestAlarmRegistrationSyncTitleTooltipsForTests(
+            byte[] payload,
+            out bool clearUnspecifiedTitleTooltips,
+            out Dictionary<int, string> titleTooltipByQuestId,
+            out string error)
+        {
+            return TryDecodeQuestAlarmRegistrationSyncPayload(
+                payload,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out titleTooltipByQuestId,
+                out clearUnspecifiedTitleTooltips,
                 out error);
         }
 
@@ -7662,6 +7907,8 @@ namespace HaCreator.MapSimulator
             out bool hasQuestRegistrationList,
             out int[] questIds,
             out int[] hiddenAutoQuestIds,
+            out Dictionary<int, string> titleTooltipByQuestId,
+            out bool clearUnspecifiedTitleTooltips,
             out string error)
         {
             opened = null;
@@ -7671,6 +7918,8 @@ namespace HaCreator.MapSimulator
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
             hiddenAutoQuestIds = Array.Empty<int>();
+            titleTooltipByQuestId = new Dictionary<int, string>();
+            clearUnspecifiedTitleTooltips = false;
             error = "Quest-alarm registration-sync payload is missing.";
 
             if (payload == null || payload.Length == 0)
@@ -7696,8 +7945,12 @@ namespace HaCreator.MapSimulator
                     out hasQuestRegistrationList,
                     out questIds,
                     out hiddenAutoQuestIds,
+                    out _,
+                    out _,
                     out error))
             {
+                titleTooltipByQuestId.Clear();
+                clearUnspecifiedTitleTooltips = false;
                 return true;
             }
 
@@ -7712,8 +7965,12 @@ namespace HaCreator.MapSimulator
                     out hasQuestRegistrationList,
                     out questIds,
                     out hiddenAutoQuestIds,
+                    out _,
+                    out _,
                     out error))
             {
+                titleTooltipByQuestId.Clear();
+                clearUnspecifiedTitleTooltips = false;
                 return true;
             }
 
@@ -7734,6 +7991,8 @@ namespace HaCreator.MapSimulator
                     out hasQuestRegistrationList,
                     out questIds,
                     out hiddenAutoQuestIds,
+                    out titleTooltipByQuestId,
+                    out clearUnspecifiedTitleTooltips,
                     out error))
             {
                 return true;
@@ -7748,6 +8007,8 @@ namespace HaCreator.MapSimulator
                 out hasQuestRegistrationList,
                 out questIds,
                 out hiddenAutoQuestIds,
+                out titleTooltipByQuestId,
+                out clearUnspecifiedTitleTooltips,
                 out error);
         }
 
@@ -7760,6 +8021,8 @@ namespace HaCreator.MapSimulator
             out bool hasQuestRegistrationList,
             out int[] questIds,
             out int[] hiddenAutoQuestIds,
+            out Dictionary<int, string> titleTooltipByQuestId,
+            out bool clearUnspecifiedTitleTooltips,
             out string error)
         {
             opened = null;
@@ -7769,6 +8032,8 @@ namespace HaCreator.MapSimulator
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
             hiddenAutoQuestIds = Array.Empty<int>();
+            titleTooltipByQuestId = new Dictionary<int, string>();
+            clearUnspecifiedTitleTooltips = false;
             error = null;
 
             if (payload == null || payload.Length < 2)
@@ -8018,6 +8283,8 @@ namespace HaCreator.MapSimulator
             out bool hasQuestRegistrationList,
             out int[] questIds,
             out int[] hiddenAutoQuestIds,
+            out Dictionary<int, string> titleTooltipByQuestId,
+            out bool clearUnspecifiedTitleTooltips,
             out string error)
         {
             opened = null;
@@ -8027,6 +8294,8 @@ namespace HaCreator.MapSimulator
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
             hiddenAutoQuestIds = Array.Empty<int>();
+            titleTooltipByQuestId = new Dictionary<int, string>();
+            clearUnspecifiedTitleTooltips = false;
             error = "Quest-alarm registration-sync JSON payload did not contain any usable quest registration rows.";
             if (string.IsNullOrWhiteSpace(payloadText))
             {
@@ -8092,6 +8361,14 @@ namespace HaCreator.MapSimulator
                         clearHiddenAutoTombstones = parsedReplace;
                     }
 
+                    if (TryGetJsonBoolean(working, "replaceTitleTooltips", out bool parsedReplaceTitleTooltips)
+                        || TryGetJsonBoolean(working, "replaceTooltips", out parsedReplaceTitleTooltips)
+                        || TryGetJsonBoolean(working, "clearTitleTooltips", out parsedReplaceTitleTooltips)
+                        || TryGetJsonBoolean(working, "clearTooltips", out parsedReplaceTitleTooltips))
+                    {
+                        clearUnspecifiedTitleTooltips = parsedReplaceTitleTooltips;
+                    }
+
                     if (TryGetJsonArrayProperty(
                             working,
                             out JsonElement questArray,
@@ -8108,7 +8385,7 @@ namespace HaCreator.MapSimulator
                             new[] { "questIds", "registeredQuestIds", "registered", "entries", "rows", "quests" }))
                     {
                         hasQuestRegistrationList = true;
-                        questIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(questArray);
+                        questIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(questArray, titleTooltipByQuestId);
                     }
                     else if (TryDecodeQuestAlarmRegistrationQuestIdsFromClientOptionJsonObject(working, out int[] clientOptionQuestIds))
                     {
@@ -8136,7 +8413,7 @@ namespace HaCreator.MapSimulator
                 else if (working.ValueKind == JsonValueKind.Array)
                 {
                     hasQuestRegistrationList = true;
-                    questIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(working);
+                    questIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(working, titleTooltipByQuestId);
                 }
 
                 bool hasResetDirective = false;
@@ -8153,14 +8430,16 @@ namespace HaCreator.MapSimulator
                     minimized = true;
                     autoRegisterEnabled = false;
                     clearHiddenAutoTombstones = true;
+                    clearUnspecifiedTitleTooltips = true;
                     hasQuestRegistrationList = true;
                     questIds = Array.Empty<int>();
                     hiddenAutoQuestIds = Array.Empty<int>();
+                    titleTooltipByQuestId.Clear();
                     error = null;
                     return true;
                 }
 
-                if (hasQuestRegistrationList || hiddenAutoQuestIds.Length > 0)
+                if (hasQuestRegistrationList || hiddenAutoQuestIds.Length > 0 || titleTooltipByQuestId.Count > 0 || clearUnspecifiedTitleTooltips)
                 {
                     error = null;
                     return true;
@@ -8192,6 +8471,13 @@ namespace HaCreator.MapSimulator
 
         private static int[] DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(JsonElement questArray)
         {
+            return DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(questArray, null);
+        }
+
+        private static int[] DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(
+            JsonElement questArray,
+            Dictionary<int, string> titleTooltipByQuestId)
+        {
             List<int> questIds = new();
             if (questArray.ValueKind != JsonValueKind.Array)
             {
@@ -8211,9 +8497,44 @@ namespace HaCreator.MapSimulator
                 {
                     questIds.Add(questId);
                 }
+
+                if (questId > 0
+                    && titleTooltipByQuestId != null
+                    && TryResolveQuestAlarmRegistrationTitleTooltipFromJsonElement(element, out string titleTooltip))
+                {
+                    titleTooltipByQuestId[questId] = titleTooltip;
+                }
             }
 
             return questIds.ToArray();
+        }
+
+        private static bool TryResolveQuestAlarmRegistrationTitleTooltipFromJsonElement(
+            JsonElement element,
+            out string titleTooltip)
+        {
+            titleTooltip = string.Empty;
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!TryGetJsonStringProperty(
+                    element,
+                    out titleTooltip,
+                    "titleTooltip",
+                    "tooltip",
+                    "tooltipText",
+                    "rowTooltip",
+                    "titleHint",
+                    "hint",
+                    "notice"))
+            {
+                return false;
+            }
+
+            titleTooltip = QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(titleTooltip);
+            return true;
         }
 
         private static bool TryResolveQuestAlarmRegistrationQuestIdFromJsonElement(JsonElement element, out int questId)
@@ -8291,6 +8612,8 @@ namespace HaCreator.MapSimulator
             out bool hasQuestRegistrationList,
             out int[] questIds,
             out int[] hiddenAutoQuestIds,
+            out Dictionary<int, string> titleTooltipByQuestId,
+            out bool clearUnspecifiedTitleTooltips,
             out string error)
         {
             opened = null;
@@ -8300,6 +8623,8 @@ namespace HaCreator.MapSimulator
             hasQuestRegistrationList = false;
             questIds = Array.Empty<int>();
             hiddenAutoQuestIds = Array.Empty<int>();
+            titleTooltipByQuestId = new Dictionary<int, string>();
+            clearUnspecifiedTitleTooltips = false;
             error = "Quest-alarm registration-sync payload did not contain any usable quest registration rows.";
             if (string.IsNullOrWhiteSpace(payloadText))
             {
@@ -8314,6 +8639,7 @@ namespace HaCreator.MapSimulator
                 minimized = true;
                 autoRegisterEnabled = false;
                 clearHiddenAutoTombstones = true;
+                clearUnspecifiedTitleTooltips = true;
                 hasQuestRegistrationList = true;
                 error = null;
                 return true;
@@ -8370,6 +8696,16 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "replaceTooltips", out bool parsedClearTooltips)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "clearTooltips", out parsedClearTooltips)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "replaceTitleTooltips", out parsedClearTooltips)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "clearTitleTooltips", out parsedClearTooltips))
+                {
+                    clearUnspecifiedTitleTooltips = parsedClearTooltips;
+                    sawDirective = true;
+                    continue;
+                }
+
                 if (TryParseQuestAlarmRegistrationSyncListDirective(segment, parsedQuestIds))
                 {
                     sawQuestRegistrationListDirective = true;
@@ -8415,7 +8751,7 @@ namespace HaCreator.MapSimulator
             questIds = parsedQuestIds.ToArray();
             hiddenAutoQuestIds = parsedHiddenAutoQuestIds.ToArray();
             hasQuestRegistrationList = sawQuestRegistrationListDirective || questIds.Length > 0;
-            if (hasQuestRegistrationList || hiddenAutoQuestIds.Length > 0 || sawDirective)
+            if (hasQuestRegistrationList || hiddenAutoQuestIds.Length > 0 || titleTooltipByQuestId.Count > 0 || sawDirective)
             {
                 error = null;
                 return true;
@@ -10069,16 +10405,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryDispatchMessengerOfficialSessionRequest(
-                    118,
-                    payload,
-                    $"CWvsContext::SendClaimRequest targeted {targetCharacterName}",
-                    out string dispatchStatus,
-                    queueOnly))
-            {
-                message = dispatchStatus;
-                return false;
-            }
+            bool dispatched = TryDispatchMessengerOfficialSessionRequest(
+                PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode,
+                payload,
+                $"CWvsContext::SendClaimRequest targeted {targetCharacterName}",
+                out string dispatchStatus,
+                queueOnly);
 
             string runtimeStatus = _messengerRuntime.QueueSessionOwnedChatClaimRequest(
                 targetCharacterName,
@@ -10086,15 +10418,16 @@ namespace HaCreator.MapSimulator
                 context,
                 chatLineCount,
                 queueOnly);
-            message = $"{runtimeStatus} {dispatchStatus}";
+            message = dispatched
+                ? $"{runtimeStatus} {dispatchStatus}"
+                : $"{runtimeStatus} {dispatchStatus} The simulator kept the CWvsContext::SendClaimRequest payload and server-owned completion seam local.";
             return true;
         }
 
         private string TryHandleMessengerClaimActionThroughClientSeam()
         {
-            return TryMirrorMessengerNativeClaimClientRequest(out string mirroredMessage)
-                ? mirroredMessage
-                : _messengerRuntime.SubmitClaim();
+            TryMirrorMessengerNativeClaimClientRequest(out string mirroredMessage);
+            return mirroredMessage;
         }
 
         private bool TryMirrorMessengerClaimClientRequest(string claimArguments, out string message, bool queueOnly = false)
@@ -10132,16 +10465,12 @@ namespace HaCreator.MapSimulator
             }
 
             byte[] payload = MessengerPacketCodec.BuildClaimRequestPayload(targetCharacterName, claimType, context, chatLog);
-            if (!TryDispatchMessengerOfficialSessionRequest(
-                    118,
-                    payload,
-                    $"CWvsContext::SendClaimRequest targeted {targetCharacterName}",
-                    out string dispatchStatus,
-                    queueOnly))
-            {
-                message = dispatchStatus;
-                return false;
-            }
+            bool dispatched = TryDispatchMessengerOfficialSessionRequest(
+                PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode,
+                payload,
+                $"CWvsContext::SendClaimRequest targeted {targetCharacterName}",
+                out string dispatchStatus,
+                queueOnly);
 
             int chatLineCount = CountMessengerClaimChatLogLines(chatLog);
             if (chatLineCount <= 0)
@@ -10155,7 +10484,9 @@ namespace HaCreator.MapSimulator
                 context,
                 chatLineCount,
                 queueOnly);
-            message = $"{runtimeStatus} {dispatchStatus}";
+            message = dispatched
+                ? $"{runtimeStatus} {dispatchStatus}"
+                : $"{runtimeStatus} {dispatchStatus} The simulator kept the CWvsContext::SendClaimRequest payload and server-owned completion seam local.";
             return true;
         }
 
@@ -11359,7 +11690,9 @@ namespace HaCreator.MapSimulator
                     AilQuickLoadMemAttempted: false,
                     AilQuickMsLengthAttempted: false,
                     AilQuickSetMsPositionAttempted: false,
+                    AilQuickMsPositionAttempted: false,
                     AilQuickPlayAttempted: false,
+                    AilQuickUnloadAttempted: false,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -11377,7 +11710,9 @@ namespace HaCreator.MapSimulator
                     AilQuickLoadMemAttempted: false,
                     AilQuickMsLengthAttempted: false,
                     AilQuickSetMsPositionAttempted: false,
+                    AilQuickMsPositionAttempted: false,
                     AilQuickPlayAttempted: false,
+                    AilQuickUnloadAttempted: false,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -11398,7 +11733,9 @@ namespace HaCreator.MapSimulator
                     AilQuickLoadMemAttempted: false,
                     AilQuickMsLengthAttempted: false,
                     AilQuickSetMsPositionAttempted: false,
+                    AilQuickMsPositionAttempted: false,
                     AilQuickPlayAttempted: false,
+                    AilQuickUnloadAttempted: false,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -11416,7 +11753,9 @@ namespace HaCreator.MapSimulator
                     AilQuickLoadMemAttempted: true,
                     AilQuickMsLengthAttempted: true,
                     AilQuickSetMsPositionAttempted: false,
+                    AilQuickMsPositionAttempted: false,
                     AilQuickPlayAttempted: false,
+                    AilQuickUnloadAttempted: true,
                     Started: false,
                     MsLength: normalizedLength,
                     MsPosition: normalizedPosition,
@@ -11438,7 +11777,9 @@ namespace HaCreator.MapSimulator
                 AilQuickLoadMemAttempted: true,
                 AilQuickMsLengthAttempted: true,
                 AilQuickSetMsPositionAttempted: true,
+                AilQuickMsPositionAttempted: true,
                 AilQuickPlayAttempted: true,
+                AilQuickUnloadAttempted: false,
                 Started: true,
                 MsLength: normalizedLength,
                 MsPosition: normalizedPosition,
@@ -12050,7 +12391,7 @@ namespace HaCreator.MapSimulator
                 ? "none"
                 : _lastPacketOwnedRadioClientMmsPlayFailureReason;
             return
-                $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / play; " +
+                $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => raw buffer => AIL_quick_load_mem / ms_length / set_ms_position / ms_position / play, with immediate unload on the ms_length gate; " +
                 $"surrogate stages trackProp={_lastPacketOwnedRadioClientTrackPropertyLoaded}, sound={_lastPacketOwnedRadioClientSoundObjectLoaded}, raw={_lastPacketOwnedRadioClientRawBufferLoaded}, {started}, handle={_lastPacketOwnedRadioClientHandleStatus}, failure={failure}; " +
                 $"last MMS_Stop entered={_lastPacketOwnedRadioMmsStopPlan.EnteredStop}, halt={_lastPacketOwnedRadioMmsStopPlan.HaltedHandle}, unload={_lastPacketOwnedRadioMmsStopPlan.UnloadedHandle}, clear={_lastPacketOwnedRadioMmsStopPlan.ClearedHandle}, releaseSound={_lastPacketOwnedRadioMmsStopPlan.ReleasedSoundObject}, releaseTrack={_lastPacketOwnedRadioMmsStopPlan.ReleasedTrackProperty}, stopHandle={_lastPacketOwnedRadioMmsStopPlan.HandleStatus}; " +
                 "simulator reuses WZ sound Length for ms_length/ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
@@ -13046,14 +13387,19 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            bool hasPassiveTemporaryStatObject =
+            bool hadPassiveTemporaryStatObject =
                 TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool resolvedPassiveTemporaryStatObject)
                 && resolvedPassiveTemporaryStatObject;
-            bool allocatedPassiveTemporaryStatObject = false;
-            if (ShouldAllocatePacketOwnedBattleshipPassiveTemporaryStatObject(
+            PacketOwnedBattleshipTemporaryStatMutationPlan mutationPlan =
+                ResolvePacketOwnedBattleshipTemporaryStatMutationPlan(
                     hasPassiveTemporaryStatTrackingOwner,
                     isVehiclePresentationActive,
-                    hasPassiveTemporaryStatObject)
+                    hadPassiveTemporaryStatObject,
+                    recordPassiveTemporaryStatUpdate);
+
+            bool hasPassiveTemporaryStatObject = hadPassiveTemporaryStatObject;
+            bool allocatedPassiveTemporaryStatObject = false;
+            if (mutationPlan.AllocatePassiveTemporaryStatObject
                 && _playerManager.Skills.TryAllocatePassiveVehicleTemporaryStatObjectForParity(
                     PacketOwnedBattleshipSkillId,
                     currentValue,
@@ -13062,12 +13408,18 @@ namespace HaCreator.MapSimulator
             {
                 hasPassiveTemporaryStatObject = true;
                 allocatedPassiveTemporaryStatObject = true;
+                mutationPlan = mutationPlan with
+                {
+                    HasPassiveTemporaryStatObject = true,
+                    AllocatePassiveTemporaryStatObject = false,
+                    CanUpdatePassively = true,
+                    RecordPassiveTemporaryStatUpdate = ShouldRecordPacketOwnedBattleshipPassiveTemporaryStatUpdate(
+                        recordPassiveTemporaryStatUpdate,
+                        allocatedPassiveTemporaryStatObject)
+                };
             }
 
-            if (!ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
-                    hasPassiveTemporaryStatTrackingOwner,
-                    hasPassiveTemporaryStatObject,
-                    isVehiclePresentationActive))
+            if (!mutationPlan.CanUpdatePassively || !hasPassiveTemporaryStatObject)
             {
                 _playerManager.Skills.ClearAuthoritativeCooldownPresentation(PacketOwnedBattleshipSkillId);
                 if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
@@ -13090,9 +13442,7 @@ namespace HaCreator.MapSimulator
                 maxValue,
                 currTickCount,
                 hasTemporaryObject: true,
-                recordPassiveTemporaryStatUpdate: ShouldRecordPacketOwnedBattleshipPassiveTemporaryStatUpdate(
-                    recordPassiveTemporaryStatUpdate,
-                    allocatedPassiveTemporaryStatObject));
+                recordPassiveTemporaryStatUpdate: mutationPlan.RecordPassiveTemporaryStatUpdate);
 
             CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
             if (mountPart == null)
@@ -13233,6 +13583,35 @@ namespace HaCreator.MapSimulator
             // When the simulator has to allocate a missing TEMPORARY_STAT owner surrogate first,
             // force one immediate update write so low-bucket metadata stays synchronized.
             return recordPassiveTemporaryStatUpdate || allocatedPassiveTemporaryStatObject;
+        }
+
+        internal static PacketOwnedBattleshipTemporaryStatMutationPlan ResolvePacketOwnedBattleshipTemporaryStatMutationPlan(
+            bool hasPassiveTemporaryStatTrackingOwner,
+            bool isVehiclePresentationActive,
+            bool hasPassiveTemporaryStatObject,
+            bool recordPassiveTemporaryStatUpdate)
+        {
+            bool allocatePassiveTemporaryStatObject =
+                ShouldAllocatePacketOwnedBattleshipPassiveTemporaryStatObject(
+                    hasPassiveTemporaryStatTrackingOwner,
+                    isVehiclePresentationActive,
+                    hasPassiveTemporaryStatObject);
+            bool canUpdatePassively =
+                ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
+                    hasPassiveTemporaryStatTrackingOwner,
+                    hasPassiveTemporaryStatObject,
+                    isVehiclePresentationActive);
+
+            return new PacketOwnedBattleshipTemporaryStatMutationPlan(
+                hasPassiveTemporaryStatTrackingOwner,
+                isVehiclePresentationActive,
+                hasPassiveTemporaryStatObject,
+                allocatePassiveTemporaryStatObject,
+                canUpdatePassively,
+                (allocatePassiveTemporaryStatObject || canUpdatePassively)
+                    && ShouldRecordPacketOwnedBattleshipPassiveTemporaryStatUpdate(
+                        recordPassiveTemporaryStatUpdate,
+                        allocatePassiveTemporaryStatObject));
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(

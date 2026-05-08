@@ -812,7 +812,13 @@ namespace HaCreator.MapSimulator.Effects
         internal void ConfigureFromBoard(Board board)
         {
             _mapId = board?.MapInfo?.id ?? _mapId;
-            if (TryBuildMapContract(board?.MapInfo, out GuildBossMapContract contract))
+            ConfigureFromMap(board?.MapInfo);
+        }
+
+        internal void ConfigureFromMap(MapInfo mapInfo)
+        {
+            _mapId = mapInfo?.id ?? _mapId;
+            if (TryBuildMapContract(mapInfo, out GuildBossMapContract contract))
             {
                 ApplyMapContract(contract);
             }

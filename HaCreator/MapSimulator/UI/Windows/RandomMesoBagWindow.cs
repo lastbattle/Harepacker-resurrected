@@ -12,6 +12,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class RandomMesoBagWindow : UIWindowBase
     {
+        internal const int FallbackNoticeFrameWidth = PacketOwnedRewardNoticeWindow.DefaultFrameWidth;
+        internal const int FallbackNoticeFrameHeight = PacketOwnedRewardNoticeWindow.DefaultFrameHeight;
         private const int MessageOffsetX = 78;
         private const int MessageOffsetY = 16;
         private const int AmountTextBoxRightEdgeX = 200;
@@ -59,8 +61,8 @@ namespace HaCreator.MapSimulator.UI
             Position = CalculateCenteredPosition(
                 viewportWidth,
                 viewportHeight,
-                CurrentFrame?.Width ?? 312,
-                CurrentFrame?.Height ?? 132);
+                CurrentFrame?.Width ?? FallbackNoticeFrameWidth,
+                CurrentFrame?.Height ?? FallbackNoticeFrameHeight);
         }
 
         public void Configure(PacketOwnedRandomMesoBagPresentation presentation)
@@ -176,8 +178,8 @@ namespace HaCreator.MapSimulator.UI
             int buttonWidth = buttonDrawable?.Frame0?.Width ?? 40;
             int buttonHeight = buttonDrawable?.Frame0?.Height ?? 16;
             Point position = ResolveOkButtonPosition(
-                CurrentFrame?.Width ?? 312,
-                CurrentFrame?.Height ?? 132,
+                CurrentFrame?.Width ?? FallbackNoticeFrameWidth,
+                CurrentFrame?.Height ?? FallbackNoticeFrameHeight,
                 buttonWidth,
                 buttonHeight,
                 _useAuthoredLayout);
@@ -188,13 +190,13 @@ namespace HaCreator.MapSimulator.UI
         private Vector2 ResolveMessagePosition(string text)
         {
             float measuredWidth = string.IsNullOrWhiteSpace(text) ? 0f : MeasureWindowText(null, text).X;
-            Point position = ResolveMessagePosition(CurrentFrame?.Width ?? 312, measuredWidth, _useAuthoredLayout);
+            Point position = ResolveMessagePosition(CurrentFrame?.Width ?? FallbackNoticeFrameWidth, measuredWidth, _useAuthoredLayout);
             return new Vector2(Position.X + position.X, Position.Y + position.Y);
         }
 
         private Vector2 ResolveAmountPosition(float measuredWidth)
         {
-            Point position = ResolveAmountPosition(CurrentFrame?.Width ?? 312, measuredWidth, _useAuthoredLayout);
+            Point position = ResolveAmountPosition(CurrentFrame?.Width ?? FallbackNoticeFrameWidth, measuredWidth, _useAuthoredLayout);
             return new Vector2(Position.X + position.X, Position.Y + position.Y);
         }
 

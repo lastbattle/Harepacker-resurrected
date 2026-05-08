@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Managers
         public const byte RequestSubtypeOpenRoom = 11;
         public const byte RequestSubtypePutItem = 15;
         public const byte RequestSubtypePersonalShopBuy = 23;
+        public const byte RequestSubtypePersonalShopKickTimedOutVisitor = 29;
         public const byte RequestSubtypeEntrustedShopBuy = 34;
         public const byte RequestSubtypeEntrustedShopGoOut = 39;
         public const byte RequestSubtypeEntrustedShopArrange = 40;
@@ -34,8 +35,6 @@ namespace HaCreator.MapSimulator.Managers
         public const byte RequestSubtypeEntrustedShopBlacklist = 47;
         public const byte RequestSubtypeEntrustedShopBlacklistAdd = 48;
         public const byte RequestSubtypeEntrustedShopBlacklistDelete = 49;
-        public const byte EntrustedShopBlacklistRequestModeAdd = RequestSubtypeEntrustedShopBlacklistAdd;
-        public const byte EntrustedShopBlacklistRequestModeDelete = RequestSubtypeEntrustedShopBlacklistDelete;
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxPendingResultExpectations = 32;
 
@@ -109,6 +108,14 @@ namespace HaCreator.MapSimulator.Managers
             writer.Write(Math.Max((short)1, bundleCount));
             writer.Write(itemCrc);
             return BuildMerchantOutboundPacket(requestSubtype, writer.ToArray());
+        }
+
+        public static byte[] BuildPersonalShopKickTimedOutVisitorOutboundPacket(byte seatIndex, string userId)
+        {
+            using PacketWriter writer = new();
+            writer.WriteByte(seatIndex);
+            writer.WriteMapleString(NormalizeCharacterName(userId));
+            return BuildMerchantOutboundPacket(RequestSubtypePersonalShopKickTimedOutVisitor, writer.ToArray());
         }
 
         public static byte[] BuildMerchantOpenOutboundPacket(string title)
@@ -195,7 +202,7 @@ namespace HaCreator.MapSimulator.Managers
                     ? $"inbound opcode {AutoDetectedInboundOpcode} was auto-detected from modeled merchant payloads"
                     : $"inbound opcode is not mapped yet; auto-detection shape-checks CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket result payloads on opcode {DefaultInboundMiniRoomOpcode}";
             string outboundSubtypes =
-                "10 CPersonalShopDlg::SetRet(nRet=2), 11 open/setup room, 15 put/list item, 23 CPersonalShopDlg::BuyItem(personal), 34 CPersonalShopDlg::BuyItem(entrusted), 39 CEntrustedShopDlg::OnGoOut, 40 CEntrustedShopDlg::OnArrange, 41 CEntrustedShopDlg::SetRet(nRet=8), 43 CEntrustedShopDlg::OnWithdrawMoney, 46 CEntrustedShopDlg::OnVisitList, 47 CEntrustedShopDlg::OnBlackList / child add-delete";
+                "10 CPersonalShopDlg::SetRet(nRet=2), 11 open/setup room, 15 put/list item, 23 CPersonalShopDlg::BuyItem(personal), 29 CPersonalShopDlg::Update timed-out visitor removal, 34 CPersonalShopDlg::BuyItem(entrusted), 39 CEntrustedShopDlg::OnGoOut, 40 CEntrustedShopDlg::OnArrange, 41 CEntrustedShopDlg::SetRet(nRet=8), 43 CEntrustedShopDlg::OnWithdrawMoney, 46 CEntrustedShopDlg::OnVisitList, 47 CEntrustedShopDlg::OnBlackList / child add-delete";
             return
                 $"Merchant-room opcode map: outbound MiniRoom requests use opcode {OutboundMiniRoomOpcode} with recovered request subtypes {outboundSubtypes}; server-owned merchant updates currently model subtypes 24, 25, 26, 27, 40, 42, 44, 46, and 47 through CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket with subtype 25 forwarding into CMiniRoomBaseDlg::OnPacketBase. {inbound}.";
         }

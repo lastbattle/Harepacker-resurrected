@@ -1369,30 +1369,56 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                string uiData = (infoProperty["uiData"] as WzStringProperty)?.Value?.Trim() ?? string.Empty;
-                int questId = GetIntValue(infoProperty["questId"]);
-                if (questId <= 0 || string.IsNullOrWhiteSpace(uiData) || uiData.IndexOf("/raise/", StringComparison.OrdinalIgnoreCase) < 0)
+                if (TryCreateRaiseItemMetadata(ownerItemId, infoProperty, out QuestRewardRaiseItemMetadata raiseItemMetadata))
                 {
-                    continue;
+                    metadata.Add(raiseItemMetadata);
                 }
-
-                IReadOnlyList<int> dropItemIds = ResolveRaiseDropItemEntries(infoProperty);
-                metadata.Add(new QuestRewardRaiseItemMetadata
-                {
-                    OwnerItemId = ownerItemId,
-                    QuestId = questId,
-                    IncrementExpUnit = GetIntValue(infoProperty["exp"]),
-                    Grade = GetIntValue(infoProperty["grade"]),
-                    MaxDropCount = dropItemIds.Count,
-                    Name = (infoProperty["name"] as WzStringProperty)?.Value?.Trim() ?? string.Empty,
-                    UiData = uiData,
-                    MessageLines = GetStringList(infoProperty["message"] as WzSubProperty),
-                    DropItemIds = dropItemIds
-                });
             }
 
             _raiseItemMetadataCache = metadata;
             return _raiseItemMetadataCache;
+        }
+
+        internal static bool TryCreateRaiseItemMetadataForTests(
+            int ownerItemId,
+            WzSubProperty infoProperty,
+            out QuestRewardRaiseItemMetadata metadata)
+        {
+            return TryCreateRaiseItemMetadata(ownerItemId, infoProperty, out metadata);
+        }
+
+        private static bool TryCreateRaiseItemMetadata(
+            int ownerItemId,
+            WzSubProperty infoProperty,
+            out QuestRewardRaiseItemMetadata metadata)
+        {
+            metadata = null;
+            if (ownerItemId <= 0 || infoProperty == null)
+            {
+                return false;
+            }
+
+            string uiData = (infoProperty["uiData"] as WzStringProperty)?.Value?.Trim() ?? string.Empty;
+            int questId = GetIntOrStringValue(infoProperty["questId"]);
+            if (questId <= 0 || string.IsNullOrWhiteSpace(uiData) || uiData.IndexOf("/raise/", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<int> dropItemIds = ResolveRaiseDropItemEntries(infoProperty);
+            metadata = new QuestRewardRaiseItemMetadata
+            {
+                OwnerItemId = ownerItemId,
+                QuestId = questId,
+                IncrementExpUnit = GetIntOrStringValue(infoProperty["exp"]),
+                Grade = GetIntOrStringValue(infoProperty["grade"]),
+                MaxDropCount = dropItemIds.Count,
+                Name = (infoProperty["name"] as WzStringProperty)?.Value?.Trim() ?? string.Empty,
+                UiData = uiData,
+                MessageLines = GetStringList(infoProperty["message"] as WzSubProperty),
+                DropItemIds = dropItemIds
+            };
+            return true;
         }
 
         private static IReadOnlyList<int> ResolveRaiseDropItemEntries(WzSubProperty infoProperty)
@@ -2080,6 +2106,8 @@ namespace HaCreator.MapSimulator.UI
             AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(effectSpecProperty["jump"]), false);
             AppendPrimaryFlatEffectLines(effectLines, effectSpecProperty);
             AppendPercentEffectLines(effectLines, effectSpecProperty);
+            AppendStatEffectLine(effectLines, "Critical Rate", TryGetPositiveInt(effectSpecProperty["criticalProb"]), true);
+            AppendStatEffectLine(effectLines, "Evasion Rate", TryGetPositiveInt(effectSpecProperty["evadeProb"]), true);
             AppendIndependentFlatEffectLines(effectLines, effectSpecProperty);
             AppendIndependentPercentEffectLines(effectLines, effectSpecProperty);
             AppendCureEffectLine(effectLines, effectSpecProperty);
@@ -2101,6 +2129,7 @@ namespace HaCreator.MapSimulator.UI
             AppendSpecExMobSkillEffectLines(effectLines, specExProperty);
             AppendMobSkillOwnershipEffectLines(effectLines, specProperty, specExProperty);
             AppendPickupTriggerEffectLines(effectLines, specProperty, specExProperty);
+            AppendRandomPickupEffectLines(effectLines, specProperty, specExProperty);
             AppendScreenMessageEffectLines(effectLines, specProperty, specExProperty);
 
             int? durationMs = TryGetPositiveInt(effectSpecProperty["time"]);
@@ -2163,6 +2192,7 @@ namespace HaCreator.MapSimulator.UI
             AppendMonsterBookMetadataLines(metadataLines, infoProperty);
             AppendQuestRequirementMetadataLines(metadataLines, infoProperty);
             AppendConsumeItemMetadataLines(metadataLines, infoProperty);
+            AppendSpecSkillMetadataLines(metadataLines, specProperty, specExProperty);
 
             if (isTradeBlocked)
             {
@@ -2531,6 +2561,69 @@ namespace HaCreator.MapSimulator.UI
             if (HasPetPickupRestriction(specProperty, specExProperty))
             {
                 effectLines.Add("Cannot be picked up by pets");
+            }
+        }
+
+        private static void AppendRandomPickupEffectLines(
+            List<string> effectLines,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            IReadOnlyList<int> randomPickupItemIds = ResolveRandomPickupItemIds(specProperty, specExProperty);
+            if (randomPickupItemIds.Count <= 0)
+            {
+                return;
+            }
+
+            List<string> previewLabels = new();
+            for (int i = 0; i < randomPickupItemIds.Count && previewLabels.Count < 5; i++)
+            {
+                string label = ResolveTooltipItemLabel(randomPickupItemIds[i]);
+                if (!string.IsNullOrWhiteSpace(label))
+                {
+                    previewLabels.Add(label);
+                }
+            }
+
+            if (previewLabels.Count > 0)
+            {
+                string suffix = randomPickupItemIds.Count > previewLabels.Count
+                    ? $" ... and {(randomPickupItemIds.Count - previewLabels.Count).ToString(CultureInfo.InvariantCulture)} more"
+                    : string.Empty;
+                effectLines.Add($"Random Pickup: {string.Join(", ", previewLabels)}{suffix}");
+            }
+
+            if (IsEnabledFlag(specProperty?["randomPickupConsume"])
+                || IsEnabledFlag(specExProperty?["randomPickupConsume"]))
+            {
+                effectLines.Add("Consumes the selected random pickup item");
+            }
+        }
+
+        private static IReadOnlyList<int> ResolveRandomPickupItemIds(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            List<int> itemIds = new();
+            HashSet<int> seenItemIds = new();
+            AppendRandomPickupItemIds(itemIds, seenItemIds, specProperty?["randomPickup"] as WzSubProperty);
+            AppendRandomPickupItemIds(itemIds, seenItemIds, specExProperty?["randomPickup"] as WzSubProperty);
+            return itemIds;
+        }
+
+        private static void AppendRandomPickupItemIds(
+            List<int> itemIds,
+            HashSet<int> seenItemIds,
+            WzSubProperty randomPickupProperty)
+        {
+            IReadOnlyList<(int Index, int Value)> rows = GetNumericNamedIntValueRows(randomPickupProperty);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                int itemId = rows[i].Value;
+                if (itemId > 0 && seenItemIds.Add(itemId))
+                {
+                    itemIds.Add(itemId);
+                }
             }
         }
 
@@ -3152,6 +3245,31 @@ namespace HaCreator.MapSimulator.UI
                 {
                     metadataLines.Add(skillLine);
                 }
+            }
+        }
+
+        private static void AppendSpecSkillMetadataLines(
+            List<string> metadataLines,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            if (metadataLines == null)
+            {
+                return;
+            }
+
+            int skillId = Math.Max(
+                GetIntOrStringValue(specProperty?["skillID"]),
+                GetIntOrStringValue(specExProperty?["skillID"]));
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            string skillLine = ResolveSkillTooltipLine(skillId);
+            if (!metadataLines.Contains(skillLine, StringComparer.Ordinal))
+            {
+                metadataLines.Add(skillLine);
             }
         }
 
@@ -4363,6 +4481,25 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["pachinko"]) == 1)
             {
                 metadataLines.Add("Pachinko item");
+            }
+
+            if (GetIntValue(infoProperty["random"]) == 1)
+            {
+                metadataLines.Add("Random item outcome");
+            }
+
+            int randomOption = GetIntOrStringValue(infoProperty["randOption"]);
+            if (randomOption > 0)
+            {
+                metadataLines.Add($"Random Option: {randomOption.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int randomStat = GetIntOrStringValue(infoProperty["randStat"]);
+            if (randomStat > 0 && GetIntOrStringValue(infoProperty["randstat"]) <= 0)
+            {
+                metadataLines.Add(randomStat == 1
+                    ? "Randomizes applied stat values"
+                    : $"Random Stat: {randomStat.ToString(CultureInfo.InvariantCulture)}");
             }
 
             int cooltimeSeconds = GetIntOrStringValue(infoProperty["cooltime"]);

@@ -49,17 +49,17 @@ namespace HaCreator.MapSimulator.Fields
             Func<int, int> resolveEnvironmentalDamageProtectionAmount = null,
             bool includeFirstUserEnterScript = true)
         {
-            _timeLimitSeconds = Math.Max(0, mapInfo?.timeLimit ?? 0);
+            _timeLimitSeconds = Math.Max(0, mapInfo?.timeLimit ?? GetInfoInt(mapInfo, "timeLimit") ?? 0);
             _transferMapId = ResolveTransferMapId(mapInfo);
-            _decHp = Math.Max(0, mapInfo?.decHP ?? 0);
-            _decIntervalMs = NormalizeDecIntervalMs(mapInfo?.decInterval);
-            _recoveryRate = NormalizeRecoveryRate(mapInfo?.recovery);
+            _decHp = Math.Max(0, mapInfo?.decHP ?? GetInfoInt(mapInfo, "decHP") ?? 0);
+            _decIntervalMs = NormalizeDecIntervalMs(mapInfo?.decInterval ?? GetInfoInt(mapInfo, "decInterval"));
+            _recoveryRate = NormalizeRecoveryRate(mapInfo?.recovery ?? GetInfoFloat(mapInfo, "recovery"));
             _fieldLimit = mapInfo?.fieldLimit ?? 0;
             _ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(mapInfo);
-            _allowedItems = mapInfo?.allowedItem != null ? new List<int>(mapInfo.allowedItem) : new List<int>();
-            _protectItems = mapInfo?.protectItem != null ? new List<int>(mapInfo.protectItem) : new List<int>();
+            _allowedItems = ResolveInfoIntList(mapInfo, "allowedItem", mapInfo?.allowedItem);
+            _protectItems = ResolveInfoIntList(mapInfo, "protectItem", mapInfo?.protectItem);
             _moveLimit = ResolveMoveLimit(mapInfo);
-            _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? 0);
+            _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? GetInfoInt(mapInfo, "consumeItemCoolTime") ?? 0);
             _mapInfo = mapInfo;
             _entryScripts = CollectEntryScripts(mapInfo, includeFirstUserEnterScript);
             _hasItem = hasItem;
@@ -416,7 +416,7 @@ namespace HaCreator.MapSimulator.Fields
                 return typedMoveLimit;
             }
 
-            return NormalizeMoveLimit(GetInfoInt(mapInfo, "moveLimit"));
+            return NormalizeMoveLimit(GetInfoIntWithCopiedBranchFallback(mapInfo, "moveLimit"));
         }
 
         private static int? NormalizeMoveLimit(int? moveLimit)
@@ -431,9 +431,120 @@ namespace HaCreator.MapSimulator.Fields
                 return null;
             }
 
-            WzImageProperty property = FindNamedProperty(mapInfo.additionalProps, propertyName)
-                ?? FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName)
-                ?? mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            return GetPropertyInt(property);
+        }
+
+        private static int? GetInfoIntWithCopiedBranchFallback(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
+            {
+                int? value = GetPropertyInt(property);
+                if (value.HasValue)
+                {
+                    return value;
+                }
+            }
+
+            return null;
+        }
+
+        private static float? GetInfoFloat(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            if (property == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return property.GetFloat();
+            }
+            catch
+            {
+                return property is WzStringProperty stringProperty
+                       && float.TryParse(stringProperty.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float value)
+                    ? value
+                    : null;
+            }
+        }
+
+        private static string GetInfoString(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            if (property == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return property.GetString();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static List<int> ResolveInfoIntList(
+            MapInfo mapInfo,
+            string propertyName,
+            IEnumerable<int> typedValues)
+        {
+            if (typedValues != null)
+            {
+                return new List<int>(typedValues);
+            }
+
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            if (property == null)
+            {
+                return new List<int>();
+            }
+
+            var values = new List<int>();
+            if (property.WzProperties != null && property.WzProperties.Count > 0)
+            {
+                foreach (WzImageProperty child in property.WzProperties)
+                {
+                    int? value = GetPropertyInt(child);
+                    if (value.HasValue)
+                    {
+                        values.Add(value.Value);
+                    }
+                }
+            }
+            else
+            {
+                int? value = GetPropertyInt(property);
+                if (value.HasValue)
+                {
+                    values.Add(value.Value);
+                }
+            }
+
+            return values;
+        }
+
+        private static int? GetPropertyInt(WzImageProperty property)
+        {
             if (property == null)
             {
                 return null;
@@ -446,9 +557,40 @@ namespace HaCreator.MapSimulator.Fields
             catch
             {
                 return property is WzStringProperty stringProperty
-                       && int.TryParse(stringProperty.Value, out int value)
+                       && int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
                     ? value
                     : null;
+            }
+        }
+
+        private static WzImageProperty FindInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            return EnumerateInfoProperties(mapInfo, propertyName).FirstOrDefault();
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateInfoProperties(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                yield break;
+            }
+
+            WzImageProperty property = FindNamedProperty(mapInfo.additionalProps, propertyName);
+            if (property != null)
+            {
+                yield return property;
+            }
+
+            property = FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName);
+            if (property != null)
+            {
+                yield return property;
+            }
+
+            property = mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+            if (property != null)
+            {
+                yield return property;
             }
         }
 
@@ -517,14 +659,20 @@ namespace HaCreator.MapSimulator.Fields
             var seenScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             AddParsedScriptsIfPresent(scripts, seenScripts, "onUserEnter", mapInfo?.onUserEnter);
+            AddParsedScriptsIfPresent(scripts, seenScripts, "onUserEnter", GetInfoString(mapInfo, "onUserEnter"));
             if (includeFirstUserEnterScript)
             {
                 AddParsedScriptsIfPresent(scripts, seenScripts, "onFirstUserEnter", mapInfo?.onFirstUserEnter);
+                AddParsedScriptsIfPresent(scripts, seenScripts, "onFirstUserEnter", GetInfoString(mapInfo, "OnFirstUserEnter"));
+                AddParsedScriptsIfPresent(scripts, seenScripts, "onFirstUserEnter", GetInfoString(mapInfo, "onFirstUserEnter"));
             }
 
-            foreach (string fieldScript in QuestRuntimeManager.ParseScriptNames(mapInfo?.Image?["info"]?["fieldScript"]))
+            foreach (WzImageProperty fieldScriptProperty in EnumerateInfoProperties(mapInfo, "fieldScript"))
             {
-                AddScriptIfPresent(scripts, seenScripts, "fieldScript", fieldScript);
+                foreach (string fieldScript in QuestRuntimeManager.ParseScriptNames(fieldScriptProperty))
+                {
+                    AddScriptIfPresent(scripts, seenScripts, "fieldScript", fieldScript);
+                }
             }
 
             return scripts;

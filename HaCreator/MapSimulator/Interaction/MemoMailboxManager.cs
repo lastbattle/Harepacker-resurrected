@@ -22,8 +22,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int StringPoolClaimWindowExpired = 0xF54;
         private const int StringPoolClaimWindowDaysRemaining = 0x1A17;
         private const int MaxPacketOwnedReceiveRows = 10;
-        private const byte ParcelDialogNormalSendRequestSubtype = 0;
-        private const byte ParcelDialogQuickSendRequestSubtype = 1;
+        private const int ParcelDialogSendRequestOpcode = 70;
+        private const byte ParcelDialogSendRequestSubtype = 2;
 
         private enum MemoAttachmentKind
         {
@@ -1594,19 +1594,16 @@ namespace HaCreator.MapSimulator.Interaction
                 : GetParcelTax(meso) + 5000;
             bool hasItem = HasItemAttachment(attachment);
             byte[] payload = BuildParcelDialogOutboundPayload(
-                isQuickDelivery ? ParcelDialogQuickSendRequestSubtype : ParcelDialogNormalSendRequestSubtype,
                 normalizedRecipient,
                 attachment,
                 meso,
-                feeMeso,
                 isQuickDelivery ? Math.Max(0, (int)quickDeliveryCouponPosition) : 0,
                 normalizedQuickMemo);
 
             return new ParcelDialogOutboundRequestSnapshot
             {
-                // The official outbound opcode is still an unrecovered client seam for this row.
-                Opcode = 0,
-                Subtype = isQuickDelivery ? ParcelDialogQuickSendRequestSubtype : ParcelDialogNormalSendRequestSubtype,
+                Opcode = ParcelDialogSendRequestOpcode,
+                Subtype = ParcelDialogSendRequestSubtype,
                 SourceTab = sourceTab,
                 InventoryType = hasItem ? (byte)Math.Clamp((int)attachment.InventoryType, 0, byte.MaxValue) : (byte)0,
                 InventoryPosition = hasItem ? attachment.InventoryPosition : (short)0,
@@ -1623,35 +1620,46 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static byte[] BuildParcelDialogOutboundPayload(
-            byte subtype,
             string recipient,
             MemoAttachmentState attachment,
             int meso,
-            int feeMeso,
             int quickDeliveryCouponPosition,
             string quickDeliveryMemo)
         {
             using var stream = new MemoryStream();
             using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
-            writer.Write(subtype);
-            WriteMapleString(writer, recipient);
-            writer.Write(Math.Max(0, meso));
-            writer.Write(Math.Max(0, feeMeso));
-
             bool hasItem = HasItemAttachment(attachment);
-            writer.Write((byte)(hasItem ? 1 : 0));
-            if (hasItem)
+            writer.Write(ParcelDialogSendRequestSubtype);
+            writer.Write(ResolveClientItemType(attachment, hasItem));
+            writer.Write(hasItem ? attachment.InventoryPosition : (short)0);
+            writer.Write((short)(hasItem ? Math.Clamp(attachment.Quantity, 1, short.MaxValue) : 0));
+            writer.Write(Math.Max(0, meso));
+            WriteMapleString(writer, recipient);
+            bool isQuickDelivery = !string.IsNullOrEmpty(quickDeliveryMemo);
+            writer.Write((byte)(isQuickDelivery ? 1 : 0));
+            if (isQuickDelivery)
             {
-                writer.Write((byte)Math.Clamp((int)attachment.InventoryType, 0, byte.MaxValue));
-                writer.Write(attachment.InventoryPosition);
-                writer.Write(Math.Max(0, attachment.ItemId));
-                writer.Write((short)Math.Clamp(attachment.Quantity, 1, short.MaxValue));
+                WriteMapleString(writer, quickDeliveryMemo);
+                writer.Write(Math.Max(0, quickDeliveryCouponPosition));
             }
 
-            writer.Write((short)Math.Clamp(quickDeliveryCouponPosition, 0, short.MaxValue));
-            WriteMapleString(writer, quickDeliveryMemo);
             writer.Flush();
             return stream.ToArray();
+        }
+
+        private static byte ResolveClientItemType(MemoAttachmentState attachment, bool hasItem)
+        {
+            if (!hasItem)
+            {
+                return 0;
+            }
+
+            if (attachment.InventoryType != InventoryType.NONE)
+            {
+                return (byte)Math.Clamp((int)attachment.InventoryType, 0, byte.MaxValue);
+            }
+
+            return (byte)Math.Clamp(attachment.ItemId / 1_000_000, 0, byte.MaxValue);
         }
 
         private static void WriteMapleString(BinaryWriter writer, string value)

@@ -264,6 +264,38 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        internal static byte[] BuildFamilyInfoRequestPayload()
+        {
+            return Array.Empty<byte>();
+        }
+
+        internal static byte[] BuildFamilyChartRequestPayload(string characterName)
+        {
+            return BuildMapleStringPayload(characterName);
+        }
+
+        internal static byte[] BuildRegisterJuniorRequestPayload(string characterName)
+        {
+            return BuildMapleStringPayload(characterName);
+        }
+
+        internal static byte[] BuildUnregisterJuniorRequestPayload(int characterId)
+        {
+            byte[] payload = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload, characterId);
+            return payload;
+        }
+
+        internal static byte[] BuildUnregisterParentRequestPayload()
+        {
+            return Array.Empty<byte>();
+        }
+
+        internal static byte[] BuildSetFamilyPreceptRequestPayload(string precept)
+        {
+            return BuildMapleStringPayload(precept);
+        }
+
         internal static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int opcode, out byte[] payload, out string error)
         {
             opcode = -1;
@@ -380,6 +412,23 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return values;
+        }
+
+        private static byte[] BuildMapleStringPayload(string value)
+        {
+            string normalizedValue = string.IsNullOrWhiteSpace(value)
+                ? string.Empty
+                : value.Trim();
+            byte[] valueBytes = Encoding.Default.GetBytes(normalizedValue);
+            ushort byteLength = (ushort)Math.Min(valueBytes.Length, ushort.MaxValue);
+            byte[] payload = new byte[sizeof(ushort) + byteLength];
+            BinaryPrimitives.WriteUInt16LittleEndian(payload, byteLength);
+            if (byteLength > 0)
+            {
+                Array.Copy(valueBytes, 0, payload, sizeof(ushort), byteLength);
+            }
+
+            return payload;
         }
 
         private ref struct PacketReader

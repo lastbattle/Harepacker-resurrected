@@ -123,6 +123,7 @@ namespace HaCreator.MapSimulator.Animation
                 = Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
             private int _simulatedOverlaySnapshotRefCount;
             private readonly Dictionary<(int LayerCode, int HandleId), int> _simulatedLayerSnapshotRefCounts = new();
+            private readonly HashSet<SecondaryMotionBlurSnapshotReleaseKey> _releasedSnapshotTraces = new();
 
             internal void CaptureRegisteredLayerReferences(
                 int overlayLayerHandleId,
@@ -132,6 +133,7 @@ namespace HaCreator.MapSimulator.Animation
                 SimulatedOverlayLayerHandleRefCount = SimulatedOverlayLayerHandleId > 0 ? 1 : 0;
                 _simulatedOverlaySnapshotRefCount = 0;
                 _simulatedLayerSnapshotRefCounts.Clear();
+                _releasedSnapshotTraces.Clear();
                 var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
                 if (SimulatedOverlayLayerHandleId > 0)
                 {
@@ -211,6 +213,12 @@ namespace HaCreator.MapSimulator.Animation
 
             internal void ReleaseSnapshotLayerReferences(SecondaryMotionBlurSnapshotTrace trace)
             {
+                SecondaryMotionBlurSnapshotReleaseKey releaseKey = SecondaryMotionBlurSnapshotReleaseKey.FromTrace(trace);
+                if (!_releasedSnapshotTraces.Add(releaseKey))
+                {
+                    return;
+                }
+
                 var operations = SimulatedLayerReferenceOperations?.ToList()
                     ?? new List<SecondaryMotionBlurLayerReferenceOperation>();
                 if (trace.SimulatedOverlayLayerHandleId > 0
@@ -406,6 +414,44 @@ namespace HaCreator.MapSimulator.Animation
                     ?? new Dictionary<int, int>(),
                     SimulatedLayerReferenceOperations?.ToArray()
                     ?? Array.Empty<SecondaryMotionBlurLayerReferenceOperation>());
+            }
+        }
+
+        private readonly record struct SecondaryMotionBlurSnapshotReleaseKey(
+            int StartTime,
+            int OverlayHandleId,
+            int LayerHandleHash,
+            int SnapshotLayerHandleHash,
+            int RepeatAnimationStateHash)
+        {
+            public static SecondaryMotionBlurSnapshotReleaseKey FromTrace(SecondaryMotionBlurSnapshotTrace trace)
+            {
+                return new SecondaryMotionBlurSnapshotReleaseKey(
+                    trace.StartTime,
+                    trace.SimulatedOverlayLayerHandleId,
+                    ComputeDictionaryHash(trace.SimulatedLayerHandleIdsByLayerCode),
+                    ComputeDictionaryHash(trace.SimulatedSnapshotLayerHandleIdsByLayerCode),
+                    ComputeDictionaryHash(trace.SimulatedRepeatAnimationStateIdsByLayerCode));
+            }
+
+            private static int ComputeDictionaryHash(IReadOnlyDictionary<int, int> values)
+            {
+                if (values == null || values.Count == 0)
+                {
+                    return 0;
+                }
+
+                unchecked
+                {
+                    int hash = 17;
+                    foreach ((int key, int value) in values.OrderBy(static entry => entry.Key))
+                    {
+                        hash = (hash * 31) + key;
+                        hash = (hash * 31) + value;
+                    }
+
+                    return hash;
+                }
             }
         }
 
@@ -867,6 +913,27 @@ namespace HaCreator.MapSimulator.Animation
                 y,
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedAreaExplosion,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedDropExplosion(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedDropExplosion,
                 zOrder,
                 initialElapsedMs);
         }
@@ -3591,7 +3658,8 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedCool = 10,
         PacketOwnedMobBullet = 11,
         PacketOwnedMobSwallow = 12,
-        PacketOwnedAreaExplosion = 13
+        PacketOwnedAreaExplosion = 13,
+        PacketOwnedDropExplosion = 14
     }
 
     internal enum AnimationFallingOwner
@@ -7158,8 +7226,12 @@ namespace HaCreator.MapSimulator.Animation
             Id = ++_nextId;
             _frames = frames;
             _area = area;
-            _effectiveWidth = ResolveAreaAnimationSpawnWidth(area);
-            _effectiveHeight = ResolveAreaAnimationSpawnHeight(area);
+            _effectiveWidth = owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
+                ? ResolvePacketOwnedExplosionInitialSpawnWidth(area)
+                : ResolveAreaAnimationSpawnWidth(area);
+            _effectiveHeight = owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
+                ? ResolvePacketOwnedExplosionInitialSpawnHeight(area)
+                : ResolveAreaAnimationSpawnHeight(area);
             _updateIntervalMs = Math.Max(1, updateIntervalMs);
             _remainingUpdates = Math.Max(0, updateCount);
             _nextUpdateAt = unchecked(currentTimeMs + Math.Max(0, updateNextMs));
@@ -7199,8 +7271,11 @@ namespace HaCreator.MapSimulator.Animation
                     || (_spawnProbability.Value > 0f && random.NextDouble() < _spawnProbability.Value);
                 if (shouldSpawn)
                 {
-                    float x = _area.Left + random.Next(_effectiveWidth);
-                    float y = _area.Top + random.Next(_effectiveHeight);
+                    Rectangle spawnArea = Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
+                        ? ResolvePacketOwnedExplosionInitialSpawnArea(_area)
+                        : _area;
+                    float x = spawnArea.Left + random.Next(_effectiveWidth);
+                    float y = spawnArea.Top + random.Next(_effectiveHeight);
                     if (Owner == AnimationAreaAnimationOwner.PacketOwnedExplosion
                         && !string.IsNullOrWhiteSpace(SourceUol))
                     {
@@ -7237,6 +7312,25 @@ namespace HaCreator.MapSimulator.Animation
         internal static int ResolveAreaAnimationSpawnHeight(Rectangle area)
         {
             return Math.Max(1, area.Height);
+        }
+
+        internal static int ResolvePacketOwnedExplosionInitialSpawnWidth(Rectangle area)
+        {
+            return Math.Max(1, area.Width * 5 / 6);
+        }
+
+        internal static int ResolvePacketOwnedExplosionInitialSpawnHeight(Rectangle area)
+        {
+            return Math.Max(1, area.Height * 5 / 6);
+        }
+
+        internal static Rectangle ResolvePacketOwnedExplosionInitialSpawnArea(Rectangle area)
+        {
+            int width = ResolvePacketOwnedExplosionInitialSpawnWidth(area);
+            int height = ResolvePacketOwnedExplosionInitialSpawnHeight(area);
+            int x = area.Left + (area.Width - width) / 2;
+            int y = area.Top + (area.Height - height) / 2;
+            return new Rectangle(x, y, width, height);
         }
 
         internal static bool HasScheduledTimeReachedForTesting(int currentTimeMs, int scheduledTimeMs)

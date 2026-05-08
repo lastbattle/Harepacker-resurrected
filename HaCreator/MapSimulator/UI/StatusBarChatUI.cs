@@ -377,6 +377,11 @@ namespace HaCreator.MapSimulator.UI
             PageNext = 4
         }
 
+        internal readonly record struct ClientEditCompositionUnderlineRun(
+            int StartIndex,
+            int Length,
+            bool IsActiveClause);
+
         internal static bool ShouldCloseWhisperPickerDropdownOnOutsidePress(
             bool isDropdownOpen,
             bool hoveredInteractiveElement,
@@ -2017,7 +2022,42 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int visibleEndIndex = visibleStartIndex + visibleText.Length;
+            IReadOnlyList<ClientEditCompositionUnderlineRun> runs =
+                ResolveClientEditCompositionUnderlineRuns(
+                    chatState,
+                    visibleStartIndex,
+                    visibleText.Length);
+            if (runs.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < runs.Count; i++)
+            {
+                ClientEditCompositionUnderlineRun run = runs[i];
+                string textBeforeRun = visibleText.Substring(0, run.StartIndex - visibleStartIndex);
+                string runText = visibleText.Substring(run.StartIndex - visibleStartIndex, run.Length);
+                int underlineX = (int)Math.Round(textX + MeasureChatText(textBeforeRun).X);
+                int underlineWidth = Math.Max(1, (int)Math.Ceiling(MeasureChatText(runText).X));
+                int underlineHeight = run.IsActiveClause ? 2 : 1;
+                sprite.Draw(
+                    _pixelTexture,
+                    new Rectangle(underlineX, underlineY, underlineWidth, underlineHeight),
+                    run.IsActiveClause ? color : new Color(color.R, color.G, color.B, (byte)150));
+            }
+        }
+
+        internal static IReadOnlyList<ClientEditCompositionUnderlineRun> ResolveClientEditCompositionUnderlineRuns(
+            MapSimulatorChatRenderState chatState,
+            int visibleStartIndex,
+            int visibleLength)
+        {
+            if (chatState?.HasCompositionText != true || visibleLength <= 0)
+            {
+                return Array.Empty<ClientEditCompositionUnderlineRun>();
+            }
+
+            int visibleEndIndex = visibleStartIndex + visibleLength;
             int compositionStart = Math.Clamp(chatState.CompositionStart, visibleStartIndex, visibleEndIndex);
             int compositionEnd = Math.Clamp(
                 chatState.CompositionStart + chatState.CompositionLength,
@@ -2025,17 +2065,97 @@ namespace HaCreator.MapSimulator.UI
                 visibleEndIndex);
             if (compositionEnd <= compositionStart)
             {
-                return;
+                return Array.Empty<ClientEditCompositionUnderlineRun>();
             }
 
-            string textBeforeComposition = visibleText.Substring(0, compositionStart - visibleStartIndex);
-            string compositionText = visibleText.Substring(compositionStart - visibleStartIndex, compositionEnd - compositionStart);
-            int underlineX = (int)Math.Round(textX + MeasureChatText(textBeforeComposition).X);
-            int underlineWidth = Math.Max(1, (int)Math.Ceiling(MeasureChatText(compositionText).X));
-            sprite.Draw(
-                _pixelTexture,
-                new Rectangle(underlineX, underlineY, underlineWidth, 1),
-                color);
+            IReadOnlyList<int> clauseOffsets = NormalizeClientEditCompositionClauseOffsets(
+                chatState.CompositionClauseOffsets,
+                chatState.CompositionLength);
+            if (clauseOffsets.Count < 2)
+            {
+                return new[]
+                {
+                    new ClientEditCompositionUnderlineRun(
+                        compositionStart,
+                        compositionEnd - compositionStart,
+                        IsActiveClause: true)
+                };
+            }
+
+            List<ClientEditCompositionUnderlineRun> runs = new List<ClientEditCompositionUnderlineRun>();
+            int compositionCursor = Math.Clamp(
+                chatState.CompositionCursorPosition - chatState.CompositionStart,
+                0,
+                chatState.CompositionLength);
+            int activeClauseIndex = -1;
+            for (int i = 0; i < clauseOffsets.Count - 1; i++)
+            {
+                int clauseStart = Math.Clamp(clauseOffsets[i], 0, chatState.CompositionLength);
+                int clauseEnd = Math.Clamp(clauseOffsets[i + 1], clauseStart, chatState.CompositionLength);
+                if (compositionCursor >= clauseStart && compositionCursor <= clauseEnd)
+                {
+                    activeClauseIndex = i;
+                    break;
+                }
+            }
+
+            for (int i = 0; i < clauseOffsets.Count - 1; i++)
+            {
+                int clauseStart = Math.Clamp(clauseOffsets[i], 0, chatState.CompositionLength);
+                int clauseEnd = Math.Clamp(clauseOffsets[i + 1], clauseStart, chatState.CompositionLength);
+                int absoluteStart = chatState.CompositionStart + clauseStart;
+                int absoluteEnd = chatState.CompositionStart + clauseEnd;
+                int clippedStart = Math.Clamp(absoluteStart, visibleStartIndex, visibleEndIndex);
+                int clippedEnd = Math.Clamp(absoluteEnd, visibleStartIndex, visibleEndIndex);
+                if (clippedEnd <= clippedStart)
+                {
+                    continue;
+                }
+
+                runs.Add(new ClientEditCompositionUnderlineRun(
+                    clippedStart,
+                    clippedEnd - clippedStart,
+                    i == activeClauseIndex));
+            }
+
+            return runs;
+        }
+
+        private static IReadOnlyList<int> NormalizeClientEditCompositionClauseOffsets(
+            IReadOnlyList<int> clauseOffsets,
+            int compositionLength)
+        {
+            if (clauseOffsets == null || clauseOffsets.Count == 0 || compositionLength <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> normalized = new List<int>(clauseOffsets.Count + 2);
+            for (int i = 0; i < clauseOffsets.Count; i++)
+            {
+                int offset = Math.Clamp(clauseOffsets[i], 0, compositionLength);
+                if (normalized.Count == 0 || normalized[^1] != offset)
+                {
+                    normalized.Add(offset);
+                }
+            }
+
+            if (normalized.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (normalized[0] != 0)
+            {
+                normalized.Insert(0, 0);
+            }
+
+            if (normalized[^1] != compositionLength)
+            {
+                normalized.Add(compositionLength);
+            }
+
+            return normalized.Count >= 2 ? normalized : Array.Empty<int>();
         }
 
         private void DrawWhisperPickerModalComboDropdownRow(

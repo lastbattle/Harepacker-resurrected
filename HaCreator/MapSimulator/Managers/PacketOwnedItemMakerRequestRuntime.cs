@@ -8,11 +8,25 @@ namespace HaCreator.MapSimulator.Managers
     internal static class PacketOwnedItemMakerRequestRuntime
     {
         public const int ClientRequestOpcode = 125;
-        private const int ClientCraftRecipeClass = 1;
-        private const int ClientDisassembleEquipRecipeClass = 4;
+        public const int ClientCraftRecipeClass = 1;
+        public const int ClientRecipeSlotCraftClass = 3;
+        public const int ClientDisassembleEquipRecipeClass = 4;
         private const int ClientEquipInventoryTypeIndex = 1;
 
         public static byte[] BuildCraftRequestPayload(
+            int targetItemId,
+            bool catalystMounted,
+            IReadOnlyList<int> mountedGemItemIds)
+        {
+            return BuildCraftRequestPayload(
+                ClientCraftRecipeClass,
+                targetItemId,
+                catalystMounted,
+                mountedGemItemIds);
+        }
+
+        public static byte[] BuildCraftRequestPayload(
+            int clientRecipeClass,
             int targetItemId,
             bool catalystMounted,
             IReadOnlyList<int> mountedGemItemIds)
@@ -22,9 +36,14 @@ namespace HaCreator.MapSimulator.Managers
                 return Array.Empty<byte>();
             }
 
+            if (clientRecipeClass is not 1 and not 2)
+            {
+                return Array.Empty<byte>();
+            }
+
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream);
-            writer.Write(ClientCraftRecipeClass);
+            writer.Write(clientRecipeClass);
             writer.Write(targetItemId);
             writer.Write(catalystMounted ? (byte)1 : (byte)0);
 
@@ -38,6 +57,21 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            return stream.ToArray();
+        }
+
+        public static byte[] BuildRecipeSlotCraftRequestPayload(int mountedItemId, int sourceSlotIndex)
+        {
+            if (mountedItemId <= 0 || sourceSlotIndex < 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+            writer.Write(ClientRecipeSlotCraftClass);
+            writer.Write(mountedItemId);
+            writer.Write(sourceSlotIndex);
             return stream.ToArray();
         }
 

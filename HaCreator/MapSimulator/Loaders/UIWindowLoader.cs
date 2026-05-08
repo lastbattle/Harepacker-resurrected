@@ -877,18 +877,22 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            if (noticeTexture != null
-                && width == noticeTexture.Width)
+            if (noticeTexture != null)
             {
-                if (height == noticeTexture.Height)
-                {
-                    return noticeTexture;
-                }
-
+                Texture2D resolvedNoticeTexture = noticeTexture;
                 if (height > noticeTexture.Height)
                 {
-                    return CreateExtendedUtilDlgNoticeFrameTexture(noticeTexture, height, device);
+                    resolvedNoticeTexture = CreateExtendedUtilDlgNoticeFrameTexture(noticeTexture, height, device)
+                        ?? noticeTexture;
                 }
+
+                if (width != resolvedNoticeTexture.Width)
+                {
+                    int cropX = Math.Max(0, (resolvedNoticeTexture.Width - Math.Min(width, resolvedNoticeTexture.Width)) / 2);
+                    return CropTextureHorizontally(resolvedNoticeTexture, cropX, width, device);
+                }
+
+                return resolvedNoticeTexture;
             }
 
             return noticeTexture;
@@ -10146,14 +10150,20 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (backgrounds.Count < 4)
             {
-                Texture2D fallbackTexture = LoadCanvasTexture(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "notice", device)
-                    ?? LoadCanvasTexture(uiWindowImage?["UtilDlgEx"] as WzSubProperty, "notice", device)
-                    ?? LoadTextureFromUiPath(PacketOwnedRewardResultRuntime.GetUtilDlgNoticeBackgroundResourcePath(), device, uiWindow2Image, uiWindowImage)
-                    ?? CreateUtilDlgNoticeFrameTexture(
+                Texture2D fallbackTexture = CreateUtilDlgNoticeFrameTexture(
                         uiWindow2Image?["UtilDlgEx"] as WzSubProperty,
                         uiWindowImage,
                         uiWindow2Image,
-                        device);
+                        device,
+                        RandomMesoBagWindow.FallbackNoticeFrameWidth,
+                        RandomMesoBagWindow.FallbackNoticeFrameHeight)
+                    ?? CreateUtilDlgNoticeFrameTexture(
+                        uiWindowImage?["UtilDlgEx"] as WzSubProperty,
+                        uiWindowImage,
+                        uiWindow2Image,
+                        device,
+                        RandomMesoBagWindow.FallbackNoticeFrameWidth,
+                        RandomMesoBagWindow.FallbackNoticeFrameHeight);
                 if (fallbackTexture != null)
                 {
                     IDXObject fallbackFrame = new DXObject(0, 0, fallbackTexture, 0);

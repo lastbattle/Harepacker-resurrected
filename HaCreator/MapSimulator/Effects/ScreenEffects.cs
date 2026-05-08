@@ -383,26 +383,17 @@ namespace HaCreator.MapSimulator.Effects
             byte currentTone = GetCurrentToneLevel();
             if (currentTone == targetTone)
             {
-                _fadeActive = false;
-                _fadeAlpha = 1.0f - (targetTone / 255f);
-                _fadeStartAlpha = _fadeAlpha;
-                _fadeTargetAlpha = _fadeAlpha;
-                _fadeDuration = 0;
-                _fadeStartTime = currentTimeMs;
-                _fadeColor = Color.Black;
-                _fadeCompleteCallback = null;
-                _stageTransitionToneFadeActive = false;
-                SetStageTransitionToneChannels(targetTone);
-                if (targetTone == byte.MaxValue)
-                {
-                    _stageTransitionFadeInEndTime = currentTimeMs;
-                }
-                LastFadeCompletionTimeMs = currentTimeMs;
-                onComplete?.Invoke();
+                CompleteImmediateStageTransitionToneFade(targetTone, currentTimeMs, onComplete);
                 return;
             }
 
             int scaledDuration = ScaleStageTransitionDuration(durationMs, currentTone, targetTone);
+            if (scaledDuration == 0)
+            {
+                CompleteImmediateStageTransitionToneFade(targetTone, currentTimeMs, onComplete);
+                return;
+            }
+
             _stageTransitionStartRedTone = _stageTransitionRedTone;
             _stageTransitionStartGreenTone = _stageTransitionGreenTone;
             _stageTransitionStartBlueTone = _stageTransitionBlueTone;
@@ -424,6 +415,26 @@ namespace HaCreator.MapSimulator.Effects
             _stageTransitionToneFadeActive = true;
         }
 
+        private void CompleteImmediateStageTransitionToneFade(byte targetTone, int currentTimeMs, Action onComplete)
+        {
+            _fadeActive = false;
+            _fadeAlpha = 1.0f - (targetTone / 255f);
+            _fadeStartAlpha = _fadeAlpha;
+            _fadeTargetAlpha = _fadeAlpha;
+            _fadeDuration = 0;
+            _fadeStartTime = currentTimeMs;
+            _fadeColor = Color.Black;
+            _fadeCompleteCallback = null;
+            _stageTransitionToneFadeActive = false;
+            SetStageTransitionToneChannels(targetTone);
+            if (targetTone == byte.MaxValue)
+            {
+                _stageTransitionFadeInEndTime = currentTimeMs;
+            }
+            LastFadeCompletionTimeMs = currentTimeMs;
+            onComplete?.Invoke();
+        }
+
         internal static int ScaleStageTransitionDuration(int durationMs, byte startTone, byte targetTone)
         {
             int clampedDuration = Math.Max(0, durationMs);
@@ -433,7 +444,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             int remaining = Math.Abs(targetTone - startTone);
-            return Math.Max(1, (clampedDuration * remaining + 254) / 255);
+            return clampedDuration * remaining / 255;
         }
 
         private byte GetCurrentToneLevel()

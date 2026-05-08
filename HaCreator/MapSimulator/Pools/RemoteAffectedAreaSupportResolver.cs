@@ -413,6 +413,7 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.ExperienceRate > 0
                    || levelData.DropRate > 0
                    || levelData.MesoRate > 0
+                   || levelData.FixedDamageRate > 0
                    || levelData.BossDamageRate > 0
                    || levelData.IgnoreDefenseRate > 0
                    || levelData.X > 0
@@ -1497,6 +1498,7 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.MesoRate > 0
                    || levelData.AbnormalStatusResistance > 0
                    || levelData.ElementalResistance > 0
+                   || levelData.FixedDamageRate > 0
                    || levelData.BossDamageRate > 0
                    || levelData.IgnoreDefenseRate > 0
                    || levelData.U != 0
@@ -1642,6 +1644,7 @@ namespace HaCreator.MapSimulator.Pools
             target.ExperienceRate = Math.Max(target.ExperienceRate, source.ExperienceRate);
             target.DropRate = Math.Max(target.DropRate, source.DropRate);
             target.MesoRate = Math.Max(target.MesoRate, source.MesoRate);
+            target.FixedDamageRate = Math.Max(target.FixedDamageRate, source.FixedDamageRate);
             target.BossDamageRate = Math.Max(target.BossDamageRate, source.BossDamageRate);
             target.IgnoreDefenseRate = Math.Max(target.IgnoreDefenseRate, source.IgnoreDefenseRate);
             target.X = Math.Max(target.X, source.X);

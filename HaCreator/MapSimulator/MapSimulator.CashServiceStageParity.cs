@@ -427,6 +427,7 @@ namespace HaCreator.MapSimulator
                             remainingSecond),
                         HasPacketRewardSessionByte = packetOwnedRewardSessionByte,
                         PacketRewardSessionByte = packetRewardSessionByte,
+                        PacketRewardSessionByteOffset = stageWindow.CashOneADayRewardSessionByteOffset,
                         PacketPayloadLength = stageWindow.CashOneADayPayloadLength,
                         PacketDecodedByteLength = stageWindow.CashOneADayDecodedByteLength,
                         PacketTrailingByteCount = stageWindow.CashOneADayTrailingByteCount,
@@ -929,6 +930,9 @@ namespace HaCreator.MapSimulator
             string sessionByteSource = stageWindow.CashOneADayHasPacketRewardSessionByte
                 ? "packet-owned"
                 : "owner-approx";
+            string sessionByteOffset = stageWindow.CashOneADayHasPacketRewardSessionByte
+                ? $" at offset {stageWindow.CashOneADayRewardSessionByteOffset.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
 
             string todayState = pending
                 ? $"today armed for SN {currentCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
@@ -948,7 +952,7 @@ namespace HaCreator.MapSimulator
                 ? $"trailing {stageWindow.CashOneADayTrailingByteCount.ToString(CultureInfo.InvariantCulture)}B ({stageWindow.CashOneADayTrailingPayloadHex})"
                 : "trailing none";
             return
-                $"Reward session {sessionByteSource} 0x{rewardSessionByte:X2}{mismatchSuffix}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10 (mask 0x{artSnapshot.NumberCanvasReadyMask:X3}), payload {stageWindow.CashOneADayPayloadLength.ToString(CultureInfo.InvariantCulture)}B decoded {stageWindow.CashOneADayDecodedByteLength.ToString(CultureInfo.InvariantCulture)}B, {trailingState}.";
+                $"Reward session {sessionByteSource} 0x{rewardSessionByte:X2}{sessionByteOffset}{mismatchSuffix}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10 (mask 0x{artSnapshot.NumberCanvasReadyMask:X3}), payload {stageWindow.CashOneADayPayloadLength.ToString(CultureInfo.InvariantCulture)}B decoded {stageWindow.CashOneADayDecodedByteLength.ToString(CultureInfo.InvariantCulture)}B, {trailingState}.";
         }
 
         internal static int ResolveCashShopOneADayHistorySlotCount()
@@ -956,7 +960,7 @@ namespace HaCreator.MapSimulator
             return CashShopOneADayHistorySlotCount;
         }
 
-        private static string BuildCashShopOneADayPacketStateSignature(
+        internal static string BuildCashShopOneADayPacketStateSignature(
             CashServiceStageWindow stageWindow,
             IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries)
         {
@@ -965,21 +969,51 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
-            List<string> parts = new()
-            {
+            return BuildCashShopOneADayPacketStateSignature(
                 ResolveCashShopOneADayPendingState(
                     stageWindow.CashOneADayHasPacketRewardSessionByte,
                     stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
-                    stageWindow.IsOneADayPending) ? "1" : "0",
-                stageWindow.CashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture),
-                stageWindow.CashOneADayItemDate.ToString(CultureInfo.InvariantCulture),
-                stageWindow.CashOneADayHasPacketRewardSessionByte ? "packet-byte" : "no-packet-byte",
-                stageWindow.CashOneADayPacketRewardSessionByte.ToString(CultureInfo.InvariantCulture),
-                stageWindow.CashOneADayPayloadLength.ToString(CultureInfo.InvariantCulture),
-                stageWindow.CashOneADayDecodedByteLength.ToString(CultureInfo.InvariantCulture),
-                stageWindow.CashOneADayTrailingByteCount.ToString(CultureInfo.InvariantCulture),
-                stageWindow.CashOneADayTrailingPayloadHex ?? string.Empty,
-                stageWindow.NoticeState ?? string.Empty
+                    stageWindow.IsOneADayPending),
+                stageWindow.CashOneADayItemSerialNumber,
+                stageWindow.CashOneADayItemDate,
+                stageWindow.CashOneADayHasPacketRewardSessionByte,
+                stageWindow.CashOneADayPacketRewardSessionByte,
+                stageWindow.CashOneADayRewardSessionByteOffset,
+                stageWindow.CashOneADayPayloadLength,
+                stageWindow.CashOneADayDecodedByteLength,
+                stageWindow.CashOneADayTrailingByteCount,
+                stageWindow.CashOneADayTrailingPayloadHex,
+                stageWindow.NoticeState,
+                historyEntries);
+        }
+
+        internal static string BuildCashShopOneADayPacketStateSignature(
+            bool isPending,
+            int itemSerialNumber,
+            int itemDate,
+            bool hasPacketRewardSessionByte,
+            int packetRewardSessionByte,
+            int packetRewardSessionByteOffset,
+            int payloadLength,
+            int decodedByteLength,
+            int trailingByteCount,
+            string trailingPayloadHex,
+            string noticeState,
+            IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries)
+        {
+            List<string> parts = new()
+            {
+                isPending ? "1" : "0",
+                itemSerialNumber.ToString(CultureInfo.InvariantCulture),
+                itemDate.ToString(CultureInfo.InvariantCulture),
+                hasPacketRewardSessionByte ? "packet-byte" : "no-packet-byte",
+                packetRewardSessionByte.ToString(CultureInfo.InvariantCulture),
+                packetRewardSessionByteOffset.ToString(CultureInfo.InvariantCulture),
+                payloadLength.ToString(CultureInfo.InvariantCulture),
+                decodedByteLength.ToString(CultureInfo.InvariantCulture),
+                trailingByteCount.ToString(CultureInfo.InvariantCulture),
+                trailingPayloadHex ?? string.Empty,
+                noticeState ?? string.Empty
             };
 
             if (historyEntries != null)
@@ -991,7 +1025,13 @@ namespace HaCreator.MapSimulator
                         continue;
                     }
 
-                    parts.Add($"{entry.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}:{entry.OriginalCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}:{entry.DateLabel}");
+                    parts.Add(
+                        $"{entry.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}:" +
+                        $"{entry.OriginalCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}:" +
+                        $"{entry.DateLabel}:" +
+                        $"{(entry.HasPacketStateByte ? "b" : "n")}:" +
+                        $"{entry.PacketStateByte.ToString(CultureInfo.InvariantCulture)}:" +
+                        $"{entry.PacketStateByteOffset.ToString(CultureInfo.InvariantCulture)}");
                 }
             }
 
@@ -1219,37 +1259,62 @@ namespace HaCreator.MapSimulator
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
                 {
                     ActionKey = "BtExEquip",
-                    ControlId = 0,
+                    ControlId = 0x3EA,
+                    NativeButtonId = 0x3EA,
                     StringPoolUolId = 0xC94,
-                    Position = new Microsoft.Xna.Framework.Point(176, 27)
+                    Position = new Microsoft.Xna.Framework.Point(176, 27),
+                    Width = 64,
+                    Height = 22,
+                    MouseOverWidth = 65,
+                    MouseOverHeight = 22
                 },
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
                 {
                     ActionKey = "BtExConsume",
-                    ControlId = 1,
+                    ControlId = 0x3EB,
+                    NativeButtonId = 0x3EB,
                     StringPoolUolId = 0xC94,
-                    Position = new Microsoft.Xna.Framework.Point(176, 54)
+                    Position = new Microsoft.Xna.Framework.Point(176, 54),
+                    Width = 64,
+                    Height = 22,
+                    MouseOverWidth = 65,
+                    MouseOverHeight = 22
                 },
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
                 {
                     ActionKey = "BtExInstall",
-                    ControlId = 2,
+                    ControlId = 0x3EC,
+                    NativeButtonId = 0x3EC,
                     StringPoolUolId = 0xC94,
-                    Position = new Microsoft.Xna.Framework.Point(176, 81)
+                    Position = new Microsoft.Xna.Framework.Point(176, 81),
+                    Width = 64,
+                    Height = 22,
+                    MouseOverWidth = 65,
+                    MouseOverHeight = 22
                 },
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
                 {
                     ActionKey = "BtExEtc",
-                    ControlId = 3,
+                    ControlId = 0x3ED,
+                    NativeButtonId = 0x3ED,
                     StringPoolUolId = 0xC94,
-                    Position = new Microsoft.Xna.Framework.Point(176, 108)
+                    Position = new Microsoft.Xna.Framework.Point(176, 108),
+                    Width = 64,
+                    Height = 22,
+                    MouseOverWidth = 65,
+                    MouseOverHeight = 22
                 },
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
                 {
                     ActionKey = "BtExTrunk",
-                    ControlId = 4,
+                    ControlId = 0x3EF,
+                    NativeButtonId = 0x3EF,
                     StringPoolUolId = 0,
-                    Position = new Microsoft.Xna.Framework.Point(176, 135)
+                    Position = new Microsoft.Xna.Framework.Point(176, 135),
+                    Width = 64,
+                    Height = 22,
+                    MouseOverWidth = 65,
+                    MouseOverHeight = 22
                 }
             };
         }
@@ -3485,7 +3550,7 @@ namespace HaCreator.MapSimulator
                 inputClientHeight: 13,
                 giftRows: BuildCashReceiveGiftQueueLabels(stageWindow.CashGiftPacketEntries),
                 selectedGiftIndex: giftIndex,
-                giftRowsSelectable: true);
+                giftRowsSelectable: false);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
         }
 

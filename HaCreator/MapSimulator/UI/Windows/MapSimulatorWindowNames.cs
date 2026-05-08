@@ -117,6 +117,7 @@ namespace HaCreator.MapSimulator.UI
         public const string ClassCompetition = "ClassCompetition";
         public const string AranSkillGuide = "AranSkillGuide";
         public const string NpcShop = "NpcShop";
+        public const string ShopScanner = "ShopScanner";
         public const string StoreBank = "StoreBank";
         public const string BattleRecord = "BattleRecord";
         public const string LogoutGift = "LogoutGift";

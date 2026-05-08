@@ -69,6 +69,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeSubmission.Reject("The equipment request owner is missing.");
             }
 
+            if (TryRouteTamingMobEquipmentChangeToRidingSkillCancel(request, out string ridingSkillCancelReason))
+            {
+                return EquipmentChangeSubmission.Reject(ridingSkillCancelReason);
+            }
+
             if (TryGetAndroidCompanionRestrictionRejectReason(request, out string androidRestrictionRejectReason))
             {
                 return EquipmentChangeSubmission.Reject(androidRestrictionRejectReason);
@@ -120,6 +125,34 @@ namespace HaCreator.MapSimulator
             _pendingEquipmentChangeRequests[request.RequestId] = envelope;
 
             return EquipmentChangeSubmission.Accept(request.RequestId, request.RequestedAtTick);
+        }
+
+        private bool TryRouteTamingMobEquipmentChangeToRidingSkillCancel(
+            EquipmentChangeRequest request,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            CharacterBuild build = _playerManager?.Player?.Build;
+            bool isRidingTamedMob = build?.IsProfileRidingInField == true
+                                    || _playerManager?.Player?.ResolveMountedStateTamingMobPart()?.Slot == EquipSlot.TamingMob;
+            if (!EquipmentChangeClientParity.ShouldCancelRidingSkillBeforeTamingMobEquipmentChange(
+                    request,
+                    isRidingTamedMob))
+            {
+                return false;
+            }
+
+            int ridingSkillId = EquipmentChangeClientParity.ResolveNoviceSkillAsRace(
+                EquipmentChangeClientParity.MonsterRidingBaseSkillId,
+                build?.Job ?? 0);
+            if (_playerManager?.Skills != null)
+            {
+                using var _ = _playerManager.Skills.BeginClientCancelBatchScope();
+                _playerManager.Skills.RequestClientSkillCancel(ridingSkillId, currTickCount);
+            }
+
+            rejectReason = $"Requested riding skill cancel ({ridingSkillId}) before changing taming-mob equipment.";
+            return true;
         }
 
         private bool ShouldBlockEquipmentDragStart()

@@ -154,6 +154,8 @@ namespace HaCreator.MapSimulator.Pools
 
         public sealed class RemoteTemporaryStatAvatarEffectState
         {
+            private readonly List<RemoteTemporaryStatAffectedLayerMutation> _affectedLayerMutations = new();
+
             public int SkillId { get; set; }
             public SkillData Skill { get; set; }
             public SkillAnimation OverlayAnimation { get; set; }
@@ -171,6 +173,7 @@ namespace HaCreator.MapSimulator.Pools
             public int TransitionDurationMs { get; set; }
             public float TransitionStartAlpha { get; set; } = 1f;
             public float TransitionEndAlpha { get; set; } = 1f;
+            public IReadOnlyList<RemoteTemporaryStatAffectedLayerMutation> AffectedLayerMutations => _affectedLayerMutations;
 
             public void CaptureAffectedLayerReference()
             {
@@ -178,14 +181,230 @@ namespace HaCreator.MapSimulator.Pools
                 SimulatedAffectedListNodeRefCount = SimulatedAffectedListNodeId > 0 ? 1 : 0;
                 TerminateRequested = false;
                 IsTerminated = false;
+                RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.CaptureOwnerReference(
+                    SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId,
+                    SimulatedAffectedLayerHandleRefCount,
+                    SimulatedAffectedListNodeRefCount));
             }
 
             public void ReleaseAffectedLayerReference()
             {
                 TerminateRequested = true;
                 IsTerminated = true;
+                RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.ReleaseOwnerReference(
+                    SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId));
                 SimulatedAffectedLayerHandleRefCount = 0;
                 SimulatedAffectedListNodeRefCount = 0;
+            }
+
+            internal void RecordShiftAffectedSkillAnimationMutation(
+                int alphaStart,
+                int alphaEnd,
+                bool movesTailToHead,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                if (SimulatedAffectedLayerHandleId <= 0 || SimulatedAffectedListNodeId <= 0)
+                {
+                    return;
+                }
+
+                RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AlphaRelMove(
+                    SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId,
+                    alphaStart,
+                    alphaEnd,
+                    forcedShift,
+                    cadenceUpdateCount));
+                if (movesTailToHead)
+                {
+                    RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.MoveTailToHead(
+                        SimulatedAffectedLayerHandleId,
+                        SimulatedAffectedListNodeId,
+                        forcedShift,
+                        cadenceUpdateCount));
+                    RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.RetargetAffectedSkillEntryListNode(
+                        SimulatedAffectedLayerHandleId,
+                        SimulatedAffectedListNodeId,
+                        forcedShift,
+                        cadenceUpdateCount));
+                }
+
+                RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AnimateRepeat(
+                    SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId,
+                    forcedShift,
+                    cadenceUpdateCount));
+            }
+
+            internal void CopyAffectedLayerMutationsFrom(RemoteTemporaryStatAvatarEffectState source)
+            {
+                if (source?._affectedLayerMutations == null || source._affectedLayerMutations.Count == 0)
+                {
+                    return;
+                }
+
+                _affectedLayerMutations.AddRange(source._affectedLayerMutations);
+            }
+
+            private void RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation mutation)
+            {
+                _affectedLayerMutations.Add(mutation);
+            }
+        }
+
+        public enum RemoteTemporaryStatAffectedLayerMutationKind
+        {
+            CaptureOwnerReference = 0,
+            ReleaseOwnerReference = 1,
+            AlphaRelMove = 2,
+            MoveTailToHead = 3,
+            RetargetAffectedSkillEntryListNode = 4,
+            AnimateRepeat = 5
+        }
+
+        public readonly record struct RemoteTemporaryStatAffectedLayerMutation(
+            RemoteTemporaryStatAffectedLayerMutationKind Kind,
+            int SimulatedAffectedLayerHandleId,
+            int SimulatedAffectedListNodeId,
+            int SimulatedAffectedLayerHandleRefCount,
+            int SimulatedAffectedListNodeRefCount,
+            int AlphaStart,
+            int AlphaEnd,
+            bool UsesMissingDurationVariant,
+            bool UsesMissingStartTimeVariant,
+            bool ForcedShift,
+            int ShiftCadenceUpdateCount)
+        {
+            public static RemoteTemporaryStatAffectedLayerMutation CaptureOwnerReference(
+                int layerHandleId,
+                int listNodeId,
+                int layerRefCount,
+                int listNodeRefCount)
+            {
+                return new RemoteTemporaryStatAffectedLayerMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.CaptureOwnerReference,
+                    layerHandleId,
+                    listNodeId,
+                    layerRefCount,
+                    listNodeRefCount,
+                    AlphaStart: 0,
+                    AlphaEnd: 0,
+                    UsesMissingDurationVariant: false,
+                    UsesMissingStartTimeVariant: false,
+                    ForcedShift: false,
+                    ShiftCadenceUpdateCount: 0);
+            }
+
+            public static RemoteTemporaryStatAffectedLayerMutation ReleaseOwnerReference(
+                int layerHandleId,
+                int listNodeId)
+            {
+                return new RemoteTemporaryStatAffectedLayerMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.ReleaseOwnerReference,
+                    layerHandleId,
+                    listNodeId,
+                    SimulatedAffectedLayerHandleRefCount: 0,
+                    SimulatedAffectedListNodeRefCount: 0,
+                    AlphaStart: 0,
+                    AlphaEnd: 0,
+                    UsesMissingDurationVariant: false,
+                    UsesMissingStartTimeVariant: false,
+                    ForcedShift: false,
+                    ShiftCadenceUpdateCount: 0);
+            }
+
+            public static RemoteTemporaryStatAffectedLayerMutation AlphaRelMove(
+                int layerHandleId,
+                int listNodeId,
+                int alphaStart,
+                int alphaEnd,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return new RemoteTemporaryStatAffectedLayerMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.AlphaRelMove,
+                    layerHandleId,
+                    listNodeId,
+                    SimulatedAffectedLayerHandleRefCount: 1,
+                    SimulatedAffectedListNodeRefCount: 1,
+                    MathHelper.Clamp(alphaStart, 0, 255),
+                    MathHelper.Clamp(alphaEnd, 0, 255),
+                    UsesMissingDurationVariant: true,
+                    UsesMissingStartTimeVariant: true,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
+            public static RemoteTemporaryStatAffectedLayerMutation MoveTailToHead(
+                int layerHandleId,
+                int listNodeId,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return CreateShiftMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.MoveTailToHead,
+                    layerHandleId,
+                    listNodeId,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
+            public static RemoteTemporaryStatAffectedLayerMutation RetargetAffectedSkillEntryListNode(
+                int layerHandleId,
+                int listNodeId,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return CreateShiftMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.RetargetAffectedSkillEntryListNode,
+                    layerHandleId,
+                    listNodeId,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
+            public static RemoteTemporaryStatAffectedLayerMutation AnimateRepeat(
+                int layerHandleId,
+                int listNodeId,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return new RemoteTemporaryStatAffectedLayerMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.AnimateRepeat,
+                    layerHandleId,
+                    listNodeId,
+                    SimulatedAffectedLayerHandleRefCount: 1,
+                    SimulatedAffectedListNodeRefCount: 1,
+                    AlphaStart: 0,
+                    AlphaEnd: 0,
+                    UsesMissingDurationVariant: false,
+                    UsesMissingStartTimeVariant: true,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
+            private static RemoteTemporaryStatAffectedLayerMutation CreateShiftMutation(
+                RemoteTemporaryStatAffectedLayerMutationKind kind,
+                int layerHandleId,
+                int listNodeId,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return new RemoteTemporaryStatAffectedLayerMutation(
+                    kind,
+                    layerHandleId,
+                    listNodeId,
+                    SimulatedAffectedLayerHandleRefCount: 1,
+                    SimulatedAffectedListNodeRefCount: 1,
+                    AlphaStart: 0,
+                    AlphaEnd: 0,
+                    UsesMissingDurationVariant: false,
+                    UsesMissingStartTimeVariant: false,
+                    forcedShift,
+                    cadenceUpdateCount);
             }
         }
 
@@ -1264,6 +1483,7 @@ namespace HaCreator.MapSimulator.Pools
             build.HasAuthoritativeProfileFame = false;
             build.HasAuthoritativeProfileWorldRank = false;
             build.HasAuthoritativeProfileJobRank = false;
+            build.HasAuthoritativeProfilePets = false;
             build.HasAuthoritativeProfileRide = false;
             build.HasAuthoritativeProfileTraits = false;
             build.HasAuthoritativeProfilePendantSlot = false;
@@ -1452,6 +1672,7 @@ namespace HaCreator.MapSimulator.Pools
                 build.RemotePetItemIds = build.RemotePetProfiles
                     .Select(pet => pet.ItemId)
                     .ToArray();
+                build.HasAuthoritativeProfilePets = true;
             }
 
             if (packet.MonsterBookOwnedCardTypes.HasValue
@@ -5944,6 +6165,7 @@ namespace HaCreator.MapSimulator.Pools
             if (actor?.Build == null
                 || !TryResolveRemoteDragonHudMetadata(actor.Build.Job, out RemoteDragonHudMetadata metadata))
             {
+                ClearRemoteDragonCompanionState(actor);
                 return false;
             }
 
@@ -16004,6 +16226,14 @@ namespace HaCreator.MapSimulator.Pools
                 return snapshot.KnownState.ChargeSkillId;
             }
 
+            if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromWeaponChargeValue(
+                    effectivePreferredSkillId,
+                    snapshot.KnownState.WeaponChargeValue,
+                    out int knownWeaponChargeSkillId))
+            {
+                return knownWeaponChargeSkillId;
+            }
+
             if (snapshot.RawPayload == null
                 || snapshot.RawPayload.Length < (sizeof(int) * 4) + sizeof(int))
             {
@@ -16011,15 +16241,6 @@ namespace HaCreator.MapSimulator.Pools
             }
             bool hasValidMetadataOffset = snapshot.WeaponChargePayloadOffset >= 0
                 && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int);
-
-            if (!hasValidMetadataOffset
-                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromWeaponChargeValue(
-                    effectivePreferredSkillId,
-                    snapshot.KnownState.WeaponChargeValue,
-                    out int knownWeaponChargeSkillId))
-            {
-                return knownWeaponChargeSkillId;
-            }
 
             if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatMetadata(
@@ -16260,6 +16481,15 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromWeaponChargeValue(
+                    effectivePreferredSkillId,
+                    snapshot.KnownState.WeaponChargeValue,
+                    out int knownWeaponChargeSkillId)
+                && AfterImageChargeSkillResolver.TryGetChargeElement(knownWeaponChargeSkillId, out chargeElement))
+            {
+                return true;
+            }
+
             chargeElement = 0;
             if (snapshot.RawPayload == null
                 || snapshot.RawPayload.Length < (sizeof(int) * 4) + sizeof(int))
@@ -16268,16 +16498,6 @@ namespace HaCreator.MapSimulator.Pools
             }
             bool hasValidMetadataOffset = snapshot.WeaponChargePayloadOffset >= 0
                 && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int);
-
-            if (!hasValidMetadataOffset
-                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromWeaponChargeValue(
-                    effectivePreferredSkillId,
-                    snapshot.KnownState.WeaponChargeValue,
-                    out int knownWeaponChargeSkillId)
-                && AfterImageChargeSkillResolver.TryGetChargeElement(knownWeaponChargeSkillId, out chargeElement))
-            {
-                return true;
-            }
 
             if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatMetadata(

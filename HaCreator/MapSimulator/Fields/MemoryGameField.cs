@@ -795,21 +795,11 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            int targetIndex = _localPlayerIndex == 0 ? 1 : 0;
-            string targetName = ResolveParticipantName(targetIndex);
-            if (string.IsNullOrWhiteSpace(targetName)
-                || string.Equals(targetName, "Opponent", StringComparison.Ordinal)
-                || string.Equals(targetName, "Player", StringComparison.Ordinal))
-            {
-                message = "No participant is available to ban.";
-                return false;
-            }
-
             return TryOpenPrompt(
                 MemoryGamePromptType.BanParticipant,
                 MemoryGameBanPromptStringPoolId,
                 _localPlayerIndex,
-                ResolveMemoryGamePromptText(MemoryGameBanPromptStringPoolId, targetName),
+                ResolveMemoryGamePromptText(MemoryGameBanPromptStringPoolId),
                 out message);
         }
 

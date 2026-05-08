@@ -442,6 +442,8 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         private ushort _movePathRandomCount;
         private ushort _movePathActualRandomCount;
+        private bool _hasClientMovePathEncodeHeader;
+        private MovePathElement _clientMovePathEncodeHeader;
 
         /// <summary>
         /// Path flush interval in milliseconds
@@ -1806,6 +1808,17 @@ namespace HaCreator.MapSimulator.Physics
             return BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
         }
 
+        internal MovePathElement? GetClientMovePathEncodeHeaderSnapshot(int? timeStampMs = null)
+        {
+            if (_hasClientMovePathEncodeHeader)
+            {
+                return _clientMovePathEncodeHeader;
+            }
+
+            List<MovePathElement> snapshot = GetMovePathPacketSnapshot(timeStampMs);
+            return snapshot.Count > 0 ? snapshot[0] : null;
+        }
+
         /// <summary>
         /// Make continuous movement path (for smooth network sync).
         /// Client: CVecCtrl::MakeContinuousMovePath
@@ -1890,6 +1903,12 @@ namespace HaCreator.MapSimulator.Physics
             List<MovePathElement> snapshot = new(
                 CMovePathClientPacketCodec.NormalizeForPortalOwnedClientFlushRetention(
                     BuildMovePathSnapshot(currentTimeMs, appendLatestState: false)));
+            if (snapshot.Count > 0)
+            {
+                _clientMovePathEncodeHeader = snapshot[snapshot.Count - 1];
+                _hasClientMovePathEncodeHeader = true;
+            }
+
             bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
             if (shortUpdate || isFlying)
             {
@@ -1989,6 +2008,8 @@ namespace HaCreator.MapSimulator.Physics
             _pathGatherDurationMs = 0;
             _lastPathFlushTime = currentTimeMs;
             _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+            _clientMovePathEncodeHeader = _movePath[0];
+            _hasClientMovePathEncodeHeader = true;
         }
 
         /// <summary>
@@ -2007,6 +2028,7 @@ namespace HaCreator.MapSimulator.Physics
             IsRecordingPath = false;
             _movePath.Clear();
             _pathGatherDurationMs = 0;
+            _hasClientMovePathEncodeHeader = false;
         }
 
         /// <summary>
@@ -2106,6 +2128,7 @@ namespace HaCreator.MapSimulator.Physics
             _lastPathFlushTime = 0;
             _movePathRandomCount = 0;
             _movePathActualRandomCount = 0;
+            _hasClientMovePathEncodeHeader = false;
         }
 
         #endregion

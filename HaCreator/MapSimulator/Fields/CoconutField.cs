@@ -1380,12 +1380,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static int ResolveClientClockFinishTick(int currentTick, int timeSeconds)
         {
-            if (timeSeconds <= 0)
-            {
-                return 1;
-            }
-
-            return ResolveClientFinishTick(currentTick, timeSeconds * 1000);
+            return ResolveClientFinishTick(currentTick, unchecked(timeSeconds * 1000));
         }
 
         private void ShowRoundResult(int currentTick)

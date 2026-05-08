@@ -21,6 +21,13 @@ namespace HaCreator.MapSimulator.UI
             bool hasPendingWishlistRegister,
             bool hasPendingWishlistSearch)
         {
+            if (!hasPendingTradeRequest
+                && !hasPendingWishlistRegister
+                && !hasPendingWishlistSearch)
+            {
+                return AdminShopPacketOwnedResultGateAction.DisconnectNoPendingRequest;
+            }
+
             if (!AdminShopDialogClientParityText.HandlesResultSubtype(subtype))
             {
                 return AdminShopPacketOwnedResultGateAction.IgnoreUnsupportedSubtype;
@@ -45,7 +52,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 return AdminShopPacketOwnedResultGateAction.ApplyWishlistSearchResult;
             }
-
             return AdminShopPacketOwnedResultGateAction.DisconnectNoPendingRequest;
         }
 

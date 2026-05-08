@@ -939,8 +939,8 @@ namespace HaCreator.MapSimulator
             byte[] body = payload[prefixSize..];
             if (body.Length <= 0)
             {
-                error = "Repair-result payload has a 1025 packet-id prefix but no result body.";
-                return false;
+                result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+                return true;
             }
 
             return TryDecodeSyntheticResultPayload(body, out result, out error);

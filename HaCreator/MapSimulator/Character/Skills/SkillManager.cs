@@ -182,6 +182,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return ResolveBulletAnimationOwnerTickElapsedMs(currentTime, targetTime) >= 0;
         }
+
+        internal static bool IsBulletAnimationOwnerTickInRange(int currentTime, int startTime, int endTime)
+        {
+            return HasBulletAnimationOwnerTickReached(currentTime, startTime)
+                   && !HasBulletAnimationOwnerTickReached(currentTime, endTime);
+        }
+
         private enum AttackTargetSelectionMode
         {
             Default,
@@ -716,6 +723,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const string CriticalRateBuffLabel = "CriticalRate";
         private const string DamageReductionBuffLabel = "DamageReduction";
         private const string DamRBuffLabel = "DamR";
+        private const string FixedDamageBuffLabel = "FixedDamage";
         private const string PowerGuardBuffLabel = "PowerGuard";
         private const string MesoGuardBuffLabel = "MesoGuard";
         private const string ComboBarrierBuffLabel = "ComboBarrier";
@@ -820,6 +828,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 [SharpEyesBuffLabel] = CreateTemporaryStatPresentation(SharpEyesBuffLabel, "Sharp Eyes", null, ResolveClientSecondaryStatSortOrder("SharpEyes", 270), 270),
                 [CriticalDamageBuffLabel] = CreateTemporaryStatPresentation(CriticalDamageBuffLabel, "Critical Damage", null, 272, 272),
                 [CriticalRateBuffLabel] = CreateTemporaryStatPresentation(CriticalRateBuffLabel, "Critical Rate", null, 275, 275),
+                [FixedDamageBuffLabel] = CreateTemporaryStatPresentation(FixedDamageBuffLabel, "Fixed Damage", null, 276, 276),
                 [DebuffResistanceBuffLabel] = CreateTemporaryStatPresentation(DebuffResistanceBuffLabel, "Debuff Resistance", null, ResolveClientSecondaryStatSortOrder("Holyshield", 280), 280),
                 [DropRateBuffLabel] = CreateTemporaryStatPresentation(DropRateBuffLabel, "Drop Rate", null, ResolveClientSecondaryStatSortOrder("ItemUpByItem", 285), 285),
                 [BossDamageBuffLabel] = CreateTemporaryStatPresentation(BossDamageBuffLabel, "Boss Damage", null, 286, 286),
@@ -942,6 +951,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ["criticalDamageMin"] = new[] { CriticalDamageBuffLabel },
                 ["criticaldamageMax"] = new[] { CriticalDamageBuffLabel },
                 ["criticalDamageMax"] = new[] { CriticalDamageBuffLabel },
+                ["incFixedDamageR"] = new[] { FixedDamageBuffLabel },
                 ["damR"] = new[] { DamRBuffLabel },
                 ["indieDamR"] = new[] { DamRBuffLabel },
                 ["PVPdamage"] = new[] { DamRBuffLabel },
@@ -993,6 +1003,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ["criticalDamageMin"] = "Critical Damage",
                 ["criticaldamageMax"] = "Critical Damage",
                 ["criticalDamageMax"] = "Critical Damage",
+                ["incFixedDamageR"] = "Fixed Damage",
                 ["damR"] = "Damage Reduction",
                 ["indieDamR"] = "Independent Damage Reduction",
                 ["PVPdamage"] = "Damage Reduction",
@@ -2576,6 +2587,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int SPARK_SKILL_ID = 15111006;
         private const int ROCKET_BOOSTER_SKILL_ID = 35101004;
         private const int ROCKET_BOOSTER_RECOVERY_EFFECT_SKILL_ID = 35100004;
+        private const int CLIENT_BOUND_JUMP_IMPACT_MOVE_PATH_ATTRIBUTE = 20;
+        private const int CLIENT_ROCKET_BOOSTER_IMPACT_MOVE_PATH_ATTRIBUTE = 21;
         private const int WildHunterJaguarRiderSkillId = 33001001;
         private const int WildHunterJaguarJumpSkillId = 33001002;
         private const int ROCKET_BOOSTER_LANDING_RECOVERY_MS = 500;
@@ -8595,7 +8608,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool followOwnerFacing = true,
             int? showSkillEffectBLeft = 0,
             int? showSkillEffectNLast = null,
-            Point? showSkillEffectPointOffset = null)
+            Point? showSkillEffectPointOffset = null,
+            int? skillLevel = null)
         {
             int resolvedShowSkillEffectNLast = showSkillEffectNLast ?? ResolveClientShowSkillEffectEffectBranchLastIndex();
             Point resolvedOriginOffset = showSkillEffectPointOffset ?? originOffset;
@@ -8603,6 +8617,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 EffectSkillId = effectSkillId,
                 SourceSkillId = sourceSkillId,
+                SkillLevel = skillLevel,
                 RequestTime = currentTime,
                 BranchNames = branchNames,
                 EffectBranchLastIndex = resolvedShowSkillEffectNLast,
@@ -13441,7 +13456,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             _player.FacingRight = facingRight;
             _player.Physics.FacingRight = facingRight;
             _player.ApplySkillAvatarTransform(skill.SkillId, launchActionName);
-            ApplyClientMovementImpact(ResolveRocketBoosterImpactX(), ResolveRocketBoosterImpactY(upwardSpeed));
+            ApplyClientMovementImpact(
+                ResolveRocketBoosterImpactX(),
+                ResolveRocketBoosterImpactY(upwardSpeed),
+                CLIENT_ROCKET_BOOSTER_IMPACT_MOVE_PATH_ATTRIBUTE);
             MarkClientBoundJumpFlightActive(currentTime);
             _rocketBoosterState = new RocketBoosterState
             {
@@ -13457,6 +13475,19 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static void ApplyClientMovementImpactForParity(HaCreator.MapSimulator.Physics.CVecCtrl physics, float impactX, float impactY)
         {
+            ApplyClientMovementImpactForParity(
+                physics,
+                impactX,
+                impactY,
+                CLIENT_BOUND_JUMP_IMPACT_MOVE_PATH_ATTRIBUTE);
+        }
+
+        internal static void ApplyClientMovementImpactForParity(
+            HaCreator.MapSimulator.Physics.CVecCtrl physics,
+            float impactX,
+            float impactY,
+            int movePathAttribute)
+        {
             if (physics == null)
             {
                 return;
@@ -13464,6 +13495,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // `CUserLocal::DoActiveSkill_BoundJump` queues the impulse through
             // `CVecCtrl::SetImpactNext`; physics applies it at the next client tick.
+            physics.SetMovePathAttribute(movePathAttribute);
             physics.SetImpactNext(impactX, impactY);
             if (impactY < 0f)
             {
@@ -13473,7 +13505,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ApplyClientMovementImpact(float impactX, float impactY)
         {
-            ApplyClientMovementImpactForParity(_player?.Physics, impactX, impactY);
+            ApplyClientMovementImpact(impactX, impactY, CLIENT_BOUND_JUMP_IMPACT_MOVE_PATH_ATTRIBUTE);
+        }
+
+        private void ApplyClientMovementImpact(float impactX, float impactY, int movePathAttribute)
+        {
+            ApplyClientMovementImpactForParity(_player?.Physics, impactX, impactY, movePathAttribute);
         }
 
         private void ProcessDeferredSkillPayloads(int currentTime)
@@ -14270,7 +14307,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                         currentTime,
                         branchNames: ResolveClientLocalShowSkillEffectRequestedBranchNames(
                             ROCKET_BOOSTER_RECOVERY_EFFECT_SKILL_ID,
-                            _rocketBoosterState.Skill)));
+                            _rocketBoosterState.Skill),
+                        skillLevel: ResolveRocketBoosterRecoveryEffectSkillLevel(
+                            GetSkillLevel(_rocketBoosterState.Skill.SkillId))));
                     _rocketBoosterState.RecoveryEffectRequested = true;
                 }
 
@@ -14592,8 +14631,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ShouldExecuteRocketBoosterLandingAreaAttack(skill);
         }
 
-        internal static bool ShouldClearRocketBoosterAfterLandingAttack(int landingAttackElapsedMs)        {
+        internal static bool ShouldClearRocketBoosterAfterLandingAttack(int landingAttackElapsedMs)
+        {
             return landingAttackElapsedMs >= ROCKET_BOOSTER_LANDING_RECOVERY_MS;
+        }
+
+        internal static int ResolveRocketBoosterRecoveryEffectSkillLevel(int rocketBoosterSkillLevel)
+        {
+            // `TryDoingRocketBoosterEnd` sends effect 35100004 with SkillLevel(35101004).
+            return Math.Max(0, rocketBoosterSkillLevel);
         }
 
         private int GetRocketBoosterLaunchDelayMs(SkillData skill, string startupActionName = null)
@@ -16666,10 +16712,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                int outgoingDamagePercent =
-                    RemoteAffectedAreaSupportResolver.ResolveDerivedProjectedOutgoingDamageRate(
-                        buff.SkillData,
-                        buff.LevelData);
+                int outgoingDamagePercent = Math.Max(0, buff.LevelData.FixedDamageRate);
+                if (outgoingDamagePercent <= 0)
+                {
+                    outgoingDamagePercent =
+                        RemoteAffectedAreaSupportResolver.ResolveDerivedProjectedOutgoingDamageRate(
+                            buff.SkillData,
+                            buff.LevelData);
+                }
                 bestPercent = Math.Max(bestPercent, outgoingDamagePercent);
             }
 
@@ -17721,9 +17771,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return presentation.SourcePoint;
             }
 
-            int duration = Math.Max(1, presentation.EndTime - presentation.StartTime);
+            int duration = Math.Max(1, ResolveBulletAnimationOwnerTickElapsedMs(
+                presentation.EndTime,
+                presentation.StartTime));
             float progress = MathHelper.Clamp(
-                (currentTime - presentation.StartTime) / (float)duration,
+                ResolveBulletAnimationOwnerTickElapsedMs(currentTime, presentation.StartTime) / (float)duration,
                 0f,
                 1f);
             return Vector2.Lerp(
@@ -19069,9 +19121,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool ShouldRemoveBulletAnimationOwner(ActiveBulletAnimationOwner owner, int currentTime)
         {
             bool hasAfterimages = owner?.AfterimageLayers?.Any(layer => layer?.IsExpired(currentTime) == false) == true;
-            bool beforeStart = owner?.Presentation != null && currentTime < owner.Presentation.StartTime;
+            bool beforeStart = owner?.Presentation != null
+                               && !HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.StartTime);
             bool finished = owner?.Presentation == null
-                || currentTime >= owner.Presentation.EndTime;
+                || HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.EndTime);
             return !beforeStart && finished && !hasAfterimages;
         }
 
@@ -19134,7 +19187,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (!owner.StopTime.HasValue && currentTime >= owner.Presentation.StartTime)
+            if (!owner.StopTime.HasValue
+                && HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.StartTime))
             {
                 owner.StopTime = currentTime;
                 owner.StopPosition = ResolveBulletAnimationOwnerStopPosition(
@@ -19164,7 +19218,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             bool timelineHasEnded = owner?.Presentation != null
                                     && currentTime != int.MinValue
-                                    && currentTime >= owner.Presentation.EndTime;
+                                    && HasBulletAnimationOwnerTickReached(currentTime, owner.Presentation.EndTime);
             return owner?.Presentation != null
                    && !owner.IsDetachedFromProjectile
                    && !owner.StopTime.HasValue
@@ -19270,7 +19324,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillAnimation animation = owner.Presentation.Animation;
             if (animation?.TryGetFrameAtTime(
-                    currentTime - owner.Presentation.StartTime,
+                    ResolveBulletAnimationOwnerTickElapsedMs(currentTime, owner.Presentation.StartTime),
                     out SkillFrame frame,
                     out int frameElapsedMs) != true
                 || frame?.Texture == null)
@@ -19279,8 +19333,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int updateInterval = ResolveBulletAfterimageUpdateInterval(owner.Presentation, frame);
-            if (owner.LastAfterimageUpdateTime != int.MinValue
-                && currentTime - owner.LastAfterimageUpdateTime < updateInterval)
+            if (ShouldWaitForBulletAfterimageRepeatCadence(
+                    owner.LastAfterimageUpdateTime,
+                    currentTime,
+                    updateInterval))
             {
                 return;
             }
@@ -19405,9 +19461,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int effectDuration = ResolveBulletAnimationDurationMs(owner.Presentation.EffectAnimation);
-            return effectDuration > 0
-                ? Math.Min(owner.Presentation.EndTime, owner.Presentation.StartTime + effectDuration)
-                : owner.Presentation.EndTime;
+            if (effectDuration <= 0)
+            {
+                return owner.Presentation.EndTime;
+            }
+
+            int effectEndTime = unchecked(owner.Presentation.StartTime + effectDuration);
+            int presentationDuration = ResolveBulletAnimationOwnerTickElapsedMs(
+                owner.Presentation.EndTime,
+                owner.Presentation.StartTime);
+            return presentationDuration > 0 && presentationDuration <= effectDuration
+                ? owner.Presentation.EndTime
+                : effectEndTime;
         }
 
         internal static bool ShouldDrawNormalBulletEffectLayer(ActiveBulletAnimationOwner owner, int currentTime)
@@ -19419,12 +19484,21 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int startTime = owner.EffectLayerRegisteredAnimationStartTime;
             int endTime = owner.EffectLayerRegisteredAnimationEndTime;
-            if (endTime <= startTime)
+            if (ResolveBulletAnimationOwnerTickElapsedMs(endTime, startTime) <= 0)
             {
                 return owner.CanDrawMainAnimation(currentTime);
             }
 
-            return currentTime >= startTime && currentTime < endTime;
+            return IsBulletAnimationOwnerTickInRange(currentTime, startTime, endTime);
+        }
+
+        internal static bool ShouldWaitForBulletAfterimageRepeatCadence(
+            int lastAfterimageUpdateTime,
+            int currentTime,
+            int updateInterval)
+        {
+            return lastAfterimageUpdateTime != int.MinValue
+                   && ResolveBulletAnimationOwnerTickElapsedMs(currentTime, lastAfterimageUpdateTime) < Math.Max(1, updateInterval);
         }
 
         internal static int ResolveBulletAfterimageRepeatLayerObjectId(ActiveBulletAnimationOwner owner)
@@ -25589,6 +25663,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.ExperienceRate != 0 ||
                 levelData.DropRate != 0 ||
                 levelData.MesoRate != 0 ||
+                levelData.FixedDamageRate != 0 ||
                 levelData.STR != 0 ||
                 levelData.DEX != 0 ||
                 levelData.INT != 0 ||
@@ -27168,6 +27243,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TrackIfMissing(temporaryStats, levelData.ExperienceRate > 0, ExperienceBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.DropRate > 0, DropRateBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.MesoRate > 0, MesoRateBuffLabel);
+                TrackIfMissing(temporaryStats, levelData.FixedDamageRate > 0, FixedDamageBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.BossDamageRate > 0, BossDamageBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.IgnoreDefenseRate > 0, IgnoreDefenseBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.HP > 0 || levelData.MP > 0, RecoveryBuffLabel);
@@ -30685,6 +30761,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             total += ResolveStatConversionBonus(_player?.Build, levelData, stat);
+            total += ResolveBasicStatPercentBonus(_player?.Build, skill, levelData, stat);
             return total;
         }
 
@@ -31220,6 +31297,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && left.ExperienceRate == right.ExperienceRate
                    && left.DropRate == right.DropRate
                    && left.MesoRate == right.MesoRate
+                   && left.FixedDamageRate == right.FixedDamageRate
                    && left.BossDamageRate == right.BossDamageRate
                    && left.IgnoreDefenseRate == right.IgnoreDefenseRate
                    && left.X == right.X
@@ -33486,7 +33564,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            int animationTime = currentTime - owner.Presentation.StartTime;
+            int animationTime = ResolveBulletAnimationOwnerTickElapsedMs(currentTime, owner.Presentation.StartTime);
             SkillFrame frame = owner.Presentation.Animation?.GetFrameAtTime(animationTime);
             if (frame?.Texture == null)
             {
@@ -35086,4 +35164,4 @@ namespace HaCreator.MapSimulator.Character.Skills
         #endregion
     }
 }
-
+

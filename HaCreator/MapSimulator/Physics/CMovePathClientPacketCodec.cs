@@ -13,7 +13,8 @@ namespace HaCreator.MapSimulator.Physics
             out string error,
             bool includeClientRandomCounts = false,
             bool includeClientFlushTail = false,
-            IReadOnlyList<byte> passiveKeyPadStates = null)
+            IReadOnlyList<byte> passiveKeyPadStates = null,
+            MovePathElement? headerElement = null)
         {
             payload = Array.Empty<byte>();
             error = null;
@@ -31,7 +32,7 @@ namespace HaCreator.MapSimulator.Physics
 
             using var stream = new MemoryStream();
             using var writer = new BinaryWriter(stream);
-            MovePathElement start = path[0];
+            MovePathElement start = headerElement ?? path[0];
             writer.Write(ClampToShort(start.X));
             writer.Write(ClampToShort(start.Y));
             writer.Write(start.VelocityX);

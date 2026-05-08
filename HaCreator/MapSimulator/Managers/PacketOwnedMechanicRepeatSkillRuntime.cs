@@ -2413,6 +2413,15 @@ namespace HaCreator.MapSimulator.Managers
 
                     break;
                 case JsonValueKind.Array:
+                    if ((insidePacketComparisonContainer || insidePayloadComparisonContainer)
+                        && TryCollectSg88ReplayParityMismatchPairsFromJsonParticipantArray(
+                            element,
+                            normalizedByByte,
+                            insidePayloadComparisonContainer))
+                    {
+                        break;
+                    }
+
                     if (insidePairContainer
                         && TryResolveSg88ReplayParityMismatchPairJsonArray(
                             element,
@@ -2490,6 +2499,58 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private static bool TryCollectSg88ReplayParityMismatchPairsFromJsonParticipantArray(
+            JsonElement element,
+            IDictionary<int, string> normalizedByByte,
+            bool insidePayloadComparisonContainer)
+        {
+            if (element.ValueKind != JsonValueKind.Array || normalizedByByte == null)
+            {
+                return false;
+            }
+
+            byte[] observedBytes = null;
+            byte[] rebuiltBytes = null;
+            bool observedPayload = insidePayloadComparisonContainer;
+            bool rebuiltPayload = insidePayloadComparisonContainer;
+            foreach (JsonElement item in element.EnumerateArray())
+            {
+                if (!TryResolveSg88PacketComparisonParticipantObject(
+                        item,
+                        insidePayloadComparisonContainer,
+                        out string normalizedParticipant,
+                        out byte[] participantBytes,
+                        out bool participantPayload))
+                {
+                    continue;
+                }
+
+                switch (normalizedParticipant)
+                {
+                    case "observed":
+                        observedBytes = participantBytes;
+                        observedPayload |= participantPayload;
+                        break;
+                    case "rebuilt":
+                        rebuiltBytes = participantBytes;
+                        rebuiltPayload |= participantPayload;
+                        break;
+                }
+            }
+
+            if (observedBytes == null || rebuiltBytes == null)
+            {
+                return false;
+            }
+
+            AddSg88PacketComparisonMismatchPairs(
+                observedBytes,
+                rebuiltBytes,
+                observedPayload && rebuiltPayload ? sizeof(ushort) : 0,
+                normalizedByByte);
+            return true;
+        }
+
         private static void TryCollectSg88ReplayParityMismatchPairsFromJsonPacketComparisonObject(
             JsonElement element,
             IDictionary<int, string> normalizedByByte,
@@ -2541,8 +2602,85 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
+            AddSg88PacketComparisonMismatchPairs(
+                observedBytes,
+                rebuiltBytes,
+                observedPayload && rebuiltPayload ? sizeof(ushort) : 0,
+                normalizedByByte);
+        }
+
+        private static bool TryResolveSg88PacketComparisonParticipantObject(
+            JsonElement element,
+            bool insidePayloadComparisonContainer,
+            out string normalizedParticipant,
+            out byte[] bytes,
+            out bool payloadBytes)
+        {
+            normalizedParticipant = null;
+            bytes = null;
+            payloadBytes = insidePayloadComparisonContainer;
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (!IsSg88PacketComparisonParticipantRoleLabel(property.Name)
+                    || property.Value.ValueKind != JsonValueKind.String
+                    || !TryNormalizeSg88MismatchPairJsonPropertyName(
+                        property.Value.GetString(),
+                        out string parsedParticipant)
+                    || parsedParticipant is not ("observed" or "rebuilt"))
+                {
+                    continue;
+                }
+
+                normalizedParticipant = parsedParticipant;
+                break;
+            }
+
+            if (normalizedParticipant == null)
+            {
+                return false;
+            }
+
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (!IsSg88PacketComparisonByteArrayLabel(property.Name)
+                    && !IsSg88PayloadComparisonByteArrayLabel(property.Name)
+                    && !IsSg88MismatchPairJsonValueContainerLabel(property.Name))
+                {
+                    continue;
+                }
+
+                if (!TryParseSg88PacketComparisonJsonBytes(property.Value, out byte[] parsedBytes))
+                {
+                    continue;
+                }
+
+                bytes = parsedBytes;
+                payloadBytes |= IsSg88PayloadComparisonByteArrayLabel(property.Name)
+                                || ContainsSg88PayloadComparisonByteArrayLabel(property.Value);
+                return true;
+            }
+
+            normalizedParticipant = null;
+            return false;
+        }
+
+        private static void AddSg88PacketComparisonMismatchPairs(
+            byte[] observedBytes,
+            byte[] rebuiltBytes,
+            int byteIndexOffset,
+            IDictionary<int, string> normalizedByByte)
+        {
+            if (observedBytes == null || rebuiltBytes == null || normalizedByByte == null)
+            {
+                return;
+            }
+
             int comparedLength = Math.Min(observedBytes.Length, rebuiltBytes.Length);
-            int byteIndexOffset = observedPayload && rebuiltPayload ? sizeof(ushort) : 0;
             for (int i = 0; i < comparedLength; i++)
             {
                 if (observedBytes[i] == rebuiltBytes[i])
@@ -2553,6 +2691,27 @@ namespace HaCreator.MapSimulator.Managers
                 int byteIndex = i + byteIndexOffset;
                 normalizedByByte[byteIndex] = $"byte{byteIndex}:0x{observedBytes[i]:X2}->0x{rebuiltBytes[i]:X2}";
             }
+        }
+
+        private static bool IsSg88PacketComparisonParticipantRoleLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is "role"
+                or "side"
+                or "source"
+                or "participant"
+                or "lane"
+                or "name"
+                or "label";
         }
 
         private static bool ShouldInspectSg88PacketComparisonParticipant(

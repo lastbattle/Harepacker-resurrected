@@ -632,12 +632,17 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<MapleTvAnimationFrame> onFrames,
             IReadOnlyList<MapleTvAnimationFrame> mediaFrames)
         {
+            if (mediaFrames != null && mediaFrames.Count > 0)
+            {
+                return ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight, mediaFrames);
+            }
+
             if (onFrames != null && onFrames.Count > 0)
             {
                 return ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvIdleSurfaceHeight, onFrames);
             }
 
-            return ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight, mediaFrames);
+            return CreateBaseSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight);
         }
 
         private static Rectangle NormalizeBounds(Rectangle bounds)

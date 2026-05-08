@@ -760,7 +760,11 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                Rectangle impactHitbox = CreateProjectileImpactHitbox(projectile.SourceMob, projectile.Attack, projectile.Target);
+                Rectangle impactHitbox = CreateProjectileImpactHitbox(
+                    projectile.SourceMob,
+                    projectile.Attack,
+                    projectile.Target,
+                    projectile.Flip);
                 if (!projectile.CreatesGroundHazard)
                 {
                     ApplyProjectileImpactHits(
@@ -3511,18 +3515,23 @@ namespace HaCreator.MapSimulator.Combat
                 targetMob.AI?.IsTargetingMob == true);
         }
 
-        private static Rectangle CreateProjectileImpactHitbox(MobItem sourceMob, MobAttackEntry attack, Vector2 target)
+        private static Rectangle CreateProjectileImpactHitbox(MobItem sourceMob, MobAttackEntry attack, Vector2 target, bool flip)
         {
             List<IDXObject> hitFrames = sourceMob?.GetAttackHitFrames(attack?.AnimationName);
             IDXObject impactFrame = hitFrames != null && hitFrames.Count > 0 ? hitFrames[0] : null;
-            if (impactFrame != null)
-            {
-                return CreateFrameAnchoredHitbox(impactFrame, target, false, 16);
-            }
 
             List<IDXObject> projectileFrames = sourceMob?.GetAttackProjectileFrames(attack?.AnimationName);
             IDXObject projectileFrame = projectileFrames != null && projectileFrames.Count > 0 ? projectileFrames[0] : null;
-            return CreateFrameAnchoredHitbox(projectileFrame, target, false, 16);
+            return CreateProjectileImpactHitbox(impactFrame, projectileFrame, target, flip);
+        }
+
+        internal static Rectangle CreateProjectileImpactHitbox(
+            IDXObject hitFrame,
+            IDXObject projectileFrame,
+            Vector2 target,
+            bool flip)
+        {
+            return CreateFrameAnchoredHitbox(hitFrame ?? projectileFrame, target, flip, 16);
         }
 
         internal static Rectangle CreateFrameAnchoredHitbox(IDXObject frame, Vector2 anchor, bool flip, int minimumSize = 16)

@@ -71,7 +71,7 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private static string BuildPayloadSignature(byte[] payload)
+        internal static string BuildPayloadSignature(byte[] payload)
         {
             payload ??= Array.Empty<byte>();
             if (payload.Length <= 0)

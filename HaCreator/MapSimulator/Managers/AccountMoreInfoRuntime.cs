@@ -35,6 +35,11 @@ namespace HaCreator.MapSimulator.Managers
         public int BirthYear { get; init; }
         public int BirthMonth { get; init; }
         public int BirthDay { get; init; }
+        public IReadOnlyList<AccountMoreInfoComboItem> AreaGroupItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> AreaDetailItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> BirthYearItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> BirthMonthItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
+        public IReadOnlyList<AccountMoreInfoComboItem> BirthDayItems { get; init; } = Array.Empty<AccountMoreInfoComboItem>();
         public IReadOnlyList<string> PlayStyleLabels { get; init; } = Array.Empty<string>();
         public IReadOnlyList<bool> PlayStyleSelections { get; init; } = Array.Empty<bool>();
         public IReadOnlyList<string> ActivityLabels { get; init; } = Array.Empty<string>();
@@ -42,6 +47,13 @@ namespace HaCreator.MapSimulator.Managers
         public string GenderStatusText { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
         public string LastDispatchText { get; init; } = string.Empty;
+    }
+
+    internal sealed class AccountMoreInfoComboItem
+    {
+        public int Value { get; init; }
+
+        public string Text { get; init; } = string.Empty;
     }
 
     internal sealed class AccountMoreInfoRuntime
@@ -303,6 +315,42 @@ namespace HaCreator.MapSimulator.Managers
             _statusText = "Adjusted account-more-info draft state inside the dedicated owner.";
         }
 
+        internal void SelectField(AccountMoreInfoEditableField field, int value)
+        {
+            if (!CanEditDraft())
+            {
+                return;
+            }
+
+            switch (field)
+            {
+                case AccountMoreInfoEditableField.AreaGroup:
+                    _areaGroup = ResolveLoadedAreaGroup(value);
+                    _areaDetail = 0;
+                    break;
+
+                case AccountMoreInfoEditableField.AreaDetail:
+                    _areaDetail = ResolveLoadedAreaDetail(_areaGroup, value);
+                    break;
+
+                case AccountMoreInfoEditableField.BirthYear:
+                    _birthYear = ResolveLoadedBirthYear(value);
+                    _birthDay = Math.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
+                    break;
+
+                case AccountMoreInfoEditableField.BirthMonth:
+                    _birthMonth = ResolveLoadedBirthMonth(value);
+                    _birthDay = Math.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
+                    break;
+
+                case AccountMoreInfoEditableField.BirthDay:
+                    _birthDay = ResolveLoadedBirthDay(_birthYear, _birthMonth, value);
+                    break;
+            }
+
+            _statusText = "Selected an account-more-info combo item inside the dedicated owner.";
+        }
+
         internal void TogglePlayStyle(int index)
         {
             if (!CanEditDraft() || index < 0 || index >= PlayStyleLabels.Length)
@@ -341,6 +389,11 @@ namespace HaCreator.MapSimulator.Managers
                 BirthYear = _birthYear,
                 BirthMonth = _birthMonth,
                 BirthDay = _birthDay,
+                AreaGroupItems = BuildAreaGroupComboItems(),
+                AreaDetailItems = BuildAreaDetailComboItems(_areaGroup),
+                BirthYearItems = BuildBirthYearComboItems(),
+                BirthMonthItems = BuildBirthMonthComboItems(),
+                BirthDayItems = BuildBirthDayComboItems(_birthYear, _birthMonth),
                 PlayStyleLabels = PlayStyleLabels,
                 PlayStyleSelections = Enumerable.Range(0, PlayStyleLabels.Length)
                     .Select(index => ((_playStyleMask >> index) & 1u) != 0)
@@ -409,6 +462,36 @@ namespace HaCreator.MapSimulator.Managers
             return areaCode == 0
                 ? AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem()
                 : FormatComboNumericValue(areaCode);
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildCountryNameComboItems(
+            IReadOnlyList<int> itemParams,
+            Func<int, string> textResolver)
+        {
+            if (itemParams == null || itemParams.Count == 0)
+            {
+                return new[]
+                {
+                    new AccountMoreInfoComboItem
+                    {
+                        Value = 0,
+                        Text = ResolveRegionComboText(0)
+                    }
+                };
+            }
+
+            List<AccountMoreInfoComboItem> items = new(itemParams.Count);
+            foreach (int itemParam in itemParams)
+            {
+                string text = textResolver?.Invoke(itemParam);
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = itemParam,
+                    Text = string.IsNullOrWhiteSpace(text) ? ResolveRegionComboText(itemParam) : text
+                });
+            }
+
+            return items;
         }
 
         internal static string FormatBirthdayComboText(int value)
@@ -554,6 +637,56 @@ namespace HaCreator.MapSimulator.Managers
             return requestedDay >= 1 && requestedDay <= maxDay
                 ? requestedDay
                 : 1;
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildBirthYearComboItems()
+        {
+            int minYear = GetMinimumBirthYear();
+            int maxYear = DateTime.Now.Year;
+            List<AccountMoreInfoComboItem> items = new((maxYear - minYear) + 1);
+            for (int year = minYear; year <= maxYear; year++)
+            {
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = year,
+                    Text = FormatComboNumericValue(year)
+                });
+            }
+
+            return items;
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildBirthMonthComboItems()
+        {
+            List<AccountMoreInfoComboItem> items = new(12);
+            for (int month = 1; month <= 12; month++)
+            {
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = month,
+                    Text = FormatComboNumericValue(month)
+                });
+            }
+
+            return items;
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoComboItem> BuildBirthDayComboItems(int year, int month)
+        {
+            int safeYear = ResolveLoadedBirthYear(year);
+            int safeMonth = ResolveLoadedBirthMonth(month);
+            int maxDay = DateTime.DaysInMonth(safeYear, safeMonth);
+            List<AccountMoreInfoComboItem> items = new(maxDay);
+            for (int day = 1; day <= maxDay; day++)
+            {
+                items.Add(new AccountMoreInfoComboItem
+                {
+                    Value = day,
+                    Text = FormatComboNumericValue(day)
+                });
+            }
+
+            return items;
         }
 
         private static int Wrap(int value, int minInclusive, int maxInclusive)
@@ -942,6 +1075,30 @@ namespace HaCreator.MapSimulator.Managers
                 && itemParams.Count > 0
                     ? CycleCountryNameItemParam(itemParams, currentAreaDetail, delta)
                     : 0;
+        }
+
+        private static IReadOnlyList<AccountMoreInfoComboItem> BuildAreaGroupComboItems()
+        {
+            EnsureCountryNameCatalogLoaded();
+            return BuildCountryNameComboItems(
+                _hasCountryNameCatalogData ? _areaGroupItemParams : new[] { 0 },
+                ResolveAreaGroupComboText);
+        }
+
+        private static IReadOnlyList<AccountMoreInfoComboItem> BuildAreaDetailComboItems(int selectedAreaGroup)
+        {
+            EnsureCountryNameCatalogLoaded();
+            if (!_hasCountryNameCatalogData
+                || selectedAreaGroup <= 0
+                || _areaDetailItemParams == null
+                || !_areaDetailItemParams.TryGetValue(selectedAreaGroup, out IReadOnlyList<int> itemParams))
+            {
+                itemParams = new[] { 0 };
+            }
+
+            return BuildCountryNameComboItems(
+                itemParams,
+                value => ResolveAreaDetailComboText(selectedAreaGroup, value));
         }
 
         private static bool TryGetCountryNameEntry(WzImageProperty child, out int id, out string name)

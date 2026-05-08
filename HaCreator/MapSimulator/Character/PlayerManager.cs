@@ -976,7 +976,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int duration = effectData.Time > 0 ? effectData.Time : effectData.AffectedDuration;
+            int duration = ResolveMobSkillHitEffectDurationMs(effectData);
             _combatEffects.AddMobSkillHitEffect(
                 x,
                 y,
@@ -986,6 +986,23 @@ namespace HaCreator.MapSimulator.Character
                 currentTime,
                 effectData.AffectedRepeat,
                 duration);
+        }
+
+        internal static int ResolveMobSkillHitEffectDurationMsForTesting(MobSkillEffectData effectData)
+        {
+            return ResolveMobSkillHitEffectDurationMs(effectData);
+        }
+
+        private static int ResolveMobSkillHitEffectDurationMs(MobSkillEffectData effectData)
+        {
+            if (effectData == null)
+            {
+                return 0;
+            }
+
+            return effectData.Time > 0
+                ? effectData.Time * 1000
+                : effectData.AffectedDuration;
         }
 
         private void HandleMobStatusPeriodicDamageApplied(PlayerMobStatusEffect effect, int damage, int currentTime, int sourceSkillId, int sourceSkillLevel)
@@ -1617,7 +1634,8 @@ namespace HaCreator.MapSimulator.Character
             int currentTime,
             float sourceX = 0f,
             int elementAttribute = 0,
-            int recastLeadTimeMs = 0)
+            int recastLeadTimeMs = 0,
+            Rectangle? periodicDamageArea = null)
         {
             if (Player == null)
             {
@@ -1630,7 +1648,8 @@ namespace HaCreator.MapSimulator.Character
                 currentTime,
                 sourceX,
                 elementAttribute,
-                recastLeadTimeMs) == true;
+                recastLeadTimeMs,
+                periodicDamageArea) == true;
         }
 
         internal bool TryApplyMobSkillBlockingStatus(int skillId, int skillLevel, MobSkillRuntimeData runtimeData, int currentTime)

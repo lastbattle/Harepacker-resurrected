@@ -15,6 +15,7 @@ using System.Linq;
 using System.IO;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
+using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
@@ -164,21 +165,27 @@ namespace HaCreator.MapSimulator.Effects
 
         public void ConfigureMap(Board board)
         {
+            ConfigureMap(board?.MapInfo, board?.BoardItems?.Portals);
+        }
+
+
+        public void ConfigureMap(MapInfo mapInfo, IEnumerable<PortalInstance> portals = null)
+        {
             if (_battlefield.IsActive)
             {
-                _battlefield.Configure(board?.MapInfo);
+                _battlefield.Configure(mapInfo);
             }
 
 
             if (_guildBoss.IsActive)
             {
-                _guildBoss.ConfigureFromBoard(board);
+                _guildBoss.ConfigureFromMap(mapInfo);
             }
 
 
             if (_massacre.IsActive)
             {
-                _massacre.Configure(board?.MapInfo);
+                _massacre.Configure(mapInfo);
             }
 
 
@@ -187,9 +194,9 @@ namespace HaCreator.MapSimulator.Effects
             {
 
                 _dojo.Configure(
-                    board?.MapInfo,
-                    board?.BoardItems?.Portals,
-                    board?.BoardItems?.Portals?.Any(portal => string.Equals(portal?.script, "dojang_next", StringComparison.OrdinalIgnoreCase)) == true);
+                    mapInfo,
+                    portals,
+                    portals?.Any(portal => string.Equals(portal?.script, "dojang_next", StringComparison.OrdinalIgnoreCase)) == true);
             }
         }
 

@@ -266,9 +266,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildClientGuildSkillRecordSummary(SocialListClientGuildResultPacket packet)
         {
-            if (ShouldIgnoreGuildScopedResult(packet.GuildId, out int activeGuildId))
+            if (TryBuildGuildScopedResultIgnore(
+                    (byte)SocialListClientGuildResultKind.SkillRecord,
+                    packet.GuildId,
+                    "guild-skill record",
+                    out string ignoredMessage))
             {
-                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) for guild {packet.GuildId} because the active packet-owned guild context is {activeGuildId}.";
+                return ignoredMessage;
             }
 
             RememberPacketGuildId(packet.GuildId);
@@ -1106,9 +1110,14 @@ namespace HaCreator.MapSimulator.Interaction
             int ownerId,
             string ownerLabel)
         {
-            if (tab == SocialListTab.Guild && ShouldIgnoreGuildScopedResult(ownerId, out int activeGuildId))
+            if (tab == SocialListTab.Guild &&
+                TryBuildGuildScopedResultIgnore(
+                    (byte)SocialListClientGuildResultKind.GradeChange,
+                    ownerId,
+                    "grade change",
+                    out string ignoredMessage))
             {
-                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.GradeChange}) for guild {ownerId} because the active packet-owned guild context is {activeGuildId}.";
+                return ignoredMessage;
             }
 
             if (tab == SocialListTab.Guild)

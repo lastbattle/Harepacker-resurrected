@@ -221,6 +221,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int CriticalRate { get; set; }        // Critical rate boost
         public int CriticalDamageMin { get; set; }   // Minimum critical damage boost
         public int CriticalDamageMax { get; set; }   // Maximum critical damage boost
+        public int FixedDamageRate { get; set; }     // incFixedDamageR item-authored outgoing damage boost
         public int DamageReductionRate { get; set; } // damR / indieDamR incoming damage reduction
         public int EnhancedPAD { get; set; }         // Mechanic-only weapon attack boost
         public int EnhancedMAD { get; set; }         // Alias-backed magic attack boost

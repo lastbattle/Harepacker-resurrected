@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string, bool> PlayFieldSound { get; init; }
         internal Func<byte, int, int, bool> PlaySummonEffectSound { get; init; }
         internal Func<string, bool?, int, int?, bool> SetObjectTagState { get; init; }
+        internal Func<string, int, int, int?, bool> SetObjectTagStateIndex { get; init; }
         internal Func<byte, int, int, bool> ShowSummonEffectVisual { get; init; }
         internal Func<string, bool> ShowScreenEffectVisual { get; init; }
         internal Func<int, int, int, bool> ShowRewardRouletteVisual { get; init; }
@@ -815,6 +816,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (ShouldSuppressBlockedGroupMessage(sender, callbacks))
+            {
+                _statusMessage = $"Suppressed packet-owned {prefix.Trim('[', ']')} chat from blocked sender {sender}.";
+                message = _statusMessage;
+                return true;
+            }
+
             string text = FormatFieldFeedbackStringPoolText(
                 CoupleSharedChatStringPoolId,
                 CoupleSharedChatFallback,
@@ -1067,7 +1075,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 2:
                     {
                         string tag = ReadMapleString(reader);
-                        callbacks?.SetObjectTagState?.Invoke(tag, null, 0, currentTick);
+                        ApplyObjectStateIndex(tag, -1, currentTick, callbacks);
                         _lastFieldEffectSummary = $"object-state push for '{tag}'";
                         _statusMessage = "Applied packet-owned field object-state push.";
                         message = _statusMessage;
@@ -1161,7 +1169,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 string tag = ReadMapleString(reader);
                 int state = reader.ReadInt32();
-                ApplyObstacleState(tag, state != 0, currentTick, callbacks);
+                ApplyObstacleState(tag, state, currentTick, callbacks);
                 appliedCount = 1;
             }
             else
@@ -1171,7 +1179,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     string tag = ReadMapleString(reader);
                     int state = reader.ReadInt32();
-                    ApplyObstacleState(tag, state != 0, currentTick, callbacks);
+                    ApplyObstacleState(tag, state, currentTick, callbacks);
                     appliedCount++;
                 }
             }
@@ -1633,15 +1641,34 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private void ApplyObstacleState(string tag, bool isEnabled, int currentTick, PacketFieldFeedbackCallbacks callbacks)
+        private void ApplyObstacleState(string tag, int stateIndex, int currentTick, PacketFieldFeedbackCallbacks callbacks)
         {
             if (string.IsNullOrWhiteSpace(tag))
             {
                 return;
             }
 
+            bool isEnabled = stateIndex != 0;
             _obstacleStates[tag] = isEnabled;
-            callbacks?.SetObjectTagState?.Invoke(tag, isEnabled, 0, currentTick);
+            ApplyObjectStateIndex(tag, stateIndex, currentTick, callbacks);
+        }
+
+        private static bool ApplyObjectStateIndex(string tag, int stateIndex, int currentTick, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                return false;
+            }
+
+            if (callbacks?.SetObjectTagStateIndex != null)
+            {
+                return callbacks.SetObjectTagStateIndex(tag, stateIndex, 0, currentTick);
+            }
+
+            bool? isEnabled = stateIndex < 0
+                ? null
+                : stateIndex != 0;
+            return callbacks?.SetObjectTagState?.Invoke(tag, isEnabled, 0, currentTick) == true;
         }
 
         private static string BuildWhisperLocationMessage(string target, string locationName)
@@ -2117,6 +2144,16 @@ namespace HaCreator.MapSimulator.Interaction
                 0 or 2 or 3 or 6 => callbacks.IsBlacklistedName(sender),
                 _ => false
             };
+        }
+
+        private static bool ShouldSuppressBlockedGroupMessage(string sender, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (string.IsNullOrWhiteSpace(sender) || callbacks?.IsBlockedFriendName == null)
+            {
+                return false;
+            }
+
+            return callbacks.IsBlockedFriendName(sender);
         }
 
         private static bool ShouldSuppressIncomingWhisper(string sender, PacketFieldFeedbackCallbacks callbacks)

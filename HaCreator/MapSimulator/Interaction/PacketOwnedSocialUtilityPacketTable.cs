@@ -94,13 +94,16 @@ namespace HaCreator.MapSimulator.Interaction
                 [11] = "CPersonalShopDlg::SetRet(nRet=1) / open setup",
                 [15] = "CPersonalShopDlg::PutItem(list item)",
                 [23] = "CPersonalShopDlg::BuyItem(personal shop)",
+                [29] = "CPersonalShopDlg::Update timed-out visitor removal",
                 [34] = "CPersonalShopDlg::BuyItem(entrusted shop visitor path)",
                 [39] = "CEntrustedShopDlg::OnGoOut",
                 [40] = "CEntrustedShopDlg::OnArrange",
                 [41] = "CEntrustedShopDlg::SetRet(nRet=8) / withdraw-all",
                 [43] = "CEntrustedShopDlg::OnWithdrawMoney",
                 [46] = "CEntrustedShopDlg::OnVisitList",
-                [47] = "CEntrustedShopDlg::OnBlackList"
+                [47] = "CEntrustedShopDlg::OnBlackList",
+                [48] = "CEntrustedShopDlg::AddBlackList",
+                [49] = "CEntrustedShopDlg::DeleteBlackList"
             };
 
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMessengerInboundSubtypeHandlers()
@@ -121,6 +124,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<byte> GetRecoveredMessengerOutboundSubtypes()
         {
             return MessengerOutboundSubtypeHandlers.Keys.OrderBy(key => key).ToArray();
+        }
+
+        internal static IReadOnlyList<byte> GetRecoveredMapleTvSendResultCodes()
+        {
+            return new byte[] { 1, 2, 3 };
         }
 
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMerchantInboundSubtypeHandlers()
@@ -354,6 +362,11 @@ namespace HaCreator.MapSimulator.Interaction
                         expectedInboundSubtypes = new byte[] { 24, 26 };
                         expectationSummary = "expect CPersonalShopDlg::OnPacket buy/sold result (subtypes 24/26)";
                         return true;
+                    case 29:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 25 };
+                        expectationSummary = "expect CPersonalShopDlg::Update timed-out visitor removal to be followed by a MiniRoom base leave/update (subtype 25)";
+                        return true;
                     case 39:
                         expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
                         expectedInboundSubtypes = new byte[] { 25 };
@@ -383,6 +396,16 @@ namespace HaCreator.MapSimulator.Interaction
                         expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
                         expectedInboundSubtypes = new byte[] { 47 };
                         expectationSummary = "expect CEntrustedShopDlg::OnPacket blacklist result (subtype 47)";
+                        return true;
+                    case 48:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 47 };
+                        expectationSummary = "expect CEntrustedShopDlg::AddBlackList to be reconciled by OnBlackListResult (subtype 47)";
+                        return true;
+                    case 49:
+                        expectedInboundOpcodes = new[] { (int)MerchantInboundOpcode };
+                        expectedInboundSubtypes = new byte[] { 47 };
+                        expectationSummary = "expect CEntrustedShopDlg::DeleteBlackList to be reconciled by OnBlackListResult (subtype 47)";
                         return true;
                     default:
                         return false;

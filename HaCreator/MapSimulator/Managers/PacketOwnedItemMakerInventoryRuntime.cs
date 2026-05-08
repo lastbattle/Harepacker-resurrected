@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.Managers
         public int ExpectedRewardQuantity { get; init; }
         public int MesoCost { get; init; }
         public int CatalystItemId { get; init; }
+        public int ClientRecipeClass { get; init; }
+        public byte[] ClientRequestPayload { get; init; } = Array.Empty<byte>();
         public IReadOnlyList<PacketOwnedItemMakerMaterialCost> Materials { get; init; }
             = Array.Empty<PacketOwnedItemMakerMaterialCost>();
     }

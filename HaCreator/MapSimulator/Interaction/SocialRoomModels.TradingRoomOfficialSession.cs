@@ -59,11 +59,10 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryWriter writer = new BinaryWriter(stream);
             writer.Write((ushort)144);
             writer.Write((byte)TradingRoomPutMoneyPacketType);
-            writer.Write((byte)0);
             writer.Write(offeredMeso);
 
             rawPacket = stream.ToArray();
-            message = $"Built trading-room subtype {TradingRoomPutMoneyPacketType} put-money request for {offeredMeso:N0} meso on outbound opcode 144, matching the local CTradingRoomDlg money-offer branch before the server echo.";
+            message = $"Built trading-room subtype {TradingRoomPutMoneyPacketType} put-money request for {offeredMeso:N0} meso on outbound opcode 144, matching CTradingRoomDlg::PutMoney encoding subtype 16 followed directly by Encode4(meso) before the server echo.";
             return true;
         }
 

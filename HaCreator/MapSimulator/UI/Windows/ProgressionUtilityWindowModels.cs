@@ -174,6 +174,8 @@ namespace HaCreator.MapSimulator.UI
         public string SourcePayloadPartText { get; init; } = string.Empty;
         public int SourcePayloadPartIndex { get; init; } = -1;
         public int SourcePayloadPartCount { get; init; }
+        public int SourcePropertyIndex { get; init; } = -1;
+        public int SourceAlignValue { get; init; }
         public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<int> LineLefts { get; init; } = Array.Empty<int>();
         public IReadOnlyList<int> LineTops { get; init; } = Array.Empty<int>();
@@ -208,6 +210,8 @@ namespace HaCreator.MapSimulator.UI
         public string ClientSourcePayloadPartText { get; init; } = string.Empty;
         public int ClientSourcePayloadPartIndex { get; init; } = -1;
         public int ClientSourcePayloadPartCount { get; init; }
+        public int ClientSourcePropertyIndex { get; init; } = -1;
+        public int ClientSourceAlignValue { get; init; }
         public int ClientTextBlockIndex { get; init; } = -1;
         public int ClientTextLineIndex { get; init; } = -1;
         public int Left { get; init; }
@@ -1002,7 +1006,11 @@ namespace HaCreator.MapSimulator.UI
                         leftStyleIndex,
                         CollectionBookTextAlignment.Left,
                         CollectionBookRecordRole.Detail,
-                        measureTextWidth);
+                        measureTextWidth,
+                        clientSourcePayloadText: string.Join("  ", compactClauses),
+                        clientSourcePayloadPartText: leftClause,
+                        clientSourcePayloadPartIndex: clauseIndex,
+                        clientSourcePayloadPartCount: compactClauses.Count);
                 }
 
                 if (hasRightClause)
@@ -1016,7 +1024,11 @@ namespace HaCreator.MapSimulator.UI
                         rightStyleIndex,
                         CollectionBookTextAlignment.Right,
                         CollectionBookRecordRole.Detail,
-                        measureTextWidth);
+                        measureTextWidth,
+                        clientSourcePayloadText: string.Join("  ", compactClauses),
+                        clientSourcePayloadPartText: rightClause,
+                        clientSourcePayloadPartIndex: clauseIndex + 1,
+                        clientSourcePayloadPartCount: compactClauses.Count);
                 }
 
                 int leftBottom = hasLeftClause
@@ -1053,7 +1065,11 @@ namespace HaCreator.MapSimulator.UI
                         rightLaneSpill ? rightStyleIndex : leftStyleIndex,
                         rightLaneSpill ? CollectionBookTextAlignment.Right : CollectionBookTextAlignment.Left,
                         CollectionBookRecordRole.Detail,
-                        measureTextWidth);
+                        measureTextWidth,
+                        clientSourcePayloadText: string.Join("  ", compactClauses),
+                        clientSourcePayloadPartText: spillClause,
+                        clientSourcePayloadPartIndex: clauseIndex,
+                        clientSourcePayloadPartCount: compactClauses.Count);
                 }
             }
         }
@@ -1125,7 +1141,11 @@ namespace HaCreator.MapSimulator.UI
             int styleIndex,
             CollectionBookTextAlignment alignment,
             CollectionBookRecordRole role,
-            Func<string, int, float> measureTextWidth = null)
+            Func<string, int, float> measureTextWidth = null,
+            string clientSourcePayloadText = null,
+            string clientSourcePayloadPartText = null,
+            int clientSourcePayloadPartIndex = -1,
+            int clientSourcePayloadPartCount = 0)
         {
             IReadOnlyList<string> lines = WrapCollectionText(text, width, styleIndex, measureTextWidth);
             if (lines.Count == 0)
@@ -1135,6 +1155,9 @@ namespace HaCreator.MapSimulator.UI
 
             int clientBlockIndex = ResolveNextClientTextBlockIndex(records);
             string clientSourceText = text ?? string.Empty;
+            string resolvedSourcePayloadText = clientSourcePayloadText ?? clientSourceText;
+            string resolvedSourcePayloadPartText = clientSourcePayloadPartText ?? clientSourceText;
+            int resolvedSourceAlignValue = ResolveClientSourceAlignValue(alignment);
             for (int i = 0; i < lines.Count; i++)
             {
                 int resolvedLeft = ResolveAnalyzedTextLeft(left, width, alignment, lines[i], styleIndex, measureTextWidth);
@@ -1157,7 +1180,13 @@ namespace HaCreator.MapSimulator.UI
                     clientAnalyzerLaneWidth: width,
                     clientAnalyzerMargin: ClientCollectionTextAnalyzerMargin,
                     clientTextDrawBaseX: ClientCollectionTextDrawBaseX,
-                    clientTextDrawBaseY: ClientCollectionTextDrawBaseY));
+                    clientTextDrawBaseY: ClientCollectionTextDrawBaseY,
+                    clientSourcePayloadText: resolvedSourcePayloadText,
+                    clientSourcePayloadPartText: resolvedSourcePayloadPartText,
+                    clientSourcePayloadPartIndex: clientSourcePayloadPartIndex,
+                    clientSourcePayloadPartCount: clientSourcePayloadPartCount,
+                    clientSourcePropertyIndex: clientBlockIndex,
+                    clientSourceAlignValue: resolvedSourceAlignValue));
             }
         }
 
@@ -1246,6 +1275,12 @@ namespace HaCreator.MapSimulator.UI
                 Kind = CollectionBookClientCtInfoBlockKind.Text,
                 Role = first.Role,
                 SourceText = first.ClientSourceText ?? string.Empty,
+                SourcePayloadText = first.ClientSourcePayloadText ?? first.ClientSourceText ?? string.Empty,
+                SourcePayloadPartText = first.ClientSourcePayloadPartText ?? first.ClientSourceText ?? string.Empty,
+                SourcePayloadPartIndex = first.ClientSourcePayloadPartIndex,
+                SourcePayloadPartCount = first.ClientSourcePayloadPartCount,
+                SourcePropertyIndex = first.ClientSourcePropertyIndex,
+                SourceAlignValue = first.ClientSourceAlignValue,
                 Lines = lines.Select(line => line.Text ?? string.Empty).ToArray(),
                 LineLefts = lines.Select(line => line.Left).ToArray(),
                 LineTops = lines.Select(line => line.Top).ToArray(),
@@ -1284,6 +1319,12 @@ namespace HaCreator.MapSimulator.UI
                 Kind = CollectionBookClientCtInfoBlockKind.Rule,
                 Role = CollectionBookRecordRole.Rule,
                 SourceText = string.Empty,
+                SourcePayloadText = string.Empty,
+                SourcePayloadPartText = string.Empty,
+                SourcePayloadPartIndex = -1,
+                SourcePayloadPartCount = 0,
+                SourcePropertyIndex = -1,
+                SourceAlignValue = 0,
                 Lines = Array.Empty<string>(),
                 LineLefts = Array.Empty<int>(),
                 LineTops = Array.Empty<int>(),
@@ -1519,6 +1560,16 @@ namespace HaCreator.MapSimulator.UI
             return left + Math.Max(0, width - lineWidth);
         }
 
+        private static int ResolveClientSourceAlignValue(CollectionBookTextAlignment alignment)
+        {
+            return alignment switch
+            {
+                CollectionBookTextAlignment.Center => 1,
+                CollectionBookTextAlignment.Right => 2,
+                _ => 0
+            };
+        }
+
         private static int MeasureCollectionTextWidth(string text, int styleIndex, Func<string, int, float> measureTextWidth = null)
         {
             if (string.IsNullOrEmpty(text))
@@ -1604,7 +1655,9 @@ namespace HaCreator.MapSimulator.UI
             string clientSourcePayloadText = null,
             string clientSourcePayloadPartText = null,
             int clientSourcePayloadPartIndex = -1,
-            int clientSourcePayloadPartCount = 0)
+            int clientSourcePayloadPartCount = 0,
+            int clientSourcePropertyIndex = -1,
+            int clientSourceAlignValue = 0)
         {
             return new CollectionBookRecordSnapshot
             {
@@ -1616,6 +1669,8 @@ namespace HaCreator.MapSimulator.UI
                 ClientSourcePayloadPartText = clientSourcePayloadPartText ?? clientSourceText ?? text ?? string.Empty,
                 ClientSourcePayloadPartIndex = clientSourcePayloadPartIndex,
                 ClientSourcePayloadPartCount = Math.Max(0, clientSourcePayloadPartCount),
+                ClientSourcePropertyIndex = clientSourcePropertyIndex,
+                ClientSourceAlignValue = clientSourceAlignValue,
                 ClientTextBlockIndex = clientTextBlockIndex,
                 ClientTextLineIndex = clientTextLineIndex,
                 Left = left,

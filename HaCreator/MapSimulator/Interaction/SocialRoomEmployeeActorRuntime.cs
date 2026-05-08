@@ -1824,8 +1824,9 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty templateRoot = employeeImgEntry?.TemplateRoot;
             WzCanvasProperty signboardCanvas = ResolveMiniRoomBoardCanvas(templateRoot?["skin"]);
             EmployeeMiniRoomBoardEffectFrame[] effectFrames = LoadMiniRoomBoardEffectFrames(templateRoot?["effect"], device);
-            byte slotMax = ResolveTemplateSlotMax(templateRoot);
             Texture2D signboardTexture = LoadUiCanvasTexture(signboardCanvas, device);
+            bool hasBoardPresentation = signboardTexture != null || effectFrames.Length > 0;
+            byte slotMax = ResolveTemplateMiniRoomSlotMax(templateRoot, hasBoardPresentation);
             if (signboardTexture == null && effectFrames.Length == 0 && slotMax == 0)
             {
                 _cashEmployeeMiniRoomBoardMissingTemplates.Add(templateId);
@@ -1856,8 +1857,13 @@ namespace HaCreator.MapSimulator.Interaction
                 ?? ResolveCanvasProperty(skinSource["backgrnd"]);
         }
 
-        private static byte ResolveTemplateSlotMax(WzImageProperty templateRoot)
+        private static byte ResolveTemplateMiniRoomSlotMax(WzImageProperty templateRoot, bool hasBoardPresentation)
         {
+            if (!hasBoardPresentation)
+            {
+                return 0;
+            }
+
             int? slotMax = GetIntValue(templateRoot?["info"]?["slotMax"]);
             if (!slotMax.HasValue || slotMax.Value <= 0)
             {
@@ -1865,6 +1871,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return (byte)Math.Min(byte.MaxValue, slotMax.Value);
+        }
+
+        internal static byte ResolveTemplateMiniRoomSlotMaxForTesting(int? slotMax, bool hasBoardPresentation)
+        {
+            var templateRoot = new WzSubProperty("template");
+            var info = new WzSubProperty("info");
+            if (slotMax.HasValue)
+            {
+                info.AddProperty(new WzIntProperty("slotMax", slotMax.Value));
+            }
+
+            templateRoot.AddProperty(info);
+            return ResolveTemplateMiniRoomSlotMax(templateRoot, hasBoardPresentation);
         }
 
         internal static string ResolveMiniRoomBoardCanvasNameForTesting(params string[] childNames)

@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
+using System.Runtime.InteropServices;
 using SD = System.Drawing;
 using SDG = System.Drawing.Graphics;
 
@@ -1657,6 +1658,16 @@ namespace HaCreator.MapSimulator.Companions
         internal static int ResolveNativePetWearCanvasCreateAddressForTesting()
         {
             return 0x4224EA;
+        }
+
+        internal static VarEnum ResolveNativePetWearCanvasCreateVariantTypeForTesting()
+        {
+            return VarEnum.VT_ERROR;
+        }
+
+        internal static int ResolveNativePetWearCanvasCreateMissingValueForTesting()
+        {
+            return unchecked((int)0x80020004);
         }
 
         internal static IReadOnlyList<int> ResolveNativePetWearCanvasCopyAddressesForTesting()

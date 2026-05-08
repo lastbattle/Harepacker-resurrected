@@ -399,9 +399,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildRankTitles(IReadOnlyList<string> rankTitles, int guildId)
         {
-            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            if (TryBuildGuildScopedResultIgnore(
+                    (byte)SocialListClientGuildResultKind.RankTitles,
+                    guildId,
+                    "rank titles",
+                    out string ignoredMessage))
             {
-                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.RankTitles}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+                return ignoredMessage;
             }
 
             if (rankTitles == null || rankTitles.Count == 0)
@@ -430,9 +434,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildNoticeText(string notice, int guildId)
         {
-            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            if (TryBuildGuildScopedResultIgnore(
+                    (byte)SocialListClientGuildResultKind.Notice,
+                    guildId,
+                    "notice text",
+                    out string ignoredMessage))
             {
-                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+                return ignoredMessage;
             }
 
             RememberPacketGuildId(guildId);

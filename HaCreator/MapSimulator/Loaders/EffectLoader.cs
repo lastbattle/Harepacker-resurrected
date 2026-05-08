@@ -397,7 +397,7 @@ namespace HaCreator.MapSimulator.Loaders
         internal static WzImageProperty ResolveReactorIndexedHitSourceProperty(WzImageProperty property)
         {
             WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
-            if (resolvedProperty is not WzSubProperty)
+            if (resolvedProperty == null)
             {
                 return null;
             }
@@ -406,6 +406,11 @@ namespace HaCreator.MapSimulator.Loaders
             if (directFrameSource != null)
             {
                 return directFrameSource;
+            }
+
+            if (resolvedProperty is not WzSubProperty)
+            {
+                return null;
             }
 
             return ResolveReactorFrameSourceProperty(WzInfoTools.GetRealProperty(resolvedProperty["hit"]));
@@ -436,7 +441,6 @@ namespace HaCreator.MapSimulator.Loaders
             foreach (WzImageProperty child in resolvedStateProperty.WzProperties)
             {
                 if (int.TryParse(child?.Name, out int properEventIndex)
-                    && WzInfoTools.GetRealProperty(child) is WzSubProperty
                     && IsReactorIndexedHitPropertyCandidate(child)
                     && acceptedIndices.Add(properEventIndex))
                 {

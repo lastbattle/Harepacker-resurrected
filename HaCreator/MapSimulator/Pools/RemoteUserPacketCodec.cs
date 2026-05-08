@@ -4146,8 +4146,7 @@ namespace HaCreator.MapSimulator.Pools
 
             int eightBitLength = payload[4];
             int eightBitDirectionFlagIndex = sizeof(int) + sizeof(byte) + eightBitLength;
-            bool canReadEightBitPayload = eightBitDirectionFlagIndex < payload.Length;
-            if (canReadEightBitPayload)
+            if (eightBitDirectionFlagIndex == payload.Length - 1)
             {
                 nameStartIndex = sizeof(int) + sizeof(byte);
                 nameLength = eightBitLength;
@@ -4162,7 +4161,7 @@ namespace HaCreator.MapSimulator.Pools
 
             int mapleStringLength = payload[4] | (payload[5] << 8);
             int mapleStringDirectionFlagIndex = sizeof(int) + sizeof(ushort) + mapleStringLength;
-            if (mapleStringDirectionFlagIndex >= payload.Length)
+            if (mapleStringDirectionFlagIndex != payload.Length - 1)
             {
                 return false;
             }

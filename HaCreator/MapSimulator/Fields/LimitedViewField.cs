@@ -202,6 +202,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<Vector2> _clientOwnedRemoteFocusWorldPositions = new();
         private readonly List<Vector2> _clientOwnedScreenMaskCentersBuffer = new();
         private readonly List<Vector2> _clientOwnedMaskTopLeftsBuffer = new();
+        private readonly List<Vector2> _clientOwnedRemoteMaskTopLeftsBuffer = new();
         private readonly List<Vector2> _clientOwnedPreviousMaskTopLefts = new();
         #endregion
 
@@ -476,6 +477,7 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedRemoteFocusWorldPositions.Clear();
             _clientOwnedScreenMaskCentersBuffer.Clear();
             _clientOwnedMaskTopLeftsBuffer.Clear();
+            _clientOwnedRemoteMaskTopLeftsBuffer.Clear();
             _clientOwnedPreviousMaskTopLefts.Clear();
         }
         #endregion
@@ -1062,10 +1064,10 @@ namespace HaCreator.MapSimulator.Fields
 
         internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityRemoteMaskTopLefts(int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
-            _clientOwnedMaskTopLeftsBuffer.Clear();
+            _clientOwnedRemoteMaskTopLeftsBuffer.Clear();
             foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
             {
-                _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
+                _clientOwnedRemoteMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
                     worldPosition.X,
                     worldPosition.Y,
                     mapShiftX,
@@ -1076,7 +1078,7 @@ namespace HaCreator.MapSimulator.Fields
                     _clientOwnedMaskOriginY));
             }
 
-            return _clientOwnedMaskTopLeftsBuffer;
+            return _clientOwnedRemoteMaskTopLeftsBuffer;
         }
 
         internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(

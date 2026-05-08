@@ -800,7 +800,8 @@ namespace HaCreator.MapSimulator
             // requires the bridge-correlated official-session result; otherwise keep
             // the submit wait alive until the same timeout budget expires.
             return wasAwaitingResult
-                && !authoritativeRoundTrip;
+                && !authoritativeRoundTrip
+                && hasPendingAuthoritativeSubmitTransport;
         }
 
         internal static bool ShouldExpirePacketOwnedAntiMacroAwaitingResult(int remainingMs)

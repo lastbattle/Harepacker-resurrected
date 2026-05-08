@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System;
 using System.Globalization;
+using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -21,6 +22,7 @@ namespace HaCreator.MapSimulator
         internal const string SoundImageName = "Skill.img";
         internal const string SoundPropertyPath = "4211006/Hit";
         internal const string SoundName = "Hit";
+        internal const string EffectBaseUol = "Skill/421.img/skill/4211006/hit";
 
         internal static int ResolveVariantIndex(int dropId, int variantCount)
         {
@@ -70,6 +72,47 @@ namespace HaCreator.MapSimulator
                 : fallbackIndex;
         }
 
+        internal static string BuildEffectUol(int variantIndex)
+        {
+            return variantIndex < 0
+                ? null
+                : $"{EffectBaseUol}/{variantIndex.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        internal static string BuildOwnerSlotKey(int dropId)
+        {
+            return dropId <= 0
+                ? string.Empty
+                : $"aux.packetOwnedDropExplosion.oneTime:{dropId.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        internal static int ResolveRestoreElapsed(
+            int previousDropId,
+            int previousVariantIndex,
+            string previousEffectUol,
+            Vector2 previousPosition,
+            int previousAnimationStartTime,
+            int currentDropId,
+            int currentVariantIndex,
+            string currentEffectUol,
+            Vector2 currentPosition,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousDropId != currentDropId
+                || previousVariantIndex != currentVariantIndex
+                || previousPosition != currentPosition
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase))
+            {
+                return 0;
+            }
+
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
         internal static float ResolveSoundVolumeScale(Vector2 listenerPosition, DropItem drop)
         {
             if (drop == null)
@@ -112,11 +155,22 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedDropExplodeFramesByVariant = new();
+        private readonly Dictionary<string, AnimationDisplayerPacketOwnedDropExplosionOwnerState> _animationDisplayerPacketOwnedDropExplosionOwnerStates = new(StringComparer.OrdinalIgnoreCase);
         private int _packetOwnedDropExplodeVariantCount = -1;
         private bool _packetOwnedDropExplodeSoundRegistrationAttempted;
         private string _packetOwnedDropExplodeSoundKey;
         private bool _packetOwnedLocalPetPickupSoundRegistrationAttempted;
         private string _packetOwnedLocalPetPickupSoundKey;
+
+        private sealed class AnimationDisplayerPacketOwnedDropExplosionOwnerState
+        {
+            public int DropId { get; init; }
+            public int VariantIndex { get; init; }
+            public string EffectUol { get; init; }
+            public Vector2 Position { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
 
         private bool TryShowPacketOwnedDropExplodeAnimation(DropItem drop, int currentTime)
         {
@@ -125,12 +179,27 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryResolvePacketOwnedDropExplodeFrames(drop, out List<IDXObject> frames))
+            if (!TryResolvePacketOwnedDropExplodeFrames(drop, out List<IDXObject> frames, out int variantIndex, out string effectUol))
             {
                 return false;
             }
 
-            _animationEffects.AddOneTime(frames, drop.X, drop.Y, flip: false, currentTime, zOrder: 1);
+            Vector2 position = new(drop.X, drop.Y);
+            int initialElapsedMs = ResolveAnimationDisplayerPacketOwnedDropExplosionInitialElapsed(
+                drop.PoolId,
+                variantIndex,
+                effectUol,
+                position,
+                currentTime,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+            _animationEffects.AddPacketOwnedDropExplosion(
+                frames,
+                effectUol,
+                drop.X,
+                drop.Y,
+                currentTime,
+                zOrder: 1,
+                initialElapsedMs);
             return true;
         }
 
@@ -218,9 +287,15 @@ namespace HaCreator.MapSimulator
             return _packetOwnedDropExplodeSoundKey;
         }
 
-        private bool TryResolvePacketOwnedDropExplodeFrames(DropItem drop, out List<IDXObject> frames)
+        private bool TryResolvePacketOwnedDropExplodeFrames(
+            DropItem drop,
+            out List<IDXObject> frames,
+            out int variantIndex,
+            out string effectUol)
         {
             frames = null;
+            variantIndex = -1;
+            effectUol = null;
 
             int variantCount = GetPacketOwnedDropExplodeVariantCount();
             if (variantCount <= 0)
@@ -231,11 +306,19 @@ namespace HaCreator.MapSimulator
             int preferredVariantIndex = PacketOwnedDropExplosionPresentation.ResolveHitVariantIndex(drop, variantCount);
             if (TryGetPacketOwnedDropExplodeFrames(preferredVariantIndex, out frames))
             {
+                variantIndex = preferredVariantIndex;
+                effectUol = PacketOwnedDropExplosionPresentation.BuildEffectUol(preferredVariantIndex);
                 return true;
             }
 
-            return preferredVariantIndex != 0
-                && TryGetPacketOwnedDropExplodeFrames(0, out frames);
+            if (preferredVariantIndex != 0 && TryGetPacketOwnedDropExplodeFrames(0, out frames))
+            {
+                variantIndex = 0;
+                effectUol = PacketOwnedDropExplosionPresentation.BuildEffectUol(0);
+                return true;
+            }
+
+            return false;
         }
 
         private bool TryGetPacketOwnedDropExplodeFrames(int variantIndex, out List<IDXObject> frames)
@@ -317,6 +400,93 @@ namespace HaCreator.MapSimulator
             }
 
             return PacketOwnedDropExplosionPresentation.ResolveSoundVolumeScale(_playerManager.Player.Position, drop);
+        }
+
+        private int ResolveAnimationDisplayerPacketOwnedDropExplosionInitialElapsed(
+            int dropId,
+            int variantIndex,
+            string effectUol,
+            Vector2 position,
+            int currentTime,
+            int durationMs)
+        {
+            string ownerSlotKey = PacketOwnedDropExplosionPresentation.BuildOwnerSlotKey(dropId);
+            if (string.IsNullOrWhiteSpace(ownerSlotKey)
+                || string.IsNullOrWhiteSpace(effectUol)
+                || variantIndex < 0
+                || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_animationDisplayerPacketOwnedDropExplosionOwnerStates.TryGetValue(
+                    ownerSlotKey,
+                    out AnimationDisplayerPacketOwnedDropExplosionOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = PacketOwnedDropExplosionPresentation.ResolveRestoreElapsed(
+                    existingState.DropId,
+                    existingState.VariantIndex,
+                    existingState.EffectUol,
+                    existingState.Position,
+                    existingState.AnimationStartTime,
+                    dropId,
+                    variantIndex,
+                    effectUol,
+                    position,
+                    currentTime,
+                    durationMs);
+            }
+
+            _animationDisplayerPacketOwnedDropExplosionOwnerStates[ownerSlotKey] =
+                new AnimationDisplayerPacketOwnedDropExplosionOwnerState
+                {
+                    DropId = dropId,
+                    VariantIndex = variantIndex,
+                    EffectUol = effectUol,
+                    Position = position,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                    DurationMs = durationMs
+                };
+            return initialElapsedMs;
+        }
+
+        internal static string BuildAnimationDisplayerPacketOwnedDropExplosionOwnerSlotKeyForTesting(int dropId)
+        {
+            return PacketOwnedDropExplosionPresentation.BuildOwnerSlotKey(dropId);
+        }
+
+        internal static string BuildAnimationDisplayerPacketOwnedDropExplosionEffectUolForTesting(int variantIndex)
+        {
+            return PacketOwnedDropExplosionPresentation.BuildEffectUol(variantIndex);
+        }
+
+        internal static int ResolveAnimationDisplayerPacketOwnedDropExplosionRestoreElapsedForTesting(
+            int previousDropId,
+            int previousVariantIndex,
+            string previousEffectUol,
+            Vector2 previousPosition,
+            int previousAnimationStartTime,
+            int currentDropId,
+            int currentVariantIndex,
+            string currentEffectUol,
+            Vector2 currentPosition,
+            int currentTime,
+            int durationMs)
+        {
+            return PacketOwnedDropExplosionPresentation.ResolveRestoreElapsed(
+                previousDropId,
+                previousVariantIndex,
+                previousEffectUol,
+                previousPosition,
+                previousAnimationStartTime,
+                currentDropId,
+                currentVariantIndex,
+                currentEffectUol,
+                currentPosition,
+                currentTime,
+                durationMs);
         }
     }
 }

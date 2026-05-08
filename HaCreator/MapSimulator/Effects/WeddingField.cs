@@ -137,7 +137,8 @@ namespace HaCreator.MapSimulator.Effects
             Profile,
             GuildMarkChanged,
             RelationshipRecordAdd,
-            RelationshipRecordRemove
+            RelationshipRecordRemove,
+            RelationshipItemEffect
         }
 
         private readonly record struct PendingWeddingRemoteParticipantOperation(
@@ -156,7 +157,9 @@ namespace HaCreator.MapSimulator.Effects
             int? RelationshipRemoveCharacterId = null,
             long? RelationshipRemoveItemSerial = null,
             RemoteRelationshipRecordDispatchKey RelationshipDispatchKey = default,
-            long? RelationshipPairLookupSerial = null);
+            long? RelationshipPairLookupSerial = null,
+            int? RelationshipItemEffectItemId = null,
+            int? RelationshipItemEffectPairCharacterId = null);
 
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()

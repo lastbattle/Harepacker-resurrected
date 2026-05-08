@@ -28,15 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            for (int i = 0; i < _fieldMessages.Count; i++)
-            {
-                if (_fieldMessages[i].IsActive(currentTickCount))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return _fieldMessages.Count > 0;
         }
 
         public LocalOverlayBalloonMessage ShowAvatar(string text, int requestedWidth, int lifetimeMs, int currentTickCount, Point avatarOriginOffset)
@@ -82,13 +74,10 @@ namespace HaCreator.MapSimulator.Interaction
                 _avatarMessage = null;
             }
 
-            for (int i = _fieldMessages.Count - 1; i >= 0; i--)
+            while (_fieldMessages.Count > 0 && !_fieldMessages[0].IsActive(currentTickCount))
             {
-                if (!_fieldMessages[i].IsActive(currentTickCount))
-                {
-                    DisposeMessage(_fieldMessages[i]);
-                    _fieldMessages.RemoveAt(i);
-                }
+                DisposeMessage(_fieldMessages[0]);
+                _fieldMessages.RemoveAt(0);
             }
         }
 
@@ -125,17 +114,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<LocalOverlayBalloonMessage>();
             }
 
-            var active = new List<LocalOverlayBalloonMessage>(_fieldMessages.Count);
-            for (int i = 0; i < _fieldMessages.Count; i++)
-            {
-                LocalOverlayBalloonMessage message = _fieldMessages[i];
-                if (message.IsActive(currentTickCount))
-                {
-                    active.Add(message);
-                }
-            }
-
-            return active;
+            return _fieldMessages.ToArray();
         }
 
         private static LocalOverlayBalloonMessage CreateMessage(

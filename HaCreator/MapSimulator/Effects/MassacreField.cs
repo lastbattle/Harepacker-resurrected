@@ -397,7 +397,13 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            ShowPacketOwnedResultPresentation(currentTimeMs, score, MapClientResultRank(rankCode));
+            if (!TryMapClientResultRank(rankCode, out char rank))
+            {
+                errorMessage = "Massacre result packet rank code must be 0, 1, 2, 3, or 4.";
+                return false;
+            }
+
+            ShowPacketOwnedResultPresentation(currentTimeMs, score, rank);
             return true;
         }
         public float GaugeProgress => Math.Clamp(_maxGauge <= 0 ? 0f : _displayGauge / _maxGauge, 0f, 1f);
@@ -1269,17 +1275,18 @@ namespace HaCreator.MapSimulator.Effects
             return false;
         }
 
-        private static char MapClientResultRank(byte rankCode)
+        private static bool TryMapClientResultRank(byte rankCode, out char rank)
         {
-            return rankCode switch
+            rank = rankCode switch
             {
                 0 => 'S',
                 1 => 'A',
                 2 => 'B',
                 3 => 'C',
                 4 => 'D',
-                _ => 'D'
+                _ => '\0'
             };
+            return rank != '\0';
         }
         private void EnsureAssetsLoaded()
         {

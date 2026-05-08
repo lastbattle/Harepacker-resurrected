@@ -137,6 +137,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientOptionButtonBottomPadding = 4;
         private bool _useLegacyOptionButtonCycle;
         private int _collapsedTopRowButtonRightInset;
+        private int _collapsedTopRowButtonTop = ClientTopRowButtonTop;
+        private int _collapsedTopRowButtonLaneHeight;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -290,6 +292,14 @@ namespace HaCreator.MapSimulator.UI
         public void SetCollapsedButtonRightInset(int rightInset)
         {
             _collapsedTopRowButtonRightInset = Math.Max(0, rightInset);
+            UpdateButtonLayout();
+        }
+
+        public void SetCollapsedButtonChromeMetrics(int rightInset, int laneTop, int laneHeight)
+        {
+            _collapsedTopRowButtonRightInset = Math.Max(0, rightInset);
+            _collapsedTopRowButtonTop = Math.Max(0, laneTop);
+            _collapsedTopRowButtonLaneHeight = Math.Max(0, laneHeight);
             UpdateButtonLayout();
         }
 
@@ -855,15 +865,27 @@ namespace HaCreator.MapSimulator.UI
             int mapButtonX = ResolveTopRowButtonX(frameWidth, _btnMap.CanvasSnapshotWidth, topRowRightPadding);
 
             _btnMap.X = mapButtonX;
-            _btnMap.Y = ClientTopRowButtonTop;
+            _btnMap.Y = ResolveTopRowButtonYForTesting(
+                _bIsCollapsedState,
+                _collapsedTopRowButtonTop,
+                _collapsedTopRowButtonLaneHeight,
+                _btnMap.CanvasSnapshotHeight);
 
             int stateButtonX = ResolveAdjacentLeftButtonX(mapButtonX, _btnMax.CanvasSnapshotWidth);
             if (_useLegacyOptionButtonCycle)
             {
                 _btnMax.X = stateButtonX;
-                _btnMax.Y = ClientTopRowButtonTop;
+                _btnMax.Y = ResolveTopRowButtonYForTesting(
+                    _bIsCollapsedState,
+                    _collapsedTopRowButtonTop,
+                    _collapsedTopRowButtonLaneHeight,
+                    _btnMax.CanvasSnapshotHeight);
                 _btnMin.X = ResolveAdjacentLeftButtonX(stateButtonX, _btnMin.CanvasSnapshotWidth);
-                _btnMin.Y = ClientTopRowButtonTop;
+                _btnMin.Y = ResolveTopRowButtonYForTesting(
+                    _bIsCollapsedState,
+                    _collapsedTopRowButtonTop,
+                    _collapsedTopRowButtonLaneHeight,
+                    _btnMin.CanvasSnapshotHeight);
                 stateButtonX = _btnMin.X;
             }
             else
@@ -874,13 +896,21 @@ namespace HaCreator.MapSimulator.UI
                 if (visibleStateButton != null)
                 {
                     visibleStateButton.X = stateButtonX;
-                    visibleStateButton.Y = ClientTopRowButtonTop;
+                    visibleStateButton.Y = ResolveTopRowButtonYForTesting(
+                        _bIsCollapsedState,
+                        _collapsedTopRowButtonTop,
+                        _collapsedTopRowButtonLaneHeight,
+                        visibleStateButton.CanvasSnapshotHeight);
                 }
 
                 if (hiddenStateButton != null)
                 {
                     hiddenStateButton.X = stateButtonX;
-                    hiddenStateButton.Y = ClientTopRowButtonTop;
+                    hiddenStateButton.Y = ResolveTopRowButtonYForTesting(
+                        _bIsCollapsedState,
+                        _collapsedTopRowButtonTop,
+                        _collapsedTopRowButtonLaneHeight,
+                        hiddenStateButton.CanvasSnapshotHeight);
                 }
             }
 
@@ -888,7 +918,11 @@ namespace HaCreator.MapSimulator.UI
             if (_btnNpc?.ButtonVisible == true)
             {
                 _btnNpc.X = ResolveAdjacentLeftButtonX(nextTopRowX, _btnNpc.CanvasSnapshotWidth);
-                _btnNpc.Y = ClientTopRowButtonTop;
+                _btnNpc.Y = ResolveTopRowButtonYForTesting(
+                    false,
+                    _collapsedTopRowButtonTop,
+                    _collapsedTopRowButtonLaneHeight,
+                    _btnNpc.CanvasSnapshotHeight);
                 nextTopRowX = _btnNpc.X;
             }
 
@@ -913,6 +947,23 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolveTopRowButtonRightPaddingForTesting(bool isCollapsed, int collapsedRightInset)
         {
             return ClientTopRowButtonRightPadding + (isCollapsed ? Math.Max(0, collapsedRightInset) : 0);
+        }
+
+        internal static int ResolveTopRowButtonYForTesting(
+            bool isCollapsed,
+            int collapsedLaneTop,
+            int collapsedLaneHeight,
+            int buttonHeight)
+        {
+            if (!isCollapsed)
+            {
+                return ClientTopRowButtonTop;
+            }
+
+            int laneTop = Math.Max(0, collapsedLaneTop);
+            int laneHeight = Math.Max(0, collapsedLaneHeight);
+            int resolvedButtonHeight = Math.Max(0, buttonHeight);
+            return laneTop + Math.Max(0, (laneHeight - resolvedButtonHeight) / 2);
         }
 
         private static int ResolveTopRowButtonX(int frameWidth, int buttonWidth)
@@ -1212,14 +1263,17 @@ namespace HaCreator.MapSimulator.UI
             int frameWidth,
             int buttonWidth,
             int collapsedRightInset = 0,
-            bool isCollapsed = false)
+            bool isCollapsed = false,
+            int collapsedLaneTop = ClientTopRowButtonTop,
+            int collapsedLaneHeight = 0,
+            int buttonHeight = 0)
         {
             return new ClientButtonPlacement(
                 ResolveTopRowButtonX(
                     frameWidth,
                     buttonWidth,
                     ResolveTopRowButtonRightPaddingForTesting(isCollapsed, collapsedRightInset)),
-                ClientTopRowButtonTop,
+                ResolveTopRowButtonYForTesting(isCollapsed, collapsedLaneTop, collapsedLaneHeight, buttonHeight),
                 Visible: true);
         }
 
@@ -1228,7 +1282,10 @@ namespace HaCreator.MapSimulator.UI
             int mapButtonWidth,
             int stateButtonWidth,
             int collapsedRightInset = 0,
-            bool isCollapsed = false)
+            bool isCollapsed = false,
+            int collapsedLaneTop = ClientTopRowButtonTop,
+            int collapsedLaneHeight = 0,
+            int buttonHeight = 0)
         {
             int mapButtonX = ResolveTopRowButtonX(
                 frameWidth,
@@ -1236,7 +1293,7 @@ namespace HaCreator.MapSimulator.UI
                 ResolveTopRowButtonRightPaddingForTesting(isCollapsed, collapsedRightInset));
             return new ClientButtonPlacement(
                 ResolveAdjacentLeftButtonX(mapButtonX, stateButtonWidth),
-                ClientTopRowButtonTop,
+                ResolveTopRowButtonYForTesting(isCollapsed, collapsedLaneTop, collapsedLaneHeight, buttonHeight),
                 Visible: true);
         }
 

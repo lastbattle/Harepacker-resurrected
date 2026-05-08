@@ -1423,21 +1423,25 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            int probabilityRoll = _actionSpeakRandom.Next(100);
-            if (!ShouldTriggerActionSpeak(metadata, AI?.CurrentHp ?? 0, AI?.MaxHp ?? 0, probabilityRoll))
+            MobAnimationSet.ActionSpeakVariant selectedVariant = SelectTriggeredActionSpeakVariant(
+                metadata,
+                AI?.CurrentHp ?? 0,
+                AI?.MaxHp ?? 0,
+                () => _actionSpeakRandom.Next(100));
+            if (selectedVariant == null)
             {
                 return;
             }
 
-            string message = SelectActionSpeakMessage(metadata, _actionSpeakRandom.Next(metadata.Messages.Count));
+            string message = SelectActionSpeakMessage(selectedVariant.Messages, _actionSpeakRandom.Next(selectedVariant.Messages.Count));
             if (string.IsNullOrWhiteSpace(message))
             {
                 return;
             }
 
             _activeActionSpeechText = SanitizeActionSpeakMessage(message);
-            _activeActionSpeechChatBalloon = metadata.ChatBalloon;
-            _activeActionSpeechFloatNotice = metadata.FloatNotice;
+            _activeActionSpeechChatBalloon = selectedVariant.ChatBalloon;
+            _activeActionSpeechFloatNotice = selectedVariant.FloatNotice;
             _activeActionSpeechExpiresAt = currentTick + GetActionSpeakDurationMs(_activeActionSpeechText);
         }
 
@@ -1471,6 +1475,19 @@ namespace HaCreator.MapSimulator.Entities
             int maxHp,
             int probabilityRoll)
         {
+            return ShouldTriggerActionSpeak(
+                ToActionSpeakVariant(metadata),
+                currentHp,
+                maxHp,
+                probabilityRoll);
+        }
+
+        private static bool ShouldTriggerActionSpeak(
+            MobAnimationSet.ActionSpeakVariant metadata,
+            int currentHp,
+            int maxHp,
+            int probabilityRoll)
+        {
             if (metadata?.Messages == null || metadata.Messages.Count == 0)
             {
                 return false;
@@ -1490,6 +1507,68 @@ namespace HaCreator.MapSimulator.Entities
             return probability > 0 && Math.Clamp(probabilityRoll, 0, 99) < probability;
         }
 
+        internal static MobAnimationSet.ActionSpeakVariant SelectTriggeredActionSpeakVariantForTests(
+            MobAnimationSet.ActionSpeakMetadata metadata,
+            int currentHp,
+            int maxHp,
+            params int[] probabilityRolls)
+        {
+            int rollIndex = 0;
+            return SelectTriggeredActionSpeakVariant(
+                metadata,
+                currentHp,
+                maxHp,
+                () =>
+                {
+                    int[] rolls = probabilityRolls ?? Array.Empty<int>();
+                    return rollIndex < rolls.Length ? rolls[rollIndex++] : 0;
+                });
+        }
+
+        private static MobAnimationSet.ActionSpeakVariant SelectTriggeredActionSpeakVariant(
+            MobAnimationSet.ActionSpeakMetadata metadata,
+            int currentHp,
+            int maxHp,
+            Func<int> nextProbabilityRoll)
+        {
+            if (metadata == null)
+            {
+                return null;
+            }
+
+            if (metadata.Variants != null && metadata.Variants.Count > 0)
+            {
+                foreach (MobAnimationSet.ActionSpeakVariant variant in metadata.Variants)
+                {
+                    if (ShouldTriggerActionSpeak(variant, currentHp, maxHp, nextProbabilityRoll?.Invoke() ?? 0))
+                    {
+                        return variant;
+                    }
+                }
+
+                return null;
+            }
+
+            MobAnimationSet.ActionSpeakVariant defaultVariant = ToActionSpeakVariant(metadata);
+            return ShouldTriggerActionSpeak(defaultVariant, currentHp, maxHp, nextProbabilityRoll?.Invoke() ?? 0)
+                ? defaultVariant
+                : null;
+        }
+
+        private static MobAnimationSet.ActionSpeakVariant ToActionSpeakVariant(MobAnimationSet.ActionSpeakMetadata metadata)
+        {
+            return metadata == null
+                ? null
+                : new MobAnimationSet.ActionSpeakVariant
+                {
+                    Probability = metadata.Probability,
+                    ChatBalloon = metadata.ChatBalloon,
+                    FloatNotice = metadata.FloatNotice,
+                    HpThreshold = metadata.HpThreshold,
+                    Messages = metadata.Messages
+                };
+        }
+
         internal static int ResolveActionSpeakHpThreshold(int authoredThreshold, int maxHp)
         {
             if (authoredThreshold <= 0)
@@ -1507,13 +1586,18 @@ namespace HaCreator.MapSimulator.Entities
 
         internal static string SelectActionSpeakMessage(MobAnimationSet.ActionSpeakMetadata metadata, int messageRoll)
         {
-            if (metadata?.Messages == null || metadata.Messages.Count == 0)
+            return SelectActionSpeakMessage(metadata?.Messages, messageRoll);
+        }
+
+        private static string SelectActionSpeakMessage(IReadOnlyList<string> messages, int messageRoll)
+        {
+            if (messages == null || messages.Count == 0)
             {
                 return null;
             }
 
-            int index = Math.Abs(messageRoll % metadata.Messages.Count);
-            return SanitizeActionSpeakMessage(metadata.Messages[index]);
+            int index = Math.Abs(messageRoll % messages.Count);
+            return SanitizeActionSpeakMessage(messages[index]);
         }
 
         internal static int GetActionSpeakDurationMs(string text)

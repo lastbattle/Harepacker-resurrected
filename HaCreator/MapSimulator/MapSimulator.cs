@@ -5652,6 +5652,7 @@ namespace HaCreator.MapSimulator
                 HasAuthoritativeProfileFame = false,
                 HasAuthoritativeProfileWorldRank = false,
                 HasAuthoritativeProfileJobRank = false,
+                HasAuthoritativeProfilePets = false,
                 HasAuthoritativeProfileRide = false,
                 HasAuthoritativeProfileTraits = false,
                 HasAuthoritativeProfilePendantSlot = false,
@@ -5894,6 +5895,7 @@ namespace HaCreator.MapSimulator
                 build.RemotePetItemIds = build.RemotePetProfiles
                     .Select(pet => pet.ItemId)
                     .ToArray();
+                build.HasAuthoritativeProfilePets = true;
             }
 
             if (packet.MonsterBookOwnedCardTypes.HasValue
@@ -21686,7 +21688,8 @@ namespace HaCreator.MapSimulator
                 currentTick,
                 sourceMob.CurrentX,
                 runtimeData.ElementAttribute,
-                Math.Max(1000, Math.Max(skill.SkillAfter, skill.EffectAfter)));
+                Math.Max(1000, Math.Max(skill.SkillAfter, skill.EffectAfter)),
+                CreateMobSkillPeriodicDamageArea(sourceMob, skill.SkillId, runtimeData));
 
             if (applied)
             {
@@ -22003,6 +22006,56 @@ namespace HaCreator.MapSimulator
             MobSkillRuntimeData runtimeData)
         {
             return CreateMobSkillAreaCore(sourceX, sourceY, flipX, runtimeData);
+        }
+
+        internal static Rectangle? CreateMobSkillBombDamageAreaForTesting(
+            float sourceX,
+            float sourceY,
+            bool flipX,
+            MobSkillRuntimeData runtimeData)
+        {
+            return CreateMobSkillBombDamageAreaCore(sourceX, sourceY, flipX, runtimeData);
+        }
+
+        private static Rectangle? CreateMobSkillPeriodicDamageArea(MobItem sourceMob, int skillId, MobSkillRuntimeData runtimeData)
+        {
+            if (skillId != 171 || sourceMob == null)
+            {
+                return null;
+            }
+
+            return CreateMobSkillBombDamageAreaCore(
+                sourceMob.CurrentX,
+                sourceMob.CurrentY,
+                sourceMob.MovementInfo?.FlipX == true,
+                runtimeData);
+        }
+
+        private static Rectangle? CreateMobSkillBombDamageAreaCore(
+            float sourceX,
+            float sourceY,
+            bool flipX,
+            MobSkillRuntimeData runtimeData)
+        {
+            if (runtimeData?.BombLt is not Point lt || runtimeData.BombRb is not Point rb)
+            {
+                return null;
+            }
+
+            int left = Math.Min(lt.X, rb.X);
+            int right = Math.Max(lt.X, rb.X);
+            if (flipX)
+            {
+                (left, right) = (-right, -left);
+            }
+
+            int top = Math.Min(lt.Y, rb.Y);
+            int bottom = Math.Max(lt.Y, rb.Y);
+            return new Rectangle(
+                (int)sourceX + left,
+                (int)sourceY + top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
         }
 
         private static Rectangle CreateMobSkillAreaCore(
@@ -25722,6 +25775,7 @@ namespace HaCreator.MapSimulator
             public int ExperienceRate { get; init; }
             public int DropRate { get; init; }
             public int MesoRate { get; init; }
+            public int FixedDamageRate { get; init; }
             public int DamageReductionRate { get; init; }
             public string DamageReductionAuthoredKey { get; init; }
             public int EnvironmentalDamageProtection { get; init; }
@@ -25829,6 +25883,7 @@ namespace HaCreator.MapSimulator
                  ExperienceRate != 0 ||
                  DropRate != 0 ||
                  MesoRate != 0 ||
+                 FixedDamageRate != 0 ||
                  DamageReductionRate != 0);
 
             public bool HasSupportedFieldProtection =>
@@ -26504,6 +26559,7 @@ namespace HaCreator.MapSimulator
                 ExperienceRate = ResolveConsumablePercentValue(specProperty, specExProperty, "expBuff", "expR", "plusExpRate"),
                 DropRate = ResolveConsumablePercentValue(specProperty, specExProperty, "dropRate", "dropR"),
                 MesoRate = ResolveConsumablePercentValue(specProperty, specExProperty, "mesoR"),
+                FixedDamageRate = ResolveConsumablePercentValue(specProperty, specExProperty, "incFixedDamageR"),
                 DamageReductionRate = ResolveConsumablePercentValue(specProperty, specExProperty, "damR", "indieDamR", "PVPdamage", "incPVPDamage"),
                 DamageReductionAuthoredKey = ResolveConsumableAuthoredKey(specProperty, specExProperty, "damR", "indieDamR", "PVPdamage", "incPVPDamage"),
                 EnvironmentalDamageProtection = ResolveConsumableEnvironmentalDamageProtection(specProperty?["thaw"], specExProperty?["thaw"]),
@@ -26900,6 +26956,7 @@ namespace HaCreator.MapSimulator
                 ExperienceRate = effect.ExperienceRate,
                 DropRate = effect.DropRate,
                 MesoRate = effect.MesoRate,
+                FixedDamageRate = effect.FixedDamageRate,
                 DamageReductionRate = effect.DamageReductionRate,
                 AuthoredPropertyOrder = BuildConsumableBuffAuthoredPropertyOrder(effect)
             };
@@ -26913,7 +26970,8 @@ namespace HaCreator.MapSimulator
             int dexterityPercent = 0,
             int intelligencePercent = 0,
             int luckPercent = 0,
-            int allStatPercent = 0)
+            int allStatPercent = 0,
+            int fixedDamageRate = 0)
         {
             return CreateConsumableBuffLevelData(new ConsumableItemEffect
             {
@@ -26924,7 +26982,8 @@ namespace HaCreator.MapSimulator
                 DexterityPercent = dexterityPercent,
                 IntelligencePercent = intelligencePercent,
                 LuckPercent = luckPercent,
-                AllStatPercent = allStatPercent
+                AllStatPercent = allStatPercent,
+                FixedDamageRate = fixedDamageRate
             });
         }
 
@@ -26938,6 +26997,11 @@ namespace HaCreator.MapSimulator
                 {
                     authoredProperties.Add(authoredKey);
                 }
+            }
+
+            if (effect.FixedDamageRate > 0)
+            {
+                authoredProperties.Add("incFixedDamageR");
             }
 
             return authoredProperties;
@@ -30542,11 +30606,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int authoredDurationSeconds = ResolveLocalOwnedAffectedAreaDurationSeconds(
+            int authoredDurationSeconds = ResolveLocalOwnedAffectedAreaAuthoredDurationSeconds(
                 skill,
                 levelData,
-                skillLevel,
-                ownerLane);
+                skillLevel);
             LocalOwnedAffectedAreaCreateMetadata createMetadata = ResolveLocalOwnedAffectedAreaCreateMetadata(
                 skill,
                 levelData,
@@ -31388,11 +31451,10 @@ namespace HaCreator.MapSimulator
             return mask != 0;
         }
 
-        private int ResolveLocalOwnedAffectedAreaDurationSeconds(
+        private int ResolveLocalOwnedAffectedAreaAuthoredDurationSeconds(
             SkillData skill,
             SkillLevelData levelData,
-            int skillLevel,
-            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+            int skillLevel)
         {
             if (skill == null || levelData == null)
             {
@@ -31421,17 +31483,7 @@ namespace HaCreator.MapSimulator
                 return metadata.DurationSeconds;
             }
 
-            return ResolveClientExplicitLocalOwnedAffectedAreaDurationSeconds(skill.SkillId, ownerLane);
-        }
-
-        internal static int ResolveClientExplicitLocalOwnedAffectedAreaDurationSeconds(
-            int skillId,
-            SkillManager.LocalAttackAreaOwnerLane ownerLane)
-        {
-            int fallbackDurationMs = ResolveClientExplicitLocalOwnedAffectedAreaDurationOverrideMs(skillId, ownerLane);
-            return fallbackDurationMs <= 0
-                ? 0
-                : (fallbackDurationMs + 999) / 1000;
+            return 0;
         }
 
         internal static int ResolveClientExplicitLocalOwnedAffectedAreaDurationOverrideMs(
@@ -33139,7 +33191,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            if (CanReplayPassiveTransferFieldUpKeyPath(currentTime) && _playerManager.Player?.CanMove == true)
+            if (CanHandleFreshPassiveTransferFieldUpKeyPath(currentTime) && _playerManager.Player?.CanMove == true)
             {
                 bool handledPortalInteraction = TryHandlePortalInteractCore(currentTime);
                 if (PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryAfterFreshHandleUpKeyDown(
@@ -33467,9 +33519,9 @@ namespace HaCreator.MapSimulator
                    || _pendingCrossMapTeleportTarget != null;
         }
 
-        private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
+        private bool CanHandleFreshPassiveTransferFieldUpKeyPath(int currentTime)
         {
-            return PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(
+            return PassiveTransferFieldReadinessEvaluator.CanHandleFreshHandleUpKeyDown(
                 ResolvePassiveTransferFieldReplayState(currentTime));
         }
 
@@ -34004,11 +34056,13 @@ namespace HaCreator.MapSimulator
                     && physics.RetainsPostGroundTailAfterClientFlush(
                         isFlying: physics.IsFlying,
                         hasDynamicFoothold: hasDynamicFoothold));
+            MovePathElement? encodeHeader = physics.GetClientMovePathEncodeHeaderSnapshot(currentTime);
             if (!CMovePathClientPacketCodec.TryEncode(
                     encodedPath,
                     out byte[] payload,
                     out _,
-                    includeClientRandomCounts))
+                    includeClientRandomCounts,
+                    headerElement: encodeHeader))
             {
                 return Array.Empty<byte>();
             }

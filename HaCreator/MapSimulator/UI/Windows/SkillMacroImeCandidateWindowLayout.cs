@@ -88,6 +88,24 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(x, y, safeWidth, safeHeight);
         }
 
+        internal static Point ResolveClientOwnerPreferredOrigin(
+            int ownerAbsLeft,
+            int ownerAbsTop,
+            int fontHeight,
+            int viewportX,
+            int caretX,
+            bool useClauseAnchor,
+            int clauseAnchorTextWidth)
+        {
+            int safeFontHeight = Math.Max(0, fontHeight);
+            int x = ownerAbsLeft
+                + (useClauseAnchor
+                    ? Math.Max(0, clauseAnchorTextWidth) - viewportX - safeFontHeight - 4
+                    : Math.Max(0, caretX) - viewportX);
+            int y = ownerAbsTop + safeFontHeight + 1;
+            return new Point(x, y);
+        }
+
         internal static bool TryResolveWindowFormOrigin(
             ImeCandidateWindowForm windowForm,
             int viewportWidth,

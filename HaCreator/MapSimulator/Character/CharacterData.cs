@@ -2016,6 +2016,7 @@ namespace HaCreator.MapSimulator.Character
         public PortableChair ActivePortableChair { get; set; }
         public IReadOnlyList<int> RemotePetItemIds { get; set; } = Array.Empty<int>();
         public IReadOnlyList<RemotePetProfileSnapshot> RemotePetProfiles { get; set; } = Array.Empty<RemotePetProfileSnapshot>();
+        public bool HasAuthoritativeProfilePets { get; set; } = true;
         public Func<int, CharacterPart> EquipmentPartLoader { get; set; }
 
         // Equipment slots
@@ -3604,6 +3605,7 @@ namespace HaCreator.MapSimulator.Character
                 ActivePortableChair = ActivePortableChair,
                 RemotePetItemIds = RemotePetItemIds != null ? new List<int>(RemotePetItemIds) : Array.Empty<int>(),
                 RemotePetProfiles = RemotePetProfiles != null ? new List<RemotePetProfileSnapshot>(RemotePetProfiles) : Array.Empty<RemotePetProfileSnapshot>(),
+                HasAuthoritativeProfilePets = HasAuthoritativeProfilePets,
                 EquipmentPartLoader = EquipmentPartLoader,
                 Equipment = CloneEquipmentLayer(Equipment),
                 HiddenEquipment = CloneEquipmentLayer(HiddenEquipment),

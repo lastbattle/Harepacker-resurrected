@@ -135,9 +135,22 @@ namespace HaCreator.MapSimulator.Managers
                 byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
                 if (!_roleSessionProxy.TrySendToServer(packet, out string proxyStatus))
                 {
-                    status = proxyStatus;
+                    bool queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(
+                        new PendingTouchRequest(objectId, isTouching, packet, ResolveCurrentTick(currentTick)));
+                    if (queued)
+                    {
+                        LastQueuedTouchObjectId = objectId;
+                        LastQueuedTouchFlag = isTouching;
+                        LastQueuedTouchPacket = packet;
+                        status = $"{proxyStatus} Queued reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) for deferred official-session replay.";
+                    }
+                    else
+                    {
+                        status = $"{proxyStatus} Reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) is already the latest deferred ownership state.";
+                    }
+
                     LastStatus = status;
-                    return false;
+                    return true;
                 }
 
                 InjectedTouchRequestCount++;

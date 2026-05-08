@@ -72,6 +72,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : MobDamageType.Physical;
         }
 
+        public static int ResolveBodyContactClientDamage(
+            int physicalDamage,
+            int currentAttackDamage,
+            int magicalDamage,
+            bool currentAttackIsMagic,
+            Func<int, MobDamageType, int> outgoingDamageResolver)
+        {
+            int baseDamage = ResolveBodyContactBaseDamage(
+                physicalDamage,
+                currentAttackDamage,
+                magicalDamage,
+                currentAttackIsMagic);
+            MobDamageType damageType = ResolveBodyContactDamageType(currentAttackIsMagic);
+            int resolvedDamage = outgoingDamageResolver?.Invoke(baseDamage, damageType) ?? baseDamage;
+            return Math.Max(1, resolvedDamage);
+        }
+
         public static int ResolveBodyContactRelativeMotionX(
             float mobCurrentX,
             float mobVelocityX,

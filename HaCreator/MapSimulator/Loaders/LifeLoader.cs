@@ -1842,18 +1842,27 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             List<string> messages = ReadMobSpeakMessages(speakNode);
-            if (messages.Count == 0)
+            IReadOnlyList<MobAnimationSet.ActionSpeakVariant> variants = ReadMobSpeakVariants(speakNode);
+            if (messages.Count == 0 && (variants == null || variants.Count == 0))
             {
                 return null;
             }
 
+            int parentProbability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100);
+            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, 0, "chataBalloon", "chatBalloon"));
+            int parentFloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice"));
+            int parentHpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp"));
+
             return new MobAnimationSet.ActionSpeakMetadata
             {
-                Probability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100),
-                ChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, 0, "chataBalloon", "chatBalloon")),
-                FloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice")),
-                HpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp")),
-                Messages = messages
+                Probability = parentProbability,
+                ChatBalloon = parentChatBalloon,
+                FloatNotice = parentFloatNotice,
+                HpThreshold = parentHpThreshold,
+                Messages = messages.Count > 0
+                    ? messages
+                    : variants.SelectMany(variant => variant.Messages ?? Array.Empty<string>()).ToArray(),
+                Variants = variants
             };
         }
 
@@ -1878,6 +1887,47 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return messages;
+        }
+
+        private static IReadOnlyList<MobAnimationSet.ActionSpeakVariant> ReadMobSpeakVariants(WzSubProperty speakNode)
+        {
+            var variants = new List<MobAnimationSet.ActionSpeakVariant>();
+            if (speakNode?.WzProperties == null)
+            {
+                return variants;
+            }
+
+            int parentProbability = Math.Clamp(ReadOptionalInt(speakNode, 100, "prob"), 0, 100);
+            int parentChatBalloon = Math.Max(0, ReadOptionalInt(speakNode, 0, "chataBalloon", "chatBalloon"));
+            int parentFloatNotice = Math.Max(0, ReadOptionalInt(speakNode, 0, "floatNotice"));
+            int parentHpThreshold = Math.Max(0, ReadOptionalInt(speakNode, 0, "hp"));
+
+            foreach (WzImageProperty childProperty in speakNode.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                if (WzInfoTools.GetRealProperty(childProperty) is not WzSubProperty variantNode)
+                {
+                    continue;
+                }
+
+                List<string> messages = ReadMobSpeakMessages(variantNode);
+                if (messages.Count == 0)
+                {
+                    continue;
+                }
+
+                variants.Add(new MobAnimationSet.ActionSpeakVariant
+                {
+                    Probability = Math.Clamp(ReadOptionalInt(variantNode, parentProbability, "prob"), 0, 100),
+                    ChatBalloon = Math.Max(0, ReadOptionalInt(variantNode, parentChatBalloon, "chataBalloon", "chatBalloon")),
+                    FloatNotice = Math.Max(0, ReadOptionalInt(variantNode, parentFloatNotice, "floatNotice")),
+                    HpThreshold = Math.Max(0, ReadOptionalInt(variantNode, parentHpThreshold, "hp")),
+                    Messages = messages
+                });
+            }
+
+            return variants;
         }
 
         private static string ResolveMobOverlayLayerZ(WzCanvasProperty canvasProperty)

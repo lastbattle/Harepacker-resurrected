@@ -3,9 +3,12 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -399,6 +402,8 @@ namespace HaCreator.MapSimulator
             string StateSfx,
             IReadOnlyDictionary<int, string> AuthoredStateSfxByIndex,
             IReadOnlyDictionary<int, int> AuthoredStateRepeatByIndex,
+            PacketOwnedNamedObjectMotionProfile BaseMotionProfile,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectMotionProfile> AuthoredStateMotionByIndex,
             PacketOwnedNamedObjectMetadataLane MetadataLanes,
             IReadOnlySet<int> AuthoredStateIndexes)
         {
@@ -434,6 +439,19 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            public PacketOwnedNamedObjectMotionProfile ResolveMotionProfile(int stateIndex)
+            {
+                if (stateIndex >= 0 &&
+                    AuthoredStateMotionByIndex != null &&
+                    AuthoredStateMotionByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectMotionProfile motionProfile) &&
+                    motionProfile != null)
+                {
+                    return motionProfile;
+                }
+
+                return BaseMotionProfile;
+            }
+
             public string BuildSelectedStateDebugSuffix(int stateIndex)
             {
                 List<string> parts = new();
@@ -447,6 +465,12 @@ namespace HaCreator.MapSimulator
                 if (repeat.HasValue)
                 {
                     parts.Add($"selectedRepeat={repeat.Value}");
+                }
+
+                PacketOwnedNamedObjectMotionProfile motionProfile = ResolveMotionProfile(stateIndex);
+                if (motionProfile != null)
+                {
+                    parts.Add($"selectedMotion={motionProfile.BuildDebugText()}");
                 }
 
                 return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
@@ -470,6 +494,16 @@ namespace HaCreator.MapSimulator
                     if (AuthoredStateRepeatByIndex?.Count > 0)
                     {
                         parts.Add($"stateRepeat={string.Join("/", AuthoredStateRepeatByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value}"))}");
+                    }
+
+                    if (BaseMotionProfile != null)
+                    {
+                        parts.Add($"baseMotion={BaseMotionProfile.BuildDebugText()}");
+                    }
+
+                    if (AuthoredStateMotionByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateMotion={string.Join("/", AuthoredStateMotionByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
                     }
 
                     if (MetadataLanes != PacketOwnedNamedObjectMetadataLane.None)
@@ -505,6 +539,101 @@ namespace HaCreator.MapSimulator
                 }
 
                 return names.Count == 0 ? "none" : string.Join("/", names);
+            }
+        }
+
+        internal sealed record PacketOwnedNamedObjectMotionProfile(
+            byte Flow,
+            int? Rx,
+            int? Ry,
+            int? Cx,
+            int? Cy)
+        {
+            public static PacketOwnedNamedObjectMotionProfile FromMapObject(
+                byte flow,
+                int? rx,
+                int? ry,
+                int? cx,
+                int? cy)
+            {
+                return HasMotion(flow, rx, ry, cx, cy)
+                    ? new PacketOwnedNamedObjectMotionProfile(flow, rx, ry, cx, cy)
+                    : null;
+            }
+
+            public static PacketOwnedNamedObjectMotionProfile FromWzProperty(WzImageProperty property)
+            {
+                if (property == null)
+                {
+                    return null;
+                }
+
+                byte flow = TryReadPacketOwnedNamedObjectInt(property, "flow", out int flowValue)
+                    ? (byte)Math.Clamp(flowValue, byte.MinValue, byte.MaxValue)
+                    : (byte)0;
+                int? rx = TryReadPacketOwnedNamedObjectInt(property, "rx", out int rxValue) ? rxValue : null;
+                int? ry = TryReadPacketOwnedNamedObjectInt(property, "ry", out int ryValue) ? ryValue : null;
+                int? cx = TryReadPacketOwnedNamedObjectInt(property, "cx", out int cxValue) ? cxValue : null;
+                int? cy = TryReadPacketOwnedNamedObjectInt(property, "cy", out int cyValue) ? cyValue : null;
+                return FromMapObject(flow, rx, ry, cx, cy);
+            }
+
+            public string BuildDebugText()
+            {
+                List<string> parts = new();
+                if (Flow != 0)
+                {
+                    parts.Add($"flow={Flow.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                AddNullableIntDebugPart(parts, "rx", Rx);
+                AddNullableIntDebugPart(parts, "ry", Ry);
+                AddNullableIntDebugPart(parts, "cx", Cx);
+                AddNullableIntDebugPart(parts, "cy", Cy);
+                return parts.Count == 0 ? "none" : string.Join("/", parts);
+            }
+
+            private static bool HasMotion(byte flow, int? rx, int? ry, int? cx, int? cy)
+            {
+                return flow != 0 || rx.HasValue || ry.HasValue || cx.HasValue || cy.HasValue;
+            }
+
+            private static bool TryReadPacketOwnedNamedObjectInt(WzImageProperty property, string childName, out int value)
+            {
+                value = 0;
+                WzImageProperty child = property?[childName];
+                switch (child)
+                {
+                    case WzIntProperty intProperty:
+                        value = intProperty.Value;
+                        return true;
+
+                    case WzShortProperty shortProperty:
+                        value = shortProperty.Value;
+                        return true;
+
+                    case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                        value = (int)longProperty.Value;
+                        return true;
+
+                    case WzStringProperty stringProperty:
+                        return int.TryParse(
+                            stringProperty.Value?.Trim(),
+                            NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,
+                            out value);
+
+                    default:
+                        return false;
+                }
+            }
+
+            private static void AddNullableIntDebugPart(List<string> parts, string name, int? value)
+            {
+                if (value.HasValue)
+                {
+                    parts.Add($"{name}={value.Value.ToString(CultureInfo.InvariantCulture)}");
+                }
             }
         }
 

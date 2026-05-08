@@ -30,5 +30,6 @@ namespace HaCreator.MapSimulator
         ExecuteFamilyPrivilegeTarget = 25,
         EntrustedShopBlacklistAdd = 26,
         EntrustedShopBlacklistNotice = 27,
+        FieldMessageBoxChalkboardCompose = 28,
     }
 }

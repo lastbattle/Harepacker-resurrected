@@ -45,6 +45,21 @@ namespace HaCreator.MapSimulator.UI
                 && !alreadyWishlisted;
         }
 
+        internal static bool CanStageClientWishlistResult(bool supportsWishlist)
+        {
+            return supportsWishlist;
+        }
+
+        internal static bool CanRegisterClientWishlistResult(bool supportsWishlist, bool alreadyWishlisted)
+        {
+            return supportsWishlist && !alreadyWishlisted;
+        }
+
+        internal static bool CanAddClientWishlistResult(bool supportsWishlist, bool alreadyWishlisted)
+        {
+            return CanRegisterClientWishlistResult(supportsWishlist, alreadyWishlisted);
+        }
+
         internal static string BuildAcceptedRegisterKey(int serviceSessionId, int registerItemId)
         {
             if (registerItemId <= 0)

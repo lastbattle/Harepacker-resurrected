@@ -1199,6 +1199,42 @@ namespace HaCreator.MapSimulator.UI
             bool hadPendingWishlistSearchRequest = _packetOwnedAdminShopSession.HasPendingWishlistSearch
                 || _packetOwnedWishlistPendingSearchRequestId >= 0
                 || !string.IsNullOrWhiteSpace(_packetOwnedWishlistPendingSearchQuery);
+            AdminShopEntry entry = _pendingRequestEntry;
+            bool hasPendingTradeRequest = entry != null;
+            bool hasPendingWishlistRegister = _pendingPacketOwnedWishlistRegisterEntry != null
+                || _pendingPacketOwnedWishlistRegisterItemId > 0
+                || !string.IsNullOrWhiteSpace(_pendingPacketOwnedWishlistRegisterTitle)
+                || _packetOwnedAdminShopSession.HasPendingWishlistRegister;
+            bool hasPendingWishlistSearch = hadPendingWishlistSearchRequest;
+            if (!_packetOwnedAdminShopSession.IsActive
+                || (!hasPendingTradeRequest && !hasPendingWishlistRegister && !hasPendingWishlistSearch))
+            {
+                byte[] rawResultPayload = BuildPacketOwnedAdminShopResultPayloadBytes(
+                    subtype,
+                    resultCode,
+                    hasResultCode,
+                    trailingPayload);
+                _packetOwnedAdminShopSession.RecordResultRejectedBeforeSubtypeDecode(
+                    _packetOwnedAdminShopSession.IsActive
+                        ? "Packet 366 arrived after the admin-shop owner had already cleared m_bShopRequestSent; the client throws before decoding the subtype byte."
+                        : "Packet 366 arrived without a live packet-owned admin-shop request; the client throws before decoding the subtype byte when the CAdminShopDlg request latch is clear.",
+                    rawResultPayload.Length,
+                    AdminShopPacketOwnedResultCodec.BuildPayloadSignature(rawResultPayload),
+                    rawResultPayload,
+                    keepSessionActive: _packetOwnedAdminShopSession.IsActive);
+                _pendingPacketOwnedAdminShopResult = false;
+                ClearPendingPacketOwnedUserSellSnapshot();
+                ClearPendingPacketOwnedWishlistRegister();
+                ClearPendingPacketOwnedWishlistSearchRequest();
+                ResetPendingRequestState();
+                message = _packetOwnedAdminShopSession.IsActive
+                    ? "Packet 366 arrived without a pending admin-shop request. The v95 client throws CDisconnectException before decoding the subtype byte when m_bShopRequestSent is clear."
+                    : "Packet 366 arrived without an active packet-owned admin-shop request. The v95 client would throw CDisconnectException before subtype decode on this owner-state mismatch.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
+            }
+
             _packetOwnedAdminShopSession.RecordResultPacket(
                 subtype,
                 resultCode,
@@ -1215,31 +1251,18 @@ namespace HaCreator.MapSimulator.UI
                 trailingPayload);
             _packetOwnedAdminShopSession.ClearWaitingForResult();
 
-            if (!_packetOwnedAdminShopSession.IsActive)
-            {
-                _packetOwnedAdminShopSession.MarkDisconnectHazard();
-                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived without a live admin-shop unique-modeless owner.");
-                message = "Packet 366 arrived without an active packet-owned admin-shop session. The v95 client would disconnect on this owner-state mismatch.";
-                _footerMessage = message;
-                UpdateActionButtonStates();
-                return true;
-            }
-
             _pendingPacketOwnedAdminShopResult = false;
-            AdminShopEntry entry = _pendingRequestEntry;
             bool hasWishlistSearchSnapshotResult = subtype == 4
                 && hasResultCode
                 && resultCode == 0
                 && _packetOwnedWishlistSearchSnapshot != null;
+            hasPendingWishlistSearch = hadPendingWishlistSearchRequest || hasWishlistSearchSnapshotResult;
             AdminShopPacketOwnedResultGateAction gateAction = AdminShopPacketOwnedResultGateParity.ResolveGateAction(
                 subtype,
                 hasResultCode,
-                hasPendingTradeRequest: entry != null,
-                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null
-                    || _pendingPacketOwnedWishlistRegisterItemId > 0
-                    || !string.IsNullOrWhiteSpace(_pendingPacketOwnedWishlistRegisterTitle)
-                    || _packetOwnedAdminShopSession.HasPendingWishlistRegister,
-                hasPendingWishlistSearch: hadPendingWishlistSearchRequest || hasWishlistSearchSnapshotResult);
+                hasPendingTradeRequest,
+                hasPendingWishlistRegister,
+                hasPendingWishlistSearch);
             if (gateAction == AdminShopPacketOwnedResultGateAction.IgnoreUnsupportedSubtype)
             {
                 if (entry != null)
@@ -1387,6 +1410,29 @@ namespace HaCreator.MapSimulator.UI
             message = _footerMessage;
             UpdateActionButtonStates();
             return true;
+        }
+
+        private static byte[] BuildPacketOwnedAdminShopResultPayloadBytes(
+            byte subtype,
+            byte resultCode,
+            bool hasResultCode,
+            byte[] trailingPayload)
+        {
+            trailingPayload ??= Array.Empty<byte>();
+            byte[] payload = new byte[1 + (hasResultCode ? 1 : 0) + trailingPayload.Length];
+            payload[0] = subtype;
+            int offset = 1;
+            if (hasResultCode)
+            {
+                payload[offset++] = resultCode;
+            }
+
+            if (trailingPayload.Length > 0)
+            {
+                Array.Copy(trailingPayload, 0, payload, offset, trailingPayload.Length);
+            }
+
+            return payload;
         }
 
         public override void Hide()
@@ -2179,6 +2225,11 @@ namespace HaCreator.MapSimulator.UI
 
             int alreadyWishlistedCount = matches.Count(match =>
                 match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)));
+            matches = matches
+                .Where(match => AdminShopPacketOwnedWishlistSearchSessionParity.CanAddClientWishlistResult(
+                    match.Entry.SupportsWishlist,
+                    match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry))))
+                .ToList();
             if (matches.Count == 0)
             {
                 message = alreadyWishlistedCount > 0
@@ -2224,10 +2275,20 @@ namespace HaCreator.MapSimulator.UI
         {
             AdminShopCategory requestedCategory = ResolveWishlistCategory(categoryKey);
             string requestedCategoryLabel = GetWishlistCategoryLabel(categoryKey);
+            int alreadyWishlistedCount = _paneStates[AdminShopPane.Npc]
+                .SourceEntries
+                .Count(entry => entry != null
+                                && entry.SupportsWishlist
+                                && MatchesWishlistCategory(entry, categoryKey)
+                                && (entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(entry))));
             List<WishlistSearchResult> results = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
                 .Select((entry, sourceIndex) => (Entry: entry, SourceIndex: sourceIndex))
-                .Where(entry => entry.Entry.SupportsWishlist && MatchesWishlistCategory(entry.Entry, categoryKey))
+                .Where(entry => entry.Entry != null
+                                && AdminShopPacketOwnedWishlistSearchSessionParity.CanAddClientWishlistResult(
+                                    entry.Entry.SupportsWishlist,
+                                    entry.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(entry.Entry)))
+                                && MatchesWishlistCategory(entry.Entry, categoryKey))
                 .OrderBy(entry => ResolveWishlistSearchClientListOrder(entry.Entry))
                 .ThenBy(entry => entry.SourceIndex)
                 .Select(entry => BuildWishlistSearchResult(entry.Entry, 0))
@@ -2242,7 +2303,6 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<WishlistSearchResult>();
             }
 
-            int alreadyWishlistedCount = results.Count(result => result.AlreadyWishlisted);
             message = alreadyWishlistedCount > 0
                 ? $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s) using the client CItemInfo scan order; {alreadyWishlistedCount} row(s) are already saved."
                 : $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s) using the client CItemInfo scan order.";
@@ -2275,6 +2335,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (!matchedEntry.SupportsWishlist)
+            {
+                return false;
+            }
+
+            if (!AdminShopPacketOwnedWishlistSearchSessionParity.CanAddClientWishlistResult(
+                    matchedEntry.SupportsWishlist,
+                    matchedEntry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(matchedEntry))))
             {
                 return false;
             }

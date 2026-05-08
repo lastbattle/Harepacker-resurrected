@@ -380,6 +380,7 @@ namespace HaCreator.MapSimulator
             public bool? SpawnRelativeToTarget { get; init; }
             public bool SpawnOnlyOnOwnerMove { get; init; }
             public bool SuppressOwnerFlip { get; init; }
+            public bool UsesAnimateEffect { get; init; }
             public int ThetaDegrees { get; init; }
             public float Radius { get; init; }
             public int ZOrder { get; init; }
@@ -3261,6 +3262,7 @@ namespace HaCreator.MapSimulator
             followId = -1;
             List<IDXObject> frames = null;
             IReadOnlyList<List<IDXObject>> followFrameVariants = followDefinition?.EffectFrameVariants;
+            bool usesAnimateEffect = followDefinition?.UsesAnimateEffect == true;
             if (!string.IsNullOrWhiteSpace(followDefinition?.EffectUol)
                 && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
             {
@@ -3280,6 +3282,12 @@ namespace HaCreator.MapSimulator
                 followFrameVariants = followDefinition == null
                     ? LoadAnimationDisplayerFollowFrameVariants()
                     : followDefinition?.EffectFrameVariants;
+            }
+
+            if (usesAnimateEffect)
+            {
+                frames = ResolveAnimationDisplayerFollowAnimateEffectFrames(followDefinition, frames);
+                followFrameVariants = null;
             }
 
             if (!Animation.AnimationEffects.HasFrames(frames)
@@ -3344,11 +3352,63 @@ namespace HaCreator.MapSimulator
                     SourceItemId = followDefinition?.ItemId ?? 0,
                     SourceClientEquipIndex = followDefinition?.ClientEquipIndex ?? -1,
                     SourceCandidateIdentity = candidateIdentity,
-                    SourceVariantCount = followFrameVariants?.Count ?? 0,
+                    SourceVariantCount = ResolveAnimationDisplayerFollowSourceVariantCount(
+                        followDefinition,
+                        followFrameVariants),
                     SourceVariantIndices = followDefinition?.EffectVariantIndices
                 });
 
             return followId >= 0;
+        }
+
+        private List<IDXObject> ResolveAnimationDisplayerFollowAnimateEffectFrames(
+            AnimationDisplayerFollowEquipmentDefinition followDefinition,
+            List<IDXObject> fallbackFrames)
+        {
+            if (Animation.AnimationEffects.HasFrames(fallbackFrames))
+            {
+                return fallbackFrames;
+            }
+
+            IReadOnlyList<List<IDXObject>> variants = followDefinition?.EffectFrameVariants;
+            if (Animation.AnimationEffects.HasFrameVariants(variants))
+            {
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    if (Animation.AnimationEffects.HasFrames(variants[i]))
+                    {
+                        return variants[i];
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(followDefinition?.EffectUol)
+                && TryGetAnimationDisplayerFrames(
+                    $"follow:equipment:animate:{followDefinition.ItemId}",
+                    followDefinition.EffectUol,
+                    out List<IDXObject> frames))
+            {
+                return frames;
+            }
+
+            return fallbackFrames;
+        }
+
+        private static int ResolveAnimationDisplayerFollowSourceVariantCount(
+            AnimationDisplayerFollowEquipmentDefinition followDefinition,
+            IReadOnlyList<List<IDXObject>> followFrameVariants)
+        {
+            if (followDefinition?.EffectVariantIndices != null && followDefinition.EffectVariantIndices.Count > 0)
+            {
+                return followDefinition.EffectVariantIndices.Count;
+            }
+
+            if (Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+            {
+                return followFrameVariants.Count;
+            }
+
+            return 0;
         }
 
         private Dictionary<int, Queue<AnimationDisplayerFollowRegistrationEntry>> BuildAnimationDisplayerFollowExistingEntriesByDefinitionKey(
@@ -8774,10 +8834,14 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            if (!ShouldUseAnimationDisplayerFollowParticleOwner(
-                    GetAnimationDisplayerNumericValue(effectProperty, "animate"),
-                    GetAnimationDisplayerNumericValue(effectProperty, "fixed"),
-                    GetAnimationDisplayerNumericValue(effectProperty, "pos")))
+            int? authoredAnimate = GetAnimationDisplayerNumericValue(effectProperty, "animate");
+            int? authoredFixed = GetAnimationDisplayerNumericValue(effectProperty, "fixed");
+            int? authoredPos = GetAnimationDisplayerNumericValue(effectProperty, "pos");
+            bool usesAnimateEffect = ShouldUseAnimationDisplayerFollowAnimateEffectOwner(authoredAnimate);
+            if (!ShouldRegisterAnimationDisplayerFollowEquipmentDefinition(
+                    authoredAnimate,
+                    authoredFixed,
+                    authoredPos))
             {
                 return null;
             }
@@ -8832,6 +8896,7 @@ namespace HaCreator.MapSimulator
                 SuppressOwnerFlip = ResolveAnimationDisplayerFollowEquipmentNoFlip(
                     GetAnimationDisplayerNumericValue(effectProperty, "bNoFlip"),
                     GetAnimationDisplayerNumericValue(effectProperty, "noFlip")),
+                UsesAnimateEffect = usesAnimateEffect,
                 ThetaDegrees = ResolveAnimationDisplayerFollowEquipmentThetaDegrees(
                     GetAnimationDisplayerNumericValue(effectProperty, "nTheta"),
                     GetAnimationDisplayerNumericValue(effectProperty, "theta")),
@@ -9148,9 +9213,28 @@ namespace HaCreator.MapSimulator
             int? authoredFixed,
             int? authoredPos)
         {
+            _ = authoredFixed;
+            _ = authoredPos;
             // CItemEffectManager::LoadItemEffect branches to CAnimateEffect only from the authored animate flag.
             // Other effect metadata must not suppress the CParticleEffect/FOLLOWINFO owner path.
             return authoredAnimate.GetValueOrDefault() == 0;
+        }
+
+        internal static bool ShouldUseAnimationDisplayerFollowAnimateEffectOwner(int? authoredAnimate)
+        {
+            return authoredAnimate.GetValueOrDefault() != 0;
+        }
+
+        internal static bool ShouldRegisterAnimationDisplayerFollowEquipmentDefinition(
+            int? authoredAnimate,
+            int? authoredFixed,
+            int? authoredPos)
+        {
+            return ShouldUseAnimationDisplayerFollowParticleOwner(
+                    authoredAnimate,
+                    authoredFixed,
+                    authoredPos)
+                || ShouldUseAnimationDisplayerFollowAnimateEffectOwner(authoredAnimate);
         }
 
         internal static bool ResolveAnimationDisplayerFollowEquipmentNoFlip(int? authoredBNoFlip, int? authoredNoFlip)

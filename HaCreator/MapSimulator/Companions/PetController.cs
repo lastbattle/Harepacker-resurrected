@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Companions
     {
         internal const int AutoSpeakingSkillMask = 1 << (int)PetSkillFlag.Smart;
         internal const int FoodTamenessGain = 1;
+        internal const int ClientPetPickupOthersDelayMs = 15000;
         private const int MinFullness = 0;
         private const int MaxFullness = 100;
         private const int DefaultFullness = 60;
@@ -399,8 +400,7 @@ namespace HaCreator.MapSimulator.Companions
         internal static bool ShouldAutoLootDropForPetSkillMask(DropType dropType, int skillMask)
         {
             return dropType == DropType.Meso
-                || PetSkillFlag.PickupItem.Check(skillMask)
-                || PetSkillFlag.PickupAll.Check(skillMask);
+                || PetSkillFlag.PickupItem.Check(skillMask);
         }
 
         internal static bool ShouldAutoLootDropForPetSkillMask(
@@ -419,8 +419,9 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            // CDropPool::TryPickUpDropByPet gates post-owner-window pickup of
-            // another character's sourced drops behind the pet's pickupOthers bit.
+            // CDropPool::TryPickUpDropByPet keeps non-meso pickup behind the item
+            // pickup bit, then separately gates other sourced drops behind the
+            // pickup-others bit after the native 15s create-time window.
             if (IsOtherCharacterDropPastOwnerWindow(drop, ownerId, currentTime)
                 && !PetSkillFlag.PickupAll.Check(skillMask))
             {
@@ -441,7 +442,7 @@ namespace HaCreator.MapSimulator.Companions
                 && drop.OwnerId > 0
                 && ownerId > 0
                 && drop.OwnerId != ownerId
-                && currentTime >= drop.OwnerExpireTime;
+                && currentTime - drop.SpawnTime > ClientPetPickupOthersDelayMs;
         }
 
         public bool TryExecuteCommand(string message, int currentTime)

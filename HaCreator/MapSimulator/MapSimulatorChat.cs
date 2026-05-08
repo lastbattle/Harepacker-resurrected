@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator
         public int CompositionStart { get; init; } = -1;
         public int CompositionLength { get; init; }
         public int CompositionCursorPosition { get; init; } = -1;
+        public IReadOnlyList<int> CompositionClauseOffsets { get; init; } = Array.Empty<int>();
         public bool HasCompositionText => CompositionLength > 0;
         public string CompositionPreviewText { get; init; } = string.Empty;
         public ImeCandidateListState ImeCandidateList { get; init; } = ImeCandidateListState.Empty;
@@ -534,6 +535,32 @@ namespace HaCreator.MapSimulator
                 && ShouldForwardClientEditPageKeyToParent(newKeyboardState))
             {
                 return false;
+            }
+
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && !IsWhisperTargetPickerModalDropdownNavigating()
+                && newKeyboardState.IsKeyDown(Keys.Down)
+                && ShouldRouteClientEditKeyToImeCandidateWindow(Keys.Down, _imeCandidateListState))
+            {
+                bool isFirstPress = oldKeyboardState.IsKeyUp(Keys.Down);
+                bool isRepeat = !isFirstPress && ShouldRepeatKey(Keys.Down, tickCount);
+                if (!isFirstPress && !isRepeat)
+                {
+                    return true;
+                }
+
+                if (isFirstPress)
+                {
+                    _lastHeldKey = Keys.Down;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else
+                {
+                    _lastKeyRepeatTime = tickCount;
+                }
+
+                return true;
             }
 
             // Handle Up arrow - browse history (older)
@@ -1491,6 +1518,7 @@ namespace HaCreator.MapSimulator
                 CompositionStart = compositionStart,
                 CompositionLength = compositionLength,
                 CompositionCursorPosition = compositionCursorPosition,
+                CompositionClauseOffsets = _compositionState.ClauseOffsets,
                 CompositionPreviewText = compositionPreviewText,
                 ImeCandidateList = _imeCandidateListState,
                 TargetType = _chatTarget,
@@ -3346,6 +3374,16 @@ namespace HaCreator.MapSimulator
             }
 
             return key == Keys.Left || key == Keys.Right;
+        }
+
+        internal static bool ShouldRouteClientEditKeyToImeCandidateWindow(
+            Keys key,
+            ImeCandidateListState candidateListState)
+        {
+            // CCtrlEdit::OnKey routes VK_DOWN through m_pIMECandWnd when the
+            // edit-owned candidate child exists. Other arrows keep their existing
+            // edit/history/combo owner paths in this modeled status-bar seam.
+            return key == Keys.Down && candidateListState?.HasCandidates == true;
         }
 
         internal static bool ShouldForwardClientEditParentOnlyKey(

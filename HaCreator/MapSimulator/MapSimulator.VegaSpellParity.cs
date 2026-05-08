@@ -310,6 +310,8 @@ namespace HaCreator.MapSimulator
         {
             if (_pendingVegaCastState == null ||
                 _pendingVegaCastState.ResultApplied ||
+                (_pendingVegaCastState.PacketOwnedTerminalCode.HasValue &&
+                    !_pendingVegaCastState.PacketOwnedPreludeCode.HasValue) ||
                 unchecked(currTickCount - _pendingVegaCastState.ResultReadyAtTick) < 0 ||
                 uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is not ItemUpgradeUI itemUpgradeWindow)
             {
@@ -829,10 +831,32 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.OutcomeResolved = true;
                 _pendingVegaCastState.ResolvedSuccess = success;
                 _pendingVegaCastState.Result = result;
-                _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
+                if (_pendingVegaCastState.PacketOwnedTerminalCode.HasValue)
+                {
+                    if (DoesVegaTerminalMatchPrelude(success, _pendingVegaCastState.PacketOwnedTerminalCode.Value))
+                    {
+                        _pendingVegaCastState.PacketOwnedTerminalSuccess = success;
+                        _pendingVegaCastState.ResolvedSuccess = success;
+                        _pendingVegaCastState.ResultReadyAtTick = ResolveVegaPacketOwnedTerminalApplyReadyTick(
+                            currTickCount,
+                            _pendingVegaCastState.PacketOwnedPreludeStartedAtTick ?? currTickCount,
+                            _pendingVegaCastState.PacketOwnedPreludeDurationMs);
+                    }
+                    else
+                    {
+                        _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
+                    }
+                }
+                else
+                {
+                    _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
+                }
+
                 ApplyVegaResultPrelude(result, allowSoundWithoutWindow: true);
                 string stateNote = BuildPacketOwnedVegaResultStateNote(decodeState);
-                message = $"Observed packet-owned Vega prelude result code {resultCode}{stateNote} through CUIVega::OnVegaResult ownership and deferred equipment mutation until the terminal result packet.";
+                message = _pendingVegaCastState.PacketOwnedTerminalCode.HasValue
+                    ? $"Observed packet-owned Vega prelude result code {resultCode}{stateNote} after the terminal packet; replayed the recovered CUIVega::OnVegaResult prelude before terminal equipment mutation."
+                    : $"Observed packet-owned Vega prelude result code {resultCode}{stateNote} through CUIVega::OnVegaResult ownership and deferred equipment mutation until the terminal result packet.";
                 return true;
             }
 
@@ -852,19 +876,7 @@ namespace HaCreator.MapSimulator
 
                 if (!_pendingVegaCastState.OutcomeResolved)
                 {
-                    ItemUpgradeUI.ItemUpgradeAttemptResult result = BuildPacketOwnedVegaPreludeResult(
-                        _pendingVegaCastState.Request,
-                        terminalSuccess);
-                    result = RewriteVegaOwnerResultMessage(result, _pendingVegaCastState.UseWhiteScroll);
-                    int preludeDurationMs = ResolveCurrentVegaResultPreludeDurationMs();
-                    _pendingVegaCastState.PacketOwnedPreludeStartedAtTick = currTickCount;
-                    _pendingVegaCastState.PacketOwnedPreludeDurationMs = preludeDurationMs;
                     RecordPacketOwnedVegaOutcomeState(decodeState);
-                    _pendingVegaCastState.PacketOwnedPreludeSuccess = terminalSuccess;
-                    _pendingVegaCastState.OutcomeResolved = true;
-                    _pendingVegaCastState.ResolvedSuccess = terminalSuccess;
-                    _pendingVegaCastState.Result = result;
-                    ApplyVegaResultPrelude(result, allowSoundWithoutWindow: true);
                 }
                 else
                 {
@@ -874,13 +886,19 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.PacketOwnedTerminalCode = resultCode;
                 _pendingVegaCastState.PacketOwnedResultObserved = true;
                 _pendingVegaCastState.PacketOwnedTerminalSuccess = terminalSuccess;
-                _pendingVegaCastState.ResolvedSuccess = terminalSuccess;
-                _pendingVegaCastState.ResultReadyAtTick = ResolveVegaPacketOwnedTerminalApplyReadyTick(
-                    currTickCount,
-                    _pendingVegaCastState.PacketOwnedPreludeStartedAtTick ?? currTickCount,
-                    _pendingVegaCastState.PacketOwnedPreludeDurationMs);
+                if (_pendingVegaCastState.PacketOwnedPreludeCode.HasValue)
+                {
+                    _pendingVegaCastState.ResolvedSuccess = terminalSuccess;
+                    _pendingVegaCastState.ResultReadyAtTick = ResolveVegaPacketOwnedTerminalApplyReadyTick(
+                        currTickCount,
+                        _pendingVegaCastState.PacketOwnedPreludeStartedAtTick ?? currTickCount,
+                        _pendingVegaCastState.PacketOwnedPreludeDurationMs);
+                }
+
                 string stateNote = BuildPacketOwnedVegaResultStateNote(decodeState);
-                message = $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}){stateNote} and deferred equipment mutation until the recovered prelude handoff.";
+                message = _pendingVegaCastState.PacketOwnedPreludeCode.HasValue
+                    ? $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}){stateNote} and deferred equipment mutation until the recovered prelude handoff."
+                    : $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}){stateNote} before the recovered prelude; stored m_nRet2-style state without starting prelude playback.";
                 return true;
             }
 

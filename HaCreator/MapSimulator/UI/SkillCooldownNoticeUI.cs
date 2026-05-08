@@ -29,7 +29,12 @@ namespace HaCreator.MapSimulator.UI
             WeatherMessageOwnerSourceKind OwnerSourceKind,
             int OwnerSkillId,
             bool IsPresent,
-            bool IsExpired);
+            bool IsExpired)
+        {
+            public string OwnerSlotName => ResolveStatusBarNoticeOwnerSlotNameForClientParity(OwnerKind);
+            public int OwnerSlotOrdinal => ResolveStatusBarNoticeOwnerSlotOrdinalForClientParity(OwnerKind);
+            public int OwnerLayerReferenceCount => IsPresent ? 1 : 0;
+        }
 
         internal readonly record struct NoticeFrameCandidate(
             string Name,
@@ -625,6 +630,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        internal static string ResolveStatusBarNoticeOwnerSlotNameForClientParity(StatusBarNoticeOwnerKind ownerKind)
+        {
+            return ownerKind switch
+            {
+                StatusBarNoticeOwnerKind.QuizPanel => "CUIStatusBar.m_quizPanel",
+                StatusBarNoticeOwnerKind.FloatNotice => "CUIStatusBar.m_floatNotice",
+                StatusBarNoticeOwnerKind.ItemMsg => "CUIStatusBar.m_itemMsg",
+                _ => string.Empty
+            };
+        }
+
+        internal static int ResolveStatusBarNoticeOwnerSlotOrdinalForClientParity(StatusBarNoticeOwnerKind ownerKind)
+        {
+            return ownerKind switch
+            {
+                StatusBarNoticeOwnerKind.QuizPanel => 1,
+                StatusBarNoticeOwnerKind.FloatNotice => 2,
+                StatusBarNoticeOwnerKind.ItemMsg => 3,
+                _ => 0
+            };
         }
 
         internal static bool ShouldRetainStatusBarItemMsgOwnerForClientParity(

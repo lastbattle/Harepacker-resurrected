@@ -218,6 +218,7 @@ namespace HaCreator.MapSimulator.UI
             public string RewardSessionSummary { get; init; } = string.Empty;
             public bool HasPacketRewardSessionByte { get; init; }
             public int PacketRewardSessionByte { get; init; }
+            public int PacketRewardSessionByteOffset { get; init; } = -1;
             public int PacketPayloadLength { get; init; }
             public int PacketDecodedByteLength { get; init; }
             public int PacketTrailingByteCount { get; init; }
@@ -396,6 +397,7 @@ namespace HaCreator.MapSimulator.UI
         private int _oneADayNumberCanvasReadyMask;
         private bool _oneADayRewardSessionPacketOwned;
         private int _oneADayLastPacketRewardSessionByte = -1;
+        private int _oneADayLastPacketRewardSessionByteOffset = -1;
         private readonly OneADaySelectorRuntimeState _oneADaySelectorObject = new();
         private readonly OneADayCounterRuntimeState _oneADayCounterObject = new();
         private readonly OneADayRewardSessionRuntimeState _oneADayRewardSessionObject = new();
@@ -2617,6 +2619,7 @@ namespace HaCreator.MapSimulator.UI
             _oneADayPending = effectivePending;
             _oneADayPacketStateSignature = nextPacketStateSignature;
             _oneADayLastPacketRewardSessionByte = state.HasPacketRewardSessionByte ? packetRewardSessionByte : -1;
+            _oneADayLastPacketRewardSessionByteOffset = state.HasPacketRewardSessionByte ? state.PacketRewardSessionByteOffset : -1;
             if (selectorReseedRequested)
             {
                 int packetOwnedSelectorIndex = state.HasPacketRewardSessionByte && (packetRewardSessionByte & 2) != 0 ? 1 : 0;
@@ -2971,8 +2974,11 @@ namespace HaCreator.MapSimulator.UI
             string packetSignature = string.IsNullOrWhiteSpace(_oneADayRewardSessionObject.PacketStateSignature)
                 ? "none"
                 : TrimToLength(_oneADayRewardSessionObject.PacketStateSignature, 24);
+            string packetOffset = _oneADayRewardSessionPacketOwned
+                ? $" offset {_oneADayLastPacketRewardSessionByteOffset.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
             return
-                $"Reward session {sourceLabel} byte 0x{_oneADayRewardSessionObject.SessionByte:X2} rev {_oneADayRewardSessionObject.Revision.ToString(CultureInfo.InvariantCulture)}  " +
+                $"Reward session {sourceLabel} byte 0x{_oneADayRewardSessionObject.SessionByte:X2}{packetOffset} rev {_oneADayRewardSessionObject.Revision.ToString(CultureInfo.InvariantCulture)}  " +
                 $"Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)} (obj rev {_oneADaySelectorObject.Revision.ToString(CultureInfo.InvariantCulture)})  " +
                 $"Number mask 0x{_oneADayCounterObject.DigitCanvasMask:X3} (obj rev {_oneADayCounterObject.Revision.ToString(CultureInfo.InvariantCulture)})  " +
                 $"Packet sig {packetSignature}.";

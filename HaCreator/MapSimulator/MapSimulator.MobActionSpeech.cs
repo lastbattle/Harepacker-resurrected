@@ -192,9 +192,7 @@ namespace HaCreator.MapSimulator
                 East = LoadUiCanvasTexture(source["e"] as WzCanvasProperty),
                 Center = LoadUiCanvasTexture(source["c"] as WzCanvasProperty),
                 Arrow = LoadUiArrowSprite(source["arrow"] as WzCanvasProperty),
-                TextColor = IsMobActionSpeechScreenChatSource(source)
-                    ? Color.White
-                    : ResolvePacketOwnedBalloonTextColor(source["clr"] as WzImageProperty),
+                TextColor = ResolvePacketOwnedBalloonTextColor(source["clr"] as WzImageProperty),
                 IsScreenChat = IsMobActionSpeechScreenChatSource(source)
             };
         }

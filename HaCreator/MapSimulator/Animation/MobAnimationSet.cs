@@ -86,6 +86,16 @@ namespace HaCreator.MapSimulator.Animation
             public int FloatNotice { get; init; }
             public int HpThreshold { get; init; }
             public IReadOnlyList<string> Messages { get; init; }
+            public IReadOnlyList<ActionSpeakVariant> Variants { get; init; }
+        }
+
+        public sealed class ActionSpeakVariant
+        {
+            public int Probability { get; init; }
+            public int ChatBalloon { get; init; }
+            public int FloatNotice { get; init; }
+            public int HpThreshold { get; init; }
+            public IReadOnlyList<string> Messages { get; init; }
         }
 
         public sealed class AttackInfoMetadata

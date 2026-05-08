@@ -1552,7 +1552,68 @@ namespace HaCreator.MapSimulator.Interaction
                 CharacterDataSectionRecordCountsByFlag = recordCountsByFlag,
                 CharacterDataSectionNativeRecordCountsByFlag = BuildCharacterDataSectionNativeRecordCounts(snapshot, recordCountsByFlag),
                 CharacterDataSectionCountByteCountsByFlag = countByteCountsByFlag,
-                CharacterDataSectionRecordByteCountsByFlag = recordByteCountsByFlag
+                CharacterDataSectionRecordByteCountsByFlag = recordByteCountsByFlag,
+                CharacterDataSectionSemanticRecordByteCountsByFlag = BuildCharacterDataSectionSemanticRecordByteCounts(snapshot, recordByteCountsByFlag),
+                CharacterDataSectionNativeRecordByteCountsByFlag = recordByteCountsByFlag
+            };
+        }
+
+        private static IReadOnlyDictionary<ulong, int> BuildCharacterDataSectionSemanticRecordByteCounts(
+            PacketCharacterDataSnapshot snapshot,
+            IReadOnlyDictionary<ulong, int> nativeRecordByteCountsByFlag)
+        {
+            Dictionary<ulong, int> byteCountsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+            foreach (KeyValuePair<ulong, int> byteCount in nativeRecordByteCountsByFlag)
+            {
+                byteCountsByFlag[byteCount.Key] = byteCount.Value;
+            }
+
+            byteCountsByFlag[CharacterDataSkillRecordFlag] = SumSemanticCharacterDataRecordBytes(snapshot.SkillRecordEntries);
+            byteCountsByFlag[CharacterDataSkillExpirationFlag] = SumSemanticCharacterDataRecordBytes(snapshot.SkillExpirationRecordEntries);
+            byteCountsByFlag[CharacterDataSkillCooldownFlag] = SumSemanticCharacterDataRecordBytes(snapshot.SkillCooldownRecordEntries);
+
+            byteCountsByFlag[CharacterDataInt16ValueRecordFlag] = snapshot.Int16ValueRecordEntries != null
+                ? SumSemanticCharacterDataRecordBytes(snapshot.Int16ValueRecordEntries)
+                : SumSemanticCharacterDataRecordBytes(snapshot.OpaqueInt16ValueRecordEntries);
+
+            byteCountsByFlag[CharacterDataQuestRecordFlag] = SumSemanticCharacterDataRecordBytes(snapshot.QuestRecordEntries);
+            byteCountsByFlag[CharacterDataShortFileTimeRecordFlag] = SumSemanticCharacterDataRecordBytes(snapshot.ShortFileTimeRecordEntries);
+            byteCountsByFlag[CharacterDataQuestExRecordFlag] = SumSemanticCharacterDataRecordBytes(snapshot.QuestExRecordEntries);
+            byteCountsByFlag[CharacterDataQuestCompleteRecordFlag] = SumSemanticCharacterDataRecordBytes(snapshot.QuestCompleteRecordEntries);
+            byteCountsByFlag[CharacterDataVisitorQuestRecordFlag] = SumSemanticCharacterDataRecordBytes(snapshot.VisitorQuestRecordEntries);
+
+            return byteCountsByFlag;
+        }
+
+        private static int SumSemanticCharacterDataRecordBytes<TRecord>(IReadOnlyList<TRecord> records)
+            where TRecord : struct
+        {
+            if (records == null || records.Count == 0)
+            {
+                return 0;
+            }
+
+            int byteCount = 0;
+            for (int i = 0; i < records.Count; i++)
+            {
+                byteCount = checked(byteCount + GetCharacterDataRecordDecodedByteCount(records[i]));
+            }
+
+            return byteCount;
+        }
+
+        private static int GetCharacterDataRecordDecodedByteCount<TRecord>(TRecord record)
+            where TRecord : struct
+        {
+            return record switch
+            {
+                PacketCharacterDataSkillRecord skillRecord => skillRecord.DecodedByteCount,
+                PacketCharacterDataSkillExpirationRecord skillExpirationRecord => skillExpirationRecord.DecodedByteCount,
+                PacketCharacterDataInt16ValueRecord int16ValueRecord => int16ValueRecord.DecodedByteCount,
+                PacketCharacterDataUInt16StringRecord stringRecord => stringRecord.DecodedByteCount,
+                PacketCharacterDataUInt16FileTimeRecord fileTimeRecord => fileTimeRecord.DecodedByteCount,
+                PacketCharacterDataUInt16ValueRecord valueRecord => valueRecord.DecodedByteCount,
+                _ => 0
             };
         }
 
@@ -1608,6 +1669,9 @@ namespace HaCreator.MapSimulator.Interaction
                 int countPrefixByteCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionCountByteCountsByFlag, sectionFlag);
                 int recordByteCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionRecordByteCountsByFlag, sectionFlag);
                 int recordCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionRecordCountsByFlag, sectionFlag);
+                int semanticRecordByteCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionSemanticRecordByteCountsByFlag, sectionFlag);
+                int nativeRecordCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionNativeRecordCountsByFlag, sectionFlag);
+                int nativeRecordByteCount = ResolveCharacterDataSectionMapValue(snapshot.CharacterDataSectionNativeRecordByteCountsByFlag, sectionFlag);
                 bool isPresent = byteCount > 0 || recordCount > 0 || (snapshot.DecodedSectionFlags & sectionFlag) != 0 || (snapshot.OpaquePreMapTransferFlags & sectionFlag) != 0;
 
                 startOffsetsByFlag[sectionFlag] = startOffset;
@@ -1621,6 +1685,9 @@ namespace HaCreator.MapSimulator.Interaction
                     countPrefixByteCount,
                     recordByteCount,
                     recordCount,
+                    semanticRecordByteCount,
+                    nativeRecordCount,
+                    nativeRecordByteCount,
                     isPresent));
                 currentOffset = endOffset;
             }
@@ -4735,6 +4802,9 @@ namespace HaCreator.MapSimulator.Interaction
         int CountPrefixByteCount,
         int RecordByteCount,
         int RecordCount,
+        int SemanticRecordByteCount,
+        int NativeRecordCount,
+        int NativeRecordByteCount,
         bool IsPresent);
 
     internal readonly record struct PacketCharacterDataSkillRecord(
@@ -5161,6 +5231,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionCountByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionSemanticRecordByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionNativeRecordByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionStartOffsetsByFlag { get; init; } = null;
 

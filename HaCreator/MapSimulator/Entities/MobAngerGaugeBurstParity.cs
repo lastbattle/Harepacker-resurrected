@@ -9,6 +9,8 @@ namespace HaCreator.MapSimulator.Entities
     internal static class MobAngerGaugeBurstParity
     {
         private const int MinimumFrameDelayMs = 10;
+        public const int MobAngerGaugeFullChargeEffectFunctionAddress = 0x6490B0;
+        public const int AnimationDisplayerFullChargedAngerGaugeFunctionAddress = 0x457D00;
 
         public static int ResolveRepeatIntervalMs(IReadOnlyList<IDXObject> frames)
         {
@@ -172,6 +174,26 @@ namespace HaCreator.MapSimulator.Entities
                 || unchecked(currentTick - startTick) >= intervalMs;
         }
 
+        public static MobAngerGaugeFullChargeCallerTrace CreateRecoveredCallerTrace(
+            string mobTemplateId,
+            string loadedEffectPath,
+            int startTick,
+            int intervalMs,
+            int currentTick)
+        {
+            return new MobAngerGaugeFullChargeCallerTrace(
+                MobAngerGaugeFullChargeEffectFunctionAddress,
+                AnimationDisplayerFullChargedAngerGaugeFunctionAddress,
+                MapleStoryStringPool.MobAngerGaugeBurstTemplatePathStringPoolId,
+                MapleStoryStringPool.MobAngerGaugeBurstEffectNameStringPoolId,
+                ResolveOwnerEffectPath(mobTemplateId, loadedEffectPath),
+                HasReplayGateElapsed(currentTick, startTick, intervalMs),
+                UpdatesStartTimeBeforeAnimationDisplayerCall: true,
+                UsesMobHeadOrigin: true,
+                UsesMobActionLayerOverlayParent: true,
+                CallsAnimationDisplayerOwner: true);
+        }
+
         private static bool HasReachedTick(int currentTick, int targetTick)
         {
             return unchecked(currentTick - targetTick) >= 0;
@@ -198,4 +220,16 @@ namespace HaCreator.MapSimulator.Entities
                 : "Mob/" + imageAndEffectPath;
         }
     }
+
+    internal readonly record struct MobAngerGaugeFullChargeCallerTrace(
+        int MobFunctionAddress,
+        int AnimationDisplayerFunctionAddress,
+        int MobTemplatePathStringPoolId,
+        int EffectNameStringPoolId,
+        string SourceUol,
+        bool ReplayGateElapsed,
+        bool UpdatesStartTimeBeforeAnimationDisplayerCall,
+        bool UsesMobHeadOrigin,
+        bool UsesMobActionLayerOverlayParent,
+        bool CallsAnimationDisplayerOwner);
 }

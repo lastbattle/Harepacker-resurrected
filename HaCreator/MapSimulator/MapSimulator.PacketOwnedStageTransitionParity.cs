@@ -414,6 +414,13 @@ namespace HaCreator.MapSimulator
                     ResolvePacketOwnedNamedObjectStateSfx(objectInfo),
                     ResolvePacketOwnedNamedObjectAuthoredStateSfxByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectAuthoredStateRepeatByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    PacketOwnedNamedObjectMotionProfile.FromMapObject(
+                        (byte)objInst.flow,
+                        objInst.rx,
+                        objInst.ry,
+                        objInst.cx,
+                        objInst.cy),
+                    ResolvePacketOwnedNamedObjectAuthoredStateMotionByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
                         objInst.r,
                         objInst.flow,
@@ -574,6 +581,32 @@ namespace HaCreator.MapSimulator
             }
 
             return repeatByIndex;
+        }
+
+        internal static IReadOnlyDictionary<int, PacketOwnedNamedObjectMotionProfile> ResolvePacketOwnedNamedObjectAuthoredStateMotionByIndex(WzImageProperty objectProperty)
+        {
+            Dictionary<int, PacketOwnedNamedObjectMotionProfile> motionByIndex = new();
+            if (objectProperty == null)
+            {
+                return motionByIndex;
+            }
+
+            foreach (WzImageProperty child in objectProperty.WzProperties)
+            {
+                if (!TryResolvePacketOwnedNamedObjectAuthoredStateIndex(child?.Name, out int stateIndex))
+                {
+                    continue;
+                }
+
+                WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
+                PacketOwnedNamedObjectMotionProfile motionProfile = PacketOwnedNamedObjectMotionProfile.FromWzProperty(realChild);
+                if (motionProfile != null)
+                {
+                    motionByIndex[stateIndex] = motionProfile;
+                }
+            }
+
+            return motionByIndex;
         }
 
         internal static IReadOnlySet<int> ResolvePacketOwnedNamedObjectAuthoredStateIndexes(WzImageProperty objectProperty)

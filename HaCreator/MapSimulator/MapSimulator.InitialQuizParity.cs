@@ -144,6 +144,9 @@ namespace HaCreator.MapSimulator
         internal readonly record struct InitialQuizOwnerControlStackSnapshot(
             bool Created,
             int Generation,
+            bool OwnerCapturedByWindowManager,
+            bool OwnerFocusedByWindowManager,
+            int FocusChildControlId,
             int EditControlId,
             int OkButtonControlId,
             bool EditVisible,
@@ -173,6 +176,9 @@ namespace HaCreator.MapSimulator
             internal static InitialQuizOwnerControlStackSnapshot Destroyed { get; } = new(
                 Created: false,
                 Generation: 0,
+                OwnerCapturedByWindowManager: false,
+                OwnerFocusedByWindowManager: false,
+                FocusChildControlId: 0,
                 EditControlId: 0,
                 OkButtonControlId: 0,
                 EditVisible: false,
@@ -1697,11 +1703,21 @@ namespace HaCreator.MapSimulator
             bool editEnabled = childState.EditEnabled;
             bool okButtonEnabled = childState.OkButtonEnabled;
             bool okButtonVisible = true;
+            int editControlId = AntiMacroEditControl.ClientControlId;
+            int okButtonControlId = InitialQuizOwnerOkButtonControlId;
+            int focusChildControlId = ResolveInitialQuizOwnerFocusChildControlId(
+                childState,
+                focusTarget,
+                editControlId,
+                okButtonControlId);
             return new InitialQuizOwnerControlStackSnapshot(
                 Created: true,
                 Generation: Math.Max(1, generation),
-                EditControlId: AntiMacroEditControl.ClientControlId,
-                OkButtonControlId: InitialQuizOwnerOkButtonControlId,
+                OwnerCapturedByWindowManager: true,
+                OwnerFocusedByWindowManager: true,
+                FocusChildControlId: focusChildControlId,
+                EditControlId: editControlId,
+                OkButtonControlId: okButtonControlId,
                 EditVisible: editVisible,
                 EditEnabled: editEnabled,
                 EditFocused: editVisible && editEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input,
@@ -1727,6 +1743,25 @@ namespace HaCreator.MapSimulator
                 OkButtonResourcePath: MapleStoryStringPool.GetOrFallback(
                     InitialQuizOwnerOkButtonStringPoolId,
                     "UI/UIWindow2.img/InitialQuiz/BtOK"));
+        }
+
+        internal static int ResolveInitialQuizOwnerFocusChildControlId(
+            InitialQuizOwnerChildControlState childState,
+            InitialQuizOwnerFocusTarget focusTarget,
+            int editControlId = AntiMacroEditControl.ClientControlId,
+            int okButtonControlId = InitialQuizOwnerOkButtonControlId)
+        {
+            if (childState.EditVisible && childState.EditEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input)
+            {
+                return editControlId;
+            }
+
+            if (childState.OkButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton)
+            {
+                return okButtonControlId;
+            }
+
+            return 0;
         }
 
         private Texture2D[] LoadInitialQuizOwnerDigits(WzSubProperty preferred, WzSubProperty fallback, out Texture2D commaTexture)

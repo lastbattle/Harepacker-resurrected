@@ -221,8 +221,28 @@ namespace HaCreator.MapSimulator.UI
 
     public static class EquipmentChangeClientParity
     {
+        public const int MonsterRidingBaseSkillId = 1004;
         public const int ExclusiveRequestCooldownMs = 500;
         public const string StaleCompletionMessage = "The equipped item state changed before the equipment request completed.";
+
+        public static int ResolveNoviceSkillAsRace(int skillId, int jobId)
+        {
+            int normalizedJobId = Math.Abs(jobId);
+            return normalizedJobId / 100 == 22 || normalizedJobId == 2001
+                ? skillId + 20010000
+                : skillId + (10000000 * (normalizedJobId / 1000));
+        }
+
+        public static bool ShouldCancelRidingSkillBeforeTamingMobEquipmentChange(
+            EquipmentChangeRequest request,
+            bool isRidingTamedMob)
+        {
+            return isRidingTamedMob
+                   && request != null
+                   && (IsTamingMobEquipmentSlot(request.TargetEquipSlot)
+                       || IsTamingMobEquipmentSlot(request.SourceEquipSlot)
+                       || IsTamingMobEquipmentSlot(request.RequestedPart?.Slot));
+        }
 
         public static bool IsExclusiveRequestThrottled(int currentTick, int lastRequestTick, int cooldownMs)
         {
@@ -247,6 +267,12 @@ namespace HaCreator.MapSimulator.UI
         public static InventoryType ResolveCharacterEquipmentInventoryType(CharacterPart part)
         {
             return part?.IsCash == true ? InventoryType.CASH : InventoryType.EQUIP;
+        }
+
+        private static bool IsTamingMobEquipmentSlot(HaCreator.MapSimulator.Character.EquipSlot? slot)
+        {
+            return slot is HaCreator.MapSimulator.Character.EquipSlot.TamingMob
+                or HaCreator.MapSimulator.Character.EquipSlot.Saddle;
         }
 
         public static bool TryGetCharacterEquipmentSourceRejectReason(

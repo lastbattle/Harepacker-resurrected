@@ -362,7 +362,6 @@ namespace HaCreator.MapSimulator
                 }
                 case PacketOwnedLogoutGiftRefreshDisposition.RefreshHiddenInstantiatedOwner:
                 {
-                    CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache();
                     string hiddenPayloadSuffix = payload != null && payload.Length > 0
                         ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                         : string.Empty;
@@ -370,14 +369,13 @@ namespace HaCreator.MapSimulator
                         ? $" Preserved {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                         : string.Empty;
                     message =
-                        $"CWvsContext::OnLogoutGift refreshed the instantiated logout-gift singleton using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} while the visible chooser remained closed behind the StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} completion dialog.{hiddenTrailingSuffix}{hiddenPayloadSuffix}";
+                        $"CWvsContext::OnLogoutGift called `CUILogoutGift::Update(1)` on the instantiated logout-gift singleton while the visible chooser remained closed behind the StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} completion dialog. The owner-local `m_aCommodityID` copy remains {FormatPacketOwnedLogoutGiftOwnerCommodityList()} because the client packet-432 handler does not re-run `CUILogoutGift::OnCreate` or copy the context cache.{hiddenTrailingSuffix}{hiddenPayloadSuffix}";
                     _lastPacketOwnedLogoutGiftSummary = message;
                     NotifyEventAlarmOwnerActivity("packet-owned logout gift");
                     return true;
                 }
             }
 
-            CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache();
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
 
             string payloadSuffix = payload != null && payload.Length > 0
@@ -387,7 +385,7 @@ namespace HaCreator.MapSimulator
                 ? $" Preserved {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                 : string.Empty;
             message =
-                $"CWvsContext::OnLogoutGift refreshed the active logout-gift owner using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} after `CUILogoutGift::TryShowLogoutGiftDialog` had already surfaced it.{trailingSuffix}{payloadSuffix}";
+                $"CWvsContext::OnLogoutGift called `CUILogoutGift::Update(1)` on the active logout-gift owner after `CUILogoutGift::TryShowLogoutGiftDialog` had already surfaced it. The owner-local `m_aCommodityID` copy remains {FormatPacketOwnedLogoutGiftOwnerCommodityList()} because packet 432 does not re-copy `CWvsContext::m_anLogoutGiftCommoditySN[0..2]` into the owner.{trailingSuffix}{payloadSuffix}";
             _lastPacketOwnedLogoutGiftSummary = message;
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return true;
@@ -541,6 +539,25 @@ namespace HaCreator.MapSimulator
             return string.Join(", ", parts);
         }
 
+        private string FormatPacketOwnedLogoutGiftOwnerCommodityList()
+        {
+            return FormatPacketOwnedLogoutGiftCommodityList(_packetOwnedLogoutGiftOwnerCommoditySerialNumbers);
+        }
+
+        private static string FormatPacketOwnedLogoutGiftCommodityList(IReadOnlyList<int> commoditySerialNumbers)
+        {
+            List<string> parts = new(PacketOwnedLogoutGiftEntryCount);
+            for (int i = 0; i < PacketOwnedLogoutGiftEntryCount; i++)
+            {
+                int value = commoditySerialNumbers != null && i < commoditySerialNumbers.Count
+                    ? commoditySerialNumbers[i]
+                    : 0;
+                parts.Add(value.ToString(CultureInfo.InvariantCulture));
+            }
+
+            return string.Join(", ", parts);
+        }
+
         internal static int[] ResolvePacketOwnedLogoutGiftDisplayedCommoditySerialNumbers(
             IReadOnlyList<int> contextCommoditySerialNumbers,
             IReadOnlyList<int> ownerCommoditySerialNumbers,
@@ -559,6 +576,26 @@ namespace HaCreator.MapSimulator
             }
 
             return displayedCommoditySerialNumbers;
+        }
+
+        internal static int[] ResolvePacketOwnedLogoutGiftOwnerCommoditySerialNumbersAfterPacket432(
+            IReadOnlyList<int> ownerCommoditySerialNumbers,
+            bool ownerSingletonPresent)
+        {
+            int[] ownerCommoditySerialNumbersAfterRefresh = new int[PacketOwnedLogoutGiftEntryCount];
+            if (!ownerSingletonPresent)
+            {
+                return ownerCommoditySerialNumbersAfterRefresh;
+            }
+
+            for (int i = 0; i < PacketOwnedLogoutGiftEntryCount; i++)
+            {
+                ownerCommoditySerialNumbersAfterRefresh[i] = ownerCommoditySerialNumbers != null && i < ownerCommoditySerialNumbers.Count
+                    ? ownerCommoditySerialNumbers[i]
+                    : 0;
+            }
+
+            return ownerCommoditySerialNumbersAfterRefresh;
         }
 
         private void CopyPacketOwnedLogoutGiftContextCacheToOwnerLocalCache()

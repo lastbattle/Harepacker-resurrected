@@ -417,6 +417,21 @@ namespace HaCreator.MapSimulator.Companions
             out IReadOnlyList<MechanicInventoryOperationMutation> mutations,
             out string rejectReason)
         {
+            return TryDecodePassiveClientInventoryOperationMutations(
+                payload,
+                equipInventorySlots,
+                observedMechanicItems: null,
+                out mutations,
+                out rejectReason);
+        }
+
+        internal static bool TryDecodePassiveClientInventoryOperationMutations(
+            IReadOnlyList<byte> payload,
+            IReadOnlyList<InventorySlotData> equipInventorySlots,
+            IReadOnlyDictionary<MechanicEquipSlot, int> observedMechanicItems,
+            out IReadOnlyList<MechanicInventoryOperationMutation> mutations,
+            out string rejectReason)
+        {
             mutations = Array.Empty<MechanicInventoryOperationMutation>();
             rejectReason = null;
             if (payload == null || payload.Count < sizeof(byte) * 2)
@@ -531,10 +546,13 @@ namespace HaCreator.MapSimulator.Companions
                             {
                                 if (!TryResolvePassiveEquipInventoryItemId(equipInventorySlots, fromPosition, out int sourceItemId))
                                 {
-                                    // Keep scanning in case this payload also carries a mode-0
-                                    // add entry for the same mechanic slot with the authoritative
-                                    // item id in the shared header.
-                                    break;
+                                    if (!TryResolveObservedMechanicItemId(observedMechanicItems, targetMechanicSlot, out sourceItemId))
+                                    {
+                                        // Keep scanning in case this payload also carries a mode-0
+                                        // add entry for the same mechanic slot with the authoritative
+                                        // item id in the shared header.
+                                        break;
+                                    }
                                 }
 
                                 if (!TryValidateMechanicItemFamilyForSlot(sourceItemId, targetMechanicSlot, out rejectReason))
@@ -1585,6 +1603,11 @@ namespace HaCreator.MapSimulator.Companions
                     return false;
                 }
 
+                if (!TryValidateMechanicItemFamilyForSlot(request.ItemId, request.TargetMechanicSlot.Value, out rejectReason))
+                {
+                    return false;
+                }
+
                 return true;
             }
 
@@ -1613,6 +1636,11 @@ namespace HaCreator.MapSimulator.Companions
                 if (targetPosition <= 0)
                 {
                     rejectReason = "Inventory-operation swap did not land in a positive inventory slot.";
+                    return false;
+                }
+
+                if (!TryValidateMechanicItemFamilyForSlot(request.ItemId, request.SourceMechanicSlot.Value, out rejectReason))
+                {
                     return false;
                 }
 
@@ -2336,6 +2364,21 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             itemId = equipInventorySlots[sourceIndex]?.ItemId ?? 0;
+            return itemId > 0;
+        }
+
+        private static bool TryResolveObservedMechanicItemId(
+            IReadOnlyDictionary<MechanicEquipSlot, int> observedMechanicItems,
+            MechanicEquipSlot slot,
+            out int itemId)
+        {
+            itemId = 0;
+            if (observedMechanicItems == null
+                || !observedMechanicItems.TryGetValue(slot, out itemId))
+            {
+                return false;
+            }
+
             return itemId > 0;
         }
 

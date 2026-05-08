@@ -2515,7 +2515,6 @@ namespace HaCreator.MapSimulator.Entities
             foreach (WzImageProperty child in realStateProperty.WzProperties)
             {
                 if (int.TryParse(child?.Name, out int properEventIndex)
-                    && WzInfoTools.GetRealProperty(child) is WzSubProperty
                     && TryReadIndexedHitDuration(child) > 0
                     && acceptedIndices.Add(properEventIndex))
                 {

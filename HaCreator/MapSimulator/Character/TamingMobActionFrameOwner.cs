@@ -328,7 +328,10 @@ namespace HaCreator.MapSimulator.Character
                     VehicleItemId,
                     actionName))
             {
-                return false;
+                // `CActionMan::LoadTamingMobAction` exact-loads raw 45/46 for ordinary
+                // 190-family vehicles before the generic fallback gate.
+                return VehicleItemId / 10000 == 190
+                       && EventVehicleType2ExclusiveActionNames.Contains(actionName);
             }
 
             if (VehicleItemId == MechanicTamingMobItemId
@@ -527,7 +530,8 @@ namespace HaCreator.MapSimulator.Character
 
             if (EventVehicleType2ExclusiveActionNames.Contains(actionName))
             {
-                return VehicleItemId == MechanicTamingMobItemId
+                return VehicleItemId / 10000 == 190
+                       || VehicleItemId == MechanicTamingMobItemId
                        || WildHunterJaguarTamingMobItemIds.Contains(VehicleItemId)
                        || EventVehicleType2ItemIds.Contains(VehicleItemId);
             }

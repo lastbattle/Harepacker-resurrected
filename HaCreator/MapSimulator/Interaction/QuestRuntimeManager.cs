@@ -82,8 +82,6 @@ namespace HaCreator.MapSimulator.Interaction
         {
             "premium",
             "dressChanged",
-            "pvpGradeMin",
-            "pvpGradeMax",
             "completeVIPGradeMin",
             "completeVIPGradeMax",
             "completeVIPAccount",
@@ -1552,6 +1550,12 @@ namespace HaCreator.MapSimulator.Interaction
             return demandKeys != null && demandKeys.Count > 0;
         }
 
+        internal static IReadOnlyList<string> ParseUnresolvedCompletionSideChannelDemandKeysForTesting(
+            WzSubProperty property)
+        {
+            return ParseUnresolvedCompletionSideChannelDemandKeys(property);
+        }
+
         internal static bool HasUnmetCompletionGenderDemand(int? requiredGender, CharacterGender currentGender)
         {
             if (!requiredGender.HasValue || requiredGender.Value == (int)CharacterGenderType.Both)
@@ -1992,7 +1996,13 @@ namespace HaCreator.MapSimulator.Interaction
                 GetTertiaryAction(definition, state);
             (QuestWindowActionKind quaternaryAction, bool quaternaryEnabled, string quaternaryLabel, int? targetMobId, string targetMobName) =
                 GetQuaternaryAction(definition, state, build);
-            IReadOnlyList<QuestDetailCtEntry> logCtEntries = BuildQuestDetailLogCtEntries(requirementText, requirementLines, rewardText, rewardLines, hintText);
+            IReadOnlyList<QuestDetailCtEntry> logCtEntries = BuildQuestDetailLogCtEntries(
+                requirementText,
+                requirementLines,
+                rewardText,
+                rewardLines,
+                hintText,
+                state);
             IReadOnlyList<QuestDetailCtEntry> summaryCtEntries = BuildQuestDetailSummaryCtEntries(formattedSummaryText, totalProgress);
 
             return new QuestWindowDetailState
@@ -2048,13 +2058,15 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<QuestLogLineSnapshot> requirementLines,
             string rewardText,
             IReadOnlyList<QuestLogLineSnapshot> rewardLines,
-            string hintText)
+            string hintText,
+            QuestStateType state)
         {
             List<QuestDetailCtEntry> entries = new();
             bool hasRequirementLines = requirementLines != null && requirementLines.Count > 0;
             bool hasRewardLines = rewardLines != null && rewardLines.Count > 0;
             bool hasRequirement = !string.IsNullOrWhiteSpace(requirementText) || hasRequirementLines;
             bool hasReward = !string.IsNullOrWhiteSpace(rewardText) || hasRewardLines;
+            int textColorArgb = ResolveQuestDetailLogCtTextColorArgb(state);
 
             if (hasRequirement)
             {
@@ -2077,6 +2089,7 @@ namespace HaCreator.MapSimulator.Interaction
                         Palette = QuestDetailCtEntryPalette.Requirement,
                         Source = QuestDetailInlineReferenceSource.RequirementText,
                         XOffset = 17,
+                        TextColorArgb = textColorArgb,
                         VerticalGapAfter = hasRequirementLines ? 6 : 0
                     });
                 }
@@ -2090,6 +2103,7 @@ namespace HaCreator.MapSimulator.Interaction
                         Lines = requirementLines,
                         Source = QuestDetailInlineReferenceSource.RequirementLine,
                         XOffset = 17,
+                        TextColorArgb = textColorArgb,
                         RewardSection = false
                     });
                 }
@@ -2116,6 +2130,7 @@ namespace HaCreator.MapSimulator.Interaction
                         Palette = QuestDetailCtEntryPalette.Reward,
                         Source = QuestDetailInlineReferenceSource.RewardText,
                         XOffset = 17,
+                        TextColorArgb = textColorArgb,
                         VerticalGapAfter = hasRewardLines ? 6 : 0
                     });
                 }
@@ -2129,6 +2144,7 @@ namespace HaCreator.MapSimulator.Interaction
                         Lines = rewardLines,
                         Source = QuestDetailInlineReferenceSource.RewardLine,
                         XOffset = 17,
+                        TextColorArgb = textColorArgb,
                         RewardSection = true
                     });
                 }
@@ -2143,7 +2159,8 @@ namespace HaCreator.MapSimulator.Interaction
                     Text = hintText,
                     Palette = QuestDetailCtEntryPalette.Hint,
                     Source = QuestDetailInlineReferenceSource.HintText,
-                    XOffset = 17
+                    XOffset = 17,
+                    TextColorArgb = textColorArgb
                 });
             }
 
@@ -2181,6 +2198,7 @@ namespace HaCreator.MapSimulator.Interaction
                     Palette = QuestDetailCtEntryPalette.Summary,
                     Source = QuestDetailInlineReferenceSource.SummaryText,
                     XOffset = 17,
+                    TextColorArgb = ClientQuestDetailActiveCtTextColorArgb,
                     VerticalGapAfter = hasProgress ? 8 : 0
                 });
             }
@@ -2205,7 +2223,24 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<QuestLogLineSnapshot> rewardLines,
             string hintText)
         {
-            return BuildQuestDetailLogCtEntries(requirementText, requirementLines, rewardText, rewardLines, hintText);
+            return BuildQuestDetailLogCtEntries(
+                requirementText,
+                requirementLines,
+                rewardText,
+                rewardLines,
+                hintText,
+                QuestStateType.Started);
+        }
+
+        internal static IReadOnlyList<QuestDetailCtEntry> BuildQuestDetailLogCtEntriesForTesting(
+            string requirementText,
+            IReadOnlyList<QuestLogLineSnapshot> requirementLines,
+            string rewardText,
+            IReadOnlyList<QuestLogLineSnapshot> rewardLines,
+            string hintText,
+            QuestStateType state)
+        {
+            return BuildQuestDetailLogCtEntries(requirementText, requirementLines, rewardText, rewardLines, hintText, state);
         }
 
         internal static IReadOnlyList<QuestDetailCtEntry> BuildQuestDetailSummaryCtEntriesForTesting(
@@ -2213,6 +2248,17 @@ namespace HaCreator.MapSimulator.Interaction
             int totalProgress)
         {
             return BuildQuestDetailSummaryCtEntries(summaryText, totalProgress);
+        }
+
+        private const int ClientQuestDetailActiveCtTextColorArgb = unchecked((int)0xFF333333);
+        private const int ClientQuestDetailInactiveCtTextColorArgb = unchecked((int)0xFF666666);
+
+        private static int ResolveQuestDetailLogCtTextColorArgb(QuestStateType state)
+        {
+            // CUIQuestInfo::LoadData selects SetBackFont(1) only for started-tab log CT analysis.
+            return state == QuestStateType.Started
+                ? ClientQuestDetailActiveCtTextColorArgb
+                : ClientQuestDetailInactiveCtTextColorArgb;
         }
 
         public void SetPacketOwnedQuestMateName(int questId, string mateName)
@@ -5458,6 +5504,10 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetActionMesoRequirement(actionBundle, GetCurrentMesoCount());
             bool hasUnmetAvailabilityRequirement = HasUnmetAvailabilityRequirement(definition, state) ||
                 HasUnmetActionAvailabilityRequirement(actionBundle);
+            bool hasUnmetActionRepeatRequirement = HasUnmetActionRepeatIntervalRequirement(
+                definition,
+                actionBundle,
+                state == QuestStateType.Started);
             bool hasUnmetEquipRequirement = state == QuestStateType.Not_Started &&
                 HasUnmetEquipRequirement(definition, build);
             bool hasUnmetQuestCompleteCountRequirement = state == QuestStateType.Started &&
@@ -5571,7 +5621,8 @@ namespace HaCreator.MapSimulator.Interaction
                 hasUnmetMarriageRequirement: hasUnmetMarriageRequirement,
                 unmetMonsterBookStopBranchIds: GetUnmetMonsterBookCardRequirementIds(
                     definition.EndMonsterBookCardRequirements),
-                unresolvedSideChannelDemandKeys: unresolvedSideChannelDemandKeys);
+                unresolvedSideChannelDemandKeys: unresolvedSideChannelDemandKeys,
+                hasUnmetActionRepeatRequirement: hasUnmetActionRepeatRequirement);
         }
 
         internal static IReadOnlyList<NpcInteractionPage> SelectIssueConversationPagesCore(
@@ -5609,7 +5660,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetGenderRequirement = false,
             bool hasUnmetMarriageRequirement = false,
             IReadOnlyList<int> unmetMonsterBookStopBranchIds = null,
-            IReadOnlyList<string> unresolvedSideChannelDemandKeys = null)
+            IReadOnlyList<string> unresolvedSideChannelDemandKeys = null,
+            bool hasUnmetActionRepeatRequirement = false)
         {
             if (state == QuestStateType.Started &&
                 !isCompletionNpc &&
@@ -5809,6 +5861,22 @@ namespace HaCreator.MapSimulator.Interaction
                     "dayofweek"))
             {
                 return timePages;
+            }
+
+            if (hasUnmetActionRepeatRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> repeatPages,
+                    "interval",
+                    "repeat",
+                    "repeatInterval",
+                    "cooldown",
+                    "coolTime",
+                    "time",
+                    "day",
+                    "date"))
+            {
+                return repeatPages;
             }
 
             if (hasUnmetEquipRequirement &&
@@ -7397,6 +7465,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             issues.Add($"This quest action can only be {actionLabel}ed again after {FormatRepeatIntervalRemaining(remaining)}.");
+        }
+
+        private bool HasUnmetActionRepeatIntervalRequirement(
+            QuestDefinition definition,
+            QuestActionBundle actions,
+            bool completionPhase)
+        {
+            if (definition == null || actions == null || actions.ActionRepeatIntervalMinutes <= 0)
+            {
+                return false;
+            }
+
+            QuestProgress progress = GetProgress(definition.QuestId);
+            DateTime lastActionUtc = completionPhase
+                ? progress?.LastEndActionAtUtc ?? DateTime.MinValue
+                : progress?.LastStartActionAtUtc ?? DateTime.MinValue;
+            return GetQuestActionRepeatRemaining(
+                DateTime.UtcNow,
+                lastActionUtc,
+                actions.ActionRepeatIntervalMinutes) > TimeSpan.Zero;
         }
 
         private static void AppendAvailabilityIssues(

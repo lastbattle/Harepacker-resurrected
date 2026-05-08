@@ -3289,7 +3289,10 @@ namespace HaCreator.MapSimulator.Loaders
                 portalMarker,
                 directionMarkers,
                 helperMarkers);
-            minimapItem.SetCollapsedButtonRightInset(collapsedTitleChromeMetrics.RightInset);
+            minimapItem.SetCollapsedButtonChromeMetrics(
+                collapsedTitleChromeMetrics.RightInset,
+                collapsedTitleChromeMetrics.LaneTop,
+                collapsedTitleChromeMetrics.LaneHeight);
 
             ApplySharedMinimapWindowPosition(minimapItem);
 

@@ -2242,14 +2242,13 @@ namespace HaCreator.MapSimulator.Pools
         private static int ResolveSummonBodyContactDamage(MobItem mob)
         {
             bool currentAttackIsMagic = mob?.AI?.GetCurrentAttack()?.MagicAttack == true;
-            int baseDamage = SummonDamageRuntimeRules.ResolveBodyContactBaseDamage(
+            return SummonDamageRuntimeRules.ResolveBodyContactClientDamage(
                 mob?.MobData?.PADamage ?? 0,
                 mob?.AI?.GetCurrentAttack()?.Damage ?? 0,
                 mob?.MobData?.MADamage ?? 0,
-                currentAttackIsMagic);
-            MobDamageType damageType = SummonDamageRuntimeRules.ResolveBodyContactDamageType(currentAttackIsMagic);
-            int resolvedDamage = mob?.AI?.CalculateOutgoingDamage(baseDamage, damageType) ?? baseDamage;
-            return Math.Max(1, resolvedDamage);
+                currentAttackIsMagic,
+                (baseDamage, damageType) =>
+                    mob?.AI?.CalculateOutgoingDamage(baseDamage, damageType) ?? baseDamage);
         }
 
         private bool TryReadAvatarLook(ref PacketReader reader, out LoginAvatarLook avatarLook, out string message)

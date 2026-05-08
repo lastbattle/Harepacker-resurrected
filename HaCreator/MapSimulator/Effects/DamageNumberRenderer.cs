@@ -702,6 +702,19 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberDigitSet smallDigitSet)
         {
             string damageString = isMiss ? ResolveSpecialTextName(specialTextName) : FormatDamageValue(damage);
+            if (!IsSupportedColorType(colorType))
+            {
+                return new PreparedDamageNumberVisual(
+                    damageString,
+                    0,
+                    ResolveCompositeCanvasHeight(),
+                    DamageNumberFormatStringPoolId,
+                    Array.Empty<PreparedDigitDrawInfo>(),
+                    null,
+                    null,
+                    CreateEmptyCompositionTrace());
+            }
+
             bool useCriticalPresentation = UsesCriticalPresentation(colorType, isCritical);
 
             if (isMiss)
@@ -1230,6 +1243,11 @@ namespace HaCreator.MapSimulator.Effects
 
         internal static string ResolveLargeDigitSetName(DamageColorType colorType, bool isCritical)
         {
+            if (!IsSupportedColorType(colorType))
+            {
+                return null;
+            }
+
             if (UsesCriticalPresentation(colorType, isCritical))
             {
                 return "NoCri1";
@@ -1245,6 +1263,11 @@ namespace HaCreator.MapSimulator.Effects
 
         internal static string ResolveSmallDigitSetName(DamageColorType colorType, bool isCritical)
         {
+            if (!IsSupportedColorType(colorType))
+            {
+                return null;
+            }
+
             if (UsesCriticalPresentation(colorType, isCritical))
             {
                 return "NoCri0";

@@ -108,9 +108,11 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientDefaultButtonId = 1009;
         private const int JoypadClientCloseButtonId = 8;
         private const int JoypadClientDefaultButtonLeft = 8;
+        private const int JoypadClientDefaultButtonWidth = 57;
         private const int JoypadClientOkButtonLeft = 74;
         private const int JoypadClientCancelButtonLeft = 120;
         private const int JoypadClientButtonTop = 302;
+        private const int JoypadClientActionButtonHeight = 16;
         private const int JoypadClientComboCount = 11;
         private const int JoypadClientSelectableButtonCount = 12;
         private const int JoypadClientEmptyButtonNameStringPoolId = 0x1A54;
@@ -294,6 +296,11 @@ namespace HaCreator.MapSimulator.UI
         private bool _draggingJoypadScrollKnob;
         private JoypadPendingConfirmAction _pendingJoypadConfirmAction;
         private JoypadActionButtonKind _selectedJoypadActionButton;
+        private UIObject _joypadDefaultButton;
+        private UIObject _okButton;
+        private UIObject _cancelButton;
+        private Point _okButtonOriginalPosition;
+        private Point _cancelButtonOriginalPosition;
 
         public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture, Texture2D[] scrollTextures)
             : base(frame)
@@ -321,8 +328,28 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializeButtons(UIObject okButton, UIObject cancelButton)
         {
+            InitializeButtons(null, okButton, cancelButton);
+        }
+
+        public void InitializeButtons(UIObject joypadDefaultButton, UIObject okButton, UIObject cancelButton)
+        {
+            _joypadDefaultButton = joypadDefaultButton;
+            _okButton = okButton;
+            _cancelButton = cancelButton;
+            _okButtonOriginalPosition = okButton == null ? Point.Zero : new Point(okButton.X, okButton.Y);
+            _cancelButtonOriginalPosition = cancelButton == null ? Point.Zero : new Point(cancelButton.X, cancelButton.Y);
+
+            if (_joypadDefaultButton != null)
+            {
+                _joypadDefaultButton.X = JoypadClientDefaultButtonLeft;
+                _joypadDefaultButton.Y = JoypadClientButtonTop;
+                _joypadDefaultButton.SetVisible(false);
+                RegisterActionButton(_joypadDefaultButton, JoypadActionButtonKind.Default, () => QueueJoypadResetConfirmation(1));
+            }
+
             RegisterActionButton(okButton, JoypadActionButtonKind.Ok, () => CommitAndHide());
             RegisterActionButton(cancelButton, JoypadActionButtonKind.Cancel, () => DiscardAndHide());
+            UpdateClientJoypadActionButtonPlacement();
         }
 
         public void ConfigureRows(
@@ -366,6 +393,7 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = string.IsNullOrWhiteSpace(_launchSource)
                 ? baseStatus
                 : $"{baseStatus} Launch source: {_launchSource}.";
+            UpdateClientJoypadActionButtonPlacement();
             SelectDefaultOptionRow();
         }
 
@@ -1065,16 +1093,22 @@ namespace HaCreator.MapSimulator.UI
 
                 bool selected = _selectedJoypadRowIndex == i;
                 bool captureArmed = _armedJoypadBindingAction == _joypadRows[i].Action && _joypadRows[i].Action.HasValue;
+                bool authoredActionButton = _joypadRows[i].ClientControlId == JoypadClientDefaultButtonId && _joypadDefaultButton != null;
                 Color rowTint = captureArmed
                     ? new Color(120, 92, 42, 220)
                     : IsJoypadRowDirty(_joypadRows[i], session, _originalJoypadSession)
                         ? new Color(118, 88, 32, 210)
-                    : selected
+                        : selected
                         ? new Color(92, 120, 190, 210)
                         : new Color(36, 46, 62, 210);
                 sprite.Draw(_highlightTexture, bounds, rowTint);
 
                 JoypadRow row = _joypadRows[i];
+                if (authoredActionButton)
+                {
+                    continue;
+                }
+
                 DrawWindowText(sprite, row.Label, new Vector2(bounds.X + 8, bounds.Y + 2), Color.White);
                 string value = captureArmed
                     ? "Press..."
@@ -1606,6 +1640,7 @@ namespace HaCreator.MapSimulator.UI
             _previousMouseWheelValue = mouseState.ScrollWheelValue;
             if (_mode == OptionMenuMode.Joypad && _selectedJoypadActionButton != JoypadActionButtonKind.None)
             {
+                UpdateClientJoypadActionButtonPlacement();
                 _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
                 if (normalizedClientComboCount > 0)
                 {
@@ -2769,17 +2804,56 @@ namespace HaCreator.MapSimulator.UI
                         Math.Max(1, closeButton.CanvasSnapshotHeight));
             }
 
-            int x = buttonKind switch
-            {
-                JoypadActionButtonKind.Default => Position.X + JoypadClientDefaultButtonLeft,
-                JoypadActionButtonKind.Ok => Position.X + JoypadClientOkButtonLeft,
-                JoypadActionButtonKind.Cancel => Position.X + JoypadClientCancelButtonLeft,
-                _ => Position.X,
-            };
-
-            return buttonKind == JoypadActionButtonKind.None
+            Rectangle localBounds = ResolveClientJoypadActionButtonLocalBounds(buttonKind);
+            return localBounds == Rectangle.Empty
                 ? Rectangle.Empty
-                : new Rectangle(x, Position.Y + JoypadClientButtonTop, 40, 16);
+                : new Rectangle(Position.X + localBounds.X, Position.Y + localBounds.Y, localBounds.Width, localBounds.Height);
+        }
+
+        private void UpdateClientJoypadActionButtonPlacement()
+        {
+            bool joypadMode = _mode == OptionMenuMode.Joypad;
+            if (_joypadDefaultButton != null)
+            {
+                _joypadDefaultButton.X = JoypadClientDefaultButtonLeft;
+                _joypadDefaultButton.Y = JoypadClientButtonTop;
+                _joypadDefaultButton.SetVisible(joypadMode);
+            }
+
+            if (_okButton != null)
+            {
+                _okButton.X = joypadMode ? JoypadClientOkButtonLeft : _okButtonOriginalPosition.X;
+                _okButton.Y = joypadMode ? JoypadClientButtonTop : _okButtonOriginalPosition.Y;
+            }
+
+            if (_cancelButton != null)
+            {
+                _cancelButton.X = joypadMode ? JoypadClientCancelButtonLeft : _cancelButtonOriginalPosition.X;
+                _cancelButton.Y = joypadMode ? JoypadClientButtonTop : _cancelButtonOriginalPosition.Y;
+            }
+        }
+
+        internal static Rectangle ResolveClientJoypadActionButtonLocalBoundsForTests(JoypadActionButtonKindForTests buttonKind)
+        {
+            return ResolveClientJoypadActionButtonLocalBounds((JoypadActionButtonKind)buttonKind);
+        }
+
+        private static Rectangle ResolveClientJoypadActionButtonLocalBounds(JoypadActionButtonKind buttonKind)
+        {
+            return buttonKind switch
+            {
+                JoypadActionButtonKind.Default => new Rectangle(JoypadClientDefaultButtonLeft, JoypadClientButtonTop, JoypadClientDefaultButtonWidth, JoypadClientActionButtonHeight),
+                JoypadActionButtonKind.Ok => new Rectangle(JoypadClientOkButtonLeft, JoypadClientButtonTop, 40, JoypadClientActionButtonHeight),
+                JoypadActionButtonKind.Cancel => new Rectangle(JoypadClientCancelButtonLeft, JoypadClientButtonTop, 40, JoypadClientActionButtonHeight),
+                _ => Rectangle.Empty,
+            };
+        }
+
+        internal enum JoypadActionButtonKindForTests
+        {
+            Default = JoypadActionButtonKind.Default,
+            Ok = JoypadActionButtonKind.Ok,
+            Cancel = JoypadActionButtonKind.Cancel,
         }
 
         private bool HasJoypadSessionChanges(JoypadSessionSnapshot session)

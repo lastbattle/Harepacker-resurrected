@@ -366,9 +366,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildRankingEntries(IReadOnlyList<GuildRankingSeedEntry> rankingEntries, int guildId)
         {
-            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            if (TryBuildGuildScopedResultIgnore(
+                    (byte)SocialListClientGuildResultKind.Ranking,
+                    guildId,
+                    "ranking rows",
+                    out string ignoredMessage))
             {
-                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+                return ignoredMessage;
             }
 
             RememberPacketGuildId(guildId);
@@ -464,7 +468,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketGuildAuthorityState authority = _packetGuildAuthority.Value;
                 roleLabel = string.IsNullOrWhiteSpace(authority.RoleLabel) ? GetLocalGuildRoleLabel() : authority.RoleLabel;
                 permissionMask = ResolveGuildBbsPermissionMask(authority);
-                sourceLabel = "CWvsContext::OnGuildResult guild authority";
+                sourceLabel = "packet-owned guild authority override";
                 return true;
             }
 
@@ -472,7 +476,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 roleLabel = string.IsNullOrWhiteSpace(derivedAuthority.RoleLabel) ? GetLocalGuildRoleLabel() : derivedAuthority.RoleLabel;
                 permissionMask = ResolveGuildBbsPermissionMask(derivedAuthority);
-                sourceLabel = "packet-owned guild roster role";
+                sourceLabel = "CWvsContext::OnGuildResult roster grade";
                 return true;
             }
 
@@ -482,11 +486,29 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        internal bool TryGetGuildBbsLinkedBoardAuthKey(out string authKey, out string sourceLabel)
+        {
+            authKey = _packetGuildBoardAuthKey;
+            if (string.IsNullOrWhiteSpace(authKey))
+            {
+                authKey = string.Empty;
+                sourceLabel = null;
+                return false;
+            }
+
+            sourceLabel = "CWvsContext::OnGuildResult(80) guild-board auth key";
+            return true;
+        }
+
         internal string SetPacketGuildMarkSelection(GuildMarkSelection selection, int guildId)
         {
-            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            if (TryBuildGuildScopedResultIgnore(
+                    (byte)SocialListClientGuildResultKind.Mark,
+                    guildId,
+                    "guild emblem",
+                    out string ignoredMessage))
             {
-                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.Mark}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+                return ignoredMessage;
             }
 
             RememberPacketGuildId(guildId);
@@ -500,9 +522,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildPointsAndLevel(int guildPoints, int guildLevel, int guildId)
         {
-            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            if (TryBuildGuildScopedResultIgnore(
+                    (byte)SocialListClientGuildResultKind.PointsAndLevel,
+                    guildId,
+                    "points and level",
+                    out string ignoredMessage))
             {
-                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+                return ignoredMessage;
             }
 
             RememberPacketGuildId(guildId);
@@ -547,6 +573,24 @@ namespace HaCreator.MapSimulator.Interaction
 
             message = $"Ignored client OnGuildResult({rawSubtype}) {resultLabel} because no packet-owned guild context is active.";
             return true;
+        }
+
+        private bool TryBuildGuildScopedResultIgnore(byte rawSubtype, int guildId, string resultLabel, out string message)
+        {
+            if (!ResolveEffectiveGuildMembership(null))
+            {
+                message = $"Ignored client OnGuildResult({rawSubtype}) {resultLabel} for guild {guildId} because no packet-owned guild context is active.";
+                return true;
+            }
+
+            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            {
+                message = $"Ignored client OnGuildResult({rawSubtype}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+                return true;
+            }
+
+            message = null;
+            return false;
         }
 
         internal int? GetEffectivePacketGuildId()

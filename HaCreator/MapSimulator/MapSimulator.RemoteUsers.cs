@@ -2351,18 +2351,21 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (resolvedOwnerCharacterId > 0)
-            {
-                RememberObservedDropPartyActorOwner(packet.ActorId, resolvedOwnerCharacterId);
-                RememberObservedDropPartyActorOwner(resolvedActorId, resolvedOwnerCharacterId);
-            }
-
-            foreach (int linkedActorId in ResolveRemoteUserDropPickupPartyLinkActorIds(
+            int[] linkedActorIds = ResolveRemoteUserDropPickupPartyLinkActorIds(
                 packet,
                 resolvedActorId,
-                resolvedOwnerCharacterId))
+                resolvedOwnerCharacterId);
+            foreach (int linkedActorId in linkedActorIds)
             {
                 RegisterObservedDropPartyActorLink(drop.OwnerId, linkedActorId);
+            }
+
+            if (resolvedOwnerCharacterId > 0)
+            {
+                RememberObservedDropPartyActorOwnersForLinkedActors(
+                    _observedDropPartyActorOwners,
+                    linkedActorIds,
+                    resolvedOwnerCharacterId);
             }
         }
 

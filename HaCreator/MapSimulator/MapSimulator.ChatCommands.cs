@@ -3719,10 +3719,10 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "sociallist",
                 "Inspect or drive the Social List, guild-manage, alliance-editor, and packet-owned roster-authority seams",
-                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper|delete]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
+                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper|delete]|group text|toggle|scroll|confirm|cancel|close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
                 args =>
                 {
-                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper|delete]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet [session ...|...]|packetraw ...]";
+                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper|delete]|group text|toggle|scroll|confirm|cancel|close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet [session ...|...]|packetraw ...]";
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info($"{_socialListRuntime.DescribeStatus()}{Environment.NewLine}{DescribeSocialListOfficialSessionBridgeStatus()}");
@@ -3744,7 +3744,9 @@ namespace HaCreator.MapSimulator
 
                     if (string.Equals(args[0], "group", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (args.Length >= 2 && string.Equals(args[1], "close", StringComparison.OrdinalIgnoreCase))
+                        const string groupUsage = "Usage: /sociallist group <open [add|whisper|delete]|text <value>|cleartext|backspace|toggle <visibleIndex>|scroll <delta>|scrollto <0..1>|confirm|cancel|close>";
+                        if (args.Length >= 2 && (string.Equals(args[1], "close", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(args[1], "cancel", StringComparison.OrdinalIgnoreCase)))
                         {
                             string popupMessage = _socialListRuntime.CancelFriendGroupPopup() ?? "The dedicated friend-group popup is not open.";
                             uiWindowManager.HideWindow(MapSimulatorWindowNames.FriendGroup);
@@ -3753,7 +3755,77 @@ namespace HaCreator.MapSimulator
 
                         if (args.Length < 2 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group <open [add|whisper|delete]|close>");
+                            if (args.Length >= 2 && string.Equals(args[1], "text", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 3)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group text <value>");
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SetFriendGroupPopupInput(string.Join(' ', args.Skip(2))));
+                            }
+
+                            if (args.Length >= 2 && string.Equals(args[1], "cleartext", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SetFriendGroupPopupInput(string.Empty));
+                            }
+
+                            if (args.Length >= 2 && string.Equals(args[1], "backspace", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _socialListRuntime.BackspaceFriendGroupPopupInput();
+                                return ChatCommandHandler.CommandResult.Ok("Backspaced the dedicated friend-group popup edit field.");
+                            }
+
+                            if (args.Length >= 3 && string.Equals(args[1], "toggle", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!int.TryParse(args[2], out int visibleIndex))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group toggle <visibleIndex>");
+                                }
+
+                                _socialListRuntime.ToggleFriendGroupPopupEntry(visibleIndex);
+                                return ChatCommandHandler.CommandResult.Ok($"Toggled friend-group popup visible row {visibleIndex}.");
+                            }
+
+                            if (args.Length >= 3 && string.Equals(args[1], "scroll", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!int.TryParse(args[2], out int scrollDelta))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group scroll <delta>");
+                                }
+
+                                _socialListRuntime.MoveFriendGroupPopupScroll(scrollDelta);
+                                return ChatCommandHandler.CommandResult.Ok($"Scrolled the friend-group popup by {scrollDelta} row(s).");
+                            }
+
+                            if (args.Length >= 3 && string.Equals(args[1], "scrollto", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!float.TryParse(args[2], out float scrollRatio))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group scrollto <0..1>");
+                                }
+
+                                _socialListRuntime.SetFriendGroupPopupScrollPosition(scrollRatio);
+                                return ChatCommandHandler.CommandResult.Ok($"Moved the friend-group popup scrollbar to {Math.Clamp(scrollRatio, 0f, 1f):0.##}.");
+                            }
+
+                            if (args.Length >= 2 && string.Equals(args[1], "confirm", StringComparison.OrdinalIgnoreCase))
+                            {
+                                string confirmMessage = _socialListRuntime.ConfirmFriendGroupPopup();
+                                if (!_socialListRuntime.HasOpenFriendGroupPopup)
+                                {
+                                    uiWindowManager.HideWindow(MapSimulatorWindowNames.FriendGroup);
+                                }
+                                else
+                                {
+                                    WireFriendGroupWindowData();
+                                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FriendGroup);
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(confirmMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error(groupUsage);
                         }
 
                         FriendGroupPopupMode mode = FriendGroupPopupMode.AddFriend;
@@ -3774,7 +3846,7 @@ namespace HaCreator.MapSimulator
                             }
                             else
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group open [add|whisper|delete]");
+                                return ChatCommandHandler.CommandResult.Error(groupUsage);
                             }
                         }
 

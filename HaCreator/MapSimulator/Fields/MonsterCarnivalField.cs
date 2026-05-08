@@ -1490,6 +1490,11 @@ namespace HaCreator.MapSimulator.Fields
             bool accepted,
             MonsterCarnivalEntry entry)
         {
+            if (_definition?.IsSeason2Mode != true || !pendingToken.AcceptsOfficialClientResultOwner)
+            {
+                return;
+            }
+
             _season2SubDialogBtOkPendingSendRouteCount = Math.Max(0, _season2SubDialogBtOkPendingSendRouteCount - 1);
             if (accepted)
             {
@@ -2961,6 +2966,9 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogSelectedOkRouteCount = 0;
             _season2SubDialogBtOkSendRouteCount = 0;
             _season2SubDialogBtOkNoSendRouteCount = 0;
+            _season2SubDialogBtOkPendingSendRouteCount = 0;
+            _season2SubDialogBtOkAcceptedSendRouteCount = 0;
+            _season2SubDialogBtOkRejectedSendRouteCount = 0;
             _season2SubDialogSelectedTab = null;
             _season2SubDialogSelectedIndex = -1;
             _season2SubDialogLastButtonRoute = null;
@@ -3813,7 +3821,11 @@ namespace HaCreator.MapSimulator.Fields
             consumedToken = default;
 
             if ((isLocalRequestOwner || hasMissingRequestOwner)
-                && TryConsumePendingLocalRequest(tab, entryIndex, ownershipPredicate: null, out consumedToken))
+                && TryConsumePendingLocalRequest(
+                    tab,
+                    entryIndex,
+                    pending => TryResolveEntryFromPendingLocalRequest(pending, out _),
+                    out consumedToken))
             {
                 return true;
             }
@@ -3821,7 +3833,8 @@ namespace HaCreator.MapSimulator.Fields
             if (TryConsumePendingLocalRequest(
                     tab,
                     entryIndex,
-                    pending => pending.AcceptsOfficialClientResultOwner,
+                    pending => pending.AcceptsOfficialClientResultOwner
+                               && TryResolveEntryFromPendingLocalRequest(pending, out _),
                     out consumedToken))
             {
                 return true;
@@ -5078,7 +5091,7 @@ namespace HaCreator.MapSimulator.Fields
             string chatTrail = BuildSeason2ChatRouteTrailSummary();
             string sendTrail = BuildSeason2SubDialogSendRouteTrailSummary();
             string selectedRouteText = BuildSeason2SubDialogSelectedRouteText(out _);
-            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},sendTrail={sendTrail}";
+            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},sendTrail={sendTrail}";
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
                 ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},selected={selectedRouteText},okSelectedRoutes={_season2SubDialogSelectedOkRouteCount},{sendText},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"

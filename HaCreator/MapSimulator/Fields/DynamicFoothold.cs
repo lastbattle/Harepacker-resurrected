@@ -532,14 +532,47 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            UpdatePacketOwnedHorizontalMovement(platform, movement);
-            UpdatePacketOwnedVerticalMovement(platform, movement);
+            ResolvePacketOwnedTwoPointDiagonalAxisMovement(
+                platform,
+                movement,
+                out float horizontalMovement,
+                out float verticalMovement);
+            UpdatePacketOwnedHorizontalMovement(platform, horizontalMovement);
+            UpdatePacketOwnedVerticalMovement(platform, verticalMovement);
             RefreshPacketOwnedDiagonalWaypointIndex(platform);
 
             if (platform.PauseDelay > 0 && platform.IsPaused)
             {
                 platform.PauseStartTime = currentTimeMs;
             }
+        }
+
+        private static void ResolvePacketOwnedTwoPointDiagonalAxisMovement(
+            DynamicPlatform platform,
+            float movement,
+            out float horizontalMovement,
+            out float verticalMovement)
+        {
+            horizontalMovement = movement;
+            verticalMovement = movement;
+            if (platform?.PacketOwnedMovingX1 is not int x1
+                || platform.PacketOwnedMovingX2 is not int x2
+                || platform.PacketOwnedMovingY1 is not int y1
+                || platform.PacketOwnedMovingY2 is not int y2)
+            {
+                return;
+            }
+
+            float dx = Math.Abs(x2 - x1);
+            float dy = Math.Abs(y2 - y1);
+            float length = MathF.Sqrt((dx * dx) + (dy * dy));
+            if (length <= 0f)
+            {
+                return;
+            }
+
+            horizontalMovement = movement * dx / length;
+            verticalMovement = movement * dy / length;
         }
 
         private static bool HasPacketOwnedTwoPointWaypointEndpointOrder(DynamicPlatform platform)

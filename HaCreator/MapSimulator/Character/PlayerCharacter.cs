@@ -383,6 +383,10 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasSourceLayerClockSignature { get; set; }
             public int LastInsertCanvasSourceCanvasObjectId { get; set; }
             public int LastInsertCanvasSourceFrameSignature { get; set; }
+            public int LastInsertCanvasPreparedLayerFilter { get; set; } = int.MinValue;
+            public int LastInsertCanvasPreparedLayerZ { get; set; } = int.MinValue;
+            public int LastInsertCanvasPreparedLayerColor { get; set; }
+            public int LastInsertCanvasPreparedLayerTargetOffsetSignature { get; set; }
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -6734,7 +6738,15 @@ namespace HaCreator.MapSimulator.Character
                 ResolveMirrorImageSourceCanvasObjectId(liveSourceParts),
                 preparedLayer.LastInsertCanvasSourceCanvasObjectId,
                 liveSourceFrameSignature,
-                preparedLayer.LastInsertCanvasSourceFrameSignature);
+                preparedLayer.LastInsertCanvasSourceFrameSignature,
+                preparedLayer.PreparedLayerFilter,
+                preparedLayer.LastInsertCanvasPreparedLayerFilter,
+                preparedLayer.PreparedLayerZ,
+                preparedLayer.LastInsertCanvasPreparedLayerZ,
+                ResolveMirrorImagePreparedLayerColorSignature(preparedLayer.PreparedLayerColor),
+                preparedLayer.LastInsertCanvasPreparedLayerColor,
+                ResolveMirrorImagePreparedLayerTargetOffsetSignature(preparedLayer.PreparedTargetOffsetPx),
+                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -6990,6 +7002,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
             preparedLayer.LastInsertCanvasSourceCanvasObjectId = 0;
             preparedLayer.LastInsertCanvasSourceFrameSignature = 0;
+            preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
+            preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
+            preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
+            preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -7034,6 +7050,10 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
                 preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
                 preparedLayer.LastInsertCanvasSourceFrameSignature = 0;
+                preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
+                preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
+                preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
+                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = 0;
                 preparedLayer.LastInsertedLiveSourceParts = Array.Empty<AssembledPart>();
             }
 
@@ -7088,6 +7108,22 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourceFrameSignature = ResolveMirrorImageLastInsertCanvasSourceFrameSignature(
                 preparedLayer.LastInsertCanvasSourceFrameSignature,
                 sourceFrameSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerFilter = ResolveMirrorImageLastInsertCanvasPreparedLayerFilter(
+                preparedLayer.LastInsertCanvasPreparedLayerFilter,
+                preparedLayer.PreparedLayerFilter,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerZ = ResolveMirrorImageLastInsertCanvasPreparedLayerZ(
+                preparedLayer.LastInsertCanvasPreparedLayerZ,
+                preparedLayer.PreparedLayerZ,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerColor = ResolveMirrorImageLastInsertCanvasPreparedLayerColor(
+                preparedLayer.LastInsertCanvasPreparedLayerColor,
+                ResolveMirrorImagePreparedLayerColorSignature(preparedLayer.PreparedLayerColor),
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature = ResolveMirrorImageLastInsertCanvasPreparedLayerTargetOffsetSignature(
+                preparedLayer.LastInsertCanvasPreparedLayerTargetOffsetSignature,
+                ResolveMirrorImagePreparedLayerTargetOffsetSignature(preparedLayer.PreparedTargetOffsetPx),
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedLiveSourceParts = ResolveMirrorImageLastInsertedLiveSourceParts(
                 preparedLayer.LastInsertedLiveSourceParts,
@@ -7531,6 +7567,58 @@ namespace HaCreator.MapSimulator.Character
                 : existingSourceFrameSignature;
         }
 
+        internal static int ResolveMirrorImagePreparedLayerColorSignature(Color layerColor)
+        {
+            return (int)layerColor.PackedValue;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerTargetOffsetSignature(Point targetOffset)
+        {
+            var signature = new HashCode();
+            signature.Add(targetOffset.X);
+            signature.Add(targetOffset.Y);
+            return signature.ToHashCode();
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerFilter(
+            int existingPreparedLayerFilter,
+            int currentPreparedLayerFilter,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPreparedLayerFilter != int.MinValue
+                ? currentPreparedLayerFilter
+                : existingPreparedLayerFilter;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerZ(
+            int existingPreparedLayerZ,
+            int currentPreparedLayerZ,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPreparedLayerZ != int.MinValue
+                ? currentPreparedLayerZ
+                : existingPreparedLayerZ;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerColor(
+            int existingPreparedLayerColor,
+            int currentPreparedLayerColor,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentPreparedLayerColor != 0
+                ? currentPreparedLayerColor
+                : existingPreparedLayerColor;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerTargetOffsetSignature(
+            int existingTargetOffsetSignature,
+            int currentTargetOffsetSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentTargetOffsetSignature != 0
+                ? currentTargetOffsetSignature
+                : existingTargetOffsetSignature;
+        }
         internal static bool ShouldResetMirrorImageInsertCanvasMetadataForPreparedLayerRecreation(
             bool updatesFromLiveInsertCanvas,
             int preparedLayerObjectId,
@@ -7783,7 +7871,15 @@ namespace HaCreator.MapSimulator.Character
             int sourceCanvasObjectId = 0,
             int lastInsertCanvasSourceCanvasObjectId = 0,
             int sourceFrameSignature = 0,
-            int lastInsertCanvasSourceFrameSignature = 0)
+            int lastInsertCanvasSourceFrameSignature = 0,
+            int preparedLayerFilter = int.MinValue,
+            int lastInsertCanvasPreparedLayerFilter = int.MinValue,
+            int preparedLayerZ = int.MinValue,
+            int lastInsertCanvasPreparedLayerZ = int.MinValue,
+            int preparedLayerColor = 0,
+            int lastInsertCanvasPreparedLayerColor = 0,
+            int preparedLayerTargetOffsetSignature = 0,
+            int lastInsertCanvasPreparedLayerTargetOffsetSignature = 0)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -7871,6 +7967,18 @@ namespace HaCreator.MapSimulator.Character
             bool sourceFrameSignatureChanged = sourceFrameSignature != 0
                 && lastInsertCanvasSourceFrameSignature != 0
                 && sourceFrameSignature != lastInsertCanvasSourceFrameSignature;
+            bool preparedLayerFilterChanged = preparedLayerFilter != int.MinValue
+                && lastInsertCanvasPreparedLayerFilter != int.MinValue
+                && preparedLayerFilter != lastInsertCanvasPreparedLayerFilter;
+            bool preparedLayerZChanged = preparedLayerZ != int.MinValue
+                && lastInsertCanvasPreparedLayerZ != int.MinValue
+                && preparedLayerZ != lastInsertCanvasPreparedLayerZ;
+            bool preparedLayerColorChanged = preparedLayerColor != 0
+                && lastInsertCanvasPreparedLayerColor != 0
+                && preparedLayerColor != lastInsertCanvasPreparedLayerColor;
+            bool preparedLayerTargetOffsetChanged = preparedLayerTargetOffsetSignature != 0
+                && lastInsertCanvasPreparedLayerTargetOffsetSignature != 0
+                && preparedLayerTargetOffsetSignature != lastInsertCanvasPreparedLayerTargetOffsetSignature;
             bool sourceSignatureChanged = sourceSignature != 0
                 && lastInsertedSourceSignature != 0
                 && sourceSignature != lastInsertedSourceSignature;
@@ -7883,6 +7991,10 @@ namespace HaCreator.MapSimulator.Character
                 || sourceLayerClockChanged
                 || sourceCanvasObjectChanged
                 || sourceFrameSignatureChanged
+                || preparedLayerFilterChanged
+                || preparedLayerZChanged
+                || preparedLayerColorChanged
+                || preparedLayerTargetOffsetChanged
                 || sourceSignatureChanged
                 || sourceCanvasSignatureChanged)
             {
@@ -7905,6 +8017,14 @@ namespace HaCreator.MapSimulator.Character
                 && (sourceCanvasObjectId == 0 || lastInsertCanvasSourceCanvasObjectId == 0);
             bool sourceFrameSignatureMetadataMissing = (sourceFrameSignature != 0 || lastInsertCanvasSourceFrameSignature != 0)
                 && (sourceFrameSignature == 0 || lastInsertCanvasSourceFrameSignature == 0);
+            bool preparedLayerFilterMetadataMissing = (preparedLayerFilter != int.MinValue || lastInsertCanvasPreparedLayerFilter != int.MinValue)
+                && (preparedLayerFilter == int.MinValue || lastInsertCanvasPreparedLayerFilter == int.MinValue);
+            bool preparedLayerZMetadataMissing = (preparedLayerZ != int.MinValue || lastInsertCanvasPreparedLayerZ != int.MinValue)
+                && (preparedLayerZ == int.MinValue || lastInsertCanvasPreparedLayerZ == int.MinValue);
+            bool preparedLayerColorMetadataMissing = (preparedLayerColor != 0 || lastInsertCanvasPreparedLayerColor != 0)
+                && (preparedLayerColor == 0 || lastInsertCanvasPreparedLayerColor == 0);
+            bool preparedLayerTargetOffsetMetadataMissing = (preparedLayerTargetOffsetSignature != 0 || lastInsertCanvasPreparedLayerTargetOffsetSignature != 0)
+                && (preparedLayerTargetOffsetSignature == 0 || lastInsertCanvasPreparedLayerTargetOffsetSignature == 0);
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
                 || sourceSignatureMetadataMissing
                 || sourceCanvasSignatureMetadataMissing
@@ -7912,7 +8032,11 @@ namespace HaCreator.MapSimulator.Character
                 || sourceLayerOriginMetadataMissing
                 || sourceLayerClockMetadataMissing
                 || sourceCanvasObjectMetadataMissing
-                || sourceFrameSignatureMetadataMissing;
+                || sourceFrameSignatureMetadataMissing
+                || preparedLayerFilterMetadataMissing
+                || preparedLayerZMetadataMissing
+                || preparedLayerColorMetadataMissing
+                || preparedLayerTargetOffsetMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;

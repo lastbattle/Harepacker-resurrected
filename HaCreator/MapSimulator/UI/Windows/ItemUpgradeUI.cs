@@ -809,7 +809,8 @@ namespace HaCreator.MapSimulator.UI
             int consumableSlotIndex,
             InventoryType? modifierInventoryType,
             int? modifierSlotIndex,
-            bool? forcedSuccess)
+            bool? forcedSuccess,
+            bool suppressHammerPresentation = false)
         {
             _packetOwnedRequestPending = false;
             _presentationState = WindowPresentationState.Idle;
@@ -818,7 +819,13 @@ namespace HaCreator.MapSimulator.UI
                 consumableSlotIndex,
                 modifierInventoryType,
                 modifierSlotIndex,
-                forcedSuccess);
+                forcedSuccess,
+                suppressHammerPresentation);
+        }
+
+        public void PlayPacketOwnedViciousHammerRequestPresentation()
+        {
+            _productionEnhancementAnimationDisplayer?.PlayViciousHammerResult(Environment.TickCount);
         }
 
         public bool ApplyPacketOwnedUpgradeSlotState(EquipSlot slot, int packetUpgradeState)
@@ -916,7 +923,8 @@ namespace HaCreator.MapSimulator.UI
             int? forcedConsumableSlotIndex,
             InventoryType? forcedModifierInventoryType,
             int? forcedModifierSlotIndex,
-            bool? forcedSuccess)
+            bool? forcedSuccess,
+            bool suppressHammerPresentation = false)
         {
             EnhancementConsumable preparedConsumable = TryResolveCurrentConsumable(out _)
                 ? ResolveCurrentConsumable()
@@ -932,7 +940,8 @@ namespace HaCreator.MapSimulator.UI
                 forcedSuccess,
                 previewOnly: false);
 
-            if (preparedConsumable?.EffectType == ConsumableEffectType.Hammer &&
+            if (!suppressHammerPresentation &&
+                preparedConsumable?.EffectType == ConsumableEffectType.Hammer &&
                 result.Success.HasValue)
             {
                 _productionEnhancementAnimationDisplayer?.PlayViciousHammerResult(Environment.TickCount);

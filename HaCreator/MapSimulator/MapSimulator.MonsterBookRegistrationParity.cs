@@ -1161,11 +1161,12 @@ namespace HaCreator.MapSimulator
             if (payload.Length >= sizeof(int) + sizeof(ushort))
             {
                 int registeredMobId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
-                if (registeredMobId > 0
+                if (registeredMobId >= 0
                     && TryDecodeMonsterBookLoadBookRawPayloadCore(
                         payload,
                         offset: sizeof(int),
-                        registeredMobId,
+                        registeredMobId > 0 ? registeredMobId : null,
+                        registeredCoverSpecified: true,
                         out result,
                         out detail))
                 {
@@ -1183,6 +1184,23 @@ namespace HaCreator.MapSimulator
             out MonsterBookOwnershipSyncPayload result,
             out string detail)
         {
+            return TryDecodeMonsterBookLoadBookRawPayloadCore(
+                payload,
+                offset,
+                registeredMobId,
+                registeredCoverSpecified: registeredMobId.HasValue,
+                out result,
+                out detail);
+        }
+
+        private static bool TryDecodeMonsterBookLoadBookRawPayloadCore(
+            byte[] payload,
+            int offset,
+            int? registeredMobId,
+            bool registeredCoverSpecified,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
             result = default;
             detail = null;
             if (!TryDecodeMonsterBookLoadBookRawRows(payload, offset, out ushort entryCount, out Dictionary<int, int> counts))
@@ -1193,7 +1211,7 @@ namespace HaCreator.MapSimulator
             result = new MonsterBookOwnershipSyncPayload(
                 clearRequested: entryCount == 0,
                 replaceExisting: true,
-                hasOwnershipSnapshot: entryCount == 0 || counts.Count > 0 || registeredMobId.HasValue,
+                hasOwnershipSnapshot: entryCount == 0 || counts.Count > 0 || registeredCoverSpecified,
                 saveAccepted: null,
                 requestId: null,
                 characterId: null,
@@ -1205,6 +1223,8 @@ namespace HaCreator.MapSimulator
                 ? "Decoded CMonsterBookMan::LoadBook empty raw ownership table as an authoritative clear."
                 : registeredMobId.HasValue
                 ? "Decoded CMonsterBookMan::LoadBook raw ownership table with registered cover."
+                : registeredCoverSpecified
+                ? "Decoded CMonsterBookMan::LoadBook raw ownership table with registered-cover clear."
                 : "Decoded CMonsterBookMan::LoadBook raw ownership table.";
             return true;
         }

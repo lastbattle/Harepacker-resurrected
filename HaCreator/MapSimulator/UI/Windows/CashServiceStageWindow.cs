@@ -2377,6 +2377,9 @@ namespace HaCreator.MapSimulator.UI
                 out int quantity,
                 out long cashItemSerialNumber,
                 out string decodeError);
+            byte[] decodedItemBodyBytes = hasDecodedItemBody
+                ? CopyPacketRowBytes(stream, itemBodyOffset, stream.Position)
+                : Array.Empty<byte>();
 
             if (hasDecodedItemBody)
             {
@@ -2416,7 +2419,15 @@ namespace HaCreator.MapSimulator.UI
                     RawExpireFileTime = removedLockerEntry?.RawExpireFileTime ?? 0,
                     PaybackRate = removedLockerEntry?.PaybackRate ?? 0,
                     DiscountRate = removedLockerEntry?.DiscountRate ?? 0,
-                    PacketSource = "GW_ItemSlotBase"
+                    PacketSource = "GW_ItemSlotBase",
+                    PacketFieldSummary = BuildCashInventoryItemSlotFieldSummary(
+                        itemBodyOffset,
+                        decodedItemBodyBytes.Length,
+                        itemId,
+                        quantity,
+                        cashItemSerialNumber),
+                    PacketRawByteLength = decodedItemBodyBytes.Length,
+                    PacketPayloadRawHex = BuildPacketRowRawHexSummary("GW_ItemSlotBase", decodedItemBodyBytes)
                 };
                 UpsertCashInventoryPacketEntry(inventoryEntry);
                 AppendCashPacketCatalogEntry("Packet inventory", "Inventory", ClonePacketCatalogEntry(inventoryEntry, "Inventory"));
@@ -2489,6 +2500,27 @@ namespace HaCreator.MapSimulator.UI
             _cashInventoryPacketEntries.Insert(0, rawEntry);
             AppendCashPacketCatalogEntry("Packet inventory", "Inventory", ClonePacketCatalogEntry(rawEntry, "Inventory body"));
             return $"Retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw GW_ItemSlotBase byte(s) at packet offset {offset.ToString(CultureInfo.InvariantCulture)} for CCSWnd_Inventory fallback.";
+        }
+
+        private static string BuildCashInventoryItemSlotFieldSummary(
+            int offset,
+            int byteLength,
+            int itemId,
+            int quantity,
+            long cashItemSerialNumber)
+        {
+            List<string> parts = new()
+            {
+                $"GW_ItemSlotBase packet body: offset {Math.Max(0, offset).ToString(CultureInfo.InvariantCulture)}, {Math.Max(0, byteLength).ToString(CultureInfo.InvariantCulture)} byte(s)",
+                $"nItemID={Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
+                $"nNumber={Math.Max(1, quantity).ToString(CultureInfo.InvariantCulture)}"
+            };
+            if (cashItemSerialNumber > 0)
+            {
+                parts.Add($"liCashItemSN={cashItemSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            return string.Join(", ", parts) + ".";
         }
 
         private bool TryApplyCashMoveStoLDone(byte[] payload, out string message)
@@ -3259,21 +3291,22 @@ namespace HaCreator.MapSimulator.UI
 
             int byteLength = payload.Length - offset;
             string entryTitle = string.IsNullOrWhiteSpace(title) ? "Cash-item packet body" : title.Trim();
-            AppendCashPacketCatalogEntry(
-                string.IsNullOrWhiteSpace(paneLabel) ? "Packet raw body" : paneLabel,
-                string.IsNullOrWhiteSpace(browseModeLabel) ? "Raw" : browseModeLabel,
-                new PacketCatalogEntry
-                {
-                    Title = entryTitle,
-                    Detail = $"{entryTitle} retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw trailing byte(s) for the packet-owned Cash Shop stage row.",
-                    Seller = string.IsNullOrWhiteSpace(seller) ? "CCashShop" : seller,
-                    PriceLabel = $"Offset {offset.ToString(CultureInfo.InvariantCulture)}",
-                    StateLabel = string.IsNullOrWhiteSpace(stateLabel) ? "Raw body" : stateLabel,
-                    PacketSource = entryTitle,
-                    PacketFieldSummary = BuildCashRawTailFieldSummary(payload, offset),
-                    PacketRawByteLength = byteLength,
-                    PacketPayloadRawHex = BuildCashRawTailHexSummary(payload, offset)
-                });
+            PacketCatalogEntry rawEntry = new()
+            {
+                Title = entryTitle,
+                Detail = $"{entryTitle} retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw trailing byte(s) for the packet-owned Cash Shop stage row.",
+                Seller = string.IsNullOrWhiteSpace(seller) ? "CCashShop" : seller,
+                PriceLabel = $"Offset {offset.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = string.IsNullOrWhiteSpace(stateLabel) ? "Raw body" : stateLabel,
+                PacketSource = entryTitle,
+                PacketFieldSummary = BuildCashRawTailFieldSummary(payload, offset),
+                PacketRawByteLength = byteLength,
+                PacketPayloadRawHex = BuildCashRawTailHexSummary(payload, offset)
+            };
+            string normalizedPaneLabel = string.IsNullOrWhiteSpace(paneLabel) ? "Packet raw body" : paneLabel;
+            string normalizedBrowseModeLabel = string.IsNullOrWhiteSpace(browseModeLabel) ? "Raw" : browseModeLabel;
+            ApplyRawCashPacketTailToChildOwner(rawEntry, normalizedPaneLabel, normalizedBrowseModeLabel);
+            AppendCashPacketCatalogEntry(normalizedPaneLabel, normalizedBrowseModeLabel, rawEntry);
             return $"Retained {byteLength.ToString(CultureInfo.InvariantCulture)} raw trailing Cash Shop byte(s) at offset {offset.ToString(CultureInfo.InvariantCulture)} for packet-owned result fallback.";
         }
 
@@ -6395,7 +6428,7 @@ namespace HaCreator.MapSimulator.UI
 
             string normalizedTitle = string.IsNullOrWhiteSpace(titlePrefix) ? "Cash packet tail" : titlePrefix;
             string normalizedState = string.IsNullOrWhiteSpace(stateLabel) ? "Raw body" : stateLabel;
-            AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, new PacketCatalogEntry
+            PacketCatalogEntry rawEntry = new()
             {
                 Title = normalizedTitle,
                 Detail = $"{normalizedTitle} retained {normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} raw trailing byte(s) for the packet-owned stage row.",
@@ -6406,7 +6439,40 @@ namespace HaCreator.MapSimulator.UI
                 PacketFieldSummary = $"Raw trailing packet body: offset {Math.Max(0, sourceOffset).ToString(CultureInfo.InvariantCulture)}, {normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s).",
                 PacketRawByteLength = normalizedPayload.Length,
                 PacketPayloadRawHex = BuildRawPayloadHexSummary(normalizedPayload)
-            });
+            };
+            ApplyRawCashPacketTailToChildOwner(rawEntry, paneLabel, browseModeLabel);
+            AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, rawEntry);
+        }
+
+        private void ApplyRawCashPacketTailToChildOwner(PacketCatalogEntry entry, string paneLabel, string browseModeLabel)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            string ownerKey = $"{paneLabel} {browseModeLabel} {entry.Seller} {entry.StateLabel}";
+            if (_cashInventoryPacketEntries != null
+                && (ownerKey.Contains("Inventory", StringComparison.Ordinal)
+                    || ownerKey.Contains("CCSWnd_Inventory", StringComparison.Ordinal)))
+            {
+                UpsertCashInventoryPacketEntry(ClonePacketCatalogEntry(entry, "Raw body"));
+                return;
+            }
+
+            if (_cashLockerPacketEntries != null
+                && (ownerKey.Contains("Locker", StringComparison.Ordinal)
+                    || ownerKey.Contains("CCSWnd_Locker", StringComparison.Ordinal)
+                    || ownerKey.Contains("Buy", StringComparison.Ordinal)
+                    || ownerKey.Contains("Package", StringComparison.Ordinal)
+                    || ownerKey.Contains("Name", StringComparison.Ordinal)
+                    || ownerKey.Contains("Transfer", StringComparison.Ordinal)
+                    || ownerKey.Contains("Rebate", StringComparison.Ordinal)
+                    || ownerKey.Contains("Free", StringComparison.Ordinal)))
+            {
+                UpsertCashLockerPacketEntry(ClonePacketCatalogEntry(entry, "Raw body"));
+                _cashLockerItemCount = Math.Max(_cashLockerPacketEntries.Count, _cashLockerItemCount);
+            }
         }
 
         private static string EscapePacketAsciiLiteral(string value)

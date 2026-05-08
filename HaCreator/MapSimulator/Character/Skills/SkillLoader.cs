@@ -25,6 +25,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly record struct SummonSourceCandidate(int SkillId, SkillData Skill, WzImageProperty SkillNode);
         private readonly record struct ItemBulletAnimationCacheKey(int ItemId, int WeaponItemId, int WeaponCode);
         private readonly record struct ClientSummonedUolCandidateValue(string Value, string[] ContextPathParts);
+        private readonly record struct ClientSummonedUolStructuredRecordCandidateValue(
+            string Value,
+            bool HasVariantLevel,
+            bool IsCharacterLevelVariant,
+            int VariantLevel);
         private readonly record struct ClientSkillAssetUolPathResolution(
             string RootPath,
             SortedDictionary<int, string> CharacterLevelPaths,
@@ -158,6 +163,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summonedowner",
             "summonskillid",
             "ownerskillid"
+        };
+        private static readonly string[] ClientSkillAssetCharacterLevelFieldNames =
+        {
+            "characterlevel",
+            "charlevel",
+            "ncharacterlevel",
+            "ncharlevel",
+            "reqcharacterlevel",
+            "requiredcharacterlevel",
+            "requiredcharlevel"
+        };
+        private static readonly string[] ClientSkillAssetSkillLevelFieldNames =
+        {
+            "level",
+            "skilllevel",
+            "nskilllevel",
+            "reqlevel",
+            "requiredlevel"
         };
         private static readonly string[] ClientTileUolPropertyNames =
         {
@@ -6700,17 +6723,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                     node,
                     entryRelativePath,
                     skillNode);
+                bool hasEntryVariantLevel = TryReadClientSkillAssetUolTableEntryVariantLevel(
+                    tableEntry,
+                    out bool isCharacterLevelVariant,
+                    out int variantLevel);
+                string[] variantEntryPathParts = hasEntryVariantLevel
+                    ? BuildClientSkillAssetVariantContextPathParts(
+                        entryPathParts,
+                        isCharacterLevelVariant,
+                        variantLevel,
+                        propertyName)
+                    : entryPathParts;
                 string value = GetClientSummonedUolCandidateValue(tableEntry);
                 if (!string.IsNullOrWhiteSpace(value))
                 {
-                    yield return new ClientSummonedUolCandidateValue(value, entryPathParts);
+                    yield return new ClientSummonedUolCandidateValue(value, variantEntryPathParts);
                 }
 
                 foreach (string nameCandidateValue in EnumerateClientSummonedUolTableEntryNameCandidateValues(
                              tableEntry,
                              skillId))
                 {
-                    yield return new ClientSummonedUolCandidateValue(nameCandidateValue, entryPathParts);
+                    yield return new ClientSummonedUolCandidateValue(nameCandidateValue, variantEntryPathParts);
                 }
 
                 foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) tableValue in EnumerateClientSummonedUolTableEntryValues(
@@ -6728,9 +6762,103 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     yield return new ClientSummonedUolCandidateValue(
                         value,
-                        BuildResolvedClientSummonedUolNestedPathParts(entryPathParts, tableValue.RelativePath));
+                        BuildResolvedClientSummonedUolNestedPathParts(variantEntryPathParts, tableValue.RelativePath));
                 }
             }
+        }
+
+        private static bool TryReadClientSkillAssetUolTableEntryVariantLevel(
+            WzImageProperty tableEntry,
+            out bool isCharacterLevelVariant,
+            out int variantLevel)
+        {
+            isCharacterLevelVariant = false;
+            variantLevel = 0;
+            if (tableEntry?.WzProperties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in tableEntry.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(child.Name);
+                bool characterLevelField = ClientSkillAssetCharacterLevelFieldNames.Contains(
+                    normalizedName,
+                    StringComparer.Ordinal);
+                bool skillLevelField = ClientSkillAssetSkillLevelFieldNames.Contains(
+                    normalizedName,
+                    StringComparer.Ordinal);
+                if (!characterLevelField && !skillLevelField)
+                {
+                    continue;
+                }
+
+                string value = GetClientSummonedUolCandidateValue(child);
+                if (!TryParseClientSkillAssetUolVariantLevelValue(value, out int parsedLevel))
+                {
+                    continue;
+                }
+
+                isCharacterLevelVariant = characterLevelField;
+                variantLevel = parsedLevel;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseClientSkillAssetUolVariantLevelValue(string value, out int level)
+        {
+            level = 0;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = NormalizeClientSummonedUolEncodedPathSyntax(value)
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Trim();
+            if (!int.TryParse(normalizedValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLevel)
+                || parsedLevel <= 0)
+            {
+                return false;
+            }
+
+            level = parsedLevel;
+            return true;
+        }
+
+        private static string[] BuildClientSkillAssetVariantContextPathParts(
+            string[] basePathParts,
+            bool isCharacterLevelVariant,
+            int variantLevel,
+            string leafSegment)
+        {
+            if (variantLevel <= 0)
+            {
+                return basePathParts;
+            }
+
+            var parts = new List<string>();
+            if (basePathParts != null && basePathParts.Length > 0)
+            {
+                parts.AddRange(basePathParts);
+            }
+
+            parts.Add(isCharacterLevelVariant ? "CharLevel" : "level");
+            parts.Add(variantLevel.ToString(CultureInfo.InvariantCulture));
+            if (!string.IsNullOrWhiteSpace(leafSegment))
+            {
+                parts.Add(leafSegment);
+            }
+
+            return parts.ToArray();
         }
 
         private static IEnumerable<string> EnumerateClientSummonedUolTableEntryNameCandidateValues(
@@ -6790,12 +6918,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                     : $"{propertyName}/{recordLeaf.RelativePath}";
                 bool parsedStructuredRecord = IsClientSummonedUolStructuredTableRecord(value);
                 bool yieldedStructuredRecordCandidate = false;
-                foreach (string recordValue in EnumerateClientSummonedUolStructuredTableRecordValues(value, skillId))
+                foreach (ClientSummonedUolStructuredRecordCandidateValue recordCandidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValues(value, skillId))
                 {
                     yieldedStructuredRecordCandidate = true;
+                    string[] contextPathParts = BuildClientSummonedUolCandidateContextPathParts(
+                        contextNode,
+                        relativePath,
+                        skillNode);
+                    if (recordCandidate.HasVariantLevel)
+                    {
+                        contextPathParts = BuildClientSkillAssetVariantContextPathParts(
+                            contextPathParts,
+                            recordCandidate.IsCharacterLevelVariant,
+                            recordCandidate.VariantLevel,
+                            propertyName);
+                    }
+
                     yield return new ClientSummonedUolCandidateValue(
-                        recordValue,
-                        BuildClientSummonedUolCandidateContextPathParts(contextNode, relativePath, skillNode));
+                        recordCandidate.Value,
+                        contextPathParts);
                 }
 
                 if (yieldedStructuredRecordCandidate
@@ -6887,6 +7028,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             string recordText,
             int skillId)
         {
+            foreach (ClientSummonedUolStructuredRecordCandidateValue candidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValues(
+                         recordText,
+                         skillId))
+            {
+                yield return candidate.Value;
+            }
+        }
+
+        private static IEnumerable<ClientSummonedUolStructuredRecordCandidateValue> EnumerateClientSummonedUolStructuredTableRecordCandidateValues(
+            string recordText,
+            int skillId)
+        {
             if (string.IsNullOrWhiteSpace(recordText) || skillId <= 0)
             {
                 yield break;
@@ -6895,6 +7048,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             var valueCandidates = new List<string>();
             bool foundOwnerField = false;
             bool ownerMatches = false;
+            bool hasVariantLevel = false;
+            bool isCharacterLevelVariant = false;
+            int variantLevel = 0;
             foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolRecordTextFields(recordText))
             {
                 if (string.IsNullOrWhiteSpace(FieldName) || string.IsNullOrWhiteSpace(FieldValue))
@@ -6917,6 +7073,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (TryReadClientSkillAssetUolRecordVariantLevel(
+                        FieldName,
+                        FieldValue,
+                        out bool recordCharacterLevelVariant,
+                        out int recordVariantLevel))
+                {
+                    hasVariantLevel = true;
+                    isCharacterLevelVariant = recordCharacterLevelVariant;
+                    variantLevel = recordVariantLevel;
+                    continue;
+                }
+
                 if (IsClientSummonedUolTableEntryValueName(FieldName))
                 {
                     valueCandidates.Add(FieldValue);
@@ -6933,9 +7101,49 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (!string.IsNullOrWhiteSpace(valueCandidate) && yieldedValues.Add(valueCandidate))
                 {
-                    yield return valueCandidate;
+                    yield return new ClientSummonedUolStructuredRecordCandidateValue(
+                        valueCandidate,
+                        hasVariantLevel,
+                        isCharacterLevelVariant,
+                        variantLevel);
                 }
             }
+        }
+
+        private static bool TryReadClientSkillAssetUolRecordVariantLevel(
+            string fieldName,
+            string fieldValue,
+            out bool isCharacterLevelVariant,
+            out int variantLevel)
+        {
+            isCharacterLevelVariant = false;
+            variantLevel = 0;
+            if (string.IsNullOrWhiteSpace(fieldName)
+                || string.IsNullOrWhiteSpace(fieldValue))
+            {
+                return false;
+            }
+
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(fieldName);
+            bool characterLevelField = ClientSkillAssetCharacterLevelFieldNames.Contains(
+                normalizedName,
+                StringComparer.Ordinal);
+            bool skillLevelField = ClientSkillAssetSkillLevelFieldNames.Contains(
+                normalizedName,
+                StringComparer.Ordinal);
+            if (!characterLevelField && !skillLevelField)
+            {
+                return false;
+            }
+
+            if (!TryParseClientSkillAssetUolVariantLevelValue(fieldValue, out int parsedLevel))
+            {
+                return false;
+            }
+
+            isCharacterLevelVariant = characterLevelField;
+            variantLevel = parsedLevel;
+            return true;
         }
 
         private static IEnumerable<int> EnumerateClientSummonedUolRecordTextFieldSkillIds(string fieldValue)
@@ -8706,6 +8914,23 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             IReadOnlyList<string> propertyNames = ResolveClientSkillAssetUolPropertyNamesForTest(propertyName);
             return ResolveClientSkillAssetUolPathResolution(skillNode, infoNode, propertyNames).RootPath;
+        }
+
+        internal static (
+            string RootPath,
+            IReadOnlyDictionary<int, string> CharacterLevelPaths,
+            IReadOnlyDictionary<int, string> LevelPaths)
+            ResolveClientSkillAssetUolPathResolutionForTest(
+                WzImageProperty skillNode,
+                WzImageProperty infoNode,
+                string propertyName)
+        {
+            IReadOnlyList<string> propertyNames = ResolveClientSkillAssetUolPropertyNamesForTest(propertyName);
+            ClientSkillAssetUolPathResolution resolution = ResolveClientSkillAssetUolPathResolution(
+                skillNode,
+                infoNode,
+                propertyNames);
+            return (resolution.RootPath, resolution.CharacterLevelPaths, resolution.LevelPaths);
         }
 
         private static IReadOnlyList<string> ResolveClientSkillAssetUolPropertyNamesForTest(string propertyName)

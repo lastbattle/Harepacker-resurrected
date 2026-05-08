@@ -2639,7 +2639,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (packetState == 0)
             {
-                return RemoteTownPortalVisualPhase.Opening;
+                return RemoteTownPortalVisualPhase.Stable;
             }
 
             return RemoteTownPortalVisualPhase.Stable;

@@ -5630,6 +5630,13 @@ namespace HaCreator.MapSimulator.Interaction
                     _employeePoolRuntime.SetPreferredEmployerId(0);
                 }
 
+                if (TryCompleteTradingRoomTradeFromServerTeardown(out string settlementMessage))
+                {
+                    StatusMessage = $"{settlementMessage} Server-owned CMiniRoomBaseDlg::OnLeaveBase then tore down the trading-room owner seat.";
+                    PersistState();
+                    return;
+                }
+
                 RoomState = "Closed";
                 StatusMessage = $"{leavingName} left the room through CMiniRoomBaseDlg::OnLeaveBase.";
                 if (Kind == SocialRoomKind.MiniRoom)
@@ -5660,6 +5667,29 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             PersistState();
+        }
+
+        private bool TryCompleteTradingRoomTradeFromServerTeardown(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom
+                || !_tradeLocalLocked
+                || !_tradeRemoteLocked
+                || !_tradeLocalAccepted
+                || !_tradeRemoteAccepted
+                || _tradeVerificationPending)
+            {
+                return false;
+            }
+
+            if (!TryCompleteTrade(out message))
+            {
+                message = $"Trading-room server teardown reached the settlement gate, but settlement remained blocked: {message}";
+                StatusMessage = message;
+                return false;
+            }
+
+            return true;
         }
 
         private SocialRoomOccupantRole ResolveBasePacketOccupantRole(int seatIndex)
@@ -6884,6 +6914,9 @@ namespace HaCreator.MapSimulator.Interaction
             _entrustedBlacklistNotice = null;
             if (TryDispatchEntrustedBlacklistMutationOutbound(resolvedName, add: true, out string outboundMessage))
             {
+                ApplyEntrustedBlacklistAddLocalPreview(
+                    resolvedName,
+                    $"{outboundMessage} CBlackListDlg::AddBlackList inserted the name into the child list immediately; waiting for server subtype {EntrustedShopBlackListResultPacketType} to reconcile the local row.");
                 message = outboundMessage;
                 return true;
             }
@@ -6927,42 +6960,75 @@ namespace HaCreator.MapSimulator.Interaction
             string removedName = _blockedVisitors[_entrustedBlacklistSelectedIndex];
             if (TryDispatchEntrustedBlacklistMutationOutbound(removedName, add: false, out string outboundMessage))
             {
+                ApplyEntrustedBlacklistDeleteLocalPreview(
+                    removedName,
+                    $"{outboundMessage} CBlackListDlg::DeleteBlackList removed the child-list row immediately; waiting for server subtype {EntrustedShopBlackListResultPacketType} to reconcile the local row.");
                 message = outboundMessage;
                 return true;
             }
 
-            _blockedVisitors.RemoveAt(_entrustedBlacklistSelectedIndex);
-            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
-            EnsureMerchantPacketNotes();
-            _notes[1] = _blockedVisitors.Count > 0
-                ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
-                : "Entrusted-shop blacklist: empty.";
-            _entrustedChildDialogStatus = string.IsNullOrWhiteSpace(outboundMessage)
-                ? $"Deleted {removedName} from the entrusted-shop blacklist."
-                : $"Deleted {removedName} from the entrusted-shop blacklist. {outboundMessage}";
-            StatusMessage = _entrustedChildDialogStatus;
-            PersistState();
+            ApplyEntrustedBlacklistDeleteLocalPreview(
+                removedName,
+                string.IsNullOrWhiteSpace(outboundMessage)
+                    ? $"Deleted {removedName} from the entrusted-shop blacklist."
+                    : $"Deleted {removedName} from the entrusted-shop blacklist. {outboundMessage}");
             message = StatusMessage;
             return true;
         }
 
         private bool ApplyEntrustedBlacklistAddPreview(string resolvedName, string outboundMessage, out string message)
         {
-            _blockedVisitors.Add(resolvedName);
-            _entrustedBlacklistSelectedIndex = _blockedVisitors.Count - 1;
-            EnsureMerchantPacketNotes();
-            _notes[1] = $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}.";
-            _entrustedChildDialogStatus =
-                $"CBlackListDlg::AddBlackList added {resolvedName} to the blacklist. Add remains enabled while the count stays below 20.";
+            ApplyEntrustedBlacklistAddLocalPreview(
+                resolvedName,
+                $"CBlackListDlg::AddBlackList added {resolvedName} to the blacklist. Add remains enabled while the count stays below 20.");
             if (!string.IsNullOrWhiteSpace(outboundMessage))
             {
                 _entrustedChildDialogStatus = $"{_entrustedChildDialogStatus} {outboundMessage}";
+                StatusMessage = _entrustedChildDialogStatus;
+                PersistState();
             }
 
-            StatusMessage = _entrustedChildDialogStatus;
-            PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private void ApplyEntrustedBlacklistAddLocalPreview(string resolvedName, string statusMessage)
+        {
+            if (!_blockedVisitors.Contains(resolvedName, StringComparer.OrdinalIgnoreCase))
+            {
+                _blockedVisitors.Add(resolvedName);
+            }
+
+            _entrustedBlacklistSelectedIndex = _blockedVisitors.FindIndex(name =>
+                string.Equals(name, resolvedName, StringComparison.OrdinalIgnoreCase));
+            RefreshEntrustedBlacklistNote();
+            _entrustedChildDialogStatus = statusMessage;
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+        }
+
+        private void ApplyEntrustedBlacklistDeleteLocalPreview(string removedName, string statusMessage)
+        {
+            int removedIndex = _blockedVisitors.FindIndex(name =>
+                string.Equals(name, removedName, StringComparison.OrdinalIgnoreCase));
+            if (removedIndex >= 0)
+            {
+                _blockedVisitors.RemoveAt(removedIndex);
+            }
+
+            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            RefreshEntrustedBlacklistNote();
+            _entrustedChildDialogStatus = statusMessage;
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+        }
+
+        private void RefreshEntrustedBlacklistNote()
+        {
+            EnsureMerchantPacketNotes();
+            _notes[1] = _blockedVisitors.Count > 0
+                ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
+                : "Entrusted-shop blacklist: empty.";
         }
 
         private bool TryDispatchEntrustedBlacklistMutationOutbound(string resolvedName, bool add, out string message)
@@ -6972,8 +7038,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistDeleteOutboundPacket(resolvedName);
             string action = add ? "add" : "delete";
             string rawHex = Convert.ToHexString(rawPacket);
+            byte requestSubtype = add
+                ? SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklistAdd
+                : SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklistDelete;
             string summary =
-                $"CEntrustedShopDlg::CBlackListDlg prepared opcode {SocialRoomMerchantOfficialSessionBridgeManager.OutboundMiniRoomOpcode} subtype {SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklist} {action} request for {resolvedName} with mode {(add ? SocialRoomMerchantOfficialSessionBridgeManager.EntrustedShopBlacklistRequestModeAdd : SocialRoomMerchantOfficialSessionBridgeManager.EntrustedShopBlacklistRequestModeDelete)} (raw {rawHex}).";
+                $"CEntrustedShopDlg::CBlackListDlg prepared opcode {SocialRoomMerchantOfficialSessionBridgeManager.OutboundMiniRoomOpcode} subtype {requestSubtype} {action} request for {resolvedName} and expects server subtype {EntrustedShopBlackListResultPacketType} to reconcile the child list (raw {rawHex}).";
             _entrustedBlacklistLastOutboundPacketSummary = summary;
 
             if (EntrustedBlacklistOutboundPacketRequested == null)

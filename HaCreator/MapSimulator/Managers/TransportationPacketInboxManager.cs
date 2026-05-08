@@ -254,7 +254,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     0 or 1 or 6 => "EnterShipMove branch",
                     2 or 5 => "LeaveShipMove branch",
-                    3 or 4 => "Balrog AppearShip gate",
+                    3 or 4 => "Balrog AppearShip gate / regular LeaveShipMove branch",
                     _ => "unhandled branch"
                 };
                 return $"Transport OnContiState ({payload[0]}, {payload[1]}) [{stateBranch}]";

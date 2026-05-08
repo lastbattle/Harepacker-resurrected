@@ -152,6 +152,88 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public bool TryApplySetActivePortableChairPacket(
+            RemoteUserPortableChairPacket packet,
+            RemoteUserActorPool remoteUserPool,
+            string source,
+            out string message)
+        {
+            message = null;
+            if (remoteUserPool == null)
+            {
+                message = "Packet-owned portable-chair record runtime requires a remote-user pool.";
+                LastDispatchSummary = message;
+                return false;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source) ? "remote-user-packet" : source.Trim();
+            ushort observedOpcode = ResolveObservedOpcodeForParity(normalizedSource);
+            LastObservedOpcode = observedOpcode;
+            LastPayloadLength = sizeof(int) * 2;
+            LastSource = normalizedSource;
+
+            if (!RemoteUserActorPool.TryResolvePortableChairRecordEventFromSetActivePortableChairForParity(
+                    packet.CharacterId,
+                    packet.ChairItemId,
+                    out RemoteUserPortableChairRecordAddPacket addPacket,
+                    out RemoteUserPortableChairRecordRemovePacket removePacket))
+            {
+                TotalRejectedCount++;
+                LastOperation = "setactive";
+                LastOwnerCharacterId = packet.CharacterId;
+                message = $"Portable-chair record event requires a positive character ID; received {packet.CharacterId}.";
+                LastDispatchSummary = $"Rejected official SetActivePortableChair-derived portable-chair record from {normalizedSource}: {message}";
+                return false;
+            }
+
+            if (addPacket.ChairItemId > 0)
+            {
+                LastOperation = "add";
+                LastOwnerCharacterId = addPacket.CharacterId;
+                bool addApplied = remoteUserPool.TryApplyPortableChairRecordAdd(addPacket, out string addDetail);
+                if (addApplied)
+                {
+                    TotalAddCount++;
+                    RememberObservedOpcode(_observedAddCountByOpcode, observedOpcode);
+                }
+                else
+                {
+                    TotalRejectedCount++;
+                }
+
+                message = addDetail;
+                LastDispatchSummary = BuildDispatchSummary(
+                    $"{normalizedSource}; derived=CUser::SetActivePortableChair",
+                    addPacket.CharacterId,
+                    addApplied,
+                    operation: "add",
+                    addDetail);
+                return addApplied;
+            }
+
+            LastOperation = "remove";
+            LastOwnerCharacterId = removePacket.CharacterId;
+            bool removeApplied = remoteUserPool.TryApplyPortableChairRecordRemove(removePacket, out string removeDetail);
+            if (removeApplied)
+            {
+                TotalRemoveCount++;
+                RememberObservedOpcode(_observedRemoveCountByOpcode, observedOpcode);
+            }
+            else
+            {
+                TotalRejectedCount++;
+            }
+
+            message = removeDetail;
+            LastDispatchSummary = BuildDispatchSummary(
+                $"{normalizedSource}; derived=CUser::SetActivePortableChair",
+                removePacket.CharacterId,
+                removeApplied,
+                operation: "remove",
+                removeDetail);
+            return removeApplied;
+        }
+
         public string DescribeStatus()
         {
             return string.Format(

@@ -19,6 +19,20 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             PruneExpired(currentTime);
 
+            for (int i = 0; i < _pending.Count; i++)
+            {
+                PendingOutcome pending = _pending[i];
+                if (pending.SkillId == skillId && pending.TargetMobId == targetMobId)
+                {
+                    _pending[i] = new PendingOutcome(
+                        skillId,
+                        targetMobId,
+                        success,
+                        unchecked(currentTime + lifetimeMs));
+                    return;
+                }
+            }
+
             if (_pending.Count >= MaxPendingOutcomes)
             {
                 _pending.RemoveAt(0);

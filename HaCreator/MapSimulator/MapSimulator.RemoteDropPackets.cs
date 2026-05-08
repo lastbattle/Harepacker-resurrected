@@ -117,15 +117,18 @@ namespace HaCreator.MapSimulator
                 ? ResolveRemoteDropPacketPetActorId(packet)
                 : packet.ActorId;
             int resolvedOwnerCharacterId = ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedActorId);
-            foreach (int linkedActorId in ResolveRemoteDropPacketLeavePartyLinkActorIds(packet, resolvedActorId, resolvedOwnerCharacterId))
+            int[] linkedActorIds = ResolveRemoteDropPacketLeavePartyLinkActorIds(packet, resolvedActorId, resolvedOwnerCharacterId);
+            foreach (int linkedActorId in linkedActorIds)
             {
                 RegisterObservedDropPartyActorLink(drop.OwnerId, linkedActorId);
             }
 
             if (resolvedOwnerCharacterId > 0)
             {
-                RememberObservedDropPartyActorOwner(packet.ActorId, resolvedOwnerCharacterId);
-                RememberObservedDropPartyActorOwner(resolvedActorId, resolvedOwnerCharacterId);
+                RememberObservedDropPartyActorOwnersForLinkedActors(
+                    _observedDropPartyActorOwners,
+                    linkedActorIds,
+                    resolvedOwnerCharacterId);
             }
         }
 
@@ -765,6 +768,27 @@ namespace HaCreator.MapSimulator
             for (int slotIndex = 0; slotIndex < RemotePetPickupPredictedSlotCount; slotIndex++)
             {
                 actorIds.Add(BuildRemotePetPickupActorId(ownerCharacterId, slotIndex));
+            }
+        }
+
+        internal static void RememberObservedDropPartyActorOwnersForLinkedActors(
+            IDictionary<int, int> actorOwners,
+            IEnumerable<int> linkedActorIds,
+            int ownerCharacterId)
+        {
+            if (actorOwners == null || linkedActorIds == null || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            foreach (int linkedActorId in linkedActorIds)
+            {
+                if (linkedActorId == 0)
+                {
+                    continue;
+                }
+
+                actorOwners[linkedActorId] = ownerCharacterId;
             }
         }
 
