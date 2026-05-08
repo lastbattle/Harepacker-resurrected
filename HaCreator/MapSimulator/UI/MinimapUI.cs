@@ -1411,7 +1411,7 @@ namespace HaCreator.MapSimulator.UI
             if (!_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) || arrow == null)
                 return Rectangle.Empty;
 
-            Point drawPoint = ClampDirectionArrowPoint(minimapPoint);
+            Point drawPoint = ResolveDirectionArrowDrawPoint(direction, arrow);
             arrow.Draw(sprite, skeletonMeshRenderer, gameTime,
                 -Position.X, -Position.Y, drawPoint.X, drawPoint.Y,
                 drawReflectionInfo,
@@ -1735,12 +1735,48 @@ namespace HaCreator.MapSimulator.UI
             return DirectionArrow.East;
         }
 
-        private Point ClampDirectionArrowPoint(Point minimapPoint)
+        private Point ResolveDirectionArrowDrawPoint(DirectionArrow direction, BaseDXDrawableItem arrow)
         {
-            const int padding = 4;
-            int x = Math.Clamp(minimapPoint.X, padding, Math.Max(padding, _minimapImageWidth - padding));
-            int y = Math.Clamp(minimapPoint.Y, padding, Math.Max(padding, _minimapImageHeight - padding));
-            return new Point(x, y);
+            IDXObject frame = arrow?.LastFrameDrawn ?? arrow?.Frame0;
+            return ResolveClientDirectionArrowDrawPointForTesting(
+                direction,
+                _minimapImageWidth,
+                _minimapImageHeight,
+                frame?.Width ?? 0,
+                frame?.Height ?? 0);
+        }
+
+        internal static Point ResolveClientDirectionArrowDrawPointForTesting(
+            DirectionArrow direction,
+            int paneWidth,
+            int paneHeight,
+            int arrowWidth,
+            int arrowHeight)
+        {
+            const int edgeInset = 1;
+            int resolvedPaneWidth = Math.Max(0, paneWidth);
+            int resolvedPaneHeight = Math.Max(0, paneHeight);
+            int resolvedArrowWidth = Math.Max(0, arrowWidth);
+            int resolvedArrowHeight = Math.Max(0, arrowHeight);
+            int left = edgeInset;
+            int top = edgeInset;
+            int right = Math.Max(edgeInset, resolvedPaneWidth - resolvedArrowWidth - edgeInset);
+            int bottom = Math.Max(edgeInset, resolvedPaneHeight - resolvedArrowHeight - edgeInset);
+            int centerX = Math.Max(edgeInset, (resolvedPaneWidth - resolvedArrowWidth) / 2);
+            int centerY = Math.Max(edgeInset, (resolvedPaneHeight - resolvedArrowHeight) / 2);
+
+            return direction switch
+            {
+                DirectionArrow.NorthWest => new Point(left, top),
+                DirectionArrow.North => new Point(centerX, top),
+                DirectionArrow.NorthEast => new Point(right, top),
+                DirectionArrow.West => new Point(left, centerY),
+                DirectionArrow.East => new Point(right, centerY),
+                DirectionArrow.SouthWest => new Point(left, bottom),
+                DirectionArrow.South => new Point(centerX, bottom),
+                DirectionArrow.SouthEast => new Point(right, bottom),
+                _ => new Point(centerX, centerY)
+            };
         }
 
         private bool TrySetHoveredMarkerTooltip(MouseState mouseState)
@@ -1801,13 +1837,15 @@ namespace HaCreator.MapSimulator.UI
                 return Rectangle.Empty;
             }
 
-            Point drawPoint = withinMinimap ? minimapPoint : ClampDirectionArrowPoint(minimapPoint);
             IDXObject frame = marker.LastFrameDrawn ?? marker.Frame0;
             if (frame == null)
             {
                 return Rectangle.Empty;
             }
 
+            Point drawPoint = withinMinimap
+                ? minimapPoint
+                : ResolveDirectionArrowDrawPoint(ResolveDirectionArrow(minimapPoint), marker);
             Rectangle rect = new Rectangle(
                 Position.X + marker.Position.X + drawPoint.X + frame.X,
                 Position.Y + marker.Position.Y + drawPoint.Y + frame.Y,

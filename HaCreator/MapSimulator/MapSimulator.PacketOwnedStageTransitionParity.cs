@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<BaseDXDrawableItem, bool> _packetStageTransitionObjectVisibility = new();
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectMovingState> _packetStageTransitionNamedObjectMovingStates = new();
         private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectSideLaneLifecycleSnapshot> _packetStageTransitionNamedObjectSideLaneLifecycle = new();
+        private readonly Dictionary<BaseDXDrawableItem, PacketOwnedNamedObjectLayerLifecycleSnapshot> _packetStageTransitionNamedObjectLayerLifecycle = new();
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
         private int _packetStageTransitionBackEffectDurationMs;
         private byte _packetStageTransitionBackEffectStartAlpha = byte.MaxValue;
@@ -695,6 +696,7 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionNamedObjectMetadata.Clear();
             _packetStageTransitionAuthoredStateBranchItems.Clear();
             _packetStageTransitionNamedObjectSideLaneLifecycle.Clear();
+            _packetStageTransitionNamedObjectLayerLifecycle.Clear();
             ResetPacketOwnedLogoutGiftRuntimeState(clearConfig: true, hideWindow: true, summary: "Packet-owned logout-gift owner cleared with stage-transition state.");
         }
 
@@ -703,6 +705,7 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionObjectVisibility.Clear();
             _packetStageTransitionNamedObjectMovingStates.Clear();
             _packetStageTransitionNamedObjectSideLaneLifecycle.Clear();
+            _packetStageTransitionNamedObjectLayerLifecycle.Clear();
             RestorePacketOwnedBackEffect();
             _packetStageTransitionRuntime.Clear();
             ClearPacketOwnedScriptSelectablePets();

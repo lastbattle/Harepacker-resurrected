@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
+        private const int TOOLTIP_BITMAP_GAP = 1;
         private const float COOLDOWN_TEXT_SCALE = 0.7f;
 
         // Bar types for switching between different hotkey groups
@@ -55,10 +56,12 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D[] _cooldownMaskTextures = Array.Empty<Texture2D>();
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
+        private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
         private readonly Dictionary<int, Texture2D> _tooltipIconTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D> _rootEffectPreviewTextureCache = new();
+        private readonly Dictionary<int, TooltipSampleUiFrame> _sampleUiFrameCache = new();
         private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
         private Texture2D _debugPlaceholder;
 
@@ -114,6 +117,14 @@ namespace HaCreator.MapSimulator.UI
             Skill,
             Macro,
             Item
+        }
+
+        private sealed class TooltipSampleUiFrame
+        {
+            public Texture2D Top { get; init; }
+            public Texture2D Center { get; init; }
+            public Texture2D Bottom { get; init; }
+            public bool IsDrawable => Top != null && Center != null && Bottom != null;
         }
 
         private readonly struct QuickSlotPresentationState : IEquatable<QuickSlotPresentationState>
@@ -799,6 +810,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D tooltipIconTexture = ResolveTooltipIconTexture(itemId);
             Texture2D itemTexture = ResolveQuickSlotItemTexture(itemId, inventoryType);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
+            Texture2D sampleTexture = ResolveInfoSampleTexture(itemId);
             Texture2D[] iconRewardTextures = ResolveInfoIconRewardTextures(itemId);
             Texture2D[] rewardPreviewTextures = HasDrawableBitmap(iconRewardTextures)
                 ? Array.Empty<Texture2D>()
@@ -806,6 +818,11 @@ namespace HaCreator.MapSimulator.UI
             Texture2D rootEffectPreviewTexture = HasDrawableBitmap(iconRewardTextures) || HasDrawableBitmap(rewardPreviewTextures)
                 ? null
                 : ResolveRootEffectPreviewTexture(itemId);
+            TooltipSampleUiFrame sampleUiFrame = sampleTexture == null
+                ? ResolveSampleUiFrame(itemId)
+                : null;
+            bool drawAuthoredSampleInFrame = sampleUiFrame?.IsDrawable == true
+                                             && metadata.AuthoredSampleLines.Count > 0;
 
             int tooltipWidth = ResolveTooltipWidth();
             Texture2D primaryIconTexture = tooltipIconTexture ?? itemTexture;
@@ -841,6 +858,13 @@ namespace HaCreator.MapSimulator.UI
                 AddSection(metadata.MetadataLines[i], new Color(255, 214, 156));
             }
             AddSection(description, new Color(255, 238, 196));
+            if (!drawAuthoredSampleInFrame)
+            {
+                for (int i = 0; i < metadata.AuthoredSampleLines.Count; i++)
+                {
+                    AddSection(metadata.AuthoredSampleLines[i], new Color(210, 220, 255));
+                }
+            }
 
             float wrappedSectionHeight = 0f;
             for (int i = 0; i < wrappedSections.Count; i++)
@@ -860,14 +884,23 @@ namespace HaCreator.MapSimulator.UI
                 contentHeight += (contentHeight > 0f ? 2f : 0f) + cashLabelHeight;
             }
             float iconBlockHeight = Math.Max(primaryIconHeight, contentHeight);
+            float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
             float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
             float rewardPreviewHeight = MeasureHorizontalBitmapStripHeight(rewardPreviewTextures);
             float rootEffectPreviewHeight = rootEffectPreviewTexture?.Height ?? 0f;
-            float bitmapPreviewHeight = iconRewardHeight > 0f
-                ? iconRewardHeight
-                : rewardPreviewHeight > 0f
-                    ? rewardPreviewHeight
-                    : rootEffectPreviewHeight;
+            float bitmapPreviewHeight = sampleHeight;
+            if (iconRewardHeight > 0f)
+            {
+                bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + iconRewardHeight;
+            }
+            else if (rewardPreviewHeight > 0f)
+            {
+                bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + rewardPreviewHeight;
+            }
+            else if (rootEffectPreviewHeight > 0f)
+            {
+                bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + rootEffectPreviewHeight;
+            }
             float bitmapPreviewGap = bitmapPreviewHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
             int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight + bitmapPreviewGap + bitmapPreviewHeight);
 
@@ -926,19 +959,48 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            int rewardY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
-            if (iconRewardHeight > 0f)
+            int previewY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
+            if (sampleTexture != null)
             {
-                DrawHorizontalBitmapStrip(sprite, iconRewardTextures, backgroundRect, rewardY);
+                int sampleX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - sampleTexture.Width) / 2);
+                sprite.Draw(sampleTexture, new Vector2(sampleX, previewY), Color.White);
+                int stripY = previewY + sampleTexture.Height + TOOLTIP_BITMAP_GAP;
+                DrawHorizontalBitmapStrip(sprite, iconRewardTextures, backgroundRect, stripY);
+                DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, stripY);
+                DrawCenteredTooltipBitmap(
+                    sprite,
+                    rootEffectPreviewTexture,
+                    backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (rootEffectPreviewTexture?.Width ?? 0)) / 2),
+                    stripY,
+                    rootEffectPreviewTexture?.Width ?? 0);
+            }
+            else if (drawAuthoredSampleInFrame)
+            {
+                int sampleWidth = ResolveSampleUiFrameWidth(sampleUiFrame);
+                int sampleX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - sampleWidth) / 2);
+                DrawSampleUiFrame(sprite, sampleUiFrame, metadata.AuthoredSampleLines, sampleX, previewY);
+                int stripY = previewY + (int)Math.Ceiling(sampleHeight) + TOOLTIP_BITMAP_GAP;
+                DrawHorizontalBitmapStrip(sprite, iconRewardTextures, backgroundRect, stripY);
+                DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, stripY);
+                DrawCenteredTooltipBitmap(
+                    sprite,
+                    rootEffectPreviewTexture,
+                    backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (rootEffectPreviewTexture?.Width ?? 0)) / 2),
+                    stripY,
+                    rootEffectPreviewTexture?.Width ?? 0);
+            }
+            else if (iconRewardHeight > 0f)
+            {
+                DrawHorizontalBitmapStrip(sprite, iconRewardTextures, backgroundRect, previewY);
             }
             else if (rewardPreviewHeight > 0f)
             {
-                DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, rewardY);
+                DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, previewY);
             }
             else if (rootEffectPreviewHeight > 0f)
             {
                 int effectX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - rootEffectPreviewTexture.Width) / 2);
-                sprite.Draw(rootEffectPreviewTexture, new Vector2(effectX, rewardY), Color.White);
+                sprite.Draw(rootEffectPreviewTexture, new Vector2(effectX, previewY), Color.White);
             }
         }
 
@@ -1131,6 +1193,59 @@ namespace HaCreator.MapSimulator.UI
             return texture;
         }
 
+        private Texture2D ResolveInfoSampleTexture(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_infoSampleTextureCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = null;
+            if (InventoryItemMetadataResolver.TryResolveInfoCanvas(itemId, "sample", out WzCanvasProperty sampleCanvas))
+            {
+                texture = sampleCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+
+            _infoSampleTextureCache[itemId] = texture;
+            return texture;
+        }
+
+        private TooltipSampleUiFrame ResolveSampleUiFrame(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_sampleUiFrameCache.TryGetValue(itemId, out TooltipSampleUiFrame cachedFrame))
+            {
+                return cachedFrame;
+            }
+
+            TooltipSampleUiFrame frame = null;
+            if (InventoryItemMetadataResolver.TryResolveSampleUiFrame(
+                    itemId,
+                    out WzCanvasProperty topCanvas,
+                    out WzCanvasProperty centerCanvas,
+                    out WzCanvasProperty bottomCanvas))
+            {
+                frame = new TooltipSampleUiFrame
+                {
+                    Top = topCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice),
+                    Center = centerCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice),
+                    Bottom = bottomCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice)
+                };
+            }
+
+            _sampleUiFrameCache[itemId] = frame;
+            return frame;
+        }
+
         private Texture2D[] ResolveRewardPreviewTextures(int itemId)
         {
             if (itemId <= 0 || _graphicsDevice == null)
@@ -1245,7 +1360,7 @@ namespace HaCreator.MapSimulator.UI
 
                 if (visibleCount > 0)
                 {
-                    width += 1;
+                    width += TOOLTIP_BITMAP_GAP;
                 }
 
                 width += texture.Width;
@@ -1279,8 +1394,59 @@ namespace HaCreator.MapSimulator.UI
 
                 int drawY = y + Math.Max(0, (stripHeight - texture.Height) / 2);
                 sprite.Draw(texture, new Vector2(x, drawY), Color.White);
-                x += texture.Width + 1;
+                x += texture.Width + TOOLTIP_BITMAP_GAP;
             }
+        }
+
+        private float MeasureSampleUiFrameHeight(TooltipSampleUiFrame frame, IReadOnlyList<string> sampleLines)
+        {
+            if (frame?.IsDrawable != true || sampleLines == null || sampleLines.Count == 0)
+            {
+                return 0f;
+            }
+
+            return frame.Top.Height + (frame.Center.Height * sampleLines.Count) + frame.Bottom.Height;
+        }
+
+        private static int ResolveSampleUiFrameWidth(TooltipSampleUiFrame frame)
+        {
+            if (frame?.IsDrawable != true)
+            {
+                return 0;
+            }
+
+            return Math.Max(frame.Top.Width, Math.Max(frame.Center.Width, frame.Bottom.Width));
+        }
+
+        private void DrawSampleUiFrame(SpriteBatch sprite, TooltipSampleUiFrame frame, IReadOnlyList<string> sampleLines, int x, int y)
+        {
+            if (sprite == null || frame?.IsDrawable != true || sampleLines == null || sampleLines.Count == 0)
+            {
+                return;
+            }
+
+            int frameWidth = ResolveSampleUiFrameWidth(frame);
+            DrawCenteredTooltipBitmap(sprite, frame.Top, x, y, frameWidth);
+            int rowY = y + frame.Top.Height;
+            for (int i = 0; i < sampleLines.Count; i++)
+            {
+                DrawCenteredTooltipBitmap(sprite, frame.Center, x, rowY, frameWidth);
+                DrawTooltipText(sprite, SanitizeFontText(sampleLines[i]), new Vector2(x + 5, rowY + 1), new Color(48, 48, 48));
+                rowY += frame.Center.Height;
+            }
+
+            DrawCenteredTooltipBitmap(sprite, frame.Bottom, x, rowY, frameWidth);
+        }
+
+        private static void DrawCenteredTooltipBitmap(SpriteBatch sprite, Texture2D texture, int x, int y, int frameWidth)
+        {
+            if (sprite == null || texture == null)
+            {
+                return;
+            }
+
+            int drawX = x + Math.Max(0, (frameWidth - texture.Width) / 2);
+            sprite.Draw(texture, new Vector2(drawX, y), Color.White);
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)

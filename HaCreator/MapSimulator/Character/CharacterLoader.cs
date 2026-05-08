@@ -432,6 +432,7 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
+            actionName = actionName.Trim();
             MorphActionCacheKey cacheKey = new(morphTemplateId, actionName);
             if (_morphActionCache.TryGetValue(cacheKey, out CharacterAnimation cachedAnimation))
             {
@@ -2927,10 +2928,12 @@ namespace HaCreator.MapSimulator.Character
             part.BonusDEX = GetIntValue(info["incDEX"]) ?? 0;
             part.BonusINT = GetIntValue(info["incINT"]) ?? 0;
             part.BonusLUK = GetIntValue(info["incLUK"]) ?? 0;
+            part.BonusAllStat = GetIntValue(info["incAllStat"]) ?? 0;
             part.BonusSTRPercent = GetIntValue(info["incSTRr"]) ?? 0;
             part.BonusDEXPercent = GetIntValue(info["incDEXr"]) ?? 0;
             part.BonusINTPercent = GetIntValue(info["incINTr"]) ?? 0;
             part.BonusLUKPercent = GetIntValue(info["incLUKr"]) ?? 0;
+            part.BonusAllStatPercent = GetIntValue(info["incAllStatr"]) ?? 0;
             part.BonusHP = GetIntValue(info["incMHP"]) ?? 0;
             part.BonusMP = GetIntValue(info["incMMP"]) ?? 0;
             part.BonusHPPercent = GetIntValue(info["incMHPr"]) ?? 0;

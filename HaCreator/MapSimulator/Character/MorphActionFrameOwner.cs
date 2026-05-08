@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
+            actionName = actionName.Trim();
             if (_resolvedActionCache.TryGetValue(actionName, out string resolvedActionName))
             {
                 return TryLoadNamedAnimation(part, resolvedActionName, out CharacterAnimation cachedAnimation)

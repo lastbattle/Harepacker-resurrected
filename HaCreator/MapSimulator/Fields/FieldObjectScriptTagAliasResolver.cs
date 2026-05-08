@@ -120,6 +120,12 @@ namespace HaCreator.MapSimulator.Fields
             string ScriptName,
             int DelayMs);
 
+        private readonly record struct ArrayAliasMutationOperation(
+            int SourceIndex,
+            string ObjectName,
+            string MethodName,
+            IReadOnlyList<string> Arguments);
+
         public static IReadOnlyList<string> ResolvePublishedTags(string scriptName, IEnumerable<string> availableTags)
         {
             return ResolvePublishedTagMutation(scriptName, availableTags).TagsToEnable;
@@ -669,9 +675,25 @@ namespace HaCreator.MapSimulator.Fields
                 memberAliasMap[memberKey] = resolvedAlias;
             }
 
-            foreach ((string ObjectName, string MethodName, IReadOnlyList<string> Arguments) mutation in EnumerateArrayMutatorAliasCalls(scriptName))
+            foreach (ArrayAliasMutationOperation mutation in EnumerateArrayAliasMutationOperations(scriptName))
             {
-                if (!IsPotentialFunctionAliasName(mutation.ObjectName) || mutation.Arguments.Count == 0)
+                if (!IsPotentialFunctionAliasName(mutation.ObjectName))
+                {
+                    continue;
+                }
+
+                if (mutation.MethodName.Equals("reverse", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (objectMemberAliasMap.TryGetValue(mutation.ObjectName, out IReadOnlyDictionary<string, string> existingMemberAliasMap)
+                        && existingMemberAliasMap is Dictionary<string, string> existingArrayMemberAliasMap)
+                    {
+                        ReverseArrayMemberAliases(existingArrayMemberAliasMap);
+                    }
+
+                    continue;
+                }
+
+                if (mutation.Arguments.Count == 0)
                 {
                     continue;
                 }
@@ -717,18 +739,6 @@ namespace HaCreator.MapSimulator.Fields
                         : GetNextArrayMemberIndex(memberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
                     memberAliasMap[memberKey] = resolvedAlias;
                 }
-            }
-
-            foreach (string objectName in EnumerateArrayReverseAliasCalls(scriptName))
-            {
-                if (!IsPotentialFunctionAliasName(objectName)
-                    || !objectMemberAliasMap.TryGetValue(objectName, out IReadOnlyDictionary<string, string> existingMemberAliasMap)
-                    || existingMemberAliasMap is not Dictionary<string, string> memberAliasMap)
-                {
-                    continue;
-                }
-
-                ReverseArrayMemberAliases(memberAliasMap);
             }
 
             foreach ((string TargetName, IReadOnlyList<string> Arguments) assignCall in EnumerateObjectAssignAliasCalls(scriptName))
@@ -1201,13 +1211,14 @@ namespace HaCreator.MapSimulator.Fields
             return string.Empty;
         }
 
-        private static IEnumerable<(string ObjectName, string MethodName, IReadOnlyList<string> Arguments)> EnumerateArrayMutatorAliasCalls(string value)
+        private static IReadOnlyList<ArrayAliasMutationOperation> EnumerateArrayAliasMutationOperations(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
-                yield break;
+                return Array.Empty<ArrayAliasMutationOperation>();
             }
 
+            var operations = new List<ArrayAliasMutationOperation>();
             foreach (Match match in ArrayMutatorAliasCallPattern.Matches(value))
             {
                 string objectName = NormalizeFunctionAliasArgument(match.Groups["object"]?.Value);
@@ -1225,15 +1236,11 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 string argumentText = value[(openIndex + 1)..closeIndex];
-                yield return (objectName, methodName, new List<string>(SplitFunctionArguments(argumentText)));
-            }
-        }
-
-        private static IEnumerable<string> EnumerateArrayReverseAliasCalls(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                yield break;
+                operations.Add(new ArrayAliasMutationOperation(
+                    match.Index,
+                    objectName,
+                    methodName,
+                    new List<string>(SplitFunctionArguments(argumentText))));
             }
 
             foreach (Match match in ArrayReverseAliasCallPattern.Matches(value))
@@ -1251,16 +1258,20 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
-                if (closeIndex <= openIndex)
+                if (closeIndex <= openIndex || !string.IsNullOrWhiteSpace(value[(openIndex + 1)..closeIndex]))
                 {
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(value[(openIndex + 1)..closeIndex]))
-                {
-                    yield return objectName;
-                }
+                operations.Add(new ArrayAliasMutationOperation(
+                    match.Index,
+                    objectName,
+                    "reverse",
+                    Array.Empty<string>()));
             }
+
+            operations.Sort((left, right) => left.SourceIndex.CompareTo(right.SourceIndex));
+            return operations.Count == 0 ? Array.Empty<ArrayAliasMutationOperation>() : operations;
         }
 
         private static IEnumerable<(string TargetName, string SourceName, string MethodName)> EnumerateArrayReverseAliasAssignments(string value)

@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientActionButtonHeight = 16;
         private const int JoypadClientComboCount = 11;
         private const int JoypadClientSelectableButtonCount = 12;
+        private const int JoypadClientNativeButtonStorageBaseIndex = 11;
         private const int JoypadClientEmptyButtonNameStringPoolId = 0x1A54;
         private const int JoypadClientButtonLabelFormatStringPoolId = 0x180D;
         private const int JoypadClientButtonItemFormatStringPoolId = 0x180E;
@@ -1580,7 +1581,7 @@ namespace HaCreator.MapSimulator.UI
             string coreText = BuildJoypadClientCoreSummary(session);
             DrawWindowText(sprite, coreText, new Vector2(bounds.X + 6, bounds.Y + 2), new Color(255, 228, 151), 0.39f);
 
-            string nativeMapText = BuildJoypadClientNativeButtonMapSummary(session);
+            string nativeMapText = BuildJoypadClientNativeButtonStorageSummary(session);
             DrawWindowText(sprite, nativeMapText, new Vector2(bounds.X + 6, bounds.Y + 8), new Color(238, 238, 238), 0.34f);
 
             string extensionText = BuildJoypadExtensionSummary(session);
@@ -3455,9 +3456,34 @@ namespace HaCreator.MapSimulator.UI
             return BuildJoypadClientNativeButtonMapSummaryCore(nativeButtonMap);
         }
 
+        private static string BuildJoypadClientNativeButtonStorageSummary(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return "Native writes: unavailable";
+            }
+
+            if (!TryBuildClientJoypadNativeButtonMap(
+                    session,
+                    out int[] nativeButtonMap,
+                    out InputAction firstAction,
+                    out InputAction duplicateAction,
+                    out int duplicateItemNumber))
+            {
+                return $"Native writes: duplicate {FormatClientJoypadButtonItem(duplicateItemNumber)} on {FormatActionLabel(firstAction)} / {FormatActionLabel(duplicateAction)}";
+            }
+
+            return BuildJoypadClientNativeButtonStorageSummaryCore(nativeButtonMap);
+        }
+
         internal static string BuildJoypadClientNativeButtonMapSummaryForTests(IReadOnlyList<int> nativeButtonMap)
         {
             return BuildJoypadClientNativeButtonMapSummaryCore(nativeButtonMap);
+        }
+
+        internal static string BuildJoypadClientNativeButtonStorageSummaryForTests(IReadOnlyList<int> nativeButtonMap)
+        {
+            return BuildJoypadClientNativeButtonStorageSummaryCore(nativeButtonMap);
         }
 
         private static string BuildJoypadClientNativeButtonMapSummaryCore(IReadOnlyList<int> nativeButtonMap)
@@ -3482,6 +3508,32 @@ namespace HaCreator.MapSimulator.UI
             return populatedSlots.Count == 0
                 ? "Native slots: none"
                 : $"Native slots: {string.Join("  ", populatedSlots)}";
+        }
+
+        private static string BuildJoypadClientNativeButtonStorageSummaryCore(IReadOnlyList<int> nativeButtonMap)
+        {
+            if (nativeButtonMap == null || nativeButtonMap.Count == 0)
+            {
+                return "Native writes: none";
+            }
+
+            List<string> populatedSlots = new(nativeButtonMap.Count);
+            for (int i = 0; i < nativeButtonMap.Count && i < JoypadClientSelectableButtonCount; i++)
+            {
+                int comboControlNumber = nativeButtonMap[i];
+                if (comboControlNumber <= 0)
+                {
+                    continue;
+                }
+
+                int nativeStorageIndex = JoypadClientNativeButtonStorageBaseIndex + i + 1;
+                int comboControlId = JoypadClientComboFirstId + comboControlNumber - 1;
+                populatedSlots.Add($"[{nativeStorageIndex}]={comboControlNumber}({comboControlId})");
+            }
+
+            return populatedSlots.Count == 0
+                ? "Native writes: none"
+                : $"Native writes: {string.Join("  ", populatedSlots)}";
         }
 
         private static string BuildJoypadExtensionSummary(JoypadSessionSnapshot session)

@@ -179,6 +179,16 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        internal static int ResolveCommodityGenderPreference(int gender)
+        {
+            return NormalizeCommodityGender(gender) switch
+            {
+                2 => 2,
+                0 or 1 => 1,
+                _ => 0
+            };
+        }
+
         internal static int FindPacketOwnedCommodityRowIndexForGoToCommoditySerial(
             int commoditySerialNumber,
             IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> rows)
@@ -344,6 +354,20 @@ namespace HaCreator.MapSimulator.UI
             if (candidate.PeriodDays != existing.PeriodDays)
             {
                 return candidate.PeriodDays > existing.PeriodDays;
+            }
+
+            int candidateGenderPreference = ResolveCommodityGenderPreference(candidate.Gender);
+            int existingGenderPreference = ResolveCommodityGenderPreference(existing.Gender);
+            if (candidateGenderPreference != existingGenderPreference)
+            {
+                return candidateGenderPreference > existingGenderPreference;
+            }
+
+            int candidateGender = NormalizeCommodityGender(candidate.Gender);
+            int existingGender = NormalizeCommodityGender(existing.Gender);
+            if (candidateGender != existingGender)
+            {
+                return candidateGender < existingGender;
             }
 
             if (candidate.Price != existing.Price)

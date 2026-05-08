@@ -4497,8 +4497,14 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.PacketEnterFadeStartTime = currentTick;
-            data.PacketEnterFadeEndTime = currentTick + PACKET_ENTER_FADE_DURATION_MS;
+            data.PacketEnterFadeEndTime = ResolvePacketEnterStateEndTime(currentTick);
+            data.PacketStateEndTime = ResolvePacketEnterStateEndTime(currentTick);
             data.Alpha = 0f;
+        }
+
+        internal static int ResolvePacketEnterStateEndTime(int currentTick)
+        {
+            return unchecked(currentTick + PACKET_ENTER_FADE_DURATION_MS);
         }
 
         private void TryPlayReactorHitSound(ReactorItem reactor, int sourceState)

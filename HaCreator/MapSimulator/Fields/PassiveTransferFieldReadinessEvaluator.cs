@@ -196,6 +196,11 @@ namespace HaCreator.MapSimulator.Fields
                    && decision == QueuedRetryDecision.ReplayHandleUpKeyDown;
         }
 
+        public static bool ShouldReplayQueuedRetryBeforeFreshUpKeyDown(QueuedRetryDecision decision)
+        {
+            return decision == QueuedRetryDecision.ReplayHandleUpKeyDown;
+        }
+
         public static PassiveTransferFieldQueuedReplayDecision EvaluateQueuedReplayDecision(
             bool hasPendingRequest,
             QueuedRetryDecision decision,

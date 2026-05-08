@@ -1085,9 +1085,9 @@ namespace HaCreator.MapSimulator.Interaction
 
                     case SocialListClientGuildResultKind.GuildDataSnapshot:
                     {
-                        if (payload.Length == 2 && payload[1] == 0)
+                        bool hasGuildData = reader.ReadBoolean();
+                        if (!hasGuildData)
                         {
-                            _ = reader.ReadBoolean();
                             packet = new SocialListClientGuildResultPacket(
                                 kind,
                                 0,

@@ -74,9 +74,19 @@ namespace HaCreator.MapSimulator.Physics
             IReadOnlyList<MovePathElement> path,
             bool normalizePortalOwnedImpactDuration)
         {
-            if (path == null || path.Count <= 1)
+            if (path == null || path.Count == 0)
             {
-                return path ?? Array.Empty<MovePathElement>();
+                return Array.Empty<MovePathElement>();
+            }
+
+            if (path.Count == 1)
+            {
+                return new[]
+                {
+                    NormalizePortalOwnedClientMakeMovePathElement(
+                        path[0],
+                        normalizePortalOwnedImpactDuration)
+                };
             }
 
             List<MovePathElement> normalized = new(path.Count);

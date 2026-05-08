@@ -322,6 +322,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ImeCandidateWindowMinimumWidth = 64;
         private const int ImeCandidateWindowBorderPadding = 2;
         private const int ImeCandidateWindowHorizontalPadding = 4;
+        private const byte ImeCompositionAttributeTargetConverted = 1;
+        private const byte ImeCompositionAttributeTargetNotConverted = 3;
         private Point _pointNotificationAnchor = new Point(512, 60);
         private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
         private Vector2 _chatEnterPos = new Vector2(4, 2);
@@ -2083,21 +2085,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<ClientEditCompositionUnderlineRun> runs = new List<ClientEditCompositionUnderlineRun>();
-            int compositionCursor = Math.Clamp(
+            int activeClauseIndex = ResolveClientEditActiveCompositionClauseIndex(
+                clauseOffsets,
+                chatState.CompositionLength,
                 chatState.CompositionCursorPosition - chatState.CompositionStart,
-                0,
-                chatState.CompositionLength);
-            int activeClauseIndex = -1;
-            for (int i = 0; i < clauseOffsets.Count - 1; i++)
-            {
-                int clauseStart = Math.Clamp(clauseOffsets[i], 0, chatState.CompositionLength);
-                int clauseEnd = Math.Clamp(clauseOffsets[i + 1], clauseStart, chatState.CompositionLength);
-                if (compositionCursor >= clauseStart && compositionCursor <= clauseEnd)
-                {
-                    activeClauseIndex = i;
-                    break;
-                }
-            }
+                chatState.CompositionAttributes);
 
             for (int i = 0; i < clauseOffsets.Count - 1; i++)
             {
@@ -2119,6 +2111,49 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return runs;
+        }
+
+        internal static int ResolveClientEditActiveCompositionClauseIndex(
+            IReadOnlyList<int> clauseOffsets,
+            int compositionLength,
+            int compositionCursor,
+            IReadOnlyList<byte> attributes)
+        {
+            if (clauseOffsets == null || clauseOffsets.Count < 2 || compositionLength <= 0)
+            {
+                return -1;
+            }
+
+            if (attributes != null && attributes.Count >= compositionLength)
+            {
+                for (int i = 0; i < clauseOffsets.Count - 1; i++)
+                {
+                    int clauseStart = Math.Clamp(clauseOffsets[i], 0, compositionLength);
+                    int clauseEnd = Math.Clamp(clauseOffsets[i + 1], clauseStart, compositionLength);
+                    for (int attributeIndex = clauseStart; attributeIndex < clauseEnd; attributeIndex++)
+                    {
+                        byte attribute = attributes[attributeIndex];
+                        if (attribute == ImeCompositionAttributeTargetConverted
+                            || attribute == ImeCompositionAttributeTargetNotConverted)
+                        {
+                            return i;
+                        }
+                    }
+                }
+            }
+
+            int clampedCursor = Math.Clamp(compositionCursor, 0, compositionLength);
+            for (int i = 0; i < clauseOffsets.Count - 1; i++)
+            {
+                int clauseStart = Math.Clamp(clauseOffsets[i], 0, compositionLength);
+                int clauseEnd = Math.Clamp(clauseOffsets[i + 1], clauseStart, compositionLength);
+                if (clampedCursor >= clauseStart && clampedCursor <= clauseEnd)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static IReadOnlyList<int> NormalizeClientEditCompositionClauseOffsets(

@@ -279,7 +279,7 @@ namespace HaCreator.MapSimulator.Pools
             public bool IsExpired(int currentTime)
             {
                 return Animation?.Frames.Count <= 0
-                       || currentTime >= EndTime;
+                       || HasPacketOwnedSummonTickReached(currentTime, EndTime);
             }
         }
 
@@ -1511,13 +1511,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ScheduledPacketOwnedHitEffect[] dueHitEffects = _scheduledHitEffects
-                .Where(effect => effect != null && effect.ExecuteTime <= currentTime)
-                .OrderBy(effect => effect.ExecuteTime)
+                .Where(effect => effect != null && HasPacketOwnedSummonTickReached(currentTime, effect.ExecuteTime))
+                .OrderByDescending(effect => ResolvePacketOwnedSummonTickElapsedMs(currentTime, effect.ExecuteTime))
                 .ThenBy(effect => effect.SequenceId)
                 .ToArray();
             if (dueHitEffects.Length > 0)
             {
-                _scheduledHitEffects.RemoveAll(effect => effect != null && effect.ExecuteTime <= currentTime);
+                _scheduledHitEffects.RemoveAll(effect => effect != null && HasPacketOwnedSummonTickReached(currentTime, effect.ExecuteTime));
                 foreach (ScheduledPacketOwnedHitEffect scheduledEffect in dueHitEffects)
                 {
                     if (scheduledEffect.HitEffect != null)
@@ -1528,13 +1528,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ScheduledPacketOwnedReactiveChainEffect[] dueReactiveChainEffects = _scheduledReactiveChainEffects
-                .Where(effect => effect != null && effect.ExecuteTime <= currentTime)
-                .OrderBy(effect => effect.ExecuteTime)
+                .Where(effect => effect != null && HasPacketOwnedSummonTickReached(currentTime, effect.ExecuteTime))
+                .OrderByDescending(effect => ResolvePacketOwnedSummonTickElapsedMs(currentTime, effect.ExecuteTime))
                 .ThenBy(effect => effect.SequenceId)
                 .ToArray();
             if (dueReactiveChainEffects.Length > 0)
             {
-                _scheduledReactiveChainEffects.RemoveAll(effect => effect != null && effect.ExecuteTime <= currentTime);
+                _scheduledReactiveChainEffects.RemoveAll(effect => effect != null && HasPacketOwnedSummonTickReached(currentTime, effect.ExecuteTime));
                 foreach (ScheduledPacketOwnedReactiveChainEffect scheduledEffect in dueReactiveChainEffects)
                 {
                     if (scheduledEffect.Animation?.Frames.Count > 0)
@@ -1565,13 +1565,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ScheduledPacketOwnedSound[] dueSounds = _scheduledSounds
-                .Where(sound => sound != null && sound.ExecuteTime <= currentTime)
-                .OrderBy(sound => sound.ExecuteTime)
+                .Where(sound => sound != null && HasPacketOwnedSummonTickReached(currentTime, sound.ExecuteTime))
+                .OrderByDescending(sound => ResolvePacketOwnedSummonTickElapsedMs(currentTime, sound.ExecuteTime))
                 .ThenBy(sound => sound.SequenceId)
                 .ToArray();
             if (dueSounds.Length > 0)
             {
-                _scheduledSounds.RemoveAll(sound => sound != null && sound.ExecuteTime <= currentTime);
+                _scheduledSounds.RemoveAll(sound => sound != null && HasPacketOwnedSummonTickReached(currentTime, sound.ExecuteTime));
                 foreach (ScheduledPacketOwnedSound scheduledSound in dueSounds)
                 {
                     if (!string.IsNullOrWhiteSpace(scheduledSound.SoundKey))
@@ -2561,6 +2561,41 @@ namespace HaCreator.MapSimulator.Pools
                    && !SummonRuntimeRules.HasClientTickReached(currentTime, oneTimeActionEndTime);
         }
 
+        internal static bool HasPacketOwnedSummonTickReached(int currentTime, int targetTime)
+        {
+            return SummonRuntimeRules.HasClientTickReached(currentTime, targetTime);
+        }
+
+        internal static int ResolvePacketOwnedSummonTickElapsedMs(int currentTime, int startTime)
+        {
+            return SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, startTime);
+        }
+
+        internal static bool IsPacketOwnedSummonDisplayActive(int currentTime, int startTime, int endTime)
+        {
+            return HasPacketOwnedSummonTickReached(currentTime, startTime)
+                   && !HasPacketOwnedSummonTickReached(currentTime, endTime);
+        }
+
+        internal static float ResolvePacketOwnedSummonDisplayAlpha(
+            int currentTime,
+            int startTime,
+            int endTime,
+            byte startAlpha,
+            byte endAlpha)
+        {
+            int duration = ResolvePacketOwnedSummonTickElapsedMs(endTime, startTime);
+            if (duration <= 0)
+            {
+                return endAlpha / 255f;
+            }
+
+            int elapsed = ResolvePacketOwnedSummonTickElapsedMs(currentTime, startTime);
+            float progress = MathHelper.Clamp(elapsed / (float)duration, 0f, 1f);
+            int alpha = (int)Math.Round(startAlpha + ((endAlpha - startAlpha) * progress));
+            return MathHelper.Clamp(alpha / 255f, 0f, 1f);
+        }
+
         private static bool IsSummonAnimationActive(SkillAnimation animation, int animationStartTime, int currentTime, int initialDelay = 0)
         {
             if (animation?.Frames.Count <= 0 || animationStartTime == int.MinValue)
@@ -3323,19 +3358,22 @@ namespace HaCreator.MapSimulator.Pools
             public byte StartAlpha { get; init; }
             public byte EndAlpha { get; init; }
 
-            public bool IsActive(int currentTime) => currentTime >= StartTime && currentTime < EndTime;
-            public bool IsExpired(int currentTime) => currentTime >= EndTime;
+            public bool IsActive(int currentTime)
+            {
+                return HasPacketOwnedSummonTickReached(currentTime, StartTime)
+                       && !HasPacketOwnedSummonTickReached(currentTime, EndTime);
+            }
+
+            public bool IsExpired(int currentTime) => HasPacketOwnedSummonTickReached(currentTime, EndTime);
 
             public float GetAlpha(int currentTime)
             {
-                if (EndTime <= StartTime)
-                {
-                    return EndAlpha / 255f;
-                }
-
-                float progress = MathHelper.Clamp((currentTime - StartTime) / (float)(EndTime - StartTime), 0f, 1f);
-                int alpha = (int)Math.Round(StartAlpha + ((EndAlpha - StartAlpha) * progress));
-                return MathHelper.Clamp(alpha / 255f, 0f, 1f);
+                return ResolvePacketOwnedSummonDisplayAlpha(
+                    currentTime,
+                    StartTime,
+                    EndTime,
+                    StartAlpha,
+                    EndAlpha);
             }
         }
 
@@ -3860,7 +3898,7 @@ namespace HaCreator.MapSimulator.Pools
                 FacingRight = summon.FacingRight
             };
 
-            if (executeTime > currentTime)
+            if (!HasPacketOwnedSummonTickReached(currentTime, executeTime))
             {
                 _scheduledHitEffects.Add(new ScheduledPacketOwnedHitEffect
                 {
@@ -10065,7 +10103,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (executeTime <= currentTime)
+            if (HasPacketOwnedSummonTickReached(currentTime, executeTime))
             {
                 _soundManager.PlaySound(soundKey);
                 return;
@@ -10169,13 +10207,12 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime)
         {
             if (chainEffect?.Animation?.Frames.Count <= 0
-                || currentTime < chainEffect.StartTime
-                || currentTime >= chainEffect.EndTime)
+                || !IsPacketOwnedSummonDisplayActive(currentTime, chainEffect.StartTime, chainEffect.EndTime))
             {
                 return;
             }
 
-            int elapsed = Math.Max(0, currentTime - chainEffect.StartTime);
+            int elapsed = ResolvePacketOwnedSummonTickElapsedMs(currentTime, chainEffect.StartTime);
             SkillFrame frame = chainEffect.Animation.GetFrameAtTime(elapsed);
             if (frame?.Texture == null)
             {

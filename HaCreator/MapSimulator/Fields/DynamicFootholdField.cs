@@ -558,14 +558,94 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
-            foreach (string segment in tagsValue.Split(new[] { ',', ';', '|', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            int tokenStart = -1;
+            for (int i = 0; i < tagsValue.Length; i++)
             {
-                string normalized = NormalizeDynamicObjectKey(segment);
+                if (IsDynamicObjectTagSeparator(tagsValue, i))
+                {
+                    if (tokenStart >= 0)
+                    {
+                        string normalized = NormalizeDynamicObjectKey(tagsValue[tokenStart..i]);
+                        if (normalized.Length > 0)
+                        {
+                            yield return normalized;
+                        }
+
+                        tokenStart = -1;
+                    }
+
+                    continue;
+                }
+
+                if (tokenStart < 0)
+                {
+                    tokenStart = i;
+                }
+            }
+
+            if (tokenStart >= 0)
+            {
+                string normalized = NormalizeDynamicObjectKey(tagsValue[tokenStart..]);
                 if (normalized.Length > 0)
                 {
                     yield return normalized;
                 }
             }
+        }
+
+        private static bool IsDynamicObjectTagSeparator(string value, int index)
+        {
+            char current = value[index];
+            return (current == ',' && !IsDynamicObjectCoordinateComma(value, index))
+                || current == ';'
+                || current == '|'
+                || char.IsWhiteSpace(current);
+        }
+
+        private static bool IsDynamicObjectCoordinateComma(string value, int commaIndex)
+        {
+            if (string.IsNullOrEmpty(value)
+                || commaIndex <= 0
+                || commaIndex >= value.Length - 1)
+            {
+                return false;
+            }
+
+            int leftIndex = commaIndex - 1;
+            while (leftIndex >= 0 && char.IsDigit(value[leftIndex]))
+            {
+                leftIndex--;
+            }
+
+            bool hasLeftNumber = leftIndex < commaIndex - 1;
+            if (leftIndex >= 0 && value[leftIndex] == '-')
+            {
+                leftIndex--;
+            }
+
+            if (!hasLeftNumber || (leftIndex >= 0 && value[leftIndex] != '/'))
+            {
+                return false;
+            }
+
+            int rightIndex = commaIndex + 1;
+            if (rightIndex < value.Length && value[rightIndex] == '-')
+            {
+                rightIndex++;
+            }
+
+            int rightStart = rightIndex;
+            while (rightIndex < value.Length && char.IsDigit(value[rightIndex]))
+            {
+                rightIndex++;
+            }
+
+            return rightIndex > rightStart
+                && (rightIndex >= value.Length
+                    || value[rightIndex] == ','
+                    || value[rightIndex] == ';'
+                    || value[rightIndex] == '|'
+                    || char.IsWhiteSpace(value[rightIndex]));
         }
 
         private static string BuildLayerObjectAlias(string layerName, string objectName)

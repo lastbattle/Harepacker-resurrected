@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator
         private const int WM_IME_COMPOSITION = 0x010F;
         private const int WM_IME_NOTIFY = 0x0282;
         private const int GCS_COMPSTR = 0x0008;
+        private const int GCS_COMPATTR = 0x0010;
         private const int GCS_COMPCLAUSE = 0x0020;
         private const int GCS_CURSORPOS = 0x0080;
         private const int GCS_RESULTSTR = 0x0800;
@@ -94,7 +95,8 @@ namespace HaCreator.MapSimulator
                     string compositionText = GetCompositionString(inputContext, GCS_COMPSTR);
                     IReadOnlyList<int> clauseOffsets = GetClauseOffsets(inputContext);
                     int cursorPosition = GetCursorPosition(inputContext);
-                    PublishCompositionState(new ImeCompositionState(compositionText, clauseOffsets, cursorPosition));
+                    IReadOnlyList<byte> attributes = GetCompositionAttributes(inputContext);
+                    PublishCompositionState(new ImeCompositionState(compositionText, clauseOffsets, cursorPosition, attributes));
                     return;
                 }
 
@@ -226,6 +228,31 @@ namespace HaCreator.MapSimulator
             }
 
             return offsets;
+        }
+
+        private static IReadOnlyList<byte> GetCompositionAttributes(IntPtr inputContext)
+        {
+            int byteLength = ImmGetCompositionStringW(inputContext, GCS_COMPATTR, null, 0);
+            if (byteLength <= 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte[] buffer = new byte[byteLength];
+            int bytesRead = ImmGetCompositionStringW(inputContext, GCS_COMPATTR, buffer, byteLength);
+            if (bytesRead <= 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (bytesRead == buffer.Length)
+            {
+                return buffer;
+            }
+
+            byte[] attributes = new byte[bytesRead];
+            Array.Copy(buffer, attributes, bytesRead);
+            return attributes;
         }
 
         private static int GetCursorPosition(IntPtr inputContext)

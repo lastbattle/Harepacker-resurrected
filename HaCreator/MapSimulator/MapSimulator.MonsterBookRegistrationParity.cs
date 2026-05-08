@@ -383,6 +383,8 @@ namespace HaCreator.MapSimulator
                 context,
                 _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build);
 
+            int packetCharacterId = sync.CharacterId.GetValueOrDefault();
+            string packetCharacterName = sync.CharacterName ?? string.Empty;
             int resolvedCharacterId = sync.CharacterId.HasValue && sync.CharacterId.Value > 0
                 ? sync.CharacterId.Value
                 : ownerIdentity.CharacterId;
@@ -407,8 +409,8 @@ namespace HaCreator.MapSimulator
             {
                 int pendingSaveRequestIndex = ResolveMonsterBookOwnershipSaveAckMatchIndex(
                     sync.RequestId,
-                    resolvedCharacterId,
-                    resolvedCharacterName);
+                    packetCharacterId,
+                    packetCharacterName);
                 PendingMonsterBookOwnershipSaveRequest pendingSaveRequest =
                     pendingSaveRequestIndex >= 0 && pendingSaveRequestIndex < _pendingMonsterBookOwnershipSaveRequests.Count
                         ? _pendingMonsterBookOwnershipSaveRequests[pendingSaveRequestIndex]

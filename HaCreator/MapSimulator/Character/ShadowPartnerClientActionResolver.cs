@@ -2035,6 +2035,40 @@ namespace HaCreator.MapSimulator.Character
                     ("swingT1", 2, 210),
                     ("swingT1", 1, 210),
                     ("swingT1", 0, 210)),
+                ["darkTornado_pre"] = new[]
+                {
+                    CreateIndexedPiece(0, "stabO1", 0, 90, move: new Point(10, 0)),
+                    CreateIndexedPiece(1, "stabO1", 0, 90, move: new Point(11, -15)),
+                    CreateIndexedPiece(2, "stabO1", 0, 90, move: new Point(13, 0)),
+                    CreateIndexedPiece(3, "swingO2", 0, 90, move: new Point(1, -51)),
+                    CreateIndexedPiece(4, "swingTF", 0, 90, move: new Point(1, -67)),
+                    CreateIndexedPiece(5, "swingTF", 0, 90, move: new Point(1, -81)),
+                    CreateIndexedPiece(6, "swingTF", 0, 90, move: new Point(1, -76)),
+                    CreateIndexedPiece(7, "swingO2", 0, 90, flip: true, move: new Point(-6, -79)),
+                    CreateIndexedPiece(8, "swingO2", 0, 90, flip: true, move: new Point(-6, -85)),
+                    CreateIndexedPiece(9, "swingO2", 0, 90, move: new Point(1, -81)),
+                    CreateIndexedPiece(10, "swingTF", 0, 90, move: new Point(1, -78)),
+                    CreateIndexedPiece(11, "swingO2", 0, 90, flip: true, move: new Point(-6, -76))
+                },
+                ["darkTornado"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingTF", 0, 90, move: new Point(1, -91)),
+                    CreateIndexedPiece(1, "swingO2", 0, 90, flip: true, move: new Point(-6, -91)),
+                    CreateIndexedPiece(2, "swingO2", 0, 90, move: new Point(1, -90)),
+                    CreateIndexedPiece(3, "swingTF", 0, 90, move: new Point(1, -89)),
+                    CreateIndexedPiece(4, "swingO2", 0, 90, flip: true, move: new Point(-6, -87)),
+                    CreateIndexedPiece(5, "swingO2", 0, 90, move: new Point(1, -85)),
+                    CreateIndexedPiece(6, "swingTF", 0, 90, move: new Point(1, -87)),
+                    CreateIndexedPiece(7, "swingO2", 0, 90, flip: true, move: new Point(-6, -86))
+                },
+                ["darkTornado_after"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingO2", 0, 90, move: new Point(1, -50)),
+                    CreateIndexedPiece(1, "swingTF", 0, 90, move: new Point(1, -25)),
+                    CreateIndexedPiece(2, "alert", 0, 90, flip: true, move: new Point(-5, 1)),
+                    CreateIndexedPiece(3, "alert", 1, 90, move: new Point(0, 1)),
+                    CreateIndexedPiece(4, "alert", 2, 90)
+                },
 
                 // `Character/00002000.img/alert8/0` is another mounted indexed-alert
                 // helper row; it reuses the authored jump helper frame with its own delay.
@@ -2427,7 +2461,10 @@ namespace HaCreator.MapSimulator.Character
             "herbalism_mechanic",
             "mining_mechanic",
             "gather0",
-            "gather1"
+            "gather1",
+            "darkTornado_pre",
+            "darkTornado",
+            "darkTornado_after"
         };
 
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -2950,11 +2987,9 @@ namespace HaCreator.MapSimulator.Character
 
             // CActionMan::Init seeds the mounted Shadow Partner helper table by walking
             // raw action codes 0..272 against Character/00002000.img, skipping raw code 55.
-            foreach (string actionName in EnumerateClientInitializedShadowPartnerRawActionNames())
+            foreach (string actionName in EnumerateClientInitializedShadowPartnerRawActionNames(supportedRawActionNames))
             {
-                if (!string.IsNullOrWhiteSpace(actionName)
-                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
-                    && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
@@ -3036,7 +3071,8 @@ namespace HaCreator.MapSimulator.Character
             return !string.Equals(actionName, canonicalActionName, StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static IEnumerable<string> EnumerateClientInitializedShadowPartnerRawActionNames()
+        internal static IEnumerable<string> EnumerateClientInitializedShadowPartnerRawActionNames(
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             for (int rawActionCode = 0;
                  rawActionCode < ClientInitializedShadowPartnerActionCodeLimitExclusive;
@@ -3049,14 +3085,20 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                if (!IsSupportedRawActionName(actionName, supportedRawActionNames))
+                {
+                    continue;
+                }
+
                 yield return actionName;
             }
         }
 
-        internal static IEnumerable<string> EnumerateClientInitializedFallbackActionNames()
+        internal static IEnumerable<string> EnumerateClientInitializedFallbackActionNames(
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string actionName in EnumerateClientInitializedShadowPartnerRawActionNames())
+            foreach (string actionName in EnumerateClientInitializedShadowPartnerRawActionNames(supportedRawActionNames))
             {
                 if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
                 {
@@ -3066,7 +3108,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string actionName in ClientInitializedFallbackOnlyActionNames)
             {
-                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
+                    && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
@@ -3074,7 +3118,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string actionName in GenericHelperSurfaceActionNames)
             {
-                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
+                    && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
@@ -3082,7 +3128,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string actionName in ClientActionDataFallbackOnlyActionNames)
             {
-                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
+                    && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }

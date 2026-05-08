@@ -745,7 +745,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             long value = 0;
             bool hasDigit = false;
-            while (index < trimmed.Length && char.IsDigit(trimmed[index]))
+            while (index < trimmed.Length && IsClientAsciiDigit(trimmed[index]))
             {
                 hasDigit = true;
                 value = value * 10 + (trimmed[index] - '0');
@@ -768,6 +768,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             number = (int)(value * sign);
             return true;
+        }
+
+        private static bool IsClientAsciiDigit(char value)
+        {
+            return value >= '0' && value <= '9';
         }
 
         private static bool TryParseStageBackImageEntry(WzImageProperty property, out ContextOwnedStageBackImageEntry entry)

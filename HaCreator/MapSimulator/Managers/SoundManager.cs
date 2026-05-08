@@ -18,7 +18,7 @@ namespace HaCreator.MapSimulator.Managers
     /// </summary>
     public class SoundManager : IDisposable
     {
-        internal enum BgmRequestAction
+        public enum BgmRequestAction
         {
             None = 0,
             Stop,

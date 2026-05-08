@@ -3311,14 +3311,40 @@ namespace HaCreator.MapSimulator.Combat
                     sourceFacesRight);
 
                 float distanceSquared = Vector2.DistanceSquared(sourcePoint, targetPoint);
-                float maxDistance = Math.Max(Math.Abs(attack.Range), 1) + 10f;
+                float maxDistance = ResolveLockedTargetAdmissionDistanceLimit(attack, targetInfo);
+                if (maxDistance < 0f)
+                {
+                    return false;
+                }
+
                 return distanceSquared <= (maxDistance * maxDistance);
             }
 
             Vector2 fallbackPoint = new Vector2(targetInfo.TargetX, targetInfo.TargetY);
             float fallbackDistanceSquared = Vector2.DistanceSquared(sourcePoint, fallbackPoint);
-            float fallbackMaxDistance = Math.Max(Math.Abs(attack.Range), 1) + 10f;
+            float fallbackMaxDistance = ResolveLockedTargetAdmissionDistanceLimit(attack, targetInfo);
+            if (fallbackMaxDistance < 0f)
+            {
+                return false;
+            }
+
             return fallbackDistanceSquared <= (fallbackMaxDistance * fallbackMaxDistance);
+        }
+
+        internal static float ResolveLockedTargetAdmissionDistanceLimit(MobAttackEntry attack, MobTargetInfo targetInfo)
+        {
+            if (attack == null)
+            {
+                return -1f;
+            }
+
+            int authoredRange = attack.RangeRadius != 0 ? attack.RangeRadius : attack.Range;
+            if (targetInfo?.TargetType != MobTargetType.Summoned)
+            {
+                authoredRange = Math.Abs(authoredRange);
+            }
+
+            return authoredRange + 10f;
         }
 
         private static bool UsesLockedTargetResolution(MobAttackEntry attack, MobTargetInfo targetInfo)

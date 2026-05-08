@@ -167,7 +167,7 @@ namespace HaCreator.MapSimulator
             FireCracker = 2
         }
 
-        internal enum AnimationDisplayerReservedType5SoundOwnerKind
+        public enum AnimationDisplayerReservedType5SoundOwnerKind
         {
             None = 0,
             BgmOverride = 1,
@@ -3789,8 +3789,9 @@ namespace HaCreator.MapSimulator
                 ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
             Vector2 fallbackPosition = actor.Position;
             bool fallbackFacingRight = ownerFacingRight;
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedRemoteGenericUserState(
                 frames,
+                AnimationDisplayerGenericUserStateSingleEffectUol,
                 () =>
                 {
                     if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
@@ -3849,8 +3850,9 @@ namespace HaCreator.MapSimulator
                 ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
             Vector2 fallbackPosition = actor.Position;
             bool fallbackFacingRight = ownerFacingRight;
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedRemoteItemMake(
                 frames,
+                effectUol,
                 () =>
                 {
                     if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
@@ -3926,43 +3928,62 @@ namespace HaCreator.MapSimulator
             }
             Vector2 packetAnchorPosition = presentation.WorldOrigin ?? actor.Position;
             bool fallbackFacingRight = presentation.UseOwnerFacing && actor.FacingRight;
-            _animationEffects.AddOneTimeAttached(
-                frames,
-                () =>
+            Func<Vector2> getPosition = () =>
+            {
+                if (!presentation.AttachToOwner)
                 {
-                    if (!presentation.AttachToOwner)
-                    {
-                        return packetAnchorPosition;
-                    }
-
-                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
-                        && liveActor != null)
-                    {
-                        return liveActor.Position;
-                    }
-
                     return packetAnchorPosition;
-                },
-                () =>
+                }
+
+                if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                    && liveActor != null)
                 {
-                    if (!presentation.UseOwnerFacing)
-                    {
-                        return false;
-                    }
+                    return liveActor.Position;
+                }
 
-                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
-                        && liveActor != null)
-                    {
-                        return liveActor.FacingRight;
-                    }
+                return packetAnchorPosition;
+            };
+            Func<bool> getFlip = () =>
+            {
+                if (!presentation.UseOwnerFacing)
+                {
+                    return false;
+                }
 
-                    return fallbackFacingRight;
-                },
-                packetAnchorPosition.X,
-                packetAnchorPosition.Y,
-                fallbackFacingRight,
-                presentation.CurrentTime,
-                initialElapsedMs: initialElapsedMs);
+                if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                    && liveActor != null)
+                {
+                    return liveActor.FacingRight;
+                }
+
+                return fallbackFacingRight;
+            };
+            if (presentation.EffectType == (byte)RemoteUserEffectSubtype.MakerSkill)
+            {
+                _animationEffects.AddPacketOwnedRemoteMakerSkill(
+                    frames,
+                    effectUol,
+                    getPosition,
+                    getFlip,
+                    packetAnchorPosition.X,
+                    packetAnchorPosition.Y,
+                    fallbackFacingRight,
+                    presentation.CurrentTime,
+                    initialElapsedMs: initialElapsedMs);
+            }
+            else
+            {
+                _animationEffects.AddPacketOwnedRemoteStringEffect(
+                    frames,
+                    effectUol,
+                    getPosition,
+                    getFlip,
+                    packetAnchorPosition.X,
+                    packetAnchorPosition.Y,
+                    fallbackFacingRight,
+                    presentation.CurrentTime,
+                    initialElapsedMs: initialElapsedMs);
+            }
         }
 
         private bool TryRegisterAnimationDisplayerRemoteUtilityOwnerEffect(
@@ -4359,8 +4380,9 @@ namespace HaCreator.MapSimulator
                     int initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(
                         ownerContext,
                         reservedFrames);
-                    _animationEffects.AddOneTimeAttached(
+                    _animationEffects.AddPacketOwnedReservedVisual(
                         reservedFrames,
+                        resolvedVisualEffectUol,
                         getFixedPosition,
                         getFlip: null,
                         fallbackFixedPosition.X,
@@ -4386,8 +4408,9 @@ namespace HaCreator.MapSimulator
                 int attachedInitialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(
                     ownerContext,
                     reservedFrames);
-                _animationEffects.AddOneTimeAttached(
+                _animationEffects.AddPacketOwnedReservedVisual(
                     reservedFrames,
+                    resolvedVisualEffectUol,
                     getAttachedPosition,
                     getFlip: null,
                     fallbackPosition.X,
@@ -4803,8 +4826,9 @@ namespace HaCreator.MapSimulator
                 {
                     attachedOffset = fallbackPosition - initialActor.Position;
                 }
-                _animationEffects.AddOneTimeAttached(
+                _animationEffects.AddPacketOwnedRemoteMobAttackHit(
                     frames,
+                    effectUol,
                     () =>
                     {
                         if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
@@ -4834,8 +4858,9 @@ namespace HaCreator.MapSimulator
             }
 
             bool fallbackFlip = !presentation.FacingRight;
-            _animationEffects.AddOneTimeAttached(
+            _animationEffects.AddPacketOwnedRemoteMobAttackHit(
                 frames,
+                effectUol,
                 () => presentation.Position,
                 () => !presentation.FacingRight,
                 presentation.Position.X,

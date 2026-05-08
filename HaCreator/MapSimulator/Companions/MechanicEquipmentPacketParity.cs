@@ -187,7 +187,13 @@ namespace HaCreator.MapSimulator.Companions
                 byte[] buffer = payload as byte[] ?? new List<byte>(payload).ToArray();
                 using MemoryStream stream = new(buffer, writable: false);
                 using BinaryReader reader = new(stream);
-                _ = reader.ReadByte(); // bExclRequestSent reset marker
+                bool clearsExclusiveRequest = reader.ReadByte() != 0;
+                if (!clearsExclusiveRequest)
+                {
+                    rejectReason = "Inventory-operation payload did not carry the exclusive-request reset marker required for active mechanic equipment completion.";
+                    return false;
+                }
+
                 int operationCount = reader.ReadByte();
                 if (operationCount <= 0)
                 {

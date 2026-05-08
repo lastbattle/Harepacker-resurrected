@@ -493,7 +493,8 @@ namespace HaCreator.MapSimulator.Entities
         public int GetRemainingAnimationDuration(int tickCount)
         {
             IDXObject[] frames = GetActiveFrameSet();
-            if (frames == null || frames.Length == 0)
+            bool hasTransientSourceClock = _transientFrameDelays != null && _transientFrameDelays.Length > 0;
+            if ((frames == null || frames.Length == 0) && !hasTransientSourceClock)
             {
                 return 0;
             }
@@ -501,7 +502,7 @@ namespace HaCreator.MapSimulator.Entities
             int elapsedWithinFrame;
             int frameIndex;
             IReadOnlyList<int> frameDelays;
-            if (_transientFrames != null)
+            if (hasTransientSourceClock)
             {
                 frameDelays = ResolveTransientFrameDelays(frames);
                 ResolveLoadLayerFrameTiming(
@@ -568,19 +569,20 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
+            ClearTransientAnimation();
             _transientHitLayerSourceProperty = sourceProperty;
             _transientHitLayerSourceState = state;
             _transientHitLayerProperEventIndex = properEventIndex;
 
             IDXObject[] transientFrames = ResolveTransientHitFrames(frames, state);
+            _transientFrameDelays = ResolveLoadLayerFrameDelays(sourceProperty, transientFrames);
             if (transientFrames.Length > 0)
             {
                 _transientFrames = transientFrames;
-                _transientFrameDelays = ResolveLoadLayerFrameDelays(sourceProperty, transientFrames);
-                _transientFrameIndex = 0;
-                _transientStartTick = tickCount;
             }
 
+            _transientFrameIndex = 0;
+            _transientStartTick = tickCount;
             return duration > 0;
         }
 
@@ -987,11 +989,6 @@ namespace HaCreator.MapSimulator.Entities
             IReadOnlyList<IDXObject> frames,
             bool preserveSourceClock)
         {
-            if (frameCount <= 0)
-            {
-                return Array.Empty<int>();
-            }
-
             List<int> sourceDelays = new List<int>();
             CollectLoadLayerFrameDelays(WzInfoTools.GetRealProperty(sourceProperty), sourceDelays);
             if (sourceDelays.Count == 0)
@@ -1003,6 +1000,11 @@ namespace HaCreator.MapSimulator.Entities
             if (preserveSourceClock && sourceDelays.Count > 0)
             {
                 return sourceDelays.ToArray();
+            }
+
+            if (frameCount <= 0)
+            {
+                return Array.Empty<int>();
             }
 
             int[] frameDelays = new int[frameCount];

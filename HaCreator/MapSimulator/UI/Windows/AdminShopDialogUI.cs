@@ -2881,6 +2881,8 @@ namespace HaCreator.MapSimulator.UI
                 .ThenByDescending(candidate => candidate.OnSale)
                 .ThenByDescending(candidate => candidate.Count)
                 .ThenByDescending(candidate => candidate.PeriodDays)
+                .ThenByDescending(candidate => AdminShopPacketOwnedSellTemplateParity.ResolveCommodityGenderPreference(candidate.Gender))
+                .ThenBy(candidate => AdminShopPacketOwnedSellTemplateParity.NormalizeCommodityGender(candidate.Gender))
                 .ThenBy(candidate => candidate.Price)
                 .ThenBy(candidate => candidate.SerialNumber)
                 .Select(candidate => new CommodityPurchaseVariantSnapshot

@@ -12,6 +12,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -26,6 +27,44 @@ namespace HaCreator.MapSimulator.UI
             public int ClientListOrder { get; init; }
             public bool IsBlockedByScanBlock { get; init; }
             public bool IsScannerItem { get; init; }
+            public string ShopOwnerName { get; init; } = string.Empty;
+            public string ShopTitle { get; init; } = string.Empty;
+            public int FieldId { get; init; }
+            public int MiniRoomSn { get; init; }
+            public int ChannelId { get; init; } = -1;
+            public int Quantity { get; init; }
+            public int BundleCount { get; init; }
+            public int Price { get; init; }
+            public bool IsNpcShop { get; init; }
+            public bool IsPacketFedShopRow { get; init; }
+        }
+
+        internal sealed class ScannerPacketShopRow
+        {
+            public string ShopOwnerName { get; init; } = string.Empty;
+            public string ShopTitle { get; init; } = string.Empty;
+            public int FieldId { get; init; }
+            public int MiniRoomSn { get; init; }
+            public int ChannelId { get; init; } = -1;
+            public int Quantity { get; init; }
+            public int BundleCount { get; init; }
+            public int Price { get; init; }
+            public int InventoryTypeCode { get; init; }
+            public bool HasItemSlotPayload { get; init; }
+            public int ItemSlotPayloadLength { get; init; }
+            public bool IsNpcShop { get; init; }
+        }
+
+        internal sealed class ScannerPacketResult
+        {
+            public int Subtype { get; init; }
+            public int NpcShopPrice { get; init; }
+            public int ItemId { get; init; }
+            public int ServerRowCount { get; init; }
+            public IReadOnlyList<ScannerPacketShopRow> ShopRows { get; init; } = Array.Empty<ScannerPacketShopRow>();
+            public IReadOnlyList<int> ItemIds { get; init; } = Array.Empty<int>();
+            public bool HasNoResultNotice { get; init; }
+            public int TrailingByteCount { get; init; }
         }
 
         private sealed class ScannerIndexEntry
@@ -51,7 +90,14 @@ namespace HaCreator.MapSimulator.UI
         private const int VisibleRows = 6;
         private const int FooterY = 221;
         internal const int InitialRequestOpcode = 72;
+        internal const int ShopLinkRequestOpcode = 73;
         internal const int InitialRequestSubtype = 5;
+        internal const int ScannerResultPacketType = 73;
+        internal const int ShopLinkResultPacketType = 74;
+        internal const int ScannerResultShopRowsSubtype = 6;
+        internal const int ScannerResultItemIdListSubtype = 7;
+        internal const int ShopResultRowFirstButtonId = 3000;
+        internal const int ShopResultRowsPerPage = 8;
         internal const int ChildCloseButtonId = 1000;
         internal const int ChildPreviousButtonId = 1001;
         internal const int ChildNextButtonId = 1002;
@@ -96,10 +142,16 @@ namespace HaCreator.MapSimulator.UI
         private int _searchResultPageIndex;
         private int _searchResultTotalPages;
         private int _lastRequestedScanItemId;
-        private bool _lastRequestedScanDescending;
+        private int _lastRequestedMiniRoomSn;
+        private int _lastRequestedFieldId;
         private int _lastRequestedScanTick;
         private int? _lastShopLinkResultCode;
         private string _lastShopLinkResultSummary = "No scanner shop-link result packet has been applied.";
+        private int _lastScannerResultSubtype;
+        private int _lastScannerResultItemId;
+        private int _lastScannerResultPacketRowCount;
+        private int _lastScannerResultTrailingByteCount;
+        private string _lastScannerResultSummary = "No packet-fed shop-scanner result has been applied.";
 
         public ShopScannerWindow(
             IDXObject frame,
@@ -173,10 +225,16 @@ namespace HaCreator.MapSimulator.UI
             public int PageIndex { get; init; }
             public int TotalPages { get; init; }
             public int LastRequestedScanItemId { get; init; }
-            public bool LastRequestedScanDescending { get; init; }
+            public int LastRequestedMiniRoomSn { get; init; }
+            public int LastRequestedFieldId { get; init; }
             public int LastRequestedScanTick { get; init; }
             public int? LastShopLinkResultCode { get; init; }
             public string LastShopLinkResultSummary { get; init; } = string.Empty;
+            public int LastScannerResultSubtype { get; init; }
+            public int LastScannerResultItemId { get; init; }
+            public int LastScannerResultPacketRowCount { get; init; }
+            public int LastScannerResultTrailingByteCount { get; init; }
+            public string LastScannerResultSummary { get; init; } = string.Empty;
         }
 
         public override void Show()
@@ -297,11 +355,103 @@ namespace HaCreator.MapSimulator.UI
                 PageIndex = _searchResultPageIndex,
                 TotalPages = _searchResultTotalPages,
                 LastRequestedScanItemId = _lastRequestedScanItemId,
-                LastRequestedScanDescending = _lastRequestedScanDescending,
+                LastRequestedMiniRoomSn = _lastRequestedMiniRoomSn,
+                LastRequestedFieldId = _lastRequestedFieldId,
                 LastRequestedScanTick = _lastRequestedScanTick,
                 LastShopLinkResultCode = _lastShopLinkResultCode,
-                LastShopLinkResultSummary = _lastShopLinkResultSummary
+                LastShopLinkResultSummary = _lastShopLinkResultSummary,
+                LastScannerResultSubtype = _lastScannerResultSubtype,
+                LastScannerResultItemId = _lastScannerResultItemId,
+                LastScannerResultPacketRowCount = _lastScannerResultPacketRowCount,
+                LastScannerResultTrailingByteCount = _lastScannerResultTrailingByteCount,
+                LastScannerResultSummary = _lastScannerResultSummary
             };
+        }
+
+        public bool ApplyScannerResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryDecodeScannerResultPayload(payload, out ScannerPacketResult packetResult, out string decodeError))
+            {
+                message = decodeError;
+                return false;
+            }
+
+            _lastScannerResultSubtype = packetResult.Subtype;
+            _lastScannerResultItemId = packetResult.ItemId;
+            _lastScannerResultPacketRowCount = packetResult.ShopRows.Count;
+            _lastScannerResultTrailingByteCount = packetResult.TrailingByteCount;
+
+            if (packetResult.Subtype == ScannerResultShopRowsSubtype)
+            {
+                if (packetResult.HasNoResultNotice)
+                {
+                    _results.Clear();
+                    _selectedIndex = -1;
+                    _activeAddOnMode = ScannerAddOnMode.SearchResult;
+                    ResetSearchResultPaging();
+                    _lastScannerResultSummary = "CWvsContext::OnShopScannerResult subtype 6 decoded zero shop rows and zero NPC-shop price; client would show the no-result notice and clear the exclusive request latch.";
+                    _statusMessage = _lastScannerResultSummary;
+                    message = _lastScannerResultSummary;
+                    RefreshRows();
+                    return true;
+                }
+
+                string itemName = ResolveScannerItemName(packetResult.ItemId);
+                _results = packetResult.ShopRows
+                    .Select((row, index) => new ScannerResult
+                    {
+                        ItemId = packetResult.ItemId,
+                        Name = string.IsNullOrWhiteSpace(itemName) ? $"Item {packetResult.ItemId.ToString(CultureInfo.InvariantCulture)}" : itemName,
+                        NoSpaceName = NormalizeScannerQuery(itemName),
+                        InventoryType = InventoryItemMetadataResolver.ResolveInventoryType(packetResult.ItemId),
+                        ClientListOrder = index,
+                        ShopOwnerName = row.ShopOwnerName,
+                        ShopTitle = row.ShopTitle,
+                        FieldId = row.FieldId,
+                        MiniRoomSn = row.MiniRoomSn,
+                        ChannelId = row.ChannelId,
+                        Quantity = row.Quantity,
+                        BundleCount = row.BundleCount,
+                        Price = row.Price,
+                        IsNpcShop = row.IsNpcShop,
+                        IsPacketFedShopRow = true
+                    })
+                    .ToList();
+                _selectedIndex = _results.Count > 0 ? 0 : -1;
+                _activeAddOnMode = ScannerAddOnMode.SearchResult;
+                ResetSearchResultPaging();
+                _lastScannerResultSummary =
+                    $"CWvsContext::OnShopScannerResult subtype 6 decoded {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed shop row(s) for item {packetResult.ItemId.ToString(CultureInfo.InvariantCulture)}; CUIShopScanResult child owner is now packet-backed.";
+                _statusMessage = _lastScannerResultSummary;
+                message = _lastScannerResultSummary;
+                RefreshRows();
+                return true;
+            }
+
+            _results = packetResult.ItemIds
+                .Select((itemId, index) =>
+                {
+                    string itemName = ResolveScannerItemName(itemId);
+                    return new ScannerResult
+                    {
+                        ItemId = itemId,
+                        Name = string.IsNullOrWhiteSpace(itemName) ? $"Item {itemId.ToString(CultureInfo.InvariantCulture)}" : itemName,
+                        NoSpaceName = NormalizeScannerQuery(itemName),
+                        InventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId),
+                        ClientListOrder = index
+                    };
+                })
+                .ToList();
+            _selectedIndex = _results.Count > 0 ? 0 : -1;
+            _activeAddOnMode = ScannerAddOnMode.HotList;
+            ResetSearchResultPaging();
+            _lastScannerResultSummary =
+                $"CWvsContext::OnShopScannerResult subtype 7 refreshed {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed scanner item id(s) on the CUIShopScanner owner.";
+            _statusMessage = _lastScannerResultSummary;
+            message = _lastScannerResultSummary;
+            RefreshRows();
+            return true;
         }
 
         public bool ApplyShopLinkResultPayload(byte[] payload, out string message)
@@ -382,7 +532,17 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 sprite.DrawString(_font, TrimToWidth(result.Name, 22), new Vector2(rowBounds.X + 16, rowBounds.Y + 2), selected ? new Color(30, 45, 80) : Color.White);
-                sprite.DrawString(_font, result.ItemId.ToString(CultureInfo.InvariantCulture), new Vector2(rowBounds.Right - 62, rowBounds.Y + 2), selected ? new Color(30, 45, 80) : new Color(255, 233, 160));
+                string rightText = result.IsPacketFedShopRow
+                    ? result.Price.ToString("N0", CultureInfo.InvariantCulture)
+                    : result.ItemId.ToString(CultureInfo.InvariantCulture);
+                sprite.DrawString(_font, rightText, new Vector2(rowBounds.Right - 62, rowBounds.Y + 2), selected ? new Color(30, 45, 80) : new Color(255, 233, 160));
+                if (result.IsPacketFedShopRow)
+                {
+                    string ownerText = result.IsNpcShop
+                        ? "NPC Shop"
+                        : $"{result.ShopOwnerName} ch{result.ChannelId.ToString(CultureInfo.InvariantCulture)}";
+                    sprite.DrawString(_font, TrimToWidth(ownerText, 24), new Vector2(rowBounds.X + 16, rowBounds.Y + 10), selected ? new Color(30, 45, 80) : new Color(190, 211, 233));
+                }
             }
 
             string countLabel = _results.Count == 0
@@ -598,13 +758,13 @@ namespace HaCreator.MapSimulator.UI
                     MoveChildPage(1);
                     return true;
                 case ChildOkButtonId:
-                    return TrySendSelectedShopLinkRequest(descendingOrder: false, Environment.TickCount, out _);
+                    return TrySendSelectedShopLinkRequest(Environment.TickCount, out _);
                 default:
                     return false;
             }
         }
 
-        public bool TrySendSelectedShopLinkRequest(bool descendingOrder, int currentTick, out string message)
+        public bool TrySendSelectedShopLinkRequest(int currentTick, out string message)
         {
             message = null;
             if (_selectedIndex < 0 || _selectedIndex >= _results.Count)
@@ -614,13 +774,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ScannerResult selected = _results[_selectedIndex];
-            byte[] payload = BuildShopLinkRequestPayload(selected.ItemId, descendingOrder, currentTick);
-            string dispatchSummary = ShopLinkRequestDispatcher?.Invoke(InitialRequestOpcode, Array.AsReadOnly(payload));
+            if (!selected.IsPacketFedShopRow)
+            {
+                message = "CUIShopScanResult shop-link request waits for packet-fed subtype 6 rows before sending opcode 73.";
+                _statusMessage = message;
+                return false;
+            }
+
+            if (selected.IsNpcShop)
+            {
+                message = "CUIShopScanResult selected the NPC-shop sentinel row; the client does not send a shop-link packet for NPC-shop rows.";
+                _statusMessage = message;
+                return false;
+            }
+
+            byte[] payload = BuildShopLinkRequestPayload(selected.MiniRoomSn, selected.FieldId);
+            string dispatchSummary = ShopLinkRequestDispatcher?.Invoke(ShopLinkRequestOpcode, Array.AsReadOnly(payload));
             _lastRequestedScanItemId = selected.ItemId;
-            _lastRequestedScanDescending = descendingOrder;
+            _lastRequestedMiniRoomSn = selected.MiniRoomSn;
+            _lastRequestedFieldId = selected.FieldId;
             _lastRequestedScanTick = currentTick;
             message = string.IsNullOrWhiteSpace(dispatchSummary)
-                ? $"CUIShopScanner::SendScanPacket staged opcode {InitialRequestOpcode} for {selected.Name} ({selected.ItemId.ToString(CultureInfo.InvariantCulture)}) simulator-local."
+                ? $"CUIShopScanResult::OnButtonClicked staged opcode {ShopLinkRequestOpcode} miniRoomSN {selected.MiniRoomSn.ToString(CultureInfo.InvariantCulture)} field {selected.FieldId.ToString(CultureInfo.InvariantCulture)} simulator-local."
                 : dispatchSummary;
             _statusMessage = message;
             return true;
@@ -769,13 +944,220 @@ namespace HaCreator.MapSimulator.UI
             return new[] { unchecked((byte)InitialRequestSubtype) };
         }
 
-        internal static byte[] BuildShopLinkRequestPayload(int itemId, bool descendingOrder, int currentTick)
+        internal static byte[] BuildShopLinkRequestPayload(int miniRoomSn, int fieldId)
         {
-            byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(int)];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), itemId);
-            payload[sizeof(int)] = descendingOrder ? (byte)1 : (byte)0;
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(byte), sizeof(int)), currentTick);
+            byte[] payload = new byte[sizeof(int) + sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), miniRoomSn);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)), fieldId);
             return payload;
+        }
+
+        internal static bool TryDecodeScannerResultPayload(byte[] payload, out ScannerPacketResult result, out string error)
+        {
+            result = null;
+            error = null;
+            payload ??= Array.Empty<byte>();
+            if (payload.Length < 1)
+            {
+                error = "Shop-scanner result payload must start with subtype 6 or 7.";
+                return false;
+            }
+
+            int offset = 0;
+            int subtype = payload[offset++];
+            if (subtype == ScannerResultShopRowsSubtype)
+            {
+                if (!TryReadInt32(payload, ref offset, out int npcShopPrice)
+                    || !TryReadInt32(payload, ref offset, out int itemId)
+                    || !TryReadInt32(payload, ref offset, out int rowCount))
+                {
+                    error = "Shop-scanner subtype 6 payload must include npcShopPrice, itemId, and row count.";
+                    return false;
+                }
+
+                if (rowCount < 0 || rowCount > 512)
+                {
+                    error = $"Shop-scanner subtype 6 row count {rowCount.ToString(CultureInfo.InvariantCulture)} is outside the supported range.";
+                    return false;
+                }
+
+                List<ScannerPacketShopRow> rows = new();
+                if (npcShopPrice > 0)
+                {
+                    rows.Add(new ScannerPacketShopRow
+                    {
+                        ShopOwnerName = "NPC Shop",
+                        FieldId = -1,
+                        ShopTitle = string.Empty,
+                        Quantity = 0,
+                        BundleCount = 1,
+                        Price = npcShopPrice,
+                        MiniRoomSn = -1,
+                        ChannelId = -1,
+                        InventoryTypeCode = ResolveClientInventoryTypeCode(itemId),
+                        IsNpcShop = true
+                    });
+                }
+
+                for (int i = 0; i < rowCount; i++)
+                {
+                    if (!TryReadMapleString(payload, ref offset, out string ownerName)
+                        || !TryReadInt32(payload, ref offset, out int fieldId)
+                        || !TryReadMapleString(payload, ref offset, out string title)
+                        || !TryReadInt32(payload, ref offset, out int quantity)
+                        || !TryReadInt32(payload, ref offset, out int bundleCount)
+                        || !TryReadInt32(payload, ref offset, out int price)
+                        || !TryReadInt32(payload, ref offset, out int miniRoomSn))
+                    {
+                        error = $"Shop-scanner subtype 6 row {i.ToString(CultureInfo.InvariantCulture)} is truncated before channel/type/item-slot data.";
+                        return false;
+                    }
+
+                    if (offset >= payload.Length)
+                    {
+                        error = $"Shop-scanner subtype 6 row {i.ToString(CultureInfo.InvariantCulture)} is missing channel id.";
+                        return false;
+                    }
+
+                    int channelId = payload[offset++];
+                    if (offset >= payload.Length)
+                    {
+                        error = $"Shop-scanner subtype 6 row {i.ToString(CultureInfo.InvariantCulture)} is missing inventory type.";
+                        return false;
+                    }
+
+                    int inventoryTypeCode = payload[offset++];
+                    int itemSlotPayloadStart = offset;
+                    bool hasItemSlotPayload = inventoryTypeCode == 1 && TrySkipItemSlotPayload(payload, ref offset);
+                    rows.Add(new ScannerPacketShopRow
+                    {
+                        ShopOwnerName = ownerName,
+                        FieldId = fieldId,
+                        ShopTitle = title,
+                        Quantity = quantity,
+                        BundleCount = bundleCount,
+                        Price = price,
+                        MiniRoomSn = miniRoomSn,
+                        ChannelId = channelId,
+                        InventoryTypeCode = inventoryTypeCode,
+                        HasItemSlotPayload = hasItemSlotPayload,
+                        ItemSlotPayloadLength = Math.Max(0, offset - itemSlotPayloadStart),
+                        IsNpcShop = false
+                    });
+                }
+
+                result = new ScannerPacketResult
+                {
+                    Subtype = subtype,
+                    NpcShopPrice = npcShopPrice,
+                    ItemId = itemId,
+                    ServerRowCount = rowCount,
+                    ShopRows = rows,
+                    HasNoResultNotice = npcShopPrice == 0 && rowCount == 0,
+                    TrailingByteCount = Math.Max(0, payload.Length - offset)
+                };
+                return true;
+            }
+
+            if (subtype == ScannerResultItemIdListSubtype)
+            {
+                if (offset >= payload.Length)
+                {
+                    error = "Shop-scanner subtype 7 payload must include an item-id count byte.";
+                    return false;
+                }
+
+                int count = payload[offset++];
+                if (payload.Length - offset < count * sizeof(int))
+                {
+                    error = "Shop-scanner subtype 7 item-id list is truncated.";
+                    return false;
+                }
+
+                List<int> itemIds = new();
+                for (int i = 0; i < count; i++)
+                {
+                    itemIds.Add(BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int))));
+                    offset += sizeof(int);
+                }
+
+                result = new ScannerPacketResult
+                {
+                    Subtype = subtype,
+                    ItemIds = itemIds,
+                    TrailingByteCount = Math.Max(0, payload.Length - offset)
+                };
+                return true;
+            }
+
+            error = $"Unsupported shop-scanner result subtype {subtype.ToString(CultureInfo.InvariantCulture)}.";
+            return false;
+        }
+
+        private static bool TryReadInt32(byte[] payload, ref int offset, out int value)
+        {
+            value = 0;
+            if (payload == null || payload.Length - offset < sizeof(int))
+            {
+                return false;
+            }
+
+            value = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            offset += sizeof(int);
+            return true;
+        }
+
+        private static bool TryReadMapleString(byte[] payload, ref int offset, out string value)
+        {
+            value = string.Empty;
+            if (payload == null || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int length = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
+            offset += sizeof(ushort);
+            if (length < 0 || payload.Length - offset < length)
+            {
+                return false;
+            }
+
+            value = length == 0 ? string.Empty : Encoding.ASCII.GetString(payload, offset, length);
+            offset += length;
+            return true;
+        }
+
+        private static bool TrySkipItemSlotPayload(byte[] payload, ref int offset)
+        {
+            // GW_ItemSlotBase::Decode is versioned and large. For scanner ownership we only need to
+            // preserve row boundaries; leaving trailing bytes is safer than guessing too far.
+            return false;
+        }
+
+        private static int ResolveClientInventoryTypeCode(int itemId)
+        {
+            return InventoryItemMetadataResolver.ResolveInventoryType(itemId) switch
+            {
+                InventoryType.EQUIP => 1,
+                InventoryType.USE => 2,
+                InventoryType.SETUP => 3,
+                InventoryType.ETC => 4,
+                InventoryType.CASH => 5,
+                _ => 0
+            };
+        }
+
+        private static string ResolveScannerItemName(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return string.Empty;
+            }
+
+            Dictionary<int, Tuple<string, string, string>> cache = global::HaCreator.Program.InfoManager?.ItemNameCache;
+            return cache != null && cache.TryGetValue(itemId, out Tuple<string, string, string> value)
+                ? value?.Item2?.Trim() ?? string.Empty
+                : string.Empty;
         }
 
         private static ScannerResult ToScannerResult(ScannerIndexEntry entry)

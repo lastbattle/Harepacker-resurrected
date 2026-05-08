@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator
         public int CompositionLength { get; init; }
         public int CompositionCursorPosition { get; init; } = -1;
         public IReadOnlyList<int> CompositionClauseOffsets { get; init; } = Array.Empty<int>();
+        public IReadOnlyList<byte> CompositionAttributes { get; init; } = Array.Empty<byte>();
         public bool HasCompositionText => CompositionLength > 0;
         public string CompositionPreviewText { get; init; } = string.Empty;
         public ImeCandidateListState ImeCandidateList { get; init; } = ImeCandidateListState.Empty;
@@ -251,7 +252,8 @@ namespace HaCreator.MapSimulator
             _compositionState = new ImeCompositionState(
                 compositionText,
                 state?.ClauseOffsets ?? Array.Empty<int>(),
-                cursorPosition);
+                cursorPosition,
+                state?.Attributes ?? Array.Empty<byte>());
         }
 
         internal void ClearCompositionText()
@@ -1526,6 +1528,7 @@ namespace HaCreator.MapSimulator
                 CompositionLength = compositionLength,
                 CompositionCursorPosition = compositionCursorPosition,
                 CompositionClauseOffsets = _compositionState.ClauseOffsets,
+                CompositionAttributes = _compositionState.Attributes,
                 CompositionPreviewText = compositionPreviewText,
                 ImeCandidateList = _imeCandidateListState,
                 TargetType = _chatTarget,

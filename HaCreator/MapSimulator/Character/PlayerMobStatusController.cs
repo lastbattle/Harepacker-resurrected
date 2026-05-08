@@ -7,7 +7,7 @@ using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Character
 {
-    internal enum PlayerMobStatusEffect
+    public enum PlayerMobStatusEffect
     {
         None,
         Seal,

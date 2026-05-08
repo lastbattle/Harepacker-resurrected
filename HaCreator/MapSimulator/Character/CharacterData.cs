@@ -819,10 +819,12 @@ namespace HaCreator.MapSimulator.Character
         public int BonusDEX { get; set; }
         public int BonusINT { get; set; }
         public int BonusLUK { get; set; }
+        public int BonusAllStat { get; set; }
         public int BonusSTRPercent { get; set; }
         public int BonusDEXPercent { get; set; }
         public int BonusINTPercent { get; set; }
         public int BonusLUKPercent { get; set; }
+        public int BonusAllStatPercent { get; set; }
         public int BonusHP { get; set; }
         public int BonusMP { get; set; }
         public int BonusHPPercent { get; set; }
@@ -910,10 +912,12 @@ namespace HaCreator.MapSimulator.Character
                 BonusDEX = BonusDEX,
                 BonusINT = BonusINT,
                 BonusLUK = BonusLUK,
+                BonusAllStat = BonusAllStat,
                 BonusSTRPercent = BonusSTRPercent,
                 BonusDEXPercent = BonusDEXPercent,
                 BonusINTPercent = BonusINTPercent,
                 BonusLUKPercent = BonusLUKPercent,
+                BonusAllStatPercent = BonusAllStatPercent,
                 BonusHP = BonusHP,
                 BonusMP = BonusMP,
                 BonusHPPercent = BonusHPPercent,
@@ -1765,10 +1769,12 @@ namespace HaCreator.MapSimulator.Character
                 BonusDEX = BonusDEX,
                 BonusINT = BonusINT,
                 BonusLUK = BonusLUK,
+                BonusAllStat = BonusAllStat,
                 BonusSTRPercent = BonusSTRPercent,
                 BonusDEXPercent = BonusDEXPercent,
                 BonusINTPercent = BonusINTPercent,
                 BonusLUKPercent = BonusLUKPercent,
+                BonusAllStatPercent = BonusAllStatPercent,
                 BonusHP = BonusHP,
                 BonusMP = BonusMP,
                 BonusHPPercent = BonusHPPercent,
@@ -1927,10 +1933,12 @@ namespace HaCreator.MapSimulator.Character
             int DEX,
             int INT,
             int LUK,
+            int AllStat,
             int STRPercent,
             int DEXPercent,
             int INTPercent,
             int LUKPercent,
+            int AllStatPercent,
             int MaxHP,
             int MaxMP,
             int MaxHPPercent,
@@ -2252,31 +2260,31 @@ namespace HaCreator.MapSimulator.Character
         public int TotalSTR => ComputeTotalPrimaryStat(
             STR,
             BuffStatType.Strength,
-            static part => part.BonusSTR,
-            static part => part.BonusSTRPercent,
-            static bonus => bonus.STR,
-            static bonus => bonus.STRPercent);
+            static part => part.BonusSTR + part.BonusAllStat,
+            static part => part.BonusSTRPercent + part.BonusAllStatPercent,
+            static bonus => bonus.STR + bonus.AllStat,
+            static bonus => bonus.STRPercent + bonus.AllStatPercent);
         public int TotalDEX => ComputeTotalPrimaryStat(
             DEX,
             BuffStatType.Dexterity,
-            static part => part.BonusDEX,
-            static part => part.BonusDEXPercent,
-            static bonus => bonus.DEX,
-            static bonus => bonus.DEXPercent);
+            static part => part.BonusDEX + part.BonusAllStat,
+            static part => part.BonusDEXPercent + part.BonusAllStatPercent,
+            static bonus => bonus.DEX + bonus.AllStat,
+            static bonus => bonus.DEXPercent + bonus.AllStatPercent);
         public int TotalINT => ComputeTotalPrimaryStat(
             INT,
             BuffStatType.Intelligence,
-            static part => part.BonusINT,
-            static part => part.BonusINTPercent,
-            static bonus => bonus.INT,
-            static bonus => bonus.INTPercent);
+            static part => part.BonusINT + part.BonusAllStat,
+            static part => part.BonusINTPercent + part.BonusAllStatPercent,
+            static bonus => bonus.INT + bonus.AllStat,
+            static bonus => bonus.INTPercent + bonus.AllStatPercent);
         public int TotalLUK => ComputeTotalPrimaryStat(
             LUK,
             BuffStatType.Luck,
-            static part => part.BonusLUK,
-            static part => part.BonusLUKPercent,
-            static bonus => bonus.LUK,
-            static bonus => bonus.LUKPercent);
+            static part => part.BonusLUK + part.BonusAllStat,
+            static part => part.BonusLUKPercent + part.BonusAllStatPercent,
+            static bonus => bonus.LUK + bonus.AllStat,
+            static bonus => bonus.LUKPercent + bonus.AllStatPercent);
         public int TotalMaxHP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxHP(), GetTotalMaxHpPercentBonus()), 1, MaxHpMpStat);
         public int TotalMaxMP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxMP(), GetTotalMaxMpPercentBonus()), 0, MaxHpMpStat);
         public int TotalHP => Math.Clamp(HP + GetTotalMaxHpDelta(), 0, TotalMaxHP);
@@ -2567,10 +2575,12 @@ namespace HaCreator.MapSimulator.Character
                 hash = (hash * 31) + part.BonusDEX;
                 hash = (hash * 31) + part.BonusINT;
                 hash = (hash * 31) + part.BonusLUK;
+                hash = (hash * 31) + part.BonusAllStat;
                 hash = (hash * 31) + part.BonusSTRPercent;
                 hash = (hash * 31) + part.BonusDEXPercent;
                 hash = (hash * 31) + part.BonusINTPercent;
                 hash = (hash * 31) + part.BonusLUKPercent;
+                hash = (hash * 31) + part.BonusAllStatPercent;
                 hash = (hash * 31) + part.BonusHP;
                 hash = (hash * 31) + part.BonusMP;
                 hash = (hash * 31) + part.BonusHPPercent;
@@ -3157,10 +3167,12 @@ namespace HaCreator.MapSimulator.Character
                 DEX: GetWzInt(levelEntry, "incDEX"),
                 INT: GetWzInt(levelEntry, "incINT"),
                 LUK: GetWzInt(levelEntry, "incLUK"),
+                AllStat: GetWzInt(levelEntry, "incAllStat"),
                 STRPercent: GetWzInt(levelEntry, "incSTRr"),
                 DEXPercent: GetWzInt(levelEntry, "incDEXr"),
                 INTPercent: GetWzInt(levelEntry, "incINTr"),
                 LUKPercent: GetWzInt(levelEntry, "incLUKr"),
+                AllStatPercent: GetWzInt(levelEntry, "incAllStatr"),
                 MaxHP: GetWzInt(levelEntry, "incMHP"),
                 MaxMP: GetWzInt(levelEntry, "incMMP"),
                 MaxHPPercent: GetWzInt(levelEntry, "incMHPr"),
@@ -3192,20 +3204,66 @@ namespace HaCreator.MapSimulator.Character
             int rate = ResolveFallbackCommonPotentialRate(equipLevel);
             return itemOptionId switch
             {
-                10041 => new ItemOptionStatBonus(0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10042 => new ItemOptionStatBonus(0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10043 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10044 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10045 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10046 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10047 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0),
-                10048 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0),
-                10051 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10052 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                10053 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0, 0),
-                10054 => new ItemOptionStatBonus(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rate, 0, 0, 0, 0, 0, 0, 0),
+                10041 => CreateFallbackItemOptionStatBonus(strPercent: rate),
+                10042 => CreateFallbackItemOptionStatBonus(dexPercent: rate),
+                10043 => CreateFallbackItemOptionStatBonus(intPercent: rate),
+                10044 => CreateFallbackItemOptionStatBonus(lukPercent: rate),
+                10045 => CreateFallbackItemOptionStatBonus(maxHpPercent: rate),
+                10046 => CreateFallbackItemOptionStatBonus(maxMpPercent: rate),
+                10047 => CreateFallbackItemOptionStatBonus(accuracyPercent: rate),
+                10048 => CreateFallbackItemOptionStatBonus(avoidabilityPercent: rate),
+                10051 => CreateFallbackItemOptionStatBonus(weaponAttackPercent: rate),
+                10052 => CreateFallbackItemOptionStatBonus(magicAttackPercent: rate),
+                10053 => CreateFallbackItemOptionStatBonus(weaponDefensePercent: rate),
+                10054 => CreateFallbackItemOptionStatBonus(magicDefensePercent: rate),
                 _ => default
             };
+        }
+
+        private static ItemOptionStatBonus CreateFallbackItemOptionStatBonus(
+            int strPercent = 0,
+            int dexPercent = 0,
+            int intPercent = 0,
+            int lukPercent = 0,
+            int maxHpPercent = 0,
+            int maxMpPercent = 0,
+            int weaponAttackPercent = 0,
+            int magicAttackPercent = 0,
+            int weaponDefensePercent = 0,
+            int magicDefensePercent = 0,
+            int accuracyPercent = 0,
+            int avoidabilityPercent = 0)
+        {
+            return new ItemOptionStatBonus(
+                STR: 0,
+                DEX: 0,
+                INT: 0,
+                LUK: 0,
+                AllStat: 0,
+                STRPercent: strPercent,
+                DEXPercent: dexPercent,
+                INTPercent: intPercent,
+                LUKPercent: lukPercent,
+                AllStatPercent: 0,
+                MaxHP: 0,
+                MaxMP: 0,
+                MaxHPPercent: maxHpPercent,
+                MaxMPPercent: maxMpPercent,
+                WeaponAttack: 0,
+                MagicAttack: 0,
+                WeaponDefense: 0,
+                MagicDefense: 0,
+                WeaponAttackPercent: weaponAttackPercent,
+                MagicAttackPercent: magicAttackPercent,
+                WeaponDefensePercent: weaponDefensePercent,
+                MagicDefensePercent: magicDefensePercent,
+                Accuracy: 0,
+                Avoidability: 0,
+                AccuracyPercent: accuracyPercent,
+                AvoidabilityPercent: avoidabilityPercent,
+                Speed: 0,
+                SpeedPercent: 0,
+                Jump: 0);
         }
 
         private static int ResolveFallbackCommonPotentialRate(int equipLevel)

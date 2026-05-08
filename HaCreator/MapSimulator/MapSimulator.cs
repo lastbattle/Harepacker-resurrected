@@ -30820,6 +30820,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (IsClientPresentationOnlyMagicLocalAttackAreaBranch(ownerLane, skill.SkillId))
+            {
+                return false;
+            }
+
             bool hasExplicitOwnerBranch = IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId);
 
             if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion)
@@ -31347,6 +31352,22 @@ namespace HaCreator.MapSimulator
                    || skillId == 2221007
                    || skillId == 2321008
                    || skillId == 32121004;
+        }
+
+        private static bool IsClientPresentationOnlyMagicLocalAttackAreaBranch(
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
+            int skillId)
+        {
+            if (ownerLane != SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack)
+            {
+                return false;
+            }
+
+            // WZ keeps info/type on these explicit magic ids, but IDA shows they leave the
+            // CAffectedArea insertion path for presentation-only explosion/tremble/fade branches.
+            return skillId == 2221001
+                   || skillId == 22161001
+                   || skillId == 22181002;
         }
 
         private static bool IsClientMagicLaneKnownNonOwnerAreaSkillId(int skillId)
@@ -33234,8 +33255,9 @@ namespace HaCreator.MapSimulator
             PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision queuedRetryDecision =
                 EvaluatePassiveTransferFieldQueuedRetryDecision(currentTime);
 
-            if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
+            if (PassiveTransferFieldReadinessEvaluator.ShouldReplayQueuedRetryBeforeFreshUpKeyDown(queuedRetryDecision))
             {
+                HandleQueuedPassiveTransferFieldRetry(currentTime);
                 return;
             }
 
@@ -33759,6 +33781,17 @@ namespace HaCreator.MapSimulator
                 return false;
 
 
+            PortalCollisionResult? collision = ResolvePortalCollisionAtLocalUserPosition();
+            if (PassiveTransferFieldReadinessEvaluator.ShouldProbeAuthoredPortalBeforeTemporaryPortal(
+                    collision.HasValue && collision.Value.Portal?.PortalInstance != null))
+            {
+                return TryHandlePortalCollisionByType(
+                    collision.Value.Portal.PortalInstance,
+                    collision.Value.PortalIndex,
+                    currentTime,
+                    fieldLimit);
+            }
+
 
             if (_temporaryPortalField != null
                 && _temporaryPortalField.TryUseLinkedPortal(_mapBoard.MapInfo.id, playerX, playerY, out var temporaryPortalDestination))
@@ -33989,17 +34022,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            PortalCollisionResult? collision = ResolvePortalCollisionAtLocalUserPosition();
-            if (!collision.HasValue || collision.Value.Portal?.PortalInstance == null)
-            {
-                return false;
-            }
-
-            return TryHandlePortalCollisionByType(
-                collision.Value.Portal.PortalInstance,
-                collision.Value.PortalIndex,
-                currentTime,
-                fieldLimit);
+            return false;
 
         }
 

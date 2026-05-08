@@ -816,7 +816,7 @@ namespace HaCreator.MapSimulator.Entities
                 bool canTargetPlayer = !isEscortMob && !mobData.DamagedByMob;
                 bool autoAggro = canTargetPlayer && mobData.FirstAttack;  // FirstAttack = mob attacks first (auto-aggro)
 
-                AI.Initialize(maxHp, level, exp, isBoss, isUndead, autoAggro);
+                AI.Initialize(maxHp, level, exp, isBoss, isUndead, autoAggro, mobData.MaxMP);
                 AI.ConfigureSpecialBehavior(
                     canTargetPlayer,
                     isEscortMob,
@@ -1035,7 +1035,8 @@ namespace HaCreator.MapSimulator.Entities
                     PreSkillIndex = skillData.PreSkillCount > 0 ? skillData.PreSkillIndex : -1,
                     PreSkillCount = skillData.PreSkillCount,
                     OnlyFsm = skillData.OnlyFsm,
-                    SkillForbid = skillData.SkillForbid
+                    SkillForbid = skillData.SkillForbid,
+                    MpCon = ResolveAuthoredMobSkillMpCon(skillData.Skill, skillData.Level > 0 ? skillData.Level : 1)
                 });
             }
         }
@@ -1266,6 +1267,11 @@ namespace HaCreator.MapSimulator.Entities
             return ResolveAuthoredMobSkillCooldown(levelNode, skillLevel);
         }
 
+        internal static int ResolveMobSkillMpConFromLevelNodeForTesting(WzSubProperty levelNode, int skillLevel)
+        {
+            return ResolveAuthoredMobSkillMpCon(levelNode, skillLevel);
+        }
+
         internal static int ResolveMobActionIndexForTesting(string animationName)
         {
             return GetActionIndex(animationName);
@@ -1299,6 +1305,33 @@ namespace HaCreator.MapSimulator.Entities
                 MobSkillLevelResolver.ResolveInheritedInt(levelNode, skillLevel, "interval"),
                 MobSkillLevelResolver.ResolveInheritedInt(levelNode, skillLevel, "inteval"));
             return Math.Max(0, intervalSeconds) * 1000;
+        }
+
+        private static int ResolveAuthoredMobSkillMpCon(int skillId, int skillLevel)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            WzImage mobSkillImage = Program.FindImage("Skill", "MobSkill");
+            if (mobSkillImage == null)
+            {
+                return 0;
+            }
+
+            if (!mobSkillImage.Parsed)
+            {
+                mobSkillImage.ParseImage();
+            }
+
+            WzSubProperty skillNode = mobSkillImage[skillId.ToString()] as WzSubProperty;
+            return ResolveAuthoredMobSkillMpCon(skillNode?["level"] as WzSubProperty, skillLevel);
+        }
+
+        private static int ResolveAuthoredMobSkillMpCon(WzSubProperty levelNode, int skillLevel)
+        {
+            return Math.Max(0, MobSkillLevelResolver.ResolveInheritedInt(levelNode, skillLevel, "mpCon"));
         }
 
         private static int GetActionIndex(string animationName)

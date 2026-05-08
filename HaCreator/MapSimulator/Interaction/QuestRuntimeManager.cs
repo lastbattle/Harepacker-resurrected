@@ -972,6 +972,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (IsClientCheckCompleteDemandBypassQuestId(definition.QuestId))
+            {
+                return true;
+            }
+
             // Keep auto-completion alert registration closer to the client
             // CheckCompleteDemand owner by checking unmet completion demand only.
             // Exclude simulator UI-only completion issues (reward-slot capacity), but
@@ -1568,6 +1573,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool HasUnresolvedCompletionSideChannelDemands(IReadOnlyList<string> demandKeys)
         {
             return demandKeys != null && demandKeys.Count > 0;
+        }
+
+        internal static bool IsClientCheckCompleteDemandBypassQuestId(int questId)
+        {
+            return questId == 0 ||
+                   (questId >= DragonQuestIdSkipMin && questId <= DragonQuestIdSkipMax);
         }
 
         internal static IReadOnlyList<string> ParseUnresolvedCompletionSideChannelDemandKeysForTesting(

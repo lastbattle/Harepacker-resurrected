@@ -87,16 +87,20 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
-            if (TryResolvePacketOwnedExpiryMonsterCarnivalLocalTeamContextForParity(
+            MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            CoconutField coconut = _specialFieldRuntime?.Minigames?.Coconut;
+            PartyRaidField partyRaid = _specialFieldRuntime?.PartyRaid;
+            int localPlayerId = _playerManager?.Player?.Build?.Id ?? 0;
+            return TryResolvePacketOwnedExpiryOwnerTeamContextForParity(
                     carnival?.IsVisible == true,
                     (int)(carnival?.LocalTeam ?? Fields.MonsterCarnivalTeam.Team0),
-                    out ownerTeam))
-            {
-                return true;
-            }
-
-            return false;
+                    coconut?.HasResolvedLocalTeamSelection == true,
+                    coconut?.LocalTeam ?? 0,
+                    partyRaid?.IsActive == true,
+                    partyRaid?.TeamColor ?? PartyRaidTeamColor.Red,
+                    localPlayerId,
+                    ownerCharacterId,
+                    out ownerTeam);
         }
 
         internal static bool TryResolvePacketOwnedExpiryMonsterCarnivalLocalTeamContextForParity(
@@ -126,6 +130,35 @@ namespace HaCreator.MapSimulator
                 coconut?.LocalTeam ?? 0,
                 partyRaid?.IsActive == true,
                 partyRaid?.TeamColor ?? PartyRaidTeamColor.Red,
+                localPlayerId,
+                ownerCharacterId,
+                out ownerTeam);
+        }
+
+        internal static bool TryResolvePacketOwnedExpiryOwnerTeamContextForParity(
+            bool carnivalVisible,
+            int carnivalLocalTeam,
+            bool coconutTeamResolved,
+            int coconutLocalTeam,
+            bool partyRaidActive,
+            PartyRaidTeamColor partyRaidTeamColor,
+            int localPlayerId,
+            int ownerCharacterId,
+            out int ownerTeam)
+        {
+            if (TryResolvePacketOwnedExpiryMonsterCarnivalLocalTeamContextForParity(
+                    carnivalVisible,
+                    carnivalLocalTeam,
+                    out ownerTeam))
+            {
+                return true;
+            }
+
+            return TryResolvePacketOwnedExpiryLocalTeamContextForParity(
+                coconutTeamResolved,
+                coconutLocalTeam,
+                partyRaidActive,
+                partyRaidTeamColor,
                 localPlayerId,
                 ownerCharacterId,
                 out ownerTeam);

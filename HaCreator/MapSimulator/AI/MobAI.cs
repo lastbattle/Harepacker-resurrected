@@ -229,6 +229,9 @@ namespace HaCreator.MapSimulator.AI
         /// <summary>Global skill lockout duration from skillForbid</summary>
         public int SkillForbid { get; set; }
 
+        /// <summary>Mob MP consumed by this skill from MobSkill.img level/mpCon</summary>
+        public int MpCon { get; set; }
+
         /// <summary>Runtime: Last time this skill was used</summary>
         public int LastUseTime { get; set; }
 
@@ -342,6 +345,8 @@ namespace HaCreator.MapSimulator.AI
         // Stats
         private int _maxHp = 100;
         private int _currentHp = 100;
+        private int _maxMp = 0;
+        private int _currentMp = 0;
         private int _level = 1;
         private int _exp = 0;
         private bool _isBoss = false;
@@ -398,6 +403,8 @@ namespace HaCreator.MapSimulator.AI
         public MobAIState PreviousState => _previousState;
         public int CurrentHp => _currentHp;
         public int MaxHp => _maxHp;
+        public int CurrentMp => _currentMp;
+        public int MaxMp => _maxMp;
         public float HpPercent => _maxHp > 0 ? (float)_currentHp / _maxHp : 0;
         public bool IsDead => _state == MobAIState.Death || _state == MobAIState.Removed;
         public bool IsBoss => _isBoss;
@@ -458,10 +465,12 @@ namespace HaCreator.MapSimulator.AI
         #endregion
 
         #region Initialization
-        public void Initialize(int maxHp, int level = 1, int exp = 0, bool isBoss = false, bool isUndead = false, bool autoAggro = false)
+        public void Initialize(int maxHp, int level = 1, int exp = 0, bool isBoss = false, bool isUndead = false, bool autoAggro = false, int maxMp = 0)
         {
             _maxHp = maxHp;
             _currentHp = maxHp;
+            _maxMp = Math.Max(0, maxMp);
+            _currentMp = _maxMp;
             _level = level;
             _exp = exp;
             _isBoss = isBoss;
@@ -1470,6 +1479,7 @@ namespace HaCreator.MapSimulator.AI
             _state = MobAIState.Idle;
             _previousState = MobAIState.Idle;
             _currentHp = _maxHp;
+            _currentMp = _maxMp;
             _target = new MobTargetInfo();
             _damageDisplays.Clear();
             _currentAttackIndex = -1;
@@ -2013,8 +2023,13 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            _currentSkillIndex = skillIndex;
             MobSkillEntry skill = _skills[skillIndex];
+            if (!TryConsumeSkillMp(skill))
+            {
+                return;
+            }
+
+            _currentSkillIndex = skillIndex;
             skill.LastUseTime = currentTick;
             RegisterSkillUsage(skill, currentTick);
             _actionAnimationCompleted = false;
@@ -2188,7 +2203,8 @@ namespace HaCreator.MapSimulator.AI
             if (skill == null ||
                 skill.OnlyFsm ||
                 skill.IsOnCooldown(currentTick) ||
-                _target.Distance > skill.Range)
+                _target.Distance > skill.Range ||
+                !HasEnoughMpForSkill(skill))
             {
                 return false;
             }
@@ -2215,6 +2231,29 @@ namespace HaCreator.MapSimulator.AI
 
             return _skillUseCounts.TryGetValue(skill.PreSkillIndex, out int useCount) &&
                    useCount >= skill.PreSkillCount;
+        }
+
+        private bool HasEnoughMpForSkill(MobSkillEntry skill)
+        {
+            int mpCon = Math.Max(0, skill?.MpCon ?? 0);
+            return mpCon <= 0 || _currentMp >= mpCon;
+        }
+
+        private bool TryConsumeSkillMp(MobSkillEntry skill)
+        {
+            int mpCon = Math.Max(0, skill?.MpCon ?? 0);
+            if (mpCon <= 0)
+            {
+                return true;
+            }
+
+            if (_currentMp < mpCon)
+            {
+                return false;
+            }
+
+            _currentMp -= mpCon;
+            return true;
         }
 
         private void RegisterSkillUsage(MobSkillEntry skill, int currentTick)

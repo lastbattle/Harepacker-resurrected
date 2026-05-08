@@ -837,6 +837,7 @@ namespace HaCreator.MapSimulator
 
             return rightIndex > rightStart
                 && (rightIndex >= value.Length
+                    || value[rightIndex] == ','
                     || value[rightIndex] == ';'
                     || value[rightIndex] == '|'
                     || char.IsControl(value[rightIndex]));

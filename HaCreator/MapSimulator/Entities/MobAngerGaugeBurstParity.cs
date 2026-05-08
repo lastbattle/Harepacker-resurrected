@@ -9,6 +9,13 @@ namespace HaCreator.MapSimulator.Entities
     internal static class MobAngerGaugeBurstParity
     {
         private const int MinimumFrameDelayMs = 10;
+        public const int RecoveredAstarothMobTemplateId = 9400633;
+        public const int RecoveredAstarothAngerGaugeChargeCount = 3;
+        public const int RecoveredAstarothAngerGaugeFlag = 1;
+        public const int RecoveredAstarothSpecialAttackId = 4;
+        public const int RecoveredAstarothSpecialAttackFlag = 1;
+        public const int RecoveredAstarothSpecialAttackAfterMs = 3300;
+        public const char RecoveredNativeOwnerPathSeparator = '/';
         public const int MobAngerGaugeFullChargeEffectFunctionAddress = 0x6490B0;
         public const int AnimationDisplayerFullChargedAngerGaugeFunctionAddress = 0x457D00;
 
@@ -209,9 +216,34 @@ namespace HaCreator.MapSimulator.Entities
                 ResolveOwnerEffectPath(mobTemplateId, loadedEffectPath),
                 HasReplayGateElapsed(currentTick, startTick, intervalMs),
                 UpdatesStartTimeBeforeAnimationDisplayerCall: true,
+                UpdatesStartTimeBeforeStringPoolBuild: true,
+                UsesRecoveredSlashPathSeparator: true,
                 UsesMobHeadOrigin: true,
                 UsesMobActionLayerOverlayParent: true,
                 CallsAnimationDisplayerOwner: true);
+        }
+
+        public static MobAngerGaugeBurstWzAuthoringTrace CreateRecoveredAstarothWzTrace()
+        {
+            return new MobAngerGaugeBurstWzAuthoringTrace(
+                RecoveredAstarothMobTemplateId,
+                ResolveLoadedEffectPath(RecoveredAstarothMobTemplateId.ToString(), null),
+                RecoveredAstarothAngerGaugeChargeCount,
+                RecoveredAstarothAngerGaugeFlag,
+                RecoveredAstarothSpecialAttackId,
+                RecoveredAstarothSpecialAttackFlag,
+                RecoveredAstarothSpecialAttackAfterMs,
+                new[]
+                {
+                    new MobAngerGaugeBurstWzFrameTrace(0, 118, 98, 53, 78, 150),
+                    new MobAngerGaugeBurstWzFrameTrace(1, 118, 99, 54, 79, 150),
+                    new MobAngerGaugeBurstWzFrameTrace(2, 118, 100, 55, 80, 150),
+                    new MobAngerGaugeBurstWzFrameTrace(3, 135, 159, 67, 96, 150),
+                    new MobAngerGaugeBurstWzFrameTrace(4, 137, 161, 69, 97, 150),
+                    new MobAngerGaugeBurstWzFrameTrace(5, 138, 161, 71, 97, 150),
+                    new MobAngerGaugeBurstWzFrameTrace(6, 137, 160, 72, 97, 150),
+                    new MobAngerGaugeBurstWzFrameTrace(7, 113, 111, 58, 82, 150)
+                });
         }
 
         private static bool HasReachedTick(int currentTick, int targetTick)
@@ -249,7 +281,48 @@ namespace HaCreator.MapSimulator.Entities
         string SourceUol,
         bool ReplayGateElapsed,
         bool UpdatesStartTimeBeforeAnimationDisplayerCall,
+        bool UpdatesStartTimeBeforeStringPoolBuild,
+        bool UsesRecoveredSlashPathSeparator,
         bool UsesMobHeadOrigin,
         bool UsesMobActionLayerOverlayParent,
         bool CallsAnimationDisplayerOwner);
+
+    internal readonly record struct MobAngerGaugeBurstWzAuthoringTrace(
+        int MobTemplateId,
+        string EffectPath,
+        int ChargeCount,
+        int AngerGaugeFlag,
+        int SpecialAttackId,
+        int SpecialAttackFlag,
+        int SpecialAttackAfterMs,
+        IReadOnlyList<MobAngerGaugeBurstWzFrameTrace> Frames)
+    {
+        public int FrameCount => Frames?.Count ?? 0;
+        public int TotalAuthoredFrameDurationMs
+        {
+            get
+            {
+                if (Frames == null)
+                {
+                    return 0;
+                }
+
+                int totalDurationMs = 0;
+                for (int i = 0; i < Frames.Count; i++)
+                {
+                    totalDurationMs += Frames[i].DelayMs;
+                }
+
+                return totalDurationMs;
+            }
+        }
+    }
+
+    internal readonly record struct MobAngerGaugeBurstWzFrameTrace(
+        int Index,
+        int Width,
+        int Height,
+        int OriginX,
+        int OriginY,
+        int DelayMs);
 }

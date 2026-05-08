@@ -340,7 +340,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         InsertCanvas,
         ReleaseLayerRef,
         ReleaseCanvasRef,
-        ReleaseTargetLayerRef
+        ReleaseTargetLayerRef,
+        AddTargetLayerRef,
+        AddAlphaVectorRef,
+        RelMoveAlpha,
+        ReleaseAlphaVectorRef,
+        RemoveAllCanvases,
+        ReleaseRemovedCanvasRef
     }
 
     public readonly record struct AfterimageLayerReferenceOperation(
@@ -351,7 +357,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         int? RawActionCode = null,
         string ActionName = null,
         int CanvasRefDelta = 0,
-        int LayerRefDelta = 0);
+        int LayerRefDelta = 0,
+        int AlphaVectorRefDelta = 0,
+        int RemoveCanvasIndex = 0);
 
     /// <summary>
     /// Skill effect animation
@@ -2330,8 +2338,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private float ResolveProgress(int currentTime)
         {
             int lifetime = ResolveLifetimeMs();
+            int startTime = HasRegisteredAnimationTimeline()
+                ? RegisteredAnimationStartTime
+                : StartTime;
             return MathHelper.Clamp(
-                SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(currentTime, StartTime) / (float)lifetime,
+                SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(currentTime, startTime) / (float)lifetime,
                 0f,
                 1f);
         }
@@ -2553,6 +2564,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool FollowOwnerFacing { get; set; } = true;
         public bool? FacingRightOverride { get; set; }
         public int? DelayRateOverride { get; set; }
+        public SkillManager.ClientDoActiveSummonMonsterPacketPayload? ClientDoActiveSummonMonsterPacketPayload { get; set; }
 
         public float TargetX { get; set; }
         public float TargetY { get; set; }
@@ -2726,7 +2738,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation Animation { get; set; }
         public bool FacingRight { get; set; }
 
-        public int AnimationTime(int currentTime) => currentTime - StartTime;
+        public int AnimationTime(int currentTime) => SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, StartTime);
 
         public bool IsExpired(int currentTime)
         {

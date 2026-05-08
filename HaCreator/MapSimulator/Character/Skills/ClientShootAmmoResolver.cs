@@ -54,6 +54,7 @@ public static class ClientShootAmmoResolver
         int normalizedRequiredAmmoCount = requiredAmmoCount > 0 ? requiredAmmoCount : 1;
         int normalizedRequiredSkillAmmoItemId = NormalizeClientSpecialPelletRequiredAmmoItemId(requiredSkillAmmoItemId);
         bool usesClientSpecialPelletSkill = IsClientSpecialPelletSkillAmmoItem(normalizedRequiredSkillAmmoItemId);
+        bool excludeElementalPelletFallbacks = true;
 
         TryResolveCashAmmoSlot(cashSlots, weaponCode, weaponItemId, out int cashSlotIndex, out int cashItemId);
 
@@ -86,7 +87,7 @@ public static class ClientShootAmmoResolver
                 weaponItemId,
                 normalizedRequiredAmmoCount,
                 fallbackRequiredSkillAmmoItemId,
-                excludeElementalPellets: usesClientSpecialPelletSkill,
+                excludeElementalPellets: excludeElementalPelletFallbacks,
                 out int activeSlotIndex,
                 out int activeBulletItemId))
         {
@@ -107,7 +108,7 @@ public static class ClientShootAmmoResolver
                 fallbackActiveBulletItemId,
                 weaponCode,
                 weaponItemId,
-                usesClientSpecialPelletSkill))
+                excludeElementalPelletFallbacks))
         {
             if (TryResolveUseAmmoSlotByItemId(
                     useSlots,
@@ -117,7 +118,7 @@ public static class ClientShootAmmoResolver
                     normalizedRequiredAmmoCount,
                     fallbackRequiredSkillAmmoItemId,
                     preferredClientSlotPosition: 0,
-                    excludeElementalPellets: usesClientSpecialPelletSkill,
+                    excludeElementalPellets: excludeElementalPelletFallbacks,
                     out int fallbackSlotIndex))
             {
                 selection = new ShootAmmoSelection
@@ -149,7 +150,7 @@ public static class ClientShootAmmoResolver
                 weaponItemId,
                 normalizedRequiredAmmoCount,
                 fallbackRequiredSkillAmmoItemId,
-                excludeElementalPellets: usesClientSpecialPelletSkill,
+                excludeElementalPellets: excludeElementalPelletFallbacks,
                 out int useSlotIndex,
                 out int useItemId))
         {
@@ -288,7 +289,7 @@ public static class ClientShootAmmoResolver
                 queuedSelection.UseItemId,
                 normalizedRequiredSkillAmmoItemId);
             int refreshedRequiredSkillAmmoItemId = normalizedRequiredSkillAmmoItemId;
-            bool excludeElementalPellets = false;
+            bool excludeElementalPellets = true;
             if (usesClientSpecialPelletSkill)
             {
                 bool queuedElementalPellet = IsElementalPelletItem(queuedUseItemId);

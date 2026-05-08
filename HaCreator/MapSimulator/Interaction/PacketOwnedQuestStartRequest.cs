@@ -79,9 +79,9 @@ namespace HaCreator.MapSimulator.Interaction
             bool isAutoCompletionAlertQuestCandidate,
             bool hasCompletionDemandOutstanding)
         {
-            // CWvsContext::TryRegisterAutoCompletionAlertQuest only keeps quests in
-            // m_lAutoCompletionAlertQuest while completion demand is still unmet.
-            return isAutoCompletionAlertQuestCandidate && hasCompletionDemandOutstanding;
+            // CWvsContext::TryRegisterAutoCompletionAlertQuest only adds quests
+            // to m_lAutoCompletionAlertQuest when CheckCompleteDemand returns 0.
+            return isAutoCompletionAlertQuestCandidate && !hasCompletionDemandOutstanding;
         }
 
         internal static bool ResolveIsAutoCompletionAlertQuest(

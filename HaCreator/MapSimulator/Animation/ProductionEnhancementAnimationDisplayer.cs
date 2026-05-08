@@ -175,7 +175,7 @@ namespace HaCreator.MapSimulator.Animation
             return true;
         }
 
-        public void PlayViciousHammerResult(int currentTimeMs)
+        public void PlayViciousHammerCasting(int currentTimeMs)
         {
             _owner.RegisterRepeat(
                 MapSimulatorWindowNames.ItemUpgrade,
@@ -185,6 +185,10 @@ namespace HaCreator.MapSimulator.Animation
                 AnimationDisplayerWindowOverlayPass.Overlay,
                 currentTimeMs,
                 ViciousHammerRepeatDurationMs);
+        }
+
+        public void PlayViciousHammerResult(int currentTimeMs)
+        {
             _owner.RegisterOneTime(
                 MapSimulatorWindowNames.ItemUpgrade,
                 "vicioushammer:finished",

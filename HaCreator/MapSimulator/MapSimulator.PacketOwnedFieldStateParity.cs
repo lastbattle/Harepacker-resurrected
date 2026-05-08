@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator
                     SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs, stateIndex),
                 tag => TryGetDynamicObjectTagState(tag?.Trim()),
                 tag => TryGetDynamicObjectTagStateIndex(tag?.Trim()),
-                (name, stateIndex, currentTick) => TryApplyPacketOwnedNamedObjectState(name, stateIndex, currentTick),
+                (name, stateIndex, currentTick, replayCurrentState) => TryApplyPacketOwnedNamedObjectState(name, stateIndex, currentTick, replayCurrentState),
                 name => TryGetPacketOwnedNamedObjectStateIndex(name),
                 HandleFieldSpecificDataPacketHandoff,
                 out message);
@@ -100,7 +100,7 @@ namespace HaCreator.MapSimulator
             return packetApplied;
         }
 
-        private bool TryApplyPacketOwnedNamedObjectState(string objectName, int stateIndex, int currentTick)
+        private bool TryApplyPacketOwnedNamedObjectState(string objectName, int stateIndex, int currentTick, bool replayCurrentState)
         {
             if (stateIndex < 0 || string.IsNullOrWhiteSpace(objectName))
             {
@@ -120,7 +120,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryApplyAuthoredSingleObjectStateBranch(objects, stateIndex, currentTick))
+            if (TryApplyAuthoredSingleObjectStateBranch(objects, stateIndex, currentTick, replayCurrentState))
             {
                 return true;
             }
@@ -137,11 +137,15 @@ namespace HaCreator.MapSimulator
                 bool selected = stateIndex < objects.Count
                     ? i == stateIndex
                     : objects.Count == 1;
-                _packetStageTransitionObjectVisibility[mapObject] = selected;
+                ApplyPacketOwnedNamedObjectLayerLifecycle(mapObject, selected, stateIndex, currentTick);
                 HidePacketOwnedAuthoredStateBranches(mapObject);
                 if (selected)
                 {
-                    mapObject.RestartAnimation(currentTick);
+                    if (!replayCurrentState)
+                    {
+                        mapObject.RestartAnimation(currentTick);
+                    }
+
                     ApplyPacketOwnedNamedObjectAnimationRepeatMode(mapObject, stateIndex, currentTick);
                     ApplyPacketOwnedNamedObjectSelectedStateLifecycle(mapObject, stateIndex);
                 }
@@ -152,7 +156,7 @@ namespace HaCreator.MapSimulator
             return applied;
         }
 
-        private bool TryApplyAuthoredSingleObjectStateBranch(IReadOnlyList<BaseDXDrawableItem> objects, int stateIndex, int currentTick)
+        private bool TryApplyAuthoredSingleObjectStateBranch(IReadOnlyList<BaseDXDrawableItem> objects, int stateIndex, int currentTick, bool replayCurrentState)
         {
             if (objects == null ||
                 objects.Count != 1 ||
@@ -168,9 +172,13 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionNamedObjectMetadata.TryGetValue(baseObject, out PacketOwnedNamedObjectStateMetadata metadata);
             if (stateIndex == 0)
             {
-                _packetStageTransitionObjectVisibility[baseObject] = true;
+                ApplyPacketOwnedNamedObjectLayerLifecycle(baseObject, selected: true, stateIndex, currentTick);
                 HidePacketOwnedAuthoredStateBranches(baseObject);
-                baseObject.RestartAnimation(currentTick);
+                if (!replayCurrentState)
+                {
+                    baseObject.RestartAnimation(currentTick);
+                }
+
                 ApplyPacketOwnedNamedObjectAnimationRepeatMode(baseObject, metadata, stateIndex, currentTick);
                 ApplyPacketOwnedNamedObjectSelectedStateLifecycle(baseObject, stateIndex);
                 return true;
@@ -182,17 +190,18 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _packetStageTransitionObjectVisibility[baseObject] = false;
-            _packetStageTransitionNamedObjectMovingStates.Remove(baseObject);
-            _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(baseObject);
-            baseObject.Position = Point.Zero;
+            ApplyPacketOwnedNamedObjectLayerLifecycle(baseObject, selected: false, stateIndex, currentTick);
             foreach (KeyValuePair<int, BaseDXDrawableItem> branch in branchesByState)
             {
                 bool selected = branch.Key == stateIndex;
-                _packetStageTransitionObjectVisibility[branch.Value] = selected;
+                ApplyPacketOwnedNamedObjectLayerLifecycle(branch.Value, selected, branch.Key, currentTick);
                 if (selected)
                 {
-                    branch.Value.RestartAnimation(currentTick);
+                    if (!replayCurrentState)
+                    {
+                        branch.Value.RestartAnimation(currentTick);
+                    }
+
                     ApplyPacketOwnedNamedObjectAnimationRepeatMode(branch.Value, metadata, stateIndex, currentTick);
                     ApplyPacketOwnedNamedObjectSelectedStateLifecycle(branch.Value, metadata, stateIndex);
                 }
@@ -214,12 +223,37 @@ namespace HaCreator.MapSimulator
             {
                 if (branchObject != null)
                 {
-                    _packetStageTransitionObjectVisibility[branchObject] = false;
-                    _packetStageTransitionNamedObjectMovingStates.Remove(branchObject);
-                    _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(branchObject);
-                    branchObject.Position = Point.Zero;
+                    ApplyPacketOwnedNamedObjectLayerLifecycle(branchObject, selected: false, stateIndex: 0, currTickCount);
                 }
             }
+        }
+
+        private void ApplyPacketOwnedNamedObjectLayerLifecycle(
+            BaseDXDrawableItem mapObject,
+            bool selected,
+            int stateIndex,
+            int currentTick)
+        {
+            if (mapObject == null)
+            {
+                return;
+            }
+
+            _packetStageTransitionObjectVisibility[mapObject] = selected;
+            _packetStageTransitionNamedObjectLayerLifecycle[mapObject] =
+                BuildPacketOwnedNamedObjectLayerLifecycleSnapshot(
+                    stateIndex,
+                    currentTick,
+                    selected);
+            if (selected)
+            {
+                return;
+            }
+
+            _packetStageTransitionNamedObjectMovingStates.Remove(mapObject);
+            _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(mapObject);
+            mapObject.Position = Point.Zero;
+            mapObject.ApplyMapObjectAnimationRepeatMode(-1, currentTick);
         }
 
         private bool CanApplyAuthoredSingleObjectStateBranch(IReadOnlyList<BaseDXDrawableItem> objects, int stateIndex)
@@ -331,9 +365,13 @@ namespace HaCreator.MapSimulator
                 sideLaneSnapshot?.HasSideLane == true
                     ? $" (sideLaneLifecycle={sideLaneSnapshot.BuildDebugText()})"
                     : string.Empty;
+            string layerLifecycleSuffix =
+                _packetStageTransitionNamedObjectLayerLifecycle.TryGetValue(mapObject, out PacketOwnedNamedObjectLayerLifecycleSnapshot layerSnapshot)
+                    ? $" (layerLifecycle={layerSnapshot.BuildDebugText()})"
+                    : string.Empty;
 
             mapObject.DebugText =
-                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.BuildSelectedStateDebugSuffix(stateIndex)}{metadata.LifecycleDebugSuffix}{sideLaneSuffix}";
+                $"packet-object-state {metadata.Name}[{stateIndex}] {metadata.ObjectPath}{metadata.BuildSelectedStateDebugSuffix(stateIndex)}{metadata.LifecycleDebugSuffix}{sideLaneSuffix}{layerLifecycleSuffix}";
         }
 
         private int? TryGetPacketOwnedNamedObjectStateIndex(string objectName)
@@ -502,6 +540,50 @@ namespace HaCreator.MapSimulator
                 HasChangingObjectMotion: hasMovingState,
                 MutatesReflectionInfo: (lanes & PacketOwnedNamedObjectMetadataLane.ReflectionInfo) != 0,
                 UpdatesQuestVisible: (lanes & PacketOwnedNamedObjectMetadataLane.QuestVisible) != 0);
+        }
+
+        internal static PacketOwnedNamedObjectLayerLifecycleSnapshot BuildPacketOwnedNamedObjectLayerLifecycleSnapshot(
+            int stateIndex,
+            int appliedTick,
+            bool selected)
+        {
+            return new PacketOwnedNamedObjectLayerLifecycleSnapshot(
+                stateIndex,
+                appliedTick,
+                selected,
+                Alpha: selected ? byte.MaxValue : byte.MinValue,
+                StopsPreviousAnimation: !selected,
+                AnimatesSelectedLayer: selected);
+        }
+
+        internal sealed record PacketOwnedNamedObjectLayerLifecycleSnapshot(
+            int StateIndex,
+            int AppliedTick,
+            bool Selected,
+            byte Alpha,
+            bool StopsPreviousAnimation,
+            bool AnimatesSelectedLayer)
+        {
+            public string BuildDebugText()
+            {
+                List<string> parts = new()
+                {
+                    Selected ? "show" : "hide",
+                    $"alpha={Alpha.ToString(CultureInfo.InvariantCulture)}"
+                };
+
+                if (StopsPreviousAnimation)
+                {
+                    parts.Add("stop-prev-animation");
+                }
+
+                if (AnimatesSelectedLayer)
+                {
+                    parts.Add("animate-selected-layer");
+                }
+
+                return string.Join("/", parts);
+            }
         }
 
         internal sealed record PacketOwnedNamedObjectSideLaneLifecycleSnapshot(

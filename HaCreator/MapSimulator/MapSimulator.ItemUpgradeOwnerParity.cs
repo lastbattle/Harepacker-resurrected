@@ -206,6 +206,11 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             if (request.UsesHammerAnimation)
             {
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
+                {
+                    itemUpgradeWindow.PlayPacketOwnedViciousHammerRequestPresentation();
+                }
+
                 TryPlayItemUpgradeViciousHammerStartSound();
             }
 

@@ -202,6 +202,7 @@ namespace HaCreator.MapSimulator.Pools
             internal void RecordShiftAffectedSkillAnimationMutation(
                 int alphaStart,
                 int alphaEnd,
+                RemoteTemporaryStatAvatarEffectState activeTailState,
                 bool movesTailToHead,
                 bool forcedShift,
                 int cadenceUpdateCount)
@@ -232,9 +233,32 @@ namespace HaCreator.MapSimulator.Pools
                         cadenceUpdateCount));
                 }
 
+                int activeLayerHandleId = activeTailState?.SimulatedAffectedLayerHandleId ?? SimulatedAffectedLayerHandleId;
+                int activeListNodeId = activeTailState?.SimulatedAffectedListNodeId ?? SimulatedAffectedListNodeId;
+                if (activeLayerHandleId <= 0)
+                {
+                    activeLayerHandleId = SimulatedAffectedLayerHandleId;
+                }
+
+                if (activeListNodeId <= 0)
+                {
+                    activeListNodeId = SimulatedAffectedListNodeId;
+                }
+
+                if (activeLayerHandleId > 0 && activeListNodeId > 0)
+                {
+                    RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AlphaRelMove(
+                        activeLayerHandleId,
+                        activeListNodeId,
+                        alphaStart: 0,
+                        alphaEnd: 255,
+                        forcedShift: forcedShift,
+                        cadenceUpdateCount: cadenceUpdateCount));
+                }
+
                 RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AnimateRepeat(
-                    SimulatedAffectedLayerHandleId,
-                    SimulatedAffectedListNodeId,
+                    activeLayerHandleId,
+                    activeListNodeId,
                     forcedShift,
                     cadenceUpdateCount));
             }
@@ -915,6 +939,28 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        public sealed class RemoteDragonHudOverlayPresentationState
+        {
+            public int SimulatedLayerHandleId { get; set; }
+            public int SimulatedLayerHandleRefCount { get; private set; }
+            public bool TerminateRequested { get; private set; }
+            public bool IsTerminated { get; private set; }
+
+            public void CaptureRegisteredLayerReference()
+            {
+                SimulatedLayerHandleRefCount = SimulatedLayerHandleId > 0 ? 1 : 0;
+                TerminateRequested = false;
+                IsTerminated = false;
+            }
+
+            public void MarkTerminated()
+            {
+                TerminateRequested = true;
+                IsTerminated = true;
+                SimulatedLayerHandleRefCount = 0;
+            }
+        }
+
         public readonly record struct RemoteDragonCompanionRenderState(
             int CharacterId,
             int JobId,
@@ -1294,6 +1340,7 @@ namespace HaCreator.MapSimulator.Pools
                 ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                 ClearRemoteTransientItemEffectStates(actor);
                 ClearRemoteDragonCompanionState(actor);
+                ClearRemotePreparedSkillState(actor);
                 NotifyActorRemoved(actor.CharacterId, actor.Name);
             }
 
@@ -1328,6 +1375,7 @@ namespace HaCreator.MapSimulator.Pools
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
                     ClearRemoteDragonCompanionState(actor);
+                    ClearRemotePreparedSkillState(actor);
                     ClearPortableChairPairRecord(characterId);
                     PurgeRelationshipRecordsForActor(characterId);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
@@ -1363,6 +1411,7 @@ namespace HaCreator.MapSimulator.Pools
                     ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
                     ClearRemoteTransientItemEffectStates(actor);
                     ClearRemoteDragonCompanionState(actor);
+                    ClearRemotePreparedSkillState(actor);
                     ClearPortableChairPairRecord(characterId);
                     PurgeRelationshipRecordsForActor(characterId);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
@@ -3517,6 +3566,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ClearRemotePreparedSkillState(actor);
             actor.PreparedSkill = new RemotePreparedSkillState
             {
                 SkillId = skillId,
@@ -3569,7 +3619,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (packet.SkillId != RemoteMovingShootNoPrepareAnimationSkillId)
             {
-                actor.PreparedSkill = null;
+                ClearRemotePreparedSkillState(actor);
             }
 
             if (!string.IsNullOrWhiteSpace(packet.ActionName))
@@ -5584,7 +5634,7 @@ namespace HaCreator.MapSimulator.Pools
                     branchNames));
             }
 
-            actor.PreparedSkill = null;
+            ClearRemotePreparedSkillState(actor);
             actor.MovingShootPreparedSkillId = 0;
             return true;
         }
@@ -5619,6 +5669,7 @@ namespace HaCreator.MapSimulator.Pools
             ReleaseCompletedSetItemEffectLayerReferenceForParity(actor);
             ClearRemoteTransientItemEffectStates(actor);
             ClearRemoteDragonCompanionState(actor);
+            ClearRemotePreparedSkillState(actor);
             ClearPortableChairPairRecord(characterId);
             PurgeRelationshipRecordsForActor(characterId);
             NotifyActorRemoved(actor.CharacterId, actor.Name);
@@ -5650,7 +5701,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (!TryResolvePreparedSkillPhase(actor.PreparedSkill, currentTime, out _, out _, out _, out _, out _))
                     {
-                        actor.PreparedSkill = null;
+                        ClearRemotePreparedSkillState(actor);
                     }
                 }
 
@@ -5859,6 +5910,11 @@ namespace HaCreator.MapSimulator.Pools
             if (!TryResolvePreparedSkillWorldAnchor(actor, prepared, currentTime, isHolding, out Vector2 worldAnchor))
             {
                 return null;
+            }
+
+            if (PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
+            {
+                EnsureRemoteDragonHudOverlayLayerReference(prepared);
             }
 
             overlay.WorldAnchor = worldAnchor;
@@ -6481,6 +6537,33 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             dragon.CaptureRegisteredLayerReference();
+        }
+
+        private static void EnsureRemoteDragonHudOverlayLayerReference(RemotePreparedSkillState prepared)
+        {
+            if (prepared == null
+                || !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
+            {
+                return;
+            }
+
+            prepared.DragonHudOverlay ??= new RemoteDragonHudOverlayPresentationState();
+            if (prepared.DragonHudOverlay.SimulatedLayerHandleRefCount > 0)
+            {
+                return;
+            }
+
+            if (prepared.DragonHudOverlay.SimulatedLayerHandleId <= 0)
+            {
+                prepared.DragonHudOverlay.SimulatedLayerHandleId = NextRemoteDragonHudOverlayLayerHandleId();
+            }
+
+            prepared.DragonHudOverlay.CaptureRegisteredLayerReference();
+        }
+
+        internal static void EnsureRemoteDragonHudOverlayLayerReferenceForTesting(RemotePreparedSkillState prepared)
+        {
+            EnsureRemoteDragonHudOverlayLayerReference(prepared);
         }
 
         private static void UpdateRemoteDragonCompanionFollowState(
@@ -9278,6 +9361,17 @@ namespace HaCreator.MapSimulator.Pools
             actor.RemoteDragonCompanion = null;
         }
 
+        private static void ClearRemotePreparedSkillState(RemoteUserActor actor)
+        {
+            if (actor?.PreparedSkill == null)
+            {
+                return;
+            }
+
+            actor.PreparedSkill.DragonHudOverlay?.MarkTerminated();
+            actor.PreparedSkill = null;
+        }
+
         private void UpdatePacketOwnedEmotionState(RemoteUserActor actor, int currentTime)
         {
             if (actor?.PacketOwnedEmotion == null)
@@ -9490,6 +9584,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            IReadOnlyDictionary<AvatarRenderLayer, int> copiedLayerHandleRefCounts =
+                ResolveRemoteActiveEffectMotionBlurCopiedLayerHandleRefCounts(layerHandleIds, layerHandleRefCounts);
             for (int i = 0; i < RemoteActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
             {
                 AvatarRenderLayer layer = RemoteActiveEffectMotionBlurLayerCaptureOrder[i];
@@ -9522,7 +9618,7 @@ namespace HaCreator.MapSimulator.Pools
                     SourceLayer = layer,
                     SourceLayerCaptureOrder = i,
                     SimulatedLayerHandleId = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
-                    SimulatedLayerHandleRefCount = ResolveRemoteActiveEffectMotionBlurLayerHandleRefCount(layer, layerHandleIds, layerHandleRefCounts),
+                    SimulatedLayerHandleRefCount = ResolveRemoteActiveEffectMotionBlurLayerHandleRefCount(layer, copiedLayerHandleRefCounts),
                     SimulatedSnapshotLayerHandleId = NextRemoteActiveEffectMotionBlurLayerHandleId(),
                     SimulatedSnapshotLayerHandleRefCount = 1,
                     SimulatedRepeatAnimationStateId = NextRemoteActiveEffectMotionBlurStateId(),
@@ -9550,21 +9646,79 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolveRemoteActiveEffectMotionBlurLayerHandleRefCount(
             AvatarRenderLayer layer,
+            IReadOnlyDictionary<AvatarRenderLayer, int> copiedLayerHandleRefCounts)
+        {
+            return copiedLayerHandleRefCounts != null
+                && copiedLayerHandleRefCounts.TryGetValue(layer, out int refCount)
+                ? Math.Max(0, refCount)
+                : 0;
+        }
+
+        private static IReadOnlyDictionary<AvatarRenderLayer, int> ResolveRemoteActiveEffectMotionBlurCopiedLayerHandleRefCounts(
             IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
             IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleRefCounts)
         {
-            if (ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds) <= 0)
+            if (layerHandleIds == null || layerHandleIds.Count == 0)
             {
-                return 0;
+                return new Dictionary<AvatarRenderLayer, int>();
             }
 
-            if (layerHandleRefCounts != null
-                && layerHandleRefCounts.TryGetValue(layer, out int refCount))
+            var ownerRefCountsByHandle = new Dictionary<int, int>();
+            var ownerRefCountsByLayer = new Dictionary<AvatarRenderLayer, int>();
+            for (int i = 0; i < RemoteActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
             {
-                return refCount > 0 ? refCount + 1 : 0;
+                AvatarRenderLayer layer = RemoteActiveEffectMotionBlurLayerCaptureOrder[i];
+                int handleId = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds);
+                if (handleId <= 0)
+                {
+                    continue;
+                }
+
+                int ownerRefCount = 0;
+                if (layerHandleRefCounts != null
+                    && layerHandleRefCounts.TryGetValue(layer, out int resolvedRefCount))
+                {
+                    ownerRefCount = Math.Max(0, resolvedRefCount);
+                }
+                else
+                {
+                    ownerRefCountsByHandle.TryGetValue(handleId, out ownerRefCount);
+                    ownerRefCount++;
+                }
+
+                ownerRefCountsByLayer[layer] = ownerRefCount;
+                ownerRefCountsByHandle[handleId] = Math.Max(ownerRefCountsByHandle.TryGetValue(handleId, out int existingRefCount)
+                    ? existingRefCount
+                    : 0, ownerRefCount);
             }
 
-            return 2;
+            var snapshotRefCountsByHandle = new Dictionary<int, int>();
+            var copiedRefCountsByLayer = new Dictionary<AvatarRenderLayer, int>();
+            for (int i = 0; i < RemoteActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = RemoteActiveEffectMotionBlurLayerCaptureOrder[i];
+                int handleId = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds);
+                if (handleId <= 0)
+                {
+                    continue;
+                }
+
+                if (!ownerRefCountsByLayer.TryGetValue(layer, out int layerOwnerRefCount)
+                    || layerOwnerRefCount <= 0)
+                {
+                    copiedRefCountsByLayer[layer] = 0;
+                    continue;
+                }
+
+                snapshotRefCountsByHandle.TryGetValue(handleId, out int snapshotRefCount);
+                snapshotRefCount++;
+                snapshotRefCountsByHandle[handleId] = snapshotRefCount;
+                copiedRefCountsByLayer[layer] =
+                    (ownerRefCountsByHandle.TryGetValue(handleId, out int ownerRefCount) ? ownerRefCount : 1)
+                    + snapshotRefCount;
+            }
+
+            return copiedRefCountsByLayer;
         }
 
         private static IEnumerable<KeyValuePair<AvatarRenderLayer, int>> EnumerateRemoteActiveEffectMotionBlurLayerCopyOrder(
@@ -9747,6 +9901,11 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
         }
 
+        private static int NextRemoteDragonHudOverlayLayerHandleId()
+        {
+            return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
         internal static IReadOnlyDictionary<AvatarRenderLayer, int> CreateRemoteActiveEffectMotionBlurLayerHandleIdsForTesting()
         {
             return CreateRemoteActiveEffectMotionBlurLayerHandleIds();
@@ -9785,6 +9944,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteDragonCompanionLayerHandleIdForTesting()
         {
             return NextRemoteDragonCompanionLayerHandleId();
+        }
+
+        internal static int NextRemoteDragonHudOverlayLayerHandleIdForTesting()
+        {
+            return NextRemoteDragonHudOverlayLayerHandleId();
         }
 
         internal static bool IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMapForTesting(
@@ -13704,9 +13868,10 @@ namespace HaCreator.MapSimulator.Pools
             tailState.RecordShiftAffectedSkillAnimationMutation(
                 ResolveRemoteTemporaryStatAffectedLayerAlphaByte(tailStartAlpha),
                 alphaEnd: 0,
+                activeTailState: currentState,
                 movesTailToHead: true,
                 forcedShift: ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(previousState, currentState),
-                shiftCadenceUpdateCount);
+                cadenceUpdateCount: shiftCadenceUpdateCount);
             return true;
         }
 
@@ -16068,7 +16233,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             releasedPreparedSkillId = actor.PreparedSkill.SkillId;
-            actor.PreparedSkill = null;
+            ClearRemotePreparedSkillState(actor);
             return true;
         }
 
@@ -17584,6 +17749,7 @@ namespace HaCreator.MapSimulator.Pools
         public int MaxHoldDurationMs { get; init; }
         public PreparedSkillHudTextVariant TextVariant { get; init; }
         public bool ShowText { get; init; } = true;
+        public RemoteUserActorPool.RemoteDragonHudOverlayPresentationState DragonHudOverlay { get; set; }
         public string DragonActionName { get; set; }
         public int DragonActionStartTime { get; set; } = int.MinValue;
         public int DragonOwnerActionStartTime { get; set; } = int.MinValue;

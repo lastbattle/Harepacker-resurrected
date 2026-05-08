@@ -1802,6 +1802,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (IsClientPickupBlocked(drop))
                     continue;
 
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                    continue;
+
                 float dx = drop.X - petX;
                 float dy = drop.Y - petY;
                 float distSq = dx * dx + dy * dy;

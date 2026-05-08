@@ -826,7 +826,9 @@ namespace HaCreator.MapSimulator.UI
 
         public void PlayPacketOwnedViciousHammerRequestPresentation()
         {
-            _productionEnhancementAnimationDisplayer?.PlayViciousHammerResult(Environment.TickCount);
+            // CUIItemUpgrade::OnButtonClicked emits Effect_ViciousHammer with nFinished=0,
+            // which is the repeat/casting layer only. ShowResult owns the finished layer.
+            _productionEnhancementAnimationDisplayer?.PlayViciousHammerCasting(Environment.TickCount);
         }
 
         public bool ApplyPacketOwnedUpgradeSlotState(EquipSlot slot, int packetUpgradeState)

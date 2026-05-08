@@ -1109,6 +1109,162 @@ namespace HaCreator.MapSimulator.Animation
                 initialElapsedMs);
         }
 
+        internal void AddPacketOwnedRemoteGenericUserState(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteGenericUserState,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteItemMake(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteItemMake,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteMakerSkill(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteMakerSkill,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteStringEffect(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteStringEffect,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedRemoteMobAttackHit(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedRemoteMobAttackHit,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedReservedVisual(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedMobOneTime(
+                frames,
+                sourceUol,
+                getPosition,
+                getFlip,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedReservedVisual,
+                zOrder,
+                initialElapsedMs);
+        }
+
         internal void AddFullChargedAngerGauge(
             List<IDXObject> frames,
             string sourceUol,
@@ -3814,7 +3970,7 @@ namespace HaCreator.MapSimulator.Animation
         DamageNumber = 1
     }
 
-    internal enum AnimationOneTimeOwner
+    public enum AnimationOneTimeOwner
     {
         Generic = 0,
         FullChargedAngerGauge = 1,
@@ -3832,7 +3988,13 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedAreaExplosion = 13,
         PacketOwnedDropExplosion = 14,
         PacketOwnedUpgradeTomb = 15,
-        PacketOwnedTeleport = 16
+        PacketOwnedTeleport = 16,
+        PacketOwnedRemoteGenericUserState = 17,
+        PacketOwnedRemoteItemMake = 18,
+        PacketOwnedRemoteMakerSkill = 19,
+        PacketOwnedRemoteStringEffect = 20,
+        PacketOwnedRemoteMobAttackHit = 21,
+        PacketOwnedReservedVisual = 22
     }
 
     internal enum AnimationFallingOwner
@@ -3869,7 +4031,7 @@ namespace HaCreator.MapSimulator.Animation
         RegisterRepeatAnimation = 5
     }
 
-    internal enum FollowParticleRecoveredNativeRelOffsetMode
+    public enum FollowParticleRecoveredNativeRelOffsetMode
     {
         ParentRelative = 0,
         AbsoluteOrigin = 1

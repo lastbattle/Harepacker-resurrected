@@ -30,18 +30,29 @@ namespace HaCreator.MapSimulator
 
     public sealed class ImeCompositionState
     {
-        public static readonly ImeCompositionState Empty = new(string.Empty, Array.Empty<int>(), -1);
+        public static readonly ImeCompositionState Empty = new(string.Empty, Array.Empty<int>(), -1, Array.Empty<byte>());
 
         public ImeCompositionState(string text, IReadOnlyList<int> clauseOffsets, int cursorPosition)
+            : this(text, clauseOffsets, cursorPosition, Array.Empty<byte>())
+        {
+        }
+
+        public ImeCompositionState(
+            string text,
+            IReadOnlyList<int> clauseOffsets,
+            int cursorPosition,
+            IReadOnlyList<byte> attributes)
         {
             Text = text ?? string.Empty;
             ClauseOffsets = clauseOffsets ?? Array.Empty<int>();
             CursorPosition = cursorPosition;
+            Attributes = attributes ?? Array.Empty<byte>();
         }
 
         public string Text { get; }
         public IReadOnlyList<int> ClauseOffsets { get; }
         public int CursorPosition { get; }
+        public IReadOnlyList<byte> Attributes { get; }
         public bool HasText => Text.Length > 0;
     }
 

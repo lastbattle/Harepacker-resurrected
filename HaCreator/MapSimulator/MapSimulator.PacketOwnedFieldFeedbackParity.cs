@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator
         private PacketFieldBossTimerVisualState _packetFieldBossTimerClockState;
         private PacketFieldClockVisualState _packetFieldClockState;
         private bool _packetOwnedWhisperChaseTransferArmed;
+        private readonly HashSet<byte> _packetOwnedDisabledGroupMessageFamilies = new();
+        private bool _packetOwnedIncomingWhisperEnabled = true;
         private Texture2D _packetFieldClockWindowPixelTexture;
         private Texture2D _packetFieldBossTimerBackgroundTexture;
         private Texture2D _packetFieldBossTimerHourBackgroundTexture;
@@ -242,6 +244,8 @@ namespace HaCreator.MapSimulator
                 ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
                 IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name),
                 IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
+                IsGroupMessageFamilyEnabled = IsPacketOwnedGroupMessageFamilyEnabled,
+                IsIncomingWhisperEnabled = () => _packetOwnedIncomingWhisperEnabled,
                 IsUnderCover = static () => false,
                 QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
                 ConsumeWhisperChaseTransferRequest = ConsumePacketOwnedWhisperChaseTransferRequest,
@@ -261,6 +265,24 @@ namespace HaCreator.MapSimulator
                 RestoreFieldPropertyClock = RestorePacketOwnedFieldPropertyClock,
                 InvalidateWhisperUserListWindow = InvalidatePacketOwnedWhisperUserListWindow,
                 ConsumeTransferFieldRequestFailure = ConsumeSharedExclusiveRequestStateFromFieldFeedbackTransferFailure
+            };
+        }
+
+        private bool IsPacketOwnedGroupMessageFamilyEnabled(byte family)
+        {
+            return !_packetOwnedDisabledGroupMessageFamilies.Contains(family);
+        }
+
+        private static string ResolvePacketOwnedGroupMessageFamilyLabel(byte family)
+        {
+            return family switch
+            {
+                0 => "Friend",
+                1 => "Party",
+                2 => "Guild",
+                3 => "Alliance",
+                6 => "Expedition",
+                _ => $"Family {family}"
             };
         }
 
@@ -2713,7 +2735,9 @@ namespace HaCreator.MapSimulator
                 PacketOwnedUiClientLoadLayerCanvas,
                 PacketOwnedUiClientLoadLayerOption,
                 PacketOwnedUiClientLoadLayerReserved,
-                LoadLayerFlip: false);
+                LoadLayerFlip: false,
+                AnimateMode: PacketOwnedUiAnimateMode.GaStop,
+                RegisterOneTimeAnimation: true);
         }
 
         private static PacketOwnedUiRegistration ResolvePacketOwnedRewardRouletteRegistration(
@@ -2741,7 +2765,9 @@ namespace HaCreator.MapSimulator
                 PacketOwnedUiClientLoadLayerCanvas,
                 PacketOwnedUiClientLoadLayerOption,
                 PacketOwnedUiClientLoadLayerReserved,
-                LoadLayerFlip: false);
+                LoadLayerFlip: false,
+                AnimateMode: PacketOwnedUiAnimateMode.GaStop,
+                RegisterOneTimeAnimation: true);
         }
 
         private static int ScalePacketOwnedUiOffset(int referenceOffset, int actualSize, int referenceSize)
@@ -2959,6 +2985,15 @@ namespace HaCreator.MapSimulator
                 registration.LoadLayerFlip);
         }
 
+        internal static (PacketOwnedUiAnimateMode AnimateMode, bool RegisterOneTimeAnimation) GetPacketOwnedScreenEffectAnimationRegistrationForTest()
+        {
+            PacketOwnedUiRegistration registration = ResolvePacketOwnedScreenEffectRegistration(
+                PacketOwnedUiReferenceWidth,
+                PacketOwnedUiReferenceHeight,
+                "screen:test");
+            return (registration.AnimateMode, registration.RegisterOneTimeAnimation);
+        }
+
         internal static string GetPacketOwnedScreenEffectAnimationKey(string descriptor)
         {
             return PacketOwnedScreenEffectAnimationOwnerKey;
@@ -3035,6 +3070,23 @@ namespace HaCreator.MapSimulator
                 registration.Alpha,
                 registration.LoadLayerReserved,
                 registration.LoadLayerFlip);
+        }
+
+        internal static (PacketOwnedUiAnimateMode AnimateMode, bool RegisterOneTimeAnimation) GetPacketOwnedRewardRouletteAnimationRegistrationForTest(int layerIndex)
+        {
+            PacketOwnedRewardRouletteLayerRole layerRole = layerIndex switch
+            {
+                0 => PacketOwnedRewardRouletteLayerRole.Job,
+                1 => PacketOwnedRewardRouletteLayerRole.Part,
+                2 => PacketOwnedRewardRouletteLayerRole.Level,
+                _ => throw new ArgumentOutOfRangeException(nameof(layerIndex))
+            };
+            PacketOwnedUiRegistration registration = ResolvePacketOwnedRewardRouletteRegistration(
+                PacketOwnedUiReferenceWidth,
+                PacketOwnedUiReferenceHeight,
+                "reward-roulette",
+                layerRole);
+            return (registration.AnimateMode, registration.RegisterOneTimeAnimation);
         }
 
         internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedRewardRouletteRegistrationForTest(
@@ -3184,6 +3236,8 @@ namespace HaCreator.MapSimulator
             return args[0].ToLowerInvariant() switch
             {
                 "group" => HandlePacketOwnedFieldFeedbackGroupCommand(args),
+                "groupfilter" => HandlePacketOwnedFieldFeedbackGroupFilterCommand(args),
+                "whisperfilter" => HandlePacketOwnedFieldFeedbackWhisperFilterCommand(args),
                 "whisperin" => HandlePacketOwnedFieldFeedbackWhisperIncomingCommand(args),
                 "whisperweather" => HandlePacketOwnedFieldFeedbackWhisperWeatherCommand(args),
                 "whisperresult" => HandlePacketOwnedFieldFeedbackWhisperResultCommand(args),
@@ -3209,7 +3263,7 @@ namespace HaCreator.MapSimulator
                 "chaoszakumtimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.ChaosZakumTimer),
                 "hontaletimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.HontaleTimer),
                 "fadeoutforce" => HandlePacketOwnedFieldFeedbackFadeOutForceCommand(args),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperweather <sender> <blowType> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value> [x y]|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|clock <realtime|countdown|event|cakepie> ...|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|groupfilter <friend|guild|alliance|association|0|2|3> <on|off>|whisperfilter <on|off>|whisperin <sender> <channel> <text>|whisperweather <sender> <blowType> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value> [x y]|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|clock <realtime|countdown|event|cakepie> ...|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
             };
         }
 
@@ -3249,6 +3303,41 @@ namespace HaCreator.MapSimulator
             return ApplyPacketOwnedFieldFeedbackHelper(
                 PacketFieldFeedbackPacketKind.GroupMessage,
                 PacketFieldFeedbackRuntime.BuildGroupMessagePayload(family, args[2], string.Join(" ", args.Skip(3))));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackGroupFilterCommand(string[] args)
+        {
+            if (args.Length < 3
+                || !PacketFieldFeedbackRuntime.TryResolveGroupFamilyToken(args[1], out byte family)
+                || family is not (0 or 2 or 3)
+                || !TryParsePacketOwnedBooleanToken(args[2], out bool enabled))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback groupfilter <friend|guild|alliance|association|0|2|3> <on|off>");
+            }
+
+            if (enabled)
+            {
+                _packetOwnedDisabledGroupMessageFamilies.Remove(family);
+            }
+            else
+            {
+                _packetOwnedDisabledGroupMessageFamilies.Add(family);
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(
+                $"{ResolvePacketOwnedGroupMessageFamilyLabel(family)} packet-owned group chat receive flag is {(enabled ? "enabled" : "disabled")}.");
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackWhisperFilterCommand(string[] args)
+        {
+            if (args.Length < 2 || !TryParsePacketOwnedBooleanToken(args[1], out bool enabled))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback whisperfilter <on|off>");
+            }
+
+            _packetOwnedIncomingWhisperEnabled = enabled;
+            return ChatCommandHandler.CommandResult.Ok(
+                $"Packet-owned incoming whisper receive flag is {(enabled ? "enabled" : "disabled")}.");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackWhisperIncomingCommand(string[] args)
@@ -3421,6 +3510,11 @@ namespace HaCreator.MapSimulator
             RewardRouletteLevel = 3
         }
 
+        internal enum PacketOwnedUiAnimateMode
+        {
+            GaStop
+        }
+
         private readonly record struct PacketOwnedUiRegistration(
             PacketOwnedUiAnchorMode AnchorMode,
             int OffsetX,
@@ -3433,7 +3527,9 @@ namespace HaCreator.MapSimulator
             int LoadLayerCanvas,
             int LoadLayerOption,
             int LoadLayerReserved,
-            bool LoadLayerFlip);
+            bool LoadLayerFlip,
+            PacketOwnedUiAnimateMode AnimateMode,
+            bool RegisterOneTimeAnimation);
 
         private readonly record struct PacketOwnedFieldClockLayout(
             PacketOwnedUiAnchorMode AnchorMode,

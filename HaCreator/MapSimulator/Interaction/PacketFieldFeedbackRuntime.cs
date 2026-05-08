@@ -65,6 +65,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<int, string> ResolveChannelName { get; init; }
         internal Func<string, bool> IsBlacklistedName { get; init; }
         internal Func<string, bool> IsBlockedFriendName { get; init; }
+        internal Func<byte, bool> IsGroupMessageFamilyEnabled { get; init; }
+        internal Func<bool> IsIncomingWhisperEnabled { get; init; }
         internal Func<bool> IsUnderCover { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
         internal Func<bool> ConsumeWhisperChaseTransferRequest { get; init; }
@@ -801,14 +803,21 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             byte family = reader.ReadByte();
-            string sender = ReadMapleString(reader);
-            string body = NormalizeFieldChatText(ReadMapleString(reader));
-
             if (!TryResolveGroupFamily(family, out int chatLogType, out string prefix))
             {
                 message = $"Unsupported group message family {family}.";
                 return false;
             }
+
+            if (!IsGroupMessageFamilyEnabled(family, callbacks))
+            {
+                _statusMessage = $"Suppressed packet-owned {prefix.Trim('[', ']')} chat because the client receive flag is disabled.";
+                message = _statusMessage;
+                return true;
+            }
+
+            string sender = ReadMapleString(reader);
+            string body = NormalizeFieldChatText(ReadMapleString(reader));
 
             if (ShouldSuppressBlacklistedGroupMessage(family, sender, callbacks))
             {
@@ -853,7 +862,7 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             callbacks?.RememberWhisperTarget?.Invoke(sender);
                             _lastWhisperTarget = sender;
-                            _statusMessage = $"Suppressed packet-owned whisper from blocked sender {sender}.";
+                            _statusMessage = $"Suppressed packet-owned whisper from disabled or blocked sender {sender}.";
                             message = _statusMessage;
                             return true;
                         }
@@ -2151,6 +2160,21 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        private static bool IsGroupMessageFamilyEnabled(byte family, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (family is not (0 or 2 or 3))
+            {
+                return true;
+            }
+
+            if (callbacks?.IsGroupMessageFamilyEnabled == null)
+            {
+                return true;
+            }
+
+            return callbacks.IsGroupMessageFamilyEnabled(family);
+        }
+
         private static bool ShouldSuppressBlockedGroupMessage(string sender, PacketFieldFeedbackCallbacks callbacks)
         {
             if (string.IsNullOrWhiteSpace(sender) || callbacks?.IsBlockedFriendName == null)
@@ -2166,6 +2190,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (string.IsNullOrWhiteSpace(sender))
             {
                 return false;
+            }
+
+            if (callbacks?.IsIncomingWhisperEnabled?.Invoke() == false)
+            {
+                return true;
             }
 
             return callbacks?.IsBlacklistedName?.Invoke(sender) == true

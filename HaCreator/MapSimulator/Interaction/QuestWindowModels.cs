@@ -28,7 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
         MarkNpc
     }
 
-    internal enum QuestDetailDeliveryType
+    public enum QuestDetailDeliveryType
     {
         None,
         Accept,
@@ -44,7 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
         Item
     }
 
-    internal enum QuestDetailInlineReferenceSource
+    public enum QuestDetailInlineReferenceSource
     {
         Unknown,
         RequirementText,

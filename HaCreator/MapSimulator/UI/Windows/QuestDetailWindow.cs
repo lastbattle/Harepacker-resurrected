@@ -57,8 +57,9 @@ namespace HaCreator.MapSimulator.UI
         private const float ClientHeaderScale = 0.58f;
         private const float ClientDetailScale = 0.58f;
         private const float ClientNavigationScale = 0.52f;
-        private const int ClientQuestDetailFontFamilyStringPoolId = 0x05AF; // CUIQuestInfoDetail::OnCreate
-        private const int ClientQuestDetailFontStyleStringPoolId = 0x05B0;  // CUIQuestInfoDetail::OnCreate
+        private const int ClientQuestDetailFontObjectStringPoolId = 0x05AF; // CUIQuestInfoDetail::OnCreate PcCreateObject
+        private const int ClientQuestDetailFontStyleStringPoolId = 0x05B0;  // CUIQuestInfoDetail::OnCreate IWzFont::Create style
+        private const int ClientQuestDetailFontFaceStringPoolId = 0x1A25;   // CUIQuestInfoDetail::OnCreate IWzFont::Create face
         private const string ClientQuestDetailFontAlias = "Canvas#Font";
         private const string ClientQuestDetailFontFallbackFamily = "Arial";
         private const string ClientQuestDetailFontBoldStyleFallbackToken = "BA";
@@ -2500,6 +2501,14 @@ namespace HaCreator.MapSimulator.UI
             return ResolveQuestDetailBoldFontStyle(styleToken);
         }
 
+        internal static (int ObjectId, int FaceId, int StyleId) ResolveQuestDetailClientFontStringPoolIdsForTesting()
+        {
+            return (
+                ClientQuestDetailFontObjectStringPoolId,
+                ClientQuestDetailFontFaceStringPoolId,
+                ClientQuestDetailFontStyleStringPoolId);
+        }
+
         private static bool TryParseQuestInlineReferenceToken(string payload, out QuestDetailInlineReference reference)
         {
             reference = default;
@@ -3639,10 +3648,13 @@ namespace HaCreator.MapSimulator.UI
                 return _resolvedClientQuestDetailFontFamily;
             }
 
-            string requestedFontFamily = MapleStoryStringPool.GetOrFallback(
-                ClientQuestDetailFontFamilyStringPoolId,
-                ClientQuestDetailFontFallbackFamily);
+            _ = MapleStoryStringPool.GetOrFallback(
+                ClientQuestDetailFontObjectStringPoolId,
+                ClientQuestDetailFontAlias);
             _ = MapleStoryStringPool.GetOrNull(ClientQuestDetailFontStyleStringPoolId);
+            string requestedFontFamily = MapleStoryStringPool.GetOrFallback(
+                ClientQuestDetailFontFaceStringPoolId,
+                ClientQuestDetailFontFallbackFamily);
             _resolvedClientQuestDetailFontFamily = NormalizeQuestDetailFontFamilyOverride(
                 requestedFontFamily,
                 ClientQuestDetailFontFallbackFamily);

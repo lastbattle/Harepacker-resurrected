@@ -1005,6 +1005,62 @@ namespace HaCreator.MapSimulator.Pools
                     PropPercent: primaryStatusPropPercent));
             }
 
+            if (ContainsToken(hostileSearchText, "stopPotion", "potionLimit", "recoveryLimit"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.StopPotion,
+                    durationMs,
+                    1,
+                    PropPercent: primaryStatusPropPercent));
+            }
+
+            if (ContainsToken(hostileSearchText, "fear"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Fear,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 50),
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
+            if (ContainsToken(hostileSearchText, "banish"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Banish,
+                    durationMs,
+                    1,
+                    PropPercent: primaryStatusPropPercent));
+            }
+
+            if (ContainsToken(hostileSearchText, "seduce", "attract"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Attract,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 1),
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
+            if (ContainsToken(hostileSearchText, "bomb"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Bomb,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 1, preferDotDamage: true),
+                    dotTickIntervalMs,
+                    RemainingCount: 1,
+                    PropPercent: primaryStatusPropPercent));
+            }
+
+            if (ContainsToken(hostileSearchText, "battlefieldFlag"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.BattlefieldFlag,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 1),
+                    PropPercent: primaryStatusPropPercent));
+            }
+
             if (ContainsToken(hostileSearchText, "amplifyDamage"))
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
@@ -1090,7 +1146,16 @@ namespace HaCreator.MapSimulator.Pools
                     "buffLimit",
                     "restrict",
                     "attackLimit",
-                    "incapacitate"))
+                    "incapacitate",
+                    "stopPotion",
+                    "potionLimit",
+                    "recoveryLimit",
+                    "fear",
+                    "banish",
+                    "seduce",
+                    "attract",
+                    "bomb",
+                    "battlefieldFlag"))
             {
                 return true;
             }

@@ -3299,7 +3299,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
                 ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
 
-            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedFallbackActionNames())
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedFallbackActionNames(supportedRawActionNames))
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
@@ -3441,7 +3441,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // action-specific helper row is missing from Character/00002000.img. Keep mounted
             // piece rows as first priority, then synthesize built-in piece plans or remapped
             // aliases for any remaining client-initialized rows.
-            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedFallbackActionNames())
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedFallbackActionNames(supportedRawActionNames))
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
@@ -7007,7 +7007,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
-                string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(child.Name);
+                string normalizedName = NormalizeClientSkillAssetUolVariantFieldName(child.Name);
                 bool characterLevelField = ClientSkillAssetCharacterLevelFieldNames.Contains(
                     normalizedName,
                     StringComparer.Ordinal);
@@ -7103,7 +7103,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
-                string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(child.Name);
+                string normalizedName = NormalizeClientSkillAssetUolVariantFieldName(child.Name);
                 bool characterLevelField = ClientSkillAssetCharacterLevelFieldNames.Contains(
                     normalizedName,
                     StringComparer.Ordinal);
@@ -7381,6 +7381,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            foreach (string recordFragment in EnumerateClientSummonedUolStructuredTableRecordFragments(recordText))
+            {
+                foreach (ClientSummonedUolStructuredRecordCandidateValue candidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValuesForSingleRecord(
+                             recordFragment,
+                             skillId))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<ClientSummonedUolStructuredRecordCandidateValue> EnumerateClientSummonedUolStructuredTableRecordCandidateValuesForSingleRecord(
+            string recordText,
+            int skillId)
+        {
+            if (string.IsNullOrWhiteSpace(recordText) || skillId <= 0)
+            {
+                yield break;
+            }
+
             var valueCandidates = new List<string>();
             bool foundOwnerField = false;
             bool ownerMatches = false;
@@ -7446,6 +7466,226 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static IEnumerable<string> EnumerateClientSummonedUolStructuredTableRecordFragments(string recordText)
+        {
+            if (string.IsNullOrWhiteSpace(recordText))
+            {
+                yield break;
+            }
+
+            string normalizedText = NormalizeClientSummonedUolEncodedPathSyntax(recordText).Trim();
+            if (string.IsNullOrWhiteSpace(normalizedText))
+            {
+                yield break;
+            }
+
+            bool yieldedTableRows = false;
+            foreach (string tableRow in EnumerateClientSummonedUolHeaderDelimitedTableRows(normalizedText))
+            {
+                yieldedTableRows = true;
+                yield return tableRow;
+            }
+
+            if (yieldedTableRows)
+            {
+                yield break;
+            }
+
+            bool yieldedObjectRows = false;
+            foreach (string objectRow in EnumerateClientSummonedUolJsonObjectTableRows(normalizedText))
+            {
+                yieldedObjectRows = true;
+                yield return objectRow;
+            }
+
+            if (yieldedObjectRows)
+            {
+                yield break;
+            }
+
+            string[] lines = normalizedText
+                .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(static line => line.Trim())
+                .Where(static line => !string.IsNullOrWhiteSpace(line))
+                .ToArray();
+            if (lines.Length > 1
+                && lines.All(IsClientSummonedUolStructuredTableRecord))
+            {
+                foreach (string line in lines)
+                {
+                    yield return line;
+                }
+
+                yield break;
+            }
+
+            yield return normalizedText;
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolHeaderDelimitedTableRows(string recordText)
+        {
+            if (string.IsNullOrWhiteSpace(recordText))
+            {
+                yield break;
+            }
+
+            string[] lines = recordText
+                .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(static line => line.Trim())
+                .Where(static line => !string.IsNullOrWhiteSpace(line))
+                .ToArray();
+            if (lines.Length < 2)
+            {
+                yield break;
+            }
+
+            char delimiter = lines[0].IndexOf('\t') >= 0
+                ? '\t'
+                : lines[0].IndexOf(',') >= 0
+                    ? ','
+                    : '\0';
+            if (delimiter == '\0')
+            {
+                yield break;
+            }
+
+            string[] headers = SplitClientSummonedUolDelimitedRecordLine(lines[0], delimiter)
+                .Select(TrimClientSummonedUolRecordTextFieldToken)
+                .ToArray();
+            if (headers.Length < 2
+                || !headers.Any(IsClientSummonedUolTableOwnerFieldName)
+                || !headers.Any(IsClientSummonedUolTableEntryValueName))
+            {
+                yield break;
+            }
+
+            for (int lineIndex = 1; lineIndex < lines.Length; lineIndex++)
+            {
+                string[] values = SplitClientSummonedUolDelimitedRecordLine(lines[lineIndex], delimiter)
+                    .Select(TrimClientSummonedUolRecordTextFieldToken)
+                    .ToArray();
+                int fieldCount = Math.Min(headers.Length, values.Length);
+                if (fieldCount <= 0)
+                {
+                    continue;
+                }
+
+                var fields = new List<string>();
+                for (int fieldIndex = 0; fieldIndex < fieldCount; fieldIndex++)
+                {
+                    if (string.IsNullOrWhiteSpace(headers[fieldIndex])
+                        || string.IsNullOrWhiteSpace(values[fieldIndex]))
+                    {
+                        continue;
+                    }
+
+                    fields.Add($"{headers[fieldIndex]}={values[fieldIndex]}");
+                }
+
+                if (fields.Count > 0)
+                {
+                    yield return string.Join(";", fields);
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolJsonObjectTableRows(string recordText)
+        {
+            if (string.IsNullOrWhiteSpace(recordText)
+                || recordText.IndexOf('{') < 0
+                || recordText.IndexOf('}') < 0)
+            {
+                yield break;
+            }
+
+            int objectStart = -1;
+            int depth = 0;
+            bool inQuote = false;
+            char quoteChar = '\0';
+            for (int i = 0; i < recordText.Length; i++)
+            {
+                char current = recordText[i];
+                if ((current == '"' || current == '\'') && (i == 0 || recordText[i - 1] != '\\'))
+                {
+                    if (!inQuote)
+                    {
+                        inQuote = true;
+                        quoteChar = current;
+                    }
+                    else if (quoteChar == current)
+                    {
+                        inQuote = false;
+                        quoteChar = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (inQuote)
+                {
+                    continue;
+                }
+
+                if (current == '{')
+                {
+                    if (depth == 0)
+                    {
+                        objectStart = i;
+                    }
+
+                    depth++;
+                }
+                else if (current == '}' && depth > 0)
+                {
+                    depth--;
+                    if (depth == 0 && objectStart >= 0)
+                    {
+                        yield return recordText.Substring(objectStart, i - objectStart + 1);
+                        objectStart = -1;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> SplitClientSummonedUolDelimitedRecordLine(string line, char delimiter)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                yield break;
+            }
+
+            int segmentStart = 0;
+            bool inQuote = false;
+            char quoteChar = '\0';
+            for (int i = 0; i < line.Length; i++)
+            {
+                char current = line[i];
+                if ((current == '"' || current == '\'') && (i == 0 || line[i - 1] != '\\'))
+                {
+                    if (!inQuote)
+                    {
+                        inQuote = true;
+                        quoteChar = current;
+                    }
+                    else if (quoteChar == current)
+                    {
+                        inQuote = false;
+                        quoteChar = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (!inQuote && current == delimiter)
+                {
+                    yield return line.Substring(segmentStart, i - segmentStart);
+                    segmentStart = i + 1;
+                }
+            }
+
+            yield return line.Substring(segmentStart);
+        }
+
         private static bool TryReadClientSkillAssetUolRecordVariantLevel(
             string fieldName,
             string fieldValue,
@@ -7460,7 +7700,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(fieldName);
+            string normalizedName = NormalizeClientSkillAssetUolVariantFieldName(fieldName);
             bool characterLevelField = ClientSkillAssetCharacterLevelFieldNames.Contains(
                 normalizedName,
                 StringComparer.Ordinal);
@@ -8259,6 +8499,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            char delimiter = decodedName[prefixLength];
+            if (delimiter != '=' && delimiter != ':' && delimiter != '-')
+            {
+                return false;
+            }
+
             return IsClientSummonedUolTableEntryValueName(decodedName.Substring(0, prefixLength));
         }
 
@@ -8268,6 +8514,46 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Trim()
                 .Trim(ClientSummonedUolTokenTrimChars)
                 .Trim();
+        }
+
+        private static string NormalizeClientSummonedUolLeafFieldName(string name)
+        {
+            string decodedName = NormalizeClientSummonedUolFieldNameSyntax(name);
+            if (string.IsNullOrWhiteSpace(decodedName))
+            {
+                return string.Empty;
+            }
+
+            int suffixStart = -1;
+            for (int i = decodedName.Length - 1; i >= 0; i--)
+            {
+                char current = decodedName[i];
+                if (current == '.'
+                    || current == '/'
+                    || current == '\\'
+                    || current == '['
+                    || current == ']'
+                    || current == '('
+                    || current == ')'
+                    || current == '{'
+                    || current == '}'
+                    || current == '<'
+                    || current == '>')
+                {
+                    suffixStart = i + 1;
+                    break;
+                }
+            }
+
+            return suffixStart > 0 && suffixStart < decodedName.Length
+                ? decodedName.Substring(suffixStart).Trim(ClientSummonedUolTokenTrimChars).Trim()
+                : decodedName;
+        }
+
+        private static string NormalizeClientSkillAssetUolVariantFieldName(string name)
+        {
+            return NormalizeClientSummonedUolHeuristicPathSegment(
+                NormalizeClientSummonedUolLeafFieldName(name));
         }
 
         private static string BuildClientSummonedUolTableEntryRelativePath(
@@ -8302,59 +8588,60 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
-            return name.Equals("0", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("path", StringComparison.OrdinalIgnoreCase)
-                   || IsClientSummonedUolTableTupleValueIndexName(name)
-                   || name.Equals("uol", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("uolStr", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("uolString", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("uolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("tilePath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("tileUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("tileUOLPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("ballPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("ballUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("ballUOLPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("flipBallPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("flipBallUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("flipBallUOLPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summon", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summonPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summonUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summonUOLPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summonedPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summonedUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summonedUOLPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summoned", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("summonedValue", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("data", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("payload", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("target", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("targetPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("targetValue", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("targetUol", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("targetUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("targetUOLPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("targetUolStr", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("targetUolString", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("pathValue", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("sourceUol", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("sourceUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("sourceUOLPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("sourceUolStr", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("sourceUolString", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("sourcePath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("srcPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("asset", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("assetPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("clientPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("clientUol", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("clientUolPath", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("uolData", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("uolValue", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("uolTarget", StringComparison.OrdinalIgnoreCase)
-                   || name.Equals("value", StringComparison.OrdinalIgnoreCase)
+            string leafName = NormalizeClientSummonedUolLeafFieldName(name);
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(leafName);
+            return leafName.Equals("0", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("path", StringComparison.OrdinalIgnoreCase)
+                   || IsClientSummonedUolTableTupleValueIndexName(leafName)
+                   || leafName.Equals("uol", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("uolStr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("uolString", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("uolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("tilePath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("tileUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("tileUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("ballPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("ballUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("ballUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("flipBallPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("flipBallUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("flipBallUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summon", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summonPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summonUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summonUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summonedPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summonedUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summonedUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summoned", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("summonedValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("data", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("payload", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("target", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("targetPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("targetValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("targetUol", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("targetUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("targetUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("targetUolStr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("targetUolString", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("pathValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("sourceUol", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("sourceUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("sourceUOLPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("sourceUolStr", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("sourceUolString", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("sourcePath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("srcPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("asset", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("assetPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("clientPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("clientUol", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("clientUolPath", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("uolData", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("uolValue", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("uolTarget", StringComparison.OrdinalIgnoreCase)
+                   || leafName.Equals("value", StringComparison.OrdinalIgnoreCase)
                    || normalizedName.Equals("uolpath", StringComparison.Ordinal)
                    || normalizedName.Equals("uolstring", StringComparison.Ordinal)
                    || normalizedName.Equals("summonuol", StringComparison.Ordinal)
@@ -8370,10 +8657,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("sourceuolpath", StringComparison.Ordinal)
                    || normalizedName.Equals("clientuol", StringComparison.Ordinal)
                    || normalizedName.Equals("clientuolpath", StringComparison.Ordinal)
-                   || ClientSummonedUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
-                   || ClientTileUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
-                   || ClientBallUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase)
-                   || ClientFlipBallUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase);
+                   || ClientSummonedUolPropertyNames.Contains(leafName, StringComparer.OrdinalIgnoreCase)
+                   || ClientTileUolPropertyNames.Contains(leafName, StringComparer.OrdinalIgnoreCase)
+                   || ClientBallUolPropertyNames.Contains(leafName, StringComparer.OrdinalIgnoreCase)
+                   || ClientFlipBallUolPropertyNames.Contains(leafName, StringComparer.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolHeuristicCandidateValues(
@@ -12506,6 +12793,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
+        private static bool IsNumericPropertyName(string nodeName)
+        {
+            if (string.IsNullOrWhiteSpace(nodeName))
+            {
+                return false;
+            }
+
+            foreach (char ch in nodeName)
+            {
+                if (!char.IsDigit(ch))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         internal static IReadOnlyList<string> GetMorphTemplateRequestedActionNamesForTesting(
             WzImageProperty skillNode,
             IEnumerable<string> rootActionNames = null)
@@ -12536,18 +12841,60 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return actionNames;
             }
 
+            AddActionNamesFromActionValueNode(actionNames, seen, actionNode, nestedDepth: 2);
+
+            return actionNames;
+        }
+
+        private static void AddActionNamesFromActionValueNode(
+            ICollection<string> actionNames,
+            ISet<string> seen,
+            WzImageProperty actionNode,
+            int nestedDepth)
+        {
+            if (actionNames == null || seen == null || actionNode == null)
+            {
+                return;
+            }
+
+            WzImageProperty resolvedActionNode = ResolveMorphSkillActionNode(actionNode);
+            if (resolvedActionNode == null)
+            {
+                return;
+            }
+
+            if (resolvedActionNode is WzStringProperty directActionProperty)
+            {
+                AddActionName(actionNames, seen, directActionProperty.Value);
+                return;
+            }
+
             AddActionNames(actionNames, seen, new[]
             {
-                GetPropertyStringValue(actionNode?["0"]),
-                GetPropertyStringValue(actionNode?["action"])
+                GetPropertyStringValue(resolvedActionNode["0"]),
+                GetPropertyStringValue(resolvedActionNode["action"])
             });
 
-            foreach (WzImageProperty property in actionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            foreach (WzImageProperty property in resolvedActionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
             {
                 AddActionName(actionNames, seen, GetPropertyStringValue(property));
             }
 
-            return actionNames;
+            if (nestedDepth <= 0)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty property in resolvedActionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (property == null
+                    || (!IsMorphActionNodeName(property.Name) && !IsNumericPropertyName(property.Name)))
+                {
+                    continue;
+                }
+
+                AddActionNamesFromActionValueNode(actionNames, seen, property, nestedDepth - 1);
+            }
         }
 
         private static WzImageProperty ResolveMorphSkillActionNode(WzImageProperty actionNode)

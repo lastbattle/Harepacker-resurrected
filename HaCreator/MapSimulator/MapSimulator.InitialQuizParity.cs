@@ -1605,19 +1605,19 @@ namespace HaCreator.MapSimulator
             {
                 calls.Add(new InitialQuizOwnerDrawTextCall(
                     InitialQuizOwnerDrawTextSource.QuestionLabel,
-                    36,
-                    74,
-                    48,
+                    52,
+                    110,
+                    40,
                     14,
                     InitialQuizQuestionLabelStringPoolId,
-                    InitialQuizOwnerDrawTextFont.Red,
+                    InitialQuizOwnerDrawTextFont.White,
                     MapleStoryStringPool.GetOrFallback(InitialQuizQuestionLabelStringPoolId, "Question")));
                 calls.Add(new InitialQuizOwnerDrawTextCall(
                     InitialQuizOwnerDrawTextSource.QuestionText,
-                    82,
-                    74,
-                    142,
-                    36,
+                    92,
+                    110,
+                    132,
+                    14,
                     0,
                     InitialQuizOwnerDrawTextFont.White,
                     snapshot.ProblemText));
@@ -1627,57 +1627,57 @@ namespace HaCreator.MapSimulator
             {
                 calls.Add(new InitialQuizOwnerDrawTextCall(
                     InitialQuizOwnerDrawTextSource.HintLabel,
-                    36,
-                    113,
-                    48,
+                    52,
+                    130,
+                    40,
                     14,
                     InitialQuizHintLabelStringPoolId,
-                    InitialQuizOwnerDrawTextFont.Red,
+                    InitialQuizOwnerDrawTextFont.White,
                     MapleStoryStringPool.GetOrFallback(InitialQuizHintLabelStringPoolId, "Hint")));
                 calls.Add(new InitialQuizOwnerDrawTextCall(
                     InitialQuizOwnerDrawTextSource.HintText,
-                    82,
-                    113,
-                    142,
-                    28,
+                    92,
+                    130,
+                    132,
+                    14,
                     0,
                     InitialQuizOwnerDrawTextFont.White,
                     snapshot.HintText));
             }
 
+            calls.Add(new InitialQuizOwnerDrawTextCall(
+                InitialQuizOwnerDrawTextSource.AnswerLabel,
+                45,
+                157,
+                64,
+                14,
+                InitialQuizAnswerLabelStringPoolId,
+                InitialQuizOwnerDrawTextFont.White,
+                MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer")));
+            calls.Add(new InitialQuizOwnerDrawTextCall(
+                InitialQuizOwnerDrawTextSource.AnswerNotice,
+                38,
+                202,
+                190,
+                14,
+                InitialQuizAnswerNoticeStringPoolId,
+                InitialQuizOwnerDrawTextFont.Red,
+                MapleStoryStringPool.GetOrFallback(InitialQuizAnswerNoticeStringPoolId, string.Empty)));
+
             if (showInput)
             {
-                calls.Add(new InitialQuizOwnerDrawTextCall(
-                    InitialQuizOwnerDrawTextSource.AnswerLabel,
-                    36,
-                    156,
-                    66,
-                    14,
-                    InitialQuizAnswerLabelStringPoolId,
-                    InitialQuizOwnerDrawTextFont.Red,
-                    MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer")));
-                calls.Add(new InitialQuizOwnerDrawTextCall(
-                    InitialQuizOwnerDrawTextSource.AnswerNotice,
-                    36,
-                    176,
-                    188,
-                    18,
-                    InitialQuizAnswerNoticeStringPoolId,
-                    InitialQuizOwnerDrawTextFont.White,
-                    MapleStoryStringPool.GetOrFallback(InitialQuizAnswerNoticeStringPoolId, string.Empty)));
+                return calls;
             }
-            else
-            {
-                calls.Add(new InitialQuizOwnerDrawTextCall(
-                    InitialQuizOwnerDrawTextSource.TimeoutNotice,
-                    36,
-                    156,
-                    188,
-                    30,
-                    InitialQuizTimeoutNoticeStringPoolId,
-                    InitialQuizOwnerDrawTextFont.Red,
-                    MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time over")));
-            }
+
+            calls.Add(new InitialQuizOwnerDrawTextCall(
+                InitialQuizOwnerDrawTextSource.TimeoutNotice,
+                119,
+                158,
+                105,
+                14,
+                InitialQuizTimeoutNoticeStringPoolId,
+                InitialQuizOwnerDrawTextFont.Red,
+                MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time over")));
 
             return calls;
         }

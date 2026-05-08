@@ -2043,7 +2043,7 @@ namespace HaCreator.MapSimulator.Managers
                 normalized = normalized.Substring("byte".Length);
             }
 
-            normalized = normalized.TrimStart(':', '=').Trim();
+            normalized = normalized.TrimStart(':', '=', '/', '\\').Trim();
             while (normalized.Length >= 2
                    && TryResolveSg88MismatchTokenWrapper(normalized[0], out char closingWrapper)
                    && normalized[^1] == closingWrapper)
@@ -2849,9 +2849,8 @@ namespace HaCreator.MapSimulator.Managers
                             }
                             break;
                         case "field":
-                            if (property.Value.ValueKind == JsonValueKind.String
-                                && TryResolveSg88MismatchPairPropertyFieldByteIndex(
-                                    property.Value.GetString(),
+                            if (TryParseSg88MismatchPairJsonByteOrFieldIndex(
+                                    property.Value,
                                     out int parsedFieldByteIndex))
                             {
                                 byteIndex = parsedFieldByteIndex;
@@ -3298,12 +3297,22 @@ namespace HaCreator.MapSimulator.Managers
             string normalized = value.Trim();
             normalized = Regex.Replace(
                 normalized,
-                @"^\s*Uint8Array\s*\(\s*\d+\s*\)\s*",
+                @"^\s*(?:new\s+)?Uint8Array\s*\(\s*\d+\s*\)\s*",
                 string.Empty,
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             normalized = Regex.Replace(
                 normalized,
-                @"^\s*(?:byte|bytes)\s*\[\s*\]\s*",
+                @"^\s*(?:new\s+)?(?:byte|bytes)\s*\[\s*\]\s*",
+                string.Empty,
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            normalized = Regex.Replace(
+                normalized,
+                @"^\s*(?:Buffer\s*\.\s*from|Array\s*\.\s*from|bytes)\s*",
+                string.Empty,
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            normalized = Regex.Replace(
+                normalized,
+                @"^\s*(?:ReadOnlySpan|Span|Memory)\s*<\s*byte\s*>\s*",
                 string.Empty,
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             return normalized.TrimStart(':', '=').Trim();
@@ -3479,6 +3488,10 @@ namespace HaCreator.MapSimulator.Managers
                 case "field":
                 case "fieldname":
                 case "fieldpath":
+                case "path":
+                case "jsonpath":
+                case "jsonpointer":
+                case "pointer":
                     normalizedName = "field";
                     return true;
                 case "observed":
@@ -3514,6 +3527,21 @@ namespace HaCreator.MapSimulator.Managers
                 case "originalbyte":
                 case "originalbytes":
                 case "originalraw":
+                case "old":
+                case "oldvalue":
+                case "oldbyte":
+                case "oldbytes":
+                case "oldraw":
+                case "previous":
+                case "previousvalue":
+                case "previousbyte":
+                case "previousbytes":
+                case "previousraw":
+                case "lhs":
+                case "lhsvalue":
+                case "lhsbyte":
+                case "lhsbytes":
+                case "lhsraw":
                 case "wire":
                 case "wirevalue":
                 case "wirebyte":
@@ -3629,6 +3657,21 @@ namespace HaCreator.MapSimulator.Managers
                 case "reconstructedpayloadhex":
                 case "to":
                 case "after":
+                case "new":
+                case "newvalue":
+                case "newbyte":
+                case "newbytes":
+                case "newraw":
+                case "current":
+                case "currentvalue":
+                case "currentbyte":
+                case "currentbytes":
+                case "currentraw":
+                case "rhs":
+                case "rhsvalue":
+                case "rhsbyte":
+                case "rhsbytes":
+                case "rhsraw":
                 case "right":
                     normalizedName = "rebuilt";
                     return true;

@@ -1827,6 +1827,9 @@ namespace HaCreator.MapSimulator
                     "encodedSlotPosition",
                     "encodedPosition",
                     "nPOS",
+                    "nPos",
+                    "npos",
+                    "encodedSlot",
                     "slotPosition",
                     "position");
                 if (encodedSlotPosition.HasValue && !LooksLikeEncodedSlotPosition(encodedSlotPosition.Value))
@@ -1841,6 +1844,9 @@ namespace HaCreator.MapSimulator
                     "encodedSlotPositions",
                     "encodedPositions",
                     "nPOSList",
+                    "nPosList",
+                    "nposList",
+                    "encodedSlots",
                     "slotPositions",
                     "positions",
                     "slots");
@@ -1852,6 +1858,21 @@ namespace HaCreator.MapSimulator
 
                 int? reasonCode = ReadIntWithFallback(body, root, "reasonCode", "reason", "errorCode", "rejectReason");
                 string statusText = ReadStringWithFallback(body, root, "statusText", "message", "text", "localizedText", "notice");
+                if (string.IsNullOrWhiteSpace(statusText))
+                {
+                    statusText = ReadStringPoolStatusTextWithFallback(
+                        body,
+                        root,
+                        "statusStringPoolId",
+                        "stringPoolId",
+                        "noticeStringPoolId",
+                        "messageStringPoolId",
+                        "localizedStringPoolId",
+                        "stringId",
+                        "msgId",
+                        "noticeId");
+                }
+
                 result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText, encodedSlotPositions);
                 return true;
             }
@@ -1893,7 +1914,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (value.ValueKind == JsonValueKind.String
-                    && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
+                    && TryParseJsonInt(value.GetString(), out number))
                 {
                     return number;
                 }
@@ -1932,7 +1953,7 @@ namespace HaCreator.MapSimulator
                             values.Add(number);
                         }
                         else if (child.ValueKind == JsonValueKind.String
-                                 && int.TryParse(child.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
+                                 && TryParseJsonInt(child.GetString(), out number))
                         {
                             values.Add(number);
                         }
@@ -1953,7 +1974,7 @@ namespace HaCreator.MapSimulator
                     List<int> values = new(tokens.Length);
                     for (int i = 0; i < tokens.Length; i++)
                     {
-                        if (int.TryParse(tokens[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        if (TryParseJsonInt(tokens[i], out int number))
                         {
                             values.Add(number);
                         }
@@ -2010,7 +2031,7 @@ namespace HaCreator.MapSimulator
                         return parsed;
                     }
 
-                    if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
+                    if (TryParseJsonInt(text, out number))
                     {
                         return number != 0;
                     }
@@ -2061,6 +2082,51 @@ namespace HaCreator.MapSimulator
             }
 
             return ReadString(fallbackRoot, names);
+        }
+
+        private static string ReadStringPoolStatusTextWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            string primary = ReadStringPoolStatusText(primaryRoot, names);
+            if (!string.IsNullOrWhiteSpace(primary)
+                || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return primary;
+            }
+
+            return ReadStringPoolStatusText(fallbackRoot, names);
+        }
+
+        private static string ReadStringPoolStatusText(JsonElement root, params string[] names)
+        {
+            int? stringPoolId = ReadInt(root, names);
+            return stringPoolId.HasValue && TryResolveRepairResultStringPoolStatusText(stringPoolId.Value, out string statusText)
+                ? statusText
+                : string.Empty;
+        }
+
+        private static bool TryParseJsonInt(string text, out int value)
+        {
+            value = 0;
+            string trimmed = text?.Trim() ?? string.Empty;
+            if (trimmed.Length <= 0)
+            {
+                return false;
+            }
+
+            NumberStyles integerStyle = NumberStyles.Integer;
+            if (trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return int.TryParse(trimmed[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out value);
+            }
+
+            if (trimmed.StartsWith("-0x", StringComparison.OrdinalIgnoreCase))
+            {
+                bool parsed = int.TryParse(trimmed[3..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out value);
+                value = -value;
+                return parsed;
+            }
+
+            return int.TryParse(trimmed, integerStyle, CultureInfo.InvariantCulture, out value);
         }
 
         private static bool LooksLikeEncodedSlotPosition(int encodedSlotPosition)

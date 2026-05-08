@@ -16,6 +16,10 @@ namespace HaCreator.MapSimulator
         private const int MobActionSpeechVerticalPadding = 12;
         private const int MobActionSpeechOwnerMaxTextWidth = 220;
         private const int MobActionSpeechScreenMaxTextWidth = 360;
+        private const int MobActionSpeechNativeScreenCenterY = 100;
+        private const int MobActionSpeechNativeScreenBalloonType = 1005;
+        private const int MobActionSpeechNativeOwnerBalloonType = 1004;
+        private const int MobActionSpeechNativeScreenLayerOption = unchecked((int)0xC00616FC);
 
         private readonly Dictionary<int, LocalOverlayBalloonSkin> _mobActionSpeechBalloonSkins = new();
         private bool _mobActionSpeechBalloonSkinsLoaded;
@@ -358,16 +362,82 @@ namespace HaCreator.MapSimulator
 
             if (isScreenNotice)
             {
-                return new Rectangle(
-                    Math.Max(0, (renderWidth - boxWidth) / 2),
-                    Math.Max(0, Math.Min(renderHeight - boxHeight, 84)),
-                    boxWidth,
-                    boxHeight);
+                return ResolveMobActionSpeechScreenBounds(boxWidth, boxHeight, renderWidth, renderHeight);
             }
 
             int boxX = mobWorldX - mapShiftX + mapCenterX - (boxWidth / 2);
             int boxY = mobWorldTop - mapShiftY + mapCenterY - boxHeight - 24;
             return new Rectangle(boxX, boxY, boxWidth, boxHeight);
+        }
+
+        internal static Rectangle ResolveMobActionSpeechScreenBounds(
+            int boxWidth,
+            int boxHeight,
+            int renderWidth,
+            int renderHeight)
+        {
+            int safeWidth = Math.Max(0, renderWidth);
+            int safeHeight = Math.Max(0, renderHeight);
+            int x = Math.Max(0, (safeWidth - boxWidth) / 2);
+            int nativeY = MobActionSpeechNativeScreenCenterY - (boxHeight / 2);
+            int maxY = Math.Max(0, safeHeight - boxHeight);
+            int y = Math.Max(0, Math.Min(maxY, nativeY));
+            return new Rectangle(x, y, Math.Max(1, boxWidth), Math.Max(1, boxHeight));
+        }
+
+        internal sealed class MobActionSpeechNativeCompositionTrace
+        {
+            public string Entrypoint { get; init; }
+            public int BalloonType { get; init; }
+            public int ChatBalloon { get; init; }
+            public string SkinPath { get; init; }
+            public bool UsesScreenLayer { get; init; }
+            public int ScreenLayerOption { get; init; }
+            public int ScreenCenterY { get; init; }
+            public bool UsesOwnerOverlayLayer { get; init; }
+            public bool IncludesOwnerArrow { get; init; }
+            public bool UsesMobSkinFallback { get; init; }
+        }
+
+        internal static MobActionSpeechNativeCompositionTrace BuildMobActionSpeechNativeCompositionTraceForTests(
+            int chatBalloon,
+            int floatNotice,
+            bool authoredSkinLoaded,
+            bool isScreenNotice)
+        {
+            return BuildMobActionSpeechNativeCompositionTrace(
+                chatBalloon,
+                floatNotice,
+                authoredSkinLoaded,
+                isScreenNotice);
+        }
+
+        private static MobActionSpeechNativeCompositionTrace BuildMobActionSpeechNativeCompositionTrace(
+            int chatBalloon,
+            int floatNotice,
+            bool authoredSkinLoaded,
+            bool isScreenNotice)
+        {
+            int normalizedChatBalloon = Math.Max(0, chatBalloon);
+            bool usesFloatNotice = IsMobActionSpeechFloatNotice(floatNotice);
+            bool useScreenLayer = isScreenNotice || usesFloatNotice;
+            return new MobActionSpeechNativeCompositionTrace
+            {
+                Entrypoint = useScreenLayer
+                    ? "CChatBalloon::MakeScreenBalloon"
+                    : "CChatBalloon::MakeBalloon",
+                BalloonType = useScreenLayer
+                    ? MobActionSpeechNativeScreenBalloonType
+                    : MobActionSpeechNativeOwnerBalloonType,
+                ChatBalloon = normalizedChatBalloon,
+                SkinPath = ResolveMobActionSpeechBalloonSkinPathForTests(normalizedChatBalloon),
+                UsesScreenLayer = useScreenLayer,
+                ScreenLayerOption = useScreenLayer ? MobActionSpeechNativeScreenLayerOption : 0,
+                ScreenCenterY = useScreenLayer ? MobActionSpeechNativeScreenCenterY : 0,
+                UsesOwnerOverlayLayer = !useScreenLayer,
+                IncludesOwnerArrow = authoredSkinLoaded && !useScreenLayer,
+                UsesMobSkinFallback = !authoredSkinLoaded && normalizedChatBalloon != 0
+            };
         }
 
         internal sealed class MobActionSpeechSkinMetrics

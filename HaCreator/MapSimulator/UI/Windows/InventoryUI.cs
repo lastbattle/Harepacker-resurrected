@@ -818,6 +818,54 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public bool TrySetPacketOwnedSlotState(InventoryType type, int slotIndex, InventorySlotData slotData)
+        {
+            if (type == InventoryType.NONE
+                || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots)
+                || slotIndex < 0
+                || slotIndex >= GetSlotLimit(type))
+            {
+                return false;
+            }
+
+            if (slotData == null || slotData.ItemId <= 0)
+            {
+                if (slotIndex < slots.Count)
+                {
+                    slots[slotIndex] = null;
+                    TrimTrailingEmptySlots(slots);
+                }
+
+                return true;
+            }
+
+            InventorySlotData resolvedSlot = slotData.Clone();
+            if (!resolvedSlot.PreferredInventoryType.HasValue || resolvedSlot.PreferredInventoryType.Value == InventoryType.NONE)
+            {
+                resolvedSlot.PreferredInventoryType = type;
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedSlot.ItemName))
+            {
+                resolvedSlot.ItemName = ResolveItemName(resolvedSlot.ItemId);
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedSlot.ItemTypeName))
+            {
+                resolvedSlot.ItemTypeName = ResolveItemTypeName(type, resolvedSlot.ItemId);
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedSlot.Description))
+            {
+                resolvedSlot.Description = ResolveItemDescription(resolvedSlot.ItemId);
+            }
+
+            resolvedSlot.Quantity = Math.Max(1, resolvedSlot.Quantity);
+            resolvedSlot.MaxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(type, resolvedSlot.MaxStackSize);
+            SetSlotAt(slots, slotIndex, resolvedSlot, GetSlotLimit(type));
+            return true;
+        }
+
         private int FillExistingStacks(InventoryType type, InventorySlotData incoming, int remainingQuantity, int maxStackSize)
         {
             if (incoming == null || incoming.Quantity <= 0 || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))

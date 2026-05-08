@@ -49,17 +49,17 @@ namespace HaCreator.MapSimulator.Fields
             Func<int, int> resolveEnvironmentalDamageProtectionAmount = null,
             bool includeFirstUserEnterScript = true)
         {
-            _timeLimitSeconds = Math.Max(0, mapInfo?.timeLimit ?? GetInfoInt(mapInfo, "timeLimit") ?? 0);
+            _timeLimitSeconds = Math.Max(0, mapInfo?.timeLimit ?? GetInfoIntWithCopiedBranchFallback(mapInfo, "timeLimit") ?? 0);
             _transferMapId = ResolveTransferMapId(mapInfo);
-            _decHp = Math.Max(0, mapInfo?.decHP ?? GetInfoInt(mapInfo, "decHP") ?? 0);
-            _decIntervalMs = NormalizeDecIntervalMs(mapInfo?.decInterval ?? GetInfoInt(mapInfo, "decInterval"));
-            _recoveryRate = NormalizeRecoveryRate(mapInfo?.recovery ?? GetInfoFloat(mapInfo, "recovery"));
+            _decHp = Math.Max(0, mapInfo?.decHP ?? GetInfoIntWithCopiedBranchFallback(mapInfo, "decHP") ?? 0);
+            _decIntervalMs = NormalizeDecIntervalMs(mapInfo?.decInterval ?? GetInfoIntWithCopiedBranchFallback(mapInfo, "decInterval"));
+            _recoveryRate = NormalizeRecoveryRate(mapInfo?.recovery ?? GetInfoFloatWithCopiedBranchFallback(mapInfo, "recovery"));
             _fieldLimit = mapInfo?.fieldLimit ?? 0;
             _ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(mapInfo);
             _allowedItems = ResolveInfoIntList(mapInfo, "allowedItem", mapInfo?.allowedItem);
             _protectItems = ResolveInfoIntList(mapInfo, "protectItem", mapInfo?.protectItem);
             _moveLimit = ResolveMoveLimit(mapInfo);
-            _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? GetInfoInt(mapInfo, "consumeItemCoolTime") ?? 0);
+            _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? GetInfoIntWithCopiedBranchFallback(mapInfo, "consumeItemCoolTime") ?? 0);
             _mapInfo = mapInfo;
             _entryScripts = CollectEntryScripts(mapInfo, includeFirstUserEnterScript);
             _hasItem = hasItem;
@@ -403,9 +403,27 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int forcedReturn = mapInfo?.forcedReturn ?? 0;
-            return forcedReturn > 0 && forcedReturn != MapConstants.MaxMap
-                ? forcedReturn
-                : -1;
+            if (forcedReturn > 0 && forcedReturn != MapConstants.MaxMap)
+            {
+                return forcedReturn;
+            }
+
+            int? preservedReturnMap = ResolveInfoMapId(mapInfo, "returnMap");
+            if (preservedReturnMap.HasValue)
+            {
+                return preservedReturnMap.Value;
+            }
+
+            int? preservedForcedReturn = ResolveInfoMapId(mapInfo, "forcedReturn");
+            return preservedForcedReturn ?? -1;
+        }
+
+        private static int? ResolveInfoMapId(MapInfo mapInfo, string propertyName)
+        {
+            int? mapId = GetInfoIntWithCopiedBranchFallback(mapInfo, propertyName);
+            return mapId is > 0 and not MapConstants.MaxMap
+                ? mapId.Value
+                : null;
         }
 
         private static int? ResolveMoveLimit(MapInfo mapInfo)
@@ -422,17 +440,6 @@ namespace HaCreator.MapSimulator.Fields
         private static int? NormalizeMoveLimit(int? moveLimit)
         {
             return moveLimit is > 0 ? moveLimit : null;
-        }
-
-        private static int? GetInfoInt(MapInfo mapInfo, string propertyName)
-        {
-            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
-            {
-                return null;
-            }
-
-            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
-            return GetPropertyInt(property);
         }
 
         private static int? GetInfoIntWithCopiedBranchFallback(MapInfo mapInfo, string propertyName)
@@ -454,14 +461,27 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
-        private static float? GetInfoFloat(MapInfo mapInfo, string propertyName)
+        private static float? GetInfoFloatWithCopiedBranchFallback(MapInfo mapInfo, string propertyName)
         {
             if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
             {
                 return null;
             }
 
-            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            foreach (WzImageProperty property in EnumerateInfoProperties(mapInfo, propertyName))
+            {
+                float? value = GetPropertyFloat(property);
+                if (value.HasValue)
+                {
+                    return value.Value;
+                }
+            }
+
+            return null;
+        }
+
+        private static float? GetPropertyFloat(WzImageProperty property)
+        {
             if (property == null)
             {
                 return null;

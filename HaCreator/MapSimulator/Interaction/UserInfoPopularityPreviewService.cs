@@ -153,7 +153,23 @@ namespace HaCreator.MapSimulator.Interaction
             out string message,
             string localCharacterName = null)
         {
+            return TryApplyClientResultPayload(
+                payload,
+                remoteUserPool,
+                out message,
+                out _,
+                localCharacterName);
+        }
+
+        internal bool TryApplyClientResultPayload(
+            byte[] payload,
+            RemoteUserActorPool remoteUserPool,
+            out string message,
+            out string chatLogNotice,
+            string localCharacterName = null)
+        {
             message = null;
+            chatLogNotice = null;
             if (payload == null || payload.Length == 0)
             {
                 message = "CUIUserInfo popularity result payload is missing the client result code.";
@@ -185,35 +201,40 @@ namespace HaCreator.MapSimulator.Interaction
                         increased ? PopularityNoticeStringPoolId.RaiseTarget : PopularityNoticeStringPoolId.DropTarget,
                         increased ? "You have raised '{0}'s level of fame." : "You have dropped '{0}'s level of fame.",
                         targetName);
+                    chatLogNotice = clientNotice;
                     message = $"{clientNotice} CUIUserInfo::NotifyGivePopResult applied popularity {directionLabel} result for {targetName}. Fame is now {updatedFame}.";
                     return true;
 
                 case 1:
                     _pendingRequest = null;
-                    message = FormatPopularityNotice(
+                    chatLogNotice = FormatPopularityNotice(
                         PopularityNoticeStringPoolId.InvalidTargetName,
                         "The user name is incorrectly entered.");
+                    message = chatLogNotice;
                     return true;
 
                 case 2:
                     _pendingRequest = null;
-                    message = FormatPopularityNotice(
+                    chatLogNotice = FormatPopularityNotice(
                         PopularityNoticeStringPoolId.LocalUnderLevel,
                         "Users under level 15 are unable to toggle with fame.");
+                    message = chatLogNotice;
                     return true;
 
                 case 3:
                     _pendingRequest = null;
-                    message = FormatPopularityNotice(
+                    chatLogNotice = FormatPopularityNotice(
                         PopularityNoticeStringPoolId.DailyLimit,
                         "You can't raise or drop a level of fame anymore for today.");
+                    message = chatLogNotice;
                     return true;
 
                 case 4:
                     _pendingRequest = null;
-                    message = FormatPopularityNotice(
+                    chatLogNotice = FormatPopularityNotice(
                         PopularityNoticeStringPoolId.MonthlyTargetLimit,
                         "You can't raise or drop a level of fame of that character anymore for this month.");
+                    message = chatLogNotice;
                     return true;
 
                 case 5:
@@ -232,18 +253,20 @@ namespace HaCreator.MapSimulator.Interaction
                     string localName = string.IsNullOrWhiteSpace(localCharacterName)
                         ? ResolvePendingTargetNameFallback()
                         : localCharacterName.Trim();
-                    message = FormatPopularityNotice(
+                    chatLogNotice = FormatPopularityNotice(
                         receivedIncrease ? PopularityNoticeStringPoolId.ReceivedRaise : PopularityNoticeStringPoolId.ReceivedDrop,
                         receivedIncrease ? "'{0}' have raised '{1}'s level of fame." : "'{0}' have dropped '{1}'s level of fame.",
                         requesterName,
                         localName);
+                    message = chatLogNotice;
                     return true;
 
                 default:
                     _pendingRequest = null;
-                    message = FormatPopularityNotice(
+                    chatLogNotice = FormatPopularityNotice(
                         PopularityNoticeStringPoolId.UnexpectedError,
                         "The level of fame has neither been raised or dropped due to an unexpected error.");
+                    message = chatLogNotice;
                     return true;
             }
         }

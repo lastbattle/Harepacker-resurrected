@@ -166,7 +166,7 @@ namespace HaCreator.MapSimulator.Interaction
             Func<string, bool?, int, int?, int?, bool> setDynamicObjectTagState,
             Func<string, bool?> getDynamicObjectTagState,
             Func<string, int?> getDynamicObjectTagStateIndex,
-            Func<string, int, int, bool> setNamedObjectStateIndex,
+            Func<string, int, int, bool, bool> setNamedObjectStateIndex,
             Func<string, int?> getNamedObjectStateIndex,
             Func<byte[], int, string> fieldSpecificDataHandler,
             out string message)
@@ -655,7 +655,7 @@ namespace HaCreator.MapSimulator.Interaction
             Func<string, bool?, int, int?, int?, bool> setDynamicObjectTagState,
             Func<string, bool?> getDynamicObjectTagState,
             Func<string, int?> getDynamicObjectTagStateIndex,
-            Func<string, int, int, bool> setNamedObjectStateIndex,
+            Func<string, int, int, bool, bool> setNamedObjectStateIndex,
             Func<string, int?> getNamedObjectStateIndex,
             out string message)
         {
@@ -701,6 +701,7 @@ namespace HaCreator.MapSimulator.Interaction
                             currentTick,
                             setDynamicObjectTagState,
                             setNamedObjectStateIndex,
+                            replayCurrentState: true,
                             out bool dynamicTagApplied,
                             out bool namedObjectApplied);
                         string laneSummary = BuildObjectStateLaneSummary(dynamicTagApplied, namedObjectApplied);
@@ -717,7 +718,7 @@ namespace HaCreator.MapSimulator.Interaction
                     bool dynamicReplayApplied = currentTagState.HasValue &&
                         setDynamicObjectTagState?.Invoke(normalizedTag, currentTagState.Value, 0, currentTick, currentStateIndex) == true;
                     bool namedReplayApplied = currentNamedObjectStateIndex.HasValue &&
-                        setNamedObjectStateIndex?.Invoke(normalizedTag, currentNamedObjectStateIndex.Value, currentTick) == true;
+                        setNamedObjectStateIndex?.Invoke(normalizedTag, currentNamedObjectStateIndex.Value, currentTick, true) == true;
                     bool replayed = dynamicReplayApplied || namedReplayApplied;
                     bool available = currentTagState.HasValue || currentNamedObjectStateIndex.HasValue;
                     int? replayedStateIndex = currentStateIndex ?? currentNamedObjectStateIndex;
@@ -740,6 +741,7 @@ namespace HaCreator.MapSimulator.Interaction
                     currentTick,
                     setDynamicObjectTagState,
                     setNamedObjectStateIndex,
+                    replayCurrentState: false,
                     out bool dynamicTagAppliedForApply,
                     out bool namedObjectAppliedForApply);
                 if (applied)
@@ -774,7 +776,8 @@ namespace HaCreator.MapSimulator.Interaction
             int stateValue,
             int currentTick,
             Func<string, bool?, int, int?, int?, bool> setDynamicObjectTagState,
-            Func<string, int, int, bool> setNamedObjectStateIndex,
+            Func<string, int, int, bool, bool> setNamedObjectStateIndex,
+            bool replayCurrentState,
             out bool dynamicTagApplied,
             out bool namedObjectApplied)
         {
@@ -782,7 +785,7 @@ namespace HaCreator.MapSimulator.Interaction
             dynamicTagApplied =
                 setDynamicObjectTagState?.Invoke(objectKey, isEnabled, 0, currentTick, stateValue) == true;
             namedObjectApplied = stateValue >= 0 &&
-                setNamedObjectStateIndex?.Invoke(objectKey, stateValue, currentTick) == true;
+                setNamedObjectStateIndex?.Invoke(objectKey, stateValue, currentTick, replayCurrentState) == true;
             return dynamicTagApplied || namedObjectApplied;
         }
 

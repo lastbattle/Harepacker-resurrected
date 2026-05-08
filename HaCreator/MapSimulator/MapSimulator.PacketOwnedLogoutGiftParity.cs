@@ -1549,7 +1549,7 @@ namespace HaCreator.MapSimulator
     }
 
     internal readonly record struct PacketOwnedLogoutGiftContextField(int DwordIndex, int ByteOffset, int Value, string SemanticName = null);
-    internal enum PacketOwnedLogoutGiftRefreshDisposition
+    public enum PacketOwnedLogoutGiftRefreshDisposition
     {
         MissingConfig = 0,
         NoOwnerAllowed = 1,

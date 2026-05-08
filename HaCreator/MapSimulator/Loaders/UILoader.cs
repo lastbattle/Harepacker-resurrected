@@ -2088,6 +2088,7 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         internal readonly record struct CollapsedMinimapTitleChromeMetrics(int LaneTop, int LaneHeight, int LeftInset, int RightInset);
+        internal readonly record struct CollapsedMinimapButtonChromeMetrics(int LaneTop, int LaneHeight);
 
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
             int stateButtonWidth,
@@ -2161,6 +2162,17 @@ namespace HaCreator.MapSimulator.Loaders
             int maxLaneHeight = Math.Max(1, clampedBarHeight - clampedLaneTop);
             int desiredLaneHeight = Math.Max(1, buttonHeight);
             return Math.Min(maxLaneHeight, desiredLaneHeight);
+        }
+
+        internal static CollapsedMinimapButtonChromeMetrics ResolveCollapsedMinimapButtonChromeMetricsForTesting(
+            int barHeight,
+            int buttonHeight)
+        {
+            int clampedBarHeight = Math.Max(1, barHeight);
+            int clampedButtonHeight = Math.Max(1, buttonHeight);
+            int laneHeight = Math.Min(clampedBarHeight, clampedButtonHeight);
+            int laneTop = Math.Max(0, (clampedBarHeight - laneHeight) / 2);
+            return new CollapsedMinimapButtonChromeMetrics(laneTop, laneHeight);
         }
 
         internal static CollapsedMinimapTitleChromeMetrics ResolveCollapsedMinimapTitleChromeMetricsForTesting(
@@ -2926,17 +2938,20 @@ namespace HaCreator.MapSimulator.Loaders
                 collapsedBarCenter?.Height ?? 0,
                 collapsedBarRight?.Height ?? 0,
                 fallbackHeight: 20);
+            int collapsedButtonHeight = Math.Max(
+                ResolveUiButtonSnapshotHeight(collapsedMaximizeButtonProperty),
+                ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty));
             CollapsedMinimapTitleChromeMetrics collapsedTitleChromeMetrics = ResolveCollapsedMinimapTitleChromeMetricsForTesting(
                 collapsedBarLeft,
                 collapsedBarCenter,
                 collapsedBarRight,
                 collapsedBarHeight,
                 fallbackLaneTop: 4,
-                fallbackButtonHeight: Math.Max(
-                    ResolveUiButtonSnapshotHeight(collapsedMaximizeButtonProperty),
-                    ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty)),
+                fallbackButtonHeight: collapsedButtonHeight,
                 fallbackLeftInset: 4,
                 fallbackRightInset: 4);
+            CollapsedMinimapButtonChromeMetrics collapsedButtonChromeMetrics =
+                ResolveCollapsedMinimapButtonChromeMetricsForTesting(collapsedBarHeight, collapsedButtonHeight);
             int collapsedButtonReserveWidth = ResolveCollapsedMinimapButtonReserveWidthForTesting(
                 ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
                 ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
@@ -3291,8 +3306,8 @@ namespace HaCreator.MapSimulator.Loaders
                 helperMarkers);
             minimapItem.SetCollapsedButtonChromeMetrics(
                 collapsedTitleChromeMetrics.RightInset,
-                collapsedTitleChromeMetrics.LaneTop,
-                collapsedTitleChromeMetrics.LaneHeight);
+                collapsedButtonChromeMetrics.LaneTop,
+                collapsedButtonChromeMetrics.LaneHeight);
 
             ApplySharedMinimapWindowPosition(minimapItem);
 

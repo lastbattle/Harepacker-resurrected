@@ -2199,7 +2199,11 @@ namespace HaCreator.MapSimulator
                 forceAuthRequest,
                 now);
 
-            if (shouldRequestAuth && !_lastClassCompetitionAuthPending)
+            if (shouldRequestAuth &&
+                ShouldDispatchClassCompetitionAuthRequest(
+                    _lastClassCompetitionAuthPending,
+                    _lastClassCompetitionAuthRequestTick,
+                    now))
             {
                 bool requiresFreshNavigation = !_lastClassCompetitionLoggedIn
                     || string.IsNullOrWhiteSpace(_lastClassCompetitionUrl);
@@ -2255,6 +2259,27 @@ namespace HaCreator.MapSimulator
                 lastAuthIssuedTick,
                 forceAuthRequest,
                 now);
+        }
+
+        private static bool ShouldDispatchClassCompetitionAuthRequest(
+            bool authPending,
+            int lastAuthRequestTick,
+            int now)
+        {
+            if (!authPending || lastAuthRequestTick == int.MinValue)
+            {
+                return true;
+            }
+
+            return Math.Max(0, unchecked(now - lastAuthRequestTick)) >= PacketOwnedClassCompetitionAuthRefreshIntervalMs;
+        }
+
+        internal static bool ShouldDispatchClassCompetitionAuthRequestForTests(
+            bool authPending,
+            int lastAuthRequestTick,
+            int now)
+        {
+            return ShouldDispatchClassCompetitionAuthRequest(authPending, lastAuthRequestTick, now);
         }
 
         private string DispatchClassCompetitionAuthRequest()
@@ -6600,6 +6625,8 @@ namespace HaCreator.MapSimulator
             int delay = Math.Max(1, frameDelayMs);
             try
             {
+                IReadOnlyDictionary<AvatarRenderLayer, int> copiedLayerHandleRefCounts =
+                    ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCounts(layerHandleIds);
                 for (int i = 0; i < PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
                 {
                     AvatarRenderLayer layer = PacketOwnedActiveEffectMotionBlurLayerCaptureOrder[i];
@@ -6617,7 +6644,7 @@ namespace HaCreator.MapSimulator
                         sourceLayerCode: (int)layer,
                         sourceLayerCaptureOrder: i,
                         simulatedLayerHandleId: ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
-                        simulatedLayerHandleRefCount: ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCount(layer, layerHandleIds),
+                        simulatedLayerHandleRefCount: ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCount(layer, copiedLayerHandleRefCounts),
                         simulatedSnapshotLayerHandleId: NextPacketOwnedActiveEffectMotionBlurLayerHandleId(),
                         simulatedRepeatAnimationStateId: NextPacketOwnedActiveEffectMotionBlurStateId());
                     frames.Add(layerFrame);
@@ -6773,11 +6800,54 @@ namespace HaCreator.MapSimulator
 
         private static int ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCount(
             AvatarRenderLayer layer,
+            IReadOnlyDictionary<AvatarRenderLayer, int> copiedLayerHandleRefCounts)
+        {
+            return copiedLayerHandleRefCounts != null
+                && copiedLayerHandleRefCounts.TryGetValue(layer, out int refCount)
+                ? Math.Max(0, refCount)
+                : 0;
+        }
+
+        private static IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCounts(
             IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
         {
-            return ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds) > 0
-                ? 2
-                : 0;
+            if (layerHandleIds == null || layerHandleIds.Count == 0)
+            {
+                return new Dictionary<AvatarRenderLayer, int>();
+            }
+
+            var ownerRefCountsByHandle = new Dictionary<int, int>();
+            for (int i = 0; i < PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = PacketOwnedActiveEffectMotionBlurLayerCaptureOrder[i];
+                int handleId = ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds);
+                if (handleId <= 0)
+                {
+                    continue;
+                }
+
+                ownerRefCountsByHandle.TryGetValue(handleId, out int refCount);
+                ownerRefCountsByHandle[handleId] = refCount + 1;
+            }
+
+            var snapshotRefCountsByHandle = new Dictionary<int, int>();
+            var copiedRefCountsByLayer = new Dictionary<AvatarRenderLayer, int>();
+            for (int i = 0; i < PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = PacketOwnedActiveEffectMotionBlurLayerCaptureOrder[i];
+                int handleId = ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds);
+                if (handleId <= 0)
+                {
+                    continue;
+                }
+
+                snapshotRefCountsByHandle.TryGetValue(handleId, out int snapshotRefCount);
+                snapshotRefCount++;
+                snapshotRefCountsByHandle[handleId] = snapshotRefCount;
+                copiedRefCountsByLayer[layer] = ownerRefCountsByHandle[handleId] + snapshotRefCount;
+            }
+
+            return copiedRefCountsByLayer;
         }
 
         private static IReadOnlyDictionary<AvatarRenderLayer, int> CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds()
@@ -6895,6 +6965,12 @@ namespace HaCreator.MapSimulator
                     currentOwnerCharacterId);
             resolvedOwnerCharacterId = ownerCharacterId;
             return layerHandleIds;
+        }
+
+        internal static IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCountsForTesting(
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            return ResolvePacketOwnedActiveEffectMotionBlurCopiedLayerHandleRefCounts(layerHandleIds);
         }
 
         internal static int NextPacketOwnedActiveEffectMotionBlurStateIdForTesting()
@@ -19734,6 +19810,7 @@ namespace HaCreator.MapSimulator
                     cashInventory,
                     build,
                     out IReadOnlyList<CharacterEquipmentPacketParity.CharacterInventoryOperationMutation> mutations,
+                    out IReadOnlyList<CharacterEquipmentPacketParity.CharacterInventoryOperationInventoryMutation> inventoryMutations,
                     out string rejectReason))
             {
                 message = rejectReason;
@@ -19741,7 +19818,14 @@ namespace HaCreator.MapSimulator
             }
 
             int appliedMutationCount = 0;
+            int appliedInventoryMutationCount = 0;
             int unchangedMutationCount = 0;
+            if (inventoryMutations.Count > 0 && inventoryWindow == null && mutations.Count <= 0)
+            {
+                message = "Inventory-operation payload only carried inventory-slot mutations, but the inventory window is unavailable.";
+                return false;
+            }
+
             for (int i = 0; i < mutations.Count; i++)
             {
                 CharacterEquipmentPacketParity.CharacterInventoryOperationMutation mutation = mutations[i];
@@ -19761,9 +19845,36 @@ namespace HaCreator.MapSimulator
                 appliedMutationCount++;
             }
 
-            if (appliedMutationCount <= 0)
+            for (int i = 0; i < inventoryMutations.Count; i++)
             {
-                if (mutations.Count <= 0)
+                CharacterEquipmentPacketParity.CharacterInventoryOperationInventoryMutation mutation = inventoryMutations[i];
+                if (inventoryWindow == null)
+                {
+                    continue;
+                }
+
+                InventorySlotData currentSlot = ResolveInventorySlotAt(
+                    mutation.InventoryType == InventoryType.CASH ? cashInventory : equipInventory,
+                    mutation.SlotIndex);
+                if (currentSlot?.ItemId == mutation.ItemId)
+                {
+                    unchangedMutationCount++;
+                    continue;
+                }
+
+                InventorySlotData slotData = CreatePassiveInventoryOperationSlotData(build, mutation);
+                if (!inventoryWindow.TrySetPacketOwnedSlotState(mutation.InventoryType, mutation.SlotIndex, slotData))
+                {
+                    message = "Inventory-operation inventory mutation did not resolve a valid inventory slot.";
+                    return false;
+                }
+
+                appliedInventoryMutationCount++;
+            }
+
+            if (appliedMutationCount <= 0 && appliedInventoryMutationCount <= 0)
+            {
+                if (mutations.Count <= 0 && inventoryMutations.Count <= 0)
                 {
                     return false;
                 }
@@ -19773,7 +19884,8 @@ namespace HaCreator.MapSimulator
             }
 
             message =
-                $"Applied {appliedMutationCount.ToString(CultureInfo.InvariantCulture)} passive character inventory-operation mutation(s).";
+                $"Applied {appliedMutationCount.ToString(CultureInfo.InvariantCulture)} passive character inventory-operation mutation(s)"
+                + $" and {appliedInventoryMutationCount.ToString(CultureInfo.InvariantCulture)} inventory slot mutation(s).";
             if (unchangedMutationCount > 0)
             {
                 message =
@@ -19781,6 +19893,46 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private static InventorySlotData ResolveInventorySlotAt(
+            IReadOnlyList<InventorySlotData> slots,
+            int slotIndex)
+        {
+            return slots != null && slotIndex >= 0 && slotIndex < slots.Count
+                ? slots[slotIndex]
+                : null;
+        }
+
+        private InventorySlotData CreatePassiveInventoryOperationSlotData(
+            CharacterBuild build,
+            CharacterEquipmentPacketParity.CharacterInventoryOperationInventoryMutation mutation)
+        {
+            if (mutation.ItemId <= 0)
+            {
+                return null;
+            }
+
+            CharacterPart part = build?.EquipmentPartLoader?.Invoke(mutation.ItemId)?.Clone();
+            InventorySlotData slotData = part != null
+                ? CreateInventorySlot(part)
+                : new InventorySlotData
+                {
+                    ItemId = mutation.ItemId,
+                    Quantity = 1,
+                    MaxStackSize = 1,
+                    PreferredInventoryType = mutation.InventoryType,
+                    ItemName = $"Equip {mutation.ItemId}",
+                    ItemTypeName = "Equip"
+                };
+
+            slotData.PreferredInventoryType = mutation.InventoryType;
+            if (mutation.HasCashSerial)
+            {
+                slotData.CashItemSerialNumber = mutation.CashItemSerialNumber;
+            }
+
+            return slotData;
         }
 
         private static int ResolveCharacterEquipmentLayerItemId(
