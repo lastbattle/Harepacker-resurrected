@@ -94,6 +94,10 @@ namespace HaCreator.MapSimulator.Managers
             public int Miss { get; private set; }
             public int Cool { get; private set; }
             public int Skill { get; private set; }
+            public int CoolEffectTriggerCount { get; private set; }
+            public int SkillEffectTriggerCount { get; private set; }
+            public int LastCoolEffectValue { get; private set; }
+            public int LastSkillEffectValue { get; private set; }
 
             public bool TryApply(string key, int value, out bool hasInfoBaseline)
             {
@@ -109,13 +113,27 @@ namespace HaCreator.MapSimulator.Managers
                                 return false;
                             }
 
+                            int previousSkill = Skill;
                             Skill = value;
+                            if (Skill > previousSkill)
+                            {
+                                SkillEffectTriggerCount++;
+                                LastSkillEffectValue = Skill;
+                            }
+
                             hasInfoBaseline = HasHit && HasMiss && HasCool;
                             return true;
                         }
 
+                        int previousCool = Cool;
                         Cool = value;
                         HasCool = true;
+                        if (Cool > previousCool)
+                        {
+                            CoolEffectTriggerCount++;
+                            LastCoolEffectValue = Cool;
+                        }
+
                         hasInfoBaseline = HasHit && HasMiss;
                         return true;
                     }
@@ -141,6 +159,10 @@ namespace HaCreator.MapSimulator.Managers
                 Miss = 0;
                 Cool = 0;
                 Skill = 0;
+                CoolEffectTriggerCount = 0;
+                SkillEffectTriggerCount = 0;
+                LastCoolEffectValue = 0;
+                LastSkillEffectValue = 0;
             }
         }
         public int ListenPort { get; private set; } = DefaultListenPort;

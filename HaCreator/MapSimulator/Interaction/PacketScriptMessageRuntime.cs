@@ -1219,15 +1219,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            _activePromptContext ??= new PacketScriptPromptContext(
-                submission.NpcName,
-                submission.EntryId,
-                submission.EntryTitle,
-                -1,
-                0,
-                0,
-                0,
-                0);
+            if (_activePromptContext == null)
+            {
+                message = "Packet-owned script submission was rejected because no CScriptMan prompt context is active.";
+                return false;
+            }
 
             string submittedValue = submission.Kind switch
             {

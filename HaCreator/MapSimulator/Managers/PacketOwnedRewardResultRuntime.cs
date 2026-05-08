@@ -23,6 +23,8 @@ namespace HaCreator.MapSimulator.Managers
         public string AmountText { get; init; } = string.Empty;
         public string ChatLineText { get; init; } = string.Empty;
         public int ChatMessageType { get; init; }
+        public int ChatChannelId { get; init; } = -1;
+        public bool ChatHasItemSlotReference { get; init; }
         public string SoundDescriptor { get; init; } = string.Empty;
         public int SoundVolume { get; init; }
     }
@@ -30,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
     internal static class PacketOwnedRewardResultRuntime
     {
         public const int RandomMesoBagStatusBarChatType = 12;
+        public const int RandomMesoBagStatusBarChannelId = -1;
         public const int RandomMesoBagSoundVolume = 100;
         private const int MesoGiveSucceededStringPoolId = 0x32E;
         private const int MesoGiveFailedStringPoolId = 0x32F;
@@ -253,6 +256,8 @@ namespace HaCreator.MapSimulator.Managers
                 AmountText = FormatRandomMesoBagDialogAmountText(mesoAmount),
                 ChatLineText = FormatRandomMesoBagChatLineText(mesoAmount),
                 ChatMessageType = RandomMesoBagStatusBarChatType,
+                ChatChannelId = RandomMesoBagStatusBarChannelId,
+                ChatHasItemSlotReference = false,
                 SoundDescriptor = ResolveRandomMesoBagSound(normalizedRank),
                 SoundVolume = RandomMesoBagSoundVolume
             };

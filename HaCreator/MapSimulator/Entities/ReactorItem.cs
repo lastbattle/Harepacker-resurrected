@@ -483,7 +483,8 @@ namespace HaCreator.MapSimulator.Entities
 
         public int GetCurrentFrameIndex(int tickCount)
         {
-            if (_stateFrames.Count == 0)
+            if (_stateFrames.Count == 0
+                && (_transientFrameDelays == null || _transientFrameDelays.Length == 0))
                 return 0;
 
             GetStateFrame(tickCount, out int frameIndex);
@@ -1450,7 +1451,7 @@ namespace HaCreator.MapSimulator.Entities
 
         private IDXObject GetStateFrame(int tickCount, out int frameIndex)
         {
-            if (_transientFrames != null && _transientFrames.Length > 0)
+            if (_transientFrameDelays != null && _transientFrameDelays.Length > 0)
             {
                 ResolveLoadLayerFrameTiming(
                     ResolveTransientFrameDelays(_transientFrames),
@@ -1459,6 +1460,12 @@ namespace HaCreator.MapSimulator.Entities
                     out frameIndex,
                     out _);
                 _transientFrameIndex = frameIndex;
+
+                if (_transientFrames == null || _transientFrames.Length == 0)
+                {
+                    return null;
+                }
+
                 int loadedFrameIndex = ResolveLoadedFrameIndexForLoadLayerClock(
                     frameIndex,
                     _transientFrames.Length);

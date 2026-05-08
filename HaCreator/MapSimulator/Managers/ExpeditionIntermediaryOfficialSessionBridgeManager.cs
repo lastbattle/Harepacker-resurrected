@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
@@ -18,7 +19,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class ExpeditionIntermediaryOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18503;
-        public const ushort DefaultInboundResultOpcode = 64;
+        public const ushort DefaultInboundResultOpcode = ExpeditionIntermediaryPacketTable.InboundResultOpcode;
         private const string DefaultProcessName = "MapleStory";
         private const int MaxRecentOutboundPackets = 32;
 

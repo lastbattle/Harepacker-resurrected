@@ -11,7 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxClaimLogEntries = 6;
         private const int PresencePulseIntervalMs = 9000;
         private const int InviteResolutionDelayMs = 1800;
-        private const int InvitePromptLifetimeMs = 180000;
+        internal const int InvitePromptLifetimeMs = 180000;
         private const int BubbleLifetimeMs = 4200;
         private const int BlinkDurationMs = 3000;
         private const int BlinkPulseIntervalMs = 180;
@@ -1036,6 +1036,34 @@ namespace HaCreator.MapSimulator.Interaction
 
             message = ResolveSessionOwnedClaimRequest(packet.Succeeded, packet.ResultText);
             return !message.StartsWith("No Messenger claim request", StringComparison.Ordinal);
+        }
+
+        internal bool TryApplyOfficialClaimResultPayload(byte[] payload, out string message)
+        {
+            if (!MessengerPacketCodec.TryParseOfficialClaimResult(payload ?? Array.Empty<byte>(), out MessengerOfficialClaimResultPacket packet, out string error))
+            {
+                message = error ?? "Messenger official claim-result payload could not be decoded.";
+                return false;
+            }
+
+            if (!packet.CompletesPendingRequest)
+            {
+                message = $"Observed CWvsContext::OnClaimResult resultCode={packet.ResultCode}: {packet.ResultText}";
+                RecordPacketSummary(
+                    $"Observed CWvsContext::OnClaimResult resultCode={packet.ResultCode} without completing the pending Messenger claim.");
+                StartBlink(Environment.TickCount);
+                return true;
+            }
+
+            bool applied = _pendingClaimRequests.Count > 0;
+            message = ResolveSessionOwnedClaimRequest(packet.Succeeded, packet.ResultText);
+            if (applied)
+            {
+                RecordPacketSummary(
+                    $"Applied CWvsContext::OnClaimResult resultCode={packet.ResultCode} success={(packet.Succeeded ? 1 : 0)} remainingClaimCount={packet.RemainingClaimCount}. {LastPacketSummary}");
+            }
+
+            return applied;
         }
 
         internal bool TryObserveOfficialClientRequest(

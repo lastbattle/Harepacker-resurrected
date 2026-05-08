@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator.Fields
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private static readonly Regex ArrayMutatorAliasCallPattern = new(
-            @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>push|unshift|splice)\s*\(",
+            @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>push|unshift|splice|shift|pop)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private static readonly Regex ArrayReverseAliasCallPattern = new(
@@ -693,6 +693,19 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
+                if (mutation.MethodName.Equals("shift", StringComparison.OrdinalIgnoreCase)
+                    || mutation.MethodName.Equals("pop", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (mutation.Arguments.Count == 0
+                        && objectMemberAliasMap.TryGetValue(mutation.ObjectName, out IReadOnlyDictionary<string, string> existingMemberAliasMap)
+                        && existingMemberAliasMap is Dictionary<string, string> existingArrayMemberAliasMap)
+                    {
+                        ApplyArrayRemovalAliasMutation(existingArrayMemberAliasMap, mutation.MethodName);
+                    }
+
+                    continue;
+                }
+
                 if (mutation.Arguments.Count == 0)
                 {
                     continue;
@@ -1223,6 +1236,13 @@ namespace HaCreator.MapSimulator.Fields
             {
                 string objectName = NormalizeFunctionAliasArgument(match.Groups["object"]?.Value);
                 string methodName = NormalizeFunctionAliasArgument(match.Groups["method"]?.Value);
+                if ((methodName.Equals("shift", StringComparison.OrdinalIgnoreCase)
+                        || methodName.Equals("pop", StringComparison.OrdinalIgnoreCase))
+                    && IsFunctionCallAssignmentRightHandSide(value, match.Groups["object"].Index))
+                {
+                    continue;
+                }
+
                 int openIndex = value.IndexOf('(', match.Index);
                 if (openIndex < 0)
                 {
@@ -1272,6 +1292,32 @@ namespace HaCreator.MapSimulator.Fields
 
             operations.Sort((left, right) => left.SourceIndex.CompareTo(right.SourceIndex));
             return operations.Count == 0 ? Array.Empty<ArrayAliasMutationOperation>() : operations;
+        }
+
+        private static bool IsFunctionCallAssignmentRightHandSide(string value, int expressionStartIndex)
+        {
+            if (string.IsNullOrWhiteSpace(value) || expressionStartIndex <= 0 || expressionStartIndex > value.Length)
+            {
+                return false;
+            }
+
+            for (int i = expressionStartIndex - 1; i >= 0; i--)
+            {
+                char current = value[i];
+                if (char.IsWhiteSpace(current))
+                {
+                    continue;
+                }
+
+                if (current == '=')
+                {
+                    return i == 0 || value[i - 1] is not ('=' or '!' or '<' or '>');
+                }
+
+                return false;
+            }
+
+            return false;
         }
 
         private static IEnumerable<(string TargetName, string SourceName, string MethodName)> EnumerateArrayReverseAliasAssignments(string value)
@@ -1920,6 +1966,72 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = 0; i < removedKeys.Count; i++)
             {
                 memberAliasMap.Remove(removedKeys[i]);
+            }
+        }
+
+        private static void ApplyArrayRemovalAliasMutation(IDictionary<string, string> memberAliasMap, string methodName)
+        {
+            if (memberAliasMap == null || memberAliasMap.Count == 0)
+            {
+                return;
+            }
+
+            if (methodName.Equals("pop", StringComparison.OrdinalIgnoreCase))
+            {
+                int? lastIndex = TryGetLastArrayMemberIndex(memberAliasMap);
+                if (lastIndex.HasValue)
+                {
+                    memberAliasMap.Remove(lastIndex.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+
+                return;
+            }
+
+            if (!methodName.Equals("shift", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            int? firstIndex = TryGetFirstArrayMemberIndex(memberAliasMap);
+            if (!firstIndex.HasValue)
+            {
+                return;
+            }
+
+            var shiftedMembers = new List<(string OldKey, string NewKey, string AliasName)>();
+            foreach (KeyValuePair<string, string> memberAlias in memberAliasMap)
+            {
+                if (!int.TryParse(memberAlias.Key, out int parsedIndex) || parsedIndex < firstIndex.Value)
+                {
+                    continue;
+                }
+
+                if (parsedIndex == firstIndex.Value)
+                {
+                    shiftedMembers.Add((memberAlias.Key, string.Empty, memberAlias.Value));
+                    continue;
+                }
+
+                shiftedMembers.Add((
+                    memberAlias.Key,
+                    (parsedIndex - 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    memberAlias.Value));
+            }
+
+            shiftedMembers.Sort((left, right) => left.OldKey.Length != right.OldKey.Length
+                ? right.OldKey.Length.CompareTo(left.OldKey.Length)
+                : string.CompareOrdinal(right.OldKey, left.OldKey));
+            for (int i = 0; i < shiftedMembers.Count; i++)
+            {
+                memberAliasMap.Remove(shiftedMembers[i].OldKey);
+            }
+
+            for (int i = 0; i < shiftedMembers.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(shiftedMembers[i].NewKey))
+                {
+                    memberAliasMap[shiftedMembers[i].NewKey] = shiftedMembers[i].AliasName;
+                }
             }
         }
 
@@ -4860,17 +4972,17 @@ namespace HaCreator.MapSimulator.Fields
             return TryResolveObjectMemberAlias(objectName, memberKey, objectMemberAliasMap, out aliasName);
         }
 
-        private static int? TryGetFirstArrayMemberIndex(IReadOnlyDictionary<string, string> memberAliasMap)
+        private static int? TryGetFirstArrayMemberIndex(IEnumerable<KeyValuePair<string, string>> memberAliasMap)
         {
-            if (memberAliasMap == null || memberAliasMap.Count == 0)
+            if (memberAliasMap == null)
             {
                 return null;
             }
 
             int? firstIndex = null;
-            foreach (string key in memberAliasMap.Keys)
+            foreach (KeyValuePair<string, string> memberAlias in memberAliasMap)
             {
-                if (!int.TryParse(key, out int parsedIndex) || parsedIndex < 0)
+                if (!int.TryParse(memberAlias.Key, out int parsedIndex) || parsedIndex < 0)
                 {
                     continue;
                 }
@@ -4884,17 +4996,17 @@ namespace HaCreator.MapSimulator.Fields
             return firstIndex;
         }
 
-        private static int? TryGetLastArrayMemberIndex(IReadOnlyDictionary<string, string> memberAliasMap)
+        private static int? TryGetLastArrayMemberIndex(IEnumerable<KeyValuePair<string, string>> memberAliasMap)
         {
-            if (memberAliasMap == null || memberAliasMap.Count == 0)
+            if (memberAliasMap == null)
             {
                 return null;
             }
 
             int? lastIndex = null;
-            foreach (string key in memberAliasMap.Keys)
+            foreach (KeyValuePair<string, string> memberAlias in memberAliasMap)
             {
-                if (!int.TryParse(key, out int parsedIndex) || parsedIndex < 0)
+                if (!int.TryParse(memberAlias.Key, out int parsedIndex) || parsedIndex < 0)
                 {
                     continue;
                 }

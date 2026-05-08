@@ -76,6 +76,31 @@ namespace HaCreator.MapSimulator.Managers
             [230] = (int)Pools.RemoteUserPacketType.UserThrowGrenadeOfficial
         };
 
+        private static readonly IReadOnlyDictionary<ushort, string> KnownRemoteUserOwnerMapV95 = new Dictionary<ushort, string>
+        {
+            [210] = "CUserRemote::OnMove",
+            [211] = "CUserRemote::OnAttack",
+            [212] = "CUserRemote::OnAttack",
+            [213] = "CUserRemote::OnAttack",
+            [214] = "CUserRemote::OnAttack",
+            [215] = "CUserRemote::OnSkillPrepare",
+            [216] = "CUserRemote::OnMovingShootAttackPrepare",
+            [217] = "CUserRemote::OnSkillCancel",
+            [218] = "CUserRemote::OnHit",
+            [219] = "CUser::OnEmotion",
+            [220] = "CUserRemote::OnSetActiveEffectItem",
+            [221] = "CUserRemote::OnShowUpgradeTombEffect",
+            [222] = "CUserRemote::OnSetActivePortableChair",
+            [223] = "CUserRemote::OnAvatarModified",
+            [224] = "CUser::OnEffect",
+            [225] = "CUserRemote::OnSetTemporaryStat",
+            [226] = "CUserRemote::OnResetTemporaryStat",
+            [227] = "CUserRemote::OnReceiveHP",
+            [228] = "CUserRemote::OnGuildNameChanged",
+            [229] = "CUserRemote::OnGuildMarkChanged",
+            [230] = "CUserRemote::OnThrowGrenade"
+        };
+
         private static readonly IReadOnlyDictionary<ushort, string> KnownNonTutorLocalOwnerMapV95 = new Dictionary<ushort, string>
         {
             [231] = "CUserLocal::OnSitResult",
@@ -945,8 +970,8 @@ namespace HaCreator.MapSimulator.Managers
                 if (hasMappedPacketType)
                 {
                     inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
-                    RememberMappedPortableChairRecordEvidenceNoLock(opcode, packetType, inferencePayload, source);
-                    RememberPortableChairRecordCaptureNoLock(opcode, packetType, inferencePayload, source, "mapped dispatch");
+                    string portableChairRecordCaptureReason = RememberMappedPortableChairRecordEvidenceNoLock(opcode, packetType, inferencePayload, source);
+                    RememberPortableChairRecordCaptureNoLock(opcode, packetType, inferencePayload, source, portableChairRecordCaptureReason);
                 }
 
                 if (!hasMappedPacketType)
@@ -1016,9 +1041,9 @@ namespace HaCreator.MapSimulator.Managers
 
                     if (!hasMappedPacketType
                         && !resolvedFromBuildScopedTutorMapping
-                        && IsOfficialRemoteOpcodeCoveredByV95OwnerTable(opcode))
+                        && TryResolveKnownRemoteUserOwnerFromV95OwnerTable(opcode, out string knownRemoteOwnerReason))
                     {
-                        LastStatus = $"Ignored native non-local CUser opcode {opcode}: recovered v95 CUserPool::OnUserRemotePacket owner range has no CTutor/CSummoned tutor branch, so tutor-shaped payloads are not promoted from remote-user opcodes. {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Ignored native non-local CUser opcode {opcode}: known recovered CUserPool::OnUserRemotePacket owner ({knownRemoteOwnerReason}) has no CTutor/CSummoned tutor branch, so tutor-shaped payloads are not promoted from remote-user opcodes. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 
@@ -1163,6 +1188,18 @@ namespace HaCreator.MapSimulator.Managers
                 || opcode == 180
                 || (opcode >= 181 && opcode <= 209)
                 || (opcode >= 210 && opcode <= 230);
+        }
+
+        internal static bool TryResolveKnownRemoteUserOwnerFromV95OwnerTable(ushort opcode, out string reason)
+        {
+            if (KnownRemoteUserOwnerMapV95.TryGetValue(opcode, out string owner))
+            {
+                reason = $"v95 CUserPool::OnUserRemotePacket case {opcode} -> {owner}";
+                return true;
+            }
+
+            reason = string.Empty;
+            return false;
         }
 
         internal static bool IsOfficialLocalUserOpcodeCoveredByV95OwnerTable(ushort opcode)
@@ -1821,7 +1858,7 @@ namespace HaCreator.MapSimulator.Managers
             RememberLearnedTutorOpcodeByBuildNoLock(opcode, packetType, evidence, isManual, source, payload);
         }
 
-        private void RememberMappedPortableChairRecordEvidenceNoLock(
+        private string RememberMappedPortableChairRecordEvidenceNoLock(
             ushort opcode,
             int packetType,
             byte[] payload,
@@ -1838,17 +1875,17 @@ namespace HaCreator.MapSimulator.Managers
                         out int characterId)
                     || resolvedPacketType != packetType)
                 {
-                    return;
+                    return ResolveMappedPortableChairRecordFallbackReasonNoLock(opcode);
                 }
 
                 _portableChairRecordInferenceMap[opcode] = reason;
                 RememberPortableChairRecordAddOwnerNoLock(source, characterId, opcode);
-                return;
+                return reason;
             }
 
             if (packetType != (int)Pools.RemoteUserPacketType.UserCoupleChairRecordRemove)
             {
-                return;
+                return "mapped dispatch";
             }
 
             if (!TryResolvePortableChairRecordRemoveFromPriorAddCaptureNoLock(
@@ -1859,10 +1896,22 @@ namespace HaCreator.MapSimulator.Managers
                     out string removeReason)
                 || resolvedRemovePacketType != packetType)
             {
-                return;
+                return ResolveMappedPortableChairRecordFallbackReasonNoLock(opcode);
             }
 
             _portableChairRecordInferenceMap[opcode] = removeReason;
+            return removeReason;
+        }
+
+        private string ResolveMappedPortableChairRecordFallbackReasonNoLock(ushort opcode)
+        {
+            if (_learnedPacketMap.TryGetValue(opcode, out LearnedOpcodeEntry learnedEntry)
+                && learnedEntry.IsManual)
+            {
+                return "manual mapped dispatch";
+            }
+
+            return "mapped dispatch";
         }
 
         private void RememberPortableChairRecordCaptureNoLock(

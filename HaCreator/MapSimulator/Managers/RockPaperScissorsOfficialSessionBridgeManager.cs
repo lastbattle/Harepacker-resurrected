@@ -846,6 +846,7 @@ namespace HaCreator.MapSimulator.Managers
                 _liveInboundOpcode371Evidence = null;
                 _currentInitializedSessionVersion = null;
                 _currentInitializedProxySessionId = null;
+                _initializedProxySessions.Clear();
             }
         }
 
@@ -1017,6 +1018,12 @@ namespace HaCreator.MapSimulator.Managers
             {
                 OutboundPacketTrace outbound = outboundEvidence.Value;
                 InboundPacketTrace inbound = inboundEvidence.Value;
+                if (TryFindLatestPairedLiveOwnershipEvidence(out OutboundPacketTrace pairedOutbound, out InboundPacketTrace pairedInbound))
+                {
+                    outbound = pairedOutbound;
+                    inbound = pairedInbound;
+                }
+
                 string pairKind = IsSameInitializedSession(outbound, inbound)
                     ? "paired proxied initialized capture"
                     : "unpaired proxied initialized captures";
@@ -1050,6 +1057,11 @@ namespace HaCreator.MapSimulator.Managers
 
             if (outboundEvidence.HasValue && inboundEvidence.HasValue)
             {
+                if (TryFindLatestPairedLiveOwnershipEvidence(out _, out _))
+                {
+                    return LiveOwnershipVerificationState.Complete;
+                }
+
                 return IsSameInitializedSession(outboundEvidence.Value, inboundEvidence.Value)
                     ? LiveOwnershipVerificationState.Complete
                     : LiveOwnershipVerificationState.WaitingForBothDirections;
@@ -1075,7 +1087,7 @@ namespace HaCreator.MapSimulator.Managers
 
             return outboundEvidence.HasValue
                 && inboundEvidence.HasValue
-                && IsSameInitializedSession(outboundEvidence.Value, inboundEvidence.Value);
+                && TryFindLatestPairedLiveOwnershipEvidence(out _, out _);
         }
 
         private string DescribeCurrentLiveOwnershipVerificationStatus()
@@ -1092,6 +1104,16 @@ namespace HaCreator.MapSimulator.Managers
                 && inboundEvidence.HasValue
                 && !IsSameInitializedSession(outboundEvidence.Value, inboundEvidence.Value))
             {
+                if (TryFindLatestPairedLiveOwnershipEvidence(out _, out _))
+                {
+                    return DescribeLiveOwnershipVerificationStatus(
+                        HasConnectedSession,
+                        HasPassiveEstablishedSocketPair,
+                        IsRunning,
+                        hasObservedLiveOutboundOpcode160: true,
+                        hasObservedLiveInboundOpcode371: true);
+                }
+
                 return $"Live ownership verification in progress: captured opcode {RockPaperScissorsField.ClientOpcode} outbound and opcode {RockPaperScissorsField.OwnerOpcode} inbound from different initialized proxy sessions; waiting for both directions from one proxied reconnect.";
             }
 
@@ -1111,6 +1133,39 @@ namespace HaCreator.MapSimulator.Managers
                 && outbound.ProxySessionId.HasValue
                 && inbound.ProxySessionId.HasValue
                 && outbound.ProxySessionId.Value == inbound.ProxySessionId.Value;
+        }
+
+        private bool TryFindLatestPairedLiveOwnershipEvidence(out OutboundPacketTrace outbound, out InboundPacketTrace inbound)
+        {
+            lock (_sync)
+            {
+                for (int outboundIndex = _recentOutboundPackets.Count - 1; outboundIndex >= 0; outboundIndex--)
+                {
+                    OutboundPacketTrace outboundCandidate = _recentOutboundPackets[outboundIndex];
+                    if (!IsInitializedLiveProxiedSource(outboundCandidate))
+                    {
+                        continue;
+                    }
+
+                    for (int inboundIndex = _recentInboundPackets.Count - 1; inboundIndex >= 0; inboundIndex--)
+                    {
+                        InboundPacketTrace inboundCandidate = _recentInboundPackets[inboundIndex];
+                        if (!IsInitializedLiveProxiedSource(inboundCandidate)
+                            || !IsSameInitializedSession(outboundCandidate, inboundCandidate))
+                        {
+                            continue;
+                        }
+
+                        outbound = outboundCandidate;
+                        inbound = inboundCandidate;
+                        return true;
+                    }
+                }
+            }
+
+            outbound = default;
+            inbound = default;
+            return false;
         }
 
         internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(

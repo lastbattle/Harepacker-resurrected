@@ -426,9 +426,24 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _guildManageSelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex, 0, Math.Max(0, _guildRankTitles.Count - 1));
+            string resolvedPending = TryResolvePendingPacketOwnedManageMutationFromClientEcho(
+                SocialListTab.Guild,
+                PacketOwnedSocialMutationKind.GuildRankTitle,
+                (mutation) =>
+                {
+                    if (!mutation.Index.HasValue || string.IsNullOrWhiteSpace(mutation.TextValue))
+                    {
+                        return false;
+                    }
+
+                    int rankIndex = Math.Clamp(mutation.Index.Value, 0, Math.Max(0, _guildRankTitles.Count - 1));
+                    return rankIndex < _guildRankTitles.Count
+                           && string.Equals(_guildRankTitles[rankIndex], mutation.TextValue.Trim(), StringComparison.OrdinalIgnoreCase);
+                });
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
                 $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.RankTitles}) refreshed {_guildRankTitles.Count} guild rank titles"
-                + (guildId > 0 ? $" for guild {guildId}." : ".");
+                + (guildId > 0 ? $" for guild {guildId}." : ".")
+                + resolvedPending;
             return $"Guild rank titles now follow the client OnGuildResult({(byte)SocialListClientGuildResultKind.RankTitles}) payload.";
         }
 
@@ -446,9 +461,17 @@ namespace HaCreator.MapSimulator.Interaction
             RememberPacketGuildId(guildId);
             _guildNoticeText = string.IsNullOrWhiteSpace(notice) ? string.Empty : notice.Trim();
             NotifySocialTextEditCommitted(_guildNoticeText);
+            string resolvedPending = TryResolvePendingPacketOwnedManageMutationFromClientEcho(
+                SocialListTab.Guild,
+                PacketOwnedSocialMutationKind.GuildNotice,
+                (mutation) => string.Equals(
+                    _guildNoticeText,
+                    mutation.TextValue?.Trim() ?? string.Empty,
+                    StringComparison.OrdinalIgnoreCase));
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
                 $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice}) refreshed guild notice text"
-                + (guildId > 0 ? $" for guild {guildId}." : ".");
+                + (guildId > 0 ? $" for guild {guildId}." : ".")
+                + resolvedPending;
             return string.IsNullOrWhiteSpace(_guildNoticeText)
                 ? $"Guild notice cleared from client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice})."
                 : $"Guild notice now follows the client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice}) payload.";
@@ -473,9 +496,24 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _allianceSelectedRankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, Math.Max(0, _allianceRankTitles.Count - 1));
+            string resolvedPending = TryResolvePendingPacketOwnedManageMutationFromClientEcho(
+                SocialListTab.Alliance,
+                PacketOwnedSocialMutationKind.AllianceRankTitle,
+                (mutation) =>
+                {
+                    if (!mutation.Index.HasValue || string.IsNullOrWhiteSpace(mutation.TextValue))
+                    {
+                        return false;
+                    }
+
+                    int rankIndex = Math.Clamp(mutation.Index.Value, 0, Math.Max(0, _allianceRankTitles.Count - 1));
+                    return rankIndex < _allianceRankTitles.Count
+                           && string.Equals(_allianceRankTitles[rankIndex], mutation.TextValue.Trim(), StringComparison.OrdinalIgnoreCase);
+                });
             _lastPacketSyncSummaryByTab[SocialListTab.Alliance] =
                 $"Client OnAllianceResult({(byte)SocialListClientAllianceResultKind.RankTitles}) refreshed {_allianceRankTitles.Count} alliance rank titles"
-                + (allianceId > 0 ? $" for alliance {allianceId}." : ".");
+                + (allianceId > 0 ? $" for alliance {allianceId}." : ".")
+                + resolvedPending;
             return $"Alliance rank titles now follow the client OnAllianceResult({(byte)SocialListClientAllianceResultKind.RankTitles}) payload.";
         }
 
@@ -483,9 +521,17 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _allianceNoticeText = string.IsNullOrWhiteSpace(notice) ? string.Empty : notice.Trim();
             NotifySocialTextEditCommitted(_allianceNoticeText);
+            string resolvedPending = TryResolvePendingPacketOwnedManageMutationFromClientEcho(
+                SocialListTab.Alliance,
+                PacketOwnedSocialMutationKind.AllianceNotice,
+                (mutation) => string.Equals(
+                    _allianceNoticeText,
+                    mutation.TextValue?.Trim() ?? string.Empty,
+                    StringComparison.OrdinalIgnoreCase));
             _lastPacketSyncSummaryByTab[SocialListTab.Alliance] =
                 $"Client OnAllianceResult({(byte)SocialListClientAllianceResultKind.Notice}) refreshed alliance notice text"
-                + (allianceId > 0 ? $" for alliance {allianceId}." : ".");
+                + (allianceId > 0 ? $" for alliance {allianceId}." : ".")
+                + resolvedPending;
             return string.IsNullOrWhiteSpace(_allianceNoticeText)
                 ? $"Alliance notice cleared from client OnAllianceResult({(byte)SocialListClientAllianceResultKind.Notice})."
                 : $"Alliance notice now follows the client OnAllianceResult({(byte)SocialListClientAllianceResultKind.Notice}) payload.";
@@ -672,6 +718,24 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"Packet-owned {GetHeaderTitle(tab).ToLowerInvariant()} approval did not include an applicable local mutation.";
+        }
+
+        private string TryResolvePendingPacketOwnedManageMutationFromClientEcho(
+            SocialListTab tab,
+            PacketOwnedSocialMutationKind expectedKind,
+            Func<PacketOwnedSocialMutation, bool> matchesEcho)
+        {
+            if (!TryGetPendingPacketOwnedManageMutation(tab, out PacketOwnedSocialMutation mutation)
+                || mutation.Kind != expectedKind
+                || matchesEcho == null
+                || !matchesEcho(mutation))
+            {
+                return string.Empty;
+            }
+
+            _lastPendingRequestByTab[tab] = null;
+            ClearPendingPacketOwnedManageMutation(tab);
+            return " Matching pending editor request was completed by the client echo.";
         }
 
         private enum PacketOwnedSocialMutationKind

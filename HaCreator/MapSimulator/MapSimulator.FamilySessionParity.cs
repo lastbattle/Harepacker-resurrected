@@ -10,7 +10,7 @@ namespace HaCreator.MapSimulator
         private const int FamilyOfficialSessionBridgeDefaultListenPort = 18506;
         private const ushort FamilyOfficialSessionBridgeDefaultChartOpcode = 98;
         // IDA evidence: CWvsContext::SendUseFamilyPrivilege (0xA09EE0) builds COutPacket(175).
-        private const ushort FamilyUsePrivilegeRequestOpcode = 175;
+        private const ushort FamilyUsePrivilegeRequestOpcode = FamilyPacketCodec.UseFamilyPrivilegeRequestOpcode;
         private const int FamilyOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
 
         private readonly MessengerOfficialSessionBridgeManager _familyOfficialSessionBridge =
@@ -282,9 +282,73 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private bool TryMirrorFamilyChartClientRequest(string characterName, out string status, bool queueOnly = false)
+        {
+            byte[] payload = FamilyPacketCodec.BuildFamilyChartRequestPayload(characterName);
+            return TryMirrorFamilyClientRequest(
+                FamilyPacketCodec.FamilyChartRequestOpcode,
+                payload,
+                "CWvsContext::SendFamilyChartRequest",
+                string.IsNullOrWhiteSpace(characterName) ? "(local character)" : characterName.Trim(),
+                out status,
+                queueOnly);
+        }
+
+        private string TryMirrorPendingFamilyManagementClientRequest(bool queueOnly = false)
+        {
+            if (!_familyChartRuntime.TryBuildPendingManagementRequestPayload(out ushort opcode, out byte[] payload, out string description))
+            {
+                return string.Empty;
+            }
+
+            TryMirrorFamilyClientRequest(opcode, payload, description, string.Empty, out string status, queueOnly);
+            return status;
+        }
+
+        private bool TryMirrorFamilyClientRequest(
+            ushort opcode,
+            byte[] payload,
+            string clientSeam,
+            string detail,
+            out string status,
+            bool queueOnly = false)
+        {
+            payload ??= Array.Empty<byte>();
+            string payloadHex = Convert.ToHexString(payload);
+            string normalizedSeam = string.IsNullOrWhiteSpace(clientSeam) ? "family client request" : clientSeam.Trim();
+            string normalizedDetail = string.IsNullOrWhiteSpace(detail) ? string.Empty : $" {detail.Trim()}";
+
+            if (queueOnly)
+            {
+                if (_familyOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string queueStatus))
+                {
+                    status = $"Queued {normalizedSeam}{normalizedDetail} as opcode {opcode} [{payloadHex}]. {queueStatus}";
+                    return true;
+                }
+
+                status = $"Failed to queue {normalizedSeam}{normalizedDetail} as opcode {opcode} [{payloadHex}]. {queueStatus}";
+                return false;
+            }
+
+            if (_familyOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out string sendStatus))
+            {
+                status = $"Mirrored {normalizedSeam}{normalizedDetail} as opcode {opcode} [{payloadHex}] through the live family session bridge. {sendStatus}";
+                return true;
+            }
+
+            if (_familyOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string deferredQueueStatus))
+            {
+                status = $"Queued {normalizedSeam}{normalizedDetail} as opcode {opcode} [{payloadHex}] after immediate live injection was unavailable. Bridge: {sendStatus} Deferred queue: {deferredQueueStatus}";
+                return true;
+            }
+
+            status = $"Failed to mirror {normalizedSeam}{normalizedDetail} as opcode {opcode} [{payloadHex}]. Bridge: {sendStatus} Queue: {deferredQueueStatus}";
+            return false;
+        }
+
         private ChatCommandHandler.CommandResult HandleFamilySessionCommand(string[] args)
         {
-            const string usage = "Usage: /family session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /family session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendchart [characterName]|queuechart [characterName]|sendpending|queuepending|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeFamilyOfficialSessionBridgeStatus());
@@ -364,6 +428,28 @@ namespace HaCreator.MapSimulator
                         queueOnly)
                     ? ChatCommandHandler.CommandResult.Ok(sendFamilyStatus)
                     : ChatCommandHandler.CommandResult.Error(sendFamilyStatus);
+            }
+
+            if (string.Equals(args[0], "sendchart", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "queuechart", StringComparison.OrdinalIgnoreCase))
+            {
+                bool queueOnly = string.Equals(args[0], "queuechart", StringComparison.OrdinalIgnoreCase);
+                string characterName = args.Length >= 2
+                    ? string.Join(" ", args, 1, args.Length - 1).Trim()
+                    : _familyChartRuntime.BuildChartSnapshot().SelectedMemberName;
+                return TryMirrorFamilyChartClientRequest(characterName, out string chartStatus, queueOnly)
+                    ? ChatCommandHandler.CommandResult.Ok(chartStatus)
+                    : ChatCommandHandler.CommandResult.Error(chartStatus);
+            }
+
+            if (string.Equals(args[0], "sendpending", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "queuepending", StringComparison.OrdinalIgnoreCase))
+            {
+                string pendingStatus = TryMirrorPendingFamilyManagementClientRequest(
+                    queueOnly: string.Equals(args[0], "queuepending", StringComparison.OrdinalIgnoreCase));
+                return string.IsNullOrWhiteSpace(pendingStatus)
+                    ? ChatCommandHandler.CommandResult.Error("No pending family management request is staged.")
+                    : ChatCommandHandler.CommandResult.Ok(pendingStatus);
             }
 
             if (string.Equals(args[0], "sendraw", StringComparison.OrdinalIgnoreCase))

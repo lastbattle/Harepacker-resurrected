@@ -1878,6 +1878,7 @@ namespace HaCreator.MapSimulator.Physics
         {
             int currentTimeMs = timeStampMs ?? Environment.TickCount;
             var path = BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
+            SetClientMovePathEncodeHeaderToTail(path);
             if (applyClientRetention)
             {
                 ApplyClientFlushRetentionAfterPacketSnapshot(
@@ -1913,11 +1914,7 @@ namespace HaCreator.MapSimulator.Physics
             List<MovePathElement> snapshot = new(
                 CMovePathClientPacketCodec.NormalizeForPortalOwnedClientFlushRetention(
                     BuildMovePathSnapshot(currentTimeMs, appendLatestState: false)));
-            if (snapshot.Count > 0)
-            {
-                _clientMovePathEncodeHeader = snapshot[snapshot.Count - 1];
-                _hasClientMovePathEncodeHeader = true;
-            }
+            SetClientMovePathEncodeHeaderToTail(snapshot);
 
             bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
             if (shortUpdate || isFlying)
@@ -1962,6 +1959,17 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             _lastPathFlushTime = currentTimeMs;
+        }
+
+        private void SetClientMovePathEncodeHeaderToTail(IReadOnlyList<MovePathElement> path)
+        {
+            if (path == null || path.Count == 0)
+            {
+                return;
+            }
+
+            _clientMovePathEncodeHeader = path[path.Count - 1];
+            _hasClientMovePathEncodeHeader = true;
         }
 
         internal static int GetClientTickElapsed(int currentTimeMs, int previousTimeMs)

@@ -25,6 +25,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultGuildCreateCostMesos = 1_500_000;
         private const int DefaultGuildMarkCostMesos = 5_000_000;
 
+        internal Func<SocialListGuildDialogRequestPacket, string> GuildDialogRequestDispatcher { get; set; }
+
         internal string DescribeStatus()
         {
             string[] tabLines = Enum.GetValues(typeof(SocialListTab))
@@ -281,14 +283,28 @@ namespace HaCreator.MapSimulator.Interaction
 
             _packetOwnedRosterByTab[tab] = true;
             _lastPendingRequestByTab[tab] = null;
+            string approvalDetail = null;
+            if (TryGetPendingPacketOwnedManageMutation(tab, out PacketOwnedSocialMutation mutation))
+            {
+                if (approved)
+                {
+                    approvalDetail = ApplyPendingPacketOwnedManageMutation(tab, mutation);
+                }
+
+                ClearPendingPacketOwnedManageMutation(tab);
+            }
+
             _lastPacketSyncSummaryByTab[tab] = string.IsNullOrWhiteSpace(summary)
                 ? approved
                     ? $"Server approved the staged {pendingRequest.ToLowerInvariant()} request."
                     : $"Server rejected the staged {pendingRequest.ToLowerInvariant()} request."
                 : summary.Trim();
-            return approved
+            string result = approved
                 ? $"Server approval cleared the staged {pendingRequest.ToLowerInvariant()} request."
                 : $"Server rejection cleared the staged {pendingRequest.ToLowerInvariant()} request.";
+            return string.IsNullOrWhiteSpace(approvalDetail)
+                ? result
+                : $"{result} {approvalDetail}";
         }
 
         internal string SelectEntryByName(SocialListTab tab, string entryName)
@@ -337,6 +353,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (!_packetGuildUiState.Value.HasGuildMembership)
             {
                 _packetGuildId = 0;
+                ClearPacketGuildBoardAuthKey();
             }
 
             _packetGuildUiRevision = AdvanceGuildDialogRevision(_packetGuildUiRevision);
@@ -350,6 +367,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _packetGuildUiState = null;
             _packetGuildId = 0;
+            ClearPacketGuildBoardAuthKey();
             return "Guild UI returned to the local build seam.";
         }
 
@@ -646,8 +664,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (IsPacketOwned(SocialListTab.Guild))
             {
+                string dispatchMessage = DispatchPendingGuildDialogRequest(request);
                 return NotifyGuildDialogSocialChatObserved(
-                    $"{request.RequestLabel} request for {request.GuildName} is now pending packet-owned guild approval at {request.RequiredMesos} mesos.");
+                    string.IsNullOrWhiteSpace(dispatchMessage)
+                        ? $"{request.RequestLabel} request for {request.GuildName} is now pending packet-owned guild approval at {request.RequiredMesos} mesos."
+                        : $"{request.RequestLabel} request for {request.GuildName} is now pending packet-owned guild approval at {request.RequiredMesos} mesos. {dispatchMessage.Trim()}");
             }
 
             return ResolvePendingGuildDialogRequest(
@@ -696,6 +717,24 @@ namespace HaCreator.MapSimulator.Interaction
         {
             NotifySocialChatObserved(message);
             return message;
+        }
+
+        private string DispatchPendingGuildDialogRequest(GuildDialogPendingRequest request)
+        {
+            SocialListGuildDialogRequestPacket packet = request.Kind switch
+            {
+                GuildDialogPendingRequestKind.CreateGuild => new SocialListGuildDialogRequestPacket(
+                    SocialListGuildDialogRequestKind.CreateGuild,
+                    request.GuildName,
+                    null),
+                GuildDialogPendingRequestKind.SetMark when request.MarkSelection.HasValue => new SocialListGuildDialogRequestPacket(
+                    SocialListGuildDialogRequestKind.SetMark,
+                    request.GuildName,
+                    request.MarkSelection.Value),
+                _ => default
+            };
+
+            return GuildDialogRequestDispatcher?.Invoke(packet);
         }
 
         private void TryFinalizePendingGuildDialogRequestFromPacket()
@@ -823,6 +862,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (localGuildEntry == null)
             {
                 _packetGuildUiState = new PacketGuildUiState(false, "No Guild", 0);
+                ClearPacketGuildBoardAuthKey();
                 return;
             }
 
@@ -836,6 +876,11 @@ namespace HaCreator.MapSimulator.Interaction
                 _packetGuildUiState?.GuildLevel ?? _packetGuildLevel);
             _packetGuildRosterRevision = AdvanceGuildDialogRevision(_packetGuildRosterRevision);
             TryFinalizePendingGuildDialogRequestFromPacket();
+        }
+
+        private void ClearPacketGuildBoardAuthKey()
+        {
+            _packetGuildBoardAuthKey = string.Empty;
         }
 
         private string DescribePendingGuildDialogAwaiting(GuildDialogPendingRequest request)

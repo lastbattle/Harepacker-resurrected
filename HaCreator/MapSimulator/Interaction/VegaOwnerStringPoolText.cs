@@ -10,7 +10,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int WhiteScrollUsedStringPoolId = 0x1161;
         private const int WhiteScrollProtectedFailureStringPoolId = 0x1162;
         private const int WhiteScrollSuccessStringPoolId = 0x1163;
-        private const int UnknownResultStringPoolId = 5424;
+        private const int UnknownResultStringPoolId = 0x1A6C;
         private const int ResultLoopSoundAliasStringPoolId = 5428;
         private const int ResultLoopSoundFallbackStringPoolId = 0x1534;
         private const int UnexpectedResultStringPoolId = 6764;
@@ -91,9 +91,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string GetResultLoopSoundFallbackDescriptor()
         {
-            return MapleStoryStringPool.GetOrFallback(
-                ResultLoopSoundFallbackStringPoolId,
-                string.Empty);
+            _ = ResultLoopSoundFallbackStringPoolId;
+            return "Sound/UI.img/EnchantDelay";
         }
 
         public static string FormatUnknownResultNotice(int resultCode)

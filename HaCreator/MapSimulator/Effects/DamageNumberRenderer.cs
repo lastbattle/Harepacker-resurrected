@@ -171,6 +171,7 @@ namespace HaCreator.MapSimulator.Effects
         #region Constants
         private const int MAX_ACTIVE_NUMBERS = 100;
         internal const int DamageNumberFormatStringPoolId = 0x1A15;
+        internal const int TemporaryCanvasFactoryStringPoolId = 0x03D0;
         internal const string DamageNumberEffectCategoryName = "effect";
         internal const string DamageNumberBasicEffectImageName = "BasicEff.img";
         internal const string DamageNumberSpecialTextOwnerSetName = DamageNumberLoader.DamageNumberSpecialTextOwnerSetName;
@@ -1204,6 +1205,7 @@ namespace HaCreator.MapSimulator.Effects
                 visual.DamageStringPoolId,
                 visual.DamageString,
                 compositionTrace.CanvasSettings,
+                ResolveRecoveredCompositeSurfaceSettings(),
                 preparedSources,
                 temporaryCanvasOperations,
                 keepsOverlayOnSeparateLayer,
@@ -1214,6 +1216,21 @@ namespace HaCreator.MapSimulator.Effects
                 keepsOverlayOnSeparateLayer ? overlaySourceWidth : 0,
                 keepsOverlayOnSeparateLayer ? overlaySourceHeight : 0,
                 overlayLayerPositionOffsetY);
+        }
+
+        internal static CanvasLayerRecoveredCompositeSurfaceSettings ResolveRecoveredCompositeSurfaceSettings()
+        {
+            return new CanvasLayerRecoveredCompositeSurfaceSettings(
+                TemporaryCanvasFactoryStringPoolId,
+                NativeCanvasFactoryName: "Canvas",
+                ManagedSurfaceType: nameof(RenderTarget2D),
+                ManagedSurfaceFormat: nameof(SurfaceFormat.Color),
+                ManagedClearColor: nameof(Color.Transparent),
+                ManagedBlendState: nameof(BlendState.AlphaBlend),
+                ManagedSamplerState: nameof(SamplerState.PointClamp),
+                UsesNativeIWzCanvas: false,
+                UsesNativeIWzGr2DLayer: false,
+                IsByteIdenticalNativeComposite: false);
         }
 
         internal static CanvasLayerRecoveredPreparedSourceTrace BuildRecoveredPreparedSourceTrace(

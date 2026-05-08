@@ -1554,8 +1554,254 @@ namespace HaCreator.MapSimulator.Interaction
                 CharacterDataSectionCountByteCountsByFlag = countByteCountsByFlag,
                 CharacterDataSectionRecordByteCountsByFlag = recordByteCountsByFlag,
                 CharacterDataSectionSemanticRecordByteCountsByFlag = BuildCharacterDataSectionSemanticRecordByteCounts(snapshot, recordByteCountsByFlag),
-                CharacterDataSectionNativeRecordByteCountsByFlag = recordByteCountsByFlag
+                CharacterDataSectionNativeRecordByteCountsByFlag = recordByteCountsByFlag,
+                CharacterDataSectionFieldByteCountsByFlag = BuildCharacterDataSectionFieldByteCounts(snapshot, countByteCountsByFlag)
             };
+        }
+
+        private static IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> BuildCharacterDataSectionFieldByteCounts(
+            PacketCharacterDataSnapshot snapshot,
+            IReadOnlyDictionary<ulong, int> countByteCountsByFlag)
+        {
+            Dictionary<ulong, IReadOnlyDictionary<string, int>> fieldByteCountsByFlag = new();
+            foreach (ulong sectionFlag in CharacterDataKnownSectionFlags)
+            {
+                fieldByteCountsByFlag[sectionFlag] = new Dictionary<string, int>(StringComparer.Ordinal);
+            }
+
+            fieldByteCountsByFlag[CharacterDataStatFlag] = MergeCharacterDataFieldByteCounts(
+                snapshot.CharacterStatFieldByteCounts,
+                snapshot.CharacterStatTrailerFieldByteCounts);
+            fieldByteCountsByFlag[0x2UL] = snapshot.Meso.HasValue
+                ? new Dictionary<string, int>(StringComparer.Ordinal)
+                {
+                    [nameof(PacketCharacterDataSnapshot.Meso)] = sizeof(int)
+                }
+                : new Dictionary<string, int>(StringComparer.Ordinal);
+            fieldByteCountsByFlag[0x80UL] = BuildInventorySlotLimitFieldByteCounts(snapshot.InventorySlotLimits);
+            fieldByteCountsByFlag[CharacterDataTwoIntValueRecordFlag] =
+                snapshot.TwoIntValueRecordFieldByteCounts ?? new Dictionary<string, int>(StringComparer.Ordinal);
+
+            foreach (ulong inventoryFlag in CharacterDataInventorySectionFlags)
+            {
+                Dictionary<string, int> inventoryFieldByteCounts = new(StringComparer.Ordinal);
+                AddCharacterDataFieldByteCounts(
+                    inventoryFieldByteCounts,
+                    snapshot.InventoryItemFieldByteCountsByFlag != null &&
+                    snapshot.InventoryItemFieldByteCountsByFlag.TryGetValue(inventoryFlag, out IReadOnlyDictionary<string, int> itemFields)
+                        ? itemFields
+                        : null);
+                int terminatorByteCount = snapshot.InventoryTerminatorByteCountsByFlag != null &&
+                    snapshot.InventoryTerminatorByteCountsByFlag.TryGetValue(inventoryFlag, out int terminatorBytes)
+                        ? terminatorBytes
+                        : 0;
+                inventoryFieldByteCounts["Terminator"] = terminatorByteCount;
+                fieldByteCountsByFlag[inventoryFlag] = inventoryFieldByteCounts;
+            }
+
+            fieldByteCountsByFlag[CharacterDataSkillRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataSkillRecordFlag,
+                snapshot.SkillNativeRecordEntries);
+            fieldByteCountsByFlag[CharacterDataSkillExpirationFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataSkillExpirationFlag,
+                snapshot.SkillExpirationNativeRecordEntries);
+            fieldByteCountsByFlag[CharacterDataSkillCooldownFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataSkillCooldownFlag,
+                snapshot.SkillCooldownNativeRecordEntries);
+            fieldByteCountsByFlag[CharacterDataInt16ValueRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataInt16ValueRecordFlag,
+                snapshot.Int16ValueNativeRecordEntries ?? snapshot.OpaqueInt16ValueNativeRecordEntries,
+                snapshot.OpaquePreMapTransferSectionFieldByteCounts);
+            fieldByteCountsByFlag[CharacterDataQuestRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataQuestRecordFlag,
+                snapshot.QuestNativeRecordEntries);
+            fieldByteCountsByFlag[CharacterDataShortFileTimeRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataShortFileTimeRecordFlag,
+                snapshot.ShortFileTimeNativeRecordEntries);
+            fieldByteCountsByFlag[CharacterDataMiniGameRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataMiniGameRecordFlag,
+                snapshot.MiniGameRecordEntries);
+            fieldByteCountsByFlag[CharacterDataRelationshipRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataRelationshipRecordFlag,
+                snapshot.CoupleRecordEntries,
+                snapshot.FriendRecordEntries,
+                snapshot.MarriageRecordEntries);
+            fieldByteCountsByFlag[CharacterDataMapTransferFlag] = MergeCharacterDataRecordFieldByteCounts(
+                snapshot.RegularMapTransferRecordEntries,
+                snapshot.ContinentMapTransferRecordEntries);
+            fieldByteCountsByFlag[CharacterDataNewYearCardRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataNewYearCardRecordFlag,
+                snapshot.NewYearCardNativeRecords);
+            fieldByteCountsByFlag[CharacterDataQuestExRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataQuestExRecordFlag,
+                snapshot.QuestExNativeRecordEntries);
+            fieldByteCountsByFlag[CharacterDataWildHunterInfoFlag] =
+                snapshot.WildHunterInfoFieldByteCounts ?? new Dictionary<string, int>(StringComparer.Ordinal);
+            fieldByteCountsByFlag[CharacterDataQuestCompleteRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataQuestCompleteRecordFlag,
+                snapshot.QuestCompleteNativeRecordEntries);
+            fieldByteCountsByFlag[CharacterDataVisitorQuestRecordFlag] = BuildCountPrefixedRecordFieldByteCounts(
+                countByteCountsByFlag,
+                CharacterDataVisitorQuestRecordFlag,
+                snapshot.VisitorQuestNativeRecordEntries);
+
+            return fieldByteCountsByFlag;
+        }
+
+        private static Dictionary<string, int> BuildInventorySlotLimitFieldByteCounts(IReadOnlyDictionary<InventoryType, int> inventorySlotLimits)
+        {
+            Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                fieldByteCounts[$"{inventoryType}SlotLimit"] = inventorySlotLimits != null &&
+                    inventorySlotLimits.ContainsKey(inventoryType)
+                        ? sizeof(byte)
+                        : 0;
+            }
+
+            return fieldByteCounts;
+        }
+
+        private static Dictionary<string, int> BuildCountPrefixedRecordFieldByteCounts<TRecord>(
+            IReadOnlyDictionary<ulong, int> countByteCountsByFlag,
+            ulong sectionFlag,
+            IReadOnlyList<TRecord> records,
+            IReadOnlyDictionary<string, int> fallbackFieldByteCounts = null)
+            where TRecord : struct
+        {
+            Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal)
+            {
+                ["Count"] = ResolveCharacterDataSectionMapValue(countByteCountsByFlag, sectionFlag)
+            };
+            AddCharacterDataRecordFieldByteCounts(fieldByteCounts, records);
+            if (fieldByteCounts.Count == 1)
+            {
+                AddCharacterDataFieldByteCounts(fieldByteCounts, fallbackFieldByteCounts);
+            }
+
+            return fieldByteCounts;
+        }
+
+        private static Dictionary<string, int> BuildCountPrefixedRecordFieldByteCounts<TRecord1, TRecord2, TRecord3>(
+            IReadOnlyDictionary<ulong, int> countByteCountsByFlag,
+            ulong sectionFlag,
+            IReadOnlyList<TRecord1> records1,
+            IReadOnlyList<TRecord2> records2,
+            IReadOnlyList<TRecord3> records3)
+            where TRecord1 : struct
+            where TRecord2 : struct
+            where TRecord3 : struct
+        {
+            Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal)
+            {
+                ["Count"] = ResolveCharacterDataSectionMapValue(countByteCountsByFlag, sectionFlag)
+            };
+            AddCharacterDataRecordFieldByteCounts(fieldByteCounts, records1);
+            AddCharacterDataRecordFieldByteCounts(fieldByteCounts, records2);
+            AddCharacterDataRecordFieldByteCounts(fieldByteCounts, records3);
+            return fieldByteCounts;
+        }
+
+        private static Dictionary<string, int> MergeCharacterDataFieldByteCounts(
+            params IReadOnlyDictionary<string, int>[] fieldByteCountMaps)
+        {
+            Dictionary<string, int> merged = new(StringComparer.Ordinal);
+            if (fieldByteCountMaps == null)
+            {
+                return merged;
+            }
+
+            foreach (IReadOnlyDictionary<string, int> fieldByteCounts in fieldByteCountMaps)
+            {
+                AddCharacterDataFieldByteCounts(merged, fieldByteCounts);
+            }
+
+            return merged;
+        }
+
+        private static Dictionary<string, int> MergeCharacterDataRecordFieldByteCounts<TRecord>(
+            params IReadOnlyList<TRecord>[] recordLists)
+            where TRecord : struct
+        {
+            Dictionary<string, int> merged = new(StringComparer.Ordinal);
+            if (recordLists == null)
+            {
+                return merged;
+            }
+
+            foreach (IReadOnlyList<TRecord> records in recordLists)
+            {
+                AddCharacterDataRecordFieldByteCounts(merged, records);
+            }
+
+            return merged;
+        }
+
+        private static void AddCharacterDataRecordFieldByteCounts<TRecord>(
+            IDictionary<string, int> merged,
+            IReadOnlyList<TRecord> records)
+            where TRecord : struct
+        {
+            if (records == null || records.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                AddCharacterDataFieldByteCounts(merged, GetCharacterDataRecordFieldByteCounts(records[i]));
+            }
+        }
+
+        private static IReadOnlyDictionary<string, int> GetCharacterDataRecordFieldByteCounts<TRecord>(TRecord record)
+            where TRecord : struct
+        {
+            return record switch
+            {
+                PacketCharacterDataSkillRecord skillRecord => skillRecord.FieldByteCounts,
+                PacketCharacterDataSkillExpirationRecord skillExpirationRecord => skillExpirationRecord.FieldByteCounts,
+                PacketCharacterDataInt16ValueRecord int16ValueRecord => int16ValueRecord.FieldByteCounts,
+                PacketCharacterDataUInt16StringRecord stringRecord => stringRecord.FieldByteCounts,
+                PacketCharacterDataUInt16FileTimeRecord fileTimeRecord => fileTimeRecord.FieldByteCounts,
+                PacketCharacterDataUInt16ValueRecord valueRecord => valueRecord.FieldByteCounts,
+                PacketCharacterDataFixedClientRecord fixedRecord => fixedRecord.FieldByteCounts,
+                PacketCharacterDataMapTransferRecord mapTransferRecord => mapTransferRecord.FieldByteCounts,
+                PacketCharacterDataNewYearCardRecord newYearCardRecord => newYearCardRecord.FieldByteCounts,
+                _ => null
+            };
+        }
+
+        private static void AddCharacterDataFieldByteCounts(
+            IDictionary<string, int> merged,
+            IReadOnlyDictionary<string, int> fieldByteCounts)
+        {
+            if (merged == null || fieldByteCounts == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, int> fieldByteCount in fieldByteCounts)
+            {
+                if (merged.TryGetValue(fieldByteCount.Key, out int existingByteCount))
+                {
+                    merged[fieldByteCount.Key] = checked(existingByteCount + fieldByteCount.Value);
+                }
+                else
+                {
+                    merged[fieldByteCount.Key] = fieldByteCount.Value;
+                }
+            }
         }
 
         private static IReadOnlyDictionary<ulong, int> BuildCharacterDataSectionSemanticRecordByteCounts(
@@ -5363,6 +5609,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionSemanticRecordByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionNativeRecordByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> CharacterDataSectionFieldByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionStartOffsetsByFlag { get; init; } = null;
 

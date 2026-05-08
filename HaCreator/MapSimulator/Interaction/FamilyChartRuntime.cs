@@ -393,6 +393,43 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildPendingManagementRequestPayload(out ushort opcode, out byte[] payload, out string description)
+        {
+            opcode = 0;
+            payload = Array.Empty<byte>();
+            description = string.Empty;
+
+            PendingFamilyManagementRequest pendingRequest = _pendingManagementRequest;
+            if (pendingRequest == null)
+            {
+                return false;
+            }
+
+            switch (pendingRequest.Kind)
+            {
+                case FamilyManagementRequestKind.JuniorEntry:
+                    opcode = FamilyPacketCodec.RegisterJuniorRequestOpcode;
+                    payload = FamilyPacketCodec.BuildRegisterJuniorRequestPayload(pendingRequest.RecruitSeed.Name);
+                    description = $"CWvsContext::SendRegisterJunior {pendingRequest.RecruitSeed.Name}";
+                    return true;
+
+                case FamilyManagementRequestKind.RemoveMember:
+                    opcode = FamilyPacketCodec.UnregisterJuniorRequestOpcode;
+                    payload = FamilyPacketCodec.BuildUnregisterJuniorRequestPayload(pendingRequest.MemberId);
+                    description = $"CWvsContext::SendUnregisterJunior {pendingRequest.MemberName} (#{pendingRequest.MemberId})";
+                    return true;
+
+                case FamilyManagementRequestKind.Precept:
+                    opcode = FamilyPacketCodec.SetFamilyPreceptRequestOpcode;
+                    payload = FamilyPacketCodec.BuildSetFamilyPreceptRequestPayload(pendingRequest.Precept);
+                    description = "CWvsContext::SendSetFamilyPrecept";
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
         internal string SetAuthorityProfileFromPacket(string profile)
         {
             FamilyAuthorityState authorityState = ResolveAuthorityProfile(profile, out string resolvedProfile);

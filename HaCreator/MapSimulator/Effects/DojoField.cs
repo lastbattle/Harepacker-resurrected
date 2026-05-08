@@ -176,6 +176,19 @@ namespace HaCreator.MapSimulator.Effects
             EnergyGaugeOffsetX,
             EnergyGaugeOffsetY,
             EnergyFullTopLeft);
+        internal DojoHudLayerVisibility ResolveClientHudLayerVisibility()
+        {
+            bool active = _isActive;
+            bool isEnergyFull = IsEnergyFullPresentationActive;
+            return new DojoHudLayerVisibility(
+                active,
+                active,
+                active && _hasPlayerState,
+                active && _bossHpPercent.HasValue,
+                active && !isEnergyFull,
+                active && !isEnergyFull,
+                active && isEnergyFull);
+        }
         public int NextFloorMapId => ResolveNextFloorMapId();
         public string NextFloorPortalName => ResolveNextFloorPortalName() ?? string.Empty;
         public bool HasAuthoredExitPortal => _hasExitPortal;
@@ -2008,15 +2021,10 @@ namespace HaCreator.MapSimulator.Effects
         }
         private void DrawGaugeBars(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture)
         {
+            Vector2 playerAnchor = new((viewport.Width / 2f) + PlayerOffsetX, PlayerOffsetY);
+            Rectangle playerBounds = DrawTextureAtOrigin(spriteBatch, _playerTexture, playerAnchor, PlayerOrigin);
             if (_hasPlayerState)
             {
-                Vector2 playerAnchor = new((viewport.Width / 2f) + PlayerOffsetX, PlayerOffsetY);
-                Rectangle playerBounds = DrawTextureAtOrigin(spriteBatch, _playerTexture, playerAnchor, PlayerOrigin);
-                Rectangle playerGaugeBounds = new(
-                    playerBounds.X + PlayerGaugeOffsetX,
-                    playerBounds.Y + BarGaugeOffsetY,
-                    BarGaugeWidth,
-                    BarGaugeHeight);
                 DrawHorizontalGauge(
                     spriteBatch,
                     pixelTexture,
@@ -2024,10 +2032,10 @@ namespace HaCreator.MapSimulator.Effects
                     ResolvePlayerGaugeFillBounds(playerBounds, _playerMaxHp > 0 ? (float)_playerHp / _playerMaxHp : 0f));
             }
 
+            Vector2 monsterAnchor = new((viewport.Width / 2f) + MonsterOffsetX, MonsterOffsetY);
+            Rectangle monsterBounds = DrawTextureAtOrigin(spriteBatch, _monsterTexture, monsterAnchor, MonsterOrigin);
             if (_bossHpPercent.HasValue)
             {
-                Vector2 monsterAnchor = new((viewport.Width / 2f) + MonsterOffsetX, MonsterOffsetY);
-                Rectangle monsterBounds = DrawTextureAtOrigin(spriteBatch, _monsterTexture, monsterAnchor, MonsterOrigin);
                 Rectangle monsterGaugeBounds = new(
                     monsterBounds.X + MonsterGaugeOffsetX,
                     monsterBounds.Y + BarGaugeOffsetY,
@@ -2250,6 +2258,14 @@ namespace HaCreator.MapSimulator.Effects
             int EnergyGaugeOffsetX,
             int EnergyGaugeOffsetY,
             Point EnergyFullTopLeft);
+        internal readonly record struct DojoHudLayerVisibility(
+            bool PlayerBackplateVisible,
+            bool MonsterBackplateVisible,
+            bool PlayerGaugeVisible,
+            bool MonsterGaugeVisible,
+            bool EnergyEmptyVisible,
+            bool EnergyGaugeVisible,
+            bool EnergyFullVisible);
         private enum DojoResultEffect
         {
             None,

@@ -9,6 +9,20 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class FamilyPacketCodec
     {
+        // IDA evidence:
+        // CWvsContext::SendFamilyChartRequest -> COutPacket(169)
+        // CWvsContext::SendRegisterJunior -> COutPacket(171)
+        // CWvsContext::SendUnregisterJunior -> COutPacket(172)
+        // CWvsContext::SendUnregisterParent -> COutPacket(173)
+        // CWvsContext::SendUseFamilyPrivilege -> COutPacket(175)
+        // CWvsContext::SendSetFamilyPrecept -> COutPacket(176)
+        internal const ushort FamilyChartRequestOpcode = 169;
+        internal const ushort RegisterJuniorRequestOpcode = 171;
+        internal const ushort UnregisterJuniorRequestOpcode = 172;
+        internal const ushort UnregisterParentRequestOpcode = 173;
+        internal const ushort UseFamilyPrivilegeRequestOpcode = 175;
+        internal const ushort SetFamilyPreceptRequestOpcode = 176;
+
         internal static bool TryDecodeInfoPayload(byte[] payload, out FamilyInfoPacketSnapshot snapshot, out string error)
         {
             snapshot = null;

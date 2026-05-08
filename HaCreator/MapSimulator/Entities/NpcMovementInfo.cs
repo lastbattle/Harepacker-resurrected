@@ -66,6 +66,29 @@ namespace HaCreator.MapSimulator.Animation
             FlipX = _random.Next(2) == 0;
         }
 
+        public void ApplyPacketPosition(int x, int y, int rx0, int rx1, int moveAction)
+        {
+            _spawnX = x;
+            _spawnY = y;
+            X = x;
+            Y = y;
+            RX0 = rx0;
+            RX1 = rx1;
+            CanMove = CanMove && rx1 > rx0;
+            IsMoving = false;
+            _standTimer = 0;
+            _moveTimer = 0;
+            _currentStandDuration = _random.Next(MIN_STAND_TIME, MAX_STAND_TIME);
+            FlipX = (moveAction & 1) != 0;
+        }
+
+        public void ApplyPacketMoveAction(int moveAction)
+        {
+            FlipX = (moveAction & 1) != 0;
+            IsMoving = moveAction >= 2;
+            _moveTimer = 0;
+        }
+
         /// <summary>
         /// Update NPC movement
         /// </summary>

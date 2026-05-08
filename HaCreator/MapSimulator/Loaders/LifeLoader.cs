@@ -70,6 +70,20 @@ namespace HaCreator.MapSimulator.Loaders
             public List<int> FrameDelays { get; init; }
         }
 
+        internal sealed class MobActionNativeCacheTrace
+        {
+            public string TemplateId { get; init; }
+            public string AuthoredActionName { get; init; }
+            public string CanonicalActionName { get; init; }
+            public int? ClientActionSlot { get; init; }
+            public string CacheKey { get; init; }
+            public int DirectCanvasFrameCount { get; init; }
+            public int FrameMetadataCount { get; init; }
+            public bool HasActionSpeakMetadata { get; init; }
+            public bool AppendsReversePlayback { get; init; }
+            public bool UsesClientSlotOwner { get; init; }
+        }
+
         private sealed class MobImgEntry
         {
             public MobImgEntry(string templateId, WzImage image, IReadOnlyList<WzImageProperty> wzProperties)
@@ -1459,6 +1473,38 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return ResolveMobClientActionName(slot) ?? (actionName?.ToLowerInvariant() ?? string.Empty);
+        }
+
+        internal static MobActionNativeCacheTrace BuildMobActionNativeCacheTraceForTests(
+            string templateId,
+            string authoredActionName,
+            WzSubProperty actionProperty)
+        {
+            string normalizedTemplateId = NormalizeMobTemplateId(templateId);
+            string normalizedActionName = string.IsNullOrWhiteSpace(authoredActionName)
+                ? actionProperty?.Name?.ToLowerInvariant() ?? string.Empty
+                : authoredActionName.ToLowerInvariant();
+            bool usesClientSlotOwner = TryResolveMobClientActionSlot(normalizedActionName, out int clientActionSlot);
+            string canonicalActionName = usesClientSlotOwner
+                ? ResolveMobClientActionName(clientActionSlot) ?? normalizedActionName
+                : normalizedActionName;
+            int? slot = usesClientSlotOwner ? clientActionSlot : null;
+
+            return new MobActionNativeCacheTrace
+            {
+                TemplateId = normalizedTemplateId,
+                AuthoredActionName = normalizedActionName,
+                CanonicalActionName = canonicalActionName,
+                ClientActionSlot = slot,
+                CacheKey = usesClientSlotOwner
+                    ? $"{normalizedTemplateId}:{clientActionSlot}:{canonicalActionName}"
+                    : $"{normalizedTemplateId}:authored:{canonicalActionName}",
+                DirectCanvasFrameCount = CountMobActionFrameCanvasesForTests(actionProperty),
+                FrameMetadataCount = CountMobActionFrameMetadataForTests(actionProperty),
+                HasActionSpeakMetadata = BuildMobActionSpeakMetadata(actionProperty?["speak"]) != null,
+                AppendsReversePlayback = ShouldAppendReversePlayback(actionProperty),
+                UsesClientSlotOwner = usesClientSlotOwner
+            };
         }
 
         private static List<MobAnimationSet.FrameMetadata> BuildMobActionFrameMetadata(WzImageProperty source)

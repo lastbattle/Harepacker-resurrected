@@ -924,7 +924,9 @@ namespace HaCreator.MapSimulator.Pools
                     PropPercent: primaryStatusPropPercent));
             }
 
-            if (ContainsToken(hostileSearchText, "blind", "dark", "darkness"))
+            if (ContainsToken(hostileSearchText, "blind", "dark", "darkness")
+                || levelData.ACC < 0
+                || levelData.EVA < 0)
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
                     PlayerMobStatusEffect.Darkness,

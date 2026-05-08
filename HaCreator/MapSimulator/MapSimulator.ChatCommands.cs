@@ -1482,10 +1482,19 @@ namespace HaCreator.MapSimulator
                 case LoginPacketType.EnableSpwResult:
                 case LoginPacketType.CheckSpwResult:
                 case LoginPacketType.CheckDuplicatedIdResult:
+                case LoginPacketType.CharacterSaleCheckDuplicatedIdResult:
                 case LoginPacketType.CreateNewCharacterResult:
-                    return packetType == LoginPacketType.CreateNewCharacterResult
+                case LoginPacketType.CharacterSaleCreateNewCharacterResult:
+                    return packetType is LoginPacketType.CreateNewCharacterResult
+                            or LoginPacketType.CharacterSaleCreateNewCharacterResult
                         ? TryConfigureCreateNewCharacterPacketPayload(args, out error, out summary)
-                        : TryConfigureLoginAccountDialogPacketPayload(packetType, args, out error, out summary);
+                        : TryConfigureLoginAccountDialogPacketPayload(
+                            packetType == LoginPacketType.CharacterSaleCheckDuplicatedIdResult
+                                ? LoginPacketType.CheckDuplicatedIdResult
+                                : packetType,
+                            args,
+                            out error,
+                            out summary);
                 case LoginPacketType.DeleteCharacterResult:
 
                     return TryConfigureLoginAccountDialogPacketPayload(packetType, args, out error, out summary);
@@ -2517,7 +2526,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error(scriptPayloadError ?? $"Failed to configure {scriptMessage.PacketType} from the login packet script.");
                             }
 
-                            DispatchLoginRuntimePacket(scriptMessage.PacketType, out _);
+                            DispatchLoginRuntimePacketWithStageRelay(scriptMessage.PacketType, scriptMessage.Arguments, out _);
                             dispatchedPackets.Add(scriptMessage.PacketType.ToString());
                         }
 
@@ -2542,7 +2551,7 @@ namespace HaCreator.MapSimulator
                     }
 
 
-                    DispatchLoginRuntimePacket(packetType, out string message);
+                    DispatchLoginRuntimePacketWithStageRelay(packetType, args.Skip(1).ToArray(), out string message);
                     return ChatCommandHandler.CommandResult.Ok(string.IsNullOrWhiteSpace(payloadSummary)
                         ? message
                         : $"{message} {payloadSummary}");
@@ -9353,9 +9362,8 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(lockMessage)
                                         : ChatCommandHandler.CommandResult.Error(lockMessage);
                                 case "accept":
-                                    return runtime.ToggleTradeAcceptance(out string acceptMessage)
-                                        ? ChatCommandHandler.CommandResult.Ok(acceptMessage)
-                                        : ChatCommandHandler.CommandResult.Error(acceptMessage);
+                                    runtime.SubmitTradingRoomClaimButton();
+                                    return ChatCommandHandler.CommandResult.Ok(runtime.StatusMessage);
                                 case "remoteofferitem":
                                     if (args.Length <= actionIndex + 1 || !int.TryParse(args[actionIndex + 1], out int remoteTradeItemId))
                                     {
@@ -9388,9 +9396,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(remoteLockMessage)
                                         : ChatCommandHandler.CommandResult.Error(remoteLockMessage);
                                 case "remoteaccept":
-                                    return runtime.ToggleTradeAcceptance(out string remoteAcceptMessage, remoteParty: true)
-                                        ? ChatCommandHandler.CommandResult.Ok(remoteAcceptMessage)
-                                        : ChatCommandHandler.CommandResult.Error(remoteAcceptMessage);
+                                    return ChatCommandHandler.CommandResult.Error("Remote trade acceptance is not a recovered CTradingRoomDlg::OnPacket branch; drive subtype 17/20 packets or use previewremoteaccept for the simulator-only settlement preview.");
                                 case "remoteinventory":
                                     if (args.Length <= actionIndex + 1)
                                     {
@@ -9444,8 +9450,23 @@ namespace HaCreator.MapSimulator
                                     return Dispatch(SocialRoomPacketType.ResetTrade, out string resetMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(resetMessage)
                                         : ChatCommandHandler.CommandResult.Error(resetMessage);
+                                case "previewaccept":
+                                    return runtime.ToggleTradeAcceptance(out string previewAcceptMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok($"{previewAcceptMessage} Simulator-only preview; CTradingRoomDlg parity remains owned by subtype 17/20 packets.")
+                                        : ChatCommandHandler.CommandResult.Error(previewAcceptMessage);
+                                case "previewremoteaccept":
+                                    return runtime.ToggleTradeAcceptance(out string previewRemoteAcceptMessage, remoteParty: true)
+                                        ? ChatCommandHandler.CommandResult.Ok($"{previewRemoteAcceptMessage} Simulator-only preview; CTradingRoomDlg parity remains owned by subtype 17/20 packets.")
+                                        : ChatCommandHandler.CommandResult.Error(previewRemoteAcceptMessage);
+                                case "previewcomplete":
+                                    return runtime.TryCompleteTrade(out string previewCompleteMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok($"{previewCompleteMessage} Simulator-only preview; CTradingRoomDlg parity remains owned by subtype 17/20 packets.")
+                                        : ChatCommandHandler.CommandResult.Error(previewCompleteMessage);
+                                case "previewreset":
+                                    runtime.ResetTrade();
+                                    return ChatCommandHandler.CommandResult.Ok($"{runtime.StatusMessage} Simulator-only preview; BtReset is not a recovered CTradingRoomDlg::OnPacket branch.");
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|exceedlimit|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|exceedlimit|reset|previewaccept|previewremoteaccept|previewcomplete|previewreset|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
                     }
@@ -10416,7 +10437,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "messagebox",
                 "Inspect or drive the field message-box and chalkboard pool",
-                "/messagebox [status|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]|session [status|history|clearhistory|replay|send|sendraw|discover|start|startauto|stop]]",
+                "/messagebox [status|dialog <open|text|ok|cancel|status>|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]|session [status|history|clearhistory|replay|send|sendraw|discover|start|startauto|stop]]",
                 args =>
                 {
                     _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
@@ -10463,6 +10484,78 @@ namespace HaCreator.MapSimulator
                                     ownerName,
                                     hostPosition,
                                     currTickCount));
+                        }
+                        case "dialog":
+                        case "chalkboard":
+                        {
+                            if (args.Length < 2 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_fieldMessageBoxRuntime.DescribeChalkboardDialog());
+                            }
+
+                            switch (args[1].ToLowerInvariant())
+                            {
+                                case "open":
+                                case "compose":
+                                {
+                                    if (args.Length < 3
+                                        || !int.TryParse(args[2], out int inventoryPosition)
+                                        || inventoryPosition <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /messagebox dialog open <inventoryPosition> [itemId] [initial text]");
+                                    }
+
+                                    int itemId = 5370000;
+                                    int textStartIndex = 3;
+                                    if (args.Length >= 4 && int.TryParse(args[3], out int parsedItemId) && parsedItemId > 0)
+                                    {
+                                        itemId = parsedItemId;
+                                        textStartIndex = 4;
+                                    }
+
+                                    string initialText = args.Length > textStartIndex
+                                        ? string.Join(" ", args.Skip(textStartIndex))
+                                        : string.Empty;
+                                    return TryOpenFieldMessageBoxChalkboardDialog(
+                                            inventoryPosition,
+                                            itemId,
+                                            initialText,
+                                            out string openMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(openMessage)
+                                        : ChatCommandHandler.CommandResult.Error(openMessage);
+                                }
+
+                                case "text":
+                                case "set":
+                                {
+                                    if (args.Length < 3)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /messagebox dialog text <message>");
+                                    }
+
+                                    string text = string.Join(" ", args.Skip(2));
+                                    return TryUpdateFieldMessageBoxChalkboardDialogText(text, out string textMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(textMessage)
+                                        : ChatCommandHandler.CommandResult.Error(textMessage);
+                                }
+
+                                case "ok":
+                                case "send":
+                                case "submit":
+                                    return TrySubmitFieldMessageBoxChalkboardDialog(out string submitMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(submitMessage)
+                                        : ChatCommandHandler.CommandResult.Error(submitMessage);
+
+                                case "cancel":
+                                case "close":
+                                    HideLoginUtilityDialog();
+                                    return TryCancelFieldMessageBoxChalkboardDialog(out string cancelMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(cancelMessage)
+                                        : ChatCommandHandler.CommandResult.Error(cancelMessage);
+
+                                default:
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /messagebox dialog <open <inventoryPosition> [itemId] [initial text]|text <message>|ok|cancel|status>");
+                            }
                         }
                         case "leave":
                         case "remove":
@@ -10552,7 +10645,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox [status|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]|session [status|history|clearhistory|replay|send|sendraw|discover|start|startauto|stop]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox [status|dialog <open|text|ok|cancel|status>|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]|session [status|history|clearhistory|replay|send|sendraw|discover|start|startauto|stop]]");
                     }
                 });
 
@@ -10608,6 +10701,11 @@ namespace HaCreator.MapSimulator
                 "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
                 "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
                 HandlePacketOwnedNpcUtilityCommand);
+            _chat.CommandHandler.RegisterCommand(
+                "npcpool",
+                "Inspect or drive packet-owned live NPC actor lifecycle and presentation",
+                "/npcpool [status|enter <objectId> <templateId> <x> <y> [rx0 rx1 enabled]|leave <objectId>|move <objectId> <action> <chatIndex>|limited <objectId> <on|off>|special <objectId> <actionName>|packet <imitate|limiteddisable|enter|leave|controller|move|limited|special|template> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]",
+                HandlePacketOwnedNpcPoolCommand);
             _chat.CommandHandler.RegisterCommand(
                 "adminshop",
                 "Inspect or drive the packet-owned CAdminShopDlg owner, inbox, and official-session bridge",

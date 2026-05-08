@@ -4781,6 +4781,7 @@ namespace HaCreator.MapSimulator.Character
 
                 if (effectState.Mode == currentMode)
                 {
+                    StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
                     continue;
                 }
 
@@ -11412,6 +11413,41 @@ namespace HaCreator.MapSimulator.Character
                 requestedFacingRight);
         }
 
+        internal void UpdateAvatarEffectsForTesting(int currentTime)
+        {
+            UpdateAvatarEffects(currentTime);
+        }
+
+        internal int GetSkillAvatarEffectAnimationStartTimeForTesting(int skillId)
+        {
+            SkillAvatarEffectState effectState = _activeSkillAvatarEffects
+                .FirstOrDefault(state => state?.SkillId == skillId);
+            return effectState?.AnimationStartTime ?? int.MinValue;
+        }
+
+        internal int GetAuxiliaryAvatarEffectOwnerCounterElapsedForTesting(
+            int skillId,
+            string animationName,
+            int planeCode,
+            bool oneTime)
+        {
+            SkillAvatarEffectPlane plane = planeCode switch
+            {
+                0 => SkillAvatarEffectPlane.BehindCharacter,
+                1 => SkillAvatarEffectPlane.UnderFace,
+                2 => SkillAvatarEffectPlane.OverFace,
+                _ => SkillAvatarEffectPlane.OverCharacter
+            };
+            string ownerName = ResolveAuxiliaryAvatarEffectActionOwnerName(plane, oneTime);
+            string actionName = string.IsNullOrWhiteSpace(animationName)
+                ? $"skill:{Math.Max(0, skillId)}"
+                : animationName;
+
+            return _auxiliaryLayerOwnerCounters.TryGetValue(ownerName, out AuxiliaryLayerOwnerCounterState ownerCounter)
+                   && IsAuxiliaryLayerOwnerCounterContextMatch(ownerCounter, skillId, actionName, FacingRight)
+                ? ownerCounter.AnimationElapsedMs
+                : -1;
+        }
         private static void AddAvatarEffectRenderable(
             List<AvatarEffectRenderable> renderables,
             SkillAnimation animation,

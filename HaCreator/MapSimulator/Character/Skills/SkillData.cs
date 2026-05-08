@@ -335,6 +335,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
     public enum AfterimageLayerReferenceOperationKind
     {
+        AddAfterimageUolRef,
+        GetWeaponAfterImage,
+        ReleaseAfterimageUolRef,
         AddCanvasRef,
         AddLayerRef,
         InsertCanvas,
@@ -359,6 +362,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         int CanvasRefDelta = 0,
         int LayerRefDelta = 0,
         int AlphaVectorRefDelta = 0,
+        int AfterimageUolRefDelta = 0,
         int RemoveCanvasIndex = 0);
 
     /// <summary>
@@ -2267,6 +2271,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int RepeatLayerObjectId { get; init; }
         public int ParentRepeatLayerObjectId { get; init; }
         public int SourceLayerObjectId { get; init; }
+        public int SimulatedListNodeObjectId { get; init; }
+        public int SimulatedSourceCanvasObjectId { get; init; }
+        public int SimulatedRepeatLayerRefCount { get; set; }
+        public int SimulatedListNodeRefCount { get; set; }
+        public int SimulatedSourceCanvasRefCount { get; set; }
+        public int SimulatedRegisteredAnimationStateRefCount { get; set; }
+        public int SimulatedReleaseTime { get; private set; }
+        public int SimulatedReleaseSequence { get; private set; }
         public SkillFrame Frame { get; init; }
         public Vector2 Position { get; init; }
         public Rectangle WorldBounds { get; init; }
@@ -2289,6 +2301,26 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HasAlphaVectorStart { get; init; }
         public bool HasAlphaVectorEnd { get; init; }
         public float FrameAlphaMultiplier { get; init; } = 1f;
+
+        public void ReleaseRegisteredReferences(int currentTime)
+        {
+            if (SimulatedReleaseSequence > 0)
+            {
+                return;
+            }
+
+            SimulatedReleaseTime = currentTime;
+            SimulatedReleaseSequence = 1;
+            SetSimulatedReleased();
+        }
+
+        private void SetSimulatedReleased()
+        {
+            SimulatedRepeatLayerRefCount = 0;
+            SimulatedListNodeRefCount = 0;
+            SimulatedSourceCanvasRefCount = 0;
+            SimulatedRegisteredAnimationStateRefCount = 0;
+        }
 
         public bool IsExpired(int currentTime)
         {
@@ -2709,7 +2741,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (IsPendingRemoval)
             {
-                return Math.Max(0, PendingRemovalTime - currentTime);
+                if (SummonRuntimeRules.HasClientTickReached(currentTime, PendingRemovalTime))
+                {
+                    return 0;
+                }
+
+                return Math.Max(0, unchecked(PendingRemovalTime - currentTime));
             }
 
             if (Duration <= 0)

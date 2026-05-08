@@ -1440,6 +1440,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _threads.Clear();
             _threads.AddRange(decodedThreads);
+            _packetTotalThreadCount = Math.Max(0, totalThreadCount);
             if (_selectedThreadId != 0 && !_threads.Any(thread => thread.ThreadId == _selectedThreadId))
             {
                 _selectedThreadId = 0;

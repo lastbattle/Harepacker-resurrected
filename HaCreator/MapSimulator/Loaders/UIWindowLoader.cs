@@ -4455,7 +4455,8 @@ namespace HaCreator.MapSimulator.Loaders
             SocialRoomRuntime runtime = SocialRoomRuntime.CreateMiniRoomSample();
 
             SocialRoomWindow window = CreateSocialRoomWindow(omokProperty, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.MiniRoom, runtime);
-            ConfigureMiniRoomOmokAssets(window, omokProperty, device);
+            WzSubProperty commonProperty = minigameRoot?["Common"] as WzSubProperty;
+            ConfigureMiniRoomOmokAssets(window, omokProperty, commonProperty, device);
             if (window == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -4471,16 +4472,17 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            WzSubProperty commonProperty = minigameRoot?["Common"] as WzSubProperty;
-            window.BindButton(LoadButton(commonProperty, "btReady", clickSound, overSound, device), runtime.ToggleMiniRoomGuestReady);
-            window.BindButton(LoadButton(commonProperty, "btStart", clickSound, overSound, device), runtime.StartMiniRoomSession);
-            window.BindButton(LoadButton(commonProperty, "btDraw", clickSound, overSound, device), runtime.CycleMiniRoomMode);
+            window.BindButton(LoadButton(commonProperty, "btReady", clickSound, overSound, device), runtime.ToggleMiniRoomGuestReady, () => runtime.MiniRoomOmokReadyButtonEnabled);
+            window.BindButton(LoadButton(commonProperty, "btStart", clickSound, overSound, device), runtime.StartMiniRoomSession, () => runtime.MiniRoomOmokStartButtonEnabled);
+            window.BindButton(LoadButton(commonProperty, "btDraw", clickSound, overSound, device), () => runtime.TryRequestMiniRoomTie(out _), () => runtime.CanMiniRoomOmokRequestTie);
+            window.BindButton(LoadButton(commonProperty, "btRefund", clickSound, overSound, device), () => runtime.TryRequestMiniRoomRetreat(out _), () => runtime.CanMiniRoomOmokRequestRetreat);
+            window.BindButton(LoadButton(commonProperty, "btAbsten", clickSound, overSound, device), () => runtime.TryForfeitMiniRoom("owner", out _), () => runtime.CanMiniRoomOmokGiveUp);
             window.BindButton(LoadButton(commonProperty, "btExit", clickSound, overSound, device), window.Hide);
             return window;
         }
 
 
-        private static void ConfigureMiniRoomOmokAssets(SocialRoomWindow window, WzSubProperty omokProperty, GraphicsDevice device)
+        private static void ConfigureMiniRoomOmokAssets(SocialRoomWindow window, WzSubProperty omokProperty, WzSubProperty commonProperty, GraphicsDevice device)
         {
             if (window == null || omokProperty == null)
             {
@@ -4502,6 +4504,9 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D lastBlackStone = LoadCanvasTexture(stoneRoot?["10"]?["black"] as WzSubProperty, "0", device) ?? blackStone;
             Texture2D lastWhiteStone = LoadCanvasTexture(stoneRoot?["10"]?["white"] as WzSubProperty, "0", device) ?? whiteStone;
             window.SetMiniRoomOmokStoneTextures(blackStoneFrames, whiteStoneFrames, lastBlackStone, lastWhiteStone);
+            window.SetMiniRoomOmokInfoTextures(
+                LoadCanvasTexture(commonProperty, "info0", device),
+                LoadCanvasTexture(commonProperty, "info1", device));
         }
 
 
@@ -4781,9 +4786,9 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject acceptButton = LoadButton(tradeProperty, "BtClame", clickSound, overSound, device);
             UIObject enterButton = LoadButton(tradeProperty, "BtEnter", clickSound, overSound, device);
             window.BindButton(tradeButton, () => runtime.TryApplyTradingRoomLocalTradeRequest(out _, out _));
-            window.BindButton(resetButton, runtime.ResetTrade);
+            window.BindButton(resetButton, runtime.SubmitTradingRoomResetButton);
             window.BindButton(coinButton, runtime.IncreaseTradeOffer);
-            window.BindButton(acceptButton, () => runtime.ToggleTradeAcceptance(out _));
+            window.BindButton(acceptButton, runtime.SubmitTradingRoomClaimButton);
             window.BindButton(enterButton, runtime.SubmitTradingRoomEnterButton);
             window.RegisterTradingRoomButtons(tradeButton, resetButton, coinButton, acceptButton, enterButton);
             return window;
@@ -7643,7 +7648,9 @@ namespace HaCreator.MapSimulator.Loaders
                     ResolveEngagementProposalHeadingOffset(sourceProperty, "text"),
                     LoadEngagementProposalBand(sourceProperty["top"] as WzSubProperty, device, 35),
                     LoadEngagementProposalBand(sourceProperty["center"] as WzSubProperty, device, 5),
-                    LoadEngagementProposalBand(sourceProperty["textBox"] as WzSubProperty, device, 35),
+                    sourceProperty["textBox"] is WzSubProperty textBoxProperty
+                        ? LoadEngagementProposalBand(textBoxProperty, device, 35)
+                        : null,
                     LoadEngagementProposalBand(sourceProperty["bottom"] as WzSubProperty, device, 35)),
                 device);
             window.InitializeControls(acceptButton);

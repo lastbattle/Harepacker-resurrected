@@ -174,6 +174,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             "characterlevel",
             "charlevel",
+            "characterleveldata",
+            "charleveldata",
+            "charlevelentry",
+            "charlevelrow",
             "ncharacterlevel",
             "ncharlevel",
             "reqcharacterlevel",
@@ -183,6 +187,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] ClientSkillAssetSkillLevelFieldNames =
         {
             "level",
+            "leveldata",
+            "levelentry",
+            "levelrow",
             "skilllevel",
             "slv",
             "nslv",
@@ -3177,7 +3184,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
                     readOnlyActionAnimations,
                     actionName,
-                    supportedRawActionNames);
+                    supportedRawActionNames,
+                    skipMissingSourcePieces: true);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -3236,7 +3244,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionName,
                     supportedRawActionNames,
                     piecePlanOverride: piecePlan,
-                    requireSupportedRawActionName: true);
+                    requireSupportedRawActionName: true,
+                    skipMissingSourcePieces: true);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -3262,7 +3271,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionName,
                     supportedRawActionNames,
                     piecePlanOverride: piecePlan,
-                    requireSupportedRawActionName: false);
+                    requireSupportedRawActionName: false,
+                    skipMissingSourcePieces: true);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -3288,7 +3298,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionName,
                     supportedRawActionNames,
                     piecePlanOverride: piecePlan,
-                    requireSupportedRawActionName: false);
+                    requireSupportedRawActionName: false,
+                    skipMissingSourcePieces: true);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -3314,7 +3325,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionName,
                     supportedRawActionNames,
                     piecePlanOverride: piecePlan,
-                    requireSupportedRawActionName: false);
+                    requireSupportedRawActionName: false,
+                    skipMissingSourcePieces: true);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -3361,7 +3373,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionName,
                     supportedRawActionNames,
                     piecePlanOverride: piecePlan,
-                    requireSupportedRawActionName: false);
+                    requireSupportedRawActionName: false,
+                    skipMissingSourcePieces: true);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -3395,7 +3408,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         actionName,
                         supportedRawActionNames,
                         piecePlanOverride: piecePlan,
-                        requireSupportedRawActionName: false);
+                        requireSupportedRawActionName: false,
+                        skipMissingSourcePieces: true);
                     if (piecedAnimation?.Frames.Count > 0)
                     {
                         actionAnimations[actionName] = piecedAnimation;
@@ -3458,7 +3472,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionName,
                     supportedRawActionNames,
                     piecePlanOverride: null,
-                    requireSupportedRawActionName: false);
+                    requireSupportedRawActionName: false,
+                    skipMissingSourcePieces: true);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -6677,8 +6692,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                bool characterLevel = segment.Equals("CharLevel", StringComparison.OrdinalIgnoreCase);
-                bool level = segment.Equals("level", StringComparison.OrdinalIgnoreCase);
+                bool characterLevel = IsClientSkillAssetCharacterLevelContextSegment(segment);
+                bool level = IsClientSkillAssetSkillLevelContextSegment(segment);
                 if (!characterLevel && !level)
                 {
                     continue;
@@ -6947,6 +6962,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return new ClientSummonedUolCandidateValue(nameCandidateValue, variantEntryPathParts);
                 }
 
+                foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolAlternatingIndexedRecordFields(tableEntry))
+                {
+                    if (!IsClientSummonedUolTableEntryValueName(FieldName)
+                        || string.IsNullOrWhiteSpace(FieldValue))
+                    {
+                        continue;
+                    }
+
+                    yield return new ClientSummonedUolCandidateValue(
+                        FieldValue,
+                        BuildResolvedClientSummonedUolNestedPathParts(variantEntryPathParts, FieldName));
+                }
+
                 foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) tableValue in EnumerateClientSummonedUolTableEntryValues(
                              tableEntry,
                              relativePathPrefix: string.Empty,
@@ -7041,6 +7069,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static bool IsClientSkillAssetCharacterLevelContextSegment(string segment)
+        {
+            string normalizedSegment = NormalizeClientSkillAssetUolVariantFieldName(segment);
+            return ClientSkillAssetCharacterLevelFieldNames.Contains(normalizedSegment, StringComparer.Ordinal);
+        }
+
+        private static bool IsClientSkillAssetSkillLevelContextSegment(string segment)
+        {
+            string normalizedSegment = NormalizeClientSkillAssetUolVariantFieldName(segment);
+            return ClientSkillAssetSkillLevelFieldNames.Contains(normalizedSegment, StringComparer.Ordinal);
         }
 
         private static bool TryReadClientSkillAssetUolRecordVariantLevel(
@@ -7916,6 +7956,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            bool suppressIndexedTupleValues = HasClientSummonedUolAlternatingIndexedRecordFields(tableEntry);
             foreach (WzImageProperty child in tableEntry.WzProperties)
             {
                 if (child == null || string.IsNullOrWhiteSpace(child.Name))
@@ -7926,7 +7967,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
                     ? child.Name
                     : $"{relativePathPrefix}/{child.Name}";
-                if (!IsClientSummonedUolTableTupleOwnerIndexName(child.Name)
+                if (!suppressIndexedTupleValues
+                    && !IsClientSummonedUolTableTupleOwnerIndexName(child.Name)
                     && IsClientSummonedUolTableEntryValueName(child.Name))
                 {
                     yield return (child, relativePath, UseNameAsValue: false);
@@ -8192,6 +8234,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolAlternatingIndexedRecordFields(rowNode))
+            {
+                if (!IsClientSummonedUolTableOwnerFieldName(FieldName))
+                {
+                    continue;
+                }
+
+                foreach (int ownerSkillId in EnumerateClientSummonedUolRecordTextFieldSkillIds(FieldValue))
+                {
+                    if (ownerSkillId > 0)
+                    {
+                        skillId = ownerSkillId;
+                        return true;
+                    }
+                }
+            }
+
             foreach (WzImageProperty child in rowNode.WzProperties)
             {
                 if (child == null)
@@ -8253,6 +8312,64 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
+        private static bool HasClientSummonedUolAlternatingIndexedRecordFields(WzImageProperty rowNode)
+        {
+            return EnumerateClientSummonedUolAlternatingIndexedRecordFields(rowNode).Any();
+        }
+
+        private static IEnumerable<(string FieldName, string FieldValue)> EnumerateClientSummonedUolAlternatingIndexedRecordFields(
+            WzImageProperty rowNode)
+        {
+            if (rowNode?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            var indexedValues = new SortedDictionary<int, string>();
+            foreach (WzImageProperty child in rowNode.WzProperties)
+            {
+                if (child == null
+                    || string.IsNullOrWhiteSpace(child.Name)
+                    || !int.TryParse(
+                        NormalizeClientSummonedUolFieldNameSyntax(child.Name),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out int fieldIndex)
+                    || fieldIndex < 0)
+                {
+                    continue;
+                }
+
+                string value = GetClientSummonedUolCandidateValue(child);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    indexedValues[fieldIndex] = value;
+                }
+            }
+
+            if (indexedValues.Count < 2)
+            {
+                yield break;
+            }
+
+            int index = indexedValues.ContainsKey(0) ? 0 : 1;
+            for (; indexedValues.TryGetValue(index, out string fieldName); index += 2)
+            {
+                if (!indexedValues.TryGetValue(index + 1, out string fieldValue))
+                {
+                    yield break;
+                }
+
+                fieldName = TrimClientSummonedUolRecordTextFieldToken(fieldName);
+                fieldValue = TrimClientSummonedUolRecordTextFieldToken(fieldValue);
+                if (!string.IsNullOrWhiteSpace(fieldName)
+                    && !string.IsNullOrWhiteSpace(fieldValue))
+                {
+                    yield return (fieldName, fieldValue);
+                }
+            }
+        }
+
         private static bool TryReadNestedClientSummonedUolTableOwnerSkillId(
             WzImageProperty rowNode,
             out int skillId,
@@ -8262,6 +8379,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (rowNode?.WzProperties == null || depthRemaining <= 0)
             {
                 return false;
+            }
+
+            foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolAlternatingIndexedRecordFields(rowNode))
+            {
+                if (!IsClientSummonedUolTableOwnerFieldName(FieldName))
+                {
+                    continue;
+                }
+
+                foreach (int ownerSkillId in EnumerateClientSummonedUolRecordTextFieldSkillIds(FieldValue))
+                {
+                    if (ownerSkillId > 0)
+                    {
+                        skillId = ownerSkillId;
+                        return true;
+                    }
+                }
             }
 
             foreach (WzImageProperty child in rowNode.WzProperties)
@@ -12888,13 +13022,62 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (WzImageProperty property in resolvedActionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
             {
                 if (property == null
-                    || (!IsMorphActionNodeName(property.Name) && !IsNumericPropertyName(property.Name)))
+                    || (!IsMorphActionNodeName(property.Name)
+                        && !IsNumericPropertyName(property.Name)
+                        && !ContainsNestedMorphActionValueOwner(property, nestedDepth)))
                 {
                     continue;
                 }
 
                 AddActionNamesFromActionValueNode(actionNames, seen, property, nestedDepth - 1);
             }
+        }
+
+        private static bool ContainsNestedMorphActionValueOwner(WzImageProperty property, int depth)
+        {
+            return ContainsNestedMorphActionValueOwner(property, depth, new HashSet<WzImageProperty>());
+        }
+
+        private static bool ContainsNestedMorphActionValueOwner(
+            WzImageProperty property,
+            int depth,
+            ISet<WzImageProperty> seen)
+        {
+            if (property == null || depth <= 0 || seen == null || !seen.Add(property))
+            {
+                return false;
+            }
+
+            WzImageProperty resolvedProperty = ResolveMorphSkillActionNode(property);
+            if (resolvedProperty == null)
+            {
+                return false;
+            }
+
+            if (!ReferenceEquals(resolvedProperty, property))
+            {
+                return ContainsNestedMorphActionValueOwner(resolvedProperty, depth, seen);
+            }
+
+            foreach (WzImageProperty child in resolvedProperty.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (IsMorphActionNodeName(child.Name))
+                {
+                    return true;
+                }
+
+                if (ContainsNestedMorphActionValueOwner(child, depth - 1, seen))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static WzImageProperty ResolveMorphSkillActionNode(WzImageProperty actionNode)

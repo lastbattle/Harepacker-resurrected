@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.Fields
             ClearPreviousMaskHistory,
             ResolveLocalUserPosition,
             ResolveGraphicsCenter,
+            QueryViewrangeCanvasOrigin,
             QueryViewrangeCanvasDimensions,
             DrawDarkLayerFallback,
             ResolveViewrangeCopyRectangles,
@@ -612,7 +613,9 @@ namespace HaCreator.MapSimulator.Fields
                                 _clientOwnedShareView,
                                 viewrangeWidth,
                                 viewrangeHeight,
-                                GetClientOwnedDarkLayerBounds()));
+                                GetClientOwnedDarkLayerBounds(),
+                                _clientOwnedMaskOriginX,
+                                _clientOwnedMaskOriginY));
                         break;
                     }
 
@@ -1130,7 +1133,9 @@ namespace HaCreator.MapSimulator.Fields
             bool shareView,
             int viewrangeWidth,
             int viewrangeHeight,
-            Rectangle? darkLayerBounds)
+            Rectangle? darkLayerBounds,
+            float viewrangeOriginX = float.NaN,
+            float viewrangeOriginY = float.NaN)
         {
             return BuildClientOwnedDrawViewrangeOperationPlan(
                 previousMaskTopLefts,
@@ -1139,7 +1144,9 @@ namespace HaCreator.MapSimulator.Fields
                 shareView,
                 viewrangeWidth,
                 viewrangeHeight,
-                darkLayerBounds);
+                darkLayerBounds,
+                viewrangeOriginX,
+                viewrangeOriginY);
         }
 
         internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(
@@ -1149,7 +1156,9 @@ namespace HaCreator.MapSimulator.Fields
             bool shareView,
             int viewrangeWidth,
             int viewrangeHeight,
-            Rectangle? darkLayerBounds)
+            Rectangle? darkLayerBounds,
+            float viewrangeOriginX = float.NaN,
+            float viewrangeOriginY = float.NaN)
         {
             List<ClientOwnedDrawViewrangeOperation> operations = new(BuildClientOwnedDrawViewrangeOperationPlan(
                 previousMaskTopLefts,
@@ -1158,7 +1167,9 @@ namespace HaCreator.MapSimulator.Fields
                     : Array.Empty<Vector2>(),
                 viewrangeWidth,
                 viewrangeHeight,
-                darkLayerBounds));
+                darkLayerBounds,
+                viewrangeOriginX,
+                viewrangeOriginY));
 
             if (shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null && remoteMaskTargets.Count > 0)
             {
@@ -1249,11 +1260,19 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyList<Vector2> currentMaskTopLefts,
             int viewrangeWidth,
             int viewrangeHeight,
-            Rectangle? darkLayerBounds)
+            Rectangle? darkLayerBounds,
+            float viewrangeOriginX = float.NaN,
+            float viewrangeOriginY = float.NaN)
         {
             List<ClientOwnedDrawViewrangeOperation> operations = new();
             int sourceWidth = Math.Max(0, viewrangeWidth);
             int sourceHeight = Math.Max(0, viewrangeHeight);
+            int originX = float.IsNaN(viewrangeOriginX)
+                ? sourceWidth / 2
+                : (int)MathF.Round(Math.Clamp(viewrangeOriginX, 0f, sourceWidth));
+            int originY = float.IsNaN(viewrangeOriginY)
+                ? sourceHeight / 2
+                : (int)MathF.Round(Math.Clamp(viewrangeOriginY, 0f, sourceHeight));
 
             operations.Add(new ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind.AcquireDarkLayerCanvas,
@@ -1323,6 +1342,12 @@ namespace HaCreator.MapSimulator.Fields
                 ClientOwnedDrawViewrangeOperationKind.ResolveGraphicsCenter,
                 Vector2.Zero,
                 -1));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasOrigin,
+                Vector2.Zero,
+                -1,
+                sourceX: originX,
+                sourceY: originY));
             operations.Add(new ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
                 Vector2.Zero,
@@ -1695,6 +1720,7 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.ResolvePreviousSmallDarkPatchRectangle:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveLocalUserPosition:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveGraphicsCenter:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasOrigin:
                     case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveDarkLayerBounds:

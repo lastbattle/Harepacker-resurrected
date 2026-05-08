@@ -163,6 +163,7 @@ namespace HaCreator.MapSimulator.AI
         public bool IsJumpAttack { get; set; }      // attackN/info/jumpAttack or info/attack/N/jumpAttack
         public bool EffectFacingAttach { get; set; } // attackN/info/effect/attachfacing
         public bool Tremble { get; set; }           // attackN/info/tremble or info/attack/N/tremble
+        public bool Knockback { get; set; }         // info/attack/N/knockback
         public bool IsAngerAttack { get; set; }     // attackN/info/AngerAttack
         public bool IsSpecialAttack { get; set; }   // attackN/info/specialAttack
         public bool DeadlyAttack { get; set; }      // info/attack/N/deadlyAttack
@@ -297,6 +298,7 @@ namespace HaCreator.MapSimulator.AI
         public int TickIntervalMs { get; set; }
         public int NextTickTime { get; set; }
         public int SourceSkillId { get; set; }
+        public int SourceSkillLevel { get; set; }
     }
 
     public enum MobDamageType
@@ -322,6 +324,7 @@ namespace HaCreator.MapSimulator.AI
         private const int DEATH_DURATION = 1000;            // Death animation duration (ms)
         private const int LOSE_AGGRO_TIME = 5000;           // Time to lose aggro if no LOS (ms)
         private const int MAX_DAMAGE_DISPLAYS = 10;         // Max damage numbers shown
+        private const int NATURAL_RECOVERY_INTERVAL_MS = 10000; // Mob.wz hpRecovery/mpRecovery cadence.
         #endregion
 
         #region State
@@ -347,6 +350,9 @@ namespace HaCreator.MapSimulator.AI
         private int _currentHp = 100;
         private int _maxMp = 0;
         private int _currentMp = 0;
+        private int _hpRecovery = 0;
+        private int _mpRecovery = 0;
+        private int _nextNaturalRecoveryTick = int.MinValue;
         private int _level = 1;
         private int _exp = 0;
         private bool _isBoss = false;
@@ -471,6 +477,9 @@ namespace HaCreator.MapSimulator.AI
             _currentHp = maxHp;
             _maxMp = Math.Max(0, maxMp);
             _currentMp = _maxMp;
+            _hpRecovery = 0;
+            _mpRecovery = 0;
+            _nextNaturalRecoveryTick = int.MinValue;
             _level = level;
             _exp = exp;
             _isBoss = isBoss;
@@ -534,6 +543,15 @@ namespace HaCreator.MapSimulator.AI
         public void SetAutoAggro(bool autoAggro)
         {
             _autoAggro = autoAggro;
+        }
+
+        public void ConfigureNaturalRecovery(int hpRecovery, int mpRecovery, int currentTick = 0)
+        {
+            _hpRecovery = Math.Max(0, hpRecovery);
+            _mpRecovery = Math.Max(0, mpRecovery);
+            _nextNaturalRecoveryTick = HasNaturalRecovery
+                ? currentTick + NATURAL_RECOVERY_INTERVAL_MS
+                : int.MinValue;
         }
 
         public void AddAttack(MobAttackEntry attack)
@@ -652,6 +670,8 @@ namespace HaCreator.MapSimulator.AI
             {
                 return;
             }
+
+            UpdateNaturalRecovery(currentTick);
 
             UpdateSpecialInteractions(currentTick);
             if (IsDead)
@@ -1151,6 +1171,11 @@ namespace HaCreator.MapSimulator.AI
             _currentHp = Math.Min(_currentHp + amount, _maxHp);
         }
 
+        public void RestoreMp(int mp)
+        {
+            _currentMp = Math.Clamp(mp, 0, _maxMp);
+        }
+
         /// <summary>
         /// Restore HP to a specific value (used for map state restoration).
         /// Does not trigger any combat effects or state changes.
@@ -1240,8 +1265,7 @@ namespace HaCreator.MapSimulator.AI
             }
 
             int elapsed = StateElapsed(currentTick);
-            int triggerDelay = GetAttackTriggerDelay(attack);
-            if (elapsed < triggerDelay)
+            if (!MobAngerGaugeBurstParity.HasOwnerTriggerDelayElapsed(elapsed, attack))
             {
                 return false;
             }
@@ -1568,7 +1592,8 @@ namespace HaCreator.MapSimulator.AI
             int tickIntervalMs = 1000,
             int secondaryValue = 0,
             int tertiaryValue = 0,
-            int sourceSkillId = 0)
+            int sourceSkillId = 0,
+            int sourceSkillLevel = 0)
         {
             _statusEffects |= effect;
             bool wasActive = _statusEntries.ContainsKey(effect);
@@ -1581,7 +1606,8 @@ namespace HaCreator.MapSimulator.AI
                 TertiaryValue = tertiaryValue,
                 TickIntervalMs = Math.Max(1, tickIntervalMs),
                 NextTickTime = currentTick + Math.Max(1, tickIntervalMs),
-                SourceSkillId = sourceSkillId
+                SourceSkillId = sourceSkillId,
+                SourceSkillLevel = Math.Max(0, sourceSkillLevel)
             };
 
             // Special handling for certain effects
@@ -2254,6 +2280,39 @@ namespace HaCreator.MapSimulator.AI
 
             _currentMp -= mpCon;
             return true;
+        }
+
+        internal static int NaturalRecoveryIntervalMsForTesting => NATURAL_RECOVERY_INTERVAL_MS;
+
+        private bool HasNaturalRecovery => _hpRecovery > 0 || _mpRecovery > 0;
+
+        private void UpdateNaturalRecovery(int currentTick)
+        {
+            if (!HasNaturalRecovery || IsDead)
+            {
+                return;
+            }
+
+            if (_nextNaturalRecoveryTick == int.MinValue)
+            {
+                _nextNaturalRecoveryTick = currentTick + NATURAL_RECOVERY_INTERVAL_MS;
+                return;
+            }
+
+            while (currentTick >= _nextNaturalRecoveryTick)
+            {
+                if (_hpRecovery > 0 && _currentHp > 0 && _currentHp < _maxHp)
+                {
+                    _currentHp = Math.Min(_maxHp, _currentHp + _hpRecovery);
+                }
+
+                if (_mpRecovery > 0 && _currentMp < _maxMp)
+                {
+                    _currentMp = Math.Min(_maxMp, _currentMp + _mpRecovery);
+                }
+
+                _nextNaturalRecoveryTick += NATURAL_RECOVERY_INTERVAL_MS;
+            }
         }
 
         private void RegisterSkillUsage(MobSkillEntry skill, int currentTick)

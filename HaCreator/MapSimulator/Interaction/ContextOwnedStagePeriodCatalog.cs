@@ -289,7 +289,9 @@ namespace HaCreator.MapSimulator.Interaction
                     ParseStageBackImages(periodNode),
                     ParseStringSet(keywordBranches),
                     ParseIntSet(questBranches),
-                    ParseIntSet(affectedMapBranches));
+                    ParseIntSet(affectedMapBranches),
+                    themeProperty,
+                    periodNode);
             }
 
             return periods;
@@ -427,7 +429,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 if (TryParseStageBackImageEntry(periodNode, out ContextOwnedStageBackImageEntry directEntry))
                 {
-                    entries.Add(directEntry);
+                    entries.Add(directEntry with { SourceStagePeriodObject = periodNode });
                 }
 
                 return entries;
@@ -439,11 +441,15 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     if (TryParseStageBackImageEntry(child, out ContextOwnedStageBackImageEntry entry))
                     {
-                        entries.Add(entry);
+                        entries.Add(entry with
+                        {
+                            SourceStagePeriodObject = periodNode,
+                            SourceStageBackContainerObject = container
+                        });
                         continue;
                     }
 
-                    AppendNativeStageBackImageEntries(child, entries);
+                    AppendNativeStageBackImageEntries(child, entries, periodNode, container);
                 }
             }
 
@@ -452,7 +458,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static void AppendNativeStageBackImageEntries(
             WzImageProperty stageBackImageGroup,
-            List<ContextOwnedStageBackImageEntry> entries)
+            List<ContextOwnedStageBackImageEntry> entries,
+            WzImageProperty sourceStagePeriodObject,
+            WzImageProperty sourceStageBackContainerObject)
         {
             if (stageBackImageGroup == null || entries == null)
             {
@@ -461,7 +469,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (TryGetNativeStageBackSide(stageBackImageGroup.Name, out bool front))
             {
-                AppendNativeStageBackSideContainerEntries(stageBackImageGroup, front, entries);
+                AppendNativeStageBackSideContainerEntries(
+                    stageBackImageGroup,
+                    front,
+                    entries,
+                    sourceStagePeriodObject,
+                    sourceStageBackContainerObject);
                 return;
             }
 
@@ -476,7 +489,9 @@ namespace HaCreator.MapSimulator.Interaction
                 entries,
                 sourceStageBackImageObject: backContainer != null ? stageBackImageGroup : null,
                 sourceBackgroundSetObject: stageBackImageGroup,
-                sourceStageBackSideObject: backContainer);
+                sourceStageBackSideObject: backContainer,
+                sourceStagePeriodObject,
+                sourceStageBackContainerObject);
             AppendNativeStageBackImageEntries(
                 backgroundSet,
                 frontContainer,
@@ -484,7 +499,9 @@ namespace HaCreator.MapSimulator.Interaction
                 entries,
                 sourceStageBackImageObject: frontContainer != null ? stageBackImageGroup : null,
                 sourceBackgroundSetObject: stageBackImageGroup,
-                sourceStageBackSideObject: frontContainer);
+                sourceStageBackSideObject: frontContainer,
+                sourceStagePeriodObject,
+                sourceStageBackContainerObject);
             if (entries.Count != entryCountBeforeWrapperParse)
             {
                 return;
@@ -499,13 +516,17 @@ namespace HaCreator.MapSimulator.Interaction
                 entries,
                 sourceStageBackImageObject: null,
                 sourceBackgroundSetObject: stageBackImageGroup,
-                sourceStageBackSideObject: null);
+                sourceStageBackSideObject: null,
+                sourceStagePeriodObject,
+                sourceStageBackContainerObject);
         }
 
         private static void AppendNativeStageBackSideContainerEntries(
             WzImageProperty sideContainer,
             bool front,
-            List<ContextOwnedStageBackImageEntry> entries)
+            List<ContextOwnedStageBackImageEntry> entries,
+            WzImageProperty sourceStagePeriodObject,
+            WzImageProperty sourceStageBackContainerObject)
         {
             if (sideContainer == null || entries == null)
             {
@@ -521,7 +542,9 @@ namespace HaCreator.MapSimulator.Interaction
                     entries,
                     sourceStageBackImageObject: null,
                     sourceBackgroundSetObject: backgroundSetProperty,
-                    sourceStageBackSideObject: sideContainer);
+                    sourceStageBackSideObject: sideContainer,
+                    sourceStagePeriodObject,
+                    sourceStageBackContainerObject);
             }
         }
 
@@ -550,7 +573,9 @@ namespace HaCreator.MapSimulator.Interaction
             List<ContextOwnedStageBackImageEntry> entries,
             WzImageProperty sourceStageBackImageObject,
             WzImageProperty sourceBackgroundSetObject,
-            WzImageProperty sourceStageBackSideObject)
+            WzImageProperty sourceStageBackSideObject,
+            WzImageProperty sourceStagePeriodObject,
+            WzImageProperty sourceStageBackContainerObject)
         {
             if (string.IsNullOrWhiteSpace(backgroundSet) || container == null || entries == null)
             {
@@ -566,7 +591,9 @@ namespace HaCreator.MapSimulator.Interaction
                     entries,
                     sourceStageBackImageObject,
                     sourceBackgroundSetObject,
-                    sourceStageBackSideObject))
+                    sourceStageBackSideObject,
+                    sourceStagePeriodObject,
+                    sourceStageBackContainerObject))
                 {
                     continue;
                 }
@@ -580,7 +607,9 @@ namespace HaCreator.MapSimulator.Interaction
                         entries,
                         sourceStageBackImageObject,
                         property,
-                        sourceStageBackSideObject);
+                        sourceStageBackSideObject,
+                        sourceStagePeriodObject,
+                        sourceStageBackContainerObject);
                 }
             }
         }
@@ -592,7 +621,9 @@ namespace HaCreator.MapSimulator.Interaction
             List<ContextOwnedStageBackImageEntry> entries,
             WzImageProperty sourceStageBackImageObject,
             WzImageProperty sourceBackgroundSetObject,
-            WzImageProperty sourceStageBackSideObject)
+            WzImageProperty sourceStageBackSideObject,
+            WzImageProperty sourceStagePeriodObject,
+            WzImageProperty sourceStageBackContainerObject)
         {
             if (string.IsNullOrWhiteSpace(backgroundSet)
                 || property == null
@@ -626,6 +657,8 @@ namespace HaCreator.MapSimulator.Interaction
                 SourceStageBackImageObject: sourceStageBackImageObject,
                 SourceBackgroundSetObject: sourceBackgroundSetObject,
                 SourceStageBackSideObject: sourceStageBackSideObject,
+                SourceStagePeriodObject: sourceStagePeriodObject,
+                SourceStageBackContainerObject: sourceStageBackContainerObject,
                 NativeObjectKey: number,
                 NativeObjectRawName: property.Name);
             UpsertNativeStageBackImageEntry(entries, entry);
@@ -1687,7 +1720,9 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<ContextOwnedStageBackImageEntry> backImages,
             HashSet<string> keywords,
             HashSet<int> enabledQuestIds,
-            HashSet<int> affectedMapIds)
+            HashSet<int> affectedMapIds,
+            WzImageProperty sourceThemeObject = null,
+            WzImageProperty sourcePeriodObject = null)
         {
             StageTheme = string.IsNullOrWhiteSpace(stageTheme)
                 ? string.Empty
@@ -1698,6 +1733,8 @@ namespace HaCreator.MapSimulator.Interaction
             Keywords = keywords ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             EnabledQuestIds = enabledQuestIds ?? new HashSet<int>();
             AffectedMapIds = affectedMapIds ?? new HashSet<int>();
+            SourceThemeObject = sourceThemeObject;
+            SourcePeriodObject = sourcePeriodObject;
         }
 
         internal string StageTheme { get; }
@@ -1707,6 +1744,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal HashSet<string> Keywords { get; }
         internal HashSet<int> EnabledQuestIds { get; }
         internal HashSet<int> AffectedMapIds { get; }
+        internal WzImageProperty SourceThemeObject { get; }
+        internal WzImageProperty SourcePeriodObject { get; }
 
         internal uint? ResolveActiveBackColorArgb()
         {
@@ -1745,6 +1784,8 @@ namespace HaCreator.MapSimulator.Interaction
         WzImageProperty SourceStageBackImageObject = null,
         WzImageProperty SourceBackgroundSetObject = null,
         WzImageProperty SourceStageBackSideObject = null,
+        WzImageProperty SourceStagePeriodObject = null,
+        WzImageProperty SourceStageBackContainerObject = null,
         int? NativeObjectKey = null,
         string NativeObjectRawName = null);
 

@@ -4098,16 +4098,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            int damageDelta = dotDamage * hitCount;
             if (hitCount > 0)
             {
                 LastDotDamage = dotDamage;
                 LastDotHitCount = hitCount;
                 TotalHits += hitCount;
-                TotalDamage += dotDamage * hitCount;
                 ApplyClientDamageBounds(dotDamage);
             }
+
+            TotalDamage += damageDelta;
             UpdateBattleDamageAverages(
-                damageDelta: dotDamage * hitCount,
+                damageDelta: damageDelta,
                 attackCountDelta: Math.Max(0, hitCount),
                 attrRate,
                 attrRateCountDelta: attrRate.HasValue ? Math.Max(0, hitCount) : 0,

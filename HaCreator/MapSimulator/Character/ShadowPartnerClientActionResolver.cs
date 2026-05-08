@@ -2069,6 +2069,52 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(3, "alert", 1, 90, move: new Point(0, 1)),
                     CreateIndexedPiece(4, "alert", 2, 90)
                 },
+                ["pvpko"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, 60),
+                    CreateIndexedPiece(1, "swingOF", 1, 120, move: new Point(40, -3)),
+                    CreateIndexedPiece(2, "swingOF", 2, 120, move: new Point(78, -8)),
+                    CreateIndexedPiece(3, "swingTF", 0, 120, move: new Point(68, -7)),
+                    CreateIndexedPiece(4, "jump", 0, 150, move: new Point(52, -16), rotationDegrees: 90),
+                    CreateIndexedPiece(5, "fly", 1, 180, move: new Point(52, -5), rotationDegrees: 90),
+                    CreateIndexedPiece(6, "fly", 1, 150, move: new Point(52, -6), rotationDegrees: 90),
+                    CreateIndexedPiece(7, "fly", 1, 10000, move: new Point(52, -5), rotationDegrees: 90)
+                },
+                ["iceAttack1"] = CreateIndexedPieces(
+                    ("alert", 0, -210),
+                    ("alert", 1, 180),
+                    ("alert", 0, 180)),
+                ["piercing"] = CreateIndexedPieces(
+                    ("shoot1", 0, 120),
+                    ("shoot1", 1, 270),
+                    ("shoot1", 1, 0)),
+                ["ride3"] = CreateIndexedPieces(
+                    ("stand1", 0, 60),
+                    ("stand1", 1, 60),
+                    ("alert", 2, 60),
+                    ("alert", 1, 60),
+                    ("alert", 0, 60),
+                    ("alert", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60)),
+                ["getoff3"] = CreateIndexedPieces(
+                    ("fly", 0, 60),
+                    ("fly", 1, 60),
+                    ("fly", 1, 60),
+                    ("fly", 1, 60),
+                    ("fly", 0, 60),
+                    ("fly", 0, 60),
+                    ("alert", 0, 60)),
 
                 // `Character/00002000.img/alert8/0` is another mounted indexed-alert
                 // helper row; it reuses the authored jump helper frame with its own delay.
@@ -2464,7 +2510,88 @@ namespace HaCreator.MapSimulator.Character
             "gather1",
             "darkTornado_pre",
             "darkTornado",
-            "darkTornado_after"
+            "darkTornado_after",
+            // Later raw action-data rows remain mounted in Character/00002000 beside the
+            // same action/frame/delay helper-piece surface. Keep them exact source-gated
+            // so a bounded Shadow Partner source set must name the row before the mounted
+            // sweep or missing-mounted fallback can claim it.
+            "pvpko",
+            "swingT2Giant",
+            "iceAttack1",
+            "iceAttack2",
+            "iceSmash",
+            "iceTempest",
+            "iceChop",
+            "icePanic",
+            "iceDoubleJump",
+            "darkImpale",
+            "glacialChain",
+            "mistEruption",
+            "archerDoubleJump",
+            "piercing",
+            "swingC1",
+            "swingC2",
+            "shotC1",
+            "flamesplash",
+            "cannonSmash",
+            "giganticBackstep",
+            "piratebless",
+            "swiftShot",
+            "cannonJump",
+            "rushBoom",
+            "pirateSpirit",
+            "counterCannon",
+            "cannonSlam",
+            "noiseWave_pre",
+            "noiseWave_ing",
+            "noiseWave",
+            "monkeyBoomboom",
+            "superCannon",
+            "magneticCannon",
+            "bombExplosion",
+            "cannonSpike",
+            "cannonBooster",
+            "immolation",
+            "swingDb1",
+            "swingDb2",
+            "shootDb1",
+            "slayerDoubleJump",
+            "jShot",
+            "demonSlasher",
+            "ride3",
+            "getoff3",
+            "spiritJump",
+            "speedDualShot",
+            "bluntSmash",
+            "crossPiercing",
+            "strikeDual",
+            "fastest",
+            "elfTornado",
+            "deathDraw",
+            "elfrush",
+            "elfrush2",
+            "elfrush_final",
+            "elfrush_final2",
+            "demolitionElf",
+            "windEffect",
+            "multiSniping",
+            "healingAttack",
+            "dealingRush",
+            "devilCry",
+            "powerEndure",
+            "maxForce0",
+            "maxForce1",
+            "maxForce2",
+            "maxForce3",
+            "demonTrace",
+            "dualVulcanPrep",
+            "dualVulcanLoop",
+            "dualVulcanEnd",
+            "darkSpin",
+            "blessOfGaia",
+            "movebind",
+            "demonGravity",
+            "darkThrust"
         };
 
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -3259,7 +3386,8 @@ namespace HaCreator.MapSimulator.Character
             string actionName,
             IReadOnlySet<string> supportedRawActionNames = null,
             IReadOnlyList<ShadowPartnerActionPiece> piecePlanOverride = null,
-            bool requireSupportedRawActionName = true)
+            bool requireSupportedRawActionName = true,
+            bool skipMissingSourcePieces = false)
         {
             if (actionAnimations == null
                 || actionAnimations.Count == 0
@@ -3293,6 +3421,11 @@ namespace HaCreator.MapSimulator.Character
                         supportedRawActionNames,
                         out SkillAnimation pieceAnimation))
                 {
+                    if (skipMissingSourcePieces)
+                    {
+                        continue;
+                    }
+
                     return null;
                 }
 
@@ -3302,6 +3435,11 @@ namespace HaCreator.MapSimulator.Character
                     int frameIndex = piece.SourceFrameIndex.Value;
                     if (frameIndex < 0 || frameIndex >= pieceAnimation.Frames.Count)
                     {
+                        if (skipMissingSourcePieces)
+                        {
+                            continue;
+                        }
+
                         return null;
                     }
 

@@ -408,7 +408,8 @@ namespace HaCreator.MapSimulator.Fields
         public bool ClientReadyButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex != 0;
         public bool ClientStartButtonEnabled => _stage != RoomStage.Playing
             && _localPlayerIndex == 0
-            && HasClientOpponentSeat();
+            && HasClientOpponentSeat()
+            && IsClientOpponentReady();
         public bool ClientBanButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex == 0;
         public bool ClientTieButtonEnabled => _stage == RoomStage.Playing;
         public bool ClientGiveUpButtonEnabled => _stage == RoomStage.Playing;
@@ -584,7 +585,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (!ClientStartButtonEnabled)
+            if (_stage == RoomStage.Playing || _localPlayerIndex != 0)
             {
                 message = "Start requests are only valid for the Match Cards room owner while Match Cards is not in play.";
                 return false;
@@ -592,6 +593,12 @@ namespace HaCreator.MapSimulator.Fields
 
             if (!CanLocalHostSendStartRequest(out message))
             {
+                return false;
+            }
+
+            if (!IsClientOpponentReady())
+            {
+                message = "Start button is disabled until the seated opponent is ready.";
                 return false;
             }
 
@@ -3097,6 +3104,12 @@ namespace HaCreator.MapSimulator.Fields
             if (!HasClientOpponentSeat())
             {
                 message = "Start is unavailable until an opponent joins the Match Cards room.";
+                return false;
+            }
+
+            if (!IsClientOpponentReady())
+            {
+                message = "Start is unavailable until the seated opponent is ready.";
                 return false;
             }
 

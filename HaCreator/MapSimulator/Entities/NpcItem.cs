@@ -1,6 +1,7 @@
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -40,11 +41,24 @@ namespace HaCreator.MapSimulator.Entities
         private static readonly Random _random = new Random();
         private string _temporaryAction;
         private int _temporaryActionRemainingMs;
+        private string _lastLimitedEffectKey;
+        private string _imitatedName;
+        private byte[] _imitatedAvatarLookPayload = Array.Empty<byte>();
 
         // Movement system
         public NpcMovementInfo MovementInfo { get; private set; }
         public bool MovementEnabled { get; set; } = true;
         public bool IdleActionCyclingEnabled { get; set; } = true;
+        public int PacketObjectId { get; private set; } = -1;
+        public int PacketFootholdId { get; private set; }
+        public bool PacketControllerOwnedByLocalUser { get; private set; }
+        public bool PacketEnabled { get; private set; } = true;
+        public int LastPacketMoveAction { get; private set; }
+        public int LastPacketChatIndex { get; private set; } = -1;
+        public string LastSpecialAction { get; private set; }
+        public string LastLimitedEffectKey => _lastLimitedEffectKey;
+        public string ImitatedName => _imitatedName;
+        public IReadOnlyList<byte> ImitatedAvatarLookPayload => _imitatedAvatarLookPayload;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -202,6 +216,80 @@ namespace HaCreator.MapSimulator.Entities
             _renderOverrideY = y;
         }
 
+        public void ApplyPacketInit(
+            int objectId,
+            int x,
+            int y,
+            int moveAction,
+            int footholdId,
+            int rx0,
+            int rx1,
+            bool enabled,
+            bool localController)
+        {
+            PacketObjectId = objectId;
+            PacketFootholdId = footholdId;
+            PacketControllerOwnedByLocalUser = localController;
+            LastPacketMoveAction = moveAction;
+            PacketEnabled = enabled;
+            MovementInfo?.ApplyPacketPosition(x, y, rx0, rx1, moveAction);
+            SetRenderPositionOverride(x, y);
+            ApplyPacketMoveAction(moveAction);
+        }
+
+        public void ApplyPacketMove(int oneTimeAction, int chatIndex)
+        {
+            LastPacketMoveAction = oneTimeAction;
+            LastPacketChatIndex = chatIndex;
+            ApplyPacketMoveAction(oneTimeAction);
+            if (oneTimeAction >= 0)
+            {
+                string actionName = NpcClientActionSetLoader.ResolveClientActionName(
+                    oneTimeAction,
+                    GetAvailableActions());
+                if (HasAction(actionName))
+                {
+                    SetTemporaryAction(actionName, GetActionTotalDurationMs(actionName));
+                }
+            }
+        }
+
+        public void ApplyPacketLimitedInfo(bool enabled, int currentTick)
+        {
+            bool changed = PacketEnabled != enabled;
+            PacketEnabled = enabled;
+            _lastLimitedEffectKey = enabled ? "StringPool:0x1154" : "StringPool:0x1155";
+            if (changed)
+            {
+                SetAction(AnimationKeys.Stand);
+            }
+        }
+
+        public bool TryApplyPacketSpecialAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            string resolvedAction = GetAvailableActions()
+                .FirstOrDefault(action => string.Equals(action, actionName, StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrWhiteSpace(resolvedAction))
+            {
+                return false;
+            }
+
+            LastSpecialAction = resolvedAction;
+            SetTemporaryAction(resolvedAction, Math.Max(GetActionTotalDurationMs(resolvedAction), 180));
+            return true;
+        }
+
+        public void ApplyImitatedLook(string name, byte[] avatarLookPayload)
+        {
+            _imitatedName = string.IsNullOrWhiteSpace(name) ? null : name;
+            _imitatedAvatarLookPayload = avatarLookPayload?.ToArray() ?? Array.Empty<byte>();
+        }
+
         public void ClearRenderPositionOverride()
         {
             _hasRenderPositionOverride = false;
@@ -213,6 +301,11 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="deltaTimeMs">Time elapsed since last update in milliseconds</param>
         public void Update(int deltaTimeMs)
         {
+            if (!PacketEnabled)
+            {
+                return;
+            }
+
             UpdateTemporaryAction(deltaTimeMs);
 
             // Update movement
@@ -374,6 +467,11 @@ namespace HaCreator.MapSimulator.Entities
             RenderParameters renderParameters,
             int TickCount)
         {
+            if (!PacketEnabled)
+            {
+                return;
+            }
+
             // Calculate position offset from movement
             int positionOffsetX = 0;
             int positionOffsetY = 0;
@@ -464,6 +562,11 @@ namespace HaCreator.MapSimulator.Entities
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool ContainsMapPoint(int mapX, int mapY)
         {
+            if (!PacketEnabled)
+            {
+                return false;
+            }
+
             int npcX = CurrentX;
             int npcY = CurrentY;
 
@@ -480,6 +583,12 @@ namespace HaCreator.MapSimulator.Entities
 
             // Check if point is within bounds
             return mapX >= left && mapX <= right && mapY >= top && mapY <= bottom;
+        }
+
+        private void ApplyPacketMoveAction(int moveAction)
+        {
+            MovementInfo?.ApplyPacketMoveAction(moveAction);
+            flip = (moveAction & 1) != 0;
         }
 
         /// <summary>

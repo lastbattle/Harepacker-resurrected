@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientEditRightMargin = 0;
         internal const uint ImeExcludeStyle = 0x0080;
         private const int DlgcWantArrows = 0x0001;
+        private const int DlgcWantTab = 0x0002;
         private const int DlgcHasSetSel = 0x0008;
         private const int DlgcWantChars = 0x0080;
         internal const int CandidateListCount = 4;
@@ -240,7 +241,9 @@ namespace HaCreator.MapSimulator.UI
 
         internal static int GetClientOwnedAntiMacroDialogCode()
         {
-            return DlgcWantArrows | DlgcHasSetSel | DlgcWantChars;
+            // Client CWndMan routes unhandled keys, including Tab, through the
+            // focused CCtrlEdit owner path instead of desktop focus traversal.
+            return DlgcWantArrows | DlgcWantTab | DlgcHasSetSel | DlgcWantChars;
         }
 
         public void Reset()
@@ -443,7 +446,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _parentHandle = IntPtr.Zero;
-                _lastKnownText = string.Empty;
+            _lastKnownText = string.Empty;
             _clientOwnedKeyDowns.Clear();
             _keyboardSelectionAnchor = -1;
         }

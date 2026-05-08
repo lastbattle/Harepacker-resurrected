@@ -154,15 +154,14 @@ namespace HaCreator.MapSimulator.Interaction
             int ownerIdentity)
         {
             string sanitizedText = SanitizeText(text);
-            int normalizedLifetimeMs = Math.Max(0, lifetimeMs);
-            int expiresAt = unchecked(currentTickCount + normalizedLifetimeMs);
-            return string.IsNullOrEmpty(sanitizedText) || normalizedLifetimeMs <= 0
+            int expiresAt = unchecked(currentTickCount + lifetimeMs);
+            return string.IsNullOrEmpty(sanitizedText)
                 ? null
                 : new LocalOverlayBalloonMessage(
                     sanitizedText,
                     Math.Max(0, requestedWidth),
                     currentTickCount,
-                    normalizedLifetimeMs,
+                    lifetimeMs,
                     expiresAt,
                     anchorMode,
                     worldAnchor,
@@ -237,7 +236,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool IsActive(int currentTickCount) =>
             !string.IsNullOrEmpty(Text) &&
-            unchecked(currentTickCount - ExpiresAt) < 0;
+            unchecked(currentTickCount - ExpiresAt) <= 0;
 
         public bool TryGetCachedVisualTexture(int bodyWidth, int bodyHeight, int variantId, out Texture2D texture)
         {

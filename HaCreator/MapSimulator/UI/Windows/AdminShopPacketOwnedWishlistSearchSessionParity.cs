@@ -50,6 +50,11 @@ namespace HaCreator.MapSimulator.UI
             return supportsWishlist;
         }
 
+        internal static bool CanStageClientWishlistResult(bool supportsWishlist, bool isScannableItem)
+        {
+            return supportsWishlist && isScannableItem;
+        }
+
         internal static bool CanRegisterClientWishlistResult(bool supportsWishlist, bool alreadyWishlisted)
         {
             return supportsWishlist && !alreadyWishlisted;

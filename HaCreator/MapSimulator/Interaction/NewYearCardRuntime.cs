@@ -22,6 +22,28 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int ReadWindowY = 168;
         internal const int ReadWindowWidth = 227;
         internal const int ReadWindowHeight = 263;
+        internal const int SenderSearchButtonX = 295;
+        internal const int SenderSearchButtonY = 65;
+        internal const int SenderOkButtonX = 124;
+        internal const int SenderOkButtonY = 164;
+        internal const int SenderCancelButtonX = 181;
+        internal const int SenderCancelButtonY = 164;
+        internal const int TargetEditX = 46;
+        internal const int TargetEditY = 66;
+        internal const int TargetEditWidth = 243;
+        internal const int TargetEditHeight = 15;
+        internal const int MemoEditX = 13;
+        internal const int MemoEditY = 105;
+        internal const int MemoEditWidth = 333;
+        internal const int MemoEditHeight = 45;
+        internal const int NameListScrollBarX = 498;
+        internal const int NameListScrollBarY = 7;
+        internal const int NameListScrollBarHeight = 93;
+        internal const int ReadCloseButtonX = 91;
+        internal const int ReadCloseButtonY = 231;
+        internal const int SenderTargetMaxChars = 12;
+        internal const int SenderMemoMaxChars = 120;
+        internal const int SenderMemoMaxRows = 3;
 
         private readonly List<string> _searchResults = new();
         private string _senderName = "Player";
@@ -138,7 +160,7 @@ namespace HaCreator.MapSimulator.Interaction
             return new NewYearCardSendRequest(SendCardOpcode, payload, _inventoryPosition, _itemId, _targetName, _memo);
         }
 
-        internal bool TryBuildSendRequest(out NewYearCardSendRequest request, out string message)
+        internal bool TryBuildSendRequest(out NewYearCardSendRequest request, out string message, bool confirmedEmptyMemo = false)
         {
             request = null;
             if (string.IsNullOrWhiteSpace(_targetName))
@@ -151,6 +173,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (string.Equals(_senderName, _targetName, StringComparison.OrdinalIgnoreCase))
             {
                 message = "You cannot send a card to yourself !";
+                _lastStatus = message;
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(_memo) && !confirmedEmptyMemo)
+            {
+                message = "The client prompts before sending a New Year Card with an empty memo.";
                 _lastStatus = message;
                 return false;
             }

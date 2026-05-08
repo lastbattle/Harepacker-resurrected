@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _showMessage;
         private bool _queueExists;
         private bool _isSelfMessage = true;
+        private bool _packetOwnedDisplayAwaitingClear;
         private bool _awaitingQueueReuseConfirmation;
         private MapleTvItemProfile _itemProfile;
         private MapleTvSendResultFeedback _pendingSendResultFeedback;
@@ -131,6 +132,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal void Update(int currentTick)
         {
             if (!_showMessage || _messageStartedAt == int.MinValue)
+            {
+                return;
+            }
+
+            if (_packetOwnedDisplayAwaitingClear)
             {
                 return;
             }
@@ -439,6 +445,7 @@ namespace HaCreator.MapSimulator.Interaction
             Array.Copy(_draftLines, _displayLines, DisplayLineCount);
             _showMessage = true;
             _queueExists = true;
+            _packetOwnedDisplayAwaitingClear = false;
             _awaitingQueueReuseConfirmation = false;
             _messageStartedAt = currentTick;
             _activeDurationMs = _draftDurationMs;
@@ -461,6 +468,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _showMessage = false;
             _queueExists = preserveQueue;
+            _packetOwnedDisplayAwaitingClear = false;
             _messageStartedAt = int.MinValue;
             _activeDurationMs = 0;
             _queueConfirmationWaitSeconds = 0;
@@ -642,6 +650,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _showMessage = false;
             _queueExists = true;
+            _packetOwnedDisplayAwaitingClear = false;
             _messageStartedAt = int.MinValue;
             _activeDurationMs = 0;
             _queueConfirmationWaitSeconds = 0;
@@ -808,10 +817,11 @@ namespace HaCreator.MapSimulator.Interaction
                 Array.Copy(lines, _displayLines, DisplayLineCount);
                 _showMessage = true;
                 _queueExists = true;
+                _packetOwnedDisplayAwaitingClear = true;
                 _awaitingQueueReuseConfirmation = false;
                 _messageStartedAt = currentTick;
-                _activeDurationMs = ResolvePacketTotalWaitDurationMs(totalWaitTime);
-                SetQueueConfirmationWaitFromPacketValue(totalWaitTime, _activeDurationMs);
+                _activeDurationMs = 0;
+                SetQueueConfirmationWaitFromPacketValue(totalWaitTime);
                 // CMapleTVMan::OnSetMessage stores m_nMessageType but determines
                 // self-vs-receiver presentation from nFlag bit 0x02.
                 _isSelfMessage = (flag & 2) == 0;
@@ -828,7 +838,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _receiverBuild.Name = string.IsNullOrWhiteSpace(_receiverName) ? "Receiver" : _receiverName;
                 }
 
-                _statusMessage = $"Applied MapleTV set-message packet ({(_useReceiver ? "dedication" : "self")} type {_messageType}).";
+                _statusMessage = $"Applied MapleTV set-message packet ({(_useReceiver ? "dedication" : "self")} type {_messageType}); awaiting CMapleTVMan::OnClearMessage.";
                 RecordOfficialPacket(PacketTypeSetMessage, currentTick, -1, -1, source);
                 message = _statusMessage;
                 return true;
@@ -1039,31 +1049,12 @@ namespace HaCreator.MapSimulator.Interaction
             _queueConfirmationWaitSeconds = Math.Max(0, (int)Math.Ceiling(durationMs / 1000f));
         }
 
-        private void SetQueueConfirmationWaitFromPacketValue(int packetWaitValue, int resolvedDurationMs)
+        private void SetQueueConfirmationWaitFromPacketValue(int packetWaitValue)
         {
-            if (packetWaitValue <= 0)
-            {
-                _queueConfirmationWaitSeconds = 0;
-                return;
-            }
-
-            // CMapleTVMan::OnSetMessage stores the packet wait value directly for
-            // ConfirmTimeRemaining; server captures can expose either second or ms-like values.
-            _queueConfirmationWaitSeconds = packetWaitValue <= 600
-                ? packetWaitValue
-                : Math.Max(0, (int)Math.Ceiling(resolvedDurationMs / 1000f));
-        }
-
-        private static int ResolvePacketTotalWaitDurationMs(int packetWaitValue)
-        {
-            if (packetWaitValue <= 0)
-            {
-                return 0;
-            }
-
-            return packetWaitValue <= 600
-                ? packetWaitValue * 1000
-                : packetWaitValue;
+            // CMapleTVMan::OnSetMessage stores the decoded value directly in
+            // m_nTotalWaitTime for ConfirmTimeRemaining. It is not a local
+            // display-expiry timer; OnClearMessage owns hiding the packet display.
+            _queueConfirmationWaitSeconds = Math.Max(0, packetWaitValue);
         }
 
         private string QueueSendResultFeedback(MapleTvSendResultDefinition definition)

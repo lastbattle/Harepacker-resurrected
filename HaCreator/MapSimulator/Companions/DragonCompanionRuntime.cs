@@ -145,6 +145,9 @@ namespace HaCreator.MapSimulator.Companions
                 string capturedKeyPadMemorySource,
                 bool capturedKeyPadMemoryFromOfficialSession,
                 bool officialSessionKeyPadMemoryByteProven,
+                bool hasRecentOfficialSessionFullTailCapture,
+                bool recentOfficialSessionFullTailByteProven,
+                string recentOfficialSessionFullTailSource,
                 Rectangle simulatorBounds,
                 Rectangle capturedBounds)
             {
@@ -165,6 +168,9 @@ namespace HaCreator.MapSimulator.Companions
                 CapturedKeyPadMemorySource = capturedKeyPadMemorySource;
                 CapturedKeyPadMemoryFromOfficialSession = capturedKeyPadMemoryFromOfficialSession;
                 OfficialSessionKeyPadMemoryByteProven = officialSessionKeyPadMemoryByteProven;
+                HasRecentOfficialSessionFullTailCapture = hasRecentOfficialSessionFullTailCapture;
+                RecentOfficialSessionFullTailByteProven = recentOfficialSessionFullTailByteProven;
+                RecentOfficialSessionFullTailSource = recentOfficialSessionFullTailSource;
                 SimulatorBounds = simulatorBounds;
                 CapturedBounds = capturedBounds;
             }
@@ -186,6 +192,9 @@ namespace HaCreator.MapSimulator.Companions
             public string CapturedKeyPadMemorySource { get; }
             public bool CapturedKeyPadMemoryFromOfficialSession { get; }
             public bool OfficialSessionKeyPadMemoryByteProven { get; }
+            public bool HasRecentOfficialSessionFullTailCapture { get; }
+            public bool RecentOfficialSessionFullTailByteProven { get; }
+            public string RecentOfficialSessionFullTailSource { get; }
             public Rectangle SimulatorBounds { get; }
             public Rectangle CapturedBounds { get; }
         }
@@ -600,6 +609,7 @@ namespace HaCreator.MapSimulator.Companions
             _lastCapturedVecCtrlEndUpdateActiveFlushSource = null;
             _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession = false;
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary = "No captured client dragon move packet has been inspected.";
+            _recentCapturedVecCtrlEndUpdateActiveFlushTails.Clear();
             _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates = null;
             _lastCapturedVecCtrlEndUpdateActiveKeyPadMemorySource = null;
             _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession = false;
@@ -1641,6 +1651,11 @@ namespace HaCreator.MapSimulator.Companions
                 IsClientDragonOfficialSessionCaptureSource(_lastCapturedVecCtrlEndUpdateActiveFlushSource);
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary =
                 $"Captured client dragon opcode {ClientVecCtrlDragonMovePacketOpcode} tail from {_lastCapturedVecCtrlEndUpdateActiveFlushSource}: keypad={FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates)}, bounds={FormatClientDragonFlushBounds(capturedTail)}.";
+            RecordRecentClientDragonFlushTailCapture(
+                capturedTail,
+                hasBounds: true,
+                _lastCapturedVecCtrlEndUpdateActiveFlushSource,
+                _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession);
 
             message = DescribeClientVecCtrlEndUpdateActiveParityStatus();
             return true;
@@ -1670,6 +1685,11 @@ namespace HaCreator.MapSimulator.Companions
             string captureShape = opcodeFramed ? "opcode-framed" : "payload-only";
             _lastCapturedVecCtrlEndUpdateActiveFlushSummary =
                 $"Captured client dragon opcode {ClientVecCtrlDragonMovePacketOpcode} {captureShape} tail from {_lastCapturedVecCtrlEndUpdateActiveFlushSource}: keypad={FormatClientDragonFlushKeyPadStates(capturedTail.KeyPadStates)}, bounds={FormatClientDragonFlushBounds(capturedTail)}.";
+            RecordRecentClientDragonFlushTailCapture(
+                capturedTail,
+                hasBounds: true,
+                _lastCapturedVecCtrlEndUpdateActiveFlushSource,
+                _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession);
 
             message = DescribeClientVecCtrlEndUpdateActiveParityStatus();
             return true;
@@ -1780,6 +1800,11 @@ namespace HaCreator.MapSimulator.Companions
                 && AreClientDragonFlushKeyPadStatesEqual(
                     simulatorTail.KeyPadStates,
                     _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates);
+            bool hasRecentOfficialSessionFullTailCapture = TryFindRecentOfficialSessionFullTailCapture(
+                simulatorTail,
+                hasSimulatorTail,
+                out ClientDragonFlushTailCaptureRecord recentFullTailCapture,
+                out bool recentFullTailMatched);
             return new ClientDragonFlushTailComparison(
                 hasSimulatorTail,
                 hasCapturedTail,
@@ -1801,8 +1826,65 @@ namespace HaCreator.MapSimulator.Companions
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession,
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession
                     && keyPadMemoryStatesMatch,
+                hasRecentOfficialSessionFullTailCapture,
+                recentFullTailMatched,
+                recentFullTailCapture?.Source,
                 simulatorBounds,
                 capturedBounds);
+        }
+
+        private void RecordRecentClientDragonFlushTailCapture(
+            ClientDragonFlushTail tail,
+            bool hasBounds,
+            string source,
+            bool fromOfficialSession)
+        {
+            if (!hasBounds)
+            {
+                return;
+            }
+
+            while (_recentCapturedVecCtrlEndUpdateActiveFlushTails.Count >= MaxRecentClientVecCtrlFlushTailCaptures)
+            {
+                _recentCapturedVecCtrlEndUpdateActiveFlushTails.Dequeue();
+            }
+
+            _recentCapturedVecCtrlEndUpdateActiveFlushTails.Enqueue(new ClientDragonFlushTailCaptureRecord
+            {
+                Tail = tail,
+                HasBounds = hasBounds,
+                Source = string.IsNullOrWhiteSpace(source) ? "captured client dragon tail" : source.Trim(),
+                FromOfficialSession = fromOfficialSession
+            });
+        }
+
+        private bool TryFindRecentOfficialSessionFullTailCapture(
+            ClientDragonFlushTail simulatorTail,
+            bool hasSimulatorTail,
+            out ClientDragonFlushTailCaptureRecord capture,
+            out bool matched)
+        {
+            capture = null;
+            matched = false;
+
+            foreach (ClientDragonFlushTailCaptureRecord candidate in _recentCapturedVecCtrlEndUpdateActiveFlushTails)
+            {
+                if (candidate?.HasBounds != true || !candidate.FromOfficialSession)
+                {
+                    continue;
+                }
+
+                capture = candidate;
+                if (hasSimulatorTail
+                    && AreClientDragonFlushKeyPadStatesEqual(simulatorTail.KeyPadStates, candidate.Tail.KeyPadStates)
+                    && ToBoundsRectangle(simulatorTail) == ToBoundsRectangle(candidate.Tail))
+                {
+                    matched = true;
+                    return true;
+                }
+            }
+
+            return capture != null;
         }
 
         internal static bool IsClientDragonOfficialSessionCaptureSource(string source)
@@ -1824,6 +1906,13 @@ namespace HaCreator.MapSimulator.Companions
                 return "Awaiting captured client tail.";
             }
 
+            if (comparison.HasRecentOfficialSessionFullTailCapture
+                && comparison.RecentOfficialSessionFullTailByteProven
+                && (!comparison.CapturedBoundsAvailable || !comparison.CapturedFromOfficialSession))
+            {
+                return $"Recent official-session keypad and move-bounds byte proof matched from {comparison.RecentOfficialSessionFullTailSource}.";
+            }
+
             if (!comparison.CapturedFromOfficialSession)
             {
                 return "Manual capture recorded; official-session byte proof still pending.";
@@ -1841,6 +1930,13 @@ namespace HaCreator.MapSimulator.Companions
 
             if (!comparison.CapturedBoundsAvailable)
             {
+                if (comparison.HasRecentOfficialSessionFullTailCapture)
+                {
+                    return comparison.RecentOfficialSessionFullTailByteProven
+                        ? $"Official-session keypad byte proof matched; recent full move-bounds proof also matched from {comparison.RecentOfficialSessionFullTailSource}."
+                        : "Official-session keypad byte proof matched; recent full move-bounds capture differs from the simulator tail.";
+                }
+
                 return "Official-session keypad byte proof matched; full move-bounds proof still pending a full opcode capture.";
             }
 

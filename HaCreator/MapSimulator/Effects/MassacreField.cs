@@ -302,6 +302,7 @@ namespace HaCreator.MapSimulator.Effects
         private List<MassacreCanvasFrame> _resultFailFrames;
         private List<MassacreCanvasFrame> _resultBoardPulseFrames;
         private int _bonusPresentationStartTick = int.MinValue;
+        private int _bonusPresentationValue;
         private int _resultPresentationStartTick = int.MinValue;
         private MassacreResultPresentation _resultPresentation = MassacreResultPresentation.None;
         private string _resultPresentationOwner = string.Empty;
@@ -310,6 +311,10 @@ namespace HaCreator.MapSimulator.Effects
         private int _resultKillRate;
         private int _resultCoolRate;
         private int _resultMissRate;
+        private int _coolEffectTriggerCount;
+        private int _skillEffectTriggerCount;
+        private int _lastCoolEffectValue;
+        private int _lastSkillEffectValue;
         private MassacreMapMode _mapMode;
         private int _mapFlowGroup;
         private MassacreRoundOutcome _pendingResultOutcome;
@@ -330,6 +335,7 @@ namespace HaCreator.MapSimulator.Effects
         public int ComboCount => _comboCount;
         public int TimerRemain => RemainingSeconds;
         public bool HasBonusPresentation => _bonusPresentationStartTick != int.MinValue;
+        public int BonusPresentationValue => _bonusPresentationValue;
         public bool HasCountEffectPresentation => _countEffectPresentationStartTick != int.MinValue;
         public int ActiveCountEffectStage => _countEffectPresentationStage;
         public bool HasResultPresentation => _resultPresentation != MassacreResultPresentation.None;
@@ -346,6 +352,10 @@ namespace HaCreator.MapSimulator.Effects
         internal string ResultPresentationOwner => _resultPresentationOwner;
         internal string ResultPresentationKind => _resultPresentation.ToString();
         internal string PendingResultOutcome => _pendingResultOutcome.ToString();
+        internal int CoolEffectTriggerCount => _coolEffectTriggerCount;
+        internal int SkillEffectTriggerCount => _skillEffectTriggerCount;
+        internal int LastCoolEffectValue => _lastCoolEffectValue;
+        internal int LastSkillEffectValue => _lastSkillEffectValue;
         public string GetPacketOwnerName(int packetType)
         {
             return packetType == PacketTypeResult
@@ -558,6 +568,7 @@ namespace HaCreator.MapSimulator.Effects
             _countEffectPresentationStartTick = int.MinValue;
             _countEffectPresentationStage = 0;
             _bonusPresentationStartTick = int.MinValue;
+            _bonusPresentationValue = 0;
             _resultPresentationStartTick = int.MinValue;
             _resultPresentation = MassacreResultPresentation.None;
             _resultRank = 'D';
@@ -567,6 +578,10 @@ namespace HaCreator.MapSimulator.Effects
             _resultMissRate = 0;
             _resultPresentationOwner = string.Empty;
             _pendingResultOutcome = MassacreRoundOutcome.None;
+            _coolEffectTriggerCount = 0;
+            _skillEffectTriggerCount = 0;
+            _lastCoolEffectValue = 0;
+            _lastSkillEffectValue = 0;
         }
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
         {
@@ -722,6 +737,7 @@ namespace HaCreator.MapSimulator.Effects
                 && !IsAnimationPlaying(_bonusFrames, currentTimeMs, _bonusPresentationStartTick, repeat: false))
             {
                 _bonusPresentationStartTick = int.MinValue;
+                _bonusPresentationValue = 0;
             }
             if (_countEffectPresentationStartTick != int.MinValue
                 && !IsAnimationPlaying(GetCountEffectFramesForCurrentStage(), currentTimeMs, _countEffectPresentationStartTick, repeat: false)
@@ -768,7 +784,9 @@ namespace HaCreator.MapSimulator.Effects
             string countBoardText = $", point={_hitCount}/{_coolCount}/{_missCount}/{_skillCount}";
             string depletionText = $", depletion={_gaugeDepletion}/{_maxGauge}";
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
-            string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
+            string bonusText = HasBonusPresentation ? $", bonusFx={_bonusPresentationValue}" : string.Empty;
+            string coolEffectText = _coolEffectTriggerCount > 0 ? $", coolFx={_coolEffectTriggerCount}@{_lastCoolEffectValue}" : string.Empty;
+            string skillEffectText = _skillEffectTriggerCount > 0 ? $", skillFx={_skillEffectTriggerCount}@{_lastSkillEffectValue}" : string.Empty;
             string resultText = HasResultPresentation
                 ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}:owner={_resultPresentationOwner}:counts={_hitCount}/{_coolCount}/{_missCount}:rates={_resultKillRate}/{_resultCoolRate}/{_resultMissRate}"
                 : string.Empty;
@@ -797,7 +815,7 @@ namespace HaCreator.MapSimulator.Effects
                     FormatStringPoolEntry(ResultScoreDigitEvidence),
                     FormatResultRankEvidence()
                 });
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{depletionText}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, evidence=[{evidenceText}]";
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{depletionText}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{coolEffectText}{skillEffectText}{resultText}, evidence=[{evidenceText}]";
         }
         public void Reset()
         {
@@ -864,13 +882,27 @@ namespace HaCreator.MapSimulator.Effects
         }
         public void SetMassacreInfo(int hit, int miss, int cool, int skill, int currentTimeMs)
         {
+            int previousCoolCount = _coolCount;
+            int previousSkillCount = _skillCount;
+
             _hitCount = Math.Max(0, hit);
             _missCount = Math.Max(0, miss);
             _coolCount = Math.Max(0, cool);
 
             int nextSkillCount = Math.Max(0, skill);
-            int previousSkillCount = _skillCount;
             _skillCount = nextSkillCount;
+
+            if (_coolCount > previousCoolCount)
+            {
+                _coolEffectTriggerCount++;
+                _lastCoolEffectValue = _coolCount;
+            }
+
+            if (nextSkillCount > previousSkillCount)
+            {
+                _skillEffectTriggerCount++;
+                _lastSkillEffectValue = nextSkillCount;
+            }
 
             if (_disableSkill)
             {
@@ -1218,6 +1250,12 @@ namespace HaCreator.MapSimulator.Effects
         }
         public void ShowBonusPresentation(int currentTimeMs)
         {
+            _bonusPresentationValue = 0;
+            _bonusPresentationStartTick = currentTimeMs;
+        }
+        public void ShowBonusPresentation(int currentTimeMs, int bonusValue)
+        {
+            _bonusPresentationValue = Math.Max(0, bonusValue);
             _bonusPresentationStartTick = currentTimeMs;
         }
         public bool TryShowBonusPresentation(int bonusValue, int currentTimeMs, out string errorMessage)
@@ -1234,7 +1272,7 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            ShowBonusPresentation(currentTimeMs);
+            ShowBonusPresentation(currentTimeMs, bonusValue);
             return true;
         }
 
@@ -2125,6 +2163,7 @@ namespace HaCreator.MapSimulator.Effects
             _countEffectPresentationStartTick = int.MinValue;
             _countEffectPresentationStage = 0;
             _bonusPresentationStartTick = int.MinValue;
+            _bonusPresentationValue = 0;
             _resultPresentationStartTick = int.MinValue;
             _resultPresentation = MassacreResultPresentation.None;
             _resultPresentationOwner = string.Empty;

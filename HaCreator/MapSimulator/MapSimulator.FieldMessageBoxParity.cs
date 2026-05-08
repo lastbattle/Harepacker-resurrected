@@ -1,6 +1,7 @@
 ﻿using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
 using MapleLib.PacketLib;
 using System;
@@ -572,6 +573,89 @@ namespace HaCreator.MapSimulator
 
             message = $"Message-box consume request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] could not be staged because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{pendingRequestNote}{bridgeSyncNote}";
             return false;
+        }
+
+        private bool TryOpenFieldMessageBoxChalkboardDialog(
+            int inventoryPosition,
+            int itemId,
+            string initialText,
+            out string message)
+        {
+            _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+            if (!_fieldMessageBoxRuntime.TryOpenChalkboardDialog(
+                    inventoryPosition,
+                    itemId,
+                    initialText,
+                    out message))
+            {
+                return false;
+            }
+
+            string description = _fieldMessageBoxRuntime.DescribeChalkboardDialog();
+            ShowLoginUtilityDialog(
+                "Chalkboard",
+                description,
+                LoginUtilityDialogButtonLayout.YesNo,
+                LoginUtilityDialogAction.FieldMessageBoxChalkboardCompose,
+                primaryLabel: "OK",
+                secondaryLabel: "Cancel",
+                inputPlaceholder: "Enter chalkboard message",
+                inputMaxLength: short.MaxValue,
+                inputValue: initialText,
+                softKeyboardType: SoftKeyboardKeyboardType.FreeText,
+                inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                trackDirectionModeOwner: true);
+            message = $"{message} Opened the managed chalkboard compose owner through the shared CUtilDlgEx-style input dialog.";
+            return true;
+        }
+
+        private bool TryUpdateFieldMessageBoxChalkboardDialogText(string text, out string message)
+        {
+            _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+            bool updated = _fieldMessageBoxRuntime.TrySetChalkboardDialogText(text, out message);
+            if (updated)
+            {
+                _loginUtilityDialogInputValue = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+                SyncLoginUtilityDialogWindow();
+            }
+
+            return updated;
+        }
+
+        private bool TrySubmitFieldMessageBoxChalkboardDialog(out string message)
+        {
+            _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+            string inputText = _loginUtilityDialogInputValue ?? string.Empty;
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow utilityDialogWindow)
+            {
+                inputText = utilityDialogWindow.InputValue ?? inputText;
+            }
+
+            _fieldMessageBoxRuntime.TrySetChalkboardDialogText(inputText, out _);
+            if (!_fieldMessageBoxRuntime.TryConsumeChalkboardDialogSubmit(
+                    out int inventoryPosition,
+                    out int itemId,
+                    out string messageText,
+                    out string submitMessage))
+            {
+                message = submitMessage;
+                return false;
+            }
+
+            bool mirrored = TryMirrorFieldMessageBoxConsumeCashItemUseClientRequest(
+                inventoryPosition,
+                itemId,
+                messageText,
+                queueOnly: false,
+                out string mirrorMessage);
+            message = $"{submitMessage} {mirrorMessage}";
+            return mirrored;
+        }
+
+        private bool TryCancelFieldMessageBoxChalkboardDialog(out string message)
+        {
+            _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+            return _fieldMessageBoxRuntime.TryCancelChalkboardDialog(out message);
         }
 
         private bool TryResolveFieldMessageBoxRequestHostPosition(out Point hostPosition, out string status)

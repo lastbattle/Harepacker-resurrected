@@ -33,10 +33,8 @@ namespace HaCreator.MapSimulator.Managers
         public const byte RequestSubtypeEntrustedShopWithdrawMoney = 43;
         public const byte RequestSubtypeEntrustedShopVisitList = 46;
         public const byte RequestSubtypeEntrustedShopBlacklist = 47;
-        public const byte RequestSubtypeEntrustedShopBlacklistAdd = RequestSubtypeEntrustedShopBlacklist;
-        public const byte RequestSubtypeEntrustedShopBlacklistDelete = RequestSubtypeEntrustedShopBlacklist;
-        public const byte EntrustedShopBlacklistRequestModeAdd = 0;
-        public const byte EntrustedShopBlacklistRequestModeDelete = 1;
+        public const byte RequestSubtypeEntrustedShopBlacklistAdd = 48;
+        public const byte RequestSubtypeEntrustedShopBlacklistDelete = 49;
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxPendingResultExpectations = 32;
 
@@ -149,20 +147,19 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildEntrustedShopBlacklistAddOutboundPacket(string visitorName)
         {
-            return BuildEntrustedShopBlacklistMutationOutboundPacket(EntrustedShopBlacklistRequestModeAdd, visitorName);
+            return BuildEntrustedShopBlacklistMutationOutboundPacket(RequestSubtypeEntrustedShopBlacklistAdd, visitorName);
         }
 
         public static byte[] BuildEntrustedShopBlacklistDeleteOutboundPacket(string visitorName)
         {
-            return BuildEntrustedShopBlacklistMutationOutboundPacket(EntrustedShopBlacklistRequestModeDelete, visitorName);
+            return BuildEntrustedShopBlacklistMutationOutboundPacket(RequestSubtypeEntrustedShopBlacklistDelete, visitorName);
         }
 
-        private static byte[] BuildEntrustedShopBlacklistMutationOutboundPacket(byte mode, string visitorName)
+        private static byte[] BuildEntrustedShopBlacklistMutationOutboundPacket(byte requestSubtype, string visitorName)
         {
             using PacketWriter writer = new();
-            writer.WriteByte(mode);
             writer.WriteMapleString(NormalizeCharacterName(visitorName));
-            return BuildMerchantOutboundPacket(RequestSubtypeEntrustedShopBlacklist, writer.ToArray());
+            return BuildMerchantOutboundPacket(requestSubtype, writer.ToArray());
         }
 
         private static string NormalizeCharacterName(string visitorName)
@@ -205,7 +202,7 @@ namespace HaCreator.MapSimulator.Managers
                     ? $"inbound opcode {AutoDetectedInboundOpcode} was auto-detected from modeled merchant payloads"
                     : $"inbound opcode is not mapped yet; auto-detection shape-checks CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket result payloads on opcode {DefaultInboundMiniRoomOpcode}";
             string outboundSubtypes =
-                "10 CPersonalShopDlg::SetRet(nRet=2), 11 open/setup room, 15 put/list item, 23 CPersonalShopDlg::BuyItem(personal), 29 CPersonalShopDlg::Update timed-out visitor removal, 34 CPersonalShopDlg::BuyItem(entrusted), 39 CEntrustedShopDlg::OnGoOut, 40 CEntrustedShopDlg::OnArrange, 41 CEntrustedShopDlg::SetRet(nRet=8), 43 CEntrustedShopDlg::OnWithdrawMoney, 46 CEntrustedShopDlg::OnVisitList, 47 CEntrustedShopDlg::OnBlackList / child add-delete mode 0/1";
+                "10 CPersonalShopDlg::SetRet(nRet=2), 11 open/setup room, 15 put/list item, 23 CPersonalShopDlg::BuyItem(personal), 29 CPersonalShopDlg::Update timed-out visitor removal, 34 CPersonalShopDlg::BuyItem(entrusted), 39 CEntrustedShopDlg::OnGoOut, 40 CEntrustedShopDlg::OnArrange, 41 CEntrustedShopDlg::SetRet(nRet=8), 43 CEntrustedShopDlg::OnWithdrawMoney, 46 CEntrustedShopDlg::OnVisitList, 47 CEntrustedShopDlg::OnBlackList, 48 CEntrustedShopDlg::AddBlackList, 49 CEntrustedShopDlg::DeleteBlackList";
             return
                 $"Merchant-room opcode map: outbound MiniRoom requests use opcode {OutboundMiniRoomOpcode} with recovered request subtypes {outboundSubtypes}; server-owned merchant updates currently model subtypes 24, 25, 26, 27, 40, 42, 44, 46, and 47 through CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket with subtype 25 forwarding into CMiniRoomBaseDlg::OnPacketBase. {inbound}.";
         }

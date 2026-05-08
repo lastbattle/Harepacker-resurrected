@@ -224,13 +224,32 @@ namespace HaCreator.MapSimulator.Interaction
             // resolves these ids through StringPool before loading the layer from Effect/BasicEff.
             [0x0B6B] = "Effect/BasicEff.img/dragonBlink",
             [0x15DA] = "Effect/BasicEff.img/dragonFury",
+            // Recovered from MapleStory.exe v95 `CUserLocal::DoActiveSkill_BoundJump`.
+            // The generated table drifts around these ids in the current workspace;
+            // keep the direct bound-jump `Effect_General` paths pinned to the client
+            // ids used after the local `ShowSkillEffect` request.
+            [0x13FD] = "Effect/BasicEff.img/SoulRush",
+            [0x17A8] = "Effect/BasicEff.img/Flying2",
             // Recovered from MapleStory.exe v95 `CWvsContext::OnSkillLearnItemResult` and
             // `CUIVega::OnVegaResult`. The generated table drifts for these production and
             // enhancement sound ids, so pin the verified sound paths here before the shared
             // production/enhancement owners resolve them.
             [0x0507] = "Sound/Game.img/EnchantSuccess",
             [0x0508] = "Sound/Game.img/EnchantFailure",
-            [0x1534] = "Sound/UI.img/EnchantDelay",
+            // Recovered from MapleStory.exe v95 `CUIVega::OnButtonClicked` and
+            // `CUIVega::OnVegaResult`. The generated table drifts across both the
+            // Vega notice block and the White Scroll notice block, so keep the
+            // owner-local validation strings and loop-sound alias pinned to the
+            // client ids used by the Vega dialog.
+            [0x1160] = "Would you like to use the White Scroll?",
+            [0x1161] = "The White Scroll has been used.",
+            [0x1162] = "The item upgrade failed%2C but since the White Scroll was used%2C the number of item upgrade slots remained in tact.",
+            [0x1163] = " The item was successfully upgraded%2C and the white scroll was used in the process.",
+            [0x152E] = "This scroll cannot be used.",
+            [0x152F] = "The item and the scroll cannot be combined.",
+            [0x1530] = "Unknowun error %d.",
+            [0x1534] = "VegaTwinkling",
+            [0x1A6C] = "Something wrong!",
             // Recovered from MapleStory.exe v95 `CWvsContext::OnSkillLearnItemResult`.
             // The packet-owned skill-book result branch formats these exact notices
             // through StringPool before writing to the status-bar chat log.

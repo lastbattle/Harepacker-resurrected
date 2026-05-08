@@ -862,15 +862,15 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             callbacks?.RememberWhisperTarget?.Invoke(sender);
                             _lastWhisperTarget = sender;
-                            _statusMessage = $"Suppressed packet-owned whisper from disabled or blocked sender {sender}.";
+                            _statusMessage = $"Suppressed packet-owned whisper from disabled or blacklisted sender {sender}.";
                             message = _statusMessage;
                             return true;
                         }
 
                         body = NormalizeFieldChatText(body);
+                        TryAddSwindleWarning(body, allowGroupFamilyWarning: true, currentTick, callbacks);
                         string text = ResolveIncomingWhisperLogText(sender, channelId, body, callbacks);
                         callbacks?.AddClientChatMessage?.Invoke(text, 1, sender);
-                        TryAddSwindleWarning(body, allowGroupFamilyWarning: true, currentTick, callbacks);
                         callbacks?.RememberWhisperTarget?.Invoke(sender);
                         _lastWhisperTarget = sender;
                         _statusMessage = $"Applied packet-owned incoming whisper from {sender}.";
@@ -1123,7 +1123,7 @@ namespace HaCreator.MapSimulator.Interaction
                             ? $"Applied packet-owned field sound {descriptor}."
                             : $"Field sound {descriptor} could not be resolved.";
                         message = _statusMessage;
-                        return played;
+                        return true;
                     }
                 case 5:
                     {
@@ -2197,8 +2197,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            return callbacks?.IsBlacklistedName?.Invoke(sender) == true
-                || callbacks?.IsBlockedFriendName?.Invoke(sender) == true;
+            return callbacks?.IsBlacklistedName?.Invoke(sender) == true;
         }
 
         private static bool TryReadWhisperFindTransferPosition(BinaryReader reader, Stream stream, out int x, out int y)

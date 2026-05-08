@@ -187,7 +187,12 @@ namespace HaCreator.MapSimulator.Pools
     {
         None = 0,
         ClientSignal = 1,
-        WzAuthoredOrderFallback = 2
+        WzAuthoredOrderFallback = 2,
+        UniqueTemplatePositionFlip = 3,
+        ExactName = 4,
+        CurrentLocalUserPosition = 5,
+        LocalTouch = 6,
+        InitialState = 7
     }
 
     /// <summary>
@@ -2981,12 +2986,12 @@ namespace HaCreator.MapSimulator.Pools
                     // Narrow unresolved packet-name adoption only when template/position/flip
                     // resolution leaves exactly one authored candidate with no conflicting name.
                     index = candidates[0].Index;
-                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
+                    selectionReason = PacketEnterAuthoredReactorSelectionReason.UniqueTemplatePositionFlip;
                     return true;
                 }
 
                 index = candidates[0].Index;
-                selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
+                selectionReason = PacketEnterAuthoredReactorSelectionReason.UniqueTemplatePositionFlip;
                 return true;
             }
 
@@ -3030,19 +3035,19 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             List<PacketEnterAuthoredReactorCandidate> scope = candidates.ToList();
-            Func<PacketEnterAuthoredReactorCandidate, bool>[] identityFilters =
+            (Func<PacketEnterAuthoredReactorCandidate, bool> Selector, PacketEnterAuthoredReactorSelectionReason Reason)[] identityFilters =
             {
-                static candidate => candidate.HasExactNameMatch,
-                static candidate => candidate.MatchesPacketName,
-                static candidate => candidate.ContainsCurrentLocalUserPosition
+                (static candidate => candidate.HasExactNameMatch, PacketEnterAuthoredReactorSelectionReason.ExactName),
+                (static candidate => candidate.MatchesPacketName, PacketEnterAuthoredReactorSelectionReason.ClientSignal),
+                (static candidate => candidate.ContainsCurrentLocalUserPosition, PacketEnterAuthoredReactorSelectionReason.CurrentLocalUserPosition)
             };
 
-            foreach (Func<PacketEnterAuthoredReactorCandidate, bool> filter in identityFilters)
+            foreach ((Func<PacketEnterAuthoredReactorCandidate, bool> selector, PacketEnterAuthoredReactorSelectionReason reason) in identityFilters)
             {
-                scope = PreferTrueCandidates(scope, filter);
+                scope = PreferTrueCandidates(scope, selector);
                 if (TrySelectUniqueCandidate(scope, out index))
                 {
-                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
+                    selectionReason = reason;
                     return true;
                 }
             }
@@ -3060,12 +3065,6 @@ namespace HaCreator.MapSimulator.Pools
                     static candidate => candidate.ContainsCurrentLocalUserPosition,
                     candidate => candidate.VisualState == initialState))
             {
-                if (TrySelectUniqueStrongestStateSignalCandidate(scope, initialState, out index))
-                {
-                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
-                    return true;
-                }
-
                 if (TrySelectNarrowedWzAuthoredOrderCandidateForDisjointSignals(
                         scope,
                         initialState,
@@ -3078,18 +3077,18 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            Func<PacketEnterAuthoredReactorCandidate, bool>[] statefulFilters =
+            (Func<PacketEnterAuthoredReactorCandidate, bool> Selector, PacketEnterAuthoredReactorSelectionReason Reason)[] statefulFilters =
             {
-                static candidate => candidate.IsLocallyTouched,
-                candidate => candidate.VisualState == initialState
+                (static candidate => candidate.IsLocallyTouched, PacketEnterAuthoredReactorSelectionReason.LocalTouch),
+                (candidate => candidate.VisualState == initialState, PacketEnterAuthoredReactorSelectionReason.InitialState)
             };
 
-            foreach (Func<PacketEnterAuthoredReactorCandidate, bool> filter in statefulFilters)
+            foreach ((Func<PacketEnterAuthoredReactorCandidate, bool> selector, PacketEnterAuthoredReactorSelectionReason reason) in statefulFilters)
             {
-                scope = PreferTrueCandidates(scope, filter);
+                scope = PreferTrueCandidates(scope, selector);
                 if (TrySelectUniqueCandidate(scope, out index))
                 {
-                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
+                    selectionReason = reason;
                     return true;
                 }
             }
@@ -3178,63 +3177,6 @@ namespace HaCreator.MapSimulator.Pools
                 .ThenBy(static candidate => candidate.Index)
                 .Select(static candidate => candidate.Index)
                 .FirstOrDefault();
-            return index >= 0;
-        }
-
-        private static bool TrySelectUniqueStrongestStateSignalCandidate(
-            IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
-            int initialState,
-            out int index)
-        {
-            index = -1;
-            if (candidates == null || candidates.Count == 0)
-            {
-                return false;
-            }
-
-            int bestIndex = -1;
-            int bestScore = int.MinValue;
-            bool hasScoreTie = false;
-
-            for (int i = 0; i < candidates.Count; i++)
-            {
-                PacketEnterAuthoredReactorCandidate candidate = candidates[i];
-                int score = 0;
-                if (candidate.IsLocallyTouched)
-                {
-                    score++;
-                }
-
-                if (candidate.ContainsCurrentLocalUserPosition)
-                {
-                    score++;
-                }
-
-                if (candidate.VisualState == initialState)
-                {
-                    score++;
-                }
-
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestIndex = candidate.Index;
-                    hasScoreTie = false;
-                    continue;
-                }
-
-                if (score == bestScore)
-                {
-                    hasScoreTie = true;
-                }
-            }
-
-            if (bestScore < 2 || hasScoreTie)
-            {
-                return false;
-            }
-
-            index = bestIndex;
             return index >= 0;
         }
 

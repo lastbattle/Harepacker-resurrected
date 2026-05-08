@@ -98,6 +98,7 @@ namespace HaCreator.MapSimulator.UI
         public const string GuildBbs = "GuildBbs";
         public const string Messenger = "Messenger";
         public const string MapleTv = "MapleTv";
+        public const string AvatarMegaphoneSendDialog = "AvatarMegaphoneSendDialog";
         public const string EngagementProposal = "EngagementProposal";
         public const string WeddingWishList = "WeddingWishList";
         public const string WeddingInvitation = "WeddingInvitation";

@@ -44,6 +44,8 @@ namespace HaCreator.MapSimulator.Managers
         SetBackEffect = 144,
         SetMapObjectVisible = 145,
         ClearBackEffect = 146,
+        CharacterSaleCheckDuplicatedIdResult = 413,
+        CharacterSaleCreateNewCharacterResult = 414,
     }
 
     /// <summary>
@@ -89,6 +91,8 @@ namespace HaCreator.MapSimulator.Managers
                 [LoginPacketType.SetBackEffect] = HandleSetBackEffect,
                 [LoginPacketType.SetMapObjectVisible] = HandleSetMapObjectVisible,
                 [LoginPacketType.ClearBackEffect] = HandleClearBackEffect,
+                [LoginPacketType.CharacterSaleCheckDuplicatedIdResult] = HandleCharacterSaleCheckDuplicatedIdResult,
+                [LoginPacketType.CharacterSaleCreateNewCharacterResult] = HandleCharacterSaleCreateNewCharacterResult,
             };
         }
 
@@ -331,7 +335,11 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            string summary = $"CLogin::OnPacket forwarded {DescribeForwardedPacket(packetType)} to {target}";
+            string owner = packetType is LoginPacketType.CharacterSaleCheckDuplicatedIdResult
+                or LoginPacketType.CharacterSaleCreateNewCharacterResult
+                ? "CField::OnCharacterSale"
+                : "CLogin::OnPacket";
+            string summary = $"{owner} forwarded {DescribeForwardedPacket(packetType)} to {target}";
             if (applied)
             {
                 LastEventSummary = string.IsNullOrWhiteSpace(LastForwardedPacketDetail)
@@ -440,6 +448,10 @@ namespace HaCreator.MapSimulator.Managers
                 "onsetmapobjectvisible" => Assign(LoginPacketType.SetMapObjectVisible, out packetType),
                 "clearbackeffect" => Assign(LoginPacketType.ClearBackEffect, out packetType),
                 "onclearbackeffect" => Assign(LoginPacketType.ClearBackEffect, out packetType),
+                "charactersalecheckduplicatedid" or "charactersalecheckduplicatedidresult" or "charsalecheckduplicatedid" or "charsalecheckduplicate" => Assign(LoginPacketType.CharacterSaleCheckDuplicatedIdResult, out packetType),
+                "oncharactersalecheckduplicatedidresult" or "cuicharactersaledlgoncheckduplicatedidresult" => Assign(LoginPacketType.CharacterSaleCheckDuplicatedIdResult, out packetType),
+                "charactersalecreatenewcharacter" or "charactersalecreatenewcharacterresult" or "charsalecreatenewcharacter" or "charsalenewcharresult" => Assign(LoginPacketType.CharacterSaleCreateNewCharacterResult, out packetType),
+                "oncharactersalecreatenewcharacterresult" or "cuicharactersaledlgoncreatenewcharacterresult" => Assign(LoginPacketType.CharacterSaleCreateNewCharacterResult, out packetType),
                 _ => Enum.TryParse(text, true, out packetType),
             };
         }
@@ -595,6 +607,18 @@ namespace HaCreator.MapSimulator.Managers
             LastEventSummary = "CLogin::OnPacket routed ClearBackEffect(146) into the shared CMapLoadable::OnPacket handoff seam.";
         }
 
+        private void HandleCharacterSaleCheckDuplicatedIdResult(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "CField::OnCharacterSale routed packet 413 into CUICharacterSaleDlg::OnCheckDuplicatedIDResult.";
+        }
+
+        private void HandleCharacterSaleCreateNewCharacterResult(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "CField::OnCharacterSale routed packet 414 into CUICharacterSaleDlg::OnCreateNewCharacterResult.";
+        }
+
         private static bool TryResolveForwardedPacketTarget(LoginPacketType packetType, out string target, out bool stageOwned)
         {
             switch (packetType)
@@ -603,6 +627,11 @@ namespace HaCreator.MapSimulator.Managers
                 case LoginPacketType.SetITC:
                 case LoginPacketType.SetCashShop:
                     target = "CStage::OnPacket";
+                    stageOwned = true;
+                    return true;
+                case LoginPacketType.CharacterSaleCheckDuplicatedIdResult:
+                case LoginPacketType.CharacterSaleCreateNewCharacterResult:
+                    target = "CUICharacterSaleDlg::OnPacket";
                     stageOwned = true;
                     return true;
                 case LoginPacketType.SetBackEffect:
@@ -628,6 +657,8 @@ namespace HaCreator.MapSimulator.Managers
                 LoginPacketType.SetBackEffect => "SetBackEffect(144)",
                 LoginPacketType.SetMapObjectVisible => "SetMapObjectVisible(145)",
                 LoginPacketType.ClearBackEffect => "ClearBackEffect(146)",
+                LoginPacketType.CharacterSaleCheckDuplicatedIdResult => "CharacterSaleCheckDuplicatedIdResult(413)",
+                LoginPacketType.CharacterSaleCreateNewCharacterResult => "CharacterSaleCreateNewCharacterResult(414)",
                 _ => packetType.ToString()
             };
         }

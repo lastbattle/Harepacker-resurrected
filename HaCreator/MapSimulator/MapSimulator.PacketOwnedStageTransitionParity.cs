@@ -81,6 +81,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryRelayLoginOwnedCharacterSalePacket(packetType, stagePacketType, out applied, out message))
+            {
+                return true;
+            }
+
             byte[] payload = stagePacketType is 142 or 143 or 146
                 ? Array.Empty<byte>()
                 : null;
@@ -126,9 +131,41 @@ namespace HaCreator.MapSimulator
                 LoginPacketType.SetBackEffect => 144,
                 LoginPacketType.SetMapObjectVisible => 145,
                 LoginPacketType.ClearBackEffect => 146,
+                LoginPacketType.CharacterSaleCheckDuplicatedIdResult => 413,
+                LoginPacketType.CharacterSaleCreateNewCharacterResult => 414,
                 _ => 0
             };
             return stagePacketType != 0;
+        }
+
+        private bool TryRelayLoginOwnedCharacterSalePacket(
+            LoginPacketType packetType,
+            int stagePacketType,
+            out bool applied,
+            out string message)
+        {
+            applied = false;
+            message = null;
+            if (stagePacketType is not 413 and not 414)
+            {
+                return false;
+            }
+
+            if (stagePacketType == 413)
+            {
+                applied = TryGetLoginCheckDuplicatedIdPacketProfile(out LoginAccountDialogPacketProfile duplicatedIdProfile) &&
+                          duplicatedIdProfile?.ResultCode != null;
+                message = applied
+                    ? "CField::OnCharacterSale forwarded packet 413 to CUICharacterSaleDlg::OnCheckDuplicatedIDResult and updated the staged duplicate-name result."
+                    : "CField::OnCharacterSale forwarded packet 413 to CUICharacterSaleDlg::OnCheckDuplicatedIDResult, but no duplicate-name result payload was available.";
+                return true;
+            }
+
+            applied = _loginPacketCreateNewCharacterResultProfile != null;
+            message = applied
+                ? "CField::OnCharacterSale forwarded packet 414 to CUICharacterSaleDlg::OnCreateNewCharacterResult and reused the login create-result roster mutation path."
+                : "CField::OnCharacterSale forwarded packet 414 to CUICharacterSaleDlg::OnCreateNewCharacterResult, but no create-character result payload was available.";
+            return true;
         }
 
         private PacketStageTransitionCallbacks BuildPacketOwnedStageTransitionCallbacks()
@@ -781,17 +818,17 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (rx.HasValue && ry.HasValue)
+            if (rx.HasValue || ry.HasValue)
             {
-                targetOffsetX = rx.Value - objectX;
-                targetOffsetY = ry.Value - objectY;
+                targetOffsetX = rx.HasValue ? rx.Value - objectX : 0;
+                targetOffsetY = ry.HasValue ? ry.Value - objectY : 0;
                 return targetOffsetX != 0 || targetOffsetY != 0;
             }
 
-            if (cx.HasValue && cy.HasValue)
+            if (cx.HasValue || cy.HasValue)
             {
-                targetOffsetX = cx.Value - objectX;
-                targetOffsetY = cy.Value - objectY;
+                targetOffsetX = cx.HasValue ? cx.Value - objectX : 0;
+                targetOffsetY = cy.HasValue ? cy.Value - objectY : 0;
                 return targetOffsetX != 0 || targetOffsetY != 0;
             }
 

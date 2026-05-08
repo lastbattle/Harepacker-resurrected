@@ -81,6 +81,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly string[] CompletionSideChannelDemandKeys =
         {
             "premium",
+            "worldmin",
+            "worldmax",
             "dressChanged",
             "completeVIPGradeMin",
             "completeVIPGradeMax",
@@ -983,6 +985,13 @@ namespace HaCreator.MapSimulator.Interaction
             // keep completion-demand metadata gates (record requirements and action
             // availability/interval/level bounds) in this registration path.
             var issues = new List<string>();
+            if (HasUnmetCurrentQuestRecordForCompletionDemand(
+                    definition.QuestId,
+                    questId => TryGetQuestRecordValue(questId, out _)))
+            {
+                issues.Add("Current quest record is missing.");
+            }
+
             AppendQuestStateIssues(definition.EndQuestRequirements, issues);
             if (HasUnmetQuestRecordRequirements(
                     definition.QuestId,
@@ -1218,6 +1227,15 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return requiredMorphTemplateId > 0
                    && currentMorphTemplateId != requiredMorphTemplateId;
+        }
+
+        internal static bool HasUnmetCurrentQuestRecordForCompletionDemand(
+            int questId,
+            Func<int, bool> hasQuestRecordProvider)
+        {
+            return questId > 0
+                   && (hasQuestRecordProvider == null ||
+                       !hasQuestRecordProvider(questId));
         }
 
         internal static bool HasUnmetCompletionQuestCompleteCountDemand(
@@ -13154,7 +13172,34 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         return true;
                     }
+
+                    if (TryGetSideChannelDemandStopPagesByAliases(stopPages, demandKey, out pages))
+                    {
+                        return true;
+                    }
                 }
+            }
+
+            pages = Array.Empty<NpcInteractionPage>();
+            return false;
+        }
+
+        private static bool TryGetSideChannelDemandStopPagesByAliases(
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
+            string demandKey,
+            out IReadOnlyList<NpcInteractionPage> pages)
+        {
+            string normalizedDemandKey = NormalizeConversationMetadataKey(demandKey);
+            if (normalizedDemandKey == "worldmin" || normalizedDemandKey == "worldmax")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "world",
+                    "worldid",
+                    "worldno",
+                    "server");
             }
 
             pages = Array.Empty<NpcInteractionPage>();

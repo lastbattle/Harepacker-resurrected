@@ -180,6 +180,68 @@ namespace HaCreator.MapSimulator.Interaction
             return removeApplied;
         }
 
+        public bool TryApplyAvatarModifiedRelationships(
+            RemoteUserAvatarModifiedPacket avatarModifiedPacket,
+            RemoteUserActorPool remoteUserPool,
+            int currentTime,
+            string source,
+            out string message)
+        {
+            message = null;
+            if (remoteUserPool == null)
+            {
+                message = "Packet-owned relationship-record runtime requires a remote-user pool.";
+                LastDispatchSummary = message;
+                return false;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source) ? "remote-user avatar-modified packet" : source.Trim();
+            bool allActiveAddsApplied = true;
+            List<string> details = new();
+
+            ApplyAvatarModifiedRelationship(
+                avatarModifiedPacket,
+                remoteUserPool,
+                currentTime,
+                normalizedSource,
+                RemoteRelationshipOverlayType.Couple,
+                avatarModifiedPacket.CoupleRecord,
+                details,
+                ref allActiveAddsApplied);
+            ApplyAvatarModifiedRelationship(
+                avatarModifiedPacket,
+                remoteUserPool,
+                currentTime,
+                normalizedSource,
+                RemoteRelationshipOverlayType.Friendship,
+                avatarModifiedPacket.FriendshipRecord,
+                details,
+                ref allActiveAddsApplied);
+            ApplyAvatarModifiedRelationship(
+                avatarModifiedPacket,
+                remoteUserPool,
+                currentTime,
+                normalizedSource,
+                RemoteRelationshipOverlayType.NewYearCard,
+                avatarModifiedPacket.NewYearCardRecord,
+                details,
+                ref allActiveAddsApplied);
+            ApplyAvatarModifiedRelationship(
+                avatarModifiedPacket,
+                remoteUserPool,
+                currentTime,
+                normalizedSource,
+                RemoteRelationshipOverlayType.Marriage,
+                avatarModifiedPacket.MarriageRecord,
+                details,
+                ref allActiveAddsApplied);
+
+            message = details.Count == 0
+                ? $"No relationship records were present in {normalizedSource}."
+                : string.Join(" ", details);
+            return allActiveAddsApplied;
+        }
+
         public string DescribeStatus()
         {
             RelationshipDispatchState couple = GetState(RemoteRelationshipOverlayType.Couple);
@@ -211,6 +273,125 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return state;
+        }
+
+        private void ApplyAvatarModifiedRelationship(
+            RemoteUserAvatarModifiedPacket avatarModifiedPacket,
+            RemoteUserActorPool remoteUserPool,
+            int currentTime,
+            string source,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord,
+            ICollection<string> details,
+            ref bool allActiveAddsApplied)
+        {
+            if (relationshipRecord.IsActive)
+            {
+                RemoteUserRelationshipRecord normalizedRecord = relationshipRecord with
+                {
+                    CharacterId = relationshipRecord.CharacterId.GetValueOrDefault() > 0
+                        ? relationshipRecord.CharacterId
+                        : avatarModifiedPacket.CharacterId
+                };
+
+                if (relationshipType == RemoteRelationshipOverlayType.Marriage)
+                {
+                    normalizedRecord = normalizedRecord with
+                    {
+                        CharacterId = avatarModifiedPacket.CharacterId,
+                        PairCharacterId = relationshipRecord.CharacterId.GetValueOrDefault() > 0
+                            && relationshipRecord.CharacterId.Value != avatarModifiedPacket.CharacterId
+                                ? relationshipRecord.CharacterId
+                                : relationshipRecord.PairCharacterId
+                    };
+                }
+
+                RemoteUserRelationshipRecordPacket addPacket = new(
+                    relationshipType,
+                    normalizedRecord,
+                    ResolveAvatarModifiedDispatchKey(relationshipType, avatarModifiedPacket.CharacterId, normalizedRecord));
+                bool applied = TryApplyDecodedAdd(addPacket, remoteUserPool, currentTime, source, out string addMessage);
+                if (!applied)
+                {
+                    allActiveAddsApplied = false;
+                }
+
+                details?.Add(addMessage ?? LastDispatchSummary);
+                return;
+            }
+
+            RemoteUserRelationshipRecordRemovePacket removePacket = CreateAvatarModifiedRemovePacket(
+                relationshipType,
+                avatarModifiedPacket.CharacterId,
+                remoteUserPool);
+            string previousDispatchSummary = LastDispatchSummary;
+            bool removed = TryApplyDecodedRemove(removePacket, remoteUserPool, source, out string removeMessage);
+            if (removed || !string.IsNullOrWhiteSpace(removeMessage))
+            {
+                if (removed)
+                {
+                    details?.Add(removeMessage);
+                }
+                else
+                {
+                    LastDispatchSummary = previousDispatchSummary;
+                }
+            }
+        }
+
+        private static RemoteUserRelationshipRecordRemovePacket CreateAvatarModifiedRemovePacket(
+            RemoteRelationshipOverlayType relationshipType,
+            int characterId,
+            RemoteUserActorPool remoteUserPool)
+        {
+            long? itemSerial = null;
+            RemoteRelationshipRecordDispatchKey dispatchKey = relationshipType == RemoteRelationshipOverlayType.Marriage
+                ? new RemoteRelationshipRecordDispatchKey(
+                    RemoteRelationshipRecordDispatchKeyKind.CharacterId,
+                    Serial: null,
+                    characterId)
+                : default;
+
+            if (remoteUserPool != null
+                && remoteUserPool.TryGetRelationshipRecord(relationshipType, characterId, out RemoteUserRelationshipRecord existingRecord))
+            {
+                itemSerial = existingRecord.ItemSerial;
+                dispatchKey = ResolveAvatarModifiedDispatchKey(relationshipType, characterId, existingRecord);
+            }
+
+            return new RemoteUserRelationshipRecordRemovePacket(
+                relationshipType,
+                dispatchKey,
+                itemSerial,
+                characterId);
+        }
+
+        private static RemoteRelationshipRecordDispatchKey ResolveAvatarModifiedDispatchKey(
+            RemoteRelationshipOverlayType relationshipType,
+            int characterId,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            return relationshipType switch
+            {
+                RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship
+                    => new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        relationshipRecord.ItemSerial,
+                        CharacterId: null),
+                RemoteRelationshipOverlayType.NewYearCard
+                    => new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.NewYearCardSerial,
+                        relationshipRecord.ItemSerial,
+                        CharacterId: null),
+                RemoteRelationshipOverlayType.Marriage
+                    => new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.CharacterId,
+                        Serial: null,
+                        relationshipRecord.CharacterId.GetValueOrDefault() > 0
+                            ? relationshipRecord.CharacterId.Value
+                            : characterId),
+                _ => default
+            };
         }
 
         private static string DescribePacketKind(int packetType)

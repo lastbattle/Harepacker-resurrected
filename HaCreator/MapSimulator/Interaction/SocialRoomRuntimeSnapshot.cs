@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int LocalSeatIndex { get; set; }
         public int PersonalShopTotalSoldGross { get; set; }
         public int PersonalShopTotalReceivedNet { get; set; }
+        public string EntrustedShopTitleExtension { get; set; }
         public int MiniRoomModeIndex { get; set; }
         public int MiniRoomWagerAmount { get; set; }
         public bool MiniRoomOmokInProgress { get; set; }
@@ -50,6 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokLastClientSoundStringPoolId { get; set; } = -1;
         public string MiniRoomOmokLastClientSoundPath { get; set; }
         public string MiniRoomOmokLastOutboundPacketSummary { get; set; }
+        public string MiniRoomOmokLastOutboundPacketHex { get; set; }
         public List<int> MiniRoomOmokBoard { get; set; } = new();
         public List<SocialRoomOmokMoveSnapshot> MiniRoomOmokMoveHistory { get; set; } = new();
         public int TradeLocalOfferMeso { get; set; }

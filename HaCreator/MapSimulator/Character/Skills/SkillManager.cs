@@ -53,6 +53,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int TemporaryStatViewShadowCanvasInsertDelayMs = 500;
         private const int TemporaryStatViewShadowCanvasAlphaStart = 64;
         private const int TemporaryStatViewShadowCanvasAlphaEnd = 210;
+        private const int TemporaryStatViewShadowCanvasWidth = 32;
+        private const int TemporaryStatViewShadowCanvasHeight = 32;
+        private const int TemporaryStatViewShadowCanvasOriginX = 0;
+        private const int TemporaryStatViewShadowCanvasOriginY = 0;
+        private const int TemporaryStatViewShadowCanvasDelayMs = 100;
         private const int TemporaryStatViewAlertAnimationModeRepeat = 1;
         private const string TemporaryStatViewAnimationModeRepeatName = "GA_REPEAT";
         private const int TemporaryStatViewLayerReferenceCount = 1;
@@ -110,6 +115,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int TemporaryStatViewParentLayerIdentity { get; init; }
             public int TemporaryStatViewMainLayerIdentity { get; init; }
             public int TemporaryStatViewShadowLayerIdentity { get; init; }
+            public int TemporaryStatViewObjectAllocationSequence { get; init; }
+            public int TemporaryStatViewParentLayerAttachSequence { get; init; }
+            public int TemporaryStatViewMainLayerAttachSequence { get; init; }
+            public int TemporaryStatViewShadowLayerAttachSequence { get; init; }
+            public int TemporaryStatViewParentLayerParentIdentity { get; init; }
+            public int TemporaryStatViewMainLayerParentIdentity { get; init; }
+            public int TemporaryStatViewShadowLayerParentIdentity { get; init; }
             public int TemporaryStatViewParentLayerReferenceCount { get; init; }
             public int TemporaryStatViewMainLayerReferenceCount { get; init; }
             public int TemporaryStatViewShadowLayerReferenceCount { get; init; }
@@ -131,6 +143,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int ShadowCanvasInsertDelayMs { get; init; }
             public int ShadowCanvasAlphaStart { get; init; }
             public int ShadowCanvasAlphaEnd { get; init; }
+            public int ShadowCanvasWidth { get; init; }
+            public int ShadowCanvasHeight { get; init; }
+            public int ShadowCanvasOriginX { get; init; }
+            public int ShadowCanvasOriginY { get; init; }
+            public int ShadowCanvasDelayMs { get; init; }
             public int ShadowCanvasLastUpdatedTime { get; init; } = int.MinValue;
             public int ShadowCanvasReferenceCount { get; init; }
             public int ShadowCanvasRemoveSequence { get; init; }
@@ -4871,6 +4888,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             int temporaryStatViewShadowLayerIdentity = continuesSameObject
                 ? previousState.TemporaryStatViewShadowLayerIdentity
                 : ResolveTemporaryStatViewLayerIdentityForParity(temporaryStatViewOwnerIdentity, 3);
+            int temporaryStatViewObjectAllocationSequence = continuesSameObject
+                ? Math.Max(1, previousState.TemporaryStatViewObjectAllocationSequence)
+                : 1;
+            int temporaryStatViewParentLayerAttachSequence = continuesSameObject
+                ? Math.Max(1, previousState.TemporaryStatViewParentLayerAttachSequence)
+                : 1;
+            int temporaryStatViewMainLayerAttachSequence = continuesSameObject
+                ? Math.Max(1, previousState.TemporaryStatViewMainLayerAttachSequence)
+                : 1;
+            int temporaryStatViewShadowLayerAttachSequence = continuesSameObject
+                ? Math.Max(1, previousState.TemporaryStatViewShadowLayerAttachSequence)
+                : 1;
+            int temporaryStatViewParentLayerParentIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewParentLayerParentIdentity
+                : temporaryStatViewOwnerIdentity;
+            int temporaryStatViewMainLayerParentIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewMainLayerParentIdentity
+                : temporaryStatViewParentLayerIdentity;
+            int temporaryStatViewShadowLayerParentIdentity = continuesSameObject
+                ? previousState.TemporaryStatViewShadowLayerParentIdentity
+                : temporaryStatViewParentLayerIdentity;
 
             if (isAlerting)
             {
@@ -4939,6 +4977,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewParentLayerIdentity = temporaryStatViewParentLayerIdentity,
                 TemporaryStatViewMainLayerIdentity = temporaryStatViewMainLayerIdentity,
                 TemporaryStatViewShadowLayerIdentity = temporaryStatViewShadowLayerIdentity,
+                TemporaryStatViewObjectAllocationSequence = temporaryStatViewObjectAllocationSequence,
+                TemporaryStatViewParentLayerAttachSequence = temporaryStatViewParentLayerAttachSequence,
+                TemporaryStatViewMainLayerAttachSequence = temporaryStatViewMainLayerAttachSequence,
+                TemporaryStatViewShadowLayerAttachSequence = temporaryStatViewShadowLayerAttachSequence,
+                TemporaryStatViewParentLayerParentIdentity = temporaryStatViewParentLayerParentIdentity,
+                TemporaryStatViewMainLayerParentIdentity = temporaryStatViewMainLayerParentIdentity,
+                TemporaryStatViewShadowLayerParentIdentity = temporaryStatViewShadowLayerParentIdentity,
                 TemporaryStatViewParentLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewMainLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewShadowLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
@@ -4954,6 +4999,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ShadowCanvasInsertDelayMs = TemporaryStatViewShadowCanvasInsertDelayMs,
                 ShadowCanvasAlphaStart = TemporaryStatViewShadowCanvasAlphaStart,
                 ShadowCanvasAlphaEnd = TemporaryStatViewShadowCanvasAlphaEnd,
+                ShadowCanvasWidth = TemporaryStatViewShadowCanvasWidth,
+                ShadowCanvasHeight = TemporaryStatViewShadowCanvasHeight,
+                ShadowCanvasOriginX = TemporaryStatViewShadowCanvasOriginX,
+                ShadowCanvasOriginY = TemporaryStatViewShadowCanvasOriginY,
+                ShadowCanvasDelayMs = TemporaryStatViewShadowCanvasDelayMs,
                 ShadowCanvasLastUpdatedTime = shadowIndexLastUpdatedTime,
                 ShadowCanvasReferenceCount = TemporaryStatViewShadowCanvasReferenceCount,
                 ShadowCanvasRemoveSequence = shadowCanvasRemoveSequence,
@@ -5066,6 +5116,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewParentLayerIdentity = temporaryStatViewParentLayerIdentity,
                 TemporaryStatViewMainLayerIdentity = temporaryStatViewMainLayerIdentity,
                 TemporaryStatViewShadowLayerIdentity = temporaryStatViewShadowLayerIdentity,
+                TemporaryStatViewObjectAllocationSequence = Math.Max(0, passiveState?.TemporaryStatViewObjectAllocationSequence ?? 1),
+                TemporaryStatViewParentLayerAttachSequence = Math.Max(0, passiveState?.TemporaryStatViewParentLayerAttachSequence ?? 1),
+                TemporaryStatViewMainLayerAttachSequence = Math.Max(0, passiveState?.TemporaryStatViewMainLayerAttachSequence ?? 1),
+                TemporaryStatViewShadowLayerAttachSequence = Math.Max(0, passiveState?.TemporaryStatViewShadowLayerAttachSequence ?? 1),
+                TemporaryStatViewParentLayerParentIdentity = (passiveState?.TemporaryStatViewParentLayerParentIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewParentLayerParentIdentity
+                    : temporaryStatViewOwnerIdentity,
+                TemporaryStatViewMainLayerParentIdentity = (passiveState?.TemporaryStatViewMainLayerParentIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewMainLayerParentIdentity
+                    : temporaryStatViewParentLayerIdentity,
+                TemporaryStatViewShadowLayerParentIdentity = (passiveState?.TemporaryStatViewShadowLayerParentIdentity ?? 0) > 0
+                    ? passiveState.TemporaryStatViewShadowLayerParentIdentity
+                    : temporaryStatViewParentLayerIdentity,
                 TemporaryStatViewParentLayerReferenceCount = Math.Max(0, passiveState?.TemporaryStatViewParentLayerReferenceCount ?? TemporaryStatViewLayerReferenceCount),
                 TemporaryStatViewMainLayerReferenceCount = Math.Max(0, passiveState?.TemporaryStatViewMainLayerReferenceCount ?? TemporaryStatViewLayerReferenceCount),
                 TemporaryStatViewShadowLayerReferenceCount = Math.Max(0, passiveState?.TemporaryStatViewShadowLayerReferenceCount ?? TemporaryStatViewLayerReferenceCount),
@@ -5089,12 +5152,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ShadowCanvasInsertDelayMs = passiveState?.ShadowCanvasInsertDelayMs ?? TemporaryStatViewShadowCanvasInsertDelayMs,
                 ShadowCanvasAlphaStart = passiveState?.ShadowCanvasAlphaStart ?? TemporaryStatViewShadowCanvasAlphaStart,
                 ShadowCanvasAlphaEnd = passiveState?.ShadowCanvasAlphaEnd ?? TemporaryStatViewShadowCanvasAlphaEnd,
+                ShadowCanvasWidth = passiveState?.ShadowCanvasWidth ?? TemporaryStatViewShadowCanvasWidth,
+                ShadowCanvasHeight = passiveState?.ShadowCanvasHeight ?? TemporaryStatViewShadowCanvasHeight,
+                ShadowCanvasOriginX = passiveState?.ShadowCanvasOriginX ?? TemporaryStatViewShadowCanvasOriginX,
+                ShadowCanvasOriginY = passiveState?.ShadowCanvasOriginY ?? TemporaryStatViewShadowCanvasOriginY,
+                ShadowCanvasDelayMs = passiveState?.ShadowCanvasDelayMs ?? TemporaryStatViewShadowCanvasDelayMs,
                 ShadowCanvasLastUpdatedTime = passiveState?.ShadowCanvasLastUpdatedTime ?? int.MinValue,
                 ShadowCanvasReferenceCount = Math.Max(0, passiveState?.ShadowCanvasReferenceCount ?? TemporaryStatViewShadowCanvasReferenceCount),
                 ShadowCanvasRemoveSequence = Math.Max(0, passiveState?.ShadowCanvasRemoveSequence ?? 0),
                 ShadowCanvasInsertSequence = Math.Max(0, passiveState?.ShadowCanvasInsertSequence ?? 0),
                 ShadowCanvasReleaseSequence = Math.Max(0, passiveState?.ShadowCanvasReleaseSequence ?? 0),
+                MainLayerAnimationMode = passiveState?.MainLayerAnimationMode ?? 0,
+                MainLayerAnimationModeName = passiveState?.MainLayerAnimationModeName ?? string.Empty,
+                ShadowLayerAnimationMode = passiveState?.ShadowLayerAnimationMode ?? 0,
+                ShadowLayerAnimationModeName = passiveState?.ShadowLayerAnimationModeName ?? string.Empty,
                 AlertLayerAnimationMode = passiveState?.AlertLayerAnimationMode ?? 0,
+                AlertLayerAnimationModeName = passiveState?.AlertLayerAnimationModeName ?? string.Empty,
                 AlertLayerAnimationSequence = passiveState?.AlertLayerAnimationSequence ?? 0
             };
         }
@@ -5257,6 +5330,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TemporaryStatViewParentLayerIdentity = previousState.TemporaryStatViewParentLayerIdentity,
                 TemporaryStatViewMainLayerIdentity = previousState.TemporaryStatViewMainLayerIdentity,
                 TemporaryStatViewShadowLayerIdentity = previousState.TemporaryStatViewShadowLayerIdentity,
+                TemporaryStatViewObjectAllocationSequence = previousState.TemporaryStatViewObjectAllocationSequence,
+                TemporaryStatViewParentLayerAttachSequence = previousState.TemporaryStatViewParentLayerAttachSequence,
+                TemporaryStatViewMainLayerAttachSequence = previousState.TemporaryStatViewMainLayerAttachSequence,
+                TemporaryStatViewShadowLayerAttachSequence = previousState.TemporaryStatViewShadowLayerAttachSequence,
+                TemporaryStatViewParentLayerParentIdentity = previousState.TemporaryStatViewParentLayerParentIdentity,
+                TemporaryStatViewMainLayerParentIdentity = previousState.TemporaryStatViewMainLayerParentIdentity,
+                TemporaryStatViewShadowLayerParentIdentity = previousState.TemporaryStatViewShadowLayerParentIdentity,
                 TemporaryStatViewParentLayerReferenceCount = 0,
                 TemporaryStatViewMainLayerReferenceCount = 0,
                 TemporaryStatViewShadowLayerReferenceCount = 0,
@@ -5278,6 +5358,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ShadowCanvasInsertDelayMs = previousState.ShadowCanvasInsertDelayMs,
                 ShadowCanvasAlphaStart = previousState.ShadowCanvasAlphaStart,
                 ShadowCanvasAlphaEnd = previousState.ShadowCanvasAlphaEnd,
+                ShadowCanvasWidth = previousState.ShadowCanvasWidth,
+                ShadowCanvasHeight = previousState.ShadowCanvasHeight,
+                ShadowCanvasOriginX = previousState.ShadowCanvasOriginX,
+                ShadowCanvasOriginY = previousState.ShadowCanvasOriginY,
+                ShadowCanvasDelayMs = previousState.ShadowCanvasDelayMs,
                 ShadowCanvasLastUpdatedTime = currentTime,
                 ShadowCanvasReferenceCount = 0,
                 ShadowCanvasRemoveSequence = shadowCanvasRemoveSequence,
@@ -5306,6 +5391,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 constructorLeftValue,
                 normalizedMaxValue);
             int temporaryStatViewOwnerIdentity = ResolveTemporaryStatViewOwnerIdentityForParity(skillId, currentTime);
+            int temporaryStatViewParentLayerIdentity = ResolveTemporaryStatViewLayerIdentityForParity(
+                temporaryStatViewOwnerIdentity,
+                1);
+            int temporaryStatViewMainLayerIdentity = ResolveTemporaryStatViewLayerIdentityForParity(
+                temporaryStatViewOwnerIdentity,
+                2);
+            int temporaryStatViewShadowLayerIdentity = ResolveTemporaryStatViewLayerIdentityForParity(
+                temporaryStatViewOwnerIdentity,
+                3);
 
             // Client evidence: TEMPORARY_STAT construction initializes tLeft to 0,
             // then calls SetLeft(tDuration). The packet-owned UpdatePassively call
@@ -5325,15 +5419,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 IsAlerting = false,
                 ShadowIndex = shadowIndex,
                 TemporaryStatViewOwnerIdentity = temporaryStatViewOwnerIdentity,
-                TemporaryStatViewParentLayerIdentity = ResolveTemporaryStatViewLayerIdentityForParity(
-                    temporaryStatViewOwnerIdentity,
-                    1),
-                TemporaryStatViewMainLayerIdentity = ResolveTemporaryStatViewLayerIdentityForParity(
-                    temporaryStatViewOwnerIdentity,
-                    2),
-                TemporaryStatViewShadowLayerIdentity = ResolveTemporaryStatViewLayerIdentityForParity(
-                    temporaryStatViewOwnerIdentity,
-                    3),
+                TemporaryStatViewParentLayerIdentity = temporaryStatViewParentLayerIdentity,
+                TemporaryStatViewMainLayerIdentity = temporaryStatViewMainLayerIdentity,
+                TemporaryStatViewShadowLayerIdentity = temporaryStatViewShadowLayerIdentity,
+                TemporaryStatViewObjectAllocationSequence = 1,
+                TemporaryStatViewParentLayerAttachSequence = 1,
+                TemporaryStatViewMainLayerAttachSequence = 1,
+                TemporaryStatViewShadowLayerAttachSequence = 1,
+                TemporaryStatViewParentLayerParentIdentity = temporaryStatViewOwnerIdentity,
+                TemporaryStatViewMainLayerParentIdentity = temporaryStatViewParentLayerIdentity,
+                TemporaryStatViewShadowLayerParentIdentity = temporaryStatViewParentLayerIdentity,
                 TemporaryStatViewParentLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewMainLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
                 TemporaryStatViewShadowLayerReferenceCount = TemporaryStatViewLayerReferenceCount,
@@ -5353,6 +5448,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ShadowCanvasInsertDelayMs = TemporaryStatViewShadowCanvasInsertDelayMs,
                 ShadowCanvasAlphaStart = TemporaryStatViewShadowCanvasAlphaStart,
                 ShadowCanvasAlphaEnd = TemporaryStatViewShadowCanvasAlphaEnd,
+                ShadowCanvasWidth = TemporaryStatViewShadowCanvasWidth,
+                ShadowCanvasHeight = TemporaryStatViewShadowCanvasHeight,
+                ShadowCanvasOriginX = TemporaryStatViewShadowCanvasOriginX,
+                ShadowCanvasOriginY = TemporaryStatViewShadowCanvasOriginY,
+                ShadowCanvasDelayMs = TemporaryStatViewShadowCanvasDelayMs,
                 ShadowCanvasLastUpdatedTime = currentTime,
                 ShadowCanvasReferenceCount = TemporaryStatViewShadowCanvasReferenceCount,
                 ShadowCanvasRemoveSequence = 0,
@@ -6186,6 +6286,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void TriggerSkillAnimation(SkillData skill, int currentTime, string actionNameOverride = null)
         {
+            actionNameOverride ??= ResolveClientDoActiveSkillActionAppointedActionName(
+                skill,
+                Random.Next());
             string actionName = ResolveSkillActionName(skill, actionNameOverride);
 
             _player.ApplySkillAvatarTransform(skill.SkillId, actionName, skill?.MorphId ?? 0);
@@ -6372,6 +6475,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SkillAttackType.Magic => "swingO1",
                 _ => "attack1"
             };
+        }
+
+        private static string ResolveClientDoActiveSkillActionAppointedActionName(
+            SkillData skill,
+            int randomOrdinal)
+        {
+            ClientDoActiveSkillExecutionLane lane = ResolveDoActiveSkillExecutionLane(skill);
+            if (lane is not (ClientDoActiveSkillExecutionLane.TownPortal or ClientDoActiveSkillExecutionLane.Summon)
+                || !HasClientActionAppointedSkillSurface(skill))
+            {
+                return null;
+            }
+
+            string[] actionNames = skill.ActionNames?
+                .Where(actionName => !string.IsNullOrWhiteSpace(actionName))
+                .Select(actionName => actionName.Trim())
+                .ToArray();
+            if (actionNames?.Length > 0)
+            {
+                int index = randomOrdinal % actionNames.Length;
+                if (index < 0)
+                {
+                    index += actionNames.Length;
+                }
+
+                return actionNames[index];
+            }
+
+            return !string.IsNullOrWhiteSpace(skill.ActionName)
+                ? skill.ActionName.Trim()
+                : null;
         }
 
         internal static string ResolvePacketOwnedMeleeAttackActionName(
@@ -6623,6 +6757,60 @@ namespace HaCreator.MapSimulator.Character.Skills
                 MountItemId = mountItemId,
                 PreviousMount = previousMount
             };
+            TryRequestSetRidingVehicleMountSkillUseEffect(mountItemId, skill.SkillId);
+        }
+
+        private void TryRequestSetRidingVehicleMountSkillUseEffect(int mountItemId, int sourceSkillId)
+        {
+            if (OnClientSkillEffectRequested == null
+                || !TryCreateSetRidingVehicleMountSkillUseEffectRequest(
+                    mountItemId,
+                    sourceSkillId,
+                    Environment.TickCount,
+                    out SkillUseEffectRequest request))
+            {
+                return;
+            }
+
+            OnClientSkillEffectRequested.Invoke(request);
+        }
+
+        internal static bool TryCreateSetRidingVehicleMountSkillUseEffectRequest(
+            int mountItemId,
+            int sourceSkillId,
+            int currentTime,
+            out SkillUseEffectRequest request)
+        {
+            request = null;
+            int effectSkillId = ResolveSetRidingVehicleMountEffectSkillId(mountItemId);
+            if (effectSkillId <= 0)
+            {
+                return false;
+            }
+
+            request = new SkillUseEffectRequest
+            {
+                EffectSkillId = effectSkillId,
+                SourceSkillId = sourceSkillId > 0 ? sourceSkillId : effectSkillId,
+                RequestTime = currentTime,
+                BranchNames = new[] { "special", "special0" },
+                FollowOwnerPosition = true,
+                FollowOwnerFacing = true,
+                DelayRateOverride = 1000
+            };
+            return true;
+        }
+
+        internal static int ResolveSetRidingVehicleMountEffectSkillId(int mountItemId)
+        {
+            if (ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(mountItemId))
+            {
+                return WildHunterJaguarRiderSkillId;
+            }
+
+            return mountItemId == MECHANIC_TAMING_MOB_ID
+                ? 35001002
+                : 0;
         }
 
         private int ResolveSkillMountItemId(SkillData skill, SkillLevelData levelData)
@@ -13391,6 +13579,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 hasActiveClientOwnedOneTimeAction);
         }
 
+        internal static string ResolveClientDoActiveSkillActionAppointedActionNameForTesting(
+            SkillData skill,
+            int randomOrdinal)
+        {
+            return ResolveClientDoActiveSkillActionAppointedActionName(skill, randomOrdinal);
+        }
+
         internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
         {
             if (skill == null)
@@ -13996,6 +14191,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             return stringPoolId > 0;
+        }
+
+        internal static bool TryResolveClientBoundJumpGeneralEffectPath(int skillId, out string effectPath)
+        {
+            effectPath = null;
+            if (!TryResolveClientBoundJumpGeneralEffectStringPoolId(skillId, out int stringPoolId)
+                || !MapleStoryStringPool.TryGet(stringPoolId, out string resolvedPath)
+                || string.IsNullOrWhiteSpace(resolvedPath))
+            {
+                return false;
+            }
+
+            effectPath = resolvedPath.Trim();
+            return true;
         }
 
         private void ProcessDeferredSkillPayloads(int currentTime)
@@ -16226,6 +16435,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int targetOrder = 0,
             bool forceCritical = false,
             float damagePresentationOffsetY = 0f,
+            int damagePresentationBulletIndex = -1,
+            int damagePresentationBulletCount = 0,
             int? presentationTimeOverride = null,
             int clientActionSpeedDegree = 0,
             int clientCashBulletHitItemId = 0)
@@ -16266,6 +16477,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     i,
                     attackCount,
                     clientActionSpeedDegree);
+                float resolvedDamagePresentationOffsetY = damagePresentationBulletCount > 1
+                    ? ResolveClientShootDamagePresentationLineOffsetY(
+                        i,
+                        attackCount,
+                        damagePresentationBulletIndex,
+                        damagePresentationBulletCount)
+                    : damagePresentationOffsetY;
                 SkillAnimation resolvedImpactAnimation = ResolveClientTargetHitAnimation(
                     skill,
                     impactAnimation ?? skill?.HitEffect,
@@ -16282,7 +16500,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     _player?.Build?.GetWeapon()?.ItemId ?? 0,
                     _player?.CurrentActionName,
                     clientCashBulletHitItemId);
-                ShowSkillDamageNumber(mob, damage, isCritical, presentationTime, i, damagePresentationOffsetY);
+                ShowSkillDamageNumber(mob, damage, isCritical, presentationTime, i, resolvedDamagePresentationOffsetY);
                 SpawnHitEffect(
                     skill.SkillId,
                     resolvedImpactAnimation,
@@ -16421,6 +16639,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int resolvedFallbackDamage = fallbackDamage > 0
                 ? fallbackDamage
                 : Math.Max(1, CalculateSkillDamage(skill, levelData.Level));
+            int sourceSkillId = Math.Max(0, skill.SkillId);
+            int sourceSkillLevel = Math.Max(0, levelData.Level);
 
             if (MatchesMobStatusKeywords(searchText, "poison", "venom") || skill.Element == SkillElement.Poison)
             {
@@ -16428,60 +16648,60 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ? MobStatusEffect.Venom
                     : MobStatusEffect.Poison;
                 int dotValue = ResolveDotStatusMagnitude(levelData, fallback: Math.Max(1, resolvedFallbackDamage / 4));
-                TryApplyInferredMobStatus(mobAI, poisonEffect, dotDurationMs, currentTime, dotValue, dotTickIntervalMs, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, poisonEffect, dotDurationMs, currentTime, dotValue, dotTickIntervalMs, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "burn", "flame"))
             {
                 int burnValue = ResolveDotStatusMagnitude(levelData, fallback: Math.Max(1, resolvedFallbackDamage / 5));
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Burned, dotDurationMs, currentTime, burnValue, dotTickIntervalMs, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Burned, dotDurationMs, currentTime, burnValue, dotTickIntervalMs, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "freeze", "ice", "blizzard", "frost") || skill.Element == SkillElement.Ice)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Freeze, durationMs, currentTime, 0, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Freeze, durationMs, currentTime, 0, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "stun", "paraly", "shock"))
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Stun, durationMs, currentTime, 0, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Stun, durationMs, currentTime, 0, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "seal"))
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Seal, durationMs, currentTime, 0, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Seal, durationMs, currentTime, 0, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "blind"))
             {
                 int blindMagnitude = ResolveStatusMagnitude(levelData, fallback: 100);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Blind, durationMs, currentTime, blindMagnitude, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Blind, durationMs, currentTime, blindMagnitude, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "dark", "darkness"))
             {
                 int magnitude = ResolveStatusMagnitude(levelData, fallback: 20);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Darkness, durationMs, currentTime, magnitude, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Darkness, durationMs, currentTime, magnitude, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "slow"))
             {
                 int slowPercent = ResolveSlowStatusMagnitude(levelData);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Speed, durationMs, currentTime, -slowPercent, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Speed, durationMs, currentTime, -slowPercent, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (MatchesMobStatusKeywords(searchText, "web"))
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Web, durationMs, currentTime, 100, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Web, durationMs, currentTime, 100, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
             if (MatchesMobStatusKeywords(searchText, "weak"))
             {
                 int weaknessPercent = ResolveStatusMagnitude(levelData, fallback: 20);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Weakness, durationMs, currentTime, weaknessPercent, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Weakness, durationMs, currentTime, weaknessPercent, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
-            ApplyExplicitMobDebuffMetadata(skill, levelData, mobAI, searchText, debuffToken, durationMs, currentTime, allowStatusPackage);
-            ApplyStatDrivenMobDebuffs(skill, levelData, mobAI, searchText, debuffToken, durationMs, currentTime, allowStatusPackage);
+            ApplyExplicitMobDebuffMetadata(skill, levelData, mobAI, searchText, debuffToken, durationMs, currentTime, allowStatusPackage, sourceSkillId, sourceSkillLevel);
+            ApplyStatDrivenMobDebuffs(skill, levelData, mobAI, searchText, debuffToken, durationMs, currentTime, allowStatusPackage, sourceSkillId, sourceSkillLevel);
         }
 
         internal static string ResolveInferredMobDebuffToken(SkillData skill)
@@ -16518,12 +16738,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             int currentTime,
             int value,
             int tickIntervalMs,
-            bool allowStatusPackage)
+            bool allowStatusPackage,
+            int sourceSkillId = 0,
+            int sourceSkillLevel = 0)
         {
             if (mobAI == null || !allowStatusPackage)
                 return;
 
-            mobAI.ApplyStatusEffect(effect, durationMs, currentTime, value, tickIntervalMs);
+            mobAI.ApplyStatusEffect(effect, durationMs, currentTime, value, tickIntervalMs, sourceSkillId: sourceSkillId, sourceSkillLevel: sourceSkillLevel);
         }
 
         private static void ApplyStatDrivenMobDebuffs(
@@ -16534,7 +16756,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             string debuffToken,
             int durationMs,
             int currentTime,
-            bool allowStatusPackage)
+            bool allowStatusPackage,
+            int sourceSkillId = 0,
+            int sourceSkillLevel = 0)
         {
             if (mobAI == null || levelData == null || !IsMobDebuffSkill(skill, debuffToken, searchText))
                 return;
@@ -16542,32 +16766,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             int attackReduction = ResolveAttackDebuffMagnitude(levelData, searchText);
             if (attackReduction > 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.PADamage, durationMs, currentTime, -attackReduction, tickIntervalMs: 1000, allowStatusPackage);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.MADamage, durationMs, currentTime, -attackReduction, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.PADamage, durationMs, currentTime, -attackReduction, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.MADamage, durationMs, currentTime, -attackReduction, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             int physicalDefenseReduction = ResolvePhysicalDefenseDebuffMagnitude(levelData, searchText);
             if (physicalDefenseReduction > 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.PDamage, durationMs, currentTime, -physicalDefenseReduction, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.PDamage, durationMs, currentTime, -physicalDefenseReduction, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             int magicDefenseReduction = ResolveMagicDefenseDebuffMagnitude(levelData, searchText);
             if (magicDefenseReduction > 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.MDamage, durationMs, currentTime, -magicDefenseReduction, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.MDamage, durationMs, currentTime, -magicDefenseReduction, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             int accuracyReduction = ResolveAccuracyDebuffMagnitude(levelData, searchText);
             if (accuracyReduction > 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.ACC, durationMs, currentTime, -accuracyReduction, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.ACC, durationMs, currentTime, -accuracyReduction, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             int evasionReduction = ResolveEvasionDebuffMagnitude(levelData, searchText);
             if (evasionReduction > 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.EVA, durationMs, currentTime, -evasionReduction, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.EVA, durationMs, currentTime, -evasionReduction, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
         }
 
@@ -16636,14 +16860,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             string debuffToken,
             int durationMs,
             int currentTime,
-            bool allowStatusPackage)
+            bool allowStatusPackage,
+            int sourceSkillId = 0,
+            int sourceSkillLevel = 0)
         {
             if (mobAI == null || levelData == null || string.IsNullOrWhiteSpace(debuffToken))
                 return;
 
             if (debuffToken.IndexOf("incapacitate", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Stun, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Stun, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("buffLimit", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -16653,61 +16879,61 @@ namespace HaCreator.MapSimulator.Character.Skills
                     CancelMobBuffStatuses(mobAI);
                 }
 
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.SealSkill, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.SealSkill, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("restrict", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Web, durationMs, currentTime, 100, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Web, durationMs, currentTime, 100, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("attackLimit", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Stun, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Stun, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("haste", StringComparison.OrdinalIgnoreCase) >= 0
                 && IsMobDebuffSkill(skill, debuffToken, searchText))
             {
                 int speedPercent = ResolveMobSpeedStatusMagnitude(levelData);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Speed, durationMs, currentTime, speedPercent, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Speed, durationMs, currentTime, speedPercent, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("mindControl", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Hypnotize, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Hypnotize, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("polymorph", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Doom, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Seal, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Doom, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Seal, durationMs, currentTime, 1, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("amplifyDamage", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 int amplifiedDamage = ResolveStatusMagnitude(levelData, fallback: 10);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Ambush, durationMs, currentTime, amplifiedDamage, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Ambush, durationMs, currentTime, amplifiedDamage, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("elementalWeaken", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 int weakenValue = ResolveStatusMagnitude(levelData, fallback: 20);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Neutralise, durationMs, currentTime, weakenValue, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.Neutralise, durationMs, currentTime, weakenValue, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
             }
 
             if (debuffToken.IndexOf("incTargetPDP", StringComparison.OrdinalIgnoreCase) >= 0 &&
                 debuffToken.IndexOf("incTargetMDP", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 int defenseIncrease = ResolveStatusMagnitude(levelData, fallback: 10);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.PDamage, durationMs, currentTime, defenseIncrease, tickIntervalMs: 1000, allowStatusPackage);
-                TryApplyInferredMobStatus(mobAI, MobStatusEffect.MDamage, durationMs, currentTime, defenseIncrease, tickIntervalMs: 1000, allowStatusPackage);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.PDamage, durationMs, currentTime, defenseIncrease, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
+                TryApplyInferredMobStatus(mobAI, MobStatusEffect.MDamage, durationMs, currentTime, defenseIncrease, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
 
                 if (debuffToken.IndexOf("incTargetEXP", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     debuffToken.IndexOf("incTargetReward", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     int rewardBonusPercent = ResolveShowdownRewardMagnitude(levelData, defenseIncrease);
-                    TryApplyInferredMobStatus(mobAI, MobStatusEffect.Showdown, durationMs, currentTime, rewardBonusPercent, tickIntervalMs: 1000, allowStatusPackage);
+                    TryApplyInferredMobStatus(mobAI, MobStatusEffect.Showdown, durationMs, currentTime, rewardBonusPercent, tickIntervalMs: 1000, allowStatusPackage, sourceSkillId, sourceSkillLevel);
                 }
             }
         }
@@ -16940,6 +17166,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int clampedBulletIndex = Math.Clamp(bulletIndex, 0, bulletCount - 1);
             return 7 * ((2 * clampedBulletIndex) - bulletCount) + 7;
+        }
+
+        internal static int ResolveClientShootDamagePresentationLineOffsetY(
+            int damageIndex,
+            int attackCount,
+            int bulletIndex,
+            int bulletCount)
+        {
+            if (bulletCount <= 1)
+            {
+                return 0;
+            }
+
+            int clampedAttackCount = Math.Max(1, attackCount);
+            int clampedDamageIndex = Math.Clamp(damageIndex, 0, clampedAttackCount - 1);
+            int clampedBulletIndex = Math.Clamp(bulletIndex, 0, bulletCount - 1);
+            int rawDamageLineIndex = (clampedBulletIndex * clampedAttackCount) + clampedDamageIndex;
+            int clientDamageLineIndex = Math.Clamp(rawDamageLineIndex, 0, MaxClientHitAnimationTargetSlots - 1);
+
+            // `TryDoingSmoothingMovingShootAttack` computes the lane from
+            // `7 * (2 * (nOrder / nAttackCount) - nBulletCount) + 7`, while
+            // the damage-info window is capped to the 15-slot hit-animation array.
+            int clientBulletLaneIndex = clientDamageLineIndex / clampedAttackCount;
+            return ResolveClientShootDamagePresentationOffsetY(clientBulletLaneIndex, bulletCount);
         }
 
         internal static int ResolveClientShootDamagePresentationDelayMs(int skillId, int damageIndex)
@@ -18976,7 +19226,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     proj.FacingRight,
                     proj.HitCount - 1,
                     proj.ForceCritical,
-                    ResolveProjectileDamagePresentationOffsetY(proj, attackCount),
+                    0f,
+                    proj.PresentationBulletIndex,
+                    proj.PresentationBulletCount,
                     impactPresentationBaseTime,
                     proj.ClientActionSpeedDegree,
                     ResolveClientCashBulletHitItemId(proj));
@@ -19083,7 +19335,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     impactFacingRight,
                     proj.HitCount - 1,
                     proj.ForceCritical,
-                    ResolveProjectileDamagePresentationOffsetY(proj, attackCount),
+                    0f,
+                    proj.PresentationBulletIndex,
+                    proj.PresentationBulletCount,
                     ResolveProjectileImpactPresentationBaseTime(proj, currentTime),
                     proj.ClientActionSpeedDegree,
                     ResolveClientCashBulletHitItemId(proj));
@@ -19142,7 +19396,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                         proj.FacingRight,
                         proj.HitCount - 1,
                         proj.ForceCritical,
-                        ResolveProjectileDamagePresentationOffsetY(proj, attackCount),
+                        0f,
+                        proj.PresentationBulletIndex,
+                        proj.PresentationBulletCount,
                         ResolveProjectileImpactPresentationBaseTime(proj, currentTime),
                         proj.ClientActionSpeedDegree,
                         ResolveClientCashBulletHitItemId(proj));
@@ -19216,7 +19472,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     proj.FacingRight,
                     proj.HitCount - 1,
                     proj.ForceCritical,
-                    ResolveProjectileDamagePresentationOffsetY(proj, attackCount),
+                    0f,
+                    proj.PresentationBulletIndex,
+                    proj.PresentationBulletCount,
                     ResolveProjectileImpactPresentationBaseTime(proj, currentTime),
                     proj.ClientActionSpeedDegree,
                     ResolveClientCashBulletHitItemId(proj));
@@ -19808,6 +20066,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     if (owner.AfterimageLayers[i]?.IsExpired(currentTime) != false)
                     {
+                        owner.AfterimageLayers[i]?.ReleaseRegisteredReferences(currentTime);
                         owner.AfterimageLayers.RemoveAt(i);
                     }
                 }
@@ -19867,11 +20126,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             int sourceLayerObjectId = ResolveBulletAfterimageSourceLayerObjectId(owner, previousLayer);
             int repeatAnimationEndTime = ResolveBulletAfterimageRepeatAnimationEndTime(currentTime, updateInterval);
             int repeatAnimationStateObjectId = ResolveBulletAfterimageRepeatAnimationStateObjectId(repeatLayerObjectId);
+            int repeatLayerRefCount = ResolveBulletAfterimageRepeatLayerRefCount(repeatLayerObjectId);
+            int listNodeObjectId = ResolveBulletAfterimageListNodeObjectId(repeatLayerObjectId);
+            int listNodeRefCount = ResolveBulletAfterimageListNodeRefCount(listNodeObjectId);
+            int sourceCanvasObjectId = ResolveBulletAfterimageSourceCanvasObjectId(
+                repeatLayerObjectId,
+                sourceLayerObjectId,
+                frameSnapshot);
+            int sourceCanvasRefCount = ResolveBulletAfterimageSourceCanvasRefCount(sourceCanvasObjectId);
+            int registeredAnimationStateRefCount =
+                ResolveBulletAfterimageRepeatAnimationStateRefCount(repeatAnimationStateObjectId);
             owner.AfterimageLayers.Add(new ProjectileAfterimageLayer
             {
                 RepeatLayerObjectId = repeatLayerObjectId,
                 ParentRepeatLayerObjectId = parentRepeatLayerObjectId,
                 SourceLayerObjectId = sourceLayerObjectId,
+                SimulatedListNodeObjectId = listNodeObjectId,
+                SimulatedSourceCanvasObjectId = sourceCanvasObjectId,
+                SimulatedRepeatLayerRefCount = repeatLayerRefCount,
+                SimulatedListNodeRefCount = listNodeRefCount,
+                SimulatedSourceCanvasRefCount = sourceCanvasRefCount,
+                SimulatedRegisteredAnimationStateRefCount = registeredAnimationStateRefCount,
                 Frame = frameSnapshot,
                 Position = owner.CurrentPosition,
                 WorldBounds = worldBounds,
@@ -20055,6 +20330,55 @@ namespace HaCreator.MapSimulator.Character.Skills
             return repeatLayerObjectId > 0
                 ? repeatLayerObjectId + 80000
                 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageRepeatLayerRefCount(int repeatLayerObjectId)
+        {
+            return repeatLayerObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageListNodeObjectId(int repeatLayerObjectId)
+        {
+            return repeatLayerObjectId > 0
+                ? repeatLayerObjectId + 40000
+                : 0;
+        }
+
+        internal static int ResolveBulletAfterimageListNodeRefCount(int listNodeObjectId)
+        {
+            return listNodeObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageSourceCanvasObjectId(
+            int repeatLayerObjectId,
+            int sourceLayerObjectId,
+            SkillFrame frame)
+        {
+            if (repeatLayerObjectId <= 0 || sourceLayerObjectId <= 0 || frame == null)
+            {
+                return 0;
+            }
+
+            int frameSignature = HashCode.Combine(
+                frame.Texture != null ? RuntimeHelpers.GetHashCode(frame.Texture) : 0,
+                frame.Bounds.X,
+                frame.Bounds.Y,
+                frame.Bounds.Width,
+                frame.Bounds.Height,
+                frame.Origin.X,
+                frame.Origin.Y,
+                frame.Delay);
+            return Math.Max(1, HashCode.Combine(repeatLayerObjectId, sourceLayerObjectId, frameSignature) & int.MaxValue);
+        }
+
+        internal static int ResolveBulletAfterimageSourceCanvasRefCount(int sourceCanvasObjectId)
+        {
+            return sourceCanvasObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageRepeatAnimationStateRefCount(int animationStateObjectId)
+        {
+            return animationStateObjectId > 0 ? 1 : 0;
         }
 
         internal static int ResolveBulletAfterimageRepeatDuration(int startTime, int endTime)
@@ -29005,6 +29329,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey("Speed"))
+                {
+                    labels = new[] { "Speed" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && !HasCompetingAuraPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        AuraBuffLabel))
+                {
+                    labels = new[] { AuraBuffLabel };
+                    return true;
+                }
+
                 if (activeTemporaryStatsByLabel.ContainsKey(ComboBarrierBuffLabel)
                     && activeTemporaryStatsByLabel.ContainsKey(DamageReductionBuffLabel))
                 {
@@ -29082,6 +29422,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(BoosterBuffLabel))
+                {
+                    labels = new[] { BoosterBuffLabel };
+                    return true;
+                }
+
                 if (activeTemporaryStatsByLabel.ContainsKey(PowerGuardBuffLabel)
                     && activeTemporaryStatsByLabel.ContainsKey(DamageReductionBuffLabel))
                 {
@@ -29096,6 +29443,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                         DebuffResistanceBuffLabel))
                 {
                     labels = new[] { DebuffResistanceBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && !HasCompetingAuraPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        AuraBuffLabel))
+                {
+                    labels = new[] { AuraBuffLabel };
                     return true;
                 }
             }
@@ -29128,6 +29484,29 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, MaxHpBuffLabel, "PAD", "Speed"))
                 {
                     labels = new[] { "PAD" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey("EVA"))
+                {
+                    labels = new[] { "EVA" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(InvincibleBuffLabel))
+                {
+                    labels = new[] { InvincibleBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && !HasCompetingAuraPlaceholderTemporaryStatPayloads(
+                        activeTemporaryStatsByLabel,
+                        AuraBuffLabel))
+                {
+                    labels = new[] { AuraBuffLabel };
                     return true;
                 }
             }
@@ -29192,14 +29571,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                     labels = new[] { "Speed" };
                     return true;
                 }
-            }
-
-            if (string.Equals(propertyName, "x", StringComparison.OrdinalIgnoreCase)
-                && activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
-                && activeTemporaryStatsByLabel.ContainsKey(BoosterBuffLabel))
-            {
-                labels = new[] { BoosterBuffLabel };
-                return true;
             }
 
             if (string.Equals(propertyName, "z", StringComparison.OrdinalIgnoreCase)
@@ -29517,8 +29888,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
                 && (activeTemporaryStatsByLabel.ContainsKey("Speed")
                     || activeTemporaryStatsByLabel.ContainsKey(BoosterBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey("PAD")
+                    || activeTemporaryStatsByLabel.ContainsKey("PDD")
+                    || activeTemporaryStatsByLabel.ContainsKey("MAD")
+                    || activeTemporaryStatsByLabel.ContainsKey("MDD")
                     || activeTemporaryStatsByLabel.ContainsKey("EVA")
-                    || activeTemporaryStatsByLabel.ContainsKey(InvincibleBuffLabel)))
+                    || activeTemporaryStatsByLabel.ContainsKey(InvincibleBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(DamageReductionBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(DebuffResistanceBuffLabel)))
+            {
+                label = AuraBuffLabel;
+                return true;
+            }
+
+            if ((isX || isY || isZ)
+                && activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                && !HasCompetingAuraPlaceholderTemporaryStatPayloads(
+                    activeTemporaryStatsByLabel,
+                    AuraBuffLabel))
             {
                 label = AuraBuffLabel;
                 return true;
@@ -29941,6 +30328,47 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static bool HasCompetingAuraPlaceholderTemporaryStatPayloads(
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel,
+            params string[] ownerLabels)
+        {
+            if (activeTemporaryStatsByLabel == null || activeTemporaryStatsByLabel.Count == 0)
+            {
+                return false;
+            }
+
+            var owners = new HashSet<string>(
+                ownerLabels?.Where(label => !string.IsNullOrWhiteSpace(label)) ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (string activeLabel in activeTemporaryStatsByLabel.Keys)
+            {
+                if (string.IsNullOrWhiteSpace(activeLabel)
+                    || owners.Contains(activeLabel)
+                    || IsAuraPlaceholderTemporaryStatPayload(activeLabel))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsAuraPlaceholderTemporaryStatPayload(string label)
+        {
+            return string.Equals(label, "Speed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, BoosterBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "PAD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "PDD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "MAD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "MDD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "EVA", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, InvincibleBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, DamageReductionBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, DebuffResistanceBuffLabel, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsNoDirectPlaceholderCompetingTemporaryStatPayload(
@@ -32563,7 +32991,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome && !hasSwallowState && !hasPendingSwallowAbsorb;
+            return swallowFamilyOutcome;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

@@ -25,6 +25,27 @@ namespace HaCreator.MapSimulator.Managers
             Start
         }
 
+        public enum ClientSoundPlaybackAction
+        {
+            None = 0,
+            PlayOneShot,
+            PlayLooping
+        }
+
+        public readonly struct ClientSoundPlaybackPlan
+        {
+            public ClientSoundPlaybackPlan(ClientSoundPlaybackAction action, float startVolumeScale, string reason)
+            {
+                Action = action;
+                StartVolumeScale = startVolumeScale;
+                Reason = reason;
+            }
+
+            public ClientSoundPlaybackAction Action { get; }
+            public float StartVolumeScale { get; }
+            public string Reason { get; }
+        }
+
         private readonly ConcurrentDictionary<string, SoundEffect> _soundSources;
         private readonly List<OneShotSound> _activeSounds;
         private readonly ConcurrentDictionary<string, LoopingSound> _activeLoopingSounds;
@@ -89,6 +110,44 @@ namespace HaCreator.MapSimulator.Managers
         public void PlaySound(string name, float volumeScale)
         {
             TryPlaySound(name, volumeScale, suppressWhileActive: false, out _);
+        }
+
+        internal bool TryPlayClientSoundEffect(
+            string key,
+            WzBinaryProperty sound,
+            float startVolumeScale,
+            bool loop,
+            bool suppressWhileActive,
+            out uint handle,
+            out string reason)
+        {
+            handle = 0;
+            ClientSoundPlaybackPlan plan = ResolveClientSoundPlaybackPlan(
+                key,
+                hasSoundProperty: sound != null,
+                loop,
+                startVolumeScale,
+                _activeSoundCounts.GetOrAdd(key ?? string.Empty, 0),
+                suppressWhileActive,
+                _disposed,
+                _focusActive);
+
+            reason = plan.Reason;
+            if (plan.Action == ClientSoundPlaybackAction.None)
+            {
+                return false;
+            }
+
+            RegisterSound(key, sound);
+
+            if (plan.Action == ClientSoundPlaybackAction.PlayLooping)
+            {
+                handle = PlayLoopingSoundHandle(key, plan.StartVolumeScale);
+                reason = handle == 0 ? "loop-start-failed" : "played";
+                return handle != 0;
+            }
+
+            return TryPlaySound(key, plan.StartVolumeScale, suppressWhileActive, out reason);
         }
 
         internal bool TryPlaySound(string name, float volumeScale, bool suppressWhileActive, out string reason)
@@ -237,6 +296,17 @@ namespace HaCreator.MapSimulator.Managers
             {
                 StopLoopingSound(name);
             }
+        }
+
+        internal bool TryStopClientSoundHandle(uint handle)
+        {
+            if (handle == 0 || !_loopingSoundHandles.ContainsKey(handle))
+            {
+                return false;
+            }
+
+            StopLoopingSound(handle);
+            return true;
         }
 
         public void SetFocusActive(bool isActive)
@@ -392,6 +462,11 @@ namespace HaCreator.MapSimulator.Managers
             return Math.Clamp(Math.Max(0f, perCallVolumeScale) * Math.Clamp(masterVolume, 0f, 1f), 0f, 1f);
         }
 
+        internal static float ResolveClientStartVolumeScale(float startVolumeScale)
+        {
+            return Math.Clamp(startVolumeScale, 0f, 1f);
+        }
+
         internal static float ResolveClientVolumePercentScale(uint startVolumePercent, uint sharedVolumePercent)
         {
             double nativeVolume = startVolumePercent * (double)sharedVolumePercent / 100.0d;
@@ -417,6 +492,52 @@ namespace HaCreator.MapSimulator.Managers
         internal static bool ShouldMuteBgmForRadio(bool radioPlaying, bool radioMuted)
         {
             return radioPlaying && !radioMuted;
+        }
+
+        internal static ClientSoundPlaybackPlan ResolveClientSoundPlaybackPlan(
+            string key,
+            bool hasSoundProperty,
+            bool loop,
+            float startVolumeScale,
+            int activeCount,
+            bool suppressWhileActive,
+            bool disposed,
+            bool focusActive)
+        {
+            if (disposed)
+            {
+                return new ClientSoundPlaybackPlan(ClientSoundPlaybackAction.None, 0f, "disposed");
+            }
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return new ClientSoundPlaybackPlan(ClientSoundPlaybackAction.None, 0f, "missing-key");
+            }
+
+            if (!hasSoundProperty)
+            {
+                return new ClientSoundPlaybackPlan(ClientSoundPlaybackAction.None, 0f, "missing-sound");
+            }
+
+            if (!focusActive && !loop)
+            {
+                return new ClientSoundPlaybackPlan(ClientSoundPlaybackAction.None, 0f, "focus-paused");
+            }
+
+            if (!loop && ShouldSuppressDuplicatePlayback(activeCount, suppressWhileActive))
+            {
+                return new ClientSoundPlaybackPlan(ClientSoundPlaybackAction.None, 0f, "duplicate-active");
+            }
+
+            if (!loop && activeCount >= MaxConcurrentSoundsPerType)
+            {
+                return new ClientSoundPlaybackPlan(ClientSoundPlaybackAction.None, 0f, "concurrent-limit");
+            }
+
+            return new ClientSoundPlaybackPlan(
+                loop ? ClientSoundPlaybackAction.PlayLooping : ClientSoundPlaybackAction.PlayOneShot,
+                ResolveClientStartVolumeScale(startVolumeScale),
+                "ready");
         }
 
         private uint ResolveLoopingSoundHandle(string name)

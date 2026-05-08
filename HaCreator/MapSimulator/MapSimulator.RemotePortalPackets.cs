@@ -29,12 +29,14 @@ namespace HaCreator.MapSimulator
                     _mapBoard.MapInfo.id,
                     currTickCount,
                     townPortalDestination,
-                    out string result))
+                    out string result,
+                    out bool packetApplied))
             {
                 return ChatCommandHandler.CommandResult.Error(result ?? $"Failed to apply remote portal packet {packetType}.");
             }
 
-            if (ShouldShowLocalOpenGateRemoveNotice(packetType, payload, _playerManager?.Player?.Build?.Id ?? 0))
+            if (packetApplied
+                && ShouldShowLocalOpenGateRemoveNotice(packetType, payload, _playerManager?.Player?.Build?.Id ?? 0))
             {
                 ShowUtilityFeedbackMessage(MapleStoryStringPool.GetOrFallback(
                     LocalOpenGateRemoveNoticeStringPoolId,
@@ -60,6 +62,12 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldShowLocalOpenGateRemoveNoticeForTesting(int packetType, byte[] payload, int localCharacterId)
         {
             return ShouldShowLocalOpenGateRemoveNotice(packetType, payload, localCharacterId);
+        }
+
+        internal static bool ShouldShowLocalOpenGateRemoveNoticeForTesting(int packetType, byte[] payload, int localCharacterId, bool packetApplied)
+        {
+            return packetApplied
+                   && ShouldShowLocalOpenGateRemoveNotice(packetType, payload, localCharacterId);
         }
 
         private static bool TryParseOpenGateSlot(string token, out bool isFirstSlot)

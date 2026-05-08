@@ -212,7 +212,7 @@ namespace HaCreator.MapSimulator.Pools
 
             public void Update(int currentTime)
             {
-                if (currentTime < StartTime)
+                if (!HasPacketOwnedSummonTickReached(currentTime, StartTime))
                 {
                     return;
                 }
@@ -225,7 +225,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 IDXObject frame = Frames[CurrentFrame];
                 int delay = frame?.Delay ?? 100;
-                if (currentTime - LastFrameTime < delay)
+                if (ResolvePacketOwnedSummonTickElapsedMs(currentTime, LastFrameTime) < delay)
                 {
                     return;
                 }
@@ -2571,6 +2571,13 @@ namespace HaCreator.MapSimulator.Pools
             return SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, startTime);
         }
 
+        internal static int ResolvePacketOwnedSummonExpiryElapsedOrderMs(int currentTime, int expireTime)
+        {
+            return HasPacketOwnedSummonTickReached(currentTime, expireTime)
+                ? ResolvePacketOwnedSummonTickElapsedMs(currentTime, expireTime)
+                : 0;
+        }
+
         internal static bool IsPacketOwnedSummonDisplayActive(int currentTime, int startTime, int endTime)
         {
             return HasPacketOwnedSummonTickReached(currentTime, startTime)
@@ -3290,7 +3297,7 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = _summonExpiryTimers.Count - 1; i >= 0; i--)
             {
                 PacketOwnedSummonTimer timer = _summonExpiryTimers[i];
-                if (timer.ExpireTime > currentTime)
+                if (!HasPacketOwnedSummonTickReached(currentTime, timer.ExpireTime))
                 {
                     continue;
                 }
@@ -3306,7 +3313,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             PacketOwnedSummonTimer[] orderedTimers = expiredTimers
-                .OrderBy(static timer => timer.ExpireTime)
+                .OrderByDescending(timer => ResolvePacketOwnedSummonExpiryElapsedOrderMs(currentTime, timer.ExpireTime))
                 .ThenBy(static timer => timer.SkillId)
                 .ThenBy(static timer => timer.SummonedObjectId)
                 .ToArray();
@@ -6819,6 +6826,37 @@ namespace HaCreator.MapSimulator.Pools
                 "hit",
                 "effect",
                 "uol",
+                "value",
+                "data",
+                "payload",
+                "targetValue",
+                "pathValue",
+                "uolData",
+                "sourceValue",
+                "hitValue",
+                "recordValue",
+                "target",
+                "targetPath",
+                "sourcePath",
+                "srcPath",
+                "hitPath",
+                "sHitPath",
+                "effectPath",
+                "assetPath",
+                "uolPath",
+                "targetUol",
+                "targetUOL",
+                "targetUolPath",
+                "targetUOLPath",
+                "sourceUol",
+                "sourceUOL",
+                "sourceUolPath",
+                "sourceUOLPath",
+                "clientPath",
+                "clientUol",
+                "clientUOL",
+                "clientUolPath",
+                "clientUOLPath",
                 "hitUol",
                 "hitUOL",
                 "hitUolPath",

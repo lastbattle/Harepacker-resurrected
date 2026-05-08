@@ -502,6 +502,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                bool candidateStillEstablished = IsEstablishedSessionStillPresent(candidate);
                 if (IsRunning
                     && MatchesDiscoveredTargetConfiguration(
                         ListenPort,
@@ -511,29 +512,37 @@ namespace HaCreator.MapSimulator.Managers
                         candidate.RemoteEndpoint,
                         autoSelectListenPort))
                 {
-                    _passiveEstablishedSession = candidate;
+                    _passiveEstablishedSession = candidateStillEstablished ? candidate : null;
                     status =
-                        $"Guild boss official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
+                        candidateStillEstablished
+                            ? $"Guild boss official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}."
+                            : $"Guild boss official-session bridge remains armed for remembered target {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; selected socket pair is no longer established, keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
                     LastStatus = status;
                     return true;
                 }
 
                 bool preservePendingForReconnectHandoff = !HasAttachedClient && _pendingOutboundRequests.Count > 0;
                 StopInternal(clearPending: !preservePendingForReconnectHandoff);
-                _passiveEstablishedSession = candidate;
+                _passiveEstablishedSession = candidateStillEstablished ? candidate : null;
 
                 if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
                 {
-                    // Keep passive ownership visible when reconnect proxy startup fails so retrying
-                    // attachproxy/startauto does not require re-attaching discovery first.
-                    _passiveEstablishedSession = candidate;
-                    LastStatus = $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
+                    // Keep passive ownership visible only while the selected socket pair is
+                    // still present; a stale pair can still provide the remote reconnect target,
+                    // but it must not masquerade as live socket ownership.
+                    _passiveEstablishedSession = candidateStillEstablished ? candidate : null;
+                    string passiveStatus = candidateStillEstablished
+                        ? $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed."
+                        : $"Selected Guild Boss Maple socket pair is no longer established; reconnect proxy startup failed for remembered target {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}.";
+                    LastStatus = $"{passiveStatus} {startStatus}";
                     status = LastStatus;
                     return false;
                 }
 
                 LastStatus =
-                    $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    (candidateStillEstablished
+                        ? $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}. "
+                        : $"Selected Guild Boss Maple socket pair is no longer established; armed reconnect proxy for remembered target {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. ") +
                     $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover decrypt/inject ownership. " +
                     $"Opcode {OutboundPulleyRequestOpcode} requests will queue until the proxied handshake initializes.";
                 status = LastStatus;
@@ -1291,6 +1300,20 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return candidates.Any(candidate => IsSameEstablishedSession(candidate, expected));
+        }
+
+        private static bool IsEstablishedSessionStillPresent(SessionDiscoveryCandidate candidate)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(
+                candidate.RemoteEndpoint.Port,
+                candidate.ProcessId,
+                candidate.ProcessName);
+            return ContainsMatchingEstablishedSession(candidates, candidate);
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

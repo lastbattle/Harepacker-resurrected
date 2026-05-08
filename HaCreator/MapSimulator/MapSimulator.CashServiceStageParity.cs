@@ -56,6 +56,11 @@ namespace HaCreator.MapSimulator
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
         private const int CashShopOneADayHistorySlotCount = 12;
         private const int CashShopOneADaySelectorInitArg = 4;
+        private const int CashShopOneADayNoItemStringPoolId = 0x4ED;
+        private const int CashShopOneADayKeyFocusStringPoolId = 0x4EA;
+        private const int CashShopOneADayPlateStringPoolId = 0x4E9;
+        private const int CashShopOneADayPlateBigStringPoolId = 0x16A5;
+        private const int CashShopOneADayNumberCanvasStringPoolId = 0x16A7;
         private const int CashShopLockerScrollBarControlId = 1001;
         private const int CashShopInventoryTabControlId = 1000;
         private const int CashShopInventoryScrollBarControlId = 1001;
@@ -392,6 +397,11 @@ namespace HaCreator.MapSimulator
                         HasKeyFocusCanvas = artSnapshot.HasKeyFocusCanvas,
                         HasPlateCanvas = artSnapshot.HasPlateCanvas,
                         HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
+                        NoItemStringPoolId = CashShopOneADayNoItemStringPoolId,
+                        KeyFocusStringPoolId = CashShopOneADayKeyFocusStringPoolId,
+                        PlateStringPoolId = CashShopOneADayPlateStringPoolId,
+                        PlateBigStringPoolId = CashShopOneADayPlateBigStringPoolId,
+                        NumberCanvasStringPoolId = CashShopOneADayNumberCanvasStringPoolId,
                         NumberCanvasCount = artSnapshot.NumberCanvasCount,
                         NumberCanvasReadyMask = artSnapshot.NumberCanvasReadyMask,
                         ExpectedNumberCanvasCount = 10,
@@ -435,7 +445,27 @@ namespace HaCreator.MapSimulator
                         PacketTrailingPayloadHex = stageWindow.CashOneADayTrailingPayloadHex,
                         PacketStateSignature = BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries),
                         HistoryEntries = historyEntries,
-                        RecentPackets = stageWindow.GetRecentPacketSummaries()
+                        RecentPackets = stageWindow.GetRecentPacketSummaries(),
+                        NumberCanvasRuntime = BuildCashShopOneADayNumberCanvasRuntime(
+                            remainingHour,
+                            remainingMinute,
+                            remainingSecond,
+                            artSnapshot.NumberCanvasCount,
+                            artSnapshot.NumberCanvasReadyMask),
+                        RewardSessionRuntime = BuildCashShopOneADayRewardSessionRuntime(
+                            packetOwnedRewardSessionByte,
+                            packetRewardSessionByte,
+                            stageWindow.CashOneADayRewardSessionByteOffset,
+                            packetOwnedPending,
+                            selectorIndex,
+                            (packetRewardSessionByte & 4) != 0,
+                            previousLaneEnabled,
+                            historyEntries,
+                            stageWindow.CashOneADayPayloadLength,
+                            stageWindow.CashOneADayDecodedByteLength,
+                            stageWindow.CashOneADayTrailingByteCount,
+                            stageWindow.CashOneADayTrailingPayloadHex,
+                            BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries))
                     };
                 });
                 oneADayWindow.SetExternalAction(
@@ -894,6 +924,132 @@ namespace HaCreator.MapSimulator
             }
 
             return slots;
+        }
+
+        internal static CashShopStageChildWindow.NumberCanvasRuntimeState BuildCashShopOneADayNumberCanvasRuntime(
+            int hour,
+            int minute,
+            int second,
+            int numberCanvasCount,
+            int numberCanvasReadyMask)
+        {
+            int loadedCanvasCount = Math.Clamp(numberCanvasCount, 0, 10);
+            int readyMask = numberCanvasReadyMask != 0
+                ? numberCanvasReadyMask
+                : BuildCashShopOneADayNumberCanvasReadyMask(loadedCanvasCount);
+            string renderedText = string.Create(
+                8,
+                (Hour: Math.Max(0, hour), Minute: Math.Max(0, minute), Second: Math.Max(0, second)),
+                static (span, state) =>
+                {
+                    state.Hour.TryFormat(span[..2], out _, "00", CultureInfo.InvariantCulture);
+                    span[2] = ':';
+                    state.Minute.TryFormat(span.Slice(3, 2), out _, "00", CultureInfo.InvariantCulture);
+                    span[5] = ':';
+                    state.Second.TryFormat(span.Slice(6, 2), out _, "00", CultureInfo.InvariantCulture);
+                });
+
+            bool[] digitReadyStates = new bool[10];
+            string[] canvasNames = new string[10];
+            for (int i = 0; i < 10; i++)
+            {
+                digitReadyStates[i] = (readyMask & (1 << i)) != 0;
+                canvasNames[i] = i.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return new CashShopStageChildWindow.NumberCanvasRuntimeState
+            {
+                SourceStringPoolId = CashShopOneADayNumberCanvasStringPoolId,
+                ExpectedCanvasCount = 10,
+                LoadedCanvasCount = loadedCanvasCount,
+                ReadyMask = readyMask,
+                RenderedText = renderedText,
+                DigitReadyStates = digitReadyStates,
+                CanvasNames = canvasNames
+            };
+        }
+
+        internal static CashShopStageChildWindow.RewardSessionRuntimeState BuildCashShopOneADayRewardSessionRuntime(
+            bool packetOwned,
+            int packetRewardSessionByte,
+            int packetRewardSessionByteOffset,
+            bool isPending,
+            int selectorIndex,
+            bool shortcutHelpActive,
+            bool previousLaneEnabled,
+            IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries,
+            int payloadLength,
+            int decodedByteLength,
+            int trailingByteCount,
+            string trailingPayloadHex,
+            string packetStateSignature)
+        {
+            int sessionByte = packetOwned
+                ? packetRewardSessionByte & 0xFF
+                : BuildCashShopOneADayApproximatedRewardSessionByte(
+                    isPending,
+                    selectorIndex,
+                    shortcutHelpActive,
+                    previousLaneEnabled);
+
+            return new CashShopStageChildWindow.RewardSessionRuntimeState
+            {
+                PacketOwned = packetOwned,
+                SessionByte = sessionByte,
+                SessionByteOffset = packetOwned ? packetRewardSessionByteOffset : -1,
+                IsPending = isPending,
+                SelectorIndex = Math.Clamp(selectorIndex, 0, previousLaneEnabled ? 1 : 0),
+                ShortcutHelpActive = shortcutHelpActive,
+                PreviousLaneEnabled = previousLaneEnabled,
+                HistoryEntryCount = Math.Max(0, historyEntries?.Count ?? 0),
+                PayloadLength = Math.Max(0, payloadLength),
+                DecodedByteLength = Math.Max(0, decodedByteLength),
+                TrailingByteCount = Math.Max(0, trailingByteCount),
+                TrailingPayloadHex = trailingPayloadHex ?? string.Empty,
+                PacketStateSignature = packetStateSignature ?? string.Empty
+            };
+        }
+
+        private static int BuildCashShopOneADayNumberCanvasReadyMask(int numberCanvasCount)
+        {
+            int count = Math.Clamp(numberCanvasCount, 0, 10);
+            int mask = 0;
+            for (int i = 0; i < count; i++)
+            {
+                mask |= 1 << i;
+            }
+
+            return mask;
+        }
+
+        private static int BuildCashShopOneADayApproximatedRewardSessionByte(
+            bool isPending,
+            int selectorIndex,
+            bool shortcutHelpActive,
+            bool previousLaneEnabled)
+        {
+            int sessionByte = 0;
+            if (isPending)
+            {
+                sessionByte |= 1;
+            }
+
+            if (selectorIndex == 1 && previousLaneEnabled)
+            {
+                sessionByte |= 2;
+            }
+
+            if (shortcutHelpActive)
+            {
+                sessionByte |= 4;
+            }
+
+            if (previousLaneEnabled)
+            {
+                sessionByte |= 8;
+            }
+
+            return sessionByte;
         }
 
         private static string BuildCashShopOneADayRewardSessionSummary(

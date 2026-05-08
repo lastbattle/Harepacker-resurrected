@@ -34,6 +34,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         public QuestRewardRaiseState CreateWindowForItemOwner(QuestRewardChoicePrompt prompt, Point defaultPosition)
         {
+            return CreateWindowForItemOwner(prompt, defaultPosition, QuestRewardRaiseSourceKind.InventoryItem);
+        }
+
+        public QuestRewardRaiseState CreateWindowForClientItemOwner(QuestRewardChoicePrompt prompt, Point defaultPosition)
+        {
+            return CreateWindowForItemOwner(prompt, defaultPosition, QuestRewardRaiseSourceKind.ClientItemOwner);
+        }
+
+        private QuestRewardRaiseState CreateWindowForItemOwner(
+            QuestRewardChoicePrompt prompt,
+            Point defaultPosition,
+            QuestRewardRaiseSourceKind source)
+        {
             if (prompt?.OwnerContext == null || prompt.OwnerContext.OwnerItemId <= 0)
             {
                 ActiveRaise = null;
@@ -42,7 +55,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             QuestRewardRaiseState state = Open(
                 prompt,
-                QuestRewardRaiseSourceKind.InventoryItem,
+                source,
                 ResolveClientItemOwnerDefaultPosition(defaultPosition));
             if (state == null)
             {
@@ -72,6 +85,55 @@ namespace HaCreator.MapSimulator.Interaction
             Func<int, InventoryType> inventoryTypeResolver,
             Point defaultPosition)
         {
+            return CreateWindowForItemOwner(
+                ownerItemId,
+                questId,
+                ownerName,
+                ownerContext,
+                dropItemIds,
+                initialQrData,
+                itemNameResolver,
+                inventoryTypeResolver,
+                defaultPosition,
+                QuestRewardRaiseSourceKind.InventoryItem);
+        }
+
+        public QuestRewardRaiseState CreateWindowForClientItemOwner(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver,
+            Point defaultPosition)
+        {
+            return CreateWindowForItemOwner(
+                ownerItemId,
+                questId,
+                ownerName,
+                ownerContext,
+                dropItemIds,
+                initialQrData,
+                itemNameResolver,
+                inventoryTypeResolver,
+                defaultPosition,
+                QuestRewardRaiseSourceKind.ClientItemOwner);
+        }
+
+        private QuestRewardRaiseState CreateWindowForItemOwner(
+            int ownerItemId,
+            int questId,
+            string ownerName,
+            QuestRewardRaiseOwnerContext ownerContext,
+            IReadOnlyList<int> dropItemIds,
+            int initialQrData,
+            Func<int, string> itemNameResolver,
+            Func<int, InventoryType> inventoryTypeResolver,
+            Point defaultPosition,
+            QuestRewardRaiseSourceKind source)
+        {
             QuestRewardChoicePrompt prompt = BuildItemOwnerPrompt(
                 ownerItemId,
                 questId,
@@ -81,7 +143,7 @@ namespace HaCreator.MapSimulator.Interaction
                 initialQrData,
                 itemNameResolver,
                 inventoryTypeResolver);
-            return CreateWindowForItemOwner(prompt, defaultPosition);
+            return CreateWindowForItemOwner(prompt, defaultPosition, source);
         }
 
         public QuestRewardRaiseState Open(QuestRewardChoicePrompt prompt, QuestRewardRaiseSourceKind source, Point defaultPosition)

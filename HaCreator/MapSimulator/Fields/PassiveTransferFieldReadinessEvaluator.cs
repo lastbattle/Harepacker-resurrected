@@ -96,7 +96,8 @@ namespace HaCreator.MapSimulator.Fields
             FieldFeedbackTransferFailure = 11,
             PacketTeleportResult = 12,
             PacketChairSitResult = 13,
-            PacketQuestResult = 14
+            PacketQuestResult = 14,
+            InterfaceGateAdmission = 15
         }
 
         public enum QueuedRetryWriterOwner
@@ -192,8 +193,17 @@ namespace HaCreator.MapSimulator.Fields
             bool hasPendingRequest,
             QueuedRetryDecision decision)
         {
-            return hasPendingRequest
-                   && decision == QueuedRetryDecision.ReplayHandleUpKeyDown;
+            return ShouldClearQueuedRetryFromLifecycleOwner(
+                hasPendingRequest,
+                ResolveQueuedRetryLifecycleClearOwnerFromInterfaceGateAdmission(decision));
+        }
+
+        public static QueuedRetryLifecycleClearOwner ResolveQueuedRetryLifecycleClearOwnerFromInterfaceGateAdmission(
+            QueuedRetryDecision decision)
+        {
+            return decision == QueuedRetryDecision.ReplayHandleUpKeyDown
+                ? QueuedRetryLifecycleClearOwner.InterfaceGateAdmission
+                : QueuedRetryLifecycleClearOwner.None;
         }
 
         public static bool ShouldReplayQueuedRetryBeforeFreshUpKeyDown(QueuedRetryDecision decision)

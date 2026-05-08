@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _fallbackFrameTexture;
         private int _pendingSelectionIndex;
         private int _hoveredEntryIndex = -1;
+        private int _clientMouseToolTipIndex = -1;
 
         internal LogoutGiftWindow(GraphicsDevice device)
             : base(new DXObject(0, 0, CreateFrameTexture(device), 0))
@@ -98,9 +99,7 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
             _currentMouseState = mouseState;
-            _hoveredEntryIndex = IsVisible
-                ? ResolveHoveredEntryIndex(mouseState.Position)
-                : -1;
+            UpdateClientTooltipState(mouseState.Position);
 
             if (IsVisible)
             {
@@ -402,6 +401,7 @@ namespace HaCreator.MapSimulator.UI
         private void ClearClientTooltipState()
         {
             _hoveredEntryIndex = -1;
+            _clientMouseToolTipIndex = -1;
         }
 
         private Texture2D ResolveItemIcon(int itemId)
@@ -439,6 +439,36 @@ namespace HaCreator.MapSimulator.UI
             return -1;
         }
 
+        private void UpdateClientTooltipState(Point mousePosition)
+        {
+            int hoveredEntryIndex = ResolveHoveredEntryIndex(mousePosition);
+            if (hoveredEntryIndex < 0 || hoveredEntryIndex >= _snapshot.Entries.Count)
+            {
+                ClearClientTooltipState();
+                return;
+            }
+
+            LogoutGiftEntrySnapshot entry = _snapshot.Entries[hoveredEntryIndex];
+            if (!ShouldShowClientCommodityTooltip(entry.CommoditySerialNumber, entry.ItemId))
+            {
+                ClearClientTooltipState();
+                return;
+            }
+
+            // Native CUILogoutGift::OnMouseMove keeps m_nMouseToolTipIndex and
+            // avoids rebuilding CUIToolTip while the cursor remains on the same
+            // icon slot. The simulator still draws the retained tooltip each
+            // frame, but keeps the same slot-change state boundary.
+            if (_clientMouseToolTipIndex == hoveredEntryIndex)
+            {
+                _hoveredEntryIndex = hoveredEntryIndex;
+                return;
+            }
+
+            _clientMouseToolTipIndex = hoveredEntryIndex;
+            _hoveredEntryIndex = hoveredEntryIndex;
+        }
+
         private Rectangle GetSlotBounds(int index)
         {
             Rectangle iconBounds = GetClientIconBounds(Position, index);
@@ -468,19 +498,45 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldShowClientCommodityTooltip(int commoditySerialNumber, int itemId)
         {
+            return ResolveClientCommodityTooltipKind(commoditySerialNumber, itemId) != ClientCommodityTooltipKind.None;
+        }
+
+        internal static ClientCommodityTooltipKind ResolveClientCommodityTooltipKind(int commoditySerialNumber, int itemId)
+        {
             if (commoditySerialNumber <= 0 || itemId <= 0)
             {
-                return false;
+                return ClientCommodityTooltipKind.None;
             }
 
-            // Mirrors CUILogoutGift::ShowItemToolTip's initial gate: cash SNs,
-            // cash packages, slot expansion items, and ordinary cash items.
-            return IsClientCashCommoditySerialNumber(commoditySerialNumber)
-                || IsClientCashPackageItem(itemId)
-                || IsClientSlotIncreaseItem(itemId)
-                || IsClientCashItem(itemId)
-                || IsClientCashItemTooltipFamily(itemId)
-                || IsClientEquipExtItemFamily(itemId);
+            // Mirrors CUILogoutGift::ShowItemToolTip's recovered branch order:
+            // package, 5430 cash family, slot-increase item, equip-extension
+            // item, then the ordinary cash-item tooltip sheet.
+            if (IsClientCashPackageItem(itemId))
+            {
+                return ClientCommodityTooltipKind.Package;
+            }
+
+            if (IsClientCashItemTooltipFamily(itemId))
+            {
+                return ClientCommodityTooltipKind.CashItemFamily5430;
+            }
+
+            if (IsClientSlotIncreaseItem(itemId))
+            {
+                return ClientCommodityTooltipKind.SlotIncrease;
+            }
+
+            if (IsClientEquipExtItemFamily(itemId))
+            {
+                return ClientCommodityTooltipKind.EquipExtension;
+            }
+
+            if (IsClientCashCommoditySerialNumber(commoditySerialNumber) || IsClientCashItem(itemId))
+            {
+                return ClientCommodityTooltipKind.Item;
+            }
+
+            return ClientCommodityTooltipKind.None;
         }
 
         internal static bool IsClientCashCommoditySerialNumber(int commoditySerialNumber)
@@ -792,5 +848,15 @@ namespace HaCreator.MapSimulator.UI
                 new Point(candidate.Width, candidate.Height),
                 new Point(baseFrame.Width, baseFrame.Height));
         }
+    }
+
+    internal enum ClientCommodityTooltipKind
+    {
+        None = 0,
+        Package = 1,
+        CashItemFamily5430 = 2,
+        SlotIncrease = 3,
+        EquipExtension = 4,
+        Item = 5,
     }
 }

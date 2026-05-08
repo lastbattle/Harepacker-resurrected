@@ -539,6 +539,22 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            // CCtrlEdit::OnKey handles Shift+Delete as ExtractSelection(1), not DeleteString.
+            if (!IsWhisperTargetPickerModalFooterFocused()
+                && shiftHeld
+                && newKeyboardState.IsKeyDown(Keys.Delete))
+            {
+                ActivateWhisperTargetPickerModalComboFocus();
+                if (TryGetInputSelectionText(out string selectedText))
+                {
+                    TrySetClipboardText(selectedText);
+                    TryDeleteInputSelection();
+                    SyncWhisperTargetPickerSelectionFromInput();
+                }
+
+                return true;
+            }
+
             if (!IsWhisperTargetPickerModalFooterFocused()
                 && !IsWhisperTargetPickerModalDropdownNavigating()
                 && newKeyboardState.IsKeyDown(Keys.Down)

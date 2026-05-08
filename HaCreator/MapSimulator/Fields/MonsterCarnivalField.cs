@@ -1335,6 +1335,8 @@ namespace HaCreator.MapSimulator.Fields
         private string _lastMemberOutChatRoute;
         private string _lastResultChatRoute;
         private string _lastDeathChatRoute;
+        private string _lastSeason2ChatWidgetRoute;
+        private int[] _lastSeason2ChatWidgetStringPoolIds = Array.Empty<int>();
         private bool _isVisible;
         private bool _enteredField;
         private string _localCharacterName;
@@ -1374,6 +1376,9 @@ namespace HaCreator.MapSimulator.Fields
         private int _season2SubDialogBtOkAcceptedSendRouteCount;
         private int _season2SubDialogBtOkRejectedSendRouteCount;
         private int _season2SubDialogBtOkObservedSendRouteCount;
+        private int _season2ChatWidgetRouteCount;
+        private int _season2ChatWidgetType7RouteCount;
+        private int _season2ChatWidgetType12RouteCount;
         private MonsterCarnivalTab? _season2SubDialogSelectedTab;
         private int _season2SubDialogSelectedIndex = -1;
         private string _season2SubDialogLastButtonRoute;
@@ -1484,6 +1489,11 @@ namespace HaCreator.MapSimulator.Fields
         public string LastMemberOutChatRoute => _lastMemberOutChatRoute;
         public string LastResultChatRoute => _lastResultChatRoute;
         public string LastDeathChatRoute => _lastDeathChatRoute;
+        public string LastSeason2ChatWidgetRoute => _lastSeason2ChatWidgetRoute;
+        public IReadOnlyList<int> LastSeason2ChatWidgetStringPoolIds => _lastSeason2ChatWidgetStringPoolIds;
+        public int Season2ChatWidgetRouteCount => _season2ChatWidgetRouteCount;
+        public int Season2ChatWidgetType7RouteCount => _season2ChatWidgetType7RouteCount;
+        public int Season2ChatWidgetType12RouteCount => _season2ChatWidgetType12RouteCount;
         public MonsterCarnivalOwnedClockPhase OwnedClockPhase => _ownedClockPhase;
         public string OwnedClockSummary => _ownedClockSummary;
 

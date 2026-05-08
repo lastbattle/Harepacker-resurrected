@@ -331,6 +331,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte OmokTimeOverPacketType = 63;
         private const byte OmokPutStonePacketType = 64;
         private const byte OmokPutStoneErrorPacketType = 65;
+        private const ushort MiniRoomOutboundOpcode = 144;
         private const int OmokWinStringPoolId = 0x1D4;
         private const int OmokTieStringPoolId = 0x1D5;
         private const int OmokLoseStringPoolId = 0x1D6;
@@ -497,6 +498,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _miniRoomOmokRetreatRequestSent;
         private bool _miniRoomOmokRetreatRequestSentTurn;
         private bool _miniRoomOmokRetreatRequestSentMatch;
+        private string _miniRoomOmokLastOutboundPacketHex = string.Empty;
         private DateTime? _miniRoomOmokLastTimedStateUtc;
         private string _miniRoomOmokPendingPromptText = string.Empty;
         private string _miniRoomOmokLastClientSoundPath = string.Empty;
@@ -672,6 +674,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokLastClientSoundStringPoolId => _miniRoomOmokLastClientSoundStringPoolId;
         public string MiniRoomOmokLastClientSoundPath => _miniRoomOmokLastClientSoundPath;
         public string MiniRoomOmokLastOutboundPacketSummary => _miniRoomOmokLastOutboundPacketSummary;
+        public string MiniRoomOmokLastOutboundPacketHex => _miniRoomOmokLastOutboundPacketHex;
         public bool IsMiniRoomOmokLocalTurn => IsMiniRoomOmokActive && _miniRoomOmokInProgress && _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
         public bool MiniRoomOmokReadyButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex != 0;
         public bool MiniRoomOmokBanButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex == 0;
@@ -686,11 +689,12 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanMiniRoomOmokReady => IsMiniRoomOmokActive && !_miniRoomOmokInProgress;
         public bool CanMiniRoomOmokStart => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _occupants.Count >= 2;
         public bool CanMiniRoomOmokRequestTie => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokDrawRequestSent && !_miniRoomOmokTieRequested;
-        public bool CanMiniRoomOmokRequestRetreat => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokRetreatRequestSent && !_miniRoomOmokRetreatRequested && _miniRoomOmokMoveHistory.Count > 0;
+        public bool CanMiniRoomOmokRequestRetreat => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokRetreatRequestSent && !_miniRoomOmokRetreatRequested && !_miniRoomOmokRetreatRequestSentMatch && CountLocalOmokStones() > 0;
         public bool CanMiniRoomOmokGiveUp => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
         public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
         public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
+        public Func<byte[], string, bool> MiniRoomOmokOutboundPacketRequested { get; set; }
         public Func<byte[], string, bool> EntrustedChildDialogOutboundPacketRequested { get; set; }
         public Func<byte[], string, bool> EntrustedBlacklistOutboundPacketRequested { get; set; }
         public string EntrustedBlacklistLastOutboundPacketSummary => _entrustedBlacklistLastOutboundPacketSummary;
@@ -764,6 +768,7 @@ namespace HaCreator.MapSimulator.Interaction
                 MiniRoomOmokLastClientSoundStringPoolId = _miniRoomOmokLastClientSoundStringPoolId,
                 MiniRoomOmokLastClientSoundPath = _miniRoomOmokLastClientSoundPath,
                 MiniRoomOmokLastOutboundPacketSummary = _miniRoomOmokLastOutboundPacketSummary,
+                MiniRoomOmokLastOutboundPacketHex = _miniRoomOmokLastOutboundPacketHex,
                 MiniRoomOmokBoard = _miniRoomOmokBoard.ToList(),
                 MiniRoomOmokMoveHistory = _miniRoomOmokMoveHistory
                     .Select(move => new SocialRoomOmokMoveSnapshot
@@ -933,6 +938,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokLastClientSoundStringPoolId = source?.MiniRoomOmokLastClientSoundStringPoolId ?? _defaultSnapshot.MiniRoomOmokLastClientSoundStringPoolId;
                 _miniRoomOmokLastClientSoundPath = source?.MiniRoomOmokLastClientSoundPath ?? _defaultSnapshot.MiniRoomOmokLastClientSoundPath ?? string.Empty;
                 _miniRoomOmokLastOutboundPacketSummary = source?.MiniRoomOmokLastOutboundPacketSummary ?? _defaultSnapshot.MiniRoomOmokLastOutboundPacketSummary ?? string.Empty;
+                _miniRoomOmokLastOutboundPacketHex = source?.MiniRoomOmokLastOutboundPacketHex ?? _defaultSnapshot.MiniRoomOmokLastOutboundPacketHex ?? string.Empty;
                 _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
                 _miniRoomOmokLastTimedStateUtc = null;
                 _tradeLocalOfferMeso = Math.Max(0, source?.TradeLocalOfferMeso ?? _defaultSnapshot.TradeLocalOfferMeso);
@@ -5107,8 +5113,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return TryMeasureMiniRoomSubtype6TradingRoomPutItemPacketLength(payload, offset, out packetLength);
                     }
 
-                    packetLength = 1 + sizeof(byte) + sizeof(int) + sizeof(short) + sizeof(int);
-                    return remaining >= packetLength;
+                    return TryMeasureMiniRoomSubtype6MerchantShopRowRefreshPacketLength(payload, offset, out packetLength);
                 case PersonalShopSoldItemResultPacketType:
                     return TryMeasureMiniRoomSubtype6SoldItemResultPacketLength(payload, offset, out packetLength);
                 case PersonalShopMoveItemToInventoryPacketType:
@@ -5121,6 +5126,47 @@ namespace HaCreator.MapSimulator.Interaction
                 default:
                     return false;
             }
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6MerchantShopRowRefreshPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            const int legacyPacketLength = 1 + sizeof(byte) + sizeof(int) + sizeof(short) + sizeof(int);
+            int remaining = payload.Length - offset;
+            int trailingPriceItemOffset = offset + 1 + sizeof(byte);
+            if (TryMeasurePacketOwnedTradeItemLength(payload, trailingPriceItemOffset, out int trailingPriceItemLength))
+            {
+                int candidateLength = trailingPriceItemOffset - offset + trailingPriceItemLength + sizeof(int);
+                if (candidateLength > legacyPacketLength && remaining >= candidateLength)
+                {
+                    packetLength = candidateLength;
+                    return true;
+                }
+            }
+
+            int leadingPriceItemOffset = offset + 1 + sizeof(byte) + sizeof(int);
+            if (TryMeasurePacketOwnedTradeItemLength(payload, leadingPriceItemOffset, out int leadingPriceItemLength))
+            {
+                int candidateLength = leadingPriceItemOffset - offset + leadingPriceItemLength;
+                if (candidateLength > legacyPacketLength && remaining >= candidateLength)
+                {
+                    packetLength = candidateLength;
+                    return true;
+                }
+            }
+
+            if (remaining >= legacyPacketLength)
+            {
+                packetLength = legacyPacketLength;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryMeasureMiniRoomSubtype6TradingRoomPutItemPacketLength(byte[] payload, int offset, out int packetLength)
@@ -8015,7 +8061,10 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Omok tie request";
             StatusMessage = _miniRoomOmokPendingPromptText;
             SetOmokDialogStatus("COmokDlg prepared packet 50 for a local tie request and is waiting on packet 51/62.", 2200);
-            _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::OnTieRequest would send mini-room packet 50 after the local Yes/No prompt is accepted.";
+            PublishMiniRoomOmokOutboundPacket(
+                OmokTieRequestPacketType,
+                "COmokDlg::SendTieRequest",
+                "COmokDlg::SendTieRequest sent opcode 144 subtype 50 after the StringPool 0x1DA Yes/No prompt returned IDYES.");
             AddMiniRoomSystemMessage("System : Tie request prompt opened. Confirming it would send packet 50.");
             SyncMiniRoomOmokPresentation();
             PersistState();
@@ -8062,7 +8111,11 @@ namespace HaCreator.MapSimulator.Interaction
             SetOmokDialogStatus(
                 $"COmokDlg::OnTieRequest closed the modal and sent packet 51 with accept={(accept ? 1 : 0)}.",
                 2000);
-            _miniRoomOmokLastOutboundPacketSummary = $"COmokDlg::OnTieRequest sent mini-room packet 51 with accept={(accept ? 1 : 0)}.";
+            PublishMiniRoomOmokOutboundPacket(
+                OmokTieResultPacketType,
+                "COmokDlg::OnTieRequest",
+                $"COmokDlg::OnTieRequest sent opcode 144 subtype 51 with accept={(accept ? 1 : 0)} after the StringPool 0x1D9 Yes/No modal closed.",
+                (byte)(accept ? 1 : 0));
             AddMiniRoomSystemMessage(
                 $"System : {(accept ? "Tie request accepted" : "Tie request declined")} and packet 51 would be sent.");
             SyncMiniRoomOmokPresentation();
@@ -8091,6 +8144,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return TryRespondMiniRoomRetreatRequest(accept: true, out message);
             }
 
+            if (CountLocalOmokStones() <= 0)
+            {
+                message = "COmokDlg::SendRetreatRequest only opens after the local player has at least one stone on the board.";
+                return false;
+            }
+
+            if (_miniRoomOmokRetreatRequestSentMatch)
+            {
+                message = ResolveOmokString(OmokTieDeclinedStringPoolId, "Your opponent denied your request for a tie.");
+                return false;
+            }
+
             _miniRoomOmokRetreatRequestSent = true;
             _miniRoomOmokRetreatRequestSentTurn = true;
             _miniRoomOmokPendingPromptText = ResolveOmokString(
@@ -8099,7 +8164,10 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = "Omok retreat request";
             StatusMessage = _miniRoomOmokPendingPromptText;
             SetOmokDialogStatus("COmokDlg prepared packet 54 for a local retreat request and is waiting on packet 55.", 2200);
-            _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::OnRetreatRequest would send mini-room packet 54 after the local Yes/No prompt is accepted.";
+            PublishMiniRoomOmokOutboundPacket(
+                OmokRetreatRequestPacketType,
+                "COmokDlg::SendRetreatRequest",
+                "COmokDlg::SendRetreatRequest sent opcode 144 subtype 54 after the StringPool 0x1DE Yes/No prompt returned IDYES.");
             AddMiniRoomSystemMessage("System : Retreat request prompt opened. Confirming it would send packet 54.", isWarning: true);
             SyncMiniRoomOmokPresentation();
             PersistState();
@@ -8127,7 +8195,11 @@ namespace HaCreator.MapSimulator.Interaction
             SetOmokDialogStatus(
                 $"COmokDlg::OnRetreatRequest closed the modal and sent packet 55 with accept={(accept ? 1 : 0)}.",
                 2000);
-            _miniRoomOmokLastOutboundPacketSummary = $"COmokDlg::OnRetreatRequest sent mini-room packet 55 with accept={(accept ? 1 : 0)}.";
+            PublishMiniRoomOmokOutboundPacket(
+                OmokRetreatResultPacketType,
+                "COmokDlg::OnRetreatRequest",
+                $"COmokDlg::OnRetreatRequest sent opcode 144 subtype 55 with accept={(accept ? 1 : 0)} after the StringPool 0x1DD Yes/No modal closed.",
+                (byte)(accept ? 1 : 0));
             AddMiniRoomSystemMessage(
                 $"System : {(accept ? "Retreat request accepted" : "Retreat request declined")} and packet 55 would be sent.",
                 isWarning: true);
@@ -10606,7 +10678,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!string.IsNullOrWhiteSpace(_miniRoomOmokLastOutboundPacketSummary))
             {
-                return _miniRoomOmokLastOutboundPacketSummary;
+                return string.IsNullOrWhiteSpace(_miniRoomOmokLastOutboundPacketHex)
+                    ? _miniRoomOmokLastOutboundPacketSummary
+                    : $"{_miniRoomOmokLastOutboundPacketSummary} Raw={_miniRoomOmokLastOutboundPacketHex}.";
             }
 
             if (_miniRoomOmokLastClientSoundStringPoolId >= 0)
@@ -10632,6 +10706,53 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"Ready {(MiniRoomOmokReadyButtonEnabled ? "on" : "off")}  Start {(MiniRoomOmokStartButtonEnabled ? "on" : "off")}  Tie {(MiniRoomOmokTieButtonEnabled ? "on" : "off")}  Retreat {(MiniRoomOmokRetreatButtonEnabled ? "on" : "off")}  GiveUp {(MiniRoomOmokGiveUpButtonEnabled ? "on" : "off")}");
+        }
+
+        private int CountLocalOmokStones()
+        {
+            int localStoneValue = ResolveOmokStoneValueForSeat(_miniRoomLocalSeatIndex);
+            int count = 0;
+            for (int i = 0; i < _miniRoomOmokBoard.Length; i++)
+            {
+                if (_miniRoomOmokBoard[i] == localStoneValue)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private bool PublishMiniRoomOmokOutboundPacket(byte packetType, string ownerAction, string summary, params byte[] payloadBytes)
+        {
+            byte[] rawPacket = BuildMiniRoomOutboundPacket(packetType, payloadBytes);
+            _miniRoomOmokLastOutboundPacketHex = Convert.ToHexString(rawPacket);
+            _miniRoomOmokLastOutboundPacketSummary = $"{summary} Raw {_miniRoomOmokLastOutboundPacketHex}.";
+
+            if (MiniRoomOmokOutboundPacketRequested == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return MiniRoomOmokOutboundPacketRequested.Invoke((byte[])rawPacket.Clone(), $"{ownerAction}: {_miniRoomOmokLastOutboundPacketSummary}");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static byte[] BuildMiniRoomOutboundPacket(byte packetType, params byte[] payloadBytes)
+        {
+            payloadBytes ??= Array.Empty<byte>();
+            byte[] rawPacket = new byte[sizeof(ushort) + 1 + payloadBytes.Length];
+            rawPacket[0] = (byte)(MiniRoomOutboundOpcode & 0xFF);
+            rawPacket[1] = (byte)(MiniRoomOutboundOpcode >> 8);
+            rawPacket[2] = packetType;
+            Array.Copy(payloadBytes, 0, rawPacket, 3, payloadBytes.Length);
+            return rawPacket;
         }
 
         private string BuildOmokSeatDetail(int playerIndex, string seatLabel)

@@ -573,6 +573,8 @@ namespace HaCreator.MapSimulator.Pools
                 new Dictionary<AvatarRenderLayer, int>();
             public IReadOnlyDictionary<AvatarRenderLayer, int> SimulatedLayerHandleRefCounts { get; private set; } =
                 new Dictionary<AvatarRenderLayer, int>();
+            internal IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> SimulatedRegistrationArgumentReferenceOperations { get; private set; }
+                = Array.Empty<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
             internal IReadOnlyList<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations { get; private set; }
                 = Array.Empty<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
             public List<RemoteActiveEffectMotionBlurSnapshot> Snapshots { get; } = new();
@@ -599,6 +601,10 @@ namespace HaCreator.MapSimulator.Pools
                     .Where(static entry => entry.Value > 0)
                     .ToDictionary(static entry => entry.Key, static entry => entry.Value)
                     ?? new Dictionary<AvatarRenderLayer, int>();
+                SimulatedRegistrationArgumentReferenceOperations =
+                    AnimationEffects.SecondaryMotionBlurAnimationState.BuildClientRegistrationArgumentReferenceOperations(
+                        SimulatedOverlayLayerHandleId,
+                        SimulatedLayerHandleIds.ToDictionary(static entry => (int)entry.Key, static entry => entry.Value));
                 SimulatedLayerHandleRefCounts = ResolveRemoteActiveEffectMotionBlurLayerHandleRefCounts(SimulatedLayerHandleIds);
                 foreach ((AvatarRenderLayer layer, int handleId) in EnumerateRemoteActiveEffectMotionBlurLayerCopyOrder(SimulatedLayerHandleIds))
                 {
@@ -1080,7 +1086,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int RelationshipOverlayNearRangeY = 100;
         private const int NewYearCardOverlayNearRangeX = 250;
         private const int NewYearCardOverlayNearRangeY = 250;
-        private const int NewYearCardDefaultItemId = 4300000;
+        private const int NewYearCardDefaultItemId = RelationshipOverlayClientStringPoolText.NewYearCardDefaultItemId;
         private const int RemoteShadowPartnerClientSideOffsetPx = 30;
         private const int RemoteShadowPartnerClientBackActionOffsetYPx = 50;
         private const int RemoteShadowPartnerTransitionDurationMs = 200;
@@ -1254,6 +1260,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly Dictionary<int, RemoteUserActor> _actorsById = new();
         private readonly Dictionary<string, int> _actorIdsByName = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, PortableChairPairRecord> _portableChairPairRecordsByCharacterId = new();
+        private int _nameTagRedrawSerial;
         private int? _localPortableChairPreferredPairCharacterId;
         private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<int, RemoteUserRelationshipRecord>> _relationshipRecordsByOwnerCharacterId = new();
         private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<RemoteRelationshipRecordDispatchKey, int>> _relationshipRecordOwnerByDispatchKey = new();
@@ -1298,6 +1305,7 @@ namespace HaCreator.MapSimulator.Pools
 
         public int Count => _actorsById.Count;
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
+        public int NameTagRedrawSerial => _nameTagRedrawSerial;
         public event Action<RemoteSkillUsePresentation> SkillUseRegistered;
         public event Action<RemoteUpgradeTombPresentation> UpgradeTombEffectRegistered;
         public event Action<RemoteGenericUserStatePresentation> GenericUserStateRegistered;
@@ -1433,6 +1441,15 @@ namespace HaCreator.MapSimulator.Pools
             return !string.IsNullOrWhiteSpace(name)
                    && _actorIdsByName.TryGetValue(name.Trim(), out int characterId)
                    && _actorsById.TryGetValue(characterId, out actor);
+        }
+
+        public void MarkNameTagsRedrawnForClientScoreRefresh()
+        {
+            _nameTagRedrawSerial++;
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                actor.LastNameTagRedrawSerial = _nameTagRedrawSerial;
+            }
         }
 
         public bool TryGetPosition(string name, out Vector2 position)
@@ -6265,10 +6282,9 @@ namespace HaCreator.MapSimulator.Pools
             out RemoteDragonCompanionRenderState renderState)
         {
             renderState = default;
-            if (actor?.Build == null
+            if (ReleaseRemoteDragonCompanionIfOwnerUnavailableForParity(actor)
                 || !TryResolveRemoteDragonHudMetadata(actor.Build.Job, out RemoteDragonHudMetadata metadata))
             {
-                ClearRemoteDragonCompanionState(actor);
                 return false;
             }
 
@@ -8792,13 +8808,28 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool IsRelationshipOverlaySuppressed(RemoteUserActor actor)
         {
-            if (actor == null || !actor.IsVisibleInWorld)
+            if (actor == null)
             {
                 return true;
             }
 
-            return actor.HasMorphTemplate
-                || IsRelationshipOverlayGhostAction(actor.ActionName);
+            return ShouldSuppressRemoteRelationshipOverlayForParity(
+                actor.IsVisibleInWorld,
+                actor.HiddenLikeClient,
+                actor.HasMorphTemplate,
+                actor.ActionName);
+        }
+
+        internal static bool ShouldSuppressRemoteRelationshipOverlayForParity(
+            bool isVisibleInWorld,
+            bool hiddenLikeClient,
+            bool hasMorphTemplate,
+            string actionName)
+        {
+            return !isVisibleInWorld
+                || hiddenLikeClient
+                || hasMorphTemplate
+                || IsRelationshipOverlayGhostAction(actionName);
         }
 
         private void ClearRelationshipOverlayStateForParity(
@@ -9359,6 +9390,28 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.RemoteDragonCompanion.MarkTerminated();
             actor.RemoteDragonCompanion = null;
+        }
+
+        private static bool ReleaseRemoteDragonCompanionIfOwnerUnavailableForParity(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return true;
+            }
+
+            if (actor.Build != null
+                && TryResolveRemoteDragonHudMetadata(actor.Build.Job, out _))
+            {
+                return false;
+            }
+
+            ClearRemoteDragonCompanionState(actor);
+            return true;
+        }
+
+        internal static bool ReleaseRemoteDragonCompanionIfOwnerUnavailableForTesting(RemoteUserActor actor)
+        {
+            return ReleaseRemoteDragonCompanionIfOwnerUnavailableForParity(actor);
         }
 
         private static void ClearRemotePreparedSkillState(RemoteUserActor actor)
@@ -10329,6 +10382,11 @@ namespace HaCreator.MapSimulator.Pools
                     normalizedRecord,
                     recordTable);
                 ownerCharacterId = normalizedRecord.CharacterId.GetValueOrDefault(ownerCharacterId);
+                RemoveSupersededAvatarModifiedRelationshipRecordOwners(
+                    relationshipType,
+                    ownerCharacterId,
+                    normalizedRecord,
+                    recordTable);
                 RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
                 recordTable[ownerCharacterId] = normalizedRecord;
                 RegisterRelationshipRecordDispatchKeys(
@@ -10401,6 +10459,37 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return relationshipRecord;
+        }
+
+        private void RemoveSupersededAvatarModifiedRelationshipRecordOwners(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord relationshipRecord,
+            IDictionary<int, RemoteUserRelationshipRecord> recordTable)
+        {
+            if (relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || ownerCharacterId <= 0
+                || !relationshipRecord.IsActive
+                || recordTable == null
+                || relationshipRecord.ItemSerial == null
+                || relationshipRecord.PairItemSerial == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable.ToArray())
+            {
+                if (entry.Key == ownerCharacterId
+                    || !entry.Value.IsActive
+                    || entry.Value.ItemSerial == null
+                    || entry.Value.PairItemSerial == null
+                    || !DoAvatarModifiedRelationshipSerialPairsMatch(relationshipRecord, entry.Value))
+                {
+                    continue;
+                }
+
+                RemoveRelationshipRecordOwner(relationshipType, entry.Key, recordTable);
+            }
         }
 
         private static bool DoAvatarModifiedRelationshipSerialPairsMatch(
@@ -12157,6 +12246,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.HiddenLikeClient = knownState.IsHiddenLikeClient;
             actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, knownState);
             actor.RidingVehicleId = ResolveRemoteRidingVehicleId(actor);
+            ReleaseRemoteDragonCompanionIfOwnerUnavailableForParity(actor);
             actor.RefreshAssembler();
         }
 
@@ -17448,6 +17538,7 @@ namespace HaCreator.MapSimulator.Pools
         public bool MovementDrivenActionSelection { get; set; }
         public bool HasMorphTemplate { get; set; }
         public bool HiddenLikeClient { get; set; }
+        public int LastNameTagRedrawSerial { get; set; }
         public int RidingVehicleId { get; set; }
         public CharacterPart TemporaryStatAvatarOverridePart { get; set; }
         public CharacterPart TemporaryStatTamingMobOverridePart { get; set; }

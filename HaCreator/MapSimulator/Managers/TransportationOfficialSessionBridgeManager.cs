@@ -651,8 +651,14 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (!TryStartProxyListener(requestedListenPort, resolvedRemoteHost, resolvedRemotePort, out string startStatus))
                 {
-                    status = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}, but automatic reconnect-proxy arming failed. {startStatus}";
-                    return false;
+                    if (requestedListenPort != DefaultListenPort
+                        || !TryStartProxyListener(0, resolvedRemoteHost, resolvedRemotePort, out string fallbackStartStatus))
+                    {
+                        status = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}, but automatic reconnect-proxy arming failed. {startStatus}";
+                        return false;
+                    }
+
+                    startStatus = $"{startStatus} Retried with an ephemeral reconnect proxy port. {fallbackStartStatus}";
                 }
 
                 _passiveEstablishedSession = candidate;

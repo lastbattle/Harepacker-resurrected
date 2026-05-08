@@ -18,7 +18,6 @@ namespace HaCreator.MapSimulator
         private const int VegaOwnerExclusiveRequestCooldownMs = 500;
         private const int VegaOwnerExternalResultFallbackDelayMs = 3000;
         private const int VegaResultPreludeLoopSoundPrefixStringPoolId = 0x8B9;
-        private const int VegaResultPreludeLoopSoundStringPoolId = 0x1534;
         private const string VegaResultPreludeLoopSoundOwnerImage = "UI.img";
         private const string VegaResultPreludeLoopSoundFallback = "Sound/UI.img/EnchantDelay";
         private const byte VegaPacketOwnedSuccessPreludeCode = 68;
@@ -656,7 +655,11 @@ namespace HaCreator.MapSimulator
             string footer,
             Action onConfirm,
             Action onCancel,
-            InGameConfirmDialogPresentation presentation = null)
+            InGameConfirmDialogPresentation presentation = null,
+            SharedFadeYesNoModalType fadeYesNoType = SharedFadeYesNoModalType.Generic,
+            int fadeYesNoLifetimeMilliseconds = -1,
+            int fadeYesNoStackIndex = 0,
+            bool fadeYesNoQuickDelivery = false)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
             {
@@ -666,7 +669,17 @@ namespace HaCreator.MapSimulator
 
             _inGameConfirmAcceptedAction = onConfirm;
             _inGameConfirmCancelledAction = onCancel;
-            confirmDialogWindow.Configure(title, body, footer, presentation);
+            confirmDialogWindow.ConfigureSharedFadeYesNo(
+                new SharedFadeYesNoModalRequest(
+                    fadeYesNoType,
+                    title,
+                    body,
+                    footer,
+                    fadeYesNoLifetimeMilliseconds,
+                    fadeYesNoStackIndex,
+                    fadeYesNoQuickDelivery,
+                    presentation),
+                presentation);
         }
 
         private void ClearInGameConfirmDialogActions()
@@ -2036,9 +2049,7 @@ namespace HaCreator.MapSimulator
         {
             return NormalizeVegaResultLoopSoundDescriptor(
                 VegaOwnerStringPoolText.GetResultLoopSoundDescriptor(),
-                MapleStoryStringPool.GetOrFallback(
-                    VegaResultPreludeLoopSoundStringPoolId,
-                    VegaResultPreludeLoopSoundFallback));
+                VegaOwnerStringPoolText.GetResultLoopSoundFallbackDescriptor());
         }
 
         private static string ResolveVegaResultLoopSoundClientPlaybackDescriptor()

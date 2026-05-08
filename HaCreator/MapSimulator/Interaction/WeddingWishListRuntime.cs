@@ -434,21 +434,23 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Type an item name before pressing Enter.";
             }
 
+            _candidateQuery = string.Empty;
+            RefreshCandidateEntries();
+            _selectedCandidateIndex = 0;
+
             if (_wishListEntries.Count >= MaxWishListEntryCount)
             {
-                return GetWishListFullText();
-            }
-
-            if (_wishListEntries.Any(entry => string.Equals(ResolveItemLabel(entry), query, StringComparison.OrdinalIgnoreCase)))
-            {
-                return $"\"{query}\" is already present in the wedding wish list.";
+                _selectedWishIndex = -1;
+                _activePane = WeddingWishListSelectionPane.Candidate;
+                ClearTransientActionState();
+                ClampSelections();
+                EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
+                _statusMessage = GetWishListFullText();
+                return _statusMessage;
             }
 
             InventorySlotData enteredWish = CreateWishListInputEntry(query);
             _wishListEntries.Add(enteredWish);
-            _candidateQuery = string.Empty;
-            RefreshCandidateEntries();
-            _selectedCandidateIndex = 0;
             _selectedWishIndex = -1;
             _activePane = WeddingWishListSelectionPane.Candidate;
             ClearTransientActionState();
@@ -1420,7 +1422,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return !_wishListEntries.Any(entry => string.Equals(ResolveItemLabel(entry), query, StringComparison.OrdinalIgnoreCase));
+            return true;
         }
 
         private bool CanDeleteSelectedWish()

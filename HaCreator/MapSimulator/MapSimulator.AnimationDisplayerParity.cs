@@ -4351,8 +4351,9 @@ namespace HaCreator.MapSimulator
                     int updateCount = ResolveAnimationDisplayerReservedAreaBurstAttemptCount(
                         durationMs,
                         updateIntervalMs);
-                    int registrationId = _animationEffects.RegisterAreaAnimation(
+                    int registrationId = _animationEffects.RegisterPacketOwnedReservedAreaAnimation(
                         reservedFrames,
+                        resolvedVisualEffectUol,
                         area,
                         updateIntervalMs,
                         updateCount,
@@ -4722,9 +4723,14 @@ namespace HaCreator.MapSimulator
                 if (WzInfoTools.GetRealProperty(embeddedSound) is WzBinaryProperty binaryProperty)
                 {
                     string soundKey = $"AnimationDisplayerReservedSound:{embeddedEffectSoundUol}";
-                    _soundManager.RegisterSound(soundKey, binaryProperty);
-                    _soundManager.PlaySound(soundKey);
-                    return true;
+                    return _soundManager.TryPlayClientSoundEffect(
+                        soundKey,
+                        binaryProperty,
+                        startVolumeScale: 1f,
+                        loop: false,
+                        suppressWhileActive: false,
+                        out _,
+                        out _);
                 }
             }
 
@@ -6088,6 +6094,13 @@ namespace HaCreator.MapSimulator
                 effectUol);
         }
 
+        private static string BuildAnimationDisplayerLocalPacketOwnedLevelUpOwnerSlotKey(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
+                "aux.packetOwnedLevelUp.oneTime",
+                effectUol);
+        }
+
         private static string BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKey(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedBasicOneTimeOwnerSlotKey(
@@ -6815,6 +6828,11 @@ namespace HaCreator.MapSimulator
         internal static string BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKeyForTesting(string effectUol)
         {
             return BuildAnimationDisplayerLocalPacketOwnedCoolOwnerSlotKey(effectUol);
+        }
+
+        internal static string BuildAnimationDisplayerLocalPacketOwnedLevelUpOwnerSlotKeyForTesting(string effectUol)
+        {
+            return BuildAnimationDisplayerLocalPacketOwnedLevelUpOwnerSlotKey(effectUol);
         }
 
         internal static string BuildAnimationDisplayerPacketOwnedFallingOwnerSlotKeyForTesting(string effectUol)

@@ -501,7 +501,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static string ResolveAreaDetailCountryNamePath(int areaGroup)
         {
-            return $"{CountryNameRootPath}/{Math.Clamp(areaGroup, 0, 255)}";
+            return $"{CountryNameRootPath}/{Math.Max(0, areaGroup)}";
         }
 
         internal static string FormatComboNumericValue(int value)
@@ -511,9 +511,11 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static uint BuildClientAreaCodeForSave(int areaGroup, int areaDetail)
         {
-            // OnLoadAccountMoreInfoResult recovers the selected area values from
-            // the low two bytes of this dword; keep outbound save encoding byte-owned too.
-            return (uint)((areaGroup & 0xFF) | ((areaDetail & 0xFF) << 8));
+            // SendSaveAccountMoreInfoRequest writes the selected combo item
+            // params directly as area0 | (area1 << 8). Do not narrow here;
+            // recovered data sets with wider params should round-trip through
+            // the outbound request exactly like the client.
+            return (uint)(Math.Max(0, areaGroup) | (Math.Max(0, areaDetail) << 8));
         }
 
         internal static uint BuildClientBirthdayForSave(int year, int month, int day)

@@ -357,6 +357,27 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (offset > 0)
+            {
+                if (TryMatchKnownLeadingLayoutOffset(
+                        payload,
+                        characterDataFlags,
+                        offset,
+                        out KnownLeadingOffsetCandidate leadingCandidate))
+                {
+                    matchedKnownLeadingCharacterDataTail = true;
+                    matchedOpaquePreMapTransferByteCount = leadingCandidate.OpaquePreMapTransferByteCount;
+                }
+                else if (offset > MaximumOpaquePostMapTransferTailByteLength)
+                {
+                    return false;
+                }
+                else
+                {
+                    matchedOpaquePreMapTransferByteCount = offset;
+                }
+            }
+
             int[] candidateRegular = new int[MapTransferRuntimeManager.RegularCapacity];
             int[] candidateContinent = new int[MapTransferRuntimeManager.ContinentCapacity];
             HashSet<int> seenMaps = new();

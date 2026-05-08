@@ -403,8 +403,9 @@ namespace HaCreator.MapSimulator.Character
                 damage = ResolveDeadlyAttackDamage(_player.HP, damage);
             }
 
-            // Calculate knockback direction (away from mob)
-            Vector2 knockback = GetPlayerKnockbackVelocity(mob.MovementInfo.X);
+            Vector2 knockback = ShouldApplyMobAttackKnockback(currentAttack, isSkillAttack)
+                ? GetPlayerKnockbackVelocity(mob.MovementInfo.X)
+                : Vector2.Zero;
 
             // Play character damage sound from mob (CharDam1/CharDam2)
             int attackNum = currentAttack?.AttackId ?? 1;
@@ -499,6 +500,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return Math.Min(currentMp, attack.ConMP);
+        }
+
+        internal static bool ShouldApplyMobAttackKnockback(MobAttackEntry attack, bool isSkillAttack)
+        {
+            return attack == null || isSkillAttack || attack.Knockback;
         }
 
         private static void ApplyMobAttackVitalSideEffects(PlayerCharacter player, MobAttackEntry attack)

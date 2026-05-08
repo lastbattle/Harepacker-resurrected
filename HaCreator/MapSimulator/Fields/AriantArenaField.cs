@@ -105,6 +105,10 @@ namespace HaCreator.MapSimulator.Fields
         private int _resultStartedAt;
         private int _resultFrameStartedAt;
         private int _scoreRefreshSerial;
+        private int _scoreCanvasMutationSerial;
+        private int _scoreLayerHandleId;
+        private int _resultLayerHandleId;
+        private int _nextSimulatedLayerHandleId = 1;
         private int _localPlayerJob;
         private RemoteUserActorPool _remoteUserPool;
         private SoundManager _soundManager;
@@ -116,11 +120,14 @@ namespace HaCreator.MapSimulator.Fields
         public bool IsActive => _isActive;
         public IReadOnlyList<AriantArenaScoreEntry> Entries => _entries;
         public int ScoreRefreshSerial => _scoreRefreshSerial;
+        public int ScoreCanvasMutationSerial => _scoreCanvasMutationSerial;
         public int RemoteParticipantCount => CountAriantRemoteParticipants();
         internal static Rectangle ScoreLayerBoundsForTesting => new(ScoreLayerScreenX, ScoreLayerScreenY, ScoreLayerWidth, ScoreLayerHeight);
         internal bool IsScoreLayerVisibleForTesting => _showScoreboard;
         internal bool IsResultLayerVisibleForTesting => _showResult;
         internal int ResultFrameIndexForTesting => _resultFrameIndex;
+        internal int ScoreLayerHandleIdForTesting => _scoreLayerHandleId;
+        internal int ResultLayerHandleIdForTesting => _resultLayerHandleId;
         public void Initialize(
             GraphicsDevice graphicsDevice,
             SoundManager soundManager = null,
@@ -145,6 +152,10 @@ namespace HaCreator.MapSimulator.Fields
             _resultStartedAt = 0;
             _resultFrameStartedAt = 0;
             _scoreRefreshSerial = 0;
+            _scoreCanvasMutationSerial = 0;
+            _scoreLayerHandleId = 0;
+            _resultLayerHandleId = 0;
+            _nextSimulatedLayerHandleId = 1;
             _lastResultMessage = null;
             _lastPacketType = null;
             ClearRemoteParticipants();
@@ -303,6 +314,9 @@ namespace HaCreator.MapSimulator.Fields
             SortAndAssignRankIcons();
 
             _scoreRefreshSerial++;
+            _scoreCanvasMutationSerial++;
+            EnsureScoreLayerHandle();
+            MarkRemoteNameTagsRedrawnForScoreRefresh();
             _showScoreboard = true;
             _showResult = false;
         }
@@ -315,6 +329,8 @@ namespace HaCreator.MapSimulator.Fields
             EnsureAssetsLoaded();
             _showScoreboard = false;
             _showResult = _resultFrames.Count > 0;
+            _scoreLayerHandleId = 0;
+            _resultLayerHandleId = _showResult ? AllocateSimulatedLayerHandle() : 0;
             _resultFrameIndex = 0;
             _resultStartedAt = currentTimeMs;
             _resultFrameStartedAt = currentTimeMs;
@@ -333,6 +349,9 @@ namespace HaCreator.MapSimulator.Fields
             _resultStartedAt = 0;
             _resultFrameStartedAt = 0;
             _scoreRefreshSerial = 0;
+            _scoreCanvasMutationSerial = 0;
+            _scoreLayerHandleId = 0;
+            _resultLayerHandleId = 0;
             _lastResultMessage = null;
             _lastPacketType = null;
         }
@@ -517,6 +536,10 @@ namespace HaCreator.MapSimulator.Fields
             _resultStartedAt = 0;
             _resultFrameStartedAt = 0;
             _scoreRefreshSerial = 0;
+            _scoreCanvasMutationSerial = 0;
+            _scoreLayerHandleId = 0;
+            _resultLayerHandleId = 0;
+            _nextSimulatedLayerHandleId = 1;
             _localPlayerJob = 0;
             _lastResultMessage = null;
             _localPlayerName = null;
@@ -632,6 +655,21 @@ namespace HaCreator.MapSimulator.Fields
             _resultFrames.AddRange(frames.Where(static frame => frame != null));
         }
         internal string LastResultMessageForTesting => _lastResultMessage;
+        private void EnsureScoreLayerHandle()
+        {
+            if (_scoreLayerHandleId <= 0)
+            {
+                _scoreLayerHandleId = AllocateSimulatedLayerHandle();
+            }
+        }
+        private int AllocateSimulatedLayerHandle()
+        {
+            return _nextSimulatedLayerHandleId++;
+        }
+        private void MarkRemoteNameTagsRedrawnForScoreRefresh()
+        {
+            _remoteUserPool?.MarkNameTagsRedrawnForClientScoreRefresh();
+        }
         private static string FormatScoreText(int score)
         {
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(

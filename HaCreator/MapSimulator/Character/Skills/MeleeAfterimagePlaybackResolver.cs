@@ -500,8 +500,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             MeleeAfterImageFrameSet frameSet,
             int targetLayerObjectId)
         {
+            ResolveAfterimageActionMetadata(
+                frameSet,
+                out int? rawActionCode,
+                out string actionName);
+
+            return ResolveCreateAfterimageLayerReferenceOperations(
+                frameSet,
+                targetLayerObjectId,
+                actionName,
+                rawActionCode);
+        }
+
+        public static IReadOnlyList<AfterimageLayerReferenceOperation> ResolveCreateAfterimageLayerReferenceOperations(
+            MeleeAfterImageFrameSet frameSet,
+            int targetLayerObjectId,
+            string actionName,
+            int? rawActionCode)
+        {
             IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
-            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 5) + 7)
+            var operations = new List<AfterimageLayerReferenceOperation>(((frames?.Count ?? 0) * 5) + 10)
             {
                 new(
                     AfterimageLayerReferenceOperationKind.AddTargetLayerRef,
@@ -526,7 +544,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                     AfterimageLayerReferenceOperationKind.ReleaseRemovedCanvasRef,
                     targetLayerObjectId,
                     CanvasRefDelta: -1,
-                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex)
+                    RemoveCanvasIndex: ClientRemoveAllCanvasesIndex),
+                new(
+                    AfterimageLayerReferenceOperationKind.AddAfterimageUolRef,
+                    targetLayerObjectId,
+                    RawActionCode: rawActionCode,
+                    ActionName: actionName,
+                    AfterimageUolRefDelta: 1),
+                new(
+                    AfterimageLayerReferenceOperationKind.GetWeaponAfterImage,
+                    targetLayerObjectId,
+                    RawActionCode: rawActionCode,
+                    ActionName: actionName)
             };
 
             if (frames != null && frames.Count > 0)
@@ -541,57 +570,98 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     int canvasObjectId = ResolveAfterimageCanvasObjectId(frame);
                     int canvasOrdinal = ResolveAfterimageCanvasOrdinal(frame);
-                    int? rawActionCode = frame.AfterimageActionRawCode;
-                    string actionName = frame.AfterimageActionName;
+                    int? frameRawActionCode = frame.AfterimageActionRawCode;
+                    string frameActionName = frame.AfterimageActionName;
 
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.AddCanvasRef,
                         targetLayerObjectId,
                         canvasObjectId,
                         canvasOrdinal,
-                        rawActionCode,
-                        actionName,
+                        frameRawActionCode,
+                        frameActionName,
                         CanvasRefDelta: 1));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.AddLayerRef,
                         targetLayerObjectId,
                         canvasObjectId,
                         canvasOrdinal,
-                        rawActionCode,
-                        actionName,
+                        frameRawActionCode,
+                        frameActionName,
                         LayerRefDelta: 1));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.InsertCanvas,
                         targetLayerObjectId,
                         canvasObjectId,
                         canvasOrdinal,
-                        rawActionCode,
-                        actionName));
+                        frameRawActionCode,
+                        frameActionName));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ReleaseLayerRef,
                         targetLayerObjectId,
                         canvasObjectId,
                         canvasOrdinal,
-                        rawActionCode,
-                        actionName,
+                        frameRawActionCode,
+                        frameActionName,
                         LayerRefDelta: -1));
                     operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.ReleaseCanvasRef,
                         targetLayerObjectId,
                         canvasObjectId,
                         canvasOrdinal,
-                        rawActionCode,
-                        actionName,
+                        frameRawActionCode,
+                        frameActionName,
                         CanvasRefDelta: -1));
                 }
             }
 
+            operations.Add(new AfterimageLayerReferenceOperation(
+                AfterimageLayerReferenceOperationKind.ReleaseAfterimageUolRef,
+                targetLayerObjectId,
+                RawActionCode: rawActionCode,
+                ActionName: actionName,
+                AfterimageUolRefDelta: -1));
             operations.Add(new AfterimageLayerReferenceOperation(
                 AfterimageLayerReferenceOperationKind.ReleaseTargetLayerRef,
                 targetLayerObjectId,
                 LayerRefDelta: -1));
 
             return operations;
+        }
+
+        private static void ResolveAfterimageActionMetadata(
+            MeleeAfterImageFrameSet frameSet,
+            out int? rawActionCode,
+            out string actionName)
+        {
+            rawActionCode = null;
+            actionName = null;
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                rawActionCode ??= frame.AfterimageActionRawCode;
+                if (string.IsNullOrWhiteSpace(actionName)
+                    && !string.IsNullOrWhiteSpace(frame.AfterimageActionName))
+                {
+                    actionName = frame.AfterimageActionName;
+                }
+
+                if (rawActionCode.HasValue && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    return;
+                }
+            }
         }
 
         public static IReadOnlyList<AfterimageLayerOperation> ResolveLayerOperations(

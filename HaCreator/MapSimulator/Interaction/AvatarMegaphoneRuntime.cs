@@ -153,6 +153,79 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
+        internal AvatarMegaphoneSendDialogSnapshot BuildSendDialogSnapshot()
+        {
+            return new AvatarMegaphoneSendDialogSnapshot(
+                _draftItemId,
+                _draftSender,
+                _draftWhisper,
+                _draftMessageFragments.ToArray(),
+                _statusMessage);
+        }
+
+        internal string ApplySendDialogDraft(string text, bool whisper)
+        {
+            string[] fragments = SplitDialogTextIntoFragments(text);
+            Array.Clear(_draftMessageFragments, 0, _draftMessageFragments.Length);
+            for (int i = 0; i < fragments.Length && i < _draftMessageFragments.Length; i++)
+            {
+                _draftMessageFragments[i] = fragments[i];
+            }
+
+            _draftWhisper = whisper;
+            _statusMessage = $"Avatar megaphone draft updated from send dialog, whisper={(whisper ? 1 : 0)}.";
+            return _statusMessage;
+        }
+
+        internal static string JoinFragmentsForDialogEdit(IEnumerable<string> fragments)
+        {
+            if (fragments == null)
+            {
+                return string.Empty;
+            }
+
+            string[] lines = fragments
+                .Take(4)
+                .Select(fragment => fragment ?? string.Empty)
+                .ToArray();
+
+            int lastNonEmpty = lines.Length - 1;
+            while (lastNonEmpty >= 0 && string.IsNullOrEmpty(lines[lastNonEmpty]))
+            {
+                lastNonEmpty--;
+            }
+
+            return lastNonEmpty < 0
+                ? string.Empty
+                : string.Join(Environment.NewLine, lines.Take(lastNonEmpty + 1));
+        }
+
+        internal static string[] SplitDialogTextIntoFragments(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] rawLines = text
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Split('\n');
+
+            string[] fragments = new string[Math.Min(4, rawLines.Length)];
+            for (int i = 0; i < fragments.Length; i++)
+            {
+                fragments[i] = rawLines[i] ?? string.Empty;
+            }
+
+            if (rawLines.Length > 4)
+            {
+                fragments[3] = string.Join(" ", rawLines.Skip(3).Where(line => !string.IsNullOrEmpty(line)));
+            }
+
+            return fragments;
+        }
+
         internal bool TryActivate(int currentTick, out string chatLogLine, out string message)
         {
             chatLogLine = string.Empty;
@@ -667,5 +740,28 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed record AvatarMegaphoneItemProfile(int ItemId, string ResourcePath, int EmotionId, bool TriggersTremble);
         private sealed record AvatarMegaphoneAnimationFrame(Texture2D Texture, Point Origin, int DelayMs);
         private readonly record struct AvatarMegaphoneLayout(int PanelX, int NameAlpha);
+    }
+
+    internal sealed class AvatarMegaphoneSendDialogSnapshot
+    {
+        internal AvatarMegaphoneSendDialogSnapshot(
+            int itemId,
+            string sender,
+            bool whisperChecked,
+            IReadOnlyList<string> messageFragments,
+            string lastStatus)
+        {
+            ItemId = itemId;
+            Sender = sender ?? string.Empty;
+            WhisperChecked = whisperChecked;
+            MessageFragments = messageFragments ?? Array.Empty<string>();
+            LastStatus = lastStatus ?? string.Empty;
+        }
+
+        internal int ItemId { get; }
+        internal string Sender { get; }
+        internal bool WhisperChecked { get; }
+        internal IReadOnlyList<string> MessageFragments { get; }
+        internal string LastStatus { get; }
     }
 }

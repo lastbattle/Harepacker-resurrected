@@ -10,7 +10,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         QuestWindow,
         NpcOverlay,
-        InventoryItem
+        InventoryItem,
+        ClientItemOwner
     }
 
     internal sealed class QuestRewardRaiseState

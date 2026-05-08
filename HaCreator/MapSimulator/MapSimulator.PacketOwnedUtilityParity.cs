@@ -3118,7 +3118,9 @@ namespace HaCreator.MapSimulator
                 || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(short), Encoding.ASCII, out text)
                 || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(int), Encoding.Unicode, out text)
                 || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(int), Encoding.UTF8, out text)
-                || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(int), Encoding.ASCII, out text))
+                || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(int), Encoding.ASCII, out text)
+                || TryDecodeLengthPrefixedClassCompetitionWideCharCountPayload(payload, sizeof(short), out text)
+                || TryDecodeLengthPrefixedClassCompetitionWideCharCountPayload(payload, sizeof(int), out text))
             {
                 return true;
             }
@@ -3179,7 +3181,57 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (Equals(encoding, Encoding.Unicode) && byteLength % sizeof(char) != 0)
+            {
+                return false;
+            }
+
             string decoded = encoding.GetString(payload, prefixWidth, byteLength).TrimEnd('\0', '\r', '\n', ' ');
+            if (string.IsNullOrWhiteSpace(decoded))
+            {
+                return false;
+            }
+
+            text = decoded;
+            return true;
+        }
+
+        private static bool TryDecodeLengthPrefixedClassCompetitionWideCharCountPayload(
+            byte[] payload,
+            int prefixWidth,
+            out string text)
+        {
+            text = null;
+            if (payload == null || payload.Length < prefixWidth)
+            {
+                return false;
+            }
+
+            int charCount = prefixWidth switch
+            {
+                sizeof(short) => BitConverter.ToInt16(payload, 0),
+                sizeof(int) => BitConverter.ToInt32(payload, 0),
+                _ => -1
+            };
+            if (charCount <= 0)
+            {
+                return false;
+            }
+
+            long byteLengthLong = (long)charCount * sizeof(char);
+            if (byteLengthLong > int.MaxValue)
+            {
+                return false;
+            }
+
+            int byteLength = (int)byteLengthLong;
+            if (byteLength > payload.Length - prefixWidth)
+            {
+                return false;
+            }
+
+            string decoded = Encoding.Unicode.GetString(payload, prefixWidth, byteLength)
+                .TrimEnd('\0', '\r', '\n', ' ');
             if (string.IsNullOrWhiteSpace(decoded))
             {
                 return false;
@@ -10197,7 +10249,7 @@ namespace HaCreator.MapSimulator
                 for (int i = 0; i < count; i++)
                 {
                     int questId = entryWidth == sizeof(int)
-                        ? reader.ReadInt32()
+                        ? unchecked((ushort)reader.ReadInt32())
                         : reader.ReadUInt16();
                     if (questId > 0)
                     {
@@ -20693,7 +20745,7 @@ namespace HaCreator.MapSimulator
                 for (int i = 0; i < entryCount; i++)
                 {
                     int questId = entryWidth == sizeof(int)
-                        ? reader.ReadInt32()
+                        ? unchecked((ushort)reader.ReadInt32())
                         : reader.ReadUInt16();
                     if (questId > 0)
                     {

@@ -113,7 +113,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            OpenQuestRewardRaiseItemOwnerWindow(prompt, dispatchOpenRequest: true);
+            OpenQuestRewardRaiseItemOwnerWindow(
+                prompt,
+                dispatchOpenRequest: true,
+                QuestRewardRaiseSourceKind.InventoryItem);
             QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
             if (activeRaise == null || activeRaise.OwnerItemId != itemId)
             {
@@ -128,7 +131,10 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void OpenQuestRewardRaiseItemOwnerWindow(QuestRewardChoicePrompt prompt, bool dispatchOpenRequest)
+        private void OpenQuestRewardRaiseItemOwnerWindow(
+            QuestRewardChoicePrompt prompt,
+            bool dispatchOpenRequest,
+            QuestRewardRaiseSourceKind source)
         {
             if (prompt?.OwnerContext == null || prompt.OwnerContext.OwnerItemId <= 0)
             {
@@ -136,7 +142,9 @@ namespace HaCreator.MapSimulator
             }
 
             Point defaultPosition = uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestRewardRaise)?.Position ?? Point.Zero;
-            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.CreateWindowForItemOwner(prompt, defaultPosition);
+            QuestRewardRaiseState activeRaise = source == QuestRewardRaiseSourceKind.ClientItemOwner
+                ? _questRewardRaiseManager.CreateWindowForClientItemOwner(prompt, defaultPosition)
+                : _questRewardRaiseManager.CreateWindowForItemOwner(prompt, defaultPosition);
             if (activeRaise == null)
             {
                 return;
@@ -318,6 +326,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (activeRaise.Source != QuestRewardRaiseSourceKind.InventoryItem
+                && activeRaise.Source != QuestRewardRaiseSourceKind.ClientItemOwner
                 && activeRaise.Prompt?.Groups?.Count > 0)
             {
                 activeRaise.DisplayMode = QuestRewardRaiseWindowMode.Selection;
@@ -486,6 +495,7 @@ namespace HaCreator.MapSimulator
                     break;
 
                 case QuestRewardRaiseSourceKind.InventoryItem:
+                case QuestRewardRaiseSourceKind.ClientItemOwner:
                     _chat?.AddSystemMessage(
                         $"Confirmed raise owner #{Math.Max(0, activeRaise.OwnerItemId)} for quest #{Math.Max(0, activeRaise.Prompt.QuestId)}; waiting for packet-owned QR/update acknowledgement if one is supplied.",
                         currTickCount);
@@ -828,7 +838,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            OpenQuestRewardRaiseItemOwnerWindow(prompt, dispatchOpenRequest: false);
+            OpenQuestRewardRaiseItemOwnerWindow(
+                prompt,
+                dispatchOpenRequest: false,
+                QuestRewardRaiseSourceKind.ClientItemOwner);
             QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
             if (activeRaise == null || activeRaise.OwnerItemId != ownerItemId)
             {

@@ -899,6 +899,20 @@ namespace HaCreator.MapSimulator.Character
                 "HTtempest"
             };
 
+        private static readonly HashSet<string> ClientConfirmedPostTableRawMorphActionNames =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                // `CActionMan::Init` seeds only raw morph actions [0,273), skipping 55.
+                // These post-table raw requests are WZ-backed rows that this parity pass
+                // has explicitly kept on the morph resolver seam.
+                "create2",
+                "darkTornado_pre",
+                "pvpko",
+                "mistEruption",
+                "dualVulcanPrep",
+                "demonGravity"
+            };
+
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -997,7 +1011,13 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return rawActionCode < ClientMorphActionTableExclusiveUpperBound
-                   || IsClientConfirmedMorphActionName(actionName);
+                   || IsClientConfirmedPostTableRawMorphActionName(actionName);
+        }
+
+        private static bool IsClientConfirmedPostTableRawMorphActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && ClientConfirmedPostTableRawMorphActionNames.Contains(actionName.Trim());
         }
 
         private static IEnumerable<string> EnumerateClientPublishedPostureAliases(CharacterPart morphPart, string actionName)

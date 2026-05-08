@@ -1532,7 +1532,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int totalDuration = GetAnimationDuration(summon.OneTimeActionFallbackAnimation);
             if (totalDuration <= 0)
             {
-                return summon.OneTimeActionFallbackEndTime > currentTime;
+                return summon.OneTimeActionFallbackEndTime != int.MinValue
+                       && !HasClientTickReached(currentTime, summon.OneTimeActionFallbackEndTime);
             }
 
             int baseAnimationTime = Math.Max(0, summon.OneTimeActionFallbackAnimationTime);

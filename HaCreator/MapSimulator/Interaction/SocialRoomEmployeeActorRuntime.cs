@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.Rendering;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -738,8 +739,13 @@ namespace HaCreator.MapSimulator.Interaction
         private static string BuildActorCacheKey(SocialRoomFieldActorSnapshot snapshot)
         {
             return snapshot.Template == SocialRoomFieldActorTemplate.CashEmployee
-                ? $"cash:{snapshot.TemplateId}"
+                ? BuildCashEmployeeActorCacheKey(snapshot.TemplateId)
                 : snapshot.Template.ToString();
+        }
+
+        private static string BuildCashEmployeeActorCacheKey(int templateId)
+        {
+            return $"cash:{Math.Max(0, templateId)}";
         }
 
         private EmployeeImageEntry ResolveEmployeeImgEntry(int templateId)
@@ -924,26 +930,74 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < expiredTemplateIds.Length; i++)
             {
-                int templateId = expiredTemplateIds[i];
-                _cashEmployeeImgEntryCache.Remove(templateId);
-                _cashActionCatalogCache.Remove(templateId);
-                _cashEmployeeNameTagCache.Remove(templateId);
-                _cashEmployeeNameTagMissingTemplates.Remove(templateId);
-                _cashEmployeeMiniRoomBoardCache.Remove(templateId);
-                _cashEmployeeMiniRoomBoardMissingTemplates.Remove(templateId);
+                PurgeEmployeeTemplateScopedCaches(expiredTemplateIds[i], removeImageEntry: true);
             }
         }
 
         private void EvictExpiredEmployeeActionEntries(int currentTickMs)
         {
-            uint[] expiredKeys = _cashActionCache
+            (uint Key, int TemplateId)[] expiredEntries = _cashActionCache
                 .Where(pair => pair.Value == null || HasCacheEntryExpired(pair.Value.LastAccessTickMs, currentTickMs))
+                .Select(pair => (pair.Key, pair.Value?.TemplateId ?? DecodeEmployeeActionCacheTemplateId(pair.Key)))
+                .ToArray();
+
+            HashSet<int> templatesWithExpiredActions = new();
+            for (int i = 0; i < expiredEntries.Length; i++)
+            {
+                uint cacheKey = expiredEntries[i].Key;
+                _cashActionCache.Remove(cacheKey);
+                RemoveActionCacheAliasesByCacheKey(cacheKey);
+
+                int templateId = Math.Max(0, expiredEntries[i].TemplateId);
+                if (templateId > 0)
+                {
+                    templatesWithExpiredActions.Add(templateId);
+                }
+            }
+
+            foreach (int templateId in templatesWithExpiredActions)
+            {
+                PurgeEmployeeTemplateScopedCaches(templateId, removeImageEntry: false);
+            }
+        }
+
+        private void PurgeEmployeeTemplateScopedCaches(int templateId, bool removeImageEntry)
+        {
+            if (templateId <= 0)
+            {
+                return;
+            }
+
+            if (removeImageEntry)
+            {
+                _cashEmployeeImgEntryCache.Remove(templateId);
+                RemoveEmployeeActionCacheEntriesByTemplate(templateId);
+            }
+
+            _cashActionCatalogCache.Remove(templateId);
+            _cashEmployeeNameTagCache.Remove(templateId);
+            _cashEmployeeNameTagMissingTemplates.Remove(templateId);
+            _cashEmployeeMiniRoomBoardCache.Remove(templateId);
+            _cashEmployeeMiniRoomBoardMissingTemplates.Remove(templateId);
+            _actorCache.Remove(BuildCashEmployeeActorCacheKey(templateId));
+            _cashProfileCache.Remove(BuildCashEmployeeActorCacheKey(templateId));
+        }
+
+        private void RemoveEmployeeActionCacheEntriesByTemplate(int templateId)
+        {
+            if (templateId <= 0)
+            {
+                return;
+            }
+
+            uint[] cacheKeys = _cashActionCache
+                .Where(pair => pair.Value?.TemplateId == templateId || DecodeEmployeeActionCacheTemplateId(pair.Key) == templateId)
                 .Select(pair => pair.Key)
                 .ToArray();
 
-            for (int i = 0; i < expiredKeys.Length; i++)
+            for (int i = 0; i < cacheKeys.Length; i++)
             {
-                uint cacheKey = expiredKeys[i];
+                uint cacheKey = cacheKeys[i];
                 _cashActionCache.Remove(cacheKey);
                 RemoveActionCacheAliasesByCacheKey(cacheKey);
             }
@@ -966,6 +1020,11 @@ namespace HaCreator.MapSimulator.Interaction
             return GetElapsedCacheTimeMs(currentTickMs, lastAccessTickMs) >= (uint)ClientEmployeeCacheEntryLifetimeMs;
         }
 
+        private static int DecodeEmployeeActionCacheTemplateId(uint cacheKey)
+        {
+            return (int)(cacheKey >> 8);
+        }
+
         private static bool ShouldSweepEmployeeCaches(int lastSweepTickMs, int currentTickMs)
         {
             return GetElapsedCacheTimeMs(currentTickMs, lastSweepTickMs) >= (uint)ClientEmployeeCacheSweepIntervalMs;
@@ -979,6 +1038,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool HasEmployeeCacheEntryExpiredForTesting(int lastAccessTickMs, int currentTickMs)
         {
             return HasCacheEntryExpired(lastAccessTickMs, currentTickMs);
+        }
+
+        internal static int DecodeEmployeeActionCacheTemplateIdForTesting(uint cacheKey)
+        {
+            return DecodeEmployeeActionCacheTemplateId(cacheKey);
         }
 
         private static uint GetElapsedCacheTimeMs(int currentTickMs, int previousTickMs)
@@ -1278,19 +1342,23 @@ namespace HaCreator.MapSimulator.Interaction
                     layerEntries.Max(static entry => entry.Bounds.Right),
                     layerEntries.Max(static entry => entry.Bounds.Bottom));
 
-                using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
+                using var composedBitmap = new SD.Bitmap(
+                    Math.Max(1, composedBounds.Width),
+                    Math.Max(1, composedBounds.Height),
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
                 using (SDG graphics = SDG.FromImage(composedBitmap))
                 {
                     graphics.Clear(SD.Color.Transparent);
                     ApplyNativeEmployeeCanvasCopySettings(graphics);
-                    foreach (EmployeeLayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, EmployeeLayeredFrameEntryComparer.Instance))
-                    {
-                        DrawEmployeeCanvasCopyAlpha255(
-                            graphics,
-                            layerEntry.Bitmap,
-                            layerEntry.Bounds.X - composedBounds.X,
-                            layerEntry.Bounds.Y - composedBounds.Y);
-                    }
+                }
+
+                foreach (EmployeeLayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, EmployeeLayeredFrameEntryComparer.Instance))
+                {
+                    DrawEmployeeCanvasCopyAlpha255(
+                        composedBitmap,
+                        layerEntry.Bitmap,
+                        layerEntry.Bounds.X - composedBounds.X,
+                        layerEntry.Bounds.Y - composedBounds.Y);
                 }
 
                 Texture2D texture = composedBitmap.ToTexture2DAndDispose(device);
@@ -1429,57 +1497,63 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static int ResolveNativeEmployeeCanvasCopyAlphaForTesting()
         {
-            return 255;
+            return ClientNativeCanvasCopy.Alpha255;
         }
 
         internal static CompositingMode ResolveNativeEmployeeCanvasCopyCompositingModeForTesting()
         {
-            return CompositingMode.SourceOver;
+            return ClientNativeCanvasCopy.CompositingMode;
         }
 
         internal static InterpolationMode ResolveNativeEmployeeCanvasCopyInterpolationModeForTesting()
         {
-            return InterpolationMode.NearestNeighbor;
+            return ClientNativeCanvasCopy.InterpolationMode;
         }
 
         internal static PixelOffsetMode ResolveNativeEmployeeCanvasCopyPixelOffsetModeForTesting()
         {
-            return PixelOffsetMode.Half;
+            return ClientNativeCanvasCopy.PixelOffsetMode;
         }
 
         internal static CompositingQuality ResolveNativeEmployeeCanvasCopyCompositingQualityForTesting()
         {
-            return CompositingQuality.HighSpeed;
+            return ClientNativeCanvasCopy.CompositingQuality;
         }
 
         internal static SmoothingMode ResolveNativeEmployeeCanvasCopySmoothingModeForTesting()
         {
-            return SmoothingMode.None;
+            return ClientNativeCanvasCopy.SmoothingMode;
         }
 
         internal static SD.GraphicsUnit ResolveNativeEmployeeCanvasCopyPageUnitForTesting()
         {
-            return SD.GraphicsUnit.Pixel;
+            return ClientNativeCanvasCopy.PageUnit;
         }
 
         internal static float ResolveNativeEmployeeCanvasCopyPageScaleForTesting()
         {
-            return 1f;
+            return ClientNativeCanvasCopy.PageScale;
         }
 
         internal static SD.Color ResolveNativeEmployeeCanvasCopyPixelForTesting(SD.Color destination, SD.Color source)
         {
-            using var bitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            bitmap.SetPixel(0, 0, destination);
-            using (SDG graphics = SDG.FromImage(bitmap))
-            using (var sourceBitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            return ClientNativeCanvasCopy.BlendAlpha255(destination, source);
+        }
+
+        internal static SD.Color ResolveNativeEmployeeCanvasCopyPixelsForTesting(params SD.Color[] layers)
+        {
+            SD.Color result = SD.Color.Transparent;
+            if (layers == null)
             {
-                sourceBitmap.SetPixel(0, 0, source);
-                ApplyNativeEmployeeCanvasCopySettings(graphics);
-                DrawEmployeeCanvasCopyAlpha255(graphics, sourceBitmap, 0, 0);
+                return result;
             }
 
-            return bitmap.GetPixel(0, 0);
+            foreach (SD.Color layer in layers)
+            {
+                result = ClientNativeCanvasCopy.BlendAlpha255(result, layer);
+            }
+
+            return result;
         }
 
         private static void ApplyNativeEmployeeCanvasCopySettings(SDG graphics)
@@ -1489,23 +1563,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            graphics.CompositingMode = ResolveNativeEmployeeCanvasCopyCompositingModeForTesting();
-            graphics.CompositingQuality = ResolveNativeEmployeeCanvasCopyCompositingQualityForTesting();
-            graphics.InterpolationMode = ResolveNativeEmployeeCanvasCopyInterpolationModeForTesting();
-            graphics.PixelOffsetMode = ResolveNativeEmployeeCanvasCopyPixelOffsetModeForTesting();
-            graphics.SmoothingMode = ResolveNativeEmployeeCanvasCopySmoothingModeForTesting();
-            graphics.PageUnit = ResolveNativeEmployeeCanvasCopyPageUnitForTesting();
-            graphics.PageScale = ResolveNativeEmployeeCanvasCopyPageScaleForTesting();
+            ClientNativeCanvasCopy.ApplySettings(graphics);
         }
 
-        private static void DrawEmployeeCanvasCopyAlpha255(SDG graphics, SD.Bitmap bitmap, int x, int y)
+        private static void DrawEmployeeCanvasCopyAlpha255(SD.Bitmap destination, SD.Bitmap source, int x, int y)
         {
-            if (graphics == null || bitmap == null)
-            {
-                return;
-            }
-
-            graphics.DrawImageUnscaled(bitmap, x, y);
+            ClientNativeCanvasCopy.CopyAlpha255(destination, source, x, y);
         }
 
         internal static (int X, int Y) ResolveEmployeeFrameDrawOffsetForTesting(float originX, float originY)

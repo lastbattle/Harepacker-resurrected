@@ -2110,11 +2110,24 @@ namespace HaCreator.MapSimulator
                     bool avatarModifiedApplied = _remoteUserPool.TryApplyAvatarModified(
                         avatarModifiedPacket,
                         currentTime,
-                        out string avatarModifiedMessage);
-                    result = avatarModifiedApplied
-                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {avatarModifiedPacket.CharacterId}."
-                        : avatarModifiedMessage;
-                    return avatarModifiedApplied;
+                        out string avatarModifiedMessage,
+                        applyRelationshipRecords: false);
+                    if (!avatarModifiedApplied)
+                    {
+                        result = avatarModifiedMessage;
+                        return false;
+                    }
+
+                    bool avatarRelationshipApplied = _packetOwnedRelationshipRecordRuntime.TryApplyAvatarModifiedRelationships(
+                        avatarModifiedPacket,
+                        _remoteUserPool,
+                        currentTime,
+                        sourceTag,
+                        out string avatarRelationshipMessage);
+                    result = avatarRelationshipApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {avatarModifiedPacket.CharacterId}. {avatarRelationshipMessage}"
+                        : avatarRelationshipMessage;
+                    return avatarRelationshipApplied;
 
                 case RemoteUserPacketType.UserTemporaryStatSet:
                     if (!RemoteUserPacketCodec.TryParseTemporaryStatSet(payload, out RemoteUserTemporaryStatSetPacket temporaryStatSetPacket, out string temporaryStatSetError))

@@ -390,7 +390,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string GetOnlyUseSkillRestrictionMessage(MapInfo mapInfo, SkillData skill)
         {
-            foreach (WzImageProperty onlyUseSkillProperty in EnumerateInfoFieldProperties(mapInfo, "onlyUseSkill"))
+            foreach (WzImageProperty onlyUseSkillProperty in EnumerateOnlyUseSkillProperties(mapInfo))
             {
                 if (!HasMeaningfulSkillInfoRule(onlyUseSkillProperty))
                 {
@@ -403,6 +403,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateOnlyUseSkillProperties(MapInfo mapInfo)
+        {
+            foreach (WzImageProperty infoProperty in EnumerateInfoFieldProperties(mapInfo, "onlyUseSkill"))
+            {
+                yield return infoProperty;
+            }
+
+            foreach (WzImageProperty rootProperty in EnumerateAdditionalFieldProperties(mapInfo, "onlyUseSkill"))
+            {
+                yield return rootProperty;
+            }
         }
 
         private static bool MatchesAnyListedSkill(WzImageProperty noSkillProperty, int skillId)

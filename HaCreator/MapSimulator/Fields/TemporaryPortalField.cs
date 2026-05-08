@@ -364,9 +364,11 @@ namespace HaCreator.MapSimulator.Fields
             int currentMapId,
             int currentTime,
             RemoteTownPortalResolvedDestination? townPortalDestination,
-            out string result)
+            out string result,
+            out bool applied)
         {
             result = null;
+            applied = false;
             payload ??= Array.Empty<byte>();
 
             switch (packetType)
@@ -379,6 +381,7 @@ namespace HaCreator.MapSimulator.Fields
                     }
 
                     ApplyRemoteTownPortalCreate(townCreate, currentMapId, currentTime, townPortalDestination);
+                    applied = true;
                     result = $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {townCreate.OwnerCharacterId}.";
                     return true;
 
@@ -390,6 +393,7 @@ namespace HaCreator.MapSimulator.Fields
                     }
 
                     bool removedTownPortal = ApplyRemoteTownPortalRemove(townRemove, currentMapId, currentTime);
+                    applied = removedTownPortal;
                     result = removedTownPortal
                         ? $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {townRemove.OwnerCharacterId}."
                         : $"Ignored {RemotePortalPacketCodec.DescribePacketType(packetType)} for unknown owner {townRemove.OwnerCharacterId}.";
@@ -403,6 +407,7 @@ namespace HaCreator.MapSimulator.Fields
                     }
 
                     ApplyRemoteOpenGateCreate(openGateCreate, currentMapId, currentTime);
+                    applied = true;
                     result = $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {openGateCreate.OwnerCharacterId} slot {(openGateCreate.IsFirstSlot ? 1 : 2)}.";
                     return true;
 
@@ -414,6 +419,7 @@ namespace HaCreator.MapSimulator.Fields
                     }
 
                     bool removedOpenGate = ApplyRemoteOpenGateRemove(openGateRemove, currentMapId, currentTime);
+                    applied = removedOpenGate;
                     SyncRemoteOpenGateVisuals();
                     result = removedOpenGate
                         ? $"Applied {RemotePortalPacketCodec.DescribePacketType(packetType)} for owner {openGateRemove.OwnerCharacterId} slot {(openGateRemove.IsFirstSlot ? 1 : 2)}."

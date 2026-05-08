@@ -817,6 +817,7 @@ namespace HaCreator.MapSimulator.Entities
                 bool autoAggro = canTargetPlayer && mobData.FirstAttack;  // FirstAttack = mob attacks first (auto-aggro)
 
                 AI.Initialize(maxHp, level, exp, isBoss, isUndead, autoAggro, mobData.MaxMP);
+                AI.ConfigureNaturalRecovery(mobData.HpRecovery, mobData.MpRecovery);
                 AI.ConfigureSpecialBehavior(
                     canTargetPlayer,
                     isEscortMob,
@@ -971,6 +972,7 @@ namespace HaCreator.MapSimulator.Entities
                     IsJumpAttack = isJumpAttack,
                     EffectFacingAttach = attackInfo?.EffectFacingAttach == true,
                     Tremble = tremble,
+                    Knockback = (attackMeta?.Knockback ?? 0) > 0,
                     IsAngerAttack = attackInfo?.IsAngerAttack == true,
                     IsSpecialAttack = attackInfo?.IsSpecialAttack == true,
                     DeadlyAttack = (attackMeta?.DeadlyAttack ?? 0) > 0,

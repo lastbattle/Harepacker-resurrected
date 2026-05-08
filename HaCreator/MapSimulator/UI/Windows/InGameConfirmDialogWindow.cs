@@ -10,8 +10,8 @@ using System.Collections.Generic;
 namespace HaCreator.MapSimulator.UI
 {
     /// <summary>
-    /// Compact in-field confirmation owner built from the shared FadeYesNo art.
-    /// Keeps status-bar utility confirmations off the login utility dialog seam.
+    /// Shared in-field confirmation owner built from the client FadeYesNo art.
+    /// Keeps CFadeWnd/CUIFadeYesNo shell state in one place while callers own payload semantics.
     /// </summary>
     public sealed class InGameConfirmDialogWindow : UIWindowBase
     {
@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _messengerInviteIcon;
         private readonly Texture2D _parcelAlarmIcon;
         private readonly List<string> _wrappedLines = new();
+        private readonly SharedFadeYesNoModalOwner _fadeYesNoOwner = new();
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
         private string _title = "Game Menu";
@@ -80,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
+        public override bool IsModalDialogOwner => IsVisible;
 
         public event Action ConfirmRequested;
         public event Action CancelRequested;
@@ -100,6 +102,34 @@ namespace HaCreator.MapSimulator.UI
             _icon = _presentation.Icon ?? (_presentation.ShowIcon ? _defaultIcon : null);
             CenterFrame();
             ConfigureButtons();
+        }
+
+        internal void ConfigureSharedFadeYesNo(
+            SharedFadeYesNoModalRequest request,
+            InGameConfirmDialogPresentation fallbackPresentation = null)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            _fadeYesNoOwner.Show(request, Environment.TickCount);
+            Configure(
+                request.Title,
+                request.Body,
+                request.Footer,
+                request.Presentation ?? fallbackPresentation ?? (request.Type switch
+                {
+                    SharedFadeYesNoModalType.MessengerInvite => CreateMessengerInvitePresentation(request.StackIndex),
+                    SharedFadeYesNoModalType.ParcelAlarm => CreateParcelAlarmPresentation(request.StackIndex),
+                    _ => InGameConfirmDialogPresentation.Default
+                }));
+            ApplySharedFadeYesNoButtonLayout();
+        }
+
+        internal SharedFadeYesNoModalSnapshot CaptureSharedFadeYesNoSnapshot()
+        {
+            return _fadeYesNoOwner.CaptureSnapshot();
         }
 
         public InGameConfirmDialogPresentation CreateMessengerInvitePresentation(int stackIndex = 0)
@@ -132,6 +162,12 @@ namespace HaCreator.MapSimulator.UI
             base.Show();
         }
 
+        public override void Hide()
+        {
+            _fadeYesNoOwner.Close(Environment.TickCount);
+            base.Hide();
+        }
+
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
@@ -140,14 +176,21 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_fadeYesNoOwner.Update(Environment.TickCount))
+            {
+                Hide();
+                CancelRequested?.Invoke();
+                return;
+            }
+
             KeyboardState keyboardState = Keyboard.GetState();
             if (Pressed(keyboardState, Keys.Enter))
             {
-                ConfirmRequested?.Invoke();
+                TryRaiseSharedFadeYesNoButton(SharedFadeYesNoModalOwner.OkButtonId, ConfirmRequested);
             }
             else if (Pressed(keyboardState, Keys.Escape))
             {
-                CancelRequested?.Invoke();
+                TryRaiseSharedFadeYesNoButton(SharedFadeYesNoModalOwner.CancelButtonId, CancelRequested);
             }
 
             _previousKeyboardState = keyboardState;
@@ -221,11 +264,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (isConfirm)
                 {
-                    ConfirmRequested?.Invoke();
+                    TryRaiseSharedFadeYesNoButton(SharedFadeYesNoModalOwner.OkButtonId, ConfirmRequested);
                 }
                 else
                 {
-                    CancelRequested?.Invoke();
+                    TryRaiseSharedFadeYesNoButton(SharedFadeYesNoModalOwner.CancelButtonId, CancelRequested);
                 }
             };
             AddButton(button);
@@ -250,6 +293,44 @@ namespace HaCreator.MapSimulator.UI
 
             PositionButton(_confirmButton, startX, buttonY);
             PositionButton(_cancelButton, startX + confirmWidth + ButtonGap, buttonY);
+        }
+
+        private void ApplySharedFadeYesNoButtonLayout()
+        {
+            SharedFadeYesNoModalSnapshot snapshot = _fadeYesNoOwner.CaptureSnapshot();
+            if (!snapshot.IsActive || _confirmButton == null || _cancelButton == null)
+            {
+                return;
+            }
+
+            SharedFadeYesNoButtonLayout layout = snapshot.ButtonLayout;
+            PositionButton(_confirmButton, layout.ButtonX, layout.OkY);
+            _confirmButton.SetEnabled(layout.ShowsOkButton);
+            _confirmButton.SetVisible(layout.ShowsOkButton);
+            PositionButton(_cancelButton, layout.ButtonX, layout.CancelY);
+        }
+
+        private void TryRaiseSharedFadeYesNoButton(int buttonId, Action fallbackAction)
+        {
+            SharedFadeYesNoModalSnapshot snapshot = _fadeYesNoOwner.CaptureSnapshot();
+            if (snapshot.IsActive)
+            {
+                if (!_fadeYesNoOwner.TryClick(buttonId, Environment.TickCount, out SharedFadeYesNoModalButton clickedButton))
+                {
+                    return;
+                }
+
+                if (clickedButton == SharedFadeYesNoModalButton.Ok)
+                {
+                    ConfirmRequested?.Invoke();
+                    return;
+                }
+
+                CancelRequested?.Invoke();
+                return;
+            }
+
+            fallbackAction?.Invoke();
         }
 
         private void CenterFrame()

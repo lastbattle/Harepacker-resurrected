@@ -3238,7 +3238,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (char.IsDigit(ch)
                     || char.IsWhiteSpace(ch)
-                    || ch is ',' or ';' or ':' or '[' or ']' or '(' or ')' or '{' or '}')
+                    || ch is '-' or ',' or ';' or ':' or '[' or ']' or '(' or ')' or '{' or '}')
                 {
                     continue;
                 }
@@ -3248,7 +3248,7 @@ namespace HaCreator.MapSimulator.Managers
 
             MatchCollection matches = Regex.Matches(
                 normalized,
-                @"(?<!\d)\d{1,3}(?!\d)",
+                @"(?<!\d)-?\d{1,3}(?!\d)",
                 RegexOptions.CultureInvariant);
             if (matches.Count < 2)
             {
@@ -3259,23 +3259,19 @@ namespace HaCreator.MapSimulator.Managers
             bool hasDecimalOnlySignal = false;
             foreach (Match match in matches.Cast<Match>())
             {
-                if (!int.TryParse(
-                        match.Value,
-                        System.Globalization.NumberStyles.Integer,
-                        null,
-                        out int parsedValue)
-                    || parsedValue < byte.MinValue
-                    || parsedValue > byte.MaxValue)
+                if (!TryParseSg88SignedOrUnsignedByteInteger(match.Value, out byte parsedByte))
                 {
                     return false;
                 }
 
-                if (parsedValue > 99 || match.Value.Length == 3)
+                if (match.Value.StartsWith("-", StringComparison.Ordinal)
+                    || parsedByte > 99
+                    || match.Value.TrimStart('-').Length == 3)
                 {
                     hasDecimalOnlySignal = true;
                 }
 
-                parsed.Add((byte)parsedValue);
+                parsed.Add(parsedByte);
             }
 
             if (!hasDecimalOnlySignal)
@@ -3302,7 +3298,7 @@ namespace HaCreator.MapSimulator.Managers
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             normalized = Regex.Replace(
                 normalized,
-                @"^\s*(?:new\s+)?(?:byte|bytes)\s*\[\s*\]\s*",
+                @"^\s*(?:new\s+)?(?:sbyte|byte|bytes)\s*\[\s*\]\s*",
                 string.Empty,
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             normalized = Regex.Replace(
@@ -3898,12 +3894,12 @@ namespace HaCreator.MapSimulator.Managers
             switch (value.ValueKind)
             {
                 case JsonValueKind.Number:
-                    if (!value.TryGetInt32(out int intValue) || intValue < byte.MinValue || intValue > byte.MaxValue)
+                    if (!value.TryGetInt32(out int intValue)
+                        || !TryConvertSg88SignedOrUnsignedByteInteger(intValue, out byteValue))
                     {
                         return false;
                     }
 
-                    byteValue = (byte)intValue;
                     return true;
                 case JsonValueKind.String:
                     return TryParseSg88MismatchPairByteValue(value.GetString(), out byteValue);
@@ -4045,21 +4041,36 @@ namespace HaCreator.MapSimulator.Managers
                     out value);
             }
 
-            Match decimalPrefix = Regex.Match(normalized, @"^\d{1,3}\b", RegexOptions.CultureInvariant);
+            Match decimalPrefix = Regex.Match(normalized, @"^-?\d{1,3}\b", RegexOptions.CultureInvariant);
             if (decimalPrefix.Success)
             {
-                return byte.TryParse(
-                    decimalPrefix.Value,
-                    System.Globalization.NumberStyles.Integer,
-                    null,
-                    out value);
+                return TryParseSg88SignedOrUnsignedByteInteger(decimalPrefix.Value, out value);
             }
 
-            return byte.TryParse(
-                normalized,
-                System.Globalization.NumberStyles.Integer,
-                null,
-                out value);
+            return TryParseSg88SignedOrUnsignedByteInteger(normalized, out value);
+        }
+
+        private static bool TryParseSg88SignedOrUnsignedByteInteger(string value, out byte byteValue)
+        {
+            byteValue = 0;
+            return int.TryParse(
+                       value,
+                       System.Globalization.NumberStyles.Integer,
+                       null,
+                       out int intValue)
+                   && TryConvertSg88SignedOrUnsignedByteInteger(intValue, out byteValue);
+        }
+
+        private static bool TryConvertSg88SignedOrUnsignedByteInteger(int intValue, out byte byteValue)
+        {
+            byteValue = 0;
+            if (intValue < sbyte.MinValue || intValue > byte.MaxValue)
+            {
+                return false;
+            }
+
+            byteValue = unchecked((byte)intValue);
+            return true;
         }
 
         private static bool TryParseSg88MismatchPairDeltaText(

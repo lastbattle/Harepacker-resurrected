@@ -198,7 +198,10 @@ namespace HaCreator.MapSimulator
                 string.Empty,
                 onConfirm: AcceptMessengerIncomingInvitePrompt,
                 onCancel: RejectMessengerIncomingInvitePrompt,
-                presentation: confirmDialogWindow.CreateMessengerInvitePresentation(state.StackIndex));
+                presentation: confirmDialogWindow.CreateMessengerInvitePresentation(state.StackIndex),
+                fadeYesNoType: SharedFadeYesNoModalType.MessengerInvite,
+                fadeYesNoLifetimeMilliseconds: MessengerRuntime.InvitePromptLifetimeMs,
+                fadeYesNoStackIndex: state.StackIndex);
 
             bool alarmCounterAdvanced = state.AlarmCounter > 0
                 && state.AlarmCounter != _lastMessengerInvitePromptAlarmCounter;

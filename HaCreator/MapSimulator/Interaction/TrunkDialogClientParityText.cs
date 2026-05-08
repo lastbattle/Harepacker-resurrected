@@ -8,7 +8,17 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class TrunkDialogClientParityText
     {
-        internal readonly record struct ConfirmationStep(int StringPoolId, string OwnerCall, string Text);
+        internal readonly record struct ConfirmationStep(
+            int StringPoolId,
+            string OwnerCall,
+            string Text,
+            int? AcceptedReturnValue = null,
+            int? NoticeStyleFlag = null,
+            string AcceptedReturnLabel = null);
+
+        internal const int YesNoAcceptedReturnValue = 6;
+        internal const int DefaultNoticeStyleFlag = 0;
+        internal const int SharableOnceBlockedNoticeStyleFlag = 1;
 
         internal const int SendGetPreConfirmStringPoolId = 0x1246;
         internal const int SendPutPreConfirmStringPoolId = 0x1245;
@@ -134,7 +144,9 @@ namespace HaCreator.MapSimulator.Interaction
                 steps.Add(new ConfirmationStep(
                     SendGetPreConfirmStringPoolId,
                     "CUtilDlg::YesNo",
-                    ResolveSendGetPreConfirm()));
+                    ResolveSendGetPreConfirm(),
+                    YesNoAcceptedReturnValue,
+                    DefaultNoticeStyleFlag));
             }
 
             int costStringPoolId = mesoCost <= 0
@@ -143,7 +155,9 @@ namespace HaCreator.MapSimulator.Interaction
             steps.Add(new ConfirmationStep(
                 costStringPoolId,
                 "CUtilDlg::YesNo",
-                ResolveSendGetCostConfirm(mesoCost)));
+                ResolveSendGetCostConfirm(mesoCost),
+                YesNoAcceptedReturnValue,
+                DefaultNoticeStyleFlag));
             return steps;
         }
 
@@ -168,15 +182,20 @@ namespace HaCreator.MapSimulator.Interaction
                 steps.Add(new ConfirmationStep(
                     sharableOnce ? SendPutSharableOnceConfirmStringPoolId : SendPutPreConfirmStringPoolId,
                     "CUtilDlg::YesNo",
-                    ResolveSendPutPreConfirm(sharableOnce)));
+                    ResolveSendPutPreConfirm(sharableOnce),
+                    YesNoAcceptedReturnValue,
+                    DefaultNoticeStyleFlag));
             }
 
             if (includeAskCount && !treatSingly && availableQuantity > 1)
             {
                 steps.Add(new ConfirmationStep(
                     SendPutAskItemCountStringPoolId,
-                    "CUtilDlg::AskNumber",
-                    ResolveSendPutAskItemCountPrompt()));
+                    "CTrunkDlg::AskItemCount",
+                    ResolveSendPutAskItemCountPrompt(),
+                    null,
+                    null,
+                    "1..nQuantity"));
             }
 
             int costStringPoolId = mesoCost <= 0
@@ -185,7 +204,9 @@ namespace HaCreator.MapSimulator.Interaction
             steps.Add(new ConfirmationStep(
                 costStringPoolId,
                 "CUtilDlg::YesNo",
-                ResolveSendPutCostConfirm(mesoCost)));
+                ResolveSendPutCostConfirm(mesoCost),
+                YesNoAcceptedReturnValue,
+                DefaultNoticeStyleFlag));
             return steps;
         }
 
@@ -212,10 +233,32 @@ namespace HaCreator.MapSimulator.Interaction
             List<string> parts = new(steps.Count);
             foreach (ConfirmationStep step in steps)
             {
-                parts.Add($"{step.OwnerCall} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)} \"{ToInlineText(step.Text)}\"");
+                parts.Add($"{step.OwnerCall} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)}{FormatStepAcceptance(step)} \"{ToInlineText(step.Text)}\"");
             }
 
             return string.Join(" -> ", parts);
+        }
+
+        internal static string FormatStepAcceptance(ConfirmationStep step)
+        {
+            List<string> markers = new(2);
+            if (step.AcceptedReturnValue.HasValue)
+            {
+                markers.Add($"accept={step.AcceptedReturnValue.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+            else if (!string.IsNullOrWhiteSpace(step.AcceptedReturnLabel))
+            {
+                markers.Add($"accept={step.AcceptedReturnLabel}");
+            }
+
+            if (step.NoticeStyleFlag.HasValue)
+            {
+                markers.Add($"style={step.NoticeStyleFlag.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            return markers.Count == 0
+                ? string.Empty
+                : $" ({string.Join(", ", markers)})";
         }
 
         private static string ResolveNumericTemplate(int stringPoolId, string fallbackFormat, int value)

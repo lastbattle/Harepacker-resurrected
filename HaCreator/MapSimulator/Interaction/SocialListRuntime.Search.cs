@@ -232,6 +232,27 @@ namespace HaCreator.MapSimulator.Interaction
                         RemovalKind: ExpeditionRemovalKind.Leave);
                     return true;
 
+                case "Search.Expedition.Delete":
+                    if (!selectedEntry.IsIntermediaryOwned)
+                    {
+                        reason = "The selected expedition finder row is not owned by the packet intermediary; delete remains a local finder-list mutation.";
+                        return false;
+                    }
+
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        _expeditionIntermediary.HasActiveExpedition
+                            ? ExpeditionIntermediaryOutboundRequestKind.Leave
+                            : ExpeditionIntermediaryOutboundRequestKind.Disband,
+                        selectedEntry.Title,
+                        selectedEntry.PrimaryText,
+                        selectedEntry.PrimaryText,
+                        PartyIndex: Math.Max(0, _expeditionIntermediary.MasterPartyIndex),
+                        NoticeKind: ExpeditionNoticeKind.Left,
+                        RemovalKind: _expeditionIntermediary.HasActiveExpedition
+                            ? ExpeditionRemovalKind.Leave
+                            : ExpeditionRemovalKind.Disband);
+                    return true;
+
                 default:
                     reason = $"Expedition search action '{actionKey}' has no recovered outbound request shape.";
                     return false;

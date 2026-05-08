@@ -93,7 +93,10 @@ namespace HaCreator.MapSimulator
 
         private void HandlePlayerDeathOpenReviveOwner(PlayerCharacter player)
         {
-            if (player == null || _reviveOwnerRuntime.IsOpen || _pendingReviveOwnerOpen.HasValue)
+            if (player == null
+                || ReviveOwnerRuntime.ShouldIgnoreOpenRequest(
+                    _reviveOwnerRuntime.IsOpen,
+                    _pendingReviveOwnerOpen.HasValue))
             {
                 return;
             }

@@ -298,10 +298,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
             _initialQuizOwnerInput.Clear();
             _initialQuizOwnerCursorIndex = 0;
-            _initialQuizOwnerEditTextElementLimit = ResolveInitialQuizOwnerEditTextElementLimit(
-                _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot currentSnapshot)
-                    ? currentSnapshot.MaxInputByteLength
-                    : 0);
+            _initialQuizOwnerEditTextElementLimit = ResolveInitialQuizOwnerEditTextElementLimit();
             DestroyInitialQuizOwnerControlStack();
             EnsureInitialQuizOwnerControlStackCreated();
             ResetInitialQuizOwnerHeldEditKey();
@@ -2123,12 +2120,9 @@ namespace HaCreator.MapSimulator
                 : InitialQuizOwnerChildControlState.Inactive;
         }
 
-        internal static int ResolveInitialQuizOwnerEditTextElementLimit(int maxInputByteLength)
+        internal static int ResolveInitialQuizOwnerEditTextElementLimit()
         {
-            int clientByteLimit = Math.Max(0, maxInputByteLength);
-            return clientByteLimit > 0
-                ? clientByteLimit
-                : InitialQuizOwnerInputMaxLength;
+            return InitialQuizOwnerInputMaxLength;
         }
 
         internal static InitialQuizOwnerFocusTarget ResolveInitialQuizOwnerMousePressFocusTarget(

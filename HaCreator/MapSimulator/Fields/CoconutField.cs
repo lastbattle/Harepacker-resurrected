@@ -535,13 +535,15 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string FormatClientBoardScore(int score)
         {
-            string format = MapleStoryStringPool.GetOrFallback(
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
                 ScoreFormatStringPoolId,
-                "{0}");
+                "{0}",
+                maxPlaceholderCount: 1,
+                out _);
             return string.Format(
                 CultureInfo.InvariantCulture,
                 format,
-                Math.Max(0, score));
+                score);
         }
 
         private int ResolveClientBoardTimeRemaining(int currentTick)
@@ -557,9 +559,11 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string FormatClientBoardTimer(int seconds)
         {
-            string format = MapleStoryStringPool.GetOrFallback(
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
                 TimerFormatStringPoolId,
-                "{0:00}:{1:00}");
+                "{0}:{1:00}",
+                maxPlaceholderCount: 2,
+                out _);
             int normalizedSeconds = Math.Max(0, seconds);
             return string.Format(
                 CultureInfo.InvariantCulture,

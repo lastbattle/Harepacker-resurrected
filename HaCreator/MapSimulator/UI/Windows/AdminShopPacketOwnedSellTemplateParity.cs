@@ -38,8 +38,30 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool HasEnoughMesoForSendTradeRequest(long currentMeso, long unitPrice, int requestCount)
         {
-            long totalPrice = Math.Max(0L, unitPrice) * Math.Max(1, requestCount);
-            return totalPrice <= 0L || Math.Max(0L, currentMeso) >= totalPrice;
+            if (!TryComputeSendTradeRequestMesoTotal(unitPrice, requestCount, out long totalPrice))
+            {
+                return unitPrice <= 0L;
+            }
+
+            return Math.Max(0L, currentMeso) >= totalPrice;
+        }
+
+        internal static bool TryComputeSendTradeRequestMesoTotal(long unitPrice, int requestCount, out long totalPrice)
+        {
+            totalPrice = 0L;
+            if (unitPrice <= 0L)
+            {
+                return false;
+            }
+
+            int normalizedCount = Math.Max(1, requestCount);
+            if (unitPrice > long.MaxValue / normalizedCount)
+            {
+                return false;
+            }
+
+            totalPrice = unitPrice * normalizedCount;
+            return totalPrice > 0L;
         }
 
         internal static bool CanBuildSendTradeRequestPosition(bool requiresInventorySource, int position)

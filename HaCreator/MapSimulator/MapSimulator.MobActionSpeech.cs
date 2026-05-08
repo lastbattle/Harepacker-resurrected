@@ -20,6 +20,10 @@ namespace HaCreator.MapSimulator
         private const int MobActionSpeechNativeScreenBalloonType = 1005;
         private const int MobActionSpeechNativeOwnerBalloonType = 1004;
         private const int MobActionSpeechNativeScreenLayerOption = unchecked((int)0xC00616FC);
+        private const int MobActionSpeechNativeScreenLayerPriority = -1;
+        private const int MobActionSpeechNativeScreenCanvasInsertAlpha = 255;
+        private const int MobActionSpeechNativeScreenCanvasInsertX = 0;
+        private const int MobActionSpeechNativeScreenCanvasInsertY = 0;
 
         private readonly Dictionary<int, LocalOverlayBalloonSkin> _mobActionSpeechBalloonSkins = new();
         private bool _mobActionSpeechBalloonSkinsLoaded;
@@ -397,6 +401,12 @@ namespace HaCreator.MapSimulator
             public bool UsesOwnerOverlayLayer { get; init; }
             public bool IncludesOwnerArrow { get; init; }
             public bool UsesMobSkinFallback { get; init; }
+            public int LayerPriority { get; init; }
+            public int CanvasInsertX { get; init; }
+            public int CanvasInsertY { get; init; }
+            public int CanvasInsertAlpha { get; init; }
+            public bool AssignsLayerChat { get; init; }
+            public IReadOnlyList<string> NativeLifetimeOperations { get; init; }
         }
 
         internal static MobActionSpeechNativeCompositionTrace BuildMobActionSpeechNativeCompositionTraceForTests(
@@ -421,6 +431,33 @@ namespace HaCreator.MapSimulator
             int normalizedChatBalloon = Math.Max(0, chatBalloon);
             bool usesFloatNotice = IsMobActionSpeechFloatNotice(floatNotice);
             bool useScreenLayer = isScreenNotice || usesFloatNotice;
+            IReadOnlyList<string> lifetimeOperations = useScreenLayer
+                ? new[]
+                {
+                    "AddRef(pProp)",
+                    "AddRef(bsText)",
+                    "CreateCanvas(type=1005)",
+                    "CreateLayer(option=0xC00616FC)",
+                    "Release(CreateLayer out-param layer)",
+                    "SetLayerOrigin(Origin_LT)",
+                    "Getcanvas(0)",
+                    "InsertCanvas(0,0,alpha=255)",
+                    "SetLayerPriority(-1)",
+                    "AddRef(m_pLayerChat)",
+                    "Release(previous m_pLayerChat)",
+                    "Release(layer canvas)",
+                    "Release(local layer)",
+                    "Release(source canvas)",
+                    "Release(pProp)",
+                    "Release(bsText)"
+                }
+                : new[]
+                {
+                    "CreateCanvas(type=1004)",
+                    "AttachOwnerOverlayLayer",
+                    "StoreTimeout"
+                };
+
             return new MobActionSpeechNativeCompositionTrace
             {
                 Entrypoint = useScreenLayer
@@ -436,7 +473,13 @@ namespace HaCreator.MapSimulator
                 ScreenCenterY = useScreenLayer ? MobActionSpeechNativeScreenCenterY : 0,
                 UsesOwnerOverlayLayer = !useScreenLayer,
                 IncludesOwnerArrow = authoredSkinLoaded && !useScreenLayer,
-                UsesMobSkinFallback = !authoredSkinLoaded && normalizedChatBalloon != 0
+                UsesMobSkinFallback = !authoredSkinLoaded && normalizedChatBalloon != 0,
+                LayerPriority = useScreenLayer ? MobActionSpeechNativeScreenLayerPriority : 0,
+                CanvasInsertX = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertX : 0,
+                CanvasInsertY = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertY : 0,
+                CanvasInsertAlpha = useScreenLayer ? MobActionSpeechNativeScreenCanvasInsertAlpha : 0,
+                AssignsLayerChat = useScreenLayer,
+                NativeLifetimeOperations = lifetimeOperations
             };
         }
 

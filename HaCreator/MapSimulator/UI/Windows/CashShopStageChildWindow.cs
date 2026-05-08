@@ -62,11 +62,13 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class NumberCanvasRuntimeState
         {
+            public int SourceStringPoolId { get; init; }
             public int ExpectedCanvasCount { get; init; }
             public int LoadedCanvasCount { get; init; }
             public int ReadyMask { get; init; }
             public string RenderedText { get; init; } = string.Empty;
             public IReadOnlyList<bool> DigitReadyStates { get; init; } = Array.Empty<bool>();
+            public IReadOnlyList<string> CanvasNames { get; init; } = Array.Empty<string>();
         }
 
         public sealed class RewardSessionRuntimeState
@@ -75,6 +77,10 @@ namespace HaCreator.MapSimulator.UI
             public int SessionByte { get; init; }
             public int SessionByteOffset { get; init; } = -1;
             public bool IsPending { get; init; }
+            public int SelectorIndex { get; init; }
+            public bool ShortcutHelpActive { get; init; }
+            public bool PreviousLaneEnabled { get; init; }
+            public int HistoryEntryCount { get; init; }
             public int PayloadLength { get; init; }
             public int DecodedByteLength { get; init; }
             public int TrailingByteCount { get; init; }
@@ -299,6 +305,11 @@ namespace HaCreator.MapSimulator.UI
             public bool HasKeyFocusCanvas { get; init; }
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
+            public int NoItemStringPoolId { get; init; } = 0x4ED;
+            public int KeyFocusStringPoolId { get; init; } = 0x4EA;
+            public int PlateStringPoolId { get; init; } = 0x4E9;
+            public int PlateBigStringPoolId { get; init; } = 0x16A5;
+            public int NumberCanvasStringPoolId { get; init; } = 0x16A7;
             public int NumberCanvasCount { get; init; }
             public int NumberCanvasReadyMask { get; init; }
             public int ExpectedNumberCanvasCount { get; init; } = 10;
@@ -3061,9 +3072,11 @@ namespace HaCreator.MapSimulator.UI
 
             _oneADayNumberCanvasReadyMask = state == null
                 ? 0
-                : (state.NumberCanvasReadyMask != 0
-                    ? state.NumberCanvasReadyMask
-                    : BuildOneADayNumberCanvasReadyMask(state.NumberCanvasCount));
+                : (state.NumberCanvasRuntime != null
+                    ? state.NumberCanvasRuntime.ReadyMask
+                    : (state.NumberCanvasReadyMask != 0
+                        ? state.NumberCanvasReadyMask
+                        : BuildOneADayNumberCanvasReadyMask(state.NumberCanvasCount)));
 
             UpdateOneADayRewardSessionObject(state, nextSessionByte);
         }
@@ -3214,7 +3227,7 @@ namespace HaCreator.MapSimulator.UI
             bool packetOwned = state?.HasPacketRewardSessionByte ?? _oneADayRewardSessionPacketOwned;
             bool pending = _oneADayPending;
             int countdownDeadlineTick = _oneADayCountdownDeadlineTick;
-            string packetStateSignature = state?.PacketStateSignature ?? string.Empty;
+            string packetStateSignature = state?.RewardSessionRuntime?.PacketStateSignature ?? state?.PacketStateSignature ?? string.Empty;
 
             bool changed =
                 _oneADayRewardSessionObject.PacketOwned != packetOwned

@@ -381,6 +381,14 @@ namespace HaCreator.MapSimulator.Interaction
             return unchecked(currentTick - armedAtTick) > NativeDialogCreateDelayMs;
         }
 
+        public static bool ShouldIgnoreOpenRequest(bool dialogOpen, bool dialogAlreadyArmed)
+        {
+            // Client evidence:
+            // - CWvsContext::UI_OpenRevive only writes m_tReviveDialog when the slot is zero.
+            // - CUIRevive::Revive calls CWvsContext::UI_CloseRevive after OnRevive, clearing the slot.
+            return dialogOpen || dialogAlreadyArmed;
+        }
+
         public static int GetConsumableCashItemId(ReviveOwnerVariant variant)
         {
             return variant switch

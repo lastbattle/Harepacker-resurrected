@@ -3716,7 +3716,10 @@ namespace HaCreator.MapSimulator.Combat
                     attackerExternalTargetSource: MobExternalTargetSource.Encounter);
             }
 
-            if (!died && targetMob.MovementInfo != null && sourceMob != null)
+            if (!died &&
+                PlayerCombat.ShouldApplyMobAttackKnockback(attack, isSkillAttack: false) &&
+                targetMob.MovementInfo != null &&
+                sourceMob != null)
             {
                 bool knockbackRight = targetMob.CurrentX >= sourceMob.CurrentX;
                 float knockbackForce = Math.Max(18f, Math.Min(attack?.Range ?? 18, 48));

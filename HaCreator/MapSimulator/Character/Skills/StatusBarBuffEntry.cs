@@ -29,6 +29,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewParentLayerIdentity { get; set; }
         public int TemporaryStatViewMainLayerIdentity { get; set; }
         public int TemporaryStatViewShadowLayerIdentity { get; set; }
+        public int TemporaryStatViewObjectAllocationSequence { get; set; }
+        public int TemporaryStatViewParentLayerAttachSequence { get; set; }
+        public int TemporaryStatViewMainLayerAttachSequence { get; set; }
+        public int TemporaryStatViewShadowLayerAttachSequence { get; set; }
+        public int TemporaryStatViewParentLayerParentIdentity { get; set; }
+        public int TemporaryStatViewMainLayerParentIdentity { get; set; }
+        public int TemporaryStatViewShadowLayerParentIdentity { get; set; }
         public int TemporaryStatViewParentLayerReferenceCount { get; set; }
         public int TemporaryStatViewMainLayerReferenceCount { get; set; }
         public int TemporaryStatViewShadowLayerReferenceCount { get; set; }
@@ -57,6 +64,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ShadowCanvasInsertDelayMs { get; set; }
         public int ShadowCanvasAlphaStart { get; set; }
         public int ShadowCanvasAlphaEnd { get; set; }
+        public int ShadowCanvasWidth { get; set; }
+        public int ShadowCanvasHeight { get; set; }
+        public int ShadowCanvasOriginX { get; set; }
+        public int ShadowCanvasOriginY { get; set; }
+        public int ShadowCanvasDelayMs { get; set; }
         public int ShadowCanvasLastUpdatedTime { get; set; } = int.MinValue;
         public int ShadowCanvasReferenceCount { get; set; }
         public int ShadowCanvasRemoveSequence { get; set; }

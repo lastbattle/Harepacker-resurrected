@@ -35,10 +35,12 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class LoginOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18486;
+        public const short OutboundCheckPasswordOpcode = 1;
         public const short OutboundCheckDuplicateIdOpcode = 21;
         public const short OutboundNewCharacterOpcode = 22;
         public const short OutboundNewCharacterSaleOpcode = 23;
         public const short OutboundDeleteCharacterOpcode = 24;
+        public const int ClientMachineIdLength = 16;
         private const int RecentPacketCapacity = 8;
 
         private readonly ConcurrentQueue<LoginPacketInboxMessage> _pendingMessages = new();
@@ -286,6 +288,42 @@ namespace HaCreator.MapSimulator.Managers
                 out status);
         }
 
+        public bool TrySendCheckPasswordRequest(
+            string password,
+            string nexonPassport,
+            byte[] machineId,
+            int gameRoomClient,
+            byte gameStartMode,
+            int partnerCode,
+            out string status)
+        {
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                status = "Login official-session CheckPassword injection requires the title password.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(nexonPassport))
+            {
+                status = "Login official-session CheckPassword injection requires a Nexon passport captured from the client auth layer.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (machineId == null || machineId.Length != ClientMachineIdLength)
+            {
+                status = $"Login official-session CheckPassword injection requires a {ClientMachineIdLength}-byte client machine id.";
+                LastStatus = status;
+                return false;
+            }
+
+            return TrySendPacket(
+                BuildCheckPasswordPacket(password, nexonPassport, machineId, gameRoomClient, gameStartMode, partnerCode),
+                $"Injected login opcode {OutboundCheckPasswordOpcode} for CheckPassword through the live session",
+                out status);
+        }
+
         public bool TrySendNewCharacterRequest(LoginNewCharacterRequest request, out string status)
         {
             if (string.IsNullOrWhiteSpace(request.CharacterName))
@@ -321,6 +359,27 @@ namespace HaCreator.MapSimulator.Managers
             PacketWriter writer = new();
             writer.WriteShort(OutboundCheckDuplicateIdOpcode);
             writer.WriteMapleString((characterName ?? string.Empty).Trim());
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildCheckPasswordPacket(
+            string password,
+            string nexonPassport,
+            byte[] machineId,
+            int gameRoomClient,
+            byte gameStartMode,
+            int partnerCode)
+        {
+            PacketWriter writer = new();
+            writer.WriteShort(OutboundCheckPasswordOpcode);
+            writer.WriteMapleString(password ?? string.Empty);
+            writer.WriteMapleString(nexonPassport ?? string.Empty);
+            writer.Write(machineId ?? Array.Empty<byte>());
+            writer.WriteInt(gameRoomClient);
+            writer.WriteByte(gameStartMode);
+            writer.WriteByte(0);
+            writer.WriteByte(0);
+            writer.WriteInt(partnerCode);
             return writer.ToArray();
         }
 

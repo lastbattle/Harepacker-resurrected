@@ -1318,7 +1318,12 @@ namespace HaCreator.MapSimulator.UI
 
         internal static Rectangle ResolveCollapsedHoverBoundsForTesting(Rectangle bounds, bool isCollapsed)
         {
-            if (!isCollapsed || bounds.IsEmpty)
+            return ResolveClientUpdateRectHoverBoundsForTesting(bounds, !isCollapsed);
+        }
+
+        internal static Rectangle ResolveClientUpdateRectHoverBoundsForTesting(Rectangle bounds, bool expandsLikeClient)
+        {
+            if (!expandsLikeClient || bounds.IsEmpty)
             {
                 return bounds;
             }
@@ -1852,7 +1857,9 @@ namespace HaCreator.MapSimulator.UI
                 frame.Width,
                 frame.Height);
 
-            return ResolveCollapsedHoverBoundsForTesting(rect, _bIsCollapsedState);
+            return ResolveClientUpdateRectHoverBoundsForTesting(
+                rect,
+                ShouldApplyClientExpandedHoverInflation());
         }
 
         private Rectangle GetClientMarkerHoverBounds(BaseDXDrawableItem marker, Point minimapPoint)
@@ -1862,10 +1869,20 @@ namespace HaCreator.MapSimulator.UI
                 return Rectangle.Empty;
             }
 
-            return ResolveClientVisibleMarkerHoverBoundsForTesting(
+            Rectangle hoverBounds = ResolveClientVisibleMarkerHoverBoundsForTesting(
                 IsWithinMinimapImage(minimapPoint),
                 Position.X + marker.Position.X + minimapPoint.X,
                 Position.Y + marker.Position.Y + minimapPoint.Y);
+            return ResolveClientUpdateRectHoverBoundsForTesting(
+                hoverBounds,
+                ShouldApplyClientExpandedHoverInflation());
+        }
+
+        private bool ShouldApplyClientExpandedHoverInflation()
+        {
+            return !_bIsCollapsedState
+                && !_useLegacyOptionButtonCycle
+                && _currentOption == ClientOptionExpanded;
         }
 
         internal static Rectangle ResolveClientVisibleMarkerHoverBoundsForTesting(
@@ -1923,7 +1940,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 HoverTargetEntry hoverTarget = _hoverTargets[i];
                 if (hoverTarget.Kind != ClientHoverTargetKind.RemoteDirection
-                    || hoverTarget.Bounds != bounds)
+                    || !ShouldMergeRemoteDirectionHoverBoundsForTesting(hoverTarget.Bounds, bounds))
                 {
                     continue;
                 }
@@ -1935,6 +1952,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        internal static bool ShouldMergeRemoteDirectionHoverBoundsForTesting(
+            Rectangle currentBounds,
+            Rectangle nextBounds)
+        {
+            if (currentBounds.IsEmpty || nextBounds.IsEmpty)
+            {
+                return false;
+            }
+
+            return currentBounds == nextBounds
+                || currentBounds.Intersects(nextBounds);
         }
 
         private void AddHoverTarget(NpcItem npc, Rectangle bounds)

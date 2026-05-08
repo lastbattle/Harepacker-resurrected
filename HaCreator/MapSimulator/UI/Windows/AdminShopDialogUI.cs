@@ -380,6 +380,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly IReadOnlyDictionary<string, WishlistCategoryLeafDefinition> s_wishlistCategoryLeaves = BuildWishlistCategoryLeaves();
         private static readonly object WishlistSearchIndexLock = new();
         private static IReadOnlyDictionary<int, WishlistSearchIndexEntry> _wishlistSearchIndexByItemId;
+        private static readonly object WishlistScanBlockLock = new();
+        private static HashSet<int> _wishlistScanBlockedItemIds;
         private const int RowIconY = 1;
         private const int RowIconSize = 32;
         private const int RowTextX = 40;
@@ -2209,7 +2211,7 @@ namespace HaCreator.MapSimulator.UI
             List<(AdminShopEntry Entry, int Score, int ClientListOrder, int SourceIndex)> matches = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
                 .Select((entry, sourceIndex) => (Entry: entry, SourceIndex: sourceIndex))
-                .Where(entry => entry.Entry.SupportsWishlist
+                .Where(entry => IsClientWishlistScannableEntry(entry.Entry)
                                 && MatchesWishlistCategory(entry.Entry, categoryKey)
                                 && MatchesWishlistPriceRange(entry.Entry, priceRangeIndex)
                                 && MatchesClientWishlistItemNameSearch(entry.Entry, clientSearchQuery))
@@ -2278,7 +2280,7 @@ namespace HaCreator.MapSimulator.UI
                 .SourceEntries
                 .Select((entry, sourceIndex) => (Entry: entry, SourceIndex: sourceIndex))
                 .Where(entry => entry.Entry != null
-                                && AdminShopPacketOwnedWishlistSearchSessionParity.CanStageClientWishlistResult(entry.Entry.SupportsWishlist)
+                                && IsClientWishlistScannableEntry(entry.Entry)
                                 && MatchesWishlistCategory(entry.Entry, categoryKey))
                 .OrderBy(entry => ResolveWishlistSearchClientListOrder(entry.Entry))
                 .ThenBy(entry => entry.SourceIndex)
@@ -4964,7 +4966,12 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            return Math.Max(0, entry.Price) * Math.Max(1, requestQuantity);
+            return AdminShopPacketOwnedSellTemplateParity.TryComputeSendTradeRequestMesoTotal(
+                entry.Price,
+                requestQuantity,
+                out long totalPrice)
+                ? totalPrice
+                : 0L;
         }
 
         private bool TryFocusWishlistEntry(AdminShopEntry matchedEntry, AdminShopCategory requestedCategory, out string message)
@@ -5536,7 +5543,7 @@ namespace HaCreator.MapSimulator.UI
             return _paneStates[AdminShopPane.Npc]
                 .SourceEntries
                 .Where(entry => entry != null
-                                && entry.SupportsWishlist
+                                && IsClientWishlistScannableEntry(entry)
                                 && (predicate == null || predicate(entry)))
                 .Select(entry => (Entry: entry, ItemId: ResolveWishlistResultItemId(entry)))
                 .Where(entry => entry.ItemId > 0)
@@ -5889,6 +5896,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return entry.DisplayItemId > 0 ? entry.DisplayItemId : 0;
+        }
+
+        private static bool IsClientWishlistScannableEntry(AdminShopEntry entry)
+        {
+            if (entry == null)
+            {
+                return false;
+            }
+
+            int itemId = ResolveWishlistResultItemId(entry);
+            return AdminShopPacketOwnedWishlistSearchSessionParity.CanStageClientWishlistResult(
+                entry.SupportsWishlist,
+                IsClientWishlistScannableItem(itemId));
+        }
+
+        private static bool IsClientWishlistScannableItem(int itemId)
+        {
+            if (itemId <= 0 || ShopScannerWindow.IsShopScannerItem(itemId))
+            {
+                return false;
+            }
+
+            return !GetWishlistScanBlockedItemIds().Contains(itemId);
+        }
+
+        private static HashSet<int> GetWishlistScanBlockedItemIds()
+        {
+            if (_wishlistScanBlockedItemIds != null)
+            {
+                return _wishlistScanBlockedItemIds;
+            }
+
+            lock (WishlistScanBlockLock)
+            {
+                _wishlistScanBlockedItemIds ??= ShopScannerWindow.LoadScanBlockedItemIds();
+                return _wishlistScanBlockedItemIds;
+            }
         }
 
         private static bool ArePacketOwnedWishlistSnapshotsEquivalent(
@@ -9655,13 +9699,15 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            long totalPrice = ComputeRequestPrice(entry, requestQuantity);
-            return totalPrice <= 0
-                || _inventory == null
-                || AdminShopPacketOwnedSellTemplateParity.HasEnoughMesoForSendTradeRequest(
-                    _inventory.GetMesoCount(),
-                    entry.Price,
-                    requestQuantity);
+            if (_inventory == null || entry.Price <= 0L)
+            {
+                return true;
+            }
+
+            return AdminShopPacketOwnedSellTemplateParity.HasEnoughMesoForSendTradeRequest(
+                _inventory.GetMesoCount(),
+                entry.Price,
+                requestQuantity);
         }
 
         private int ResolveOwnedSourceRequestCount(AdminShopEntry entry, int ownedQuantity)

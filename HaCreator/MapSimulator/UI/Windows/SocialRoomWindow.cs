@@ -59,6 +59,18 @@ namespace HaCreator.MapSimulator.UI
             public List<EntrustedChildDialogButtonBinding> Buttons { get; } = new();
         }
 
+        private sealed class ButtonBinding
+        {
+            public ButtonBinding(UIObject button, Func<bool> enabledResolver)
+            {
+                Button = button;
+                EnabledResolver = enabledResolver;
+            }
+
+            public UIObject Button { get; }
+            public Func<bool> EnabledResolver { get; }
+        }
+
         private readonly string _windowName;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Texture2D _panelTexture;
@@ -68,6 +80,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
         private readonly Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual> _entrustedChildDialogVisuals = new Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual>();
         private readonly Dictionary<int, Texture2D> _tradeItemIconCache = new Dictionary<int, Texture2D>();
+        private readonly List<ButtonBinding> _buttonBindings = new List<ButtonBinding>();
         private SpriteFont _font;
         private UIObject _tradingRoomTradeButton;
         private UIObject _tradingRoomResetButton;
@@ -75,6 +88,8 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _tradingRoomAcceptButton;
         private UIObject _tradingRoomEnterButton;
         private Texture2D _entrustedBlacklistUtilDlgExFrame;
+        private Texture2D _miniRoomOmokInfo0Texture;
+        private Texture2D _miniRoomOmokInfo1Texture;
         private UIObject _entrustedBlacklistPromptOkButton;
         private UIObject _entrustedBlacklistPromptCloseButton;
         private UIObject _entrustedBlacklistNoticeOkButton;
@@ -200,7 +215,18 @@ namespace HaCreator.MapSimulator.UI
             _miniRoomOmokLastWhiteStoneTexture = lastWhiteStoneTexture ?? whiteStoneTexture;
         }
 
+        public void SetMiniRoomOmokInfoTextures(Texture2D info0Texture, Texture2D info1Texture)
+        {
+            _miniRoomOmokInfo0Texture = info0Texture;
+            _miniRoomOmokInfo1Texture = info1Texture;
+        }
+
         public void BindButton(UIObject button, Action action)
+        {
+            BindButton(button, action, null);
+        }
+
+        public void BindButton(UIObject button, Action action, Func<bool> enabledResolver)
         {
             if (button == null)
             {
@@ -208,6 +234,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AddButton(button);
+            if (enabledResolver != null)
+            {
+                _buttonBindings.Add(new ButtonBinding(button, enabledResolver));
+                button.SetEnabled(enabledResolver());
+            }
+
             if (action != null)
             {
                 button.ButtonClickReleased += _ => action();
@@ -240,6 +272,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _runtime.RefreshTimedState(DateTime.UtcNow);
+            RefreshButtonStates();
 
             if (_font == null)
             {
@@ -259,6 +292,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawDefaultContents(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+        }
+
+        private void RefreshButtonStates()
+        {
+            foreach (ButtonBinding binding in _buttonBindings)
+            {
+                if (binding?.Button == null || binding.EnabledResolver == null)
+                {
+                    continue;
+                }
+
+                binding.Button.SetEnabled(binding.EnabledResolver());
+            }
         }
 
         private UIObject RegisterEntrustedBlacklistModalButton(UIObject button, Action action)
@@ -548,8 +594,23 @@ namespace HaCreator.MapSimulator.UI
             Rectangle info1Rect = new Rectangle(info0Rect.Right + 10, info0Rect.Y, notePanel.Right - info0Rect.Right - 20, 20);
             Rectangle buttonRect = new Rectangle(notePanel.X + 10, notePanel.Y + 76, notePanel.Width - 20, 18);
 
-            sprite.Draw(_panelTexture, info0Rect, new Color(248, 241, 220, 208));
-            sprite.Draw(_panelTexture, info1Rect, new Color(238, 233, 223, 208));
+            if (_miniRoomOmokInfo0Texture != null)
+            {
+                sprite.Draw(_miniRoomOmokInfo0Texture, info0Rect, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_panelTexture, info0Rect, new Color(248, 241, 220, 208));
+            }
+
+            if (_miniRoomOmokInfo1Texture != null)
+            {
+                sprite.Draw(_miniRoomOmokInfo1Texture, info1Rect, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_panelTexture, info1Rect, new Color(238, 233, 223, 208));
+            }
             sprite.Draw(_panelTexture, buttonRect, new Color(225, 221, 210, 196));
 
             DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo0Text, 42), new Vector2(info0Rect.X + 4, info0Rect.Y + 3), ValueColor, 0.42f);

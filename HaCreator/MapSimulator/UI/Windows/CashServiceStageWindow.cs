@@ -3906,8 +3906,8 @@ namespace HaCreator.MapSimulator.UI
                 : dispatchSummary.Trim();
             int row = selectedEntry?.PacketRowIndex > 0 ? selectedEntry.PacketRowIndex : selectedGiftIndex + 1;
             _cashGiftLastSummary = string.IsNullOrWhiteSpace(_cashReceiveGiftPendingAcceptReplyText)
-                ? $"CUIReceiveGift sent an accept request for GW_GiftList row {row.ToString(CultureInfo.InvariantCulture)} and is waiting for cash-item subtype 107 or 108."
-                : $"CUIReceiveGift sent an accept request for GW_GiftList row {row.ToString(CultureInfo.InvariantCulture)} with reply \"{_cashReceiveGiftPendingAcceptReplyText}\" and is waiting for cash-item subtype 107 or 108.";
+                ? $"CUIReceiveGift sent an accept request for GW_GiftList row {row.ToString(CultureInfo.InvariantCulture)} and is ready to show the immediate DoModal return notice."
+                : $"CUIReceiveGift sent an accept request for GW_GiftList row {row.ToString(CultureInfo.InvariantCulture)} with reply \"{_cashReceiveGiftPendingAcceptReplyText}\" and is ready to show the immediate DoModal return notice.";
             if (!string.IsNullOrWhiteSpace(_cashReceiveGiftPendingAcceptDispatchSummary))
             {
                 _cashGiftLastSummary = $"{_cashGiftLastSummary} {_cashReceiveGiftPendingAcceptDispatchSummary}";
@@ -7471,10 +7471,19 @@ namespace HaCreator.MapSimulator.UI
                 ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
                 : $"{ownerName} failed before a reason byte could be decoded.";
 
-            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(payload, startOffset: 2, maxCount: 2);
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(
+                payload,
+                startOffset: 2,
+                maxCount: 2,
+                out int decodedOffset);
             if (decodedRows.Count > 0)
             {
                 message += $" Decoded {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s).";
+                if (decodedOffset != 2)
+                {
+                    message += $" Recovered at packet offset {decodedOffset.ToString(CultureInfo.InvariantCulture)}.";
+                }
+
                 foreach (PacketCatalogEntry row in decodedRows)
                 {
                     AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Failed body"));
@@ -7520,10 +7529,19 @@ namespace HaCreator.MapSimulator.UI
         private string BuildItcDecodeFailureMessage(byte[] payload, string ownerName)
         {
             string message = BuildPacketDecodeFailure(ownerName, payload);
-            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(payload, startOffset: 1, maxCount: 2);
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(
+                payload,
+                startOffset: 1,
+                maxCount: 2,
+                out int decodedOffset);
             if (decodedRows.Count > 0)
             {
                 message += $" Recovered {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s) into packet-owned fallback state.";
+                if (decodedOffset != 1)
+                {
+                    message += $" Recovered at packet offset {decodedOffset.ToString(CultureInfo.InvariantCulture)}.";
+                }
+
                 foreach (PacketCatalogEntry row in decodedRows)
                 {
                     AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Decoded fallback"));
@@ -7565,10 +7583,19 @@ namespace HaCreator.MapSimulator.UI
             byte[] packetPayload = payload ?? Array.Empty<byte>();
             string summary =
                 $"{subtypeLabel} reached CITC with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state.";
-            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(packetPayload, startOffset: 1, maxCount: 2);
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(
+                packetPayload,
+                startOffset: 1,
+                maxCount: 2,
+                out int decodedOffset);
             if (decodedRows.Count > 0)
             {
                 summary += $" Decoded {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s) into fallback result ownership.";
+                if (decodedOffset != 1)
+                {
+                    summary += $" Recovered at packet offset {decodedOffset.ToString(CultureInfo.InvariantCulture)}.";
+                }
+
                 foreach (PacketCatalogEntry row in decodedRows)
                 {
                     AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Unknown body"));
@@ -7607,6 +7634,16 @@ namespace HaCreator.MapSimulator.UI
 
         private List<PacketCatalogEntry> TryDecodeTrailingItcItemEntriesFromPayload(byte[] payload, int startOffset, int maxCount)
         {
+            return TryDecodeTrailingItcItemEntriesFromPayload(payload, startOffset, maxCount, out _);
+        }
+
+        private List<PacketCatalogEntry> TryDecodeTrailingItcItemEntriesFromPayload(
+            byte[] payload,
+            int startOffset,
+            int maxCount,
+            out int decodedOffset)
+        {
+            decodedOffset = -1;
             if (payload == null || payload.Length <= 0 || maxCount <= 0)
             {
                 return new List<PacketCatalogEntry>();
@@ -7614,6 +7651,36 @@ namespace HaCreator.MapSimulator.UI
 
             int offset = Math.Clamp(startOffset, 0, payload.Length);
             if (offset >= payload.Length)
+            {
+                return new List<PacketCatalogEntry>();
+            }
+
+            List<PacketCatalogEntry> rows = TryDecodeTrailingItcItemEntriesFromPayloadAtOffset(payload, offset, maxCount);
+            if (rows.Count > 0)
+            {
+                decodedOffset = offset;
+                return rows;
+            }
+
+            int lastOffset = payload.Length - (sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long));
+            for (int candidateOffset = offset + 1; candidateOffset <= lastOffset; candidateOffset++)
+            {
+                rows = TryDecodeTrailingItcItemEntriesFromPayloadAtOffset(payload, candidateOffset, maxCount);
+                if (rows.Count == 0)
+                {
+                    continue;
+                }
+
+                decodedOffset = candidateOffset;
+                return rows;
+            }
+
+            return new List<PacketCatalogEntry>();
+        }
+
+        private List<PacketCatalogEntry> TryDecodeTrailingItcItemEntriesFromPayloadAtOffset(byte[] payload, int offset, int maxCount)
+        {
+            if (payload == null || offset < 0 || offset >= payload.Length || maxCount <= 0)
             {
                 return new List<PacketCatalogEntry>();
             }

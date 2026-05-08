@@ -331,6 +331,22 @@ namespace HaCreator.MapSimulator.Fields
 
         private static void UpdatePacketOwnedHorizontalMovement(DynamicPlatform platform, float movement)
         {
+            if (TryUpdatePacketOwnedReflectedAxisMovement(
+                platform,
+                movement,
+                platform.LeftBound,
+                platform.RightBound,
+                platform.X,
+                platform.MovingRight,
+                out float reflectedX,
+                out bool reflectedMovingRight))
+            {
+                platform.X = reflectedX;
+                platform.MovingRight = reflectedMovingRight;
+                RefreshPacketOwnedHorizontalReverseFlag(platform);
+                return;
+            }
+
             const int maxEndpointTurnsPerFrame = 8;
             int turnCount = 0;
             while (movement > 0f && turnCount <= maxEndpointTurnsPerFrame)
@@ -361,6 +377,22 @@ namespace HaCreator.MapSimulator.Fields
 
         private static void UpdatePacketOwnedVerticalMovement(DynamicPlatform platform, float movement)
         {
+            if (TryUpdatePacketOwnedReflectedAxisMovement(
+                platform,
+                movement,
+                platform.TopBound,
+                platform.BottomBound,
+                platform.Y,
+                platform.MovingDown,
+                out float reflectedY,
+                out bool reflectedMovingDown))
+            {
+                platform.Y = reflectedY;
+                platform.MovingDown = reflectedMovingDown;
+                RefreshPacketOwnedVerticalReverseFlag(platform);
+                return;
+            }
+
             const int maxEndpointTurnsPerFrame = 8;
             int turnCount = 0;
             while (movement > 0f && turnCount <= maxEndpointTurnsPerFrame)
@@ -387,6 +419,67 @@ namespace HaCreator.MapSimulator.Fields
                 platform.Y += platform.MovingDown ? movement : -movement;
                 return;
             }
+        }
+
+        private static bool TryUpdatePacketOwnedReflectedAxisMovement(
+            DynamicPlatform platform,
+            float movement,
+            float lowerBound,
+            float upperBound,
+            float currentPosition,
+            bool movingPositive,
+            out float reflectedPosition,
+            out bool reflectedMovingPositive)
+        {
+            reflectedPosition = currentPosition;
+            reflectedMovingPositive = movingPositive;
+            if (platform == null || platform.PauseDelay > 0 || movement <= 0f)
+            {
+                return false;
+            }
+
+            float span = upperBound - lowerBound;
+            if (span <= 0f)
+            {
+                reflectedPosition = lowerBound;
+                reflectedMovingPositive = true;
+                return true;
+            }
+
+            float offset = MathHelper.Clamp(currentPosition - lowerBound, 0f, span);
+            float period = span * 2f;
+            float phase = movingPositive
+                ? offset + movement
+                : period - offset + movement;
+            phase %= period;
+            if (phase < 0f)
+            {
+                phase += period;
+            }
+
+            if (phase < span)
+            {
+                reflectedPosition = lowerBound + phase;
+                reflectedMovingPositive = true;
+            }
+            else if (phase > span)
+            {
+                reflectedPosition = upperBound - (phase - span);
+                reflectedMovingPositive = false;
+            }
+            else
+            {
+                reflectedPosition = upperBound;
+                reflectedMovingPositive = false;
+            }
+
+            if (phase == 0f)
+            {
+                reflectedPosition = lowerBound;
+                reflectedMovingPositive = true;
+            }
+
+            return true;
         }
 
         private static bool HasPacketOwnedHorizontalEndpointOrder(DynamicPlatform platform)
@@ -480,6 +573,11 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            if (TryUpdatePacketOwnedReflectedTwoPointWaypointMovement(platform, movement))
+            {
+                return;
+            }
+
             const int maxEndpointTurnsPerFrame = 8;
             int turnCount = 0;
             while (movement > 0f && turnCount <= maxEndpointTurnsPerFrame)
@@ -523,6 +621,79 @@ namespace HaCreator.MapSimulator.Fields
                 RefreshPacketOwnedWaypointReverseFlags(platform, direction);
                 return;
             }
+        }
+
+        private static bool TryUpdatePacketOwnedReflectedTwoPointWaypointMovement(DynamicPlatform platform, float movement)
+        {
+            if (platform?.Waypoints == null
+                || platform.Waypoints.Count != 2
+                || platform.PauseDelay > 0
+                || !platform.LoopWaypoints
+                || movement <= 0f)
+            {
+                return false;
+            }
+
+            Vector2 first = platform.Waypoints[0];
+            Vector2 second = platform.Waypoints[1];
+            Vector2 segment = second - first;
+            float length = segment.Length();
+            if (length <= 0f)
+            {
+                platform.X = first.X;
+                platform.Y = first.Y;
+                platform.CurrentWaypointIndex = 0;
+                RefreshPacketOwnedWaypointReverseFlags(platform, Vector2.Zero);
+                return true;
+            }
+
+            Vector2 direction = segment / length;
+            float offset = Vector2.Dot(new Vector2(platform.X, platform.Y) - first, direction);
+            offset = MathHelper.Clamp(offset, 0f, length);
+            bool movingTowardSecond = platform.CurrentWaypointIndex == 0;
+            float period = length * 2f;
+            float phase = movingTowardSecond
+                ? offset + movement
+                : period - offset + movement;
+            phase %= period;
+            if (phase < 0f)
+            {
+                phase += period;
+            }
+
+            if (phase < length)
+            {
+                Vector2 position = first + direction * phase;
+                platform.X = position.X;
+                platform.Y = position.Y;
+                platform.CurrentWaypointIndex = 0;
+                RefreshPacketOwnedWaypointReverseFlags(platform, segment);
+            }
+            else if (phase > length)
+            {
+                Vector2 position = second - direction * (phase - length);
+                platform.X = position.X;
+                platform.Y = position.Y;
+                platform.CurrentWaypointIndex = 1;
+                RefreshPacketOwnedWaypointReverseFlags(platform, -segment);
+            }
+            else
+            {
+                platform.X = second.X;
+                platform.Y = second.Y;
+                platform.CurrentWaypointIndex = 1;
+                RefreshPacketOwnedWaypointReverseFlags(platform, -segment);
+            }
+
+            if (phase == 0f)
+            {
+                platform.X = first.X;
+                platform.Y = first.Y;
+                platform.CurrentWaypointIndex = 0;
+                RefreshPacketOwnedWaypointReverseFlags(platform, segment);
+            }
+
+            return true;
         }
 
         private static void UpdatePacketOwnedTwoPointDiagonalAxisMovement(DynamicPlatform platform, float movement, int currentTimeMs)

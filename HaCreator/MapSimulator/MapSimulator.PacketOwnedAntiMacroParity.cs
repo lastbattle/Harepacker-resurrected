@@ -1416,11 +1416,23 @@ namespace HaCreator.MapSimulator
             return current;
         }
 
-        private static byte[] ReadPacketOwnedAntiMacroCanvasPayload(BinaryReader reader)
+        internal static bool TryReadPacketOwnedAntiMacroCanvasPayload(
+            BinaryReader reader,
+            bool requireClientLengthPrefix,
+            out byte[] jpegBytes,
+            out string error)
         {
+            jpegBytes = Array.Empty<byte>();
+            error = string.Empty;
             if (reader == null || reader.BaseStream.Position >= reader.BaseStream.Length)
             {
-                return Array.Empty<byte>();
+                if (requireClientLengthPrefix)
+                {
+                    error = "client JPEG length prefix is missing.";
+                    return false;
+                }
+
+                return true;
             }
 
             long start = reader.BaseStream.Position;
@@ -1430,13 +1442,21 @@ namespace HaCreator.MapSimulator
                 uint candidateLength = reader.ReadUInt32();
                 if (candidateLength <= reader.BaseStream.Length - reader.BaseStream.Position)
                 {
-                    return reader.ReadBytes((int)candidateLength);
+                    jpegBytes = reader.ReadBytes((int)candidateLength);
+                    return true;
                 }
 
                 reader.BaseStream.Position = start;
             }
 
-            return reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+            if (requireClientLengthPrefix)
+            {
+                error = "client JPEG length prefix is malformed or exceeds the remaining packet bytes.";
+                return false;
+            }
+
+            jpegBytes = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+            return true;
         }
 
         private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message)
@@ -1474,7 +1494,16 @@ namespace HaCreator.MapSimulator
                     int firstAttemptFlag = reader.BaseStream.Position < reader.BaseStream.Length
                         ? reader.ReadByte()
                         : 0;
-                    byte[] jpegBytes = ReadPacketOwnedAntiMacroCanvasPayload(reader);
+                    if (!TryReadPacketOwnedAntiMacroCanvasPayload(
+                        reader,
+                        IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource),
+                        out byte[] jpegBytes,
+                        out string canvasError))
+                    {
+                        message = $"Anti-macro challenge JPEG payload could not be decoded: {canvasError}";
+                        return false;
+                    }
+
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroChallenge(antiMacroType, firstAttemptFlag, jpegBytes),
                         payload,

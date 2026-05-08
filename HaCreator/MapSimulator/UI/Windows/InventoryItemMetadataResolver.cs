@@ -349,6 +349,19 @@ namespace HaCreator.MapSimulator.UI
             return IsEnabledFlag(infoProperty?["pickUpBlock"]);
         }
 
+        internal static bool IsTradeBlockedInfo(WzSubProperty infoProperty)
+        {
+            return IsEnabledFlag(infoProperty?["tradeBlock"])
+                || IsEnabledFlag(infoProperty?["tradBlock"])
+                || IsEnabledFlag(infoProperty?["scanTradeBlock"]);
+        }
+
+        internal static bool IsTargetBlockedInfo(WzSubProperty infoProperty)
+        {
+            return IsEnabledFlag(infoProperty?["targetBlock"])
+                || IsEnabledFlag(infoProperty?["tragetBlock"]);
+        }
+
         public static bool TryResolveSkillBookUseMetadata(int itemId, out SkillBookUseMetadata metadata)
         {
             metadata = default;
@@ -906,7 +919,7 @@ namespace HaCreator.MapSimulator.UI
             bool isCashItem = GetIntValue(infoProperty?["cash"]) == 1;
             bool isNotForSale = GetIntValue(infoProperty?["notSale"]) == 1;
             bool isQuestItem = GetIntValue(infoProperty?["quest"]) == 1;
-            bool isTradeBlocked = GetIntValue(infoProperty?["tradeBlock"]) == 1;
+            bool isTradeBlocked = IsTradeBlockedInfo(infoProperty);
             bool isOneOfAKind = GetIntValue(infoProperty?["only"]) == 1;
 
             DateTime? expirationDateUtc = null;
@@ -2195,6 +2208,7 @@ namespace HaCreator.MapSimulator.UI
             AppendExperienceEffectLines(effectLines, effectSpecProperty);
             AppendFixedDamageEffectLine(effectLines, effectSpecProperty["incFixedDamageR"]);
             AppendPvpDamageEffectLine(effectLines, effectSpecProperty["incPVPDamage"]);
+            AppendEventConsumableEffectLines(effectLines, effectSpecProperty);
             AppendEventPointEffectLine(effectLines, effectSpecProperty["eventPoint"]);
             AppendDeathmarkEffectLine(effectLines, itemId, effectSpecProperty);
             AppendMobEffectLines(effectLines, effectSpecProperty["mob"] as WzSubProperty);
@@ -2976,6 +2990,72 @@ namespace HaCreator.MapSimulator.UI
             effectLines.Add($"PVP Damage {FormatSignedValue(pvpDamage)}");
         }
 
+        private static void AppendEventConsumableEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            if (specProperty == null)
+            {
+                return;
+            }
+
+            int experienceIncrease = GetIntOrStringValue(specProperty["expinc"]);
+            if (experienceIncrease > 0)
+            {
+                effectLines.Add($"EXP {FormatSignedValue(experienceIncrease)}");
+            }
+
+            int hpPotionEffect = GetIntOrStringValue(specProperty["incEffectHPPotion"]);
+            if (hpPotionEffect > 0)
+            {
+                effectLines.Add(hpPotionEffect == 1
+                    ? "Increases HP potion effect"
+                    : $"HP Potion Effect {FormatSignedValue(hpPotionEffect)}");
+            }
+
+            int mpPotionEffect = GetIntOrStringValue(specProperty["incEffectMPPotion"]);
+            if (mpPotionEffect > 0)
+            {
+                effectLines.Add(mpPotionEffect == 1
+                    ? "Increases MP potion effect"
+                    : $"MP Potion Effect {FormatSignedValue(mpPotionEffect)}");
+            }
+
+            int nuffSkill = GetIntOrStringValue(specProperty["nuffSkill"]);
+            if (nuffSkill > 0)
+            {
+                effectLines.Add($"Monster Carnival nuff skill: {nuffSkill.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int barrier = GetIntOrStringValue(specProperty["barrier"]);
+            if (barrier > 0)
+            {
+                effectLines.Add(barrier == 1
+                    ? "Creates a Monster Carnival barrier"
+                    : $"Monster Carnival barrier: {barrier.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int dojoShield = GetIntOrStringValue(specProperty["dojangshield"]);
+            if (dojoShield > 0)
+            {
+                effectLines.Add($"Dojo shield: {dojoShield.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (IsEnabledFlag(specProperty["itemupbyitem"]))
+            {
+                effectLines.Add("Item drop effect is item-triggered");
+            }
+
+            if (IsEnabledFlag(specProperty["mesoupbyitem"]))
+            {
+                effectLines.Add("Meso drop effect is item-triggered");
+            }
+
+            int probability = GetIntOrStringValue(specProperty["prob"]);
+            if (probability > 0)
+            {
+                effectLines.Add($"Effect Chance: {probability.ToString(CultureInfo.InvariantCulture)}%");
+            }
+        }
+
         private static void AppendDeathmarkEffectLine(List<string> effectLines, int itemId, WzSubProperty specProperty)
         {
             if (GetIntValue(specProperty?["deathmark"]) != 1)
@@ -3568,6 +3648,17 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["pquest"]) == 1)
             {
                 metadataLines.Add("Party Quest Item");
+            }
+
+            if (infoProperty["mcType"] != null)
+            {
+                int monsterCarnivalType = GetIntOrStringValue(infoProperty["mcType"]);
+                metadataLines.Add($"Monster Carnival Type: {monsterCarnivalType.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (IsTargetBlockedInfo(infoProperty))
+            {
+                metadataLines.Add("Target use is blocked");
             }
         }
 

@@ -39,13 +39,17 @@ namespace HaCreator.MapSimulator.Managers
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
+        private long? _currentInitializedProxySessionId;
+        private short? _currentInitializedSessionVersion;
 
         private sealed record PendingRequest(MonsterCarnivalTab Tab, int EntryIndex, byte[] RawPacket);
 
         public readonly record struct ObservedOutboundRequest(
             MonsterCarnivalTab Tab,
             int EntryIndex,
-            string Source);
+            string Source,
+            short? SessionVersion = null,
+            long? ProxySessionId = null);
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -83,7 +87,10 @@ namespace HaCreator.MapSimulator.Managers
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Monster Carnival official-session bridge {lifecycle}; {session}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; observedOutbound={ObservedOutboundRequestCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            string initializedSession = _currentInitializedProxySessionId.HasValue
+                ? $"proxySession={_currentInitializedProxySessionId.Value}, version={_currentInitializedSessionVersion?.ToString() ?? "unknown"}"
+                : "proxySession=none";
+            return $"Monster Carnival official-session bridge {lifecycle}; {session}; {initializedSession}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; observedOutbound={ObservedOutboundRequestCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -652,6 +659,8 @@ namespace HaCreator.MapSimulator.Managers
         {
             _roleSessionProxy.Stop(resetCounters: clearPending);
             _passiveEstablishedSession = null;
+            _currentInitializedProxySessionId = null;
+            _currentInitializedSessionVersion = null;
             if (!clearPending)
             {
                 return;
@@ -737,10 +746,17 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
+                int clearedSessionScopedEvidence = ClearSessionScopedEvidenceForInitializedProxySession(e.ProxySessionId, e.SessionVersion);
                 int flushed = FlushQueuedRequestsViaProxy();
-                LastStatus = flushed > 0
-                    ? $"Monster Carnival official-session bridge initialized Maple crypto and flushed {flushed} queued request(s)."
+                LastStatus = flushed > 0 || clearedSessionScopedEvidence > 0
+                    ? $"Monster Carnival official-session bridge initialized Maple crypto, flushed {flushed} queued request(s), and cleared {clearedSessionScopedEvidence} stale session-scoped evidence item(s)."
                     : _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            if (!IsCurrentInitializedProxySession(e.ProxySessionId))
+            {
+                LastStatus = $"Ignored stale live Monster Carnival server packet from proxy session {e.ProxySessionId?.ToString() ?? "unknown"}; current initialized session is {_currentInitializedProxySessionId?.ToString() ?? "none"}.";
                 return;
             }
 
@@ -767,9 +783,20 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOutboundRequestPacket(e.RawPacket, out int tab, out int entryIndex))
             {
                 RecordRecentPacket(OutboundRequestOpcode, e.RawPacket, OutboundRequestOpcode, $"outbound-request tab={tab} index={entryIndex}");
+                if (!IsCurrentInitializedProxySession(e.ProxySessionId))
+                {
+                    LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint}; ignored it as stale ownership evidence for proxy session {e.ProxySessionId?.ToString() ?? "unknown"}.";
+                    return;
+                }
+
                 if (TryNormalizeObservedRequestTab(tab, out MonsterCarnivalTab requestTab) && entryIndex >= 0)
                 {
-                    _observedOutboundRequests.Enqueue(new ObservedOutboundRequest(requestTab, entryIndex, e.SourceEndpoint));
+                    _observedOutboundRequests.Enqueue(new ObservedOutboundRequest(
+                        requestTab,
+                        entryIndex,
+                        e.SourceEndpoint,
+                        e.SessionVersion,
+                        e.ProxySessionId));
                     LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint} and queued it as a pending local ownership token.";
                     return;
                 }
@@ -914,6 +941,42 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return flushed;
+        }
+
+        private int ClearSessionScopedEvidenceForInitializedProxySession(long? proxySessionId, short? sessionVersion)
+        {
+            if (!proxySessionId.HasValue || _currentInitializedProxySessionId == proxySessionId)
+            {
+                if (proxySessionId.HasValue)
+                {
+                    _currentInitializedSessionVersion = sessionVersion;
+                }
+
+                return 0;
+            }
+
+            _currentInitializedProxySessionId = proxySessionId;
+            _currentInitializedSessionVersion = sessionVersion;
+
+            int cleared = 0;
+            while (_pendingMessages.TryDequeue(out _))
+            {
+                cleared++;
+            }
+
+            while (_observedOutboundRequests.TryDequeue(out _))
+            {
+                cleared++;
+            }
+
+            return cleared;
+        }
+
+        private bool IsCurrentInitializedProxySession(long? proxySessionId)
+        {
+            return proxySessionId.HasValue
+                   && _currentInitializedProxySessionId.HasValue
+                   && _currentInitializedProxySessionId.Value == proxySessionId.Value;
         }
 
         private void LastSentRecord(byte[] rawPacket, MonsterCarnivalTab tab, int entryIndex)

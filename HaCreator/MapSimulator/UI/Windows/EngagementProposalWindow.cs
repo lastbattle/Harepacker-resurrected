@@ -188,14 +188,18 @@ namespace HaCreator.MapSimulator.UI
 
             int centerTop = Position.Y + CenterBandTop;
             int textBoxTop = Position.Y + Math.Max(CenterBandTop, _frameHeight - TextBoxTopFromBottom);
-            for (int y = centerTop; y < textBoxTop; y += CenterBandStride)
+            int bottomBandTop = Position.Y + Math.Max(0, _frameHeight - BottomBandTopFromBottom);
+            int centerEnd = _assets.TextBox != null ? textBoxTop : bottomBandTop;
+            for (int y = centerTop; y < centerEnd; y += CenterBandStride)
             {
                 DrawHorizontalBand(sprite, _assets.Center, Position.X, y, _assets.CenterHeight);
             }
 
-            DrawHorizontalBand(sprite, _assets.TextBox, Position.X, textBoxTop, _assets.TextBoxHeight);
+            if (_assets.TextBox != null)
+            {
+                DrawHorizontalBand(sprite, _assets.TextBox, Position.X, textBoxTop, _assets.TextBoxHeight);
+            }
 
-            int bottomBandTop = Position.Y + Math.Max(0, _frameHeight - BottomBandTopFromBottom);
             int bottomBandEnd = Position.Y + Math.Max(0, _frameHeight - BottomTextTopFromBottom);
             for (int y = bottomBandTop; y < bottomBandEnd; y += CenterBandStride)
             {
@@ -409,7 +413,7 @@ namespace HaCreator.MapSimulator.UI
             BottomTextOffset = bottomText == null ? new Point(92, 2) : bottomTextOffset;
             Top = top ?? throw new ArgumentNullException(nameof(top));
             Center = center ?? throw new ArgumentNullException(nameof(center));
-            TextBox = textBox ?? throw new ArgumentNullException(nameof(textBox));
+            TextBox = textBox;
             Bottom = bottom ?? throw new ArgumentNullException(nameof(bottom));
         }
 

@@ -972,7 +972,8 @@ namespace HaCreator.MapSimulator.Companions
             public bool ConsumeItem { get; init; }
         }
 
-        private const int MaxPets = 3;
+        internal const int ClientMaxActivePetSlots = 3;
+        private const int MaxPets = ClientMaxActivePetSlots;
         private const int DefaultPetItemId = 5000000;
         private const int PickupForbiddenMapId = 209080000;
         private const int SpecialistSpeechCooldownMs = 4000;
@@ -1262,9 +1263,10 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             int triggeredCount = 0;
-            for (int i = 0; i < activePets.Count; i++)
+            int slotCount = Math.Min(activePets.Count, ClientMaxActivePetSlots);
+            for (int i = 0; i < slotCount; i++)
             {
-                PetRuntime pet = i < activePets.Count ? activePets[i] : null;
+                PetRuntime pet = activePets[i];
                 if (pet == null)
                 {
                     break;
@@ -1277,6 +1279,11 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return triggeredCount;
+        }
+
+        internal static int ResolveClientPetAutoSpeakingEventId(PetAutoSpeechEvent eventType)
+        {
+            return (int)eventType;
         }
 
         public bool TryTriggerFoodFeedback(int slotIndex, int variant, bool success, int currentTime)

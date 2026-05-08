@@ -349,6 +349,7 @@ namespace HaCreator.MapSimulator
         private readonly MessengerRuntime _messengerRuntime = new MessengerRuntime();
         private readonly GuildBbsRuntime _guildBbsRuntime = new GuildBbsRuntime();
         private readonly MapleTvRuntime _mapleTvRuntime = new MapleTvRuntime();
+        private readonly AvatarMegaphoneRuntime _avatarMegaphoneRuntime = new AvatarMegaphoneRuntime();
         private bool _messengerInvitePromptOwnedDialogActive;
         private int _lastMessengerInvitePromptAlarmCounter = -1;
         private PendingRepairDurabilityRequest _pendingRepairDurabilityRequest;
@@ -786,6 +787,7 @@ namespace HaCreator.MapSimulator
         private bool _loginAccountIsAdult;
         private int? _loginLatestConnectedWorldId;
         private readonly Dictionary<int, LoginWorldInfoPacketProfile> _loginWorldInfoPacketProfiles = new();
+        private readonly List<int> _loginWorldInfoPacketOrder = new();
         private readonly HashSet<int> _loginPacketRecommendedWorldIds = new();
         private readonly Dictionary<int, string> _loginPacketRecommendedWorldMessages = new();
         private readonly List<int> _loginPacketRecommendedWorldOrder = new();
@@ -3921,11 +3923,14 @@ namespace HaCreator.MapSimulator
                 familyChartWindow.SetActionHandlers(
                 () =>
                 {
+                    TryMirrorFamilyChartClientRequest(
+                        _familyChartRuntime.BuildChartSnapshot().SelectedMemberName,
+                        out _);
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
                     return "Opened the dedicated family tree.";
                 },
                     ShowFamilyPreceptInputDialog,
-                    () => _familyChartRuntime.AddJunior(),
+                    () => AppendFamilyManagementRequestDispatch(_familyChartRuntime.AddJunior()),
                     delta => ShowUtilityFeedbackMessage(_familyChartRuntime.MoveEntitlementSelection(delta)),
                     () =>
                     {
@@ -3954,8 +3959,8 @@ namespace HaCreator.MapSimulator
                         string message = _familyChartRuntime.SelectNode(slotIndex);
                         ShowUtilityFeedbackMessage(message);
                     },
-                    () => _familyChartRuntime.AddJunior(),
-                    () => _familyChartRuntime.RemoveSelectedMember(),
+                    () => AppendFamilyManagementRequestDispatch(_familyChartRuntime.AddJunior()),
+                    () => AppendFamilyManagementRequestDispatch(_familyChartRuntime.RemoveSelectedMember()),
                     delta => _familyChartRuntime.MoveFocus(delta),
                     ShowUtilityFeedbackMessage);
                 familyTreeWindow.SetFont(_fontChat);
@@ -9685,6 +9690,7 @@ namespace HaCreator.MapSimulator
                     _loginAccountIsAdult,
                     requestAllowed: IsWorldChannelSelectorRequestAllowed(),
                     statusMessage: GetWorldSelectorStatusMessage(),
+                    orderedWorldIds: GetLoginWorldSelectorOrder(),
                     viewAllEnabled: CanRequestLoginViewAllCharacters());
             }
 
@@ -9931,6 +9937,25 @@ namespace HaCreator.MapSimulator
 
             SyncLoginEntryDialogs();
 
+        }
+
+        private void DispatchLoginRuntimePacketWithStageRelay(
+            LoginPacketType packetType,
+            string[] args,
+            out string message)
+        {
+            DispatchLoginRuntimePacket(packetType, out message);
+            if (!TryRelayLoginOwnedStageTransitionPacket(packetType, args, out bool applied, out string relayMessage))
+            {
+                return;
+            }
+
+            _loginRuntime.RecordForwardedStageTransitionResult(packetType, applied, relayMessage);
+            if (!string.IsNullOrWhiteSpace(relayMessage))
+            {
+                _loginRuntime.OverrideLastEventSummary(relayMessage);
+                message = relayMessage;
+            }
         }
 
 
@@ -11257,6 +11282,7 @@ namespace HaCreator.MapSimulator
 
 
                 case LoginPacketType.CreateNewCharacterResult:
+                case LoginPacketType.CharacterSaleCreateNewCharacterResult:
 
 
 
@@ -11284,6 +11310,7 @@ namespace HaCreator.MapSimulator
                     ApplyPacketOwnedExtraCharacterEntitlement();
                     break;
                 case LoginPacketType.CheckDuplicatedIdResult:
+                case LoginPacketType.CharacterSaleCheckDuplicatedIdResult:
                     ApplyCheckDuplicatedIdResultProfile();
                     break;
             }
@@ -15974,6 +16001,19 @@ namespace HaCreator.MapSimulator
             return $"Opened CUtilDlgEx family-precept input (StringPool 0x{ClientFamilyPreceptPromptStringPoolId:X}, min {ClientFamilyPreceptInputMinLength}, max {ClientFamilyPreceptInputMaxLength}).";
         }
 
+        private string AppendFamilyManagementRequestDispatch(string message)
+        {
+            string dispatchStatus = TryMirrorPendingFamilyManagementClientRequest();
+            if (string.IsNullOrWhiteSpace(dispatchStatus))
+            {
+                return message;
+            }
+
+            return string.IsNullOrWhiteSpace(message)
+                ? dispatchStatus
+                : $"{message} {dispatchStatus}";
+        }
+
         private bool ShowEntrustedShopBlacklistPrompt(EntrustedShopBlacklistPromptRequest request)
         {
             if (request == null)
@@ -16035,7 +16075,8 @@ namespace HaCreator.MapSimulator
                 or LoginUtilityDialogAction.LogoutGiftCompletion
                 or LoginUtilityDialogAction.SetFamilyPrecept
                 or LoginUtilityDialogAction.EntrustedShopBlacklistAdd
-                or LoginUtilityDialogAction.EntrustedShopBlacklistNotice;
+                or LoginUtilityDialogAction.EntrustedShopBlacklistNotice
+                or LoginUtilityDialogAction.FieldMessageBoxChalkboardCompose;
         }
 
         private LoginUtilityDialogFrameVariant ResolveLoginUtilityDialogFrameVariant(
@@ -16961,9 +17002,21 @@ namespace HaCreator.MapSimulator
                         break;
                     }
 
-                    string preceptMessage = _familyChartRuntime.SetPrecept(familyPreceptInput);
+                    string preceptMessage = AppendFamilyManagementRequestDispatch(
+                        _familyChartRuntime.SetPrecept(familyPreceptInput));
                     HideLoginUtilityDialog();
                     ShowUtilityFeedbackMessage($"{preceptMessage} Sent through the simulator CUIFamily::OnButtonClicked -> CUtilDlgEx input seam.");
+                    break;
+                case LoginUtilityDialogAction.FieldMessageBoxChalkboardCompose:
+                    bool submittedChalkboard = TrySubmitFieldMessageBoxChalkboardDialog(out string chalkboardSubmitMessage);
+                    if (!submittedChalkboard)
+                    {
+                        ShowUtilityFeedbackMessage(chalkboardSubmitMessage);
+                        break;
+                    }
+
+                    HideLoginUtilityDialog();
+                    ShowUtilityFeedbackMessage(chalkboardSubmitMessage);
                     break;
 
 
@@ -17287,6 +17340,10 @@ namespace HaCreator.MapSimulator
                     return;
                 case LoginUtilityDialogAction.SetFamilyPrecept:
                     ShowUtilityFeedbackMessage("Family precept edit cancelled.");
+                    break;
+                case LoginUtilityDialogAction.FieldMessageBoxChalkboardCompose:
+                    TryCancelFieldMessageBoxChalkboardDialog(out string chalkboardCancelMessage);
+                    ShowUtilityFeedbackMessage(chalkboardCancelMessage);
                     break;
             }
 
@@ -18589,6 +18646,7 @@ namespace HaCreator.MapSimulator
             _loginWorldMetadataByWorld.Clear();
             _loginRecommendedWorldIds.Clear();
             _loginWorldInfoPacketProfiles.Clear();
+            _loginWorldInfoPacketOrder.Clear();
             _loginPacketRecommendedWorldIds.Clear();
             _loginPacketRecommendedWorldMessages.Clear();
             _loginPacketRecommendedWorldOrder.Clear();
@@ -18911,10 +18969,43 @@ namespace HaCreator.MapSimulator
 
 
             _loginWorldMetadataByWorld.Clear();
-            foreach ((int worldId, LoginWorldInfoPacketProfile profile) in _loginWorldInfoPacketProfiles.OrderBy(pair => pair.Key))
+            IEnumerable<int> orderedWorldIds = _loginWorldInfoPacketOrder.Count > 0
+                ? _loginWorldInfoPacketOrder.Where(_loginWorldInfoPacketProfiles.ContainsKey)
+                : _loginWorldInfoPacketProfiles.Keys.OrderBy(worldId => worldId);
+            foreach (int worldId in orderedWorldIds.Distinct())
             {
-                _loginWorldMetadataByWorld[worldId] = CreateLoginWorldSelectorMetadataFromProfile(profile);
+                _loginWorldMetadataByWorld[worldId] = CreateLoginWorldSelectorMetadataFromProfile(_loginWorldInfoPacketProfiles[worldId]);
             }
+        }
+
+
+        private void SetLoginWorldInfoPacketProfile(LoginWorldInfoPacketProfile profile)
+        {
+            if (profile == null)
+            {
+                return;
+            }
+
+            if (!_loginWorldInfoPacketProfiles.ContainsKey(profile.WorldId))
+            {
+                _loginWorldInfoPacketOrder.Add(profile.WorldId);
+            }
+
+            _loginWorldInfoPacketProfiles[profile.WorldId] = profile;
+        }
+
+
+        private IReadOnlyList<int> GetLoginWorldSelectorOrder()
+        {
+            if (!ShouldUseLoginWorldMetadata || _loginWorldInfoPacketOrder.Count == 0)
+            {
+                return null;
+            }
+
+            return _loginWorldInfoPacketOrder
+                .Where(worldId => _loginWorldMetadataByWorld.ContainsKey(worldId))
+                .Distinct()
+                .ToArray();
         }
 
 
@@ -21516,7 +21607,8 @@ namespace HaCreator.MapSimulator
                     value,
                     secondaryValue: runtimeData.X,
                     tertiaryValue: runtimeData.Y,
-                    sourceSkillId: skill.SkillId);
+                    sourceSkillId: skill.SkillId,
+                    sourceSkillLevel: skill.Level);
             }
         }
 
@@ -31621,11 +31713,11 @@ namespace HaCreator.MapSimulator
             int skillId,
             SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
-            // IDA: TryDoingMagicAttack explicit area-owner fallback keeps mixed constants
-            // (`3000` and `2760`) across the recovered magic branch subset.
+            // IDA: TryDoingShootAttack registers 3111003 with a 500 ms client foothold duration;
+            // TryDoingMagicAttack keeps mixed constants (`3000` and `2760`) across the recovered subset.
             return ownerLane switch
             {
-                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack when skillId == 3111003 => 1000,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack when skillId == 3111003 => 500,
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 12111003 => 3000,
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2121007 => 3000,
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2221007 => 2760,
@@ -43116,6 +43208,13 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerIdentity = buffEntry.TemporaryStatViewParentLayerIdentity;
             renderData.TemporaryStatViewMainLayerIdentity = buffEntry.TemporaryStatViewMainLayerIdentity;
             renderData.TemporaryStatViewShadowLayerIdentity = buffEntry.TemporaryStatViewShadowLayerIdentity;
+            renderData.TemporaryStatViewObjectAllocationSequence = buffEntry.TemporaryStatViewObjectAllocationSequence;
+            renderData.TemporaryStatViewParentLayerAttachSequence = buffEntry.TemporaryStatViewParentLayerAttachSequence;
+            renderData.TemporaryStatViewMainLayerAttachSequence = buffEntry.TemporaryStatViewMainLayerAttachSequence;
+            renderData.TemporaryStatViewShadowLayerAttachSequence = buffEntry.TemporaryStatViewShadowLayerAttachSequence;
+            renderData.TemporaryStatViewParentLayerParentIdentity = buffEntry.TemporaryStatViewParentLayerParentIdentity;
+            renderData.TemporaryStatViewMainLayerParentIdentity = buffEntry.TemporaryStatViewMainLayerParentIdentity;
+            renderData.TemporaryStatViewShadowLayerParentIdentity = buffEntry.TemporaryStatViewShadowLayerParentIdentity;
             renderData.TemporaryStatViewParentLayerReferenceCount = buffEntry.TemporaryStatViewParentLayerReferenceCount;
             renderData.TemporaryStatViewMainLayerReferenceCount = buffEntry.TemporaryStatViewMainLayerReferenceCount;
             renderData.TemporaryStatViewShadowLayerReferenceCount = buffEntry.TemporaryStatViewShadowLayerReferenceCount;
@@ -43144,6 +43243,11 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasInsertDelayMs = buffEntry.ShadowCanvasInsertDelayMs;
             renderData.ShadowCanvasAlphaStart = buffEntry.ShadowCanvasAlphaStart;
             renderData.ShadowCanvasAlphaEnd = buffEntry.ShadowCanvasAlphaEnd;
+            renderData.ShadowCanvasWidth = buffEntry.ShadowCanvasWidth;
+            renderData.ShadowCanvasHeight = buffEntry.ShadowCanvasHeight;
+            renderData.ShadowCanvasOriginX = buffEntry.ShadowCanvasOriginX;
+            renderData.ShadowCanvasOriginY = buffEntry.ShadowCanvasOriginY;
+            renderData.ShadowCanvasDelayMs = buffEntry.ShadowCanvasDelayMs;
             renderData.ShadowCanvasLastUpdatedTime = buffEntry.ShadowCanvasLastUpdatedTime;
             renderData.ShadowCanvasReferenceCount = buffEntry.ShadowCanvasReferenceCount;
             renderData.ShadowCanvasRemoveSequence = buffEntry.ShadowCanvasRemoveSequence;
@@ -44348,7 +44452,7 @@ namespace HaCreator.MapSimulator
                 while (_monsterCarnivalOfficialSessionBridge.TryDequeueObservedOutboundRequest(
                     out MonsterCarnivalOfficialSessionBridgeManager.ObservedOutboundRequest observedRequest))
                 {
-                    carnivalField.MarkPendingOfficialClientRequest(observedRequest.Tab, observedRequest.EntryIndex);
+                    carnivalField.MarkPendingOfficialClientRequest(observedRequest.Tab, observedRequest.EntryIndex, observedRequest.Source);
                 }
             }
 

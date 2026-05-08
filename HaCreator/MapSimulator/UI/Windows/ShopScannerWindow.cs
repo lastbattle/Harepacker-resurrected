@@ -145,6 +145,13 @@ namespace HaCreator.MapSimulator.UI
         private int _lastRequestedMiniRoomSn;
         private int _lastRequestedFieldId;
         private int _lastRequestedScanTick;
+        private bool _lastRequestedScanDescending;
+        private bool _hotListChildCreated;
+        private bool _categoryChildCreated;
+        private bool _searchResultChildCreated;
+        private bool _hotListChildShown;
+        private bool _categoryChildShown;
+        private bool _searchResultChildShown;
         private int? _lastShopLinkResultCode;
         private string _lastShopLinkResultSummary = "No scanner shop-link result packet has been applied.";
         private int _lastScannerResultSubtype;
@@ -206,6 +213,7 @@ namespace HaCreator.MapSimulator.UI
         public int InitialRequestCount => _initialRequestCount;
         public string LastInitialRequestSummary { get; private set; } = string.Empty;
         public Func<int, IReadOnlyList<byte>, string> InitialScannerRequestDispatcher { get; set; }
+        public Func<int, IReadOnlyList<byte>, string> ScanItemRequestDispatcher { get; set; }
         public Func<int, IReadOnlyList<byte>, string> ShopLinkRequestDispatcher { get; set; }
 
         private enum ScannerAddOnMode
@@ -228,6 +236,13 @@ namespace HaCreator.MapSimulator.UI
             public int LastRequestedMiniRoomSn { get; init; }
             public int LastRequestedFieldId { get; init; }
             public int LastRequestedScanTick { get; init; }
+            public bool LastRequestedScanDescending { get; init; }
+            public bool HotListChildCreated { get; init; }
+            public bool CategoryChildCreated { get; init; }
+            public bool SearchResultChildCreated { get; init; }
+            public bool HotListChildShown { get; init; }
+            public bool CategoryChildShown { get; init; }
+            public bool SearchResultChildShown { get; init; }
             public int? LastShopLinkResultCode { get; init; }
             public string LastShopLinkResultSummary { get; init; } = string.Empty;
             public int LastScannerResultSubtype { get; init; }
@@ -358,6 +373,13 @@ namespace HaCreator.MapSimulator.UI
                 LastRequestedMiniRoomSn = _lastRequestedMiniRoomSn,
                 LastRequestedFieldId = _lastRequestedFieldId,
                 LastRequestedScanTick = _lastRequestedScanTick,
+                LastRequestedScanDescending = _lastRequestedScanDescending,
+                HotListChildCreated = _hotListChildCreated,
+                CategoryChildCreated = _categoryChildCreated,
+                SearchResultChildCreated = _searchResultChildCreated,
+                HotListChildShown = _hotListChildShown,
+                CategoryChildShown = _categoryChildShown,
+                SearchResultChildShown = _searchResultChildShown,
                 LastShopLinkResultCode = _lastShopLinkResultCode,
                 LastShopLinkResultSummary = _lastShopLinkResultSummary,
                 LastScannerResultSubtype = _lastScannerResultSubtype,
@@ -388,7 +410,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _results.Clear();
                     _selectedIndex = -1;
-                    _activeAddOnMode = ScannerAddOnMode.SearchResult;
+                    SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
                     ResetSearchResultPaging();
                     _lastScannerResultSummary = "CWvsContext::OnShopScannerResult subtype 6 decoded zero shop rows and zero NPC-shop price; client would show the no-result notice and clear the exclusive request latch.";
                     _statusMessage = _lastScannerResultSummary;
@@ -419,7 +441,7 @@ namespace HaCreator.MapSimulator.UI
                     })
                     .ToList();
                 _selectedIndex = _results.Count > 0 ? 0 : -1;
-                _activeAddOnMode = ScannerAddOnMode.SearchResult;
+                SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
                 ResetSearchResultPaging();
                 _lastScannerResultSummary =
                     $"CWvsContext::OnShopScannerResult subtype 6 decoded {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed shop row(s) for item {packetResult.ItemId.ToString(CultureInfo.InvariantCulture)}; CUIShopScanResult child owner is now packet-backed.";
@@ -444,7 +466,7 @@ namespace HaCreator.MapSimulator.UI
                 })
                 .ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
-            _activeAddOnMode = ScannerAddOnMode.HotList;
+            SetActiveAddOnMode(ScannerAddOnMode.HotList);
             ResetSearchResultPaging();
             _lastScannerResultSummary =
                 $"CWvsContext::OnShopScannerResult subtype 7 refreshed {_results.Count.ToString(CultureInfo.InvariantCulture)} packet-fed scanner item id(s) on the CUIShopScanner owner.";
@@ -581,7 +603,7 @@ namespace HaCreator.MapSimulator.UI
             string query = _searchQuery?.Trim() ?? string.Empty;
             _results = Search(query, 200).ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
-            _activeAddOnMode = ScannerAddOnMode.SearchResult;
+            SetActiveAddOnMode(ScannerAddOnMode.SearchResult);
             ResetSearchResultPaging();
             _statusMessage = _results.Count > 0
                 ? $"CUIShopScannerSearchResult staged {_results.Count.ToString(CultureInfo.InvariantCulture)} item-name row(s) for \"{NormalizeScannerQuery(query)}\"."
@@ -598,7 +620,7 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = 0;
             _searchResultPageIndex = 0;
             _searchResultTotalPages = 0;
-            _activeAddOnMode = ScannerAddOnMode.None;
+            SetActiveAddOnMode(ScannerAddOnMode.None);
             _searchFieldFocused = true;
             _statusMessage = "Scanner search reset; edit focus restored.";
             RefreshRows();
@@ -618,7 +640,7 @@ namespace HaCreator.MapSimulator.UI
                 .Select(ToScannerResult)
                 .ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
-            _activeAddOnMode = ScannerAddOnMode.HotList;
+            SetActiveAddOnMode(ScannerAddOnMode.HotList);
             ResetSearchResultPaging();
             _statusMessage = "CUIShopScannerHotList child owner toggled from button 2000; child paging uses buttons 1001/1002.";
             RefreshRows();
@@ -646,7 +668,7 @@ namespace HaCreator.MapSimulator.UI
                 })
                 .ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
-            _activeAddOnMode = ScannerAddOnMode.Category;
+            SetActiveAddOnMode(ScannerAddOnMode.Category);
             ResetSearchResultPaging();
             _statusMessage = "CUIShopScannerCategory child owner toggled from button 2001; category selections feed the result child.";
             RefreshRows();
@@ -758,10 +780,54 @@ namespace HaCreator.MapSimulator.UI
                     MoveChildPage(1);
                     return true;
                 case ChildOkButtonId:
-                    return TrySendSelectedShopLinkRequest(Environment.TickCount, out _);
+                    return TrySendSelectedChildOkRequest(Environment.TickCount, out _);
                 default:
                     return false;
             }
+        }
+
+        public bool TrySendSelectedChildOkRequest(int currentTick, out string message)
+        {
+            if (_selectedIndex < 0 || _selectedIndex >= _results.Count)
+            {
+                message = "CUIShopScannerSearchResult has no selected item row for button 1003.";
+                return false;
+            }
+
+            return _results[_selectedIndex].IsPacketFedShopRow
+                ? TrySendSelectedShopLinkRequest(currentTick, out message)
+                : TrySendSelectedScanRequest(currentTick, out message);
+        }
+
+        public bool TrySendSelectedScanRequest(int currentTick, out string message)
+        {
+            message = null;
+            if (_selectedIndex < 0 || _selectedIndex >= _results.Count)
+            {
+                message = "CUIShopScannerSearchResult has no selected item row for button 1003.";
+                return false;
+            }
+
+            ScannerResult selected = _results[_selectedIndex];
+            if (selected.ItemId <= 0)
+            {
+                message = "CUIShopScannerSearchResult cannot send a scan request without a concrete item id.";
+                _statusMessage = message;
+                return false;
+            }
+
+            byte[] payload = BuildShopScanRequestPayload(selected.ItemId, _lastRequestedScanDescending, currentTick);
+            string dispatchSummary = ScanItemRequestDispatcher?.Invoke(InitialRequestOpcode, Array.AsReadOnly(payload));
+            _lastRequestedScanItemId = selected.ItemId;
+            _lastRequestedMiniRoomSn = 0;
+            _lastRequestedFieldId = 0;
+            _lastRequestedScanTick = currentTick;
+            message = string.IsNullOrWhiteSpace(dispatchSummary)
+                ? $"CUIShopScanner::SendScanPacket staged opcode {InitialRequestOpcode} item {selected.ItemId.ToString(CultureInfo.InvariantCulture)} descending {(_lastRequestedScanDescending ? 1 : 0).ToString(CultureInfo.InvariantCulture)} tick {currentTick.ToString(CultureInfo.InvariantCulture)} simulator-local."
+                : dispatchSummary;
+            _statusMessage = message;
+            Hide();
+            return true;
         }
 
         public bool TrySendSelectedShopLinkRequest(int currentTick, out string message)
@@ -794,6 +860,7 @@ namespace HaCreator.MapSimulator.UI
             _lastRequestedMiniRoomSn = selected.MiniRoomSn;
             _lastRequestedFieldId = selected.FieldId;
             _lastRequestedScanTick = currentTick;
+            _lastRequestedScanDescending = false;
             message = string.IsNullOrWhiteSpace(dispatchSummary)
                 ? $"CUIShopScanResult::OnButtonClicked staged opcode {ShopLinkRequestOpcode} miniRoomSN {selected.MiniRoomSn.ToString(CultureInfo.InvariantCulture)} field {selected.FieldId.ToString(CultureInfo.InvariantCulture)} simulator-local."
                 : dispatchSummary;
@@ -949,6 +1016,15 @@ namespace HaCreator.MapSimulator.UI
             byte[] payload = new byte[sizeof(int) + sizeof(int)];
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), miniRoomSn);
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)), fieldId);
+            return payload;
+        }
+
+        internal static byte[] BuildShopScanRequestPayload(int itemId, bool descendingOrder, int updateTick)
+        {
+            byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), itemId);
+            payload[sizeof(int)] = descendingOrder ? (byte)1 : (byte)0;
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(byte), sizeof(int)), updateTick);
             return payload;
         }
 
@@ -1145,6 +1221,18 @@ namespace HaCreator.MapSimulator.UI
                 InventoryType.CASH => 5,
                 _ => 0
             };
+        }
+
+        private void SetActiveAddOnMode(ScannerAddOnMode mode)
+        {
+            _activeAddOnMode = mode;
+            _hotListChildShown = mode == ScannerAddOnMode.HotList;
+            _categoryChildShown = mode == ScannerAddOnMode.Category;
+            _searchResultChildShown = mode == ScannerAddOnMode.SearchResult;
+
+            _hotListChildCreated |= _hotListChildShown;
+            _categoryChildCreated |= _categoryChildShown;
+            _searchResultChildCreated |= _searchResultChildShown;
         }
 
         private static string ResolveScannerItemName(int itemId)
