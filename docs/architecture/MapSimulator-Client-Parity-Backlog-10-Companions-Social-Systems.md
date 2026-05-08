@@ -123,6 +123,7 @@ It does three things that the old notes did not do well:
 - `CCSWnd_Char::ShowPersonalShop` at `0x4bc660`, `CCSWnd_Char::ShowEntrustedShop` at `0x4bc6b0`, and `CCashTradingRoomDlg::OnCreate` at `0x49e8c0` belong in backlog 8 instead: they are cash-service stage preview/child-window hooks, not the primary social-room owners.
 - `CParcelDlg::OnCreate` at `0x6914c0` stays owned by backlog 8 even when memo/mail flows touch the same user-facing surface area; parcel delivery is a utility-window owner, not one of this document's primary social-system owners.
 - `CChatBalloon` stays owned by this document when it is drawing player chat, MiniRoom, merchant, or ADBoard balloons. Backlog 4 owns status-bar chat controls, while backlog 7 only owns generic field feedback that does not create these social actor balloon layers.
+- `CFadeWnd` / `CUIFadeYesNo` belongs to backlog 8 as the shared modal/fade shell. This document can keep the social payload semantics for messenger, friend, trade, party, expedition, guild, family, follow, memo, and New Year card prompts, but should not duplicate the shared `CUIFadeYesNo` owner geometry, fade lifetime, OK/Cancel button handling, or type-switch draw shell.
 
 ## Client Function Index By Backlog Area
 
