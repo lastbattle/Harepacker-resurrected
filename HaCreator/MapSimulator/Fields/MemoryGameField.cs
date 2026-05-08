@@ -1421,36 +1421,26 @@ namespace HaCreator.MapSimulator.Fields
             switch (buttonId)
             {
                 case ClientStartButtonId:
-                    TryClickStartButton(tickCount, out message);
+                    TryDispatchOfficialClientSubtype(MemoryGameStartPacketType, tickCount, out message);
                     return true;
                 case ClientTieButtonId:
-                    if (!CanUseTieButton(out message))
-                    {
-                        return true;
-                    }
-
-                    TryPromptTieRequest(out message);
+                    TryPromptTieRequestFromClientButton(out message);
                     return true;
                 case ClientGiveUpButtonId:
-                    if (!CanUseGiveUpButton(out message))
-                    {
-                        return true;
-                    }
-
-                    TryPromptGiveUp(_localPlayerIndex, out message);
+                    TryPromptGiveUpFromClientButton(_localPlayerIndex, out message);
                     return true;
                 case ClientEndButtonId:
                     TryRequestRoomExit(_localPlayerIndex, out message);
                     return true;
                 case ClientReadyButtonId:
-                    TryClickReadyButton(tickCount, out message);
+                    TryDispatchOfficialClientSubtype(
+                        _readyStates[_localPlayerIndex]
+                            ? MemoryGameCancelReadyPacketType
+                            : MemoryGameReadyPacketType,
+                        tickCount,
+                        out message);
                     return true;
                 case ClientBanButtonId:
-                    if (!CanUseBanButton(out message))
-                    {
-                        return true;
-                    }
-
                     TryPromptBanParticipant(out message);
                     return true;
                 case ClientDialogUpdateButtonOne:
@@ -4084,11 +4074,31 @@ namespace HaCreator.MapSimulator.Fields
                 : _tieButtonDisabledTexture ?? _tieButtonTexture;
         }
 
+        private bool TryPromptTieRequestFromClientButton(out string message)
+        {
+            if (!CanUseTieButton(out message))
+            {
+                return false;
+            }
+
+            return TryPromptTieRequest(out message);
+        }
+
         private Texture2D GetGiveUpButtonTexture()
         {
             return CanUseGiveUpButton(out _)
                 ? _giveUpButtonTexture
                 : _giveUpButtonDisabledTexture ?? _giveUpButtonTexture;
+        }
+
+        private bool TryPromptGiveUpFromClientButton(int playerIndex, out string message)
+        {
+            if (!CanUseGiveUpButton(out message))
+            {
+                return false;
+            }
+
+            return TryPromptGiveUp(playerIndex, out message);
         }
 
         private Texture2D GetBanButtonTexture()

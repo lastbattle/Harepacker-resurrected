@@ -1512,6 +1512,17 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                bool recordApplied = _packetOwnedPortableChairRecordRuntime.TryApplySetActivePortableChairPacket(
+                    officialChairPacket,
+                    _remoteUserPool,
+                    sourceTag,
+                    out string recordMessage);
+                if (!recordApplied)
+                {
+                    result = recordMessage;
+                    return false;
+                }
+
                 bool chairApplied = _remoteUserPool.TrySetPortableChair(
                     officialChairPacket.CharacterId,
                     officialChairPacket.ChairItemId,
@@ -1521,7 +1532,7 @@ namespace HaCreator.MapSimulator
                         officialChairPacket.PairCharacterId),
                     allowPairRecordCreateFromSeatState: false);
                 result = chairApplied
-                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}. {recordMessage}"
                     : chairMessage;
                 return chairApplied;
             }

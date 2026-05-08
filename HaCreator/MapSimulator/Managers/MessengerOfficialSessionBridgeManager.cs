@@ -768,7 +768,9 @@ namespace HaCreator.MapSimulator.Managers
                         _observedMapleTvResultCodePayloadSamples[resultCode] = Convert.ToHexString(payload);
                     }
                 }
-                else if (payload.Length > 0)
+                else if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
+                    && opcode == PacketOwnedSocialUtilityPacketTable.MessengerInboundOpcode
+                    && payload.Length > 0)
                 {
                     _observedMessengerInboundSubtypes.Add(traceType);
                     _observedMessengerSubtypePayloadSamples[traceType] = Convert.ToHexString(payload);

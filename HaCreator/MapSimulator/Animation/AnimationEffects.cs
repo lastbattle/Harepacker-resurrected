@@ -106,6 +106,7 @@ namespace HaCreator.MapSimulator.Animation
             public int SourceCandidateIdentity { get; init; }
             public int SourceVariantCount { get; init; }
             public IReadOnlyList<int> SourceVariantIndices { get; init; }
+            public bool SourceUsesEmission { get; init; }
         }
 
         internal sealed class SecondaryMotionBlurAnimationState
@@ -169,8 +170,7 @@ namespace HaCreator.MapSimulator.Animation
                 }
 
                 SimulatedLayerHandleIdsByLayerCode = layerHandleIdsByLayerCode
-                    .Where(static entry => entry.Value > 0)
-                    .ToDictionary(static entry => entry.Key, static entry => entry.Value);
+                    .ToDictionary(static entry => entry.Key, static entry => Math.Max(0, entry.Value));
                 SimulatedRegistrationArgumentReferenceOperations =
                     BuildClientRegistrationArgumentReferenceOperations(
                         SimulatedOverlayLayerHandleId,
@@ -542,6 +542,10 @@ namespace HaCreator.MapSimulator.Animation
                 {
                     if (handleId <= 0)
                     {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
                         continue;
                     }
 
@@ -559,6 +563,10 @@ namespace HaCreator.MapSimulator.Animation
                 {
                     if (handleId <= 0)
                     {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
                         continue;
                     }
 
@@ -576,6 +584,10 @@ namespace HaCreator.MapSimulator.Animation
                 {
                     if (handleId <= 0)
                     {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
                         continue;
                     }
 
@@ -2882,7 +2894,8 @@ namespace HaCreator.MapSimulator.Animation
             int durationMs,
             int currentTimeMs,
             int sourceEffectVariantIndex = -1,
-            int sourceVariantOrdinal = -1)
+            int sourceVariantOrdinal = -1,
+            bool usesEmission = false)
         {
             if (!HasFrames(frames) || getTargetPosition == null)
             {
@@ -2906,7 +2919,8 @@ namespace HaCreator.MapSimulator.Animation
                 durationMs,
                 currentTimeMs,
                 sourceEffectVariantIndex,
-                sourceVariantOrdinal);
+                sourceVariantOrdinal,
+                usesEmission);
             InsertFollowParticleAnimation(particle);
         }
 
@@ -4226,6 +4240,12 @@ namespace HaCreator.MapSimulator.Animation
         AbsoluteOrigin = 1
     }
 
+    public enum FollowParticleRecoveredNativeParentLayerKind
+    {
+        None = 0,
+        OwnerUnderFace = 1
+    }
+
     internal readonly record struct FollowParticleRecoveredNativeOperation(
         FollowParticleRecoveredNativeOperationKind Kind,
         bool RelativeToTarget,
@@ -4241,7 +4261,10 @@ namespace HaCreator.MapSimulator.Animation
         FollowParticleRecoveredNativeRelOffsetMode RelOffsetMode = FollowParticleRecoveredNativeRelOffsetMode.ParentRelative,
         Vector2 RelOffsetDelta = default,
         int RelOffsetDurationMs = 0,
-        int AlphaRelMoveDurationMs = 0);
+        int AlphaRelMoveDurationMs = 0,
+        FollowParticleRecoveredNativeParentLayerKind ParentLayerKind = FollowParticleRecoveredNativeParentLayerKind.None,
+        bool UsesEmission = false,
+        bool AddsParentLayerZ = false);
 
     internal readonly record struct FollowParticleRecoveredNativeLayerState(
         bool RelativeToTarget,
@@ -4258,7 +4281,10 @@ namespace HaCreator.MapSimulator.Animation
         FollowParticleRecoveredNativeRelOffsetMode RelOffsetMode = FollowParticleRecoveredNativeRelOffsetMode.ParentRelative,
         Vector2 RelOffsetDelta = default,
         int RelOffsetDurationMs = 0,
-        int AlphaRelMoveDurationMs = 0);
+        int AlphaRelMoveDurationMs = 0,
+        FollowParticleRecoveredNativeParentLayerKind ParentLayerKind = FollowParticleRecoveredNativeParentLayerKind.None,
+        bool UsesEmission = false,
+        bool AddsParentLayerZ = false);
 
     internal readonly record struct FollowParticleRecoveredNativeLifetimeState(
         int SimulatedLayerHandleId,
@@ -4765,6 +4791,7 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredPreparedSourceTrace[] PreparedSources,
         CanvasLayerRecoveredTemporaryCanvasOperation[] TemporaryCanvasOperations,
         bool KeepsOverlayOnSeparateLayer,
+        int OverlaySpriteNameStringPoolId,
         string OverlayCanvasPath,
         string OverlaySpriteName,
         Point OverlayOffset,
@@ -6328,6 +6355,7 @@ namespace HaCreator.MapSimulator.Animation
         private int _duration;
         private int _currentFrame;
         private int _lastFrameTime;
+        private bool _usesEmission;
 
         public int Id { get; private set; }
 
@@ -6722,6 +6750,7 @@ namespace HaCreator.MapSimulator.Animation
         private bool _spawnUsesEmissionBox;
         private bool _spawnAppliesEmissionBias;
         private bool _spawnUsesEmissionTravelDistance;
+        private bool _sourceUsesEmission;
         private float _spawnVerticalEmissionBias;
         private Point _spawnOffsetMin;
         private Point _spawnOffsetMax;
@@ -6770,6 +6799,7 @@ namespace HaCreator.MapSimulator.Animation
             _spawnUsesEmissionBox = options?.SpawnUsesEmissionBox ?? false;
             _spawnAppliesEmissionBias = options?.SpawnAppliesEmissionBias ?? false;
             _spawnUsesEmissionTravelDistance = options?.SpawnUsesEmissionTravelDistance ?? false;
+            _sourceUsesEmission = options?.SourceUsesEmission ?? false;
             _spawnVerticalEmissionBias = options?.SpawnVerticalEmissionBias ?? 0f;
             _spawnOffsetMin = options?.SpawnOffsetMin ?? Point.Zero;
             _spawnOffsetMax = options?.SpawnOffsetMax ?? Point.Zero;
@@ -7188,7 +7218,8 @@ namespace HaCreator.MapSimulator.Animation
                                 sourceEffectVariantIndex: ResolveFollowSpawnFrameVariantIndex(
                                     _spawnFrameVariantIndices,
                                     variantIndex),
-                                sourceVariantOrdinal: variantIndex);
+                                sourceVariantOrdinal: variantIndex,
+                                usesEmission: _sourceUsesEmission);
                         }
                     }
                 }
@@ -7290,6 +7321,7 @@ namespace HaCreator.MapSimulator.Animation
         private int _duration;
         private int _currentFrame;
         private int _lastFrameTime;
+        private bool _usesEmission;
 
         public int FollowRegistrationId { get; private set; }
         internal int SourceEffectVariantIndex { get; private set; } = -1;
@@ -7316,11 +7348,13 @@ namespace HaCreator.MapSimulator.Animation
             int durationMs,
             int currentTimeMs,
             int sourceEffectVariantIndex = -1,
-            int sourceVariantOrdinal = -1)
+            int sourceVariantOrdinal = -1,
+            bool usesEmission = false)
         {
             FollowRegistrationId = followRegistrationId;
             SourceEffectVariantIndex = sourceEffectVariantIndex;
             SourceVariantOrdinal = sourceVariantOrdinal;
+            _usesEmission = usesEmission;
             _frames = frames;
             _getTargetPosition = getTargetPosition;
             _getTargetFlip = getTargetFlip;
@@ -7344,7 +7378,8 @@ namespace HaCreator.MapSimulator.Animation
                 _zOrder,
                 _duration,
                 SourceEffectVariantIndex,
-                SourceVariantOrdinal);
+                SourceVariantOrdinal,
+                _usesEmission);
             RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(RecoveredNativeLayerState);
             RecoveredNativeLifetimeState = BuildRecoveredNativeLifetimeState(
                 RecoveredNativeLayerState,
@@ -7434,7 +7469,8 @@ namespace HaCreator.MapSimulator.Animation
             int zOrder,
             int durationMs,
             int sourceEffectVariantIndex = -1,
-            int sourceVariantOrdinal = -1)
+            int sourceVariantOrdinal = -1,
+            bool usesEmission = false)
         {
             int resolvedDurationMs = Math.Max(1, durationMs);
             return new FollowParticleRecoveredNativeLayerState(
@@ -7452,7 +7488,15 @@ namespace HaCreator.MapSimulator.Animation
                 RelOffsetMode: ResolveRecoveredNativeRelOffsetMode(relativeToTarget),
                 RelOffsetDelta: endOffset - startOffset,
                 RelOffsetDurationMs: resolvedDurationMs,
-                AlphaRelMoveDurationMs: resolvedDurationMs);
+                AlphaRelMoveDurationMs: resolvedDurationMs,
+                ParentLayerKind: ResolveRecoveredNativeParentLayerKind(),
+                UsesEmission: usesEmission,
+                AddsParentLayerZ: true);
+        }
+
+        internal static FollowParticleRecoveredNativeParentLayerKind ResolveRecoveredNativeParentLayerKind()
+        {
+            return FollowParticleRecoveredNativeParentLayerKind.OwnerUnderFace;
         }
 
         internal static FollowParticleRecoveredNativeRelOffsetMode ResolveRecoveredNativeRelOffsetMode(
@@ -7556,7 +7600,10 @@ namespace HaCreator.MapSimulator.Animation
                 layerState.RelOffsetMode,
                 layerState.RelOffsetDelta,
                 layerState.RelOffsetDurationMs,
-                layerState.AlphaRelMoveDurationMs);
+                layerState.AlphaRelMoveDurationMs,
+                layerState.ParentLayerKind,
+                layerState.UsesEmission,
+                layerState.AddsParentLayerZ);
         }
     }
 

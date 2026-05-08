@@ -90,7 +90,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<SpecialFieldBacklogEntry> _catalog = new()
         {
             new(SpecialFieldBacklogArea.GuildBossEventFields, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / GuildBossField", IsGuildBossMap),
-            new(SpecialFieldBacklogArea.CoconutMinigameRuntime, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / CoconutField"),
+            new(SpecialFieldBacklogArea.CoconutMinigameRuntime, SpecialFieldBacklogStatus.Partial, "MinigameFields.cs / CoconutField", IsCoconutMap),
             new(SpecialFieldBacklogArea.WeddingCeremonyFields, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / WeddingField", IsWeddingMap),
             new(SpecialFieldBacklogArea.WitchtowerScoreUi, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / WitchtowerField", IsWitchtowerMap),
             new(SpecialFieldBacklogArea.MassacreTimerboardAndGaugeFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / MassacreField", IsMassacreMap),
@@ -704,7 +704,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return mapInfo.fieldType == FieldType.FIELDTYPE_GUILDBOSS
+            FieldType? fieldType = MapInfoFieldTypeResolver.Resolve(mapInfo);
+            return fieldType == FieldType.FIELDTYPE_GUILDBOSS
                 || (mapInfo.id >= 610030000 && mapInfo.id <= 610030099)
                 || (mapInfo.id >= 673000000 && mapInfo.id <= 673000099)
                 || GuildBossField.TryBuildMapContract(mapInfo, out _);
@@ -734,7 +735,12 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsCookieHouseMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_COOKIEHOUSE;
+            return MapInfoFieldTypeResolver.Resolve(mapInfo) == FieldType.FIELDTYPE_COOKIEHOUSE;
+        }
+
+        private static bool IsCoconutMap(MapInfo mapInfo)
+        {
+            return MapInfoFieldTypeResolver.Resolve(mapInfo) == FieldType.FIELDTYPE_COCONUT;
         }
 
         private static bool IsCakePieMap(MapInfo mapInfo)
@@ -749,7 +755,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsAriantArenaMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_ARIANTARENA;
+            return MapInfoFieldTypeResolver.Resolve(mapInfo) == FieldType.FIELDTYPE_ARIANTARENA;
         }
 
         private static bool IsMonsterCarnivalMap(MapInfo mapInfo)
@@ -759,14 +765,15 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsPartyRaidMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_PARTYRAID
-                || mapInfo?.fieldType == FieldType.FIELDTYPE_PARTYRAID_BOSS
-                || mapInfo?.fieldType == FieldType.FIELDTYPE_PARTYRAID_RESULT;
+            FieldType? fieldType = MapInfoFieldTypeResolver.Resolve(mapInfo);
+            return fieldType == FieldType.FIELDTYPE_PARTYRAID
+                || fieldType == FieldType.FIELDTYPE_PARTYRAID_BOSS
+                || fieldType == FieldType.FIELDTYPE_PARTYRAID_RESULT;
         }
 
         private static bool IsSpaceGagaMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_SPACEGAGA
+            return MapInfoFieldTypeResolver.Resolve(mapInfo) == FieldType.FIELDTYPE_SPACEGAGA
                 || (mapInfo?.id >= 922240000 && mapInfo.id <= 922240200);
         }
     }

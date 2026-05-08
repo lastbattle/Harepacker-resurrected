@@ -1216,6 +1216,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
                 else
                 {
+                    int previousVisualState = data.VisualState;
                     if (TryResolveNextVisualState(
                         reactor,
                         data,
@@ -1233,7 +1234,7 @@ namespace HaCreator.MapSimulator.Pools
                         data.ActivatingPlayerId = playerId;
                         UpdatePreferredAuthoredOrder(data, ReactorActivationType.Hit, selectedAuthoredOrder);
                         RefreshReactorLayerPlacement(reactor);
-                        TryPlayReactorHitSound(reactor, data.PacketHitAnimationState >= 0 ? data.PacketHitAnimationState : data.VisualState);
+                        TryPlayReactorHitSound(reactor, data.PacketHitAnimationState >= 0 ? data.PacketHitAnimationState : previousVisualState);
                     }
                     else
                     {

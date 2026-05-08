@@ -20,8 +20,12 @@ namespace HaCreator.MapSimulator.Managers
         private readonly object _historySync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
         private readonly ConcurrentQueue<AdminShopPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly Queue<RecentPacketSnapshot> _recentPackets = new();
         private const int MaxRecentPacketCount = 32;
+        private const int AdminShopOutboundOpcode = 74;
+
+        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
 
         public int ListenPort { get; private set; }
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
@@ -30,8 +34,16 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _roleSessionProxy.HasAttachedClient;
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
+        public int QueuedCount { get; private set; }
+        public int ForwardedOutboundCount { get; private set; }
+        public int PendingOutboundCount => _pendingOutboundPackets.Count;
         public int LastReceivedPacketType { get; private set; } = -1;
         public byte[] LastReceivedPayload { get; private set; } = Array.Empty<byte>();
+        public int LastSentOpcode { get; private set; } = -1;
+        public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
+        public int LastQueuedOpcode { get; private set; } = -1;
+        public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Admin-shop official-session bridge inactive.";
 
         private sealed class RecentPacketSnapshot
@@ -61,7 +73,13 @@ namespace HaCreator.MapSimulator.Managers
             string lastPacket = LastReceivedPacketType >= 0
                 ? $" last={AdminShopPacketInboxManager.DescribePacketType(LastReceivedPacketType)}[{Convert.ToHexString(LastReceivedPayload)}]."
                 : string.Empty;
-            return $"Admin-shop official-session bridge {lifecycle}; {session}; received={ReceivedCount}; inbound opcodes=366,367.{lastPacket} {LastStatus}";
+            string lastOutbound = LastSentOpcode >= 0
+                ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
+                : string.Empty;
+            string lastQueued = LastQueuedOpcode >= 0
+                ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
+                : string.Empty;
+            return $"Admin-shop official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingOutboundCount}; queued={QueuedCount}; inbound opcodes=366,367; outbound opcode=74.{lastPacket}{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public bool TryStart(int listenPort, string remoteHost, int remotePort, out string status)
@@ -225,6 +243,55 @@ namespace HaCreator.MapSimulator.Managers
                         $"{index + 1}. {packet.Timestamp:HH:mm:ss.fff} {AdminShopPacketInboxManager.DescribePacketType(packet.PacketType)} payload={packet.PayloadLength} byte(s) source={packet.SourceEndpoint ?? "unknown"} raw={packet.RawPacketHex}"));
         }
 
+        public bool TrySendOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
+        {
+            if (opcode != AdminShopOutboundOpcode)
+            {
+                status = $"Admin-shop official-session bridge only accepts outbound opcode {AdminShopOutboundOpcode}.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (!_roleSessionProxy.HasConnectedSession)
+            {
+                status = "Admin-shop official-session bridge has no connected Maple session for outbound opcode 74.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = BuildRawPacket((ushort)opcode, payload);
+            if (!_roleSessionProxy.TrySendToServer(rawPacket, out string proxyStatus))
+            {
+                status = proxyStatus;
+                LastStatus = status;
+                return false;
+            }
+
+            RecordSentOutboundPacket(opcode, rawPacket);
+            status = "Injected admin-shop outbound opcode 74 into live session.";
+            LastStatus = status;
+            return true;
+        }
+
+        public bool TryQueueOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
+        {
+            if (opcode != AdminShopOutboundOpcode)
+            {
+                status = $"Admin-shop official-session bridge only queues outbound opcode {AdminShopOutboundOpcode}.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = BuildRawPacket((ushort)opcode, payload);
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, rawPacket));
+            QueuedCount++;
+            LastQueuedOpcode = opcode;
+            LastQueuedRawPacket = rawPacket;
+            status = "Queued admin-shop outbound opcode 74 for deferred live-session injection.";
+            LastStatus = status;
+            return true;
+        }
+
         public void ClearRecentPackets()
         {
             lock (_historySync)
@@ -260,7 +327,10 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
-                LastStatus = _roleSessionProxy.LastStatus;
+                int flushed = FlushQueuedOutboundPacketsViaProxy();
+                LastStatus = flushed > 0
+                    ? $"Admin-shop official-session bridge initialized Maple crypto and flushed {flushed} queued opcode 74 packet(s)."
+                    : _roleSessionProxy.LastStatus;
                 return;
             }
 
@@ -288,6 +358,11 @@ namespace HaCreator.MapSimulator.Managers
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
+            if (e != null && !e.IsInit)
+            {
+                TryRecordForwardedAdminShopOutbound(e.RawPacket);
+            }
+
             LastStatus = _roleSessionProxy.LastStatus;
         }
 
@@ -302,13 +377,91 @@ namespace HaCreator.MapSimulator.Managers
             while (_pendingMessages.TryDequeue(out _))
             {
             }
+            while (_pendingOutboundPackets.TryDequeue(out _))
+            {
+            }
 
             ReceivedCount = 0;
+            SentCount = 0;
+            QueuedCount = 0;
+            ForwardedOutboundCount = 0;
             LastReceivedPacketType = -1;
             LastReceivedPayload = Array.Empty<byte>();
+            LastSentOpcode = -1;
+            LastSentRawPacket = Array.Empty<byte>();
+            LastQueuedOpcode = -1;
+            LastQueuedRawPacket = Array.Empty<byte>();
             ClearRecentPacketsNoStatus();
             ListenPort = 0;
             RemotePort = 0;
+        }
+
+        private int FlushQueuedOutboundPacketsViaProxy()
+        {
+            if (!_roleSessionProxy.HasConnectedSession)
+            {
+                return 0;
+            }
+
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryPeek(out PendingOutboundPacket packet))
+            {
+                if (!_roleSessionProxy.TrySendToServer(packet.RawPacket, out _))
+                {
+                    break;
+                }
+
+                if (!_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket dequeuedPacket))
+                {
+                    break;
+                }
+
+                RecordSentOutboundPacket(dequeuedPacket.Opcode, dequeuedPacket.RawPacket);
+                flushed++;
+            }
+
+            return flushed;
+        }
+
+        private void TryRecordForwardedAdminShopOutbound(byte[] rawPacket)
+        {
+            if (!AdminShopPacketInboxManager.TryDecodeOpcodeFramedPacket(
+                    rawPacket,
+                    out int opcode,
+                    out _,
+                    out _)
+                || opcode != AdminShopOutboundOpcode)
+            {
+                return;
+            }
+
+            ForwardedOutboundCount++;
+        }
+
+        private void RecordSentOutboundPacket(int opcode, byte[] rawPacket)
+        {
+            SentCount++;
+            LastSentOpcode = opcode;
+            LastSentRawPacket = rawPacket ?? Array.Empty<byte>();
+        }
+
+        private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)
+        {
+            using PacketWriter writer = new();
+            writer.Write(opcode);
+            if (payload is byte[] bytes)
+            {
+                writer.WriteBytes(bytes);
+            }
+            else if (payload != null)
+            {
+                for (int i = 0; i < payload.Count; i++)
+                {
+                    writer.WriteByte(payload[i]);
+                }
+            }
+
+            return writer.ToArray();
         }
 
         private void RecordRecentPacket(int packetType, int payloadLength, string sourceEndpoint, byte[] rawPacket)

@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _lastAngerChargeCount = -1;
         private int _angerGaugeLoopStartTick;
         private int _angerGaugeBurstNextAllowedTick = int.MinValue;
+        private bool _pendingAngerGaugeBurstRegistration;
         private string _lastObservedAttackAction;
         private int _lastObservedAttackFrameIndex;
         private int _lastObservedAttackFrameTime = int.MinValue;
@@ -124,6 +125,8 @@ namespace HaCreator.MapSimulator.Entities
         public int ActiveActionSpeechFadeDurationMs => _activeActionSpeechFadeDurationMs;
 
         internal bool PacketOwnedExpiryClientSuspended { get; private set; }
+
+        internal bool PacketOwnedExpiryClientPhaseContextKnown { get; private set; }
 
         internal int? PacketOwnedExpiryClientPhase { get; private set; }
 
@@ -209,12 +212,17 @@ namespace HaCreator.MapSimulator.Entities
             CharDam2SE = charDam2SE;
         }
 
-        internal void SetPacketOwnedExpiryClientStateForParity(bool isSuspended, int? phase)
+        internal void SetPacketOwnedExpiryClientStateForParity(
+            bool isSuspended,
+            int? phase,
+            bool hasPhaseContext = false)
         {
             PacketOwnedExpiryClientSuspended = isSuspended;
             PacketOwnedExpiryClientPhase = phase.HasValue && phase.Value >= 0
                 ? phase.Value
                 : null;
+            PacketOwnedExpiryClientPhaseContextKnown = hasPhaseContext
+                                                      || PacketOwnedExpiryClientPhase.HasValue;
         }
 
         /// <summary>
@@ -940,7 +948,7 @@ namespace HaCreator.MapSimulator.Entities
                 {
                     AttackId = actionIndex,
                     AttackType = attackInfo?.AttackType >= 0 ? attackInfo.AttackType : attackMeta?.Type ?? -1,
-                    MagicAttack = attackInfo?.MagicAttack == true,
+                    MagicAttack = attackInfo?.MagicAttack == true || (attackMeta?.Magic ?? 0) > 0,
                     AnimationName = animationName,
                     Damage = Math.Max(1, damage),
                     Range = range,
@@ -2310,6 +2318,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 _lastAngerChargeCount = -1;
                 _angerGaugeBurstNextAllowedTick = int.MinValue;
+                _pendingAngerGaugeBurstRegistration = false;
                 return;
             }
 
@@ -2321,29 +2330,42 @@ namespace HaCreator.MapSimulator.Entities
 
             bool shouldRegisterBurst = currentChargeCount >= AI.AngerChargeTarget
                 && AI.ShouldTriggerAngerGaugeFullChargeEffect(tickCount);
+            bool attemptedFallbackRegistration = false;
             if (!shouldRegisterBurst && AI.ShouldUseFallbackAngerGaugeFullChargeCadence())
             {
-                shouldRegisterBurst = MobAngerGaugeBurstParity.ShouldRegisterBurst(
-                    currentChargeCount,
-                    AI.AngerChargeTarget,
-                    _lastAngerChargeCount,
-                    _angerGaugeBurstNextAllowedTick,
-                    tickCount);
+                attemptedFallbackRegistration = MobAngerGaugeBurstParity.ShouldRegisterPendingBurst(
+                        currentChargeCount,
+                        AI.AngerChargeTarget,
+                        _pendingAngerGaugeBurstRegistration)
+                    || MobAngerGaugeBurstParity.ShouldRegisterBurst(
+                        currentChargeCount,
+                        AI.AngerChargeTarget,
+                        _lastAngerChargeCount,
+                        _angerGaugeBurstNextAllowedTick,
+                        tickCount);
+                shouldRegisterBurst = attemptedFallbackRegistration;
             }
 
+            bool registeredBurst = false;
             if (shouldRegisterBurst)
             {
-                RegisterAngerGaugeBurst(tickCount);
+                registeredBurst = RegisterAngerGaugeBurst(tickCount);
             }
             else if (currentChargeCount < AI.AngerChargeTarget)
             {
                 _angerGaugeBurstNextAllowedTick = int.MinValue;
+                _pendingAngerGaugeBurstRegistration = false;
             }
 
+            _pendingAngerGaugeBurstRegistration = MobAngerGaugeBurstParity.ShouldKeepOwnerRegistrationPending(
+                currentChargeCount,
+                AI.AngerChargeTarget,
+                attemptedFallbackRegistration,
+                registeredBurst);
             _lastAngerChargeCount = currentChargeCount;
         }
 
-        private void RegisterAngerGaugeBurst(int tickCount)
+        private bool RegisterAngerGaugeBurst(int tickCount)
         {
             List<IDXObject> effectFrames = _animationSet.GetAngerGaugeEffect();
             string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
@@ -2357,7 +2379,7 @@ namespace HaCreator.MapSimulator.Entities
                     AI?.AngerGaugeFullChargeEffectIntervalMs ?? 0,
                     out int repeatIntervalMs))
             {
-                return;
+                return false;
             }
 
             Vector2 anchor = GetAngerGaugeBurstAnchor();
@@ -2374,6 +2396,7 @@ namespace HaCreator.MapSimulator.Entities
                 tickCount,
                 repeatIntervalMs);
             AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
+            return true;
         }
 
         private static IDXObject GetTimedAnimationFrame(IReadOnlyList<IDXObject> frames, int tickCount, int startTick, bool loop)

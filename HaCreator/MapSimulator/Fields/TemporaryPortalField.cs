@@ -650,7 +650,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool ApplyRemoteTownPortalRemove(RemoteTownPortalRemovedPacket packet, int currentMapId, int currentTime)
         {
             if (!_remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState state)
-                || !ShouldApplyRemoteTownPortalRemove(state.MapId, currentMapId))
+                || !ShouldApplyRemoteTownPortalRemove(state, currentMapId))
             {
                 return false;
             }
@@ -751,7 +751,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             RemoteOpenGateKey key = new(packet.OwnerCharacterId, packet.IsFirstSlot);
             if (!_remoteOpenGates.TryGetValue(key, out RemoteOpenGateState state)
-                || !ShouldApplyRemoteOpenGateRemove(state.MapId, currentMapId))
+                || !ShouldApplyRemoteOpenGateRemove(state, currentMapId))
             {
                 return false;
             }
@@ -2700,11 +2700,23 @@ namespace HaCreator.MapSimulator.Fields
                    && stateMapId == currentMapId;
         }
 
+        private static bool ShouldApplyRemoteTownPortalRemove(RemoteTownPortalState state, int currentMapId)
+        {
+            return state.Phase != RemoteTownPortalVisualPhase.Removing
+                   && ShouldApplyRemoteTownPortalRemove(state.MapId, currentMapId);
+        }
+
         private static bool ShouldApplyRemoteOpenGateRemove(int stateMapId, int currentMapId)
         {
             return stateMapId > 0
                    && currentMapId > 0
                    && stateMapId == currentMapId;
+        }
+
+        private static bool ShouldApplyRemoteOpenGateRemove(RemoteOpenGateState state, int currentMapId)
+        {
+            return state.Phase != RemoteOpenGateVisualPhase.Removing
+                   && ShouldApplyRemoteOpenGateRemove(state.MapId, currentMapId);
         }
 
         private static bool ShouldLinkRemoteTownPortal(RemoteTownPortalState state)
@@ -4523,9 +4535,46 @@ namespace HaCreator.MapSimulator.Fields
             return ShouldApplyRemoteTownPortalRemove(stateMapId, currentMapId);
         }
 
+        internal static bool ShouldApplyRemoteTownPortalRemoveForTesting(
+            int stateMapId,
+            int currentMapId,
+            RemoteTownPortalVisualPhase phase)
+        {
+            RemoteTownPortalState state = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: stateMapId,
+                X: 0,
+                Y: 0,
+                Destination: null,
+                Phase: phase,
+                PhaseStartedAt: 0,
+                RemovalState: null,
+                RemovalSnapshot: null);
+            return ShouldApplyRemoteTownPortalRemove(state, currentMapId);
+        }
+
         internal static bool ShouldApplyRemoteOpenGateRemoveForTesting(int stateMapId, int currentMapId)
         {
             return ShouldApplyRemoteOpenGateRemove(stateMapId, currentMapId);
+        }
+
+        internal static bool ShouldApplyRemoteOpenGateRemoveForTesting(
+            int stateMapId,
+            int currentMapId,
+            RemoteOpenGateVisualPhase phase)
+        {
+            RemoteOpenGateState state = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: stateMapId,
+                X: 0,
+                Y: 0,
+                IsFirstSlot: true,
+                PartyId: 0,
+                Phase: phase,
+                PhaseStartedAt: 0);
+            return ShouldApplyRemoteOpenGateRemove(state, currentMapId);
         }
 
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)

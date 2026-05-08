@@ -88,12 +88,12 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>push|unshift|splice|shift|pop)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        private static readonly Regex ArrayReverseAliasCallPattern = new(
-            @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*reverse\s*\(",
+        private static readonly Regex ArrayNoArgumentOrderingAliasCallPattern = new(
+            @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>reverse|sort)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        private static readonly Regex ArrayReverseAliasAssignmentPattern = new(
-            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>reverse|toReversed)\s*\(",
+        private static readonly Regex ArrayOrderingAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>reverse|toReversed|sort|toSorted)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private static readonly Regex ArrayConcatAliasAssignmentPattern = new(
@@ -682,12 +682,20 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (mutation.MethodName.Equals("reverse", StringComparison.OrdinalIgnoreCase))
+                if (mutation.MethodName.Equals("reverse", StringComparison.OrdinalIgnoreCase)
+                    || mutation.MethodName.Equals("sort", StringComparison.OrdinalIgnoreCase))
                 {
                     if (objectMemberAliasMap.TryGetValue(mutation.ObjectName, out IReadOnlyDictionary<string, string> existingMemberAliasMap)
                         && existingMemberAliasMap is Dictionary<string, string> existingArrayMemberAliasMap)
                     {
-                        ReverseArrayMemberAliases(existingArrayMemberAliasMap);
+                        if (mutation.MethodName.Equals("sort", StringComparison.OrdinalIgnoreCase))
+                        {
+                            SortArrayMemberAliases(existingArrayMemberAliasMap);
+                        }
+                        else
+                        {
+                            ReverseArrayMemberAliases(existingArrayMemberAliasMap);
+                        }
                     }
 
                     continue;
@@ -852,26 +860,33 @@ namespace HaCreator.MapSimulator.Fields
                 CopyArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
             }
 
-            foreach ((string TargetName, string SourceName, string MethodName) reverseAssignment in EnumerateArrayReverseAliasAssignments(scriptName))
+            foreach ((string TargetName, string SourceName, string MethodName) orderingAssignment in EnumerateArrayOrderingAliasAssignments(scriptName))
             {
-                if (!IsPotentialFunctionAliasName(reverseAssignment.TargetName)
-                    || !IsPotentialFunctionAliasName(reverseAssignment.SourceName)
-                    || !objectMemberAliasMap.TryGetValue(reverseAssignment.SourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+                if (!IsPotentialFunctionAliasName(orderingAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(orderingAssignment.SourceName)
+                    || !objectMemberAliasMap.TryGetValue(orderingAssignment.SourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
                 {
                     continue;
                 }
 
                 Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
                     objectMemberAliasMap,
-                    reverseAssignment.TargetName);
-                if (!reverseAssignment.TargetName.Equals(reverseAssignment.SourceName, StringComparison.OrdinalIgnoreCase))
+                    orderingAssignment.TargetName);
+                if (!orderingAssignment.TargetName.Equals(orderingAssignment.SourceName, StringComparison.OrdinalIgnoreCase))
                 {
                     CopyArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
                 }
 
-                if (reverseAssignment.MethodName.Equals("toReversed", StringComparison.OrdinalIgnoreCase))
+                if (orderingAssignment.MethodName.Equals("toReversed", StringComparison.OrdinalIgnoreCase))
                 {
                     ReverseArrayMemberAliases(targetMemberAliasMap);
+                    continue;
+                }
+
+                if (orderingAssignment.MethodName.Equals("toSorted", StringComparison.OrdinalIgnoreCase)
+                    || orderingAssignment.MethodName.Equals("sort", StringComparison.OrdinalIgnoreCase))
+                {
+                    SortArrayMemberAliases(targetMemberAliasMap);
                 }
             }
 
@@ -1263,9 +1278,10 @@ namespace HaCreator.MapSimulator.Fields
                     new List<string>(SplitFunctionArguments(argumentText))));
             }
 
-            foreach (Match match in ArrayReverseAliasCallPattern.Matches(value))
+            foreach (Match match in ArrayNoArgumentOrderingAliasCallPattern.Matches(value))
             {
                 string objectName = NormalizeFunctionAliasArgument(match.Groups["object"]?.Value);
+                string methodName = NormalizeFunctionAliasArgument(match.Groups["method"]?.Value);
                 if (!IsPotentialFunctionAliasName(objectName))
                 {
                     continue;
@@ -1286,7 +1302,7 @@ namespace HaCreator.MapSimulator.Fields
                 operations.Add(new ArrayAliasMutationOperation(
                     match.Index,
                     objectName,
-                    "reverse",
+                    methodName,
                     Array.Empty<string>()));
             }
 
@@ -1320,14 +1336,14 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
-        private static IEnumerable<(string TargetName, string SourceName, string MethodName)> EnumerateArrayReverseAliasAssignments(string value)
+        private static IEnumerable<(string TargetName, string SourceName, string MethodName)> EnumerateArrayOrderingAliasAssignments(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
                 yield break;
             }
 
-            foreach (Match match in ArrayReverseAliasAssignmentPattern.Matches(value))
+            foreach (Match match in ArrayOrderingAliasAssignmentPattern.Matches(value))
             {
                 string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
                 string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
@@ -2066,6 +2082,47 @@ namespace HaCreator.MapSimulator.Fields
             {
                 string memberKey = indexedAliases[i].Index.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 memberAliasMap[memberKey] = indexedAliases[indexedAliases.Count - i - 1].AliasName;
+            }
+        }
+
+        private static void SortArrayMemberAliases(IDictionary<string, string> memberAliasMap)
+        {
+            if (memberAliasMap == null || memberAliasMap.Count <= 1)
+            {
+                return;
+            }
+
+            var indexedAliases = new List<(int Index, string AliasName)>();
+            foreach (KeyValuePair<string, string> memberAlias in memberAliasMap)
+            {
+                if (int.TryParse(memberAlias.Key, out int parsedIndex) && parsedIndex >= 0)
+                {
+                    indexedAliases.Add((parsedIndex, memberAlias.Value));
+                }
+            }
+
+            if (indexedAliases.Count <= 1)
+            {
+                return;
+            }
+
+            indexedAliases.Sort((left, right) =>
+            {
+                int aliasComparison = string.CompareOrdinal(left.AliasName, right.AliasName);
+                return aliasComparison != 0
+                    ? aliasComparison
+                    : left.Index.CompareTo(right.Index);
+            });
+
+            foreach ((int Index, _) in indexedAliases)
+            {
+                memberAliasMap.Remove(Index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            for (int i = 0; i < indexedAliases.Count; i++)
+            {
+                string memberKey = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                memberAliasMap[memberKey] = indexedAliases[i].AliasName;
             }
         }
 

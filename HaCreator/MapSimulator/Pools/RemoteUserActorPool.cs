@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator.Character;
+﻿using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Core;
@@ -212,6 +212,11 @@ namespace HaCreator.MapSimulator.Pools
                     return;
                 }
 
+                RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.CaptureLocalComReference(
+                    SimulatedAffectedLayerHandleId,
+                    SimulatedAffectedListNodeId,
+                    forcedShift,
+                    cadenceUpdateCount));
                 RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AlphaRelMove(
                     SimulatedAffectedLayerHandleId,
                     SimulatedAffectedListNodeId,
@@ -222,6 +227,11 @@ namespace HaCreator.MapSimulator.Pools
                 if (movesTailToHead)
                 {
                     RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.MoveTailToHead(
+                        SimulatedAffectedLayerHandleId,
+                        SimulatedAffectedListNodeId,
+                        forcedShift,
+                        cadenceUpdateCount));
+                    RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AddHeadComReference(
                         SimulatedAffectedLayerHandleId,
                         SimulatedAffectedListNodeId,
                         forcedShift,
@@ -247,6 +257,22 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (activeLayerHandleId > 0 && activeListNodeId > 0)
                 {
+                    if (movesTailToHead
+                        && (activeLayerHandleId != SimulatedAffectedLayerHandleId
+                            || activeListNodeId != SimulatedAffectedListNodeId))
+                    {
+                        RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.ReleaseLocalComReference(
+                            SimulatedAffectedLayerHandleId,
+                            SimulatedAffectedListNodeId,
+                            forcedShift,
+                            cadenceUpdateCount));
+                        RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.CaptureLocalComReference(
+                            activeLayerHandleId,
+                            activeListNodeId,
+                            forcedShift,
+                            cadenceUpdateCount));
+                    }
+
                     RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AlphaRelMove(
                         activeLayerHandleId,
                         activeListNodeId,
@@ -257,6 +283,11 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.AnimateRepeat(
+                    activeLayerHandleId,
+                    activeListNodeId,
+                    forcedShift,
+                    cadenceUpdateCount));
+                RecordAffectedLayerMutation(RemoteTemporaryStatAffectedLayerMutation.ReleaseLocalComReference(
                     activeLayerHandleId,
                     activeListNodeId,
                     forcedShift,
@@ -286,7 +317,10 @@ namespace HaCreator.MapSimulator.Pools
             AlphaRelMove = 2,
             MoveTailToHead = 3,
             RetargetAffectedSkillEntryListNode = 4,
-            AnimateRepeat = 5
+            AnimateRepeat = 5,
+            CaptureLocalComReference = 6,
+            AddHeadComReference = 7,
+            ReleaseLocalComReference = 8
         }
 
         public readonly record struct RemoteTemporaryStatAffectedLayerMutation(
@@ -376,6 +410,54 @@ namespace HaCreator.MapSimulator.Pools
                     cadenceUpdateCount);
             }
 
+            public static RemoteTemporaryStatAffectedLayerMutation CaptureLocalComReference(
+                int layerHandleId,
+                int listNodeId,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return CreateReferenceMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.CaptureLocalComReference,
+                    layerHandleId,
+                    listNodeId,
+                    layerRefCount: 2,
+                    listNodeRefCount: 1,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
+            public static RemoteTemporaryStatAffectedLayerMutation AddHeadComReference(
+                int layerHandleId,
+                int listNodeId,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return CreateReferenceMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.AddHeadComReference,
+                    layerHandleId,
+                    listNodeId,
+                    layerRefCount: 2,
+                    listNodeRefCount: 1,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
+            public static RemoteTemporaryStatAffectedLayerMutation ReleaseLocalComReference(
+                int layerHandleId,
+                int listNodeId,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return CreateReferenceMutation(
+                    RemoteTemporaryStatAffectedLayerMutationKind.ReleaseLocalComReference,
+                    layerHandleId,
+                    listNodeId,
+                    layerRefCount: 1,
+                    listNodeRefCount: 1,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
             public static RemoteTemporaryStatAffectedLayerMutation RetargetAffectedSkillEntryListNode(
                 int layerHandleId,
                 int listNodeId,
@@ -406,6 +488,29 @@ namespace HaCreator.MapSimulator.Pools
                     AlphaEnd: 0,
                     UsesMissingDurationVariant: false,
                     UsesMissingStartTimeVariant: true,
+                    forcedShift,
+                    cadenceUpdateCount);
+            }
+
+            private static RemoteTemporaryStatAffectedLayerMutation CreateReferenceMutation(
+                RemoteTemporaryStatAffectedLayerMutationKind kind,
+                int layerHandleId,
+                int listNodeId,
+                int layerRefCount,
+                int listNodeRefCount,
+                bool forcedShift,
+                int cadenceUpdateCount)
+            {
+                return new RemoteTemporaryStatAffectedLayerMutation(
+                    kind,
+                    layerHandleId,
+                    listNodeId,
+                    layerRefCount,
+                    listNodeRefCount,
+                    AlphaStart: 0,
+                    AlphaEnd: 0,
+                    UsesMissingDurationVariant: false,
+                    UsesMissingStartTimeVariant: false,
                     forcedShift,
                     cadenceUpdateCount);
             }
@@ -481,6 +586,11 @@ namespace HaCreator.MapSimulator.Pools
             public bool QueuedFacingRight { get; set; }
             public bool QueuedForceReplay { get; set; }
             public int LastForcedReplayActionTriggerTime { get; set; } = int.MinValue;
+            public bool UsesOneTimeLayerObject { get; set; }
+            public int LayerObjectId { get; set; }
+            public int LayerListNodeObjectId { get; set; }
+            public int RegisteredAnimationObjectId { get; set; }
+            public int ParentUnderFaceLayerObjectId { get; set; }
         }
 
         public sealed class RemotePacketOwnedEmotionState
@@ -598,8 +708,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 SimulatedLayerHandleIds = SimulatedLayerHandleIds?
-                    .Where(static entry => entry.Value > 0)
-                    .ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                    .ToDictionary(static entry => entry.Key, static entry => Math.Max(0, entry.Value))
                     ?? new Dictionary<AvatarRenderLayer, int>();
                 SimulatedRegistrationArgumentReferenceOperations =
                     AnimationEffects.SecondaryMotionBlurAnimationState.BuildClientRegistrationArgumentReferenceOperations(
@@ -2994,14 +3103,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int resolvedItemId = itemId.Value;
-            ItemEffectAnimationSet effect = _loader.LoadItemEffectAnimationSet(resolvedItemId);
-            if (relationshipType == RemoteRelationshipOverlayType.NewYearCard
-                && effect == null
-                && resolvedItemId != NewYearCardDefaultItemId)
-            {
-                resolvedItemId = NewYearCardDefaultItemId;
-                effect = _loader.LoadItemEffectAnimationSet(resolvedItemId);
-            }
+            ItemEffectAnimationSet effect = LoadRelationshipOverlayEffectAnimationSet(
+                relationshipType,
+                resolvedItemId,
+                out resolvedItemId);
 
             if (effect == null && relationshipType != RemoteRelationshipOverlayType.NewYearCard)
             {
@@ -3063,6 +3168,29 @@ namespace HaCreator.MapSimulator.Pools
                 OwnerFacingRight = ownerFacingRight
             };
             return true;
+        }
+
+        private ItemEffectAnimationSet LoadRelationshipOverlayEffectAnimationSet(
+            RemoteRelationshipOverlayType relationshipType,
+            int itemId,
+            out int resolvedItemId)
+        {
+            resolvedItemId = itemId;
+            if (_loader == null || itemId <= 0)
+            {
+                return null;
+            }
+
+            if (relationshipType != RemoteRelationshipOverlayType.NewYearCard)
+            {
+                return _loader.LoadItemEffectAnimationSet(itemId);
+            }
+
+            ItemEffectAnimationSet effect = _loader.LoadNewYearCardEffectAnimationSet(itemId);
+            resolvedItemId = effect?.ItemId > 0
+                ? effect.ItemId
+                : itemId;
+            return effect;
         }
 
         public bool TryApplyAvatarModified(
@@ -6185,6 +6313,7 @@ namespace HaCreator.MapSimulator.Pools
             if (actor?.Build == null
                 || !TryResolveRemoteDragonHudMetadata(actor.Build.Job, out RemoteDragonHudMetadata metadata))
             {
+                ReleaseRemoteDragonHudOverlayIfOwnerUnavailableForParity(actor);
                 return false;
             }
 
@@ -6580,6 +6709,41 @@ namespace HaCreator.MapSimulator.Pools
         internal static void EnsureRemoteDragonHudOverlayLayerReferenceForTesting(RemotePreparedSkillState prepared)
         {
             EnsureRemoteDragonHudOverlayLayerReference(prepared);
+        }
+
+        private static bool ReleaseRemoteDragonHudOverlayIfOwnerUnavailableForParity(RemoteUserActor actor)
+        {
+            RemotePreparedSkillState prepared = actor?.PreparedSkill;
+            if (prepared == null
+                || !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
+            {
+                return false;
+            }
+
+            if (actor.Build != null
+                && TryResolveRemoteDragonHudMetadata(actor.Build.Job, out _))
+            {
+                return false;
+            }
+
+            prepared.DragonHudOverlay?.MarkTerminated();
+            prepared.DragonHudOverlay = null;
+            prepared.DragonActionName = null;
+            prepared.DragonActionStartTime = int.MinValue;
+            prepared.DragonOwnerActionStartTime = int.MinValue;
+            prepared.DragonVisualAnchor = Vector2.Zero;
+            prepared.DragonFollowVelocity = Vector2.Zero;
+            prepared.DragonLastFollowUpdateTime = int.MinValue;
+            prepared.DragonFollowActive = false;
+            prepared.DragonActiveVerticalFollowState = 0;
+            prepared.DragonActiveVerticalCheckCount = 0;
+            prepared.DragonActiveFollowReleaseStableFrames = 0;
+            return true;
+        }
+
+        internal static bool ReleaseRemoteDragonHudOverlayIfOwnerUnavailableForTesting(RemoteUserActor actor)
+        {
+            return ReleaseRemoteDragonHudOverlayIfOwnerUnavailableForParity(actor);
         }
 
         private static void UpdateRemoteDragonCompanionFollowState(
@@ -15836,7 +16000,8 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime,
                     facingRight,
                     preserveTimingWhenOnlyFacingChanges,
-                    forceRestartWhenSameAction);
+                    forceRestartWhenSameAction,
+                    actor.TemporaryStatShadowPartnerSkill.SkillId);
                 return;
             }
 
@@ -15850,6 +16015,28 @@ namespace HaCreator.MapSimulator.Pools
                     actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
             presentation.CurrentActionStartTime = currentTime;
             presentation.CurrentFacingRight = facingRight;
+            ApplyRemoteShadowPartnerLayerChoreography(presentation, actor.TemporaryStatShadowPartnerSkill.SkillId);
+        }
+
+        private static void ApplyRemoteShadowPartnerLayerChoreography(
+            RemoteShadowPartnerPresentationState presentation,
+            int skillId)
+        {
+            if (presentation == null)
+            {
+                return;
+            }
+
+            ShadowPartnerClientActionResolver.ShadowPartnerLayerChoreography choreography =
+                ShadowPartnerClientActionResolver.ResolveShadowPartnerLayerChoreography(
+                    skillId,
+                    presentation.ObservedRawActionCode);
+
+            presentation.UsesOneTimeLayerObject = choreography.UsesOneTimeLayer;
+            presentation.LayerObjectId = choreography.LayerObjectId;
+            presentation.LayerListNodeObjectId = choreography.ListNodeObjectId;
+            presentation.RegisteredAnimationObjectId = choreography.RegisteredAnimationObjectId;
+            presentation.ParentUnderFaceLayerObjectId = choreography.ParentUnderFaceLayerObjectId;
         }
 
         private static void ApplyRemoteShadowPartnerSameActionPresentationTransition(
@@ -15857,7 +16044,8 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime,
             bool facingRight,
             bool preserveTimingWhenOnlyFacingChanges,
-            bool forceRestartWhenSameAction)
+            bool forceRestartWhenSameAction,
+            int skillId = 0)
         {
             if (presentation == null)
             {
@@ -15868,6 +16056,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 presentation.CurrentActionStartTime = currentTime;
                 presentation.CurrentFacingRight = facingRight;
+                ApplyRemoteShadowPartnerLayerChoreography(presentation, skillId);
                 return;
             }
 

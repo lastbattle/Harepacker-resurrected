@@ -3685,7 +3685,8 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             int baseDamage = attack?.Damage ?? 0;
-            int damage = sourceMob?.AI?.CalculateOutgoingDamage(baseDamage, MobDamageType.Physical) ?? Math.Max(1, baseDamage);
+            MobDamageType damageType = PlayerCombat.ResolveMobAttackDamageType(attack, isSkillAttack: false);
+            int damage = sourceMob?.AI?.CalculateOutgoingDamage(baseDamage, damageType) ?? Math.Max(1, baseDamage);
             damage = Math.Max(1, damage);
 
             bool died = targetMob.ApplyDamage(
@@ -3695,12 +3696,12 @@ namespace HaCreator.MapSimulator.Combat
                 sourceMob?.CurrentX,
                 sourceMob?.CurrentY,
                 originatedFromPlayer: false,
-                damageType: MobDamageType.Physical,
+                damageType: damageType,
                 attackerId: sourceMob?.PoolId ?? 0,
                 attackerTargetType: MobTargetType.Mob,
                 attackerExternalTargetSource: MobExternalTargetSource.Encounter);
 
-            int reflectedDamage = ResolveMobReflectDamage(targetMob?.AI, targetMob?.AI?.LastDamageTaken ?? 0, MobDamageType.Physical);
+            int reflectedDamage = ResolveMobReflectDamage(targetMob?.AI, targetMob?.AI?.LastDamageTaken ?? 0, damageType);
             if (reflectedDamage > 0 && sourceMob?.AI != null && !sourceMob.AI.IsDead)
             {
                 sourceMob.ApplyDamage(

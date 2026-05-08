@@ -441,6 +441,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, QuestProgress> _progress = new();
         private readonly Dictionary<int, string> _questRecordValues = new();
         private readonly Dictionary<int, string> _questExRecordValues = new();
+        private readonly HashSet<int> _questRecordOwnerQuestIds = new();
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
         private readonly Dictionary<int, long> _questAlarmAutoRegisterTicks = new();
@@ -987,7 +988,7 @@ namespace HaCreator.MapSimulator.Interaction
             var issues = new List<string>();
             if (HasUnmetCurrentQuestRecordForCompletionDemand(
                     definition.QuestId,
-                    questId => TryGetQuestRecordValue(questId, out _)))
+                    HasQuestRecordOwner))
             {
                 issues.Add("Current quest record is missing.");
             }
@@ -2380,6 +2381,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            _questRecordOwnerQuestIds.Add(questId);
             string normalizedValue = value?.Trim() ?? string.Empty;
             if (normalizedValue.Length == 0)
             {
@@ -2532,6 +2534,7 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
+                    _questRecordOwnerQuestIds.Add(questId);
                     QuestProgress progress = GetOrCreateProgress(questId);
                     if (progress.State == QuestStateType.Completed)
                     {
@@ -2561,6 +2564,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
                 progress.MobKills.Clear();
+                _questRecordOwnerQuestIds.Remove(questId);
                 DateTime? completedAtUtc = TryResolveQuestCompletionRecordUtc(completedAtRecord);
                 if (completedAtUtc.HasValue)
                 {
@@ -2581,6 +2585,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             value = string.Empty;
             return false;
+        }
+
+        private bool HasQuestRecordOwner(int questId)
+        {
+            return questId > 0 &&
+                   (_questRecordOwnerQuestIds.Contains(questId) || _questRecordValues.ContainsKey(questId));
+        }
+
+        internal bool HasQuestRecordOwnerForTesting(int questId)
+        {
+            return HasQuestRecordOwner(questId);
         }
 
         public bool TryGetQuestExRecordValue(int questId, out string value)
@@ -7165,6 +7180,12 @@ namespace HaCreator.MapSimulator.Interaction
         private List<string> EvaluateCompletionIssues(QuestDefinition definition, CharacterBuild build)
         {
             var issues = new List<string>();
+            if (HasUnmetCurrentQuestRecordForCompletionDemand(
+                    definition.QuestId,
+                    HasQuestRecordOwner))
+            {
+                issues.Add("Current quest record is missing.");
+            }
 
             AppendQuestStateIssues(definition.EndQuestRequirements, issues);
 
@@ -13200,6 +13221,89 @@ namespace HaCreator.MapSimulator.Interaction
                     "worldid",
                     "worldno",
                     "server");
+            }
+
+            if (normalizedDemandKey == "premium")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "pcroom",
+                    "premiumpcroom",
+                    "premiumfield");
+            }
+
+            if (normalizedDemandKey == "completevipgrademin" ||
+                normalizedDemandKey == "completevipgrademax" ||
+                normalizedDemandKey == "completevipaccount")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "vip",
+                    "vipgrade",
+                    "vipaccount");
+            }
+
+            if (normalizedDemandKey == "randomgrouphost")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "randomgroup",
+                    "group",
+                    "party",
+                    "host");
+            }
+
+            if (normalizedDemandKey == "damageonfalling")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "falling",
+                    "fall",
+                    "damage");
+            }
+
+            if (normalizedDemandKey == "skinselectneed")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "skin",
+                    "skinselect");
+            }
+
+            if (normalizedDemandKey == "notinteleportitemlimitedfield")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "teleport",
+                    "field",
+                    "map");
+            }
+
+            if (normalizedDemandKey == "questrecordandoption" ||
+                normalizedDemandKey == "questoroption" ||
+                normalizedDemandKey == "itemoroption")
+            {
+                return TryGetStopPagesByAliases(
+                    stopPages,
+                    out pages,
+                    demandKey,
+                    "option",
+                    "info",
+                    "record",
+                    "item",
+                    "quest");
             }
 
             pages = Array.Empty<NpcInteractionPage>();

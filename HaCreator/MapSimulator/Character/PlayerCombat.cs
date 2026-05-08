@@ -387,9 +387,10 @@ namespace HaCreator.MapSimulator.Character
             // Calculate damage from mob
             var currentAttack = attackOverride ?? mob.AI?.GetCurrentAttack();
             int baseMobAttack = currentAttack?.Damage ?? GetFallbackMobSkillDamage(mob);
+            MobDamageType damageType = ResolveMobAttackDamageType(currentAttack, isSkillAttack);
             int mobAttack = mob.AI?.CalculateOutgoingDamage(
                 baseMobAttack,
-                isSkillAttack ? MobDamageType.Magical : MobDamageType.Physical) ?? baseMobAttack;
+                damageType) ?? baseMobAttack;
             int playerDefense = _player.Build?.Defense ?? 0;
 
             int damage = Math.Max(1, mobAttack - playerDefense / 2);
@@ -505,6 +506,13 @@ namespace HaCreator.MapSimulator.Character
         internal static bool ShouldApplyMobAttackKnockback(MobAttackEntry attack, bool isSkillAttack)
         {
             return attack == null || isSkillAttack || attack.Knockback;
+        }
+
+        internal static MobDamageType ResolveMobAttackDamageType(MobAttackEntry attack, bool isSkillAttack)
+        {
+            return isSkillAttack || attack?.MagicAttack == true
+                ? MobDamageType.Magical
+                : MobDamageType.Physical;
         }
 
         private static void ApplyMobAttackVitalSideEffects(PlayerCharacter player, MobAttackEntry attack)

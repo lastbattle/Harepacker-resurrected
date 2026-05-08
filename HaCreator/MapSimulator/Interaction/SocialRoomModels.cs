@@ -3677,13 +3677,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyMiniRoomBaseChatPacket(byte packetSubType, PacketReader reader, out string message)
         {
-            int chatType = reader.ReadByte();
-            if (chatType == 7)
+            int chatMode = reader.ReadByte();
+            if (chatMode == 7)
             {
                 return TryApplyMiniRoomBaseGameMessagePacket(packetSubType, reader, out message);
             }
 
-            return TryApplyMiniRoomBaseSpeakerChatPacket(packetSubType, chatType, reader, out message);
+            if (!TryDecodeMiniRoomBaseSpeakerChatPacket(reader, chatMode, out int seatIndex, out string text, out bool clientShaped))
+            {
+                message = $"Mini-room base chat subtype {packetSubType} did not include a decodable room-chat line.";
+                return false;
+            }
+
+            return TryApplyMiniRoomBaseSpeakerChatPacket(packetSubType, chatMode, seatIndex, text, clientShaped, out message);
         }
 
         private bool TryApplyMiniRoomBaseGameMessagePacket(byte packetSubType, PacketReader reader, out string message)
@@ -3707,9 +3713,75 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryApplyMiniRoomBaseSpeakerChatPacket(byte packetSubType, int seatIndex, PacketReader reader, out string message)
+        private static bool TryDecodeMiniRoomBaseSpeakerChatPacket(
+            PacketReader reader,
+            int chatMode,
+            out int seatIndex,
+            out string text,
+            out bool clientShaped)
         {
-            string text = reader.ReadMapleString()?.Trim();
+            seatIndex = Math.Max(0, chatMode);
+            text = null;
+            clientShaped = false;
+            int payloadStart = reader.Position;
+
+            if (reader.Remaining >= sizeof(byte) + sizeof(short))
+            {
+                int candidateSeatIndex = reader.ReadByte();
+                if (TryReadExactMiniRoomBaseChatString(reader, out text))
+                {
+                    seatIndex = Math.Max(0, candidateSeatIndex);
+                    clientShaped = true;
+                    return true;
+                }
+
+                reader.Reset(payloadStart);
+            }
+
+            if (TryReadExactMiniRoomBaseChatString(reader, out text))
+            {
+                return true;
+            }
+
+            reader.Reset(payloadStart);
+            return false;
+        }
+
+        private static bool TryReadExactMiniRoomBaseChatString(PacketReader reader, out string text)
+        {
+            text = null;
+            int start = reader.Position;
+            if (reader.Remaining < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadShort();
+            if (length < 0 || reader.Remaining < length)
+            {
+                reader.Reset(start);
+                return false;
+            }
+
+            text = reader.ReadString(length)?.Trim();
+            if (reader.Remaining != 0)
+            {
+                reader.Reset(start);
+                text = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseSpeakerChatPacket(
+            byte packetSubType,
+            int chatMode,
+            int seatIndex,
+            string text,
+            bool clientShaped,
+            out string message)
+        {
             if (string.IsNullOrWhiteSpace(text))
             {
                 message = $"Mini-room base chat subtype {packetSubType} did not include a room-chat line.";
@@ -3724,7 +3796,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             RoomState = "Chat update";
-            StatusMessage = $"CMiniRoomBaseDlg::OnChat appended shared base subtype {packetSubType} room chat from seat {Math.Max(0, seatIndex)}.";
+            StatusMessage = clientShaped
+                ? $"CMiniRoomBaseDlg::OnChat appended shared base subtype {packetSubType} room chat from seat {Math.Max(0, seatIndex)} after decoding client chat mode {chatMode}."
+                : $"CMiniRoomBaseDlg::OnChat appended shared base subtype {packetSubType} room chat from seat {Math.Max(0, seatIndex)}.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -4864,7 +4938,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int entryCount = nestedPayload[countOffset];
-            if (entryCount <= 1 || entryCount > 16)
+            if (entryCount <= 0 || entryCount > 16)
             {
                 return false;
             }

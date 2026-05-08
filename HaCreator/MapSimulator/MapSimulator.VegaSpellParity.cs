@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator
         private const int VegaOwnerRequestPayloadLength = (sizeof(int) * 8) + sizeof(short);
         private const int VegaConsumeCashLaunchPayloadPrefixLength = sizeof(int) + sizeof(short) + sizeof(int);
         private const int VegaConsumeCashLaunchPayloadLength = VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 3);
+        private const int VegaPacketOwnedEquipSnapshotMarker = 0x56514753; // "VGQS"
+        private const int VegaPacketOwnedEquipSnapshotIntCount = 19;
         private const string VegaResultLoopSoundKeyPrefix = "PacketOwnedSound:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
@@ -93,6 +95,8 @@ namespace HaCreator.MapSimulator
             public int PacketOwnedUpgradeState { get; set; } = int.MinValue;
             public bool PacketOwnedEquipItemTokenObserved { get; set; }
             public int PacketOwnedEquipItemToken { get; set; }
+            public bool PacketOwnedEquipSnapshotObserved { get; set; }
+            public VegaPacketOwnedEquipSnapshot PacketOwnedEquipSnapshot { get; set; }
         }
 
         private sealed class PendingVegaPromptState
@@ -945,6 +949,11 @@ namespace HaCreator.MapSimulator
 
             _pendingVegaCastState.PacketOwnedUpgradeStateObserved = true;
             _pendingVegaCastState.PacketOwnedUpgradeState = decodeState.OutcomeUpgradeState;
+            if (decodeState.HasEquipSnapshot)
+            {
+                _pendingVegaCastState.PacketOwnedEquipSnapshotObserved = true;
+                _pendingVegaCastState.PacketOwnedEquipSnapshot = decodeState.EquipSnapshot;
+            }
         }
 
         private static string BuildPacketOwnedVegaResultStateNote(VegaResultDecodeState decodeState)
@@ -957,7 +966,10 @@ namespace HaCreator.MapSimulator
             string tokenNote = decodeState.HasEquipItemToken
                 ? $" and equip TI {decodeState.EquipItemToken}"
                 : string.Empty;
-            return $" with packet-authored upgrade state {decodeState.OutcomeUpgradeState}{tokenNote}";
+            string snapshotNote = decodeState.HasEquipSnapshot
+                ? " and packet-authored equip snapshot"
+                : string.Empty;
+            return $" with packet-authored upgrade state {decodeState.OutcomeUpgradeState}{tokenNote}{snapshotNote}";
         }
 
         private void HandleUnknownPacketOwnedVegaResult()
@@ -1765,6 +1777,71 @@ namespace HaCreator.MapSimulator
             return decoded;
         }
 
+        internal static bool TryDecodeVegaResultPayloadEquipSnapshotForTests(
+            byte[] payload,
+            out byte resultCode,
+            out bool hasEquipSnapshot,
+            out int equipItemToken,
+            out int itemId,
+            out int totalSlots,
+            out int remainingSlots,
+            out int successCount,
+            out int bonusStr,
+            out int bonusWeaponAttack)
+        {
+            bool decoded = TryDecodeVegaResultPayloadState(payload, out VegaResultDecodeState decodeState, out _);
+            resultCode = decodeState.ResultCode;
+            hasEquipSnapshot = decodeState.HasEquipSnapshot;
+            equipItemToken = decodeState.EquipSnapshot.EquipItemToken;
+            itemId = decodeState.EquipSnapshot.ItemId;
+            totalSlots = decodeState.EquipSnapshot.TotalSlots;
+            remainingSlots = decodeState.EquipSnapshot.RemainingSlots;
+            successCount = decodeState.EquipSnapshot.SuccessCount;
+            bonusStr = decodeState.EquipSnapshot.BonusSTR;
+            bonusWeaponAttack = decodeState.EquipSnapshot.BonusWeaponAttack;
+            return decoded;
+        }
+
+        internal static bool TryApplyPacketOwnedVegaEquipSnapshotStateForTests(
+            CharacterPart equippedPart,
+            int expectedItemId,
+            int equipItemToken,
+            int itemId,
+            int totalSlots,
+            int remainingSlots,
+            int successCount,
+            int bonusStr,
+            int bonusWeaponAttack)
+        {
+            return TryApplyPacketOwnedVegaEquipSnapshotState(
+                equippedPart,
+                expectedItemId,
+                new VegaPacketOwnedEquipSnapshot(
+                    equipItemToken,
+                    itemId,
+                    totalSlots,
+                    remainingSlots,
+                    successCount,
+                    bonusStr,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    bonusWeaponAttack,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0));
+        }
+
+        internal static int VegaPacketOwnedEquipSnapshotMarkerForTests => VegaPacketOwnedEquipSnapshotMarker;
+
+        internal static int VegaPacketOwnedEquipSnapshotIntCountForTests => VegaPacketOwnedEquipSnapshotIntCount;
+
         internal static bool TryDecodeVegaResultPayloadStateForTests(
             byte[] payload,
             out byte resultCode,
@@ -1914,6 +1991,14 @@ namespace HaCreator.MapSimulator
                     _pendingVegaCastState.PacketOwnedEquipItemToken);
             }
 
+            if (_pendingVegaCastState.PacketOwnedEquipSnapshotObserved)
+            {
+                ApplyPacketOwnedVegaEquipSnapshotState(
+                    _pendingVegaCastState.Request.Slot,
+                    _pendingVegaCastState.Request.EquipItemId,
+                    _pendingVegaCastState.PacketOwnedEquipSnapshot);
+            }
+
             return true;
         }
 
@@ -1934,6 +2019,61 @@ namespace HaCreator.MapSimulator
 
             equippedPart.ClientItemToken = itemToken;
             RememberObservedVegaEquipItemToken(slot, itemId, itemToken, isClientAuthored: true);
+        }
+
+        private void ApplyPacketOwnedVegaEquipSnapshotState(
+            EquipSlot slot,
+            int expectedItemId,
+            VegaPacketOwnedEquipSnapshot snapshot)
+        {
+            if (_playerManager?.Player?.Build?.Equipment == null ||
+                !_playerManager.Player.Build.Equipment.TryGetValue(slot, out CharacterPart equippedPart) ||
+                equippedPart == null ||
+                !TryApplyPacketOwnedVegaEquipSnapshotState(equippedPart, expectedItemId, snapshot))
+            {
+                return;
+            }
+
+            RememberObservedVegaEquipItemToken(slot, expectedItemId, snapshot.EquipItemToken, isClientAuthored: true);
+        }
+
+        private static bool TryApplyPacketOwnedVegaEquipSnapshotState(
+            CharacterPart equippedPart,
+            int expectedItemId,
+            VegaPacketOwnedEquipSnapshot snapshot)
+        {
+            if (equippedPart == null ||
+                expectedItemId <= 0 ||
+                snapshot.ItemId != expectedItemId ||
+                equippedPart.ItemId != expectedItemId)
+            {
+                return false;
+            }
+
+            if (snapshot.EquipItemToken != 0)
+            {
+                equippedPart.ClientItemToken = snapshot.EquipItemToken;
+            }
+
+            equippedPart.TotalUpgradeSlotCount = Math.Max(0, snapshot.TotalSlots);
+            equippedPart.RemainingUpgradeSlotCount = Math.Clamp(snapshot.RemainingSlots, 0, Math.Max(0, snapshot.TotalSlots));
+            equippedPart.UpgradeSlots = equippedPart.RemainingUpgradeSlotCount.Value;
+            equippedPart.EnhancementStarCount = Math.Max(0, snapshot.SuccessCount);
+            equippedPart.BonusSTR = snapshot.BonusSTR;
+            equippedPart.BonusDEX = snapshot.BonusDEX;
+            equippedPart.BonusINT = snapshot.BonusINT;
+            equippedPart.BonusLUK = snapshot.BonusLUK;
+            equippedPart.BonusHP = snapshot.BonusHP;
+            equippedPart.BonusMP = snapshot.BonusMP;
+            equippedPart.BonusWeaponAttack = snapshot.BonusWeaponAttack;
+            equippedPart.BonusMagicAttack = snapshot.BonusMagicAttack;
+            equippedPart.BonusWeaponDefense = snapshot.BonusWeaponDefense;
+            equippedPart.BonusMagicDefense = snapshot.BonusMagicDefense;
+            equippedPart.BonusAccuracy = snapshot.BonusAccuracy;
+            equippedPart.BonusAvoidability = snapshot.BonusAvoidability;
+            equippedPart.BonusSpeed = snapshot.BonusSpeed;
+            equippedPart.BonusJump = snapshot.BonusJump;
+            return true;
         }
 
         private static ItemUpgradeUI.ItemUpgradeAttemptResult BuildPacketOwnedVegaPreludeResult(
@@ -2184,7 +2324,30 @@ namespace HaCreator.MapSimulator
             int EquipItemToken,
             bool HasOutcomeState,
             int OutcomeResultValue,
-            int OutcomeUpgradeState);
+            int OutcomeUpgradeState,
+            bool HasEquipSnapshot,
+            VegaPacketOwnedEquipSnapshot EquipSnapshot);
+
+        private readonly record struct VegaPacketOwnedEquipSnapshot(
+            int EquipItemToken,
+            int ItemId,
+            int TotalSlots,
+            int RemainingSlots,
+            int SuccessCount,
+            int BonusSTR,
+            int BonusDEX,
+            int BonusINT,
+            int BonusLUK,
+            int BonusHP,
+            int BonusMP,
+            int BonusWeaponAttack,
+            int BonusMagicAttack,
+            int BonusWeaponDefense,
+            int BonusMagicDefense,
+            int BonusAccuracy,
+            int BonusAvoidability,
+            int BonusSpeed,
+            int BonusJump);
 
         private static bool TryDecodeVegaResultPayload(byte[] payload, out byte resultCode)
         {
@@ -2209,6 +2372,46 @@ namespace HaCreator.MapSimulator
             byte resultCode = payload[0];
             int outcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
             int equipTokenAndOutcomePayloadLength = sizeof(byte) + (sizeof(int) * 3);
+            int equipSnapshotPayloadLength = equipTokenAndOutcomePayloadLength + sizeof(int) + (sizeof(int) * VegaPacketOwnedEquipSnapshotIntCount);
+            if (payload.Length == equipSnapshotPayloadLength)
+            {
+                int equipItemToken = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte), sizeof(int)));
+                int outcomeResultValue = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte) + sizeof(int), sizeof(int)));
+                int outcomeUpgradeState = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(sizeof(byte) + (sizeof(int) * 2), sizeof(int)));
+                int marker = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.AsSpan(equipTokenAndOutcomePayloadLength, sizeof(int)));
+                if (marker != VegaPacketOwnedEquipSnapshotMarker)
+                {
+                    decodeState = new VegaResultDecodeState(
+                        resultCode,
+                        HasEquipItemToken: equipItemToken != 0,
+                        EquipItemToken: equipItemToken,
+                        HasOutcomeState: true,
+                        outcomeResultValue,
+                        outcomeUpgradeState,
+                        HasEquipSnapshot: false,
+                        EquipSnapshot: default);
+                    decodeError = $"Packet-owned Vega result code {resultCode} contains an equip-state tail with an unexpected marker.";
+                    return false;
+                }
+
+                VegaPacketOwnedEquipSnapshot snapshot = DecodeVegaPacketOwnedEquipSnapshot(
+                    payload.AsSpan(equipTokenAndOutcomePayloadLength + sizeof(int), sizeof(int) * VegaPacketOwnedEquipSnapshotIntCount));
+                decodeState = new VegaResultDecodeState(
+                    resultCode,
+                    HasEquipItemToken: equipItemToken != 0,
+                    EquipItemToken: equipItemToken,
+                    HasOutcomeState: true,
+                    outcomeResultValue,
+                    outcomeUpgradeState,
+                    HasEquipSnapshot: true,
+                    snapshot);
+                return true;
+            }
+
             if (payload.Length == equipTokenAndOutcomePayloadLength)
             {
                 int equipItemToken = BinaryPrimitives.ReadInt32LittleEndian(
@@ -2223,7 +2426,9 @@ namespace HaCreator.MapSimulator
                     EquipItemToken: equipItemToken,
                     HasOutcomeState: true,
                     outcomeResultValue,
-                    outcomeUpgradeState);
+                    outcomeUpgradeState,
+                    HasEquipSnapshot: false,
+                    EquipSnapshot: default);
                 return true;
             }
 
@@ -2239,7 +2444,9 @@ namespace HaCreator.MapSimulator
                     EquipItemToken: 0,
                     HasOutcomeState: true,
                     outcomeResultValue,
-                    outcomeUpgradeState);
+                    outcomeUpgradeState,
+                    HasEquipSnapshot: false,
+                    EquipSnapshot: default);
                 return true;
             }
 
@@ -2251,10 +2458,12 @@ namespace HaCreator.MapSimulator
                     EquipItemToken: 0,
                     HasOutcomeState: false,
                     OutcomeResultValue: 0,
-                    OutcomeUpgradeState: int.MinValue);
+                    OutcomeUpgradeState: int.MinValue,
+                    HasEquipSnapshot: false,
+                    EquipSnapshot: default);
                 decodeError = payload.Length > equipTokenAndOutcomePayloadLength
                     ? $"Packet-owned Vega result code {resultCode} contains unexpected trailing bytes after the optional outcome-state payload fields."
-                    : $"Packet-owned Vega result code {resultCode} must be either the result byte alone, result plus outcome-state payload fields, or result plus equip-token and outcome-state payload fields.";
+                    : $"Packet-owned Vega result code {resultCode} must be either the result byte alone, result plus outcome-state payload fields, result plus equip-token and outcome-state payload fields, or result plus packet-authored equip-state snapshot fields.";
                 return false;
             }
 
@@ -2264,8 +2473,41 @@ namespace HaCreator.MapSimulator
                 EquipItemToken: 0,
                 HasOutcomeState: false,
                 OutcomeResultValue: 0,
-                OutcomeUpgradeState: int.MinValue);
+                OutcomeUpgradeState: int.MinValue,
+                HasEquipSnapshot: false,
+                EquipSnapshot: default);
             return true;
+        }
+
+        private static VegaPacketOwnedEquipSnapshot DecodeVegaPacketOwnedEquipSnapshot(ReadOnlySpan<byte> payload)
+        {
+            Span<int> values = stackalloc int[VegaPacketOwnedEquipSnapshotIntCount];
+            for (int i = 0; i < values.Length; i++)
+            {
+                values[i] = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.Slice(i * sizeof(int), sizeof(int)));
+            }
+
+            return new VegaPacketOwnedEquipSnapshot(
+                values[0],
+                values[1],
+                values[2],
+                values[3],
+                values[4],
+                values[5],
+                values[6],
+                values[7],
+                values[8],
+                values[9],
+                values[10],
+                values[11],
+                values[12],
+                values[13],
+                values[14],
+                values[15],
+                values[16],
+                values[17],
+                values[18]);
         }
 
         private static bool TryDecodeVegaLaunchPayload(

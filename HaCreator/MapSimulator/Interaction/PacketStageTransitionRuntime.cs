@@ -559,7 +559,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool IsLikelyLogoutGiftConfig(int predictQuitRawValue, IReadOnlyList<int> commoditySerialNumbers)
         {
-            if (predictQuitRawValue is not 0 and not 1)
+            if (predictQuitRawValue < 0)
             {
                 return false;
             }
@@ -589,6 +589,15 @@ namespace HaCreator.MapSimulator.Interaction
             int score = IsLikelyLogoutGiftConfig(predictQuitRawValue, commoditySerialNumbers)
                 ? LogoutGiftConfigCandidateBaseScore
                 : 0;
+            if (predictQuitRawValue is 0 or 1)
+            {
+                score += 8;
+            }
+            else if (predictQuitRawValue > 1)
+            {
+                score += 2;
+            }
+
             int trailingByteCount = payload.Length - (offset + LogoutGiftConfigByteLength);
             if (trailingByteCount == 0)
             {
@@ -1555,8 +1564,143 @@ namespace HaCreator.MapSimulator.Interaction
                 CharacterDataSectionRecordByteCountsByFlag = recordByteCountsByFlag,
                 CharacterDataSectionSemanticRecordByteCountsByFlag = BuildCharacterDataSectionSemanticRecordByteCounts(snapshot, recordByteCountsByFlag),
                 CharacterDataSectionNativeRecordByteCountsByFlag = recordByteCountsByFlag,
-                CharacterDataSectionFieldByteCountsByFlag = BuildCharacterDataSectionFieldByteCounts(snapshot, countByteCountsByFlag)
+                CharacterDataSectionFieldByteCountsByFlag = BuildCharacterDataSectionFieldByteCounts(snapshot, countByteCountsByFlag),
+                CharacterDataSubsectionOwnershipEntries = BuildCharacterDataSubsectionOwnershipEntries(snapshot)
             };
+        }
+
+        private static IReadOnlyList<PacketCharacterDataSubsectionOwnership> BuildCharacterDataSubsectionOwnershipEntries(PacketCharacterDataSnapshot snapshot)
+        {
+            List<PacketCharacterDataSubsectionOwnership> entries = new();
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataTwoIntValueRecordFlag,
+                "CharacterData::Decode 0x100000 two-int header",
+                0,
+                0,
+                0,
+                snapshot.TwoIntValueRecordByteCount,
+                snapshot.TwoIntValueRecord.HasValue ? 1 : 0,
+                snapshot.TwoIntValueRecord.HasValue);
+
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataMiniGameRecordFlag,
+                PacketCharacterDataFixedClientRecord.MiniGameOwner,
+                0,
+                0,
+                snapshot.MiniGameRecordCountByteCount,
+                snapshot.MiniGameRecordByteCount,
+                snapshot.MiniGameRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataMiniGameRecordFlag) != 0);
+
+            int relationshipOffset = 0;
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataRelationshipRecordFlag,
+                PacketCharacterDataFixedClientRecord.CoupleOwner,
+                0,
+                relationshipOffset,
+                snapshot.CoupleRecordCountByteCount,
+                snapshot.CoupleRecordByteCount,
+                snapshot.CoupleRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataRelationshipRecordFlag) != 0);
+            relationshipOffset = checked(relationshipOffset + snapshot.CoupleRecordCountByteCount + snapshot.CoupleRecordByteCount);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataRelationshipRecordFlag,
+                PacketCharacterDataFixedClientRecord.FriendOwner,
+                1,
+                relationshipOffset,
+                snapshot.FriendRecordCountByteCount,
+                snapshot.FriendRecordByteCount,
+                snapshot.FriendRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataRelationshipRecordFlag) != 0);
+            relationshipOffset = checked(relationshipOffset + snapshot.FriendRecordCountByteCount + snapshot.FriendRecordByteCount);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataRelationshipRecordFlag,
+                PacketCharacterDataFixedClientRecord.MarriageOwner,
+                2,
+                relationshipOffset,
+                snapshot.MarriageRecordCountByteCount,
+                snapshot.MarriageRecordByteCount,
+                snapshot.MarriageRecordNativeCount,
+                (snapshot.DecodedSectionFlags & CharacterDataRelationshipRecordFlag) != 0);
+
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataMapTransferFlag,
+                PacketCharacterDataMapTransferRecord.RegularGroup,
+                0,
+                0,
+                0,
+                snapshot.RegularMapTransferRecordByteCount,
+                snapshot.RegularMapTransferRecordEntries?.Count ?? 0,
+                (snapshot.DecodedSectionFlags & CharacterDataMapTransferFlag) != 0);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataMapTransferFlag,
+                PacketCharacterDataMapTransferRecord.ContinentGroup,
+                1,
+                snapshot.RegularMapTransferRecordByteCount,
+                0,
+                snapshot.ContinentMapTransferRecordByteCount,
+                snapshot.ContinentMapTransferRecordEntries?.Count ?? 0,
+                (snapshot.DecodedSectionFlags & CharacterDataMapTransferFlag) != 0);
+
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataWildHunterInfoFlag,
+                "GW_WildHunterInfo::Decode.Mode",
+                0,
+                0,
+                0,
+                snapshot.WildHunterInfoModeByteCount,
+                snapshot.WildHunterInfoModeRecord.HasValue ? 1 : 0,
+                snapshot.HasWildHunterInfo);
+            AddCharacterDataSubsectionOwnershipEntry(
+                entries,
+                CharacterDataWildHunterInfoFlag,
+                "GW_WildHunterInfo::Decode.CapturedMobIds",
+                1,
+                snapshot.WildHunterInfoModeByteCount,
+                0,
+                snapshot.WildHunterInfoCapturedMobRecordByteCount,
+                snapshot.WildHunterInfoCapturedMobRecords?.Count ?? 0,
+                snapshot.HasWildHunterInfo);
+
+            return entries;
+        }
+
+        private static void AddCharacterDataSubsectionOwnershipEntry(
+            ICollection<PacketCharacterDataSubsectionOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            int nativeOrderIndex,
+            int startOffset,
+            int countPrefixByteCount,
+            int recordByteCount,
+            int recordCount,
+            bool isPresent)
+        {
+            int byteCount = checked(countPrefixByteCount + recordByteCount);
+            if (!isPresent && byteCount == 0 && recordCount == 0)
+            {
+                return;
+            }
+
+            entries.Add(new PacketCharacterDataSubsectionOwnership(
+                sectionFlag,
+                owner,
+                nativeOrderIndex,
+                startOffset,
+                checked(startOffset + byteCount),
+                byteCount,
+                countPrefixByteCount,
+                recordByteCount,
+                recordCount,
+                isPresent));
         }
 
         private static IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> BuildCharacterDataSectionFieldByteCounts(
@@ -5156,6 +5300,18 @@ namespace HaCreator.MapSimulator.Interaction
         int NativeRecordByteCount,
         bool IsPresent);
 
+    internal readonly record struct PacketCharacterDataSubsectionOwnership(
+        ulong SectionFlag,
+        string Owner,
+        int NativeOrderIndex,
+        int StartOffset,
+        int EndOffset,
+        int ByteCount,
+        int CountPrefixByteCount,
+        int RecordByteCount,
+        int RecordCount,
+        bool IsPresent);
+
     internal readonly record struct PacketCharacterDataSkillRecord(
         int SkillId,
         int SkillLevel,
@@ -5617,6 +5773,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionEndOffsetsByFlag { get; init; } = null;
 
         internal IReadOnlyList<PacketCharacterDataSectionOwnership> CharacterDataSectionOwnershipEntries { get; init; } = null;
+
+        internal IReadOnlyList<PacketCharacterDataSubsectionOwnership> CharacterDataSubsectionOwnershipEntries { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> BackwardUpdatePrimaryMatchedSerialNumberCountsByFlag { get; init; } = null;
 

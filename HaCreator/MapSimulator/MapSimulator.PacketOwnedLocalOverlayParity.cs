@@ -2155,10 +2155,12 @@ namespace HaCreator.MapSimulator
             int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
-            int bodyX = Math.Clamp(
-                anchor.X - (contentWidth / 2),
-                PacketOwnedBalloonScreenMargin,
-                Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
+            int bodyX = ResolvePacketOwnedBalloonBodyX(
+                anchor,
+                contentWidth,
+                bodyWidth,
+                message.AnchorMode,
+                Width);
             Rectangle seedBodyBounds = new(bodyX, 0, bodyWidth, bodyHeight);
             PacketOwnedBalloonArrowKind aboveArrowKind = SelectPacketOwnedBalloonArrowKind(anchor, seedBodyBounds, placeBelowAnchor: false);
             LocalOverlayBalloonArrowSprite aboveArrowSprite = ResolvePacketOwnedBalloonArrowSprite(aboveArrowKind);
@@ -2235,6 +2237,40 @@ namespace HaCreator.MapSimulator
         {
             int contentWidth = Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
             return contentWidth + PacketOwnedBalloonBodyExtraWidth;
+        }
+
+        internal static int ResolvePacketOwnedBalloonBodyXForTests(
+            Point anchor,
+            int requestedWidth,
+            LocalOverlayBalloonAnchorMode anchorMode,
+            int screenWidth)
+        {
+            int contentWidth = Math.Clamp(requestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            return ResolvePacketOwnedBalloonBodyX(
+                anchor,
+                contentWidth,
+                contentWidth + PacketOwnedBalloonBodyExtraWidth,
+                anchorMode,
+                screenWidth);
+        }
+
+        private static int ResolvePacketOwnedBalloonBodyX(
+            Point anchor,
+            int contentWidth,
+            int bodyWidth,
+            LocalOverlayBalloonAnchorMode anchorMode,
+            int screenWidth)
+        {
+            int clientLayerX = anchor.X - (Math.Max(0, contentWidth) / 2);
+            if (anchorMode == LocalOverlayBalloonAnchorMode.Avatar)
+            {
+                return clientLayerX;
+            }
+
+            return Math.Clamp(
+                clientLayerX,
+                PacketOwnedBalloonScreenMargin,
+                Math.Max(PacketOwnedBalloonScreenMargin, screenWidth - bodyWidth - PacketOwnedBalloonScreenMargin));
         }
 
         private void ResolvePacketOwnedBalloonOverlap(

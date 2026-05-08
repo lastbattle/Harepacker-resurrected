@@ -133,17 +133,27 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool MousePointCheck(Rectangle layerBounds, Point buttonOffset, Point point)
         {
-            if (layerBounds.Width <= 0 || layerBounds.Height <= 0)
+            Rectangle buttonBounds = ResolveADBoardButtonBounds(layerBounds, buttonOffset);
+            if (buttonBounds == Rectangle.Empty)
             {
                 return false;
             }
 
-            Rectangle buttonBounds = new(
+            return buttonBounds.Contains(point);
+        }
+
+        internal static Rectangle ResolveADBoardButtonBounds(Rectangle layerBounds, Point buttonOffset)
+        {
+            if (layerBounds.Width <= 0 || layerBounds.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
                 layerBounds.X + buttonOffset.X,
                 layerBounds.Y + buttonOffset.Y,
                 ADBoardButtonWidth,
                 ADBoardButtonHeight);
-            return buttonBounds.Contains(point);
         }
 
         internal static ChatBalloonADBoardButtonCanvasKind ResolveADBoardMouseMoveCanvas(bool isMouseOverButton)

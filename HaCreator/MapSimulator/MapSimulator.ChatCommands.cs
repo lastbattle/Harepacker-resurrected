@@ -3357,6 +3357,38 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Info(_guildBossOfficialSessionBridge.DescribeRecentPackets());
                         }
 
+                        if (string.Equals(args[1], "send", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!GuildBossSessionCommandParsing.TryParsePulleyRequest(
+                                    args,
+                                    valueIndex: 2,
+                                    defaultTick: currTickCount,
+                                    out GuildBossField.PulleyPacketRequest request))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.PulleyRequestUsage);
+                            }
+
+                            return _guildBossOfficialSessionBridge.TrySendPulleyRequest(request, out string sendStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                                : ChatCommandHandler.CommandResult.Error(sendStatus);
+                        }
+
+                        if (string.Equals(args[1], "queue", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!GuildBossSessionCommandParsing.TryParsePulleyRequest(
+                                    args,
+                                    valueIndex: 2,
+                                    defaultTick: currTickCount,
+                                    out GuildBossField.PulleyPacketRequest request))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.PulleyRequestUsage);
+                            }
+
+                            return _guildBossOfficialSessionBridge.TryQueuePulleyRequest(request, out string queueStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(queueStatus)
+                                : ChatCommandHandler.CommandResult.Error(queueStatus);
+                        }
+
 
                         if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                         {

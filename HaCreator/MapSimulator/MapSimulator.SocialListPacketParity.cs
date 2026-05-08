@@ -21,11 +21,11 @@ namespace HaCreator.MapSimulator
         private ushort _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
         private ushort _socialListOfficialSessionBridgeConfiguredGuildResultOpcode;
         private ushort _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode;
-        private ushort _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode;
-        private ushort _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode;
-        private ushort _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode;
-        private ushort _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode;
-        private ushort _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode;
+        private ushort _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode = SocialListOfficialSessionBridgeManager.ClientFriendRequestOpcode;
+        private ushort _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode = SocialListOfficialSessionBridgeManager.ClientPartyRequestOpcode;
+        private ushort _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode = SocialListOfficialSessionBridgeManager.ClientGuildRequestOpcode;
+        private ushort _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode = SocialListOfficialSessionBridgeManager.ClientAllianceRequestOpcode;
+        private ushort _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode = SocialListOfficialSessionBridgeManager.ClientBlacklistRequestOpcode;
         private const int SocialListOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt;
 
@@ -665,11 +665,11 @@ namespace HaCreator.MapSimulator
                     ushort discoverPartyOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
                     ushort discoverGuildOpcode = discoverOpcodeDefault;
                     ushort discoverAllianceOpcode = discoverOpcodeDefault;
-                    ushort discoverFriendRequestOpcode = 0;
-                    ushort discoverPartyRequestOpcode = 0;
-                    ushort discoverGuildRequestOpcode = 0;
-                    ushort discoverAllianceRequestOpcode = 0;
-                    ushort discoverBlacklistRequestOpcode = 0;
+                    ushort discoverFriendRequestOpcode = SocialListOfficialSessionBridgeManager.ClientFriendRequestOpcode;
+                    ushort discoverPartyRequestOpcode = SocialListOfficialSessionBridgeManager.ClientPartyRequestOpcode;
+                    ushort discoverGuildRequestOpcode = SocialListOfficialSessionBridgeManager.ClientGuildRequestOpcode;
+                    ushort discoverAllianceRequestOpcode = SocialListOfficialSessionBridgeManager.ClientAllianceRequestOpcode;
+                    ushort discoverBlacklistRequestOpcode = SocialListOfficialSessionBridgeManager.ClientBlacklistRequestOpcode;
                     for (int i = 3; i < args.Length; i++)
                     {
                         if (args[i].StartsWith("process=", StringComparison.OrdinalIgnoreCase))
@@ -743,11 +743,11 @@ namespace HaCreator.MapSimulator
                     ushort startPartyOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
                     ushort startGuildOpcode = startOpcodeDefault;
                     ushort startAllianceOpcode = startOpcodeDefault;
-                    ushort startFriendRequestOpcode = 0;
-                    ushort startPartyRequestOpcode = 0;
-                    ushort startGuildRequestOpcode = 0;
-                    ushort startAllianceRequestOpcode = 0;
-                    ushort startBlacklistRequestOpcode = 0;
+                    ushort startFriendRequestOpcode = SocialListOfficialSessionBridgeManager.ClientFriendRequestOpcode;
+                    ushort startPartyRequestOpcode = SocialListOfficialSessionBridgeManager.ClientPartyRequestOpcode;
+                    ushort startGuildRequestOpcode = SocialListOfficialSessionBridgeManager.ClientGuildRequestOpcode;
+                    ushort startAllianceRequestOpcode = SocialListOfficialSessionBridgeManager.ClientAllianceRequestOpcode;
+                    ushort startBlacklistRequestOpcode = SocialListOfficialSessionBridgeManager.ClientBlacklistRequestOpcode;
                     for (int i = 5; i < args.Length; i++)
                     {
                         if (!TryApplySocialListOpcodeOverrideToken(
@@ -796,11 +796,11 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = 0;
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = 0;
-                    _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode = 0;
-                    _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode = 0;
-                    _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode = 0;
-                    _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode = 0;
-                    _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode = 0;
+                    _socialListOfficialSessionBridgeConfiguredFriendRequestOpcode = SocialListOfficialSessionBridgeManager.ClientFriendRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredPartyRequestOpcode = SocialListOfficialSessionBridgeManager.ClientPartyRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredGuildRequestOpcode = SocialListOfficialSessionBridgeManager.ClientGuildRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredAllianceRequestOpcode = SocialListOfficialSessionBridgeManager.ClientAllianceRequestOpcode;
+                    _socialListOfficialSessionBridgeConfiguredBlacklistRequestOpcode = SocialListOfficialSessionBridgeManager.ClientBlacklistRequestOpcode;
                     _socialListOfficialSessionBridge.Stop();
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 
@@ -1002,6 +1002,37 @@ namespace HaCreator.MapSimulator
             return _socialListOfficialSessionBridge.TrySendOutboundRawPacket(outboundRequest.RawPacket, out string sendStatus)
                 ? $"{outboundRequest.Describe()}. {sendStatus}"
                 : $"{outboundRequest.Describe()}. {sendStatus}";
+        }
+
+        private string DispatchSocialListGuildDialogRequest(SocialListGuildDialogRequestPacket request)
+        {
+            ushort opcode = ResolveSocialListRequestOpcode(SocialListTab.Guild);
+            try
+            {
+                byte[] rawPacket = SocialListGuildDialogRequestCodec.BuildPacket(
+                    request,
+                    createGuildOpcode: opcode,
+                    setGuildMarkOpcode: opcode);
+                string description = request.Kind switch
+                {
+                    SocialListGuildDialogRequestKind.CreateGuild => $"Create-guild request for {request.GuildName}",
+                    SocialListGuildDialogRequestKind.SetMark => "Set-guild-mark request",
+                    _ => $"Guild dialog request {request.Kind}"
+                };
+
+                if (!_socialListOfficialSessionBridgeEnabled || !_socialListOfficialSessionBridge.HasAttachedClient)
+                {
+                    return $"{description} stayed staged without native injection. Bridge is not connected.";
+                }
+
+                return _socialListOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendStatus)
+                    ? $"{description}. {sendStatus}"
+                    : $"{description}. {sendStatus}";
+            }
+            catch (Exception ex)
+            {
+                return $"Guild dialog request stayed staged without native injection: {ex.Message}";
+            }
         }
 
         private ushort ResolveSocialListRequestOpcode(SocialListTab tab)

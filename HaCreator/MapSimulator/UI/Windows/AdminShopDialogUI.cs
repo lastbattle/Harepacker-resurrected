@@ -2049,6 +2049,9 @@ namespace HaCreator.MapSimulator.UI
                 Query = _packetOwnedWishlistPendingSearchQuery ?? string.Empty,
                 CategoryKey = _packetOwnedWishlistPendingSearchCategoryKey ?? "all",
                 PriceRangeIndex = _packetOwnedWishlistPendingSearchPriceRangeIndex,
+                RemoteTotalCount = -1,
+                RemotePageIndex = -1,
+                RemotePageSize = -1,
                 UsedFallbackRequestContext = true,
                 ItemIds = Array.Empty<int>(),
                 ResultRows = Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>(),
@@ -2123,6 +2126,9 @@ namespace HaCreator.MapSimulator.UI
                 Query = query,
                 CategoryKey = categoryKey,
                 PriceRangeIndex = priceRangeIndex,
+                RemoteTotalCount = snapshot.RemoteTotalCount,
+                RemotePageIndex = snapshot.RemotePageIndex,
+                RemotePageSize = snapshot.RemotePageSize,
                 UsedFallbackRequestContext = true,
                 ItemIds = snapshot.ItemIds ?? Array.Empty<int>(),
                 ResultRows = snapshot.ResultRows ?? Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>(),
@@ -5376,6 +5382,7 @@ namespace HaCreator.MapSimulator.UI
             string sessionLabel = snapshot.ServiceSessionId >= 0 || effectiveSearchSessionId >= 0
                 ? $"{Math.Max(-1, snapshot.ServiceSessionId).ToString(CultureInfo.InvariantCulture)}/{Math.Max(-1, effectiveSearchSessionId).ToString(CultureInfo.InvariantCulture)}"
                 : "unresolved";
+            string remotePageLabel = BuildPacketOwnedWishlistRemotePageLabel(snapshot);
             IReadOnlyList<int> packetItemIds = snapshot.ItemIds ?? Array.Empty<int>();
             IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> packetRows = snapshot.ResultRows ?? Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
             int packetRowCount = Math.Max(packetItemIds.Count, packetRows.Count);
@@ -5384,8 +5391,8 @@ namespace HaCreator.MapSimulator.UI
                 summary = snapshot.IsStateOnlySessionSnapshot
                     ? snapshot.IgnoredDueToSessionMismatch
                         ? $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; stale packet-authored rows were ignored because the payload service/search session ids did not match the active owner session."
-                        : $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; the packet-owned owner advanced the search session without a decodable row payload."
-                    : $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; the packet-authored payload reported no result rows.";
+                        : $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}); the packet-owned owner advanced the search session without a decodable row payload."
+                    : $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}); the packet-authored payload reported no result rows.";
                 return true;
             }
 
@@ -5497,13 +5504,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (results.Count <= 0)
             {
-                summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog.";
+                summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}); {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog.";
                 return true;
             }
 
             summary = unresolvedItemCount > 0
-                ? $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog."
-                : $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}.";
+                ? $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}); {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog."
+                : $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel} ({remotePageLabel}).";
             if (resolvedOutsideRequestedFilterCount > 0)
             {
                 summary = string.Concat(
@@ -5953,6 +5960,9 @@ namespace HaCreator.MapSimulator.UI
                 || left.SearchSessionId != right.SearchSessionId
                 || left.LocalSearchRequestId != right.LocalSearchRequestId
                 || left.PriceRangeIndex != right.PriceRangeIndex
+                || left.RemoteTotalCount != right.RemoteTotalCount
+                || left.RemotePageIndex != right.RemotePageIndex
+                || left.RemotePageSize != right.RemotePageSize
                 || left.TrailingByteCount != right.TrailingByteCount
                 || left.IsStateOnlySessionSnapshot != right.IsStateOnlySessionSnapshot
                 || left.IgnoredDueToSessionMismatch != right.IgnoredDueToSessionMismatch
@@ -6042,6 +6052,7 @@ namespace HaCreator.MapSimulator.UI
             string requestLabel = snapshot.LocalSearchRequestId >= 0
                 ? $"request {snapshot.LocalSearchRequestId.ToString(CultureInfo.InvariantCulture)}"
                 : "request unresolved";
+            string remotePageLabel = BuildPacketOwnedWishlistRemotePageLabel(snapshot);
             string fallbackLabel = snapshot.UsedFallbackRequestContext
                 ? "fallback staged-request context"
                 : "payload-authored context";
@@ -6056,7 +6067,27 @@ namespace HaCreator.MapSimulator.UI
             int rowCount = Math.Max(
                 snapshot.ItemIds?.Count ?? 0,
                 snapshot.ResultRows?.Count ?? 0);
-            return $"wishlist packet snapshot: {sessionLabel}, {requestLabel}, rows {rowCount.ToString(CultureInfo.InvariantCulture)}, {queryLabel}, {categoryLabel}, {priceBandLabel}, {fallbackLabel}, {sourceLabel}, {tailLabel}, sig {_packetOwnedWishlistSearchSnapshotSignature}.";
+            return $"wishlist packet snapshot: {sessionLabel}, {requestLabel}, rows {rowCount.ToString(CultureInfo.InvariantCulture)}, {remotePageLabel}, {queryLabel}, {categoryLabel}, {priceBandLabel}, {fallbackLabel}, {sourceLabel}, {tailLabel}, sig {_packetOwnedWishlistSearchSnapshotSignature}.";
+        }
+
+        private static string BuildPacketOwnedWishlistRemotePageLabel(AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
+        {
+            if (snapshot == null
+                || (snapshot.RemoteTotalCount < 0 && snapshot.RemotePageIndex < 0 && snapshot.RemotePageSize < 0))
+            {
+                return "remote page unresolved";
+            }
+
+            string totalLabel = snapshot.RemoteTotalCount >= 0
+                ? snapshot.RemoteTotalCount.ToString(CultureInfo.InvariantCulture)
+                : "?";
+            string pageLabel = snapshot.RemotePageIndex >= 0
+                ? (snapshot.RemotePageIndex + 1).ToString(CultureInfo.InvariantCulture)
+                : "?";
+            string pageSizeLabel = snapshot.RemotePageSize > 0
+                ? snapshot.RemotePageSize.ToString(CultureInfo.InvariantCulture)
+                : "?";
+            return $"remote page {pageLabel}, size {pageSizeLabel}, total {totalLabel}";
         }
 
         private string BuildPacketOwnedWishlistSearchSessionOnlySummary(

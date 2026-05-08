@@ -11,6 +11,7 @@ using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -533,7 +534,10 @@ namespace HaCreator.MapSimulator
                     _packetStageTransitionNamedObjectMetadata[branchItem] = metadata;
                 }
 
-                QuestGatedMapObjectState? questState = BuildQuestGatedMapObjectState(objInst);
+                ObjectInstanceQuest[] branchQuestInfo = ResolvePacketOwnedNamedObjectQuestInfo(branchProperty);
+                QuestGatedMapObjectState? questState = BuildQuestGatedMapObjectState(
+                    objInst,
+                    branchQuestInfo.Length > 0 ? branchQuestInfo : null);
                 if (questState.HasValue)
                 {
                     questGatedMapObjects[branchItem] = questState.Value;
@@ -548,7 +552,9 @@ namespace HaCreator.MapSimulator
             return branchItems;
         }
 
-        private static QuestGatedMapObjectState? BuildQuestGatedMapObjectState(ObjectInstance objInst)
+        private static QuestGatedMapObjectState? BuildQuestGatedMapObjectState(
+            ObjectInstance objInst,
+            ObjectInstanceQuest[] questInfoOverride = null)
         {
             if (objInst == null)
             {
@@ -556,12 +562,42 @@ namespace HaCreator.MapSimulator
             }
 
             bool hiddenByMap = objInst.hide == true;
-            bool hasQuestInfo = objInst.QuestInfo != null && objInst.QuestInfo.Count > 0;
+            ObjectInstanceQuest[] questInfo = questInfoOverride ?? objInst.QuestInfo?.ToArray();
+            bool hasQuestInfo = questInfo != null && questInfo.Length > 0;
             string[] dynamicTags = ParseObjectTags(objInst.tags);
             bool hasDynamicTags = dynamicTags.Length > 0;
             return hiddenByMap || hasQuestInfo || hasDynamicTags
-                ? new QuestGatedMapObjectState(objInst.QuestInfo?.ToArray(), dynamicTags, hiddenByMap)
+                ? new QuestGatedMapObjectState(questInfo, dynamicTags, hiddenByMap)
                 : null;
+        }
+
+        internal static ObjectInstanceQuest[] ResolvePacketOwnedNamedObjectQuestInfo(WzImageProperty objectProperty)
+        {
+            if (objectProperty?["quest"] is not WzImageProperty questProperty ||
+                questProperty.WzProperties == null ||
+                questProperty.WzProperties.Count == 0)
+            {
+                return Array.Empty<ObjectInstanceQuest>();
+            }
+
+            List<ObjectInstanceQuest> questInfo = new();
+            foreach (WzImageProperty child in questProperty.WzProperties)
+            {
+                if (child == null ||
+                    !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId) ||
+                    questId <= 0 ||
+                    !TryReadPacketOwnedNamedObjectIntProperty(questProperty, child.Name, out int rawState))
+                {
+                    continue;
+                }
+
+                QuestStateType state = Enum.IsDefined(typeof(QuestStateType), rawState)
+                    ? (QuestStateType)rawState
+                    : QuestStateType.Not_Started;
+                questInfo.Add(new ObjectInstanceQuest(questId, state));
+            }
+
+            return questInfo.Count == 0 ? Array.Empty<ObjectInstanceQuest>() : questInfo.ToArray();
         }
 
         private static string ResolvePacketOwnedNamedObjectStateSfx(ObjectInfo objectInfo)

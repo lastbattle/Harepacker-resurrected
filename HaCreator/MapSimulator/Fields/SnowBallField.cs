@@ -115,7 +115,7 @@ namespace HaCreator.MapSimulator.Fields
             private const string PropertyName = "snowBall";
 
             public static bool IsSnowBallMap(MapInfo mapInfo) =>
-                mapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_SNOWBALL
+                MapInfoFieldTypeResolver.Resolve(mapInfo) == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_SNOWBALL
                 || FindSnowBallProperty(mapInfo) != null;
 
             public static SnowBallFieldDefinition Load(MapInfo mapInfo)

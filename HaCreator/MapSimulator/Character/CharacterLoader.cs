@@ -56,6 +56,14 @@ namespace HaCreator.MapSimulator.Character
         private const int MechanicTamingMobItemId = 1932016;
         private const int ClientMorphReplayTailStringPoolId = 0x049F;
         private const string ClientMorphReplayTailFallbackName = "zigzag";
+        private const int ClientMorphFrameDelayStringPoolId = 0x1AA9;
+        private const string ClientMorphFrameDelayFallbackName = "delay";
+        private const int ClientMorphFrameHeadStringPoolId = 0x1AB4;
+        private const string ClientMorphFrameHeadFallbackName = "head";
+        private const int ClientMorphFrameLeftTopStringPoolId = 0x1ABE;
+        private const string ClientMorphFrameLeftTopFallbackName = "lt";
+        private const int ClientMorphFrameRightBottomStringPoolId = 0x1ACB;
+        private const string ClientMorphFrameRightBottomFallbackName = "rb";
 
         private static readonly SkinColor[] PreferredStarterSkins =
         {
@@ -603,7 +611,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 Texture = texture,
                 Origin = origin,
-                Delay = ResolveFrameInt(metadataNode, canvas, "delay", 120),
+                Delay = ResolveFrameInt(metadataNode, canvas, GetClientMorphFrameDelayPropertyName(), 120),
                 Z = ResolveZLayer(GetStringValue(metadataNode?["z"]) ?? GetStringValue(canvas["z"]), frameName),
                 Bounds = ResolveFrameBounds(metadataNode, canvas, texture, origin),
                 FrameUol = frameUol
@@ -637,8 +645,8 @@ namespace HaCreator.MapSimulator.Character
                 if (child is not WzVectorProperty vectorProperty
                     || frame.Map.ContainsKey(child.Name)
                     || string.Equals(child.Name, "origin", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(child.Name, "lt", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(child.Name, "rb", StringComparison.OrdinalIgnoreCase))
+                    || string.Equals(child.Name, GetClientMorphFrameLeftTopPropertyName(), StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, GetClientMorphFrameRightBottomPropertyName(), StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -652,10 +660,10 @@ namespace HaCreator.MapSimulator.Character
             if (frameNode != null
                 && (frameNode is WzCanvasProperty
                     || frameNode["origin"] != null
-                    || frameNode["delay"] != null
-                    || frameNode["lt"] != null
-                    || frameNode["rb"] != null
-                    || frameNode["head"] != null
+                    || frameNode[GetClientMorphFrameDelayPropertyName()] != null
+                    || frameNode[GetClientMorphFrameLeftTopPropertyName()] != null
+                    || frameNode[GetClientMorphFrameRightBottomPropertyName()] != null
+                    || frameNode[GetClientMorphFrameHeadPropertyName()] != null
                     || frameNode["z"] != null))
             {
                 return frameNode;
@@ -691,8 +699,10 @@ namespace HaCreator.MapSimulator.Character
             Point origin)
         {
             WzImageProperty resolvedMetadataNode = ResolveFrameMetadataProperty(metadataNode, canvas);
-            Point? lt = GetVectorValue(resolvedMetadataNode?["lt"]) ?? GetVectorValue(canvas?["lt"]);
-            Point? rb = GetVectorValue(resolvedMetadataNode?["rb"]) ?? GetVectorValue(canvas?["rb"]);
+            string leftTopPropertyName = GetClientMorphFrameLeftTopPropertyName();
+            string rightBottomPropertyName = GetClientMorphFrameRightBottomPropertyName();
+            Point? lt = GetVectorValue(resolvedMetadataNode?[leftTopPropertyName]) ?? GetVectorValue(canvas?[leftTopPropertyName]);
+            Point? rb = GetVectorValue(resolvedMetadataNode?[rightBottomPropertyName]) ?? GetVectorValue(canvas?[rightBottomPropertyName]);
             if (lt.HasValue && rb.HasValue)
             {
                 int left = lt.Value.X;
@@ -722,10 +732,67 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            string replayTailFlagName = MapleStoryStringPool.GetOrFallback(
+            return ResolveFrameInt(actionNode, canvas: null, GetClientMorphReplayTailPropertyName(), 0) != 0;
+        }
+
+        internal static string GetClientMorphFrameDelayPropertyNameForTesting()
+        {
+            return GetClientMorphFrameDelayPropertyName();
+        }
+
+        internal static string GetClientMorphFrameHeadPropertyNameForTesting()
+        {
+            return GetClientMorphFrameHeadPropertyName();
+        }
+
+        internal static string GetClientMorphFrameLeftTopPropertyNameForTesting()
+        {
+            return GetClientMorphFrameLeftTopPropertyName();
+        }
+
+        internal static string GetClientMorphFrameRightBottomPropertyNameForTesting()
+        {
+            return GetClientMorphFrameRightBottomPropertyName();
+        }
+
+        internal static string GetClientMorphReplayTailPropertyNameForTesting()
+        {
+            return GetClientMorphReplayTailPropertyName();
+        }
+
+        private static string GetClientMorphFrameDelayPropertyName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientMorphFrameDelayStringPoolId,
+                ClientMorphFrameDelayFallbackName);
+        }
+
+        private static string GetClientMorphFrameHeadPropertyName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientMorphFrameHeadStringPoolId,
+                ClientMorphFrameHeadFallbackName);
+        }
+
+        private static string GetClientMorphFrameLeftTopPropertyName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientMorphFrameLeftTopStringPoolId,
+                ClientMorphFrameLeftTopFallbackName);
+        }
+
+        private static string GetClientMorphFrameRightBottomPropertyName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientMorphFrameRightBottomStringPoolId,
+                ClientMorphFrameRightBottomFallbackName);
+        }
+
+        private static string GetClientMorphReplayTailPropertyName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
                 ClientMorphReplayTailStringPoolId,
                 ClientMorphReplayTailFallbackName);
-            return ResolveFrameInt(actionNode, canvas: null, replayTailFlagName, 0) != 0;
         }
 
         internal static void AppendMorphReplayTailForTesting(CharacterAnimation animation)

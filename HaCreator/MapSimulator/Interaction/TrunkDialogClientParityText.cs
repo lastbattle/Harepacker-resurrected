@@ -125,6 +125,22 @@ namespace HaCreator.MapSimulator.Interaction
                 || slotData.IsCashOwnershipLocked;
         }
 
+        internal static bool TreatsAsSingleTransfer(InventoryType inventoryType, InventorySlotData slotData)
+        {
+            if (inventoryType == InventoryType.EQUIP)
+            {
+                return true;
+            }
+
+            if (slotData?.CashItemSerialNumber.GetValueOrDefault() > 0 ||
+                slotData?.IsCashOwnershipLocked == true)
+            {
+                return true;
+            }
+
+            return InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData?.MaxStackSize) <= 1;
+        }
+
         internal static string BuildSendGetConfirmationBody(InventorySlotData slotData, int mesoCost)
         {
             string costConfirm = ResolveSendGetCostConfirm(mesoCost);

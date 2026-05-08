@@ -1129,7 +1129,9 @@ namespace HaCreator.MapSimulator.Interaction
             string roleLabel = string.IsNullOrWhiteSpace(localGuildEntry.PrimaryText)
                 ? GetLocalGuildRoleLabel()
                 : localGuildEntry.PrimaryText.Trim();
-            bool canManage = localGuildEntry.IsLeader || CanManageGuildByRole(roleLabel);
+            bool canManage = localGuildEntry.ClientGuildGrade.HasValue
+                ? IsClientGuildBbsAdminGrade(localGuildEntry.ClientGuildGrade.Value)
+                : localGuildEntry.IsLeader || CanManageGuildByRole(roleLabel);
             authority = new PacketGuildAuthorityState(roleLabel, canManage, canManage, canManage);
             return true;
         }
@@ -1178,6 +1180,12 @@ namespace HaCreator.MapSimulator.Interaction
                    || string.Equals(role, "Jr. Master", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(role, "Jr Master", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(role, "Junior Master", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsClientGuildBbsAdminGrade(int grade)
+        {
+            // IDA evidence: CUIGuildBBS::IsGuildBBSAdmin returns GetGuildMemberGrade(localCharacterId) <= 2.
+            return grade > 0 && grade <= 2;
         }
 
         private static GuildBbsPermissionMask ResolveGuildBbsPermissionMask(PacketGuildAuthorityState authority)

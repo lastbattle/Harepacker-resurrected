@@ -590,7 +590,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                         frameActionName,
                         LayerRefDelta: 1));
                     operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.LoadCanvas,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
+                    operations.Add(new AfterimageLayerReferenceOperation(
                         AfterimageLayerReferenceOperationKind.InsertCanvas,
+                        targetLayerObjectId,
+                        canvasObjectId,
+                        canvasOrdinal,
+                        frameRawActionCode,
+                        frameActionName,
+                        LoadCanvasArguments: ResolveClientLoadCanvasArguments(frame)));
+                    operations.Add(new AfterimageLayerReferenceOperation(
+                        AfterimageLayerReferenceOperationKind.ClearInsertCanvasResultVariant,
                         targetLayerObjectId,
                         canvasObjectId,
                         canvasOrdinal,
@@ -627,6 +643,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 LayerRefDelta: -1));
 
             return operations;
+        }
+
+        internal static AfterimageLoadCanvasArguments ResolveClientLoadCanvasArguments(SkillFrame frame)
+        {
+            if (frame == null)
+            {
+                return new AfterimageLoadCanvasArguments(
+                    SkillLoader.ClientAfterimageCanvasDelayFallbackMs,
+                    -1,
+                    -1,
+                    0,
+                    0);
+            }
+
+            return new AfterimageLoadCanvasArguments(
+                frame.Delay,
+                frame.HasAlphaStart ? frame.AlphaStart : -1,
+                frame.HasAlphaEnd ? frame.AlphaEnd : -1,
+                frame.HasZoomStart ? frame.ZoomStart : 0,
+                frame.HasZoomEnd ? frame.ZoomEnd : 0);
         }
 
         private static void ResolveAfterimageActionMetadata(

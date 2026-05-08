@@ -3378,6 +3378,7 @@ namespace HaCreator.MapSimulator
                         ? relativeEmission
                         : usesEquipmentEmission,
                     SpawnUsesEmissionTravelDistance = usesEquipmentEmission,
+                    SourceUsesEmission = usesEquipmentEmission,
                     SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
                     SpawnDurationMs = followDefinition?.SpawnDurationMs ?? 0,
                     SpawnOffsetMin = spawnOffsetMin,
@@ -7105,6 +7106,36 @@ namespace HaCreator.MapSimulator
             TryRegisterAnimationDisplayerLocalSkillUseRequest(request);
         }
 
+        private void HandleAnimationDisplayerClientGeneralEffectRequested(ClientGeneralEffectRequest request)
+        {
+            TryRegisterAnimationDisplayerClientGeneralEffectRequest(request);
+        }
+
+        private bool TryRegisterAnimationDisplayerClientGeneralEffectRequest(ClientGeneralEffectRequest request)
+        {
+            if (request == null
+                || string.IsNullOrWhiteSpace(request.EffectPath)
+                || _animationEffects == null)
+            {
+                return false;
+            }
+
+            SkillAnimation animation = LoadAnimationDisplayerGeneralEffectAnimation(request.EffectPath);
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            _animationEffects.AddOneTime(
+                animation.ToTextureFrames(),
+                request.WorldOrigin.X,
+                request.WorldOrigin.Y,
+                flip: request.Flip,
+                currentTimeMs: request.RequestTime > 0 ? request.RequestTime : currTickCount,
+                zOrder: request.ZOrder);
+            return true;
+        }
+
         private void HandleAnimationDisplayerPreparedSkillStarted(PreparedSkill prepared)
         {
             if (prepared?.SkillData == null)
@@ -7754,6 +7785,11 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            return LoadAnimationDisplayerGeneralEffectAnimation(effectUol);
+        }
+
+        private SkillAnimation LoadAnimationDisplayerGeneralEffectAnimation(string effectUol)
+        {
             WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol)?.GetLinkedWzImageProperty();
             return LoadAnimationDisplayerSkillUseAnimation(property, effectUol);
         }

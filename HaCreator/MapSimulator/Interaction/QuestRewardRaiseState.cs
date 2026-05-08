@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Character;
 using Microsoft.Xna.Framework;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
@@ -16,6 +17,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class QuestRewardRaiseState
     {
+        internal const int ClientPutItemThrottleMs = 200;
+
         public QuestRewardRaiseSourceKind Source { get; set; }
         public QuestRewardChoicePrompt Prompt { get; set; }
         public int GroupIndex { get; set; }
@@ -37,6 +40,9 @@ namespace HaCreator.MapSimulator.Interaction
         public bool AwaitingOwnerDestroyAck { get; set; }
         public bool IsWindowDismissedLocally { get; set; }
         public bool ReusedOwnerIdentityOnOpen { get; set; }
+        public bool ClientPutItemRequestPending { get; set; }
+        public bool HasClientPutItemRequestTick { get; set; }
+        public int LastClientPutItemRequestTick { get; set; }
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
 
@@ -78,6 +84,38 @@ namespace HaCreator.MapSimulator.Interaction
         internal static int CountEnabledDropItems(QuestRewardChoicePrompt prompt)
         {
             return EnumerateEnabledDropItemIds(prompt).Count();
+        }
+
+        internal bool TryBeginClientPutItemRequest(int currentTick, out string blockedReason)
+        {
+            blockedReason = null;
+            if (ClientPutItemRequestPending)
+            {
+                blockedReason = "The raise owner is still waiting for the previous client PutItem result.";
+                return false;
+            }
+
+            if (!HasClientPutItemThrottleElapsed(currentTick, LastClientPutItemRequestTick, HasClientPutItemRequestTick))
+            {
+                blockedReason = $"The client raise PutItem gate still has {ClientPutItemThrottleMs} ms throttle ownership.";
+                return false;
+            }
+
+            ClientPutItemRequestPending = true;
+            HasClientPutItemRequestTick = true;
+            LastClientPutItemRequestTick = currentTick;
+            return true;
+        }
+
+        internal void ClearClientPutItemRequestPending()
+        {
+            ClientPutItemRequestPending = false;
+        }
+
+        internal static bool HasClientPutItemThrottleElapsed(int currentTick, int lastRequestTick, bool hasLastRequestTick = false)
+        {
+            return (!hasLastRequestTick && lastRequestTick == 0)
+                || ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, lastRequestTick) >= ClientPutItemThrottleMs;
         }
 
         private static IEnumerable<int> EnumerateEnabledDropItemIds(QuestRewardChoicePrompt prompt)
@@ -236,7 +274,10 @@ namespace HaCreator.MapSimulator.Interaction
                 AwaitingConfirmAck = AwaitingConfirmAck,
                 AwaitingOwnerDestroyAck = AwaitingOwnerDestroyAck,
                 IsWindowDismissedLocally = IsWindowDismissedLocally,
-                ReusedOwnerIdentityOnOpen = ReusedOwnerIdentityOnOpen
+                ReusedOwnerIdentityOnOpen = ReusedOwnerIdentityOnOpen,
+                ClientPutItemRequestPending = ClientPutItemRequestPending,
+                HasClientPutItemRequestTick = HasClientPutItemRequestTick,
+                LastClientPutItemRequestTick = LastClientPutItemRequestTick
             };
 
             foreach (KeyValuePair<int, int> selectedItem in SelectedItemsByGroup)

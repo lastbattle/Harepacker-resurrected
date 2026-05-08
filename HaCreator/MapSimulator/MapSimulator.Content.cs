@@ -2225,6 +2225,8 @@ namespace HaCreator.MapSimulator
             statusBarChatUI.WhisperTargetPickerModalComboDropdownScrollRequested = delta => _chat.ScrollWhisperTargetPickerModalComboDropdown(delta);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownPageRequested = delta => _chat.PageWhisperTargetPickerModalComboDropdown(delta);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownScrollPositionRequested = firstVisibleIndex => _chat.SetWhisperTargetPickerModalComboDropdownFirstVisibleIndex(firstVisibleIndex);
+            statusBarChatUI.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
+            statusBarChatUI.ImeCandidateListRefreshedRequested = state => _chat.HandleImeCandidateList(state);
         }
     }
 }

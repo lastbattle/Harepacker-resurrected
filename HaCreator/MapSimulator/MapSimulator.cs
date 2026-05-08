@@ -19133,6 +19133,7 @@ namespace HaCreator.MapSimulator
             _rockPaperScissorsOfficialSessionBridge = new RockPaperScissorsOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _socialListOfficialSessionBridge = new SocialListOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _socialListRuntime.PacketOwnedRequestDispatcher = DispatchSocialListPacketOwnedRequest;
+            _socialListRuntime.GuildDialogRequestDispatcher = DispatchSocialListGuildDialogRequest;
             _socialRoomMerchantOfficialSessionBridge = new SocialRoomMerchantOfficialSessionBridgeManager(_officialSessionRoleProxyFactory.CreateChannel);
             _mobMirrorBoundaryResolver = ResolveMobMirrorBoundary;
             _npcMirrorBoundaryResolver = ResolveNpcMirrorBoundary;
@@ -33341,7 +33342,8 @@ namespace HaCreator.MapSimulator
                     StopSkillMacroForHandleUpKeyDown();
                 }
 
-                ClearPassiveTransferRequest();
+                ConsumePassiveTransferRequestFromLifecycleOwner(
+                    PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.HorizontalOnKeyDown);
             }
 
             PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision queuedRetryDecision =
@@ -33386,7 +33388,8 @@ namespace HaCreator.MapSimulator
                         _passiveTransferRequestPending,
                         consumedChairGetUpBranch: true))
                 {
-                    ClearPassiveTransferRequest();
+                    ConsumePassiveTransferRequestFromLifecycleOwner(
+                        PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.ChairGetUp);
                 }
 
                 _playerManager?.Player?.ApplyPacketOwnedChairStandCorrection();
@@ -33401,7 +33404,9 @@ namespace HaCreator.MapSimulator
                         _passiveTransferRequestPending,
                         handledPortalInteraction))
                 {
-                    ClearPassiveTransferRequest();
+                    ConsumePassiveTransferRequestFromLifecycleOwner(
+                        PassiveTransferFieldReadinessEvaluator.ResolveQueuedRetryLifecycleClearOwnerFromFreshHandleUpKeyDown(
+                            handledPortalInteraction));
                 }
 
 
@@ -33444,7 +33449,7 @@ namespace HaCreator.MapSimulator
 
                 if (replayDecision.ShouldClearQueuedRetry)
                 {
-                    ClearPassiveTransferRequest();
+                    ConsumePassiveTransferRequestFromLifecycleOwner(replayDecision.ClearOwner);
                 }
 
                 return;
@@ -33493,96 +33498,64 @@ namespace HaCreator.MapSimulator
 
         private void ConsumePassiveTransferRequestFromTransferLifecycle()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromTransferLifecycle(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.TransferResponseLifecycle);
         }
 
         private void ConsumePassiveTransferRequestFromMapLoadLifecycle()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromMapLoadLifecycle(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.MapLoad);
         }
 
         private void ConsumePassiveTransferRequestFromStageTransitionLifecycle()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromStageTransitionLifecycle(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.StageTransition);
         }
 
         private void ConsumePassiveTransferRequestFromFieldFeedbackTransferFailure()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromFieldFeedbackTransferFailure(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.FieldFeedbackTransferFailure);
         }
 
         private void ConsumePassiveTransferRequestFromPacketTeleportResult()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromPacketTeleportResult(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.PacketTeleportResult);
         }
 
         private void ConsumePassiveTransferRequestFromPacketChairSitResult()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromPacketChairSitResult(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.PacketChairSitResult);
         }
 
         private void ConsumePassiveTransferRequestFromPacketQuestResult()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromPacketQuestResult(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.PacketQuestResult);
         }
 
         private void ConsumePassiveTransferRequestFromSameMapTeleport()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromSameMapTeleport(
-                    _passiveTransferRequestPending))
-            {
-                return;
-            }
-
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.SameMapTeleport);
         }
 
         private void ConsumePassiveTransferRequestFromFieldInterfaceTeardown()
         {
-            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromFieldInterfaceTeardown(
-                    _passiveTransferRequestPending))
+            ConsumePassiveTransferRequestFromLifecycleOwner(
+                PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner.FieldInterfaceTeardown);
+        }
+
+        private void ConsumePassiveTransferRequestFromLifecycleOwner(
+            PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner owner)
+        {
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromLifecycleOwner(
+                    _passiveTransferRequestPending,
+                    owner))
             {
                 return;
             }
@@ -37244,6 +37217,7 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.OnPreparedSkillStarted = HandleAnimationDisplayerPreparedSkillStarted;
             _playerManager.Skills.OnPreparedSkillReleased = HandleAnimationDisplayerPreparedSkillReleased;
             _playerManager.Skills.OnClientSkillEffectRequested = HandleAnimationDisplayerClientSkillEffectRequested;
+            _playerManager.Skills.OnClientGeneralEffectRequested = HandleAnimationDisplayerClientGeneralEffectRequested;
             _playerManager.Skills.OnSwallowAbsorbRequested = HandleAnimationDisplayerSwallowAbsorbRequested;
             _playerManager.Skills.OnAnimationDisplayerCatchRegistrationRequested = HandleAnimationDisplayerCatchRegistrationRequested;
             _playerManager.Skills.OnFieldSkillCastRejected = HandleFieldSkillCastRejected;
@@ -39601,6 +39575,7 @@ namespace HaCreator.MapSimulator
         {
             WzImage basicUiImage = Program.FindImage("UI", "Basic.img");
             WzImage statusBarUiImage = Program.FindImage("UI", "StatusBar2.img");
+            WzImage basicEffectImage = Program.FindImage("Effect", "BasicEff.img");
 
             WzSubProperty damageMeterSource = basicUiImage?["Notice3"] as WzSubProperty;
             WzSubProperty fieldHazardSource = basicUiImage?["Notice2"] as WzSubProperty ?? damageMeterSource;
@@ -39617,6 +39592,15 @@ namespace HaCreator.MapSimulator
 
             _packetFieldUtilityStatusNoticeIcon = LoadUiCanvasTexture(statusBarUiImage?["mainBar"]?["notice"] as WzCanvasProperty);
             _packetOwnedHudNoticeUI.SetNoticeIcon(_packetFieldUtilityStatusNoticeIcon);
+
+            WzSubProperty damageBoardDigits = basicEffectImage?["NoViolet0"] as WzSubProperty;
+            Texture2D[] digitTextures = new Texture2D[10];
+            for (int i = 0; i < digitTextures.Length; i++)
+            {
+                digitTextures[i] = LoadUiCanvasTexture(damageBoardDigits?[i.ToString(CultureInfo.InvariantCulture)] as WzCanvasProperty);
+            }
+
+            _packetOwnedHudNoticeUI.SetDamageBoardDigitTextures(digitTextures);
         }
 
         private Texture2D LoadUiCanvasTexture(WzCanvasProperty canvasProperty)

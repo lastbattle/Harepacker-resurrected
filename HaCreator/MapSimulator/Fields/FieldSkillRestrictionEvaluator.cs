@@ -564,20 +564,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static FieldType? GetInfoFieldType(MapInfo mapInfo)
         {
-            if (mapInfo?.fieldType.HasValue == true)
-            {
-                return mapInfo.fieldType.Value;
-            }
-
-            foreach (WzImageProperty fieldTypeProperty in EnumerateInfoFieldProperties(mapInfo, "fieldType"))
-            {
-                if (TryReadInt(fieldTypeProperty, out int value))
-                {
-                    return (FieldType)value;
-                }
-            }
-
-            return null;
+            return MapInfoFieldTypeResolver.Resolve(mapInfo);
         }
 
         private static bool MatchesListedSkill(WzImageProperty property, int skillId)

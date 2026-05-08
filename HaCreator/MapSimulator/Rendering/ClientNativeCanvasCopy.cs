@@ -39,32 +39,9 @@ namespace HaCreator.MapSimulator.Rendering
                 return;
             }
 
-            for (int sourceY = 0; sourceY < source.Height; sourceY++)
-            {
-                int destinationY = y + sourceY;
-                if (destinationY < 0 || destinationY >= destination.Height)
-                {
-                    continue;
-                }
-
-                for (int sourceX = 0; sourceX < source.Width; sourceX++)
-                {
-                    int destinationX = x + sourceX;
-                    if (destinationX < 0 || destinationX >= destination.Width)
-                    {
-                        continue;
-                    }
-
-                    Color sourcePixel = source.GetPixel(sourceX, sourceY);
-                    if (sourcePixel.A == 0)
-                    {
-                        continue;
-                    }
-
-                    Color destinationPixel = destination.GetPixel(destinationX, destinationY);
-                    destination.SetPixel(destinationX, destinationY, BlendAlpha255(destinationPixel, sourcePixel));
-                }
-            }
+            using Graphics graphics = Graphics.FromImage(destination);
+            ApplySettings(graphics);
+            graphics.DrawImageUnscaled(source, x, y);
         }
 
         internal static Color BlendAlpha255(Color destination, Color source)
@@ -79,44 +56,12 @@ namespace HaCreator.MapSimulator.Rendering
                 return source;
             }
 
-            int inverseSourceAlpha = Alpha255 - source.A;
-            int destinationAlphaContribution = DivideBy255Rounded(destination.A * inverseSourceAlpha);
-            int alpha = source.A + destinationAlphaContribution;
-            if (alpha <= 0)
-            {
-                return Color.Transparent;
-            }
-
-            int red = Unpremultiply(
-                source.R * source.A + DivideBy255Rounded(destination.R * destination.A * inverseSourceAlpha),
-                alpha);
-            int green = Unpremultiply(
-                source.G * source.A + DivideBy255Rounded(destination.G * destination.A * inverseSourceAlpha),
-                alpha);
-            int blue = Unpremultiply(
-                source.B * source.A + DivideBy255Rounded(destination.B * destination.A * inverseSourceAlpha),
-                alpha);
-
-            return Color.FromArgb(
-                ClampByte(alpha),
-                ClampByte(red),
-                ClampByte(green),
-                ClampByte(blue));
-        }
-
-        private static int DivideBy255Rounded(int value)
-        {
-            return (value + 127) / Alpha255;
-        }
-
-        private static int Unpremultiply(int premultipliedChannel, int alpha)
-        {
-            return alpha <= 0 ? 0 : (premultipliedChannel + (alpha / 2)) / alpha;
-        }
-
-        private static int ClampByte(int value)
-        {
-            return Math.Max(0, Math.Min(Alpha255, value));
+            using Bitmap destinationBitmap = new(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using Bitmap sourceBitmap = new(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            destinationBitmap.SetPixel(0, 0, destination);
+            sourceBitmap.SetPixel(0, 0, source);
+            CopyAlpha255(destinationBitmap, sourceBitmap, 0, 0);
+            return destinationBitmap.GetPixel(0, 0);
         }
     }
 }

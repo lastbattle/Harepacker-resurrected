@@ -64,7 +64,8 @@ namespace HaCreator.MapSimulator.Fields
     public readonly record struct PassiveTransferFieldQueuedReplayDecision(
         bool ShouldStopSkillMacro,
         bool ShouldReplayHandleUpKeyDown,
-        bool ShouldClearQueuedRetry);
+        bool ShouldClearQueuedRetry,
+        PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
 
     public readonly record struct PassiveTransferFieldPortalRoutingDecision(
         bool IsPassiveTransferFieldPortal,
@@ -221,17 +222,21 @@ namespace HaCreator.MapSimulator.Fields
                 return new PassiveTransferFieldQueuedReplayDecision(
                     ShouldStopSkillMacro: false,
                     ShouldReplayHandleUpKeyDown: false,
-                    ShouldClearQueuedRetry: false);
+                    ShouldClearQueuedRetry: false,
+                    ClearOwner: QueuedRetryLifecycleClearOwner.None);
             }
 
             bool canAttemptHandleUpKeyDownReplay = CanAttemptHandleUpKeyDownReplay(replayState);
+            QueuedRetryLifecycleClearOwner clearOwner =
+                ResolveQueuedRetryLifecycleClearOwnerFromInterfaceGateAdmission(decision);
 
             return new PassiveTransferFieldQueuedReplayDecision(
                 ShouldStopSkillMacro: ShouldStopSkillMacroForQueuedReplay(canAttemptHandleUpKeyDownReplay),
                 ShouldReplayHandleUpKeyDown: CanReplayHandleUpKeyDown(replayState),
-                ShouldClearQueuedRetry: ShouldClearQueuedRetryAfterInterfaceGateAdmission(
+                ShouldClearQueuedRetry: ShouldClearQueuedRetryFromLifecycleOwner(
                     hasPendingRequest,
-                    decision));
+                    clearOwner),
+                ClearOwner: clearOwner);
         }
 
         public static bool ShouldClearQueuedRetryFromTransferLifecycle(bool hasPendingRequest)

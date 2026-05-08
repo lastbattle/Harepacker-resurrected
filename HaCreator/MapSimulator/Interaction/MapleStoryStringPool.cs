@@ -25,6 +25,15 @@ namespace HaCreator.MapSimulator.Interaction
             // client StringPool ids even when generated-table ordering drifts.
             [0x03CE] = "Mob/%07d.img",
             [0x0C2F] = "AngerGaugeEffect",
+            // Recovered from MapleStory.exe v95 `CActionMan::LoadMorphAction`.
+            // The morph action loader reads frame timing, bounds, head anchor, and
+            // replay-tail metadata through these StringPool ids before enumerating
+            // MORPHACTIONFRAMEENTRY rows.
+            [0x049F] = "zigzag",
+            [0x1AA9] = "delay",
+            [0x1AB4] = "head",
+            [0x1ABE] = "lt",
+            [0x1ACB] = "rb",
             // Recovered from MapleStory.exe v95 `CWvsContext::OnDropPickUpMessage`.
             // The generated table drifts for several pickup-notice ids, so pin the
             // verified screen/chat strings here to keep pickup notice formatting on the

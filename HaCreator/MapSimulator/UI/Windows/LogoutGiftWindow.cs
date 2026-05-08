@@ -29,6 +29,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCashCommoditySerialNumberRange = 9999999;
         private const int ClientCashPackageItemFamily = 910;
         private const int ClientCashItemTooltipFamily = 5430;
+        private const int ClientSlotIncreaseItemFamily = 911;
+        private const int ClientSlotIncreaseItem5431 = 5431000;
+        private const int ClientSlotIncreaseItem5432 = 5432000;
         private const int ClientEquipExtItemFamily = 555;
         private const int ClientCashItemTopLevelFamily = 5;
         private const int CloseButtonSize = 16;
@@ -567,8 +570,10 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool IsClientSlotIncreaseItem(int itemId)
         {
-            int family = itemId / 10000;
-            return family is 911 or 912 or 913 or 914;
+            return itemId / 10000 == ClientSlotIncreaseItemFamily
+                || itemId / 1000 == ClientCashItemTooltipFamily
+                || itemId == ClientSlotIncreaseItem5431
+                || itemId == ClientSlotIncreaseItem5432;
         }
 
         internal static Rectangle GetClientSelectButtonBounds(Point origin, int index, LogoutGiftButtonSkin skin = null)

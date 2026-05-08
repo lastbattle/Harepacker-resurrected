@@ -340,7 +340,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         ReleaseAfterimageUolRef,
         AddCanvasRef,
         AddLayerRef,
+        LoadCanvas,
         InsertCanvas,
+        ClearInsertCanvasResultVariant,
         ReleaseLayerRef,
         ReleaseCanvasRef,
         ReleaseTargetLayerRef,
@@ -363,7 +365,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         int LayerRefDelta = 0,
         int AlphaVectorRefDelta = 0,
         int AfterimageUolRefDelta = 0,
-        int RemoveCanvasIndex = 0);
+        int RemoveCanvasIndex = 0,
+        AfterimageLoadCanvasArguments? LoadCanvasArguments = null);
+
+    public readonly record struct AfterimageLoadCanvasArguments(
+        int DelayMs,
+        int AlphaStart,
+        int AlphaEnd,
+        int ZoomStart,
+        int ZoomEnd);
 
     /// <summary>
     /// Skill effect animation
@@ -2294,6 +2304,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int RegisteredAnimationStartTime { get; init; }
         public int RegisteredAnimationEndTime { get; init; }
         public int RegisteredAnimationStateObjectId { get; init; }
+        public int RegisteredRepeatIntervalMs { get; init; }
+        public int SimulatedRegisterArgumentLayerAddRefCount { get; init; }
+        public int SimulatedRegisterArgumentLayerReleaseCount { get; init; }
         public int AlphaStart { get; init; }
         public int AlphaEnd { get; init; }
         public int AlphaVectorStart { get; init; }
@@ -2407,6 +2420,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? AlphaVectorEnd
                 : AlphaEnd;
         }
+
+        public int SimulatedRegisterArgumentLayerLiveRefCount =>
+            Math.Max(0, SimulatedRegisterArgumentLayerAddRefCount - SimulatedRegisterArgumentLayerReleaseCount);
     }
 
     /// <summary>
@@ -2569,6 +2585,19 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool FollowOwnerFacing { get; set; } = true;
         public bool? FacingRightOverride { get; set; }
         public int? DelayRateOverride { get; set; }
+    }
+
+    /// <summary>
+    /// Explicit request for client-owned Effect_General one-shot playback.
+    /// </summary>
+    public class ClientGeneralEffectRequest
+    {
+        public int SourceSkillId { get; set; }
+        public string EffectPath { get; set; }
+        public int RequestTime { get; set; }
+        public Vector2 WorldOrigin { get; set; }
+        public bool Flip { get; set; }
+        public int ZOrder { get; set; }
     }
 
     /// <summary>

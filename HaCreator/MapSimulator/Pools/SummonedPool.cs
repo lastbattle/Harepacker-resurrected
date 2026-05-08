@@ -2212,7 +2212,8 @@ namespace HaCreator.MapSimulator.Pools
                         mob.AI?.IsDead == true,
                         state.Summon.ObjectId,
                         mobHitbox,
-                        summonHitbox))
+                        summonHitbox,
+                        mob.AI?.IsDazzled == true))
                 {
                     continue;
                 }
@@ -2874,6 +2875,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             StartSummonHitReaction(state.Summon, damage, currentTime, useHitAnimationState);
+            if (!SummonDamageRuntimeRules.ShouldConsumeClientOwnedHealthFromHit(damage))
+            {
+                return;
+            }
+
             state.Summon.MaxHealth = Math.Max(1, state.Summon.MaxHealth);
             state.Summon.CurrentHealth = SummonDamageRuntimeRules.ResolveRemainingHealth(
                 state.Summon.CurrentHealth,
@@ -4502,9 +4508,9 @@ namespace HaCreator.MapSimulator.Pools
                              && normalizedOwnerTeam.HasValue
                              && normalizedMobTeam.Value == normalizedOwnerTeam.Value;
             bool isSamePhase = !hasPhaseContext
-                               || !normalizedMobPhase.HasValue
-                               || !normalizedOwnerPhase.HasValue
-                               || normalizedMobPhase.Value == normalizedOwnerPhase.Value;
+                                || (normalizedMobPhase.HasValue
+                                    && normalizedOwnerPhase.HasValue
+                                    && normalizedMobPhase.Value == normalizedOwnerPhase.Value);
 
             return new PacketOwnedExpiryCandidateClientState(
                 IsSuspended: isSuspended,

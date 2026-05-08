@@ -669,13 +669,22 @@ namespace HaCreator.MapSimulator.Interaction
             ContextOwnedStageBackImageEntry entry,
             WzImageProperty sourceProperty)
         {
-            return ResolveClientMakeBackPieceFields(entry, sourceProperty, null);
+            return ResolveClientMakeBackPieceFields(entry, sourceProperty, null, null);
         }
 
         internal static ContextOwnedStageBackImageEntry ResolveClientMakeBackPieceFields(
             ContextOwnedStageBackImageEntry entry,
             WzImageProperty sourceProperty,
             BackgroundInfoType? resolvedInfoType)
+        {
+            return ResolveClientMakeBackPieceFields(entry, sourceProperty, resolvedInfoType, null);
+        }
+
+        internal static ContextOwnedStageBackImageEntry ResolveClientMakeBackPieceFields(
+            ContextOwnedStageBackImageEntry entry,
+            WzImageProperty sourceProperty,
+            BackgroundInfoType? resolvedInfoType,
+            int? nativePageIndex)
         {
             if (entry == null || sourceProperty == null || !entry.UseSourceBackPieceFields)
             {
@@ -691,6 +700,7 @@ namespace HaCreator.MapSimulator.Interaction
                     : resolvedInfoType ?? entry.InfoType;
             MapleBool flipValue = InfoTool.GetOptionalBool(GetChildProperty(sourceProperty, "f"));
             WzImageProperty frontProperty = GetChildProperty(sourceProperty, "front");
+            bool hasAuthoredPage = HasChildProperty(sourceProperty, "page");
 
             return entry with
             {
@@ -701,7 +711,9 @@ namespace HaCreator.MapSimulator.Interaction
                 Type = (BackgroundType)ReadClientInt(sourceProperty, MapBackTypeStringPoolId, "type", (int)entry.Type),
                 Front = frontProperty == null ? entry.Front : InfoTool.GetBool(frontProperty),
                 Flip = flipValue.HasValue ? flipValue.Value : entry.Flip,
-                Page = ReadIntWithFallback(sourceProperty, "page", entry.Page),
+                Page = hasAuthoredPage
+                    ? ReadIntWithFallback(sourceProperty, "page", entry.Page)
+                    : nativePageIndex.GetValueOrDefault(entry.Page),
                 ScreenMode = ReadIntWithFallback(sourceProperty, "screenMode", entry.ScreenMode),
                 Z = ReadIntWithFallback(sourceProperty, "z", entry.Z),
                 SpineAnimation = string.IsNullOrWhiteSpace(spineAnimation) ? entry.SpineAnimation : spineAnimation,
@@ -952,6 +964,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static bool HasChildProperty(WzImageProperty parent, string name)
+        {
+            return ResolveFirstProperty(parent, name) != null;
         }
 
         private static string ResolveClientPropertyName(int stringPoolId, string fallbackName)

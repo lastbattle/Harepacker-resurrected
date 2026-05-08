@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _fieldHazardCenter;
         private Texture2D _fieldHazardBottom;
         private Texture2D _noticeIcon;
+        private Texture2D[] _damageBoardDigits = Array.Empty<Texture2D>();
         private int _screenWidth;
         private int _screenHeight;
         private bool _initialized;
@@ -83,6 +84,11 @@ namespace HaCreator.MapSimulator.UI
             _noticeIcon = noticeIcon;
         }
 
+        public void SetDamageBoardDigitTextures(Texture2D[] digitTextures)
+        {
+            _damageBoardDigits = digitTextures ?? Array.Empty<Texture2D>();
+        }
+
         public void Draw(SpriteBatch spriteBatch, LocalOverlayRuntime runtime, int currentTickCount)
         {
             if (!_initialized || spriteBatch == null || _font == null || runtime == null)
@@ -101,6 +107,7 @@ namespace HaCreator.MapSimulator.UI
                     damageMeterWidth,
                     damageMeterHeight);
                 DrawDamageMeter(spriteBatch, runtime, damageMeterBounds, currentTickCount);
+                DrawDamageBoard(spriteBatch, runtime, ResolveClientDamageBoardBounds(_screenWidth, _screenHeight));
                 panelY += damageMeterBounds.Height + PanelSpacing;
             }
 
@@ -156,6 +163,40 @@ namespace HaCreator.MapSimulator.UI
                 bounds.Width - (HorizontalPadding * 2),
                 ProgressBarHeight);
             DrawProgressBar(spriteBatch, progressBounds, runtime.GetDamageMeterProgress(currentTickCount));
+        }
+
+        private void DrawDamageBoard(SpriteBatch spriteBatch, LocalOverlayRuntime runtime, Rectangle bounds)
+        {
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(_pixelTexture, bounds, Color.White);
+            DrawDamageBoardNumber(spriteBatch, runtime.DamageMeterMaxAverageDamage, bounds, drawAverageColumn: false);
+            DrawDamageBoardNumber(spriteBatch, runtime.DamageMeterAverageDamage, bounds, drawAverageColumn: true);
+        }
+
+        private void DrawDamageBoardNumber(SpriteBatch spriteBatch, int value, Rectangle boardBounds, bool drawAverageColumn)
+        {
+            string text = Math.Max(0, value).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            for (int i = 0; i < text.Length; i++)
+            {
+                int digit = text[i] - '0';
+                if (digit < 0 || digit > 9 || digit >= _damageBoardDigits.Length)
+                {
+                    continue;
+                }
+
+                Texture2D digitTexture = _damageBoardDigits[digit];
+                if (digitTexture == null || digitTexture.IsDisposed)
+                {
+                    continue;
+                }
+
+                Rectangle bounds = ResolveDamageBoardDigitBounds(boardBounds, drawAverageColumn, i, digitTexture.Width, digitTexture.Height);
+                spriteBatch.Draw(digitTexture, bounds, Color.White);
+            }
         }
 
         private void DrawFieldHazardNotice(SpriteBatch spriteBatch, LocalOverlayRuntime runtime, Rectangle bounds, int currentTickCount)
@@ -377,6 +418,20 @@ namespace HaCreator.MapSimulator.UI
                 ClientDamageBoardY,
                 ClientDamageBoardWidth,
                 ClientDamageBoardHeight);
+        }
+
+        internal static Rectangle ResolveDamageBoardDigitBounds(
+            Rectangle boardBounds,
+            bool drawAverageColumn,
+            int digitIndex,
+            int digitWidth,
+            int digitHeight)
+        {
+            return new Rectangle(
+                boardBounds.X + (drawAverageColumn ? 200 : 0) + (Math.Max(0, digitIndex) * 30),
+                boardBounds.Y,
+                Math.Max(1, digitWidth),
+                Math.Max(1, digitHeight));
         }
 
         internal static Rectangle ResolveFrameAroundClockBounds(Rectangle clockBounds, int frameWidth, int frameHeight)

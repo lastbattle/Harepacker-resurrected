@@ -586,7 +586,7 @@ namespace HaCreator.MapSimulator.Fields
         public void BindMap(Board board)
         {
             Reset();
-            if (board?.MapInfo?.fieldType != MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_COCONUT)
+            if (MapInfoFieldTypeResolver.Resolve(board?.MapInfo) != MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_COCONUT)
             {
                 return;
             }

@@ -372,14 +372,22 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!activeRaise.TryBeginClientPutItemRequest(currTickCount, out string blockedReason))
+            {
+                _chat?.AddSystemMessage(blockedReason, currTickCount);
+                return;
+            }
+
             if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
             {
+                activeRaise.ClearClientPutItemRequestPending();
                 return;
             }
 
             int requestId = GetNextQuestRewardRaiseRequestId();
             if (!inventoryWindow.TrySetPendingRequestState(request.SourceInventoryType, request.SourceSlotIndex, requestId, isPending: true))
             {
+                activeRaise.ClearClientPutItemRequestPending();
                 _chat?.AddSystemMessage("The client could not reserve that inventory slot for the raise owner.", currTickCount);
                 return;
             }
@@ -1167,6 +1175,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            activeRaise.ClearClientPutItemRequestPending();
             if (packet.Success)
             {
                 placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.Active;

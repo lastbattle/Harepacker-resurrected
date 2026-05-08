@@ -132,6 +132,15 @@ namespace HaCreator.MapSimulator.Interaction
         public int StringPoolId { get; set; } = -1;
     }
 
+    public sealed class MiniRoomOmokDialogPromptRequest
+    {
+        public string OwnerName { get; set; }
+        public string ActionName { get; set; }
+        public string PromptText { get; set; }
+        public int StringPoolId { get; set; } = -1;
+        public byte ResponsePacketType { get; set; }
+    }
+
     public sealed class EntrustedShopChildDialogSnapshot
     {
         public bool IsOpen { get; set; }

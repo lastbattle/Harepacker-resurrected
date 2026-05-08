@@ -54,9 +54,11 @@ namespace HaCreator.MapSimulator.Pools
             bool mobIsDead,
             int summonObjectId,
             Rectangle mobHitbox,
-            Rectangle summonHitbox)
+            Rectangle summonHitbox,
+            bool mobIsDazzled = false)
         {
             return !mobIsDead
+                   && !mobIsDazzled
                    && summonObjectId > 0
                    && !mobHitbox.IsEmpty
                    && !summonHitbox.IsEmpty

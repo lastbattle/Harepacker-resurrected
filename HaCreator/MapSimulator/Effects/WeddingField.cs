@@ -1678,7 +1678,10 @@ namespace HaCreator.MapSimulator.Effects
                     packetRecord.PairItemSerial,
                     out RemoteUserRelationshipRecord matchedRecord))
             {
-                return packetRecord;
+                return NormalizeRemoteAvatarModifiedRingRelationshipRecordFromDispatchKey(
+                    relationshipType,
+                    packetRecord,
+                    packetParticipant);
             }
 
             return packetRecord with
@@ -1689,6 +1692,65 @@ namespace HaCreator.MapSimulator.Effects
                 CharacterId = matchedRecord.CharacterId,
                 PairCharacterId = matchedRecord.PairCharacterId
             };
+        }
+
+        private RemoteUserRelationshipRecord NormalizeRemoteAvatarModifiedRingRelationshipRecordFromDispatchKey(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord packetRecord,
+            WeddingRemoteParticipant packetParticipant)
+        {
+            if (packetParticipant == null
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !packetRecord.IsActive
+                || !TryResolveWeddingRelationshipRecordOwnerFromSerials(
+                    relationshipType,
+                    packetRecord.ItemSerial,
+                    packetRecord.PairItemSerial,
+                    out int ownerCharacterId)
+                || ownerCharacterId <= 0)
+            {
+                return packetRecord;
+            }
+
+            int? pairCharacterId = ownerCharacterId == packetParticipant.CharacterId
+                ? packetRecord.PairCharacterId
+                : packetParticipant.CharacterId;
+            return packetRecord with
+            {
+                CharacterId = ownerCharacterId,
+                PairCharacterId = pairCharacterId
+            };
+        }
+
+        private bool TryResolveWeddingRelationshipRecordOwnerFromSerials(
+            RemoteRelationshipOverlayType relationshipType,
+            long? itemSerial,
+            long? pairItemSerial,
+            out int ownerCharacterId)
+        {
+            ownerCharacterId = 0;
+            if (TryResolveWeddingRelationshipRecordOwnerFromSerial(relationshipType, itemSerial, out ownerCharacterId))
+            {
+                return true;
+            }
+
+            return TryResolveWeddingRelationshipRecordOwnerFromSerial(relationshipType, pairItemSerial, out ownerCharacterId);
+        }
+
+        private bool TryResolveWeddingRelationshipRecordOwnerFromSerial(
+            RemoteRelationshipOverlayType relationshipType,
+            long? itemSerial,
+            out int ownerCharacterId)
+        {
+            ownerCharacterId = 0;
+            return itemSerial.HasValue
+                && TryResolveRelationshipRecordOwnerFromDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        itemSerial.Value,
+                        CharacterId: null),
+                    out ownerCharacterId);
         }
 
         private void StoreRemoteAvatarModifiedStateFromPacket(

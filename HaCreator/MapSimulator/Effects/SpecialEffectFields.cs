@@ -18,6 +18,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.Wz;
 
@@ -117,7 +118,7 @@ namespace HaCreator.MapSimulator.Effects
         public void DetectFieldType(MapInfo mapInfo)
         {
             int mapId = mapInfo?.id ?? 0;
-            FieldType? fieldType = mapInfo?.fieldType;
+            FieldType? fieldType = MapInfoFieldTypeResolver.Resolve(mapInfo);
             _cakePie.BindMap(mapId);
 
             // Wedding maps: 680000110 (Cathedral), 680000210 (Chapel)
@@ -223,7 +224,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             int mapId = mapInfo.id;
-            FieldType? fieldType = mapInfo.fieldType;
+            FieldType? fieldType = MapInfoFieldTypeResolver.Resolve(mapInfo);
 
             return fieldType == FieldType.FIELDTYPE_GUILDBOSS
                 || (mapId >= 610030000 && mapId <= 610030099)

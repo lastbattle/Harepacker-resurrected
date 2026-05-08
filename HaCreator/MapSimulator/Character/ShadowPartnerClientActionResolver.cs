@@ -23,6 +23,13 @@ namespace HaCreator.MapSimulator.Character
             int? EventDelayOverrideMs = null,
             IReadOnlyList<string> InlineCanvasChildNames = null);
 
+        internal readonly record struct ShadowPartnerLayerChoreography(
+            bool UsesOneTimeLayer,
+            int LayerObjectId,
+            int ListNodeObjectId,
+            int RegisteredAnimationObjectId,
+            int ParentUnderFaceLayerObjectId);
+
         private static readonly string[] SwingHeuristicFragments =
         {
             "swing",
@@ -2084,10 +2091,124 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 0, -210),
                     ("alert", 1, 180),
                     ("alert", 0, 180)),
+                ["iceAttack2"] = CreateIndexedPieces(
+                    ("alert", 0, -210),
+                    ("alert", 1, 180),
+                    ("alert", 0, 180)),
+                ["iceSmash"] = CreateIndexedPieces(
+                    ("alert", 0, -90),
+                    ("alert", 1, -90),
+                    ("alert", 0, -90),
+                    ("alert", 1, -90),
+                    ("alert", 0, -90),
+                    ("alert", 1, -90),
+                    ("alert", 0, -90),
+                    ("alert", 1, 90),
+                    ("alert", 1, 90),
+                    ("alert", 1, 90),
+                    ("alert", 0, 90),
+                    ("alert", 1, 90),
+                    ("alert", 1, 90)),
+                ["iceTempest"] = CreateIndexedPieces(
+                    ("alert", 0, -90),
+                    ("alert", 1, -90),
+                    ("alert", 0, -90),
+                    ("alert", 1, -90),
+                    ("alert", 0, -90),
+                    ("alert", 1, -90),
+                    ("alert", 0, -90),
+                    ("alert", 1, 90),
+                    ("alert", 1, 90),
+                    ("alert", 1, 90),
+                    ("alert", 0, 90),
+                    ("alert", 1, 90),
+                    ("alert", 0, 90),
+                    ("alert", 1, 90),
+                    ("alert", 0, 90),
+                    ("alert", 1, 90),
+                    ("alert", 1, 90)),
+                ["iceChop"] = CreateIndexedPieces(
+                    ("alert", 0, -120),
+                    ("alert", 1, -120),
+                    ("alert", 0, -120),
+                    ("alert", 1, -120),
+                    ("alert", 0, -120),
+                    ("alert", 1, -120),
+                    ("alert", 0, 120),
+                    ("alert", 1, 120),
+                    ("alert", 1, 120),
+                    ("alert", 1, 120),
+                    ("alert", 0, 120),
+                    ("alert", 1, 120)),
+                ["icePanic"] = CreateIndexedPieces(
+                    ("alert", 0, 120),
+                    ("alert", 1, 120),
+                    ("alert", 0, 120),
+                    ("alert", 1, 120),
+                    ("alert", 0, 120),
+                    ("alert", 1, 120),
+                    ("alert", 0, 120),
+                    ("alert", 1, 120),
+                    ("alert", 1, 120),
+                    ("alert", 1, 120),
+                    ("alert", 0, 120),
+                    ("alert", 1, 120),
+                    ("alert", 0, 120)),
+                ["iceDoubleJump"] = CreateIndexedPieces(
+                    ("alert", 0, 90),
+                    ("alert", 1, 90),
+                    ("alert", 0, 90),
+                    ("alert", 1, 90),
+                    ("alert", 0, 90),
+                    ("alert", 1, 90)),
+                ["darkImpale"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, -60),
+                    CreateIndexedPiece(1, "swingT2", 0, -150, move: new Point(4, 0)),
+                    CreateIndexedPiece(2, "swingT2", 2, 90, move: new Point(-19, 0)),
+                    CreateIndexedPiece(3, "swingT2", 2, 120, move: new Point(-19, -1)),
+                    CreateIndexedPiece(4, "stabT2", 2, 90, move: new Point(-38, 0)),
+                    CreateIndexedPiece(5, "swingT2", 2, 90, move: new Point(-36, 0)),
+                    CreateIndexedPiece(6, "stabT1", 2, 90, move: new Point(-35, 0)),
+                    CreateIndexedPiece(7, "stabT1", 0, 90, move: new Point(7, 0)),
+                    CreateIndexedPiece(8, "alert", 2, 60)
+                },
+                ["glacialChain"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingO3", 0, -70, move: new Point(4, 0)),
+                    CreateIndexedPiece(1, "swingO2", 2, -70, move: new Point(11, 0)),
+                    CreateIndexedPiece(2, "swingO2", 1, -70, move: new Point(9, 0)),
+                    CreateIndexedPiece(3, "swingO2", 0, -70, move: new Point(5, 0)),
+                    CreateIndexedPiece(4, "swingO2", 0, -350, move: new Point(5, 0)),
+                    CreateIndexedPiece(5, "stabO1", 0, 420, move: new Point(13, 0))
+                },
+                ["mistEruption"] = CreateIndexedPieces(
+                    ("alert", 0, -1080),
+                    ("alert", 1, 200),
+                    ("alert", 2, 200)),
+                ["archerDoubleJump"] = CreateIndexedPieces(
+                    ("jump", 0, 720)),
                 ["piercing"] = CreateIndexedPieces(
                     ("shoot1", 0, 120),
                     ("shoot1", 1, 270),
                     ("shoot1", 1, 0)),
+                ["swingC1"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, -180),
+                    CreateIndexedPiece(1, "swingT1", 0, 180, move: new Point(5, 0)),
+                    CreateIndexedPiece(2, "swingT1", 2, 360, move: new Point(-11, 0))
+                },
+                ["swingC2"] = CreateIndexedPieces(
+                    ("swingT3", 0, -120),
+                    ("swingT3", 1, -120),
+                    ("swingT3", 2, 480)),
+                ["shotC1"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, -210),
+                    CreateIndexedPiece(1, "stabO1", 0, 120, move: new Point(8, 0)),
+                    CreateIndexedPiece(2, "stabO1", 0, 120, move: new Point(9, 0)),
+                    CreateIndexedPiece(3, "stabO1", 0, 150, move: new Point(10, 0))
+                },
                 ["ride3"] = CreateIndexedPieces(
                     ("stand1", 0, 60),
                     ("stand1", 1, 60),
@@ -2624,6 +2745,12 @@ namespace HaCreator.MapSimulator.Character
         private const int ClientInitializedShadowPartnerActionCodeLimitExclusive = 0x111;
         private const int ClientActionManInitVariantRowStartRawActionCode = 124;
         private const int ClientActionManInitVariantRowEndRawActionCode = 131;
+        private const int ClientShadowPartnerOneTimeRawActionCode = 47;
+        private const int ShadowPartnerPersistentLayerObjectSalt = 1000;
+        private const int ShadowPartnerOneTimeLayerObjectSalt = 47000;
+        private const int ShadowPartnerLayerListNodeSalt = 40000;
+        private const int ShadowPartnerRegisteredAnimationSalt = 80000;
+        private const int ShadowPartnerUnderFaceParentLayerObjectId = 5;
         internal const int ClientActionManInitDefaultPieceDelayMs = 150;
 
         private static readonly HashSet<int> ClientActionManInitSkippedRawActionCodes = new()
@@ -3277,6 +3404,28 @@ namespace HaCreator.MapSimulator.Character
             return !string.IsNullOrWhiteSpace(actionName)
                    && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
                    && ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode);
+        }
+
+        internal static bool ShouldUseOneTimeShadowPartnerLayer(int? rawActionCode)
+        {
+            return rawActionCode == ClientShadowPartnerOneTimeRawActionCode;
+        }
+
+        internal static ShadowPartnerLayerChoreography ResolveShadowPartnerLayerChoreography(
+            int skillId,
+            int? rawActionCode)
+        {
+            bool usesOneTimeLayer = ShouldUseOneTimeShadowPartnerLayer(rawActionCode);
+            int normalizedSkillId = Math.Max(1, skillId);
+            int layerObjectId = checked((normalizedSkillId * 100) + (usesOneTimeLayer
+                ? ShadowPartnerOneTimeLayerObjectSalt
+                : ShadowPartnerPersistentLayerObjectSalt));
+            return new ShadowPartnerLayerChoreography(
+                usesOneTimeLayer,
+                layerObjectId,
+                layerObjectId + ShadowPartnerLayerListNodeSalt,
+                usesOneTimeLayer ? layerObjectId + ShadowPartnerRegisteredAnimationSalt : 0,
+                ShadowPartnerUnderFaceParentLayerObjectId);
         }
 
         internal static WzImageProperty ResolveClientActionManInitPieceOwnerNode(

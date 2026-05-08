@@ -2067,7 +2067,8 @@ namespace HaCreator.MapSimulator.Interaction
                     entry.IsBlocked)
                 {
                     MemberId = memberId,
-                    IsLocalPlayer = entry.IsLocalPlayer
+                    IsLocalPlayer = entry.IsLocalPlayer,
+                    ClientGuildGrade = entry.ClientGuildGrade
                 };
         }
 
@@ -2105,6 +2106,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool IsBlocked { get; }
             public int? MemberId { get; init; }
             public bool IsLocalPlayer { get; init; }
+            public int? ClientGuildGrade { get; init; }
         }
 
         private sealed class PacketWhisperFindPresenceState

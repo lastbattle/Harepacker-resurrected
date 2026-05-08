@@ -33,15 +33,16 @@ namespace HaCreator.MapSimulator
             bool hasOwnerTeam = TryResolvePacketOwnedExpiryOwnerTeam(ownerCharacterId, out int ownerTeam);
             int? mobPhase = mob?.PacketOwnedExpiryClientPhase;
             int ownerPhase = default;
-            bool hasPhaseContext = mobPhase.HasValue
-                                   && TryResolvePacketOwnedExpiryOwnerPhase(ownerCharacterId, out ownerPhase);
+            bool hasPhaseContext = mob?.PacketOwnedExpiryClientPhaseContextKnown == true;
+            bool hasOwnerPhase = hasPhaseContext
+                                 && TryResolvePacketOwnedExpiryOwnerPhase(ownerCharacterId, out ownerPhase);
             return ResolvePacketOwnedExpiryCandidateClientStateForParity(
                 mobTeam,
                 hasOwnerTeam ? ownerTeam : null,
                 hasOwnerTeam,
                 mob?.PacketOwnedExpiryClientSuspended == true,
                 mobPhase,
-                hasPhaseContext ? ownerPhase : null,
+                hasOwnerPhase ? ownerPhase : null,
                 hasPhaseContext);
         }
 

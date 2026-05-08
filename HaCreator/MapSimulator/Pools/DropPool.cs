@@ -172,6 +172,9 @@ namespace HaCreator.MapSimulator.Pools
         public int MesoAnimationLayerCount { get; set; }
         public int MesoAnimationIconType { get; set; }
         public bool DrawOnElevatedLayer { get; set; }
+        public int PacketLayerPage { get; set; }
+        public int PacketLayerZMass { get; set; }
+        public int PacketLayerZ { get; set; }
 
         // Pickup state
         public bool CanPickup { get; set; } = true;
@@ -229,6 +232,9 @@ namespace HaCreator.MapSimulator.Pools
         public const float CLIENT_PACKET_ABSORB_ARC_HEIGHT = 40f;
         public const int PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION = 1000;
         public const int PACKET_MOTION_STEP_MS = 30;
+        public const int PACKET_LAYER_Z_BASE = -1073711825;
+        public const int PACKET_LAYER_ENTER_TYPE4_Z = -1073471623;
+        public const int PACKET_LAYER_ELEVATED_Z = -1073471723;
         #endregion
 
         public bool IsExpired => State == DropState.Expired || State == DropState.Removed;
@@ -1091,6 +1097,9 @@ namespace HaCreator.MapSimulator.Pools
             drop.MesoAnimationLayerCount = 0;
             drop.MesoAnimationIconType = 0;
             drop.DrawOnElevatedLayer = false;
+            drop.PacketLayerPage = 0;
+            drop.PacketLayerZMass = 0;
+            drop.PacketLayerZ = 0;
             drop.AnimFrames = null;
             drop.Icon = null;
             drop.Quantity = 1;
@@ -1710,6 +1719,56 @@ namespace HaCreator.MapSimulator.Pools
                     screenY >= screenTop - 50 && screenY <= screenBottom + 50)
                 {
                     destination.Add(drop);
+                }
+            }
+
+            SortRenderablePacketDrops(destination);
+        }
+
+        internal static void SortRenderablePacketDrops(List<DropItem> drops)
+        {
+            if (drops == null || drops.Count < 2)
+            {
+                return;
+            }
+
+            int packetCount = 0;
+            for (int i = 0; i < drops.Count; i++)
+            {
+                if (drops[i]?.IsPacketControlled == true)
+                {
+                    packetCount++;
+                }
+            }
+
+            if (packetCount < 2)
+            {
+                return;
+            }
+
+            List<DropItem> packetDrops = new(packetCount);
+            for (int i = 0; i < drops.Count; i++)
+            {
+                if (drops[i]?.IsPacketControlled == true)
+                {
+                    packetDrops.Add(drops[i]);
+                }
+            }
+
+            packetDrops.Sort(static (left, right) =>
+            {
+                int zCompare = left.PacketLayerZ.CompareTo(right.PacketLayerZ);
+                return zCompare != 0
+                    ? zCompare
+                    : left.PoolId.CompareTo(right.PoolId);
+            });
+
+            int packetIndex = 0;
+            for (int i = 0; i < drops.Count; i++)
+            {
+                if (drops[i]?.IsPacketControlled == true)
+                {
+                    drops[i] = packetDrops[packetIndex++];
                 }
             }
         }
@@ -2685,6 +2744,7 @@ namespace HaCreator.MapSimulator.Pools
             ApplyPacketDropPresentation(drop, packet);
 
             drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
+            ApplyPacketDropLayerOrdering(drop, packet, page: 0, zMass: 0);
             drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
                 ? DropItem.PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION
                 : 0;
@@ -2730,6 +2790,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.SourceId = packet.SourceId;
             drop.AllowPetPickup = packet.AllowPetPickup;
             drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
+            ApplyPacketDropLayerOrdering(drop, packet, page: drop.PacketLayerPage, zMass: drop.PacketLayerZMass);
             drop.OwnerExpireTime = ResolveClientOwnershipExpireTime(currentTime, packet.DelayMs, packet.OwnerId);
             drop.ExpireTime = ResolvePacketExpireTime(
                 currentTime,
@@ -2795,6 +2856,33 @@ namespace HaCreator.MapSimulator.Pools
         internal static bool ShouldDrawPacketDropOnElevatedLayer(RemoteDropEnterPacket packet)
         {
             return packet.ElevateLayer || packet.EnterType == 4;
+        }
+
+        private static void ApplyPacketDropLayerOrdering(DropItem drop, RemoteDropEnterPacket packet, int page, int zMass)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            drop.PacketLayerPage = page;
+            drop.PacketLayerZMass = zMass;
+            drop.PacketLayerZ = ResolvePacketDropLayerZ(packet.EnterType, packet.ElevateLayer, page, zMass);
+        }
+
+        internal static int ResolvePacketDropLayerZ(byte enterType, bool elevateLayer, int page, int zMass)
+        {
+            if (elevateLayer)
+            {
+                return DropItem.PACKET_LAYER_ELEVATED_Z;
+            }
+
+            if (enterType == 4)
+            {
+                return DropItem.PACKET_LAYER_ENTER_TYPE4_Z;
+            }
+
+            return (10 * ((3000 * page) - zMass)) + DropItem.PACKET_LAYER_Z_BASE;
         }
 
         private static bool ShouldRetireExpiredPacketEnter(DropItem drop, RemoteDropEnterPacket packet, int currentTime)

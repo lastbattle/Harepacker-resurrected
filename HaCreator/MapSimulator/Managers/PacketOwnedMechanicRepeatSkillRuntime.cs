@@ -3063,6 +3063,14 @@ namespace HaCreator.MapSimulator.Managers
                    || normalized.Contains("rawbytes", StringComparison.Ordinal)
                    || normalized.Contains("packetbytes", StringComparison.Ordinal)
                    || normalized.Contains("payloadbytes", StringComparison.Ordinal)
+                   || normalized is "bytes"
+                       or "bytearray"
+                       or "data"
+                       or "rawdata"
+                       or "buffer"
+                       or "bytebuffer"
+                       or "contents"
+                       or "content"
                    || normalized is "observedbytes"
                        or "actualbytes"
                        or "capturedbytes"
@@ -3124,6 +3132,7 @@ namespace HaCreator.MapSimulator.Managers
                     foreach (JsonProperty property in value.EnumerateObject())
                     {
                         if (!IsSg88MismatchPairJsonScalarValueLabel(property.Name)
+                            && !IsSg88MismatchPairJsonValueContainerLabel(property.Name)
                             && !IsSg88PacketComparisonByteArrayLabel(property.Name))
                         {
                             continue;
@@ -3576,6 +3585,96 @@ namespace HaCreator.MapSimulator.Managers
                 case "capturepackethex":
                 case "capturepayload":
                 case "capturepayloadhex":
+                case "reference":
+                case "referencevalue":
+                case "referencebyte":
+                case "referencebytes":
+                case "referenceraw":
+                case "referencerawpacket":
+                case "referencepacket":
+                case "referencepackethex":
+                case "referencepayload":
+                case "referencepayloadhex":
+                case "baseline":
+                case "baselinevalue":
+                case "baselinebyte":
+                case "baselinebytes":
+                case "baselineraw":
+                case "baselinerawpacket":
+                case "baselinepacket":
+                case "baselinepackethex":
+                case "baselinepayload":
+                case "baselinepayloadhex":
+                case "golden":
+                case "goldenvalue":
+                case "goldenbyte":
+                case "goldenbytes":
+                case "goldenraw":
+                case "goldenrawpacket":
+                case "goldenpacket":
+                case "goldenpackethex":
+                case "goldenpayload":
+                case "goldenpayloadhex":
+                case "native":
+                case "nativevalue":
+                case "nativebyte":
+                case "nativebytes":
+                case "nativeraw":
+                case "nativerawpacket":
+                case "nativepacket":
+                case "nativepackethex":
+                case "nativepayload":
+                case "nativepayloadhex":
+                case "nativeclient":
+                case "nativeclientvalue":
+                case "nativeclientbyte":
+                case "nativeclientbytes":
+                case "nativeclientraw":
+                case "nativeclientrawpacket":
+                case "nativeclientpacket":
+                case "nativeclientpackethex":
+                case "nativeclientpayload":
+                case "nativeclientpayloadhex":
+                case "maple":
+                case "maplevalue":
+                case "maplebyte":
+                case "maplebytes":
+                case "mapleraw":
+                case "maplerawpacket":
+                case "maplepacket":
+                case "maplepackethex":
+                case "maplepayload":
+                case "maplepayloadhex":
+                case "mapleclient":
+                case "mapleclientvalue":
+                case "mapleclientbyte":
+                case "mapleclientbytes":
+                case "mapleclientraw":
+                case "mapleclientrawpacket":
+                case "mapleclientpacket":
+                case "mapleclientpackethex":
+                case "mapleclientpayload":
+                case "mapleclientpayloadhex":
+                case "live":
+                case "livevalue":
+                case "livebyte":
+                case "livebytes":
+                case "liveraw":
+                case "liverawpacket":
+                case "livepacket":
+                case "livepackethex":
+                case "livepayload":
+                case "livepayloadhex":
+                case "liveclient":
+                case "liveclientvalue":
+                case "liveclientbyte":
+                case "liveclientbytes":
+                case "liveclientraw":
+                case "liveclientrawpacket":
+                case "liveclientpacket":
+                case "liveclientpackethex":
+                case "liveclientpayload":
+                case "liveclientpayloadhex":
                 case "from":
                 case "before":
                 case "left":
@@ -3651,6 +3750,46 @@ namespace HaCreator.MapSimulator.Managers
                 case "reconstructedpackethex":
                 case "reconstructedpayload":
                 case "reconstructedpayloadhex":
+                case "sim":
+                case "simvalue":
+                case "simbyte":
+                case "simbytes":
+                case "simraw":
+                case "simrawpacket":
+                case "simpacket":
+                case "simpackethex":
+                case "simpayload":
+                case "simpayloadhex":
+                case "mapsim":
+                case "mapsimvalue":
+                case "mapsimbyte":
+                case "mapsimbytes":
+                case "mapsimraw":
+                case "mapsimrawpacket":
+                case "mapsimpacket":
+                case "mapsimpackethex":
+                case "mapsimpayload":
+                case "mapsimpayloadhex":
+                case "mapsimulator":
+                case "mapsimulatorvalue":
+                case "mapsimulatorbyte":
+                case "mapsimulatorbytes":
+                case "mapsimulatorraw":
+                case "mapsimulatorrawpacket":
+                case "mapsimulatorpacket":
+                case "mapsimulatorpackethex":
+                case "mapsimulatorpayload":
+                case "mapsimulatorpayloadhex":
+                case "sut":
+                case "sutvalue":
+                case "sutbyte":
+                case "sutbytes":
+                case "sutraw":
+                case "sutrawpacket":
+                case "sutpacket":
+                case "sutpackethex":
+                case "sutpayload":
+                case "sutpayloadhex":
                 case "to":
                 case "after":
                 case "new":
@@ -3737,6 +3876,13 @@ namespace HaCreator.MapSimulator.Managers
                 or "comparisonvalues"
                 or "replayvalues"
                 or "packetvalues"
+                or "data"
+                or "payloadvalue"
+                or "rawdata"
+                or "buffer"
+                or "bytebuffer"
+                or "contents"
+                or "content"
                 or "rawpacket"
                 or "rawpackets"
                 or "packet"

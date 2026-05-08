@@ -42,13 +42,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             int currentTime,
             Action<int> onPulse)
         {
-            while (currentTime >= nextWriggleTime && nextWriggleTime < digestCompleteTime)
+            while (HasTickReached(currentTime, nextWriggleTime)
+                   && IsTickBefore(nextWriggleTime, digestCompleteTime))
             {
                 onPulse?.Invoke(nextWriggleTime);
-                nextWriggleTime += WriggleIntervalMs;
+                nextWriggleTime = unchecked(nextWriggleTime + WriggleIntervalMs);
             }
 
             return nextWriggleTime;
+        }
+
+        private static bool HasTickReached(int currentTime, int targetTime)
+        {
+            return unchecked(currentTime - targetTime) >= 0;
+        }
+
+        private static bool IsTickBefore(int currentTime, int targetTime)
+        {
+            return unchecked(currentTime - targetTime) < 0;
         }
     }
 }

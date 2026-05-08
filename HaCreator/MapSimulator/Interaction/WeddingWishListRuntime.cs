@@ -50,13 +50,25 @@ namespace HaCreator.MapSimulator.Interaction
         internal const byte SendWishListInputSubtype = 9;
         internal const byte SendPutItemRequestSubtype = 6;
         internal const byte SendGetItemRequestSubtype = 7;
+        internal const byte ClientGiveDialogOpenSubtype = 9;
+        internal const byte ClientReceiveDialogOpenSubtype = 10;
+        internal const byte ClientPutItemSuccessSubtype = 11;
+        internal const byte ClientPutItemDuplicateGiftSubtype = 12;
+        internal const byte ClientPutItemFailureSubtype = 13;
+        internal const byte ClientPutItemRejectedSubtype = 14;
+        internal const byte ClientGetItemSuccessSubtype = 15;
+        internal const byte ClientGetItemFailureSubtype = 16;
+        internal const byte ClientGetItemInventoryFullSubtype = 17;
 
         private const int MaxWishListEntryCount = 10;
         private const int ConfirmWishListInputStringPoolId = 0x1097;
         private const int WishListGiftAlreadySentStringPoolId = 0x1098;
         private const int ConfirmWishListGiftClaimStringPoolId = 0x036C;
+        private const int WishListInventoryFullStringPoolId = 0x0374;
         private const int PutQuantityPromptStringPoolId = 0x0370;
         private const int ConfirmWishListGiftSendStringPoolId = 0x10C0;
+        private const int WishListGiftSentStringPoolId = 0x10C1;
+        private const int WishListGiftSendFailedStringPoolId = 0x10C2;
         private const int WishListFullStringPoolId = 0x10BE;
 
         private static readonly InventoryType[] TabInventoryTypes =
@@ -705,6 +717,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (TryApplyClientOwnedTransferResultSubtype(subtype, payload, out message))
+            {
+                return true;
+            }
+
             if (subtype != SendGetItemRequestSubtype && subtype != SendPutItemRequestSubtype)
             {
                 message = $"Wedding wish-list transfer result subtype {subtype} is not a Get/Put completion.";
@@ -732,6 +749,117 @@ namespace HaCreator.MapSimulator.Interaction
 
             message = CompletePendingTransferRequest();
             return true;
+        }
+
+        private bool TryApplyClientOwnedTransferResultSubtype(byte subtype, IReadOnlyList<byte> payload, out string message)
+        {
+            message = string.Empty;
+            switch (subtype)
+            {
+                case ClientPutItemSuccessSubtype:
+                    message = ApplyClientPutItemSuccess();
+                    return true;
+
+                case ClientPutItemDuplicateGiftSubtype:
+                    message = ApplyClientPutItemFailure(subtype, GetWishListGiftAlreadySentText(), restoreOptimisticState: _hasPendingTransferRequest);
+                    return true;
+
+                case ClientPutItemFailureSubtype:
+                case ClientPutItemRejectedSubtype:
+                    message = ApplyClientPutItemFailure(subtype, GetWishListGiftSendFailedText(), restoreOptimisticState: _hasPendingTransferRequest);
+                    return true;
+
+                case ClientGetItemSuccessSubtype:
+                    message = ApplyClientGetItemSuccess();
+                    return true;
+
+                case ClientGetItemFailureSubtype:
+                    message = ApplyClientGetItemFailure(subtype, "Wedding wish-list receive request failed; reopened Get actions.", restoreOptimisticState: _hasPendingTransferRequest);
+                    return true;
+
+                case ClientGetItemInventoryFullSubtype:
+                    message = ApplyClientGetItemFailure(subtype, GetWishListInventoryFullText(), restoreOptimisticState: _hasPendingTransferRequest);
+                    return true;
+
+                case ClientReceiveDialogOpenSubtype:
+                    message = Open(WeddingWishListDialogMode.Receive);
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private string ApplyClientPutItemSuccess()
+        {
+            if (_hasPendingTransferRequest && _pendingTransferSubtype != 0 && _pendingTransferSubtype != SendPutItemRequestSubtype)
+            {
+                _statusMessage = $"Wedding wish-list give completion subtype {ClientPutItemSuccessSubtype} arrived while subtype {_pendingTransferSubtype} was pending; left the pending request unchanged.";
+                return _statusMessage;
+            }
+
+            _hasPendingTransferRequest = false;
+            ClearPendingTransferState();
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            NormalizeViewportState();
+            _isOpen = false;
+            _mode = WeddingWishListDialogMode.None;
+            _statusMessage = $"{GetWishListGiftSentText()} Applied CWishListGiveDlg::OnPacket subtype {ClientPutItemSuccessSubtype} and closed the modeless give dialog through the client SetRet success path.";
+            return _statusMessage;
+        }
+
+        private string ApplyClientPutItemFailure(byte subtype, string noticeText, bool restoreOptimisticState)
+        {
+            if (restoreOptimisticState && _pendingTransferSubtype == SendPutItemRequestSubtype)
+            {
+                RestoreRejectedPutTransfer();
+            }
+
+            _hasPendingTransferRequest = false;
+            ClearPendingTransferState();
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            NormalizeViewportState();
+            _statusMessage = $"{noticeText} Applied CWishListGiveDlg::OnPacket subtype {subtype} and reopened Put actions.";
+            return _statusMessage;
+        }
+
+        private string ApplyClientGetItemSuccess()
+        {
+            if (_hasPendingTransferRequest && _pendingTransferSubtype != 0 && _pendingTransferSubtype != SendGetItemRequestSubtype)
+            {
+                _statusMessage = $"Wedding wish-list receive completion subtype {ClientGetItemSuccessSubtype} arrived while subtype {_pendingTransferSubtype} was pending; left the pending request unchanged.";
+                return _statusMessage;
+            }
+
+            _hasPendingTransferRequest = false;
+            ClearPendingTransferState();
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            NormalizeViewportState();
+            _statusMessage = $"Applied CWishListRecvDlg::OnPacket subtype {ClientGetItemSuccessSubtype}; refreshed receive rows and reopened Get actions without closing the modeless receive dialog.";
+            return _statusMessage;
+        }
+
+        private string ApplyClientGetItemFailure(byte subtype, string noticeText, bool restoreOptimisticState)
+        {
+            if (restoreOptimisticState && _pendingTransferSubtype == SendGetItemRequestSubtype)
+            {
+                RestoreRejectedGetTransfer();
+            }
+
+            _hasPendingTransferRequest = false;
+            ClearPendingTransferState();
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            NormalizeViewportState();
+            _statusMessage = $"{noticeText} Applied CWishListRecvDlg::OnPacket subtype {subtype} and reopened Get actions.";
+            return _statusMessage;
         }
 
         internal string Clear()
@@ -1320,6 +1448,30 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(
                 ConfirmWishListGiftSendStringPoolId,
                 "Once the gift is sent, it cannot be canceled. Do you still want to send it?",
+                appendFallbackSuffix: true);
+        }
+
+        private static string GetWishListGiftSentText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WishListGiftSentStringPoolId,
+                "You have sent a gift.",
+                appendFallbackSuffix: true);
+        }
+
+        private static string GetWishListGiftSendFailedText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WishListGiftSendFailedStringPoolId,
+                "Failed to send the gift.",
+                appendFallbackSuffix: true);
+        }
+
+        private static string GetWishListInventoryFullText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WishListInventoryFullStringPoolId,
+                "Please check if your inventory is full or not.",
                 appendFallbackSuffix: true);
         }
 

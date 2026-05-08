@@ -361,6 +361,8 @@ namespace HaCreator.MapSimulator.UI
         public Action<int> WhisperTargetPickerModalComboDropdownScrollRequested { get; set; }
         public Action<int> WhisperTargetPickerModalComboDropdownPageRequested { get; set; }
         public Action<int> WhisperTargetPickerModalComboDropdownScrollPositionRequested { get; set; }
+        public Func<IntPtr> ResolveImeWindowHandle { get; set; }
+        public Action<ImeCandidateListState> ImeCandidateListRefreshedRequested { get; set; }
 
         private enum WhisperPickerButtonAction
         {
@@ -378,6 +380,8 @@ namespace HaCreator.MapSimulator.UI
             PagePrevious = 3,
             PageNext = 4
         }
+
+        private bool _clientEditImePlacementActive;
 
         internal readonly record struct ClientEditCompositionUnderlineRun(
             int StartIndex,
@@ -1074,6 +1078,7 @@ namespace HaCreator.MapSimulator.UI
         {
             MapSimulatorChatRenderState chatState = _chatStateProvider?.Invoke();
             SyncChatToggleButtons(chatState?.IsActive == true);
+            ResetClientEditImeWindowPlacementIfInactive(chatState);
 
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                 this.Position.X, this.Position.Y, centerX, centerY,
@@ -1412,6 +1417,15 @@ namespace HaCreator.MapSimulator.UI
                 inputPos.X,
                 (int)Math.Round(inputPos.Y + ResolveFontLineSpacing() - 2),
                 Color.White);
+            UpdateClientEditImeWindowPlacement(
+                chatState,
+                new Rectangle(
+                    (int)Math.Round(inputPos.X),
+                    (int)Math.Round(inputPos.Y),
+                    Math.Max(1, _chatInputWidth),
+                    Math.Max(1, ResolveFontLineSpacing())),
+                visibleText,
+                visibleStartIndex);
             DrawImeCandidateWindow(
                 sprite,
                 chatState,
@@ -1749,6 +1763,15 @@ namespace HaCreator.MapSimulator.UI
                 comboTextX,
                 comboBounds.Y + comboTextTopInset + ResolveFontLineSpacing() - 2,
                 new Color(24, 24, 24));
+            UpdateClientEditImeWindowPlacement(
+                chatState,
+                new Rectangle(
+                    (int)Math.Round(comboTextX),
+                    comboBounds.Y + comboTextTopInset,
+                    Math.Max(1, comboTextMaxWidth),
+                    Math.Max(1, ResolveFontLineSpacing())),
+                visibleComboText,
+                visibleComboStartIndex);
             DrawImeCandidateWindow(
                 sprite,
                 chatState,
@@ -1785,6 +1808,153 @@ namespace HaCreator.MapSimulator.UI
                     1,
                     caretHeight),
                 Color.White);
+        }
+
+        private void ResetClientEditImeWindowPlacementIfInactive(MapSimulatorChatRenderState chatState)
+        {
+            bool hasEditImeState = chatState?.IsActive == true
+                && (chatState.HasCompositionText || chatState.ImeCandidateList?.HasCandidates == true);
+            if (hasEditImeState || !_clientEditImePlacementActive || ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle != IntPtr.Zero)
+            {
+                WindowsImePresentationBridge.TryResetPlacement(windowHandle);
+            }
+
+            _clientEditImePlacementActive = false;
+        }
+
+        private void UpdateClientEditImeWindowPlacement(
+            MapSimulatorChatRenderState chatState,
+            Rectangle editTextBounds,
+            string visibleText,
+            int visibleStartIndex)
+        {
+            if (ResolveImeWindowHandle == null
+                || chatState?.IsActive != true
+                || (!chatState.HasCompositionText && chatState.ImeCandidateList?.HasCandidates != true))
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            SkillMacroImeWindowPlacement placement = ResolveClientEditImeWindowPlacement(
+                chatState,
+                editTextBounds,
+                ResolveFontLineSpacing(),
+                value => MeasureChatText(value),
+                visibleText,
+                visibleStartIndex);
+            placement = SkillMacroImeWindowPlacementLayout.PreserveNativeCandidateWindowPlacement(
+                placement,
+                chatState.ImeCandidateList);
+
+            _clientEditImePlacementActive = true;
+            if (WindowsImePresentationBridge.TryUpdatePlacement(
+                    windowHandle,
+                    placement,
+                    chatState.ImeCandidateList,
+                    out ImeCandidateListState refreshedCandidateState)
+                && refreshedCandidateState?.HasCandidates == true)
+            {
+                ImeCandidateListRefreshedRequested?.Invoke(refreshedCandidateState);
+            }
+        }
+
+        internal static SkillMacroImeWindowPlacement ResolveClientEditImeWindowPlacement(
+            MapSimulatorChatRenderState chatState,
+            Rectangle editTextBounds,
+            int fontLineSpacing,
+            Func<string, Vector2> measureText,
+            string visibleText = "",
+            int visibleStartIndex = 0)
+        {
+            if (measureText == null)
+            {
+                throw new ArgumentNullException(nameof(measureText));
+            }
+
+            chatState ??= new MapSimulatorChatRenderState();
+            visibleText ??= string.Empty;
+            int visibleLength = visibleText.Length;
+            int caretIndex = chatState.HasCompositionText
+                ? chatState.CompositionCursorPosition
+                : chatState.CursorPosition;
+            int compositionCaretWidth = MeasureVisibleTextPrefixWidth(
+                visibleText,
+                visibleStartIndex,
+                caretIndex,
+                measureText);
+
+            bool useClauseAnchor = false;
+            int clauseAnchorWidth = 0;
+            int clauseWidth = 1;
+            if (chatState.HasCompositionText)
+            {
+                IReadOnlyList<int> clauseOffsets = NormalizeClientEditCompositionClauseOffsets(
+                    chatState.CompositionClauseOffsets,
+                    chatState.CompositionLength);
+                int activeClauseIndex = ResolveClientEditActiveCompositionClauseIndex(
+                    clauseOffsets,
+                    chatState.CompositionLength,
+                    chatState.CompositionCursorPosition - chatState.CompositionStart,
+                    chatState.CompositionAttributes);
+                if (activeClauseIndex >= 0 && activeClauseIndex < clauseOffsets.Count - 1)
+                {
+                    int relativeClauseStart = Math.Clamp(clauseOffsets[activeClauseIndex], 0, chatState.CompositionLength);
+                    int relativeClauseEnd = Math.Clamp(clauseOffsets[activeClauseIndex + 1], relativeClauseStart, chatState.CompositionLength);
+                    int absoluteClauseStart = chatState.CompositionStart + relativeClauseStart;
+                    int absoluteClauseEnd = chatState.CompositionStart + relativeClauseEnd;
+                    useClauseAnchor = true;
+                    clauseAnchorWidth = MeasureVisibleTextPrefixWidth(
+                        visibleText,
+                        visibleStartIndex,
+                        absoluteClauseStart,
+                        measureText);
+                    int clippedClauseStart = Math.Clamp(absoluteClauseStart, visibleStartIndex, visibleStartIndex + visibleLength);
+                    int clippedClauseEnd = Math.Clamp(absoluteClauseEnd, clippedClauseStart, visibleStartIndex + visibleLength);
+                    clauseWidth = Math.Max(
+                        1,
+                        (int)Math.Ceiling(measureText(visibleText.Substring(clippedClauseStart - visibleStartIndex, clippedClauseEnd - clippedClauseStart)).X));
+                }
+            }
+
+            return SkillMacroImeWindowPlacementLayout.Resolve(
+                editTextBounds,
+                textInsetX: 0,
+                lineSpacing: fontLineSpacing,
+                compositionCaretWidth: compositionCaretWidth,
+                useClauseAnchor: useClauseAnchor,
+                clauseAnchorWidth: clauseAnchorWidth,
+                clauseWidth: clauseWidth);
+        }
+
+        private static int MeasureVisibleTextPrefixWidth(
+            string visibleText,
+            int visibleStartIndex,
+            int absoluteIndex,
+            Func<string, Vector2> measureText)
+        {
+            if (string.IsNullOrEmpty(visibleText))
+            {
+                return 0;
+            }
+
+            int visibleEndIndex = visibleStartIndex + visibleText.Length;
+            int clampedIndex = Math.Clamp(absoluteIndex, visibleStartIndex, visibleEndIndex);
+            int prefixLength = clampedIndex - visibleStartIndex;
+            return prefixLength <= 0
+                ? 0
+                : Math.Max(0, (int)Math.Ceiling(measureText(visibleText.Substring(0, prefixLength)).X));
         }
 
         internal static Rectangle ResolveClientEditImeCandidateWindowBounds(

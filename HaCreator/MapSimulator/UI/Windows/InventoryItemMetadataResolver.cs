@@ -356,6 +356,26 @@ namespace HaCreator.MapSimulator.UI
                 || IsEnabledFlag(infoProperty?["scanTradeBlock"]);
         }
 
+        internal static bool IsCashItemInfo(WzSubProperty infoProperty)
+        {
+            return IsEnabledFlag(infoProperty?["cash"]);
+        }
+
+        internal static bool IsNotForSaleInfo(WzSubProperty infoProperty)
+        {
+            return IsEnabledFlag(infoProperty?["notSale"]);
+        }
+
+        internal static bool IsQuestItemInfo(WzSubProperty infoProperty)
+        {
+            return IsEnabledFlag(infoProperty?["quest"]);
+        }
+
+        internal static bool IsOneOfAKindInfo(WzSubProperty infoProperty)
+        {
+            return IsEnabledFlag(infoProperty?["only"]);
+        }
+
         internal static bool IsTargetBlockedInfo(WzSubProperty infoProperty)
         {
             return IsEnabledFlag(infoProperty?["targetBlock"])
@@ -636,9 +656,9 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            isCashItem = GetIntValue(infoProperty["cash"]) == 1;
-            isNotForSale = GetIntValue(infoProperty["notSale"]) == 1;
-            isQuestItem = GetIntValue(infoProperty["quest"]) == 1;
+            isCashItem = IsCashItemInfo(infoProperty);
+            isNotForSale = IsNotForSaleInfo(infoProperty);
+            isQuestItem = IsQuestItemInfo(infoProperty);
             return true;
         }
 
@@ -916,11 +936,11 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty specProperty = itemProperty?["spec"] as WzSubProperty;
             WzSubProperty specExProperty = itemProperty?["specEx"] as WzSubProperty;
 
-            bool isCashItem = GetIntValue(infoProperty?["cash"]) == 1;
-            bool isNotForSale = GetIntValue(infoProperty?["notSale"]) == 1;
-            bool isQuestItem = GetIntValue(infoProperty?["quest"]) == 1;
+            bool isCashItem = IsCashItemInfo(infoProperty);
+            bool isNotForSale = IsNotForSaleInfo(infoProperty);
+            bool isQuestItem = IsQuestItemInfo(infoProperty);
             bool isTradeBlocked = IsTradeBlockedInfo(infoProperty);
-            bool isOneOfAKind = GetIntValue(infoProperty?["only"]) == 1;
+            bool isOneOfAKind = IsOneOfAKindInfo(infoProperty);
 
             DateTime? expirationDateUtc = null;
             if (infoProperty?["dateExpire"] is WzStringProperty expirationProperty)
@@ -5624,10 +5644,10 @@ namespace HaCreator.MapSimulator.UI
                 infoProperty,
                 specProperty,
                 null,
-                isNotForSale: false,
-                isQuestItem: false,
-                isTradeBlocked: false,
-                isOneOfAKind: false,
+                isNotForSale: IsNotForSaleInfo(infoProperty),
+                isQuestItem: IsQuestItemInfo(infoProperty),
+                isTradeBlocked: IsTradeBlockedInfo(infoProperty),
+                isOneOfAKind: IsOneOfAKindInfo(infoProperty),
                 expirationDateUtc: null);
         }
 
@@ -5638,10 +5658,10 @@ namespace HaCreator.MapSimulator.UI
                 infoProperty,
                 specProperty,
                 specExProperty,
-                isNotForSale: false,
-                isQuestItem: false,
-                isTradeBlocked: false,
-                isOneOfAKind: false,
+                isNotForSale: IsNotForSaleInfo(infoProperty),
+                isQuestItem: IsQuestItemInfo(infoProperty),
+                isTradeBlocked: IsTradeBlockedInfo(infoProperty),
+                isOneOfAKind: IsOneOfAKindInfo(infoProperty),
                 expirationDateUtc: null);
         }
 

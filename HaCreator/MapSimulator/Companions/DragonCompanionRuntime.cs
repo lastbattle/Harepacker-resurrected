@@ -141,10 +141,12 @@ namespace HaCreator.MapSimulator.Companions
                 bool officialSessionFullTailByteProven,
                 bool hasCapturedKeyPadMemoryStates,
                 bool keyPadMemoryStatesMatch,
+                bool capturedTailKeyPadMemoryStatesMatch,
                 string capturedKeyPadMemoryStates,
                 string capturedKeyPadMemorySource,
                 bool capturedKeyPadMemoryFromOfficialSession,
                 bool officialSessionKeyPadMemoryByteProven,
+                bool officialSessionTailKeyPadMemoryByteProven,
                 bool hasRecentOfficialSessionFullTailCapture,
                 bool recentOfficialSessionFullTailByteProven,
                 string recentOfficialSessionFullTailSource,
@@ -164,10 +166,12 @@ namespace HaCreator.MapSimulator.Companions
                 OfficialSessionFullTailByteProven = officialSessionFullTailByteProven;
                 HasCapturedKeyPadMemoryStates = hasCapturedKeyPadMemoryStates;
                 KeyPadMemoryStatesMatch = keyPadMemoryStatesMatch;
+                CapturedTailKeyPadMemoryStatesMatch = capturedTailKeyPadMemoryStatesMatch;
                 CapturedKeyPadMemoryStates = capturedKeyPadMemoryStates;
                 CapturedKeyPadMemorySource = capturedKeyPadMemorySource;
                 CapturedKeyPadMemoryFromOfficialSession = capturedKeyPadMemoryFromOfficialSession;
                 OfficialSessionKeyPadMemoryByteProven = officialSessionKeyPadMemoryByteProven;
+                OfficialSessionTailKeyPadMemoryByteProven = officialSessionTailKeyPadMemoryByteProven;
                 HasRecentOfficialSessionFullTailCapture = hasRecentOfficialSessionFullTailCapture;
                 RecentOfficialSessionFullTailByteProven = recentOfficialSessionFullTailByteProven;
                 RecentOfficialSessionFullTailSource = recentOfficialSessionFullTailSource;
@@ -188,10 +192,12 @@ namespace HaCreator.MapSimulator.Companions
             public bool OfficialSessionFullTailByteProven { get; }
             public bool HasCapturedKeyPadMemoryStates { get; }
             public bool KeyPadMemoryStatesMatch { get; }
+            public bool CapturedTailKeyPadMemoryStatesMatch { get; }
             public string CapturedKeyPadMemoryStates { get; }
             public string CapturedKeyPadMemorySource { get; }
             public bool CapturedKeyPadMemoryFromOfficialSession { get; }
             public bool OfficialSessionKeyPadMemoryByteProven { get; }
+            public bool OfficialSessionTailKeyPadMemoryByteProven { get; }
             public bool HasRecentOfficialSessionFullTailCapture { get; }
             public bool RecentOfficialSessionFullTailByteProven { get; }
             public string RecentOfficialSessionFullTailSource { get; }
@@ -1800,6 +1806,14 @@ namespace HaCreator.MapSimulator.Companions
                 && AreClientDragonFlushKeyPadStatesEqual(
                     simulatorTail.KeyPadStates,
                     _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates);
+            bool capturedTailKeyPadMemoryStatesMatch = hasCapturedKeyPadMemoryStates
+                && hasCapturedTail
+                && AreClientDragonFlushKeyPadStatesEqual(
+                    capturedTail.KeyPadStates,
+                    _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates);
+            bool officialSessionTailKeyPadMemoryByteProven = capturedTailKeyPadMemoryStatesMatch
+                && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession
+                && _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession;
             bool hasRecentOfficialSessionFullTailCapture = TryFindRecentOfficialSessionFullTailCapture(
                 simulatorTail,
                 hasSimulatorTail,
@@ -1819,6 +1833,7 @@ namespace HaCreator.MapSimulator.Companions
                 hasCapturedTail && _lastCapturedVecCtrlEndUpdateActiveFlushFromOfficialSession && keyPadStatesMatch && boundsMatch,
                 hasCapturedKeyPadMemoryStates,
                 keyPadMemoryStatesMatch,
+                capturedTailKeyPadMemoryStatesMatch,
                 hasCapturedKeyPadMemoryStates
                     ? FormatClientDragonFlushKeyPadStates(_lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryStates)
                     : "none",
@@ -1826,6 +1841,7 @@ namespace HaCreator.MapSimulator.Companions
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession,
                 _lastCapturedVecCtrlEndUpdateActiveKeyPadMemoryFromOfficialSession
                     && keyPadMemoryStatesMatch,
+                officialSessionTailKeyPadMemoryByteProven,
                 hasRecentOfficialSessionFullTailCapture,
                 recentFullTailMatched,
                 recentFullTailCapture?.Source,
@@ -1959,12 +1975,19 @@ namespace HaCreator.MapSimulator.Companions
 
             if (!comparison.HasSimulatorTail)
             {
-                return "Official-session m_aKeyPadState memory capture recorded; waiting for simulator tail to compare.";
+                return comparison.OfficialSessionTailKeyPadMemoryByteProven
+                    ? "Official-session m_aKeyPadState memory bytes match the captured flush-tail keypad bytes; waiting for simulator tail to compare."
+                    : "Official-session m_aKeyPadState memory capture recorded; waiting for simulator tail to compare.";
             }
 
-            return comparison.KeyPadMemoryStatesMatch
-                ? "Official-session m_aKeyPadState memory byte proof matched."
-                : "Official-session m_aKeyPadState memory byte proof failed; captured memory states differ from the simulator tail.";
+            if (!comparison.KeyPadMemoryStatesMatch)
+            {
+                return "Official-session m_aKeyPadState memory byte proof failed; captured memory states differ from the simulator tail.";
+            }
+
+            return comparison.OfficialSessionTailKeyPadMemoryByteProven
+                ? "Official-session m_aKeyPadState memory byte proof matched the simulator tail and captured flush-tail keypad bytes."
+                : "Official-session m_aKeyPadState memory byte proof matched the simulator tail; captured flush-tail keypad byte proof still pending.";
         }
 
         private static bool AreClientDragonFlushKeyPadStatesEqual(IReadOnlyList<byte> left, IReadOnlyList<byte> right)

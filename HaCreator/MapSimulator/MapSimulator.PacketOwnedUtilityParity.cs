@@ -210,6 +210,11 @@ namespace HaCreator.MapSimulator
             bool ReleasedTrackProperty,
             PacketOwnedRadioClientHandleStatus HandleStatus);
 
+        internal readonly record struct PacketOwnedRadioUpdatePlan(
+            bool ShouldPoll,
+            bool ShouldStopOnComplete,
+            int NextLastUpdateTick);
+
         internal sealed class PacketOwnedRadioClientPlaybackHandle
         {
             private PacketOwnedRadioClientPlaybackHandle(PacketOwnedRadioMmsPlayPlan playPlan, int rawBufferLength)
@@ -396,6 +401,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedActiveEffectMotionBlurOverlayLayerHandleId;
         private int _packetOwnedActiveEffectMotionBlurOwnerCharacterId;
         private int _lastDeliveryQuestId;
+        private int _lastDeliveryItemPos;
         private int _lastDeliveryItemId;
         private QuestDetailDeliveryType _lastPacketOwnedDeliveryType;
         private readonly List<int> _lastDeliveryDisallowedQuestIds = new();
@@ -710,13 +716,53 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<int> disallowedQuestIds,
             QuestDetailDeliveryType packetOwnedDeliveryType = QuestDetailDeliveryType.None)
         {
+            return ApplyDeliveryQuestLaunch(
+                questId,
+                itemPos: 0,
+                itemId,
+                disallowedQuestIds,
+                packetOwnedDeliveryType,
+                itemPosIsPacketAuthored: false);
+        }
+
+        private string ApplyPacketOwnedDeliveryQuestLaunch(
+            int itemPos,
+            int itemId,
+            IReadOnlyList<int> disallowedQuestIds,
+            QuestDetailDeliveryType packetOwnedDeliveryType = QuestDetailDeliveryType.None)
+        {
+            return ApplyDeliveryQuestLaunch(
+                questId: 0,
+                itemPos,
+                itemId,
+                disallowedQuestIds,
+                packetOwnedDeliveryType,
+                itemPosIsPacketAuthored: true);
+        }
+
+        private string ApplyDeliveryQuestLaunch(
+            int questId,
+            int itemPos,
+            int itemId,
+            IReadOnlyList<int> disallowedQuestIds,
+            QuestDetailDeliveryType packetOwnedDeliveryType,
+            bool itemPosIsPacketAuthored)
+        {
             StampPacketOwnedUtilityRequestState();
             _lastDeliveryQuestId = Math.Max(0, questId);
+            _lastDeliveryItemPos = Math.Max(0, itemPos);
             _lastDeliveryItemId = Math.Max(0, itemId);
             _lastPacketOwnedDeliveryType = packetOwnedDeliveryType;
             _lastDeliveryDisallowedQuestIds.Clear();
             SetPacketOwnedQuestDeliveryTypeHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
             RegisterPendingQuestDeliveryResultPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
+            if (itemPosIsPacketAuthored)
+            {
+                _packetOwnedLocalUtilityContext.SetQuestDeliveryItemPos(
+                    _lastDeliveryItemPos,
+                    Environment.TickCount,
+                    _playerManager?.Player?.Build?.Id ?? 0);
+            }
 
             if (disallowedQuestIds != null)
             {
@@ -1497,6 +1543,7 @@ namespace HaCreator.MapSimulator
                 int deliveryCashItemId = snapshot.DeliveryCashItemId ?? 0;
                 bool resolvedDeliverySlot = TryResolveQuestDeliveryCashItemSlot(
                     deliveryCashItemId,
+                    _lastDeliveryItemPos,
                     out InventoryType deliveryInventoryType,
                     out int deliveryRuntimeSlotIndex,
                     out int deliveryClientSlotIndex);
@@ -1570,6 +1617,7 @@ namespace HaCreator.MapSimulator
                 int deliveryCashItemId = state?.DeliveryCashItemId ?? 0;
                 bool resolvedDeliverySlot = TryResolveQuestDeliveryCashItemSlot(
                     deliveryCashItemId,
+                    _lastDeliveryItemPos,
                     out InventoryType deliveryInventoryType,
                     out int deliveryRuntimeSlotIndex,
                     out int deliveryClientSlotIndex);
@@ -1740,6 +1788,21 @@ namespace HaCreator.MapSimulator
             out int runtimeSlotIndex,
             out int clientSlotIndex)
         {
+            return TryResolveQuestDeliveryCashItemSlot(
+                itemId,
+                preferredClientSlotIndex: 0,
+                out inventoryType,
+                out runtimeSlotIndex,
+                out clientSlotIndex);
+        }
+
+        private bool TryResolveQuestDeliveryCashItemSlot(
+            int itemId,
+            int preferredClientSlotIndex,
+            out InventoryType inventoryType,
+            out int runtimeSlotIndex,
+            out int clientSlotIndex)
+        {
             inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
             runtimeSlotIndex = -1;
             clientSlotIndex = 0;
@@ -1752,6 +1815,24 @@ namespace HaCreator.MapSimulator
             if (slots == null)
             {
                 return false;
+            }
+
+            if (preferredClientSlotIndex > 0)
+            {
+                int preferredRuntimeSlotIndex = preferredClientSlotIndex - 1;
+                if (preferredRuntimeSlotIndex >= 0 && preferredRuntimeSlotIndex < slots.Count)
+                {
+                    InventorySlotData preferredSlot = slots[preferredRuntimeSlotIndex];
+                    if (preferredSlot != null
+                        && !preferredSlot.IsDisabled
+                        && preferredSlot.ItemId == itemId
+                        && Math.Max(0, preferredSlot.Quantity) > 0)
+                    {
+                        runtimeSlotIndex = preferredRuntimeSlotIndex;
+                        clientSlotIndex = preferredClientSlotIndex;
+                        return true;
+                    }
+                }
             }
 
             for (int i = 0; i < slots.Count; i++)
@@ -7124,6 +7205,8 @@ namespace HaCreator.MapSimulator
             bool autoSeparated = true,
             bool tightLine = false)
         {
+            HideOtherPacketOwnedRewardModalOwner(MapSimulatorWindowNames.PacketOwnedRewardResultNotice);
+
             string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
             if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
             {
@@ -7151,6 +7234,8 @@ namespace HaCreator.MapSimulator
 
         private bool ShowPacketOwnedRandomMesoBagWindow(PacketOwnedRandomMesoBagPresentation presentation)
         {
+            HideOtherPacketOwnedRewardModalOwner(MapSimulatorWindowNames.RandomMesoBag);
+
             if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor))
             {
                 TryPlayPacketOwnedWzSound(
@@ -7176,6 +7261,26 @@ namespace HaCreator.MapSimulator
 
             ShowUtilityFeedbackMessage($"{presentation.DescriptionText} {presentation.AmountText}".Trim());
             return false;
+        }
+
+        private void HideOtherPacketOwnedRewardModalOwner(string incomingWindowName)
+        {
+            if (uiWindowManager == null)
+            {
+                return;
+            }
+
+            if (!string.Equals(incomingWindowName, MapSimulatorWindowNames.PacketOwnedRewardResultNotice, StringComparison.Ordinal)
+                && uiWindowManager.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow)
+            {
+                noticeWindow.Hide();
+            }
+
+            if (!string.Equals(incomingWindowName, MapSimulatorWindowNames.RandomMesoBag, StringComparison.Ordinal)
+                && uiWindowManager.GetWindow(MapSimulatorWindowNames.RandomMesoBag) is RandomMesoBagWindow randomMesoBagWindow)
+            {
+                randomMesoBagWindow.Hide();
+            }
         }
 
         private bool TryApplyPacketOwnedResignQuestReturnPayload(byte[] payload, out string message)
@@ -10121,7 +10226,7 @@ namespace HaCreator.MapSimulator
             message = null;
             if (!TryDecodePacketOwnedDeliveryQuestPayload(
                     payload,
-                    out int questId,
+                    out int itemPos,
                     out int itemId,
                     out int[] disallowedQuestIds,
                     out QuestDetailDeliveryType packetOwnedDeliveryType,
@@ -10131,7 +10236,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
+            message = ApplyPacketOwnedDeliveryQuestLaunch(itemPos, itemId, disallowedQuestIds, packetOwnedDeliveryType);
             return true;
         }
 
@@ -12163,15 +12268,39 @@ namespace HaCreator.MapSimulator
             bool rawBufferLoaded,
             PacketOwnedRadioClientHandleStatus currentStatus)
         {
+            return ResolvePacketOwnedRadioMmsStopPlan(
+                isPlaying: trackPropertyLoaded,
+                trackPropertyLoaded: trackPropertyLoaded,
+                soundObjectLoaded: soundObjectLoaded,
+                rawBufferLoaded: rawBufferLoaded,
+                currentStatus: currentStatus);
+        }
+
+        internal static PacketOwnedRadioMmsStopPlan ResolvePacketOwnedRadioMmsStopPlan(
+            bool isPlaying,
+            bool trackPropertyLoaded,
+            bool soundObjectLoaded,
+            bool rawBufferLoaded,
+            PacketOwnedRadioClientHandleStatus currentStatus)
+        {
             bool enteredStop = trackPropertyLoaded
-                || soundObjectLoaded
-                || rawBufferLoaded
-                || currentStatus != PacketOwnedRadioClientHandleStatus.None;
+                && isPlaying;
+            if (!enteredStop)
+            {
+                return new PacketOwnedRadioMmsStopPlan(
+                    EnteredStop: false,
+                    HaltedHandle: false,
+                    UnloadedHandle: false,
+                    ClearedHandle: false,
+                    ReleasedSoundObject: false,
+                    ReleasedTrackProperty: false,
+                    HandleStatus: currentStatus);
+            }
+
             bool hasAilHandle = rawBufferLoaded
                 && currentStatus != PacketOwnedRadioClientHandleStatus.None
                 && currentStatus != PacketOwnedRadioClientHandleStatus.Unloaded;
-            bool shouldHaltHandle = hasAilHandle
-                && currentStatus == PacketOwnedRadioClientHandleStatus.Playing;
+            bool shouldHaltHandle = hasAilHandle;
             bool shouldUnloadHandle = hasAilHandle;
 
             return new PacketOwnedRadioMmsStopPlan(
@@ -12182,6 +12311,36 @@ namespace HaCreator.MapSimulator
                 ReleasedSoundObject: soundObjectLoaded,
                 ReleasedTrackProperty: trackPropertyLoaded,
                 HandleStatus: ResolvePacketOwnedRadioClientHandleStatusAfterStop(currentStatus));
+        }
+
+        internal static PacketOwnedRadioUpdatePlan ResolvePacketOwnedRadioUpdatePlan(
+            bool isPlaying,
+            int currentTickCount,
+            int lastUpdateTick,
+            int expectedStopTick,
+            bool clientHandleStopped,
+            bool useBackendStopSignal,
+            bool backendStopped)
+        {
+            bool shouldPoll = isPlaying
+                && ShouldPollPacketOwnedRadioCompletion(currentTickCount, lastUpdateTick);
+            if (!shouldPoll)
+            {
+                return new PacketOwnedRadioUpdatePlan(
+                    ShouldPoll: false,
+                    ShouldStopOnComplete: false,
+                    NextLastUpdateTick: lastUpdateTick);
+            }
+
+            return new PacketOwnedRadioUpdatePlan(
+                ShouldPoll: true,
+                ShouldStopOnComplete: ShouldCompletePacketOwnedRadioSchedule(
+                    currentTickCount,
+                    expectedStopTick,
+                    clientHandleStopped,
+                    useBackendStopSignal,
+                    backendStopped),
+                NextLastUpdateTick: currentTickCount);
         }
 
         internal static PacketOwnedRadioMmsPlayPlan ResolvePacketOwnedRadioMmsPlayPlan(
@@ -12393,18 +12552,22 @@ namespace HaCreator.MapSimulator
             }
             bool useBackendStopSignal = !HasPacketOwnedRadioClientTrackDuration(_lastPacketOwnedRadioClientTrackDurationMs);
             bool backendStopped = _packetOwnedRadioAudio?.State == Microsoft.Xna.Framework.Audio.SoundState.Stopped;
-            if (ShouldCompletePacketOwnedRadioSchedule(
-                    currentTickCount,
-                    _lastPacketOwnedRadioExpectedStopTick,
-                    clientHandleStopped,
-                    useBackendStopSignal,
-                    backendStopped))
+            PacketOwnedRadioUpdatePlan updatePlan = ResolvePacketOwnedRadioUpdatePlan(
+                isPlaying: true,
+                currentTickCount: currentTickCount,
+                lastUpdateTick: _lastPacketOwnedRadioLastPollTick,
+                expectedStopTick: _lastPacketOwnedRadioExpectedStopTick,
+                clientHandleStopped: clientHandleStopped,
+                useBackendStopSignal: useBackendStopSignal,
+                backendStopped: backendStopped);
+            if (updatePlan.ShouldStopOnComplete)
             {
+                _lastPacketOwnedRadioLastPollTick = updatePlan.NextLastUpdateTick;
                 StopPacketOwnedRadioSchedule(completed: true, emitChatNotice: true);
                 return;
             }
 
-            _lastPacketOwnedRadioLastPollTick = currentTickCount;
+            _lastPacketOwnedRadioLastPollTick = updatePlan.NextLastUpdateTick;
         }
 
         private void SyncPacketOwnedRadioOfficialSessionLifecycle()
@@ -15075,14 +15238,25 @@ namespace HaCreator.MapSimulator
 
             PlayerCharacter player = _playerManager.Player;
             Vector2 fallbackPosition = player.Position;
-            _animationEffects.AddOneTimeAttached(
+            int ownerCharacterId = Math.Max(1, player.Build?.Id ?? 1);
+            string ownerActionName = ResolveAnimationDisplayerLocalPacketOwnedActionName(ownerCharacterId);
+            bool ownerFacingRight = ResolveAnimationDisplayerLocalPacketOwnedFacingRight(ownerCharacterId);
+            int initialElapsedMs = ResolveAnimationDisplayerLocalPacketOwnedBasicOneTimeInitialElapsed(
+                ownerCharacterId,
+                BuildAnimationDisplayerLocalPacketOwnedLevelUpOwnerSlotKey(resolvedEffectDescriptor),
+                resolvedEffectDescriptor,
+                ownerActionName,
+                ownerFacingRight,
+                currTickCount,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+            _animationEffects.AddPacketOwnedLevelUp(
                 frames,
+                resolvedEffectDescriptor,
                 () => _playerManager?.Player?.Position ?? fallbackPosition,
-                getFlip: null,
                 fallbackPosition.X,
                 fallbackPosition.Y,
-                fallbackFlip: false,
-                currTickCount);
+                currTickCount,
+                initialElapsedMs: initialElapsedMs);
             return true;
         }
 
@@ -16615,7 +16789,7 @@ namespace HaCreator.MapSimulator
 
             if (horizontalDecision.ShouldClearQueuedRetry)
             {
-                ClearPassiveTransferRequest();
+                ConsumePassiveTransferRequestFromLifecycleOwner(horizontalDecision.ClearOwner);
             }
 
             if (_localFollowRuntime.AttachedDriverId <= 0)
@@ -16754,7 +16928,9 @@ namespace HaCreator.MapSimulator
                     _passiveTransferRequestPending,
                     info.ClearsPendingRequest))
             {
-                ClearPassiveTransferRequest();
+                ConsumePassiveTransferRequestFromLifecycleOwner(
+                    PassiveTransferFieldReadinessEvaluator.ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterFailure(
+                        info.ClearsPendingRequest));
             }
 
             if (info.ClearsPendingRequest)
@@ -20523,7 +20699,7 @@ namespace HaCreator.MapSimulator
             message = null;
             if (!TryDecodePacketOwnedDeliveryQuestPayload(
                     payload,
-                    out int questId,
+                    out int itemPos,
                     out int itemId,
                     out int[] disallowedQuestIds,
                     out QuestDetailDeliveryType packetOwnedDeliveryType,
@@ -20533,7 +20709,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
+            message = ApplyPacketOwnedDeliveryQuestLaunch(itemPos, itemId, disallowedQuestIds, packetOwnedDeliveryType);
             return true;
         }
 

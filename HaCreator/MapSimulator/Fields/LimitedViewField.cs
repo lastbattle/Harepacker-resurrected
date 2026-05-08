@@ -84,7 +84,11 @@ namespace HaCreator.MapSimulator.Fields
             RestorePreviousSmallDarkPatch,
             ClearPreviousMaskHistory,
             ResolveLocalUserPosition,
+            QueryLocalUserVectorX,
+            QueryLocalUserVectorY,
             ResolveGraphicsCenter,
+            QueryGraphicsCenterX,
+            QueryGraphicsCenterY,
             QueryViewrangeCanvasOrigin,
             QueryViewrangeCanvasDimensions,
             DrawDarkLayerFallback,
@@ -101,6 +105,8 @@ namespace HaCreator.MapSimulator.Fields
             SkipRemoteViewrangeBecauseLocalUserMissing,
             SkipRemoteViewrangeBecauseDelayedLoad,
             ResolveRemoteUserPosition,
+            QueryRemoteUserVectorX,
+            QueryRemoteUserVectorY,
             CopyRemoteViewrange,
             AppendPreviousMaskHistory
         }
@@ -1339,9 +1345,31 @@ namespace HaCreator.MapSimulator.Fields
                 NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[0]),
                 0));
             operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.QueryLocalUserVectorX,
+                NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[0]),
+                0));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind.ResolveGraphicsCenter,
                 Vector2.Zero,
                 -1));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.QueryGraphicsCenterX,
+                Vector2.Zero,
+                -1));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.QueryLocalUserVectorY,
+                NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[0]),
+                0));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.QueryGraphicsCenterY,
+                Vector2.Zero,
+                -1));
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.AcquireViewrangeCanvas,
+                Vector2.Zero,
+                -1,
+                sourceWidth: sourceWidth,
+                sourceHeight: sourceHeight));
             operations.Add(new ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasOrigin,
                 Vector2.Zero,
@@ -1350,12 +1378,6 @@ namespace HaCreator.MapSimulator.Fields
                 sourceY: originY));
             operations.Add(new ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
-                Vector2.Zero,
-                -1,
-                sourceWidth: sourceWidth,
-                sourceHeight: sourceHeight));
-            operations.Add(new ClientOwnedDrawViewrangeOperation(
-                ClientOwnedDrawViewrangeOperationKind.AcquireViewrangeCanvas,
                 Vector2.Zero,
                 -1,
                 sourceWidth: sourceWidth,
@@ -1417,6 +1439,32 @@ namespace HaCreator.MapSimulator.Fields
                     ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition,
                     normalizedTopLeft,
                     maskIndex));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.QueryRemoteUserVectorX,
+                    normalizedTopLeft,
+                    maskIndex));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.QueryGraphicsCenterX,
+                    Vector2.Zero,
+                    maskIndex));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.QueryRemoteUserVectorY,
+                    normalizedTopLeft,
+                    maskIndex));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.QueryGraphicsCenterY,
+                    Vector2.Zero,
+                    maskIndex));
+            }
+
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.AcquireViewrangeCanvas,
+                normalizedTopLeft,
+                maskIndex,
+                sourceWidth: sourceWidth,
+                sourceHeight: sourceHeight));
+            if (includeRemotePositionResolution)
+            {
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
                     normalizedTopLeft,
@@ -1719,7 +1767,11 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.AcquireViewrangeCanvas:
                     case ClientOwnedDrawViewrangeOperationKind.ResolvePreviousSmallDarkPatchRectangle:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveLocalUserPosition:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryLocalUserVectorX:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryLocalUserVectorY:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveGraphicsCenter:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryGraphicsCenterX:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryGraphicsCenterY:
                     case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasOrigin:
                     case ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles:
@@ -1734,6 +1786,8 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseLocalUserMissing:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseDelayedLoad:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryRemoteUserVectorX:
+                    case ClientOwnedDrawViewrangeOperationKind.QueryRemoteUserVectorY:
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch:
                         DrawClientOwnedSmallDarkPatch(spriteBatch, operation.TopLeft, fogColor);

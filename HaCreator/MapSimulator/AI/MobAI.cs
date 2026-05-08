@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Entities;
 using Microsoft.Xna.Framework;
@@ -131,7 +132,7 @@ namespace HaCreator.MapSimulator.AI
     {
         public int AttackId { get; set; }           // Attack index (attack1, attack2, etc.)
         public int AttackType { get; set; } = -1;  // info/attack/N/type or attackN/info/type
-        public bool MagicAttack { get; set; }       // attackN/info/magicAttack
+        public bool MagicAttack { get; set; }       // attackN/info/magicAttack or info/attack/N/magic
         public int Damage { get; set; }             // Base damage
         public int Range { get; set; }              // Attack range in pixels
         public int Delay { get; set; }              // Delay before damage applies (ms)
@@ -178,7 +179,8 @@ namespace HaCreator.MapSimulator.AI
 
         public bool IsOnCooldown(int currentTick)
         {
-            return currentTick - LastUseTime < Cooldown;
+            return Cooldown > 0 &&
+                   ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, LastUseTime) < Cooldown;
         }
     }
 
@@ -238,7 +240,8 @@ namespace HaCreator.MapSimulator.AI
 
         public bool IsOnCooldown(int currentTick)
         {
-            return currentTick - LastUseTime < Cooldown;
+            return Cooldown > 0 &&
+                   ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, LastUseTime) < Cooldown;
         }
     }
 
@@ -285,7 +288,8 @@ namespace HaCreator.MapSimulator.AI
         public float OffsetY { get; set; }          // Vertical offset (rises up)
         public Color Color { get; set; } = Color.White;
 
-        public bool IsExpired(int currentTick) => currentTick - DisplayTime > Duration;
+        public bool IsExpired(int currentTick) =>
+            ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, DisplayTime) > Duration;
     }
 
     public class MobStatusEntry
@@ -422,7 +426,7 @@ namespace HaCreator.MapSimulator.AI
         public MobTargetInfo Target => _target;
         public IReadOnlyList<MobDamageInfo> DamageDisplays => _damageDisplays;
         public MobDeathType DeathType => _deathType;
-        public int StateElapsed(int currentTick) => currentTick - _stateStartTime;
+        public int StateElapsed(int currentTick) => ResolveClientTickElapsedMs(currentTick, _stateStartTime);
         public IReadOnlyDictionary<MobStatusEffect, MobStatusEntry> StatusEntries => _statusEntries;
         public bool IsEscortMob => _isEscortMob;
         public bool CanTargetPlayer => CanTargetPlayerNow;
@@ -683,7 +687,7 @@ namespace HaCreator.MapSimulator.AI
             // as long as player is still around (even if dead)
             if (_isBoss && !_bossAggroTimedOut && _bossAggroStartTime > 0 && playerX.HasValue)
             {
-                if (currentTick - _bossAggroStartTime >= GameConstants.BOSS_AGGRO_TIMEOUT)
+                if (HasClientTickElapsedAtLeast(currentTick, _bossAggroStartTime, GameConstants.BOSS_AGGRO_TIMEOUT))
                 {
                     _bossAggroTimedOut = true;
                     _isAggroed = false;
@@ -878,7 +882,7 @@ namespace HaCreator.MapSimulator.AI
         {
             // Lost target for too long - aggroed mobs chase longer
             int loseAggroTime = _isAggroed ? LOSE_AGGRO_TIME * 2 : LOSE_AGGRO_TIME;
-            if (!_target.IsValid || currentTick - _target.LastSeenTime > loseAggroTime)
+            if (!_target.IsValid || ResolveClientTickElapsedMs(currentTick, _target.LastSeenTime) > loseAggroTime)
             {
                 _isAggroed = false;  // Clear aggro when giving up
                 SetState(MobAIState.Patrol, currentTick);
@@ -909,7 +913,7 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            if (_actionAnimationCompleted && currentTick >= _actionRecoveryUntil)
+            if (_actionAnimationCompleted && HasClientTickReached(currentTick, _actionRecoveryUntil))
             {
                 CompleteCurrentCombatAction(currentTick);
             }
@@ -923,7 +927,7 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            if (_actionAnimationCompleted && currentTick >= _actionRecoveryUntil)
+            if (_actionAnimationCompleted && HasClientTickReached(currentTick, _actionRecoveryUntil))
             {
                 CompleteCurrentCombatAction(currentTick);
             }
@@ -939,7 +943,7 @@ namespace HaCreator.MapSimulator.AI
             if (_state == MobAIState.Attack || _state == MobAIState.Skill)
             {
                 _actionAnimationCompleted = true;
-                if (currentTick >= _actionRecoveryUntil)
+                if (HasClientTickReached(currentTick, _actionRecoveryUntil))
                 {
                     CompleteCurrentCombatAction(currentTick);
                 }
@@ -1954,7 +1958,7 @@ namespace HaCreator.MapSimulator.AI
                 return -1;
             }
 
-            if (currentTick < _skillForbidUntil)
+            if (_skillForbidUntil != 0 && !HasClientTickReached(currentTick, _skillForbidUntil))
             {
                 return -1;
             }
@@ -2299,7 +2303,7 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            while (currentTick >= _nextNaturalRecoveryTick)
+            while (HasClientTickReached(currentTick, _nextNaturalRecoveryTick))
             {
                 if (_hpRecovery > 0 && _currentHp > 0 && _currentHp < _maxHp)
                 {
@@ -2446,6 +2450,32 @@ namespace HaCreator.MapSimulator.AI
             return Math.Max(1, (int)MathF.Round(scaled));
         }
 
+        internal static int ResolveClientTickElapsedMsForTesting(int currentTick, int startTick)
+        {
+            return ResolveClientTickElapsedMs(currentTick, startTick);
+        }
+
+        internal static bool HasClientTickReachedForTesting(int currentTick, int targetTick)
+        {
+            return HasClientTickReached(currentTick, targetTick);
+        }
+
+        private static int ResolveClientTickElapsedMs(int currentTick, int startTick)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTick, startTick);
+        }
+
+        private static bool HasClientTickReached(int currentTick, int targetTick)
+        {
+            return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTick, targetTick);
+        }
+
+        private static bool HasClientTickElapsedAtLeast(int currentTick, int startTick, int durationMs)
+        {
+            return durationMs <= 0 ||
+                   ResolveClientTickElapsedMs(currentTick, startTick) >= durationMs;
+        }
+
         private void UpdateSpecialInteractions(int currentTick)
         {
             if (_specialSpawnTime == int.MinValue)
@@ -2467,13 +2497,13 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            if (_selfDestructRemoveAfterMs > 0 && currentTick - _specialSpawnTime >= _selfDestructRemoveAfterMs)
+            if (_selfDestructRemoveAfterMs > 0 && HasClientTickElapsedAtLeast(currentTick, _specialSpawnTime, _selfDestructRemoveAfterMs))
             {
                 TriggerSelfDestruction(currentTick);
                 return;
             }
 
-            if (_removeAfterMs > 0 && currentTick - _specialSpawnTime >= _removeAfterMs)
+            if (_removeAfterMs > 0 && HasClientTickElapsedAtLeast(currentTick, _specialSpawnTime, _removeAfterMs))
             {
                 Kill(currentTick, MobDeathType.Timeout);
             }

@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.UI
         internal readonly record struct ClientStateTransition(int CurrentOption, int PreviousExpandedOption, bool IsCollapsed);
         internal readonly record struct ClientButtonVisibility(bool MinVisible, bool MaxVisible, bool BigVisible, bool SmallVisible, bool NpcVisible);
         internal readonly record struct ClientButtonPlacement(int X, int Y, bool Visible);
+        internal readonly record struct ClientHoverCandidate(bool ContainsMouse, ClientHoverTargetKind Kind, DirectionArrow? RemoteDirection, string TooltipText);
+        internal readonly record struct ClientHoverSelection(bool Handled, bool ShowsTooltip, ClientHoverTargetKind? Kind, string TooltipText);
 
         public enum HelperMarkerType
         {
@@ -179,6 +181,7 @@ namespace HaCreator.MapSimulator.UI
             public NpcItem Npc { get; set; }
             public PortalItem Portal { get; set; }
             public ClientHoverTargetKind Kind { get; set; }
+            public DirectionArrow? RemoteDirection { get; set; }
         }
 
         /// <summary>
@@ -1518,7 +1521,8 @@ namespace HaCreator.MapSimulator.UI
                         AddHoverTarget(
                             trackedUser.TooltipText,
                             directionHoverBounds,
-                            ClientHoverTargetKind.RemoteDirection);
+                            ClientHoverTargetKind.RemoteDirection,
+                            ResolveDirectionArrow(minimapPoint));
                     }
 
                     continue;
@@ -1536,10 +1540,14 @@ namespace HaCreator.MapSimulator.UI
                         trackedUser.TooltipText,
                         hoverBounds))
                 {
+                    ClientHoverTargetKind hoverTargetKind = ResolveTrackedUserHoverTargetKindForTesting(isWithinMinimapImage);
                     AddHoverTarget(
                         trackedUser.TooltipText,
                         hoverBounds,
-                        ResolveTrackedUserHoverTargetKindForTesting(isWithinMinimapImage));
+                        hoverTargetKind,
+                        hoverTargetKind == ClientHoverTargetKind.RemoteDirection
+                            ? ResolveDirectionArrow(minimapPoint)
+                            : null);
                 }
             }
         }
@@ -1802,13 +1810,12 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 string tooltipText = ResolveHoverTargetTooltipText(hoverTarget);
-                if (string.IsNullOrWhiteSpace(tooltipText))
-                {
-                    continue;
-                }
-
                 if (selectedHoverTarget == null
-                    || IsClientHoverTargetKindPreferredForTesting(hoverTarget.Kind, selectedHoverTarget.Kind))
+                    || ShouldReplaceClientHoverTargetForTesting(
+                        hoverTarget.Kind,
+                        hoverTarget.RemoteDirection,
+                        selectedHoverTarget.Kind,
+                        selectedHoverTarget.RemoteDirection))
                 {
                     selectedHoverTarget = hoverTarget;
                     selectedTooltipText = tooltipText;
@@ -1817,12 +1824,16 @@ namespace HaCreator.MapSimulator.UI
 
             if (selectedHoverTarget != null)
             {
-                int relativeMouseX = mouseState.X - Position.X;
-                int relativeMouseY = mouseState.Y - Position.Y;
-                SetHoveredTooltip(
-                    selectedTooltipText,
-                    ResolveTooltipAnchorPointForTesting(Position.X, Position.Y, relativeMouseX, relativeMouseY),
-                    selectedHoverTarget.Kind);
+                if (!string.IsNullOrWhiteSpace(selectedTooltipText))
+                {
+                    int relativeMouseX = mouseState.X - Position.X;
+                    int relativeMouseY = mouseState.Y - Position.Y;
+                    SetHoveredTooltip(
+                        selectedTooltipText,
+                        ResolveTooltipAnchorPointForTesting(Position.X, Position.Y, relativeMouseX, relativeMouseY),
+                        selectedHoverTarget.Kind);
+                }
+
                 return true;
             }
 
@@ -1913,7 +1924,11 @@ namespace HaCreator.MapSimulator.UI
             _hoverTargetCount = 0;
         }
 
-        private void AddHoverTarget(string tooltipText, Rectangle bounds, ClientHoverTargetKind kind)
+        private void AddHoverTarget(
+            string tooltipText,
+            Rectangle bounds,
+            ClientHoverTargetKind kind,
+            DirectionArrow? remoteDirection = null)
         {
             if (string.IsNullOrWhiteSpace(tooltipText) || bounds.IsEmpty)
             {
@@ -1921,7 +1936,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (kind == ClientHoverTargetKind.RemoteDirection
-                && TryMergeRemoteDirectionHoverTarget(tooltipText, bounds))
+                && TryMergeRemoteDirectionHoverTarget(tooltipText, bounds, remoteDirection))
             {
                 return;
             }
@@ -1932,15 +1947,25 @@ namespace HaCreator.MapSimulator.UI
             hoverTarget.Npc = null;
             hoverTarget.Portal = null;
             hoverTarget.Kind = kind;
+            hoverTarget.RemoteDirection = kind == ClientHoverTargetKind.RemoteDirection
+                ? remoteDirection
+                : null;
         }
 
-        private bool TryMergeRemoteDirectionHoverTarget(string tooltipText, Rectangle bounds)
+        private bool TryMergeRemoteDirectionHoverTarget(
+            string tooltipText,
+            Rectangle bounds,
+            DirectionArrow? remoteDirection)
         {
             for (int i = 0; i < _hoverTargetCount; i++)
             {
                 HoverTargetEntry hoverTarget = _hoverTargets[i];
                 if (hoverTarget.Kind != ClientHoverTargetKind.RemoteDirection
-                    || !ShouldMergeRemoteDirectionHoverBoundsForTesting(hoverTarget.Bounds, bounds))
+                    || !ShouldMergeRemoteDirectionHoverBoundsForTesting(
+                        hoverTarget.Bounds,
+                        bounds,
+                        hoverTarget.RemoteDirection,
+                        remoteDirection))
                 {
                     continue;
                 }
@@ -1958,9 +1983,27 @@ namespace HaCreator.MapSimulator.UI
             Rectangle currentBounds,
             Rectangle nextBounds)
         {
+            return ShouldMergeRemoteDirectionHoverBoundsForTesting(
+                currentBounds,
+                nextBounds,
+                currentDirection: null,
+                nextDirection: null);
+        }
+
+        internal static bool ShouldMergeRemoteDirectionHoverBoundsForTesting(
+            Rectangle currentBounds,
+            Rectangle nextBounds,
+            DirectionArrow? currentDirection,
+            DirectionArrow? nextDirection)
+        {
             if (currentBounds.IsEmpty || nextBounds.IsEmpty)
             {
                 return false;
+            }
+
+            if (currentDirection.HasValue && nextDirection.HasValue)
+            {
+                return currentDirection.Value == nextDirection.Value;
             }
 
             return currentBounds == nextBounds
@@ -1980,6 +2023,7 @@ namespace HaCreator.MapSimulator.UI
             hoverTarget.Npc = npc;
             hoverTarget.Portal = null;
             hoverTarget.Kind = ClientHoverTargetKind.Npc;
+            hoverTarget.RemoteDirection = null;
         }
 
         private void AddHoverTarget(PortalItem portal, Rectangle bounds)
@@ -1995,6 +2039,7 @@ namespace HaCreator.MapSimulator.UI
             hoverTarget.Npc = null;
             hoverTarget.Portal = portal;
             hoverTarget.Kind = ClientHoverTargetKind.Portal;
+            hoverTarget.RemoteDirection = null;
         }
 
         private HoverTargetEntry GetOrCreateHoverTarget(int index)
@@ -2201,6 +2246,84 @@ namespace HaCreator.MapSimulator.UI
             ClientHoverTargetKind current)
         {
             return (int)candidate < (int)current;
+        }
+
+        internal static bool ShouldReplaceClientHoverTargetForTesting(
+            ClientHoverTargetKind candidateKind,
+            DirectionArrow? candidateRemoteDirection,
+            ClientHoverTargetKind currentKind,
+            DirectionArrow? currentRemoteDirection)
+        {
+            if (IsClientHoverTargetKindPreferredForTesting(candidateKind, currentKind))
+            {
+                return true;
+            }
+
+            if (candidateKind != currentKind
+                || candidateKind != ClientHoverTargetKind.RemoteDirection)
+            {
+                return false;
+            }
+
+            return ResolveClientRemoteDirectionHoverOrderForTesting(candidateRemoteDirection)
+                < ResolveClientRemoteDirectionHoverOrderForTesting(currentRemoteDirection);
+        }
+
+        internal static ClientHoverSelection ResolveClientHoverSelectionForTesting(
+            IReadOnlyList<ClientHoverCandidate> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return new ClientHoverSelection(false, false, null, null);
+            }
+
+            ClientHoverCandidate? selectedCandidate = null;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                ClientHoverCandidate candidate = candidates[i];
+                if (!candidate.ContainsMouse)
+                {
+                    continue;
+                }
+
+                if (!selectedCandidate.HasValue
+                    || ShouldReplaceClientHoverTargetForTesting(
+                        candidate.Kind,
+                        candidate.RemoteDirection,
+                        selectedCandidate.Value.Kind,
+                        selectedCandidate.Value.RemoteDirection))
+                {
+                    selectedCandidate = candidate;
+                }
+            }
+
+            if (!selectedCandidate.HasValue)
+            {
+                return new ClientHoverSelection(false, false, null, null);
+            }
+
+            string tooltipText = selectedCandidate.Value.TooltipText;
+            return new ClientHoverSelection(
+                Handled: true,
+                ShowsTooltip: !string.IsNullOrWhiteSpace(tooltipText),
+                selectedCandidate.Value.Kind,
+                tooltipText);
+        }
+
+        internal static int ResolveClientRemoteDirectionHoverOrderForTesting(DirectionArrow? direction)
+        {
+            return direction switch
+            {
+                DirectionArrow.NorthWest => 0,
+                DirectionArrow.North => 1,
+                DirectionArrow.NorthEast => 2,
+                DirectionArrow.SouthEast => 3,
+                DirectionArrow.East => 4,
+                DirectionArrow.SouthWest => 5,
+                DirectionArrow.South => 6,
+                DirectionArrow.West => 7,
+                _ => int.MaxValue
+            };
         }
 
         internal static string NormalizeTooltipTextForDisplayForTesting(string tooltipText, ClientHoverTargetKind kind)

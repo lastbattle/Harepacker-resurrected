@@ -278,7 +278,8 @@ namespace HaCreator.MapSimulator.Interaction
                 isBlocked: false)
             {
                 MemberId = member.MemberId > 0 ? member.MemberId : null,
-                IsLocalPlayer = isLocal
+                IsLocalPlayer = isLocal,
+                ClientGuildGrade = Math.Max(1, member.Grade)
             };
         }
 
@@ -327,14 +328,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildQuestDirectNoticeResult(SocialListClientGuildResultPacket packet)
         {
-            if (TryBuildNoGuildContextOwnedResultIgnore(
-                    packet.RawSubtype,
-                    "guild-quest notice",
-                    out string ignoredMessage))
-            {
-                return ignoredMessage;
-            }
-
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildQuestDirectNoticeSummary(packet));
@@ -342,14 +335,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildDirectNoticeResult(SocialListClientGuildResultPacket packet)
         {
-            if (TryBuildNoGuildContextOwnedResultIgnore(
-                    packet.RawSubtype,
-                    "guild notice",
-                    out string ignoredMessage))
-            {
-                return ignoredMessage;
-            }
-
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildDirectNoticeSummary(packet));
@@ -357,14 +342,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildQuestQueueNoticeResult(SocialListClientGuildResultPacket packet)
         {
-            if (TryBuildNoGuildContextOwnedResultIgnore(
-                    packet.RawSubtype,
-                    "guild-quest queue notice",
-                    out string ignoredMessage))
-            {
-                return ignoredMessage;
-            }
-
             if (packet.GuildQuestWaitStatus <= 0)
             {
                 return ClearPacketSyncSummary(
@@ -390,15 +367,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildResultFallbackNoticeResult(SocialListClientGuildResultPacket packet)
         {
-            if (packet.UsesSharedResultNoticeFallback &&
-                TryBuildNoGuildContextOwnedResultIgnore(
-                    packet.RawSubtype,
-                    "shared guild-result notice",
-                    out string ignoredMessage))
-            {
-                return ignoredMessage;
-            }
-
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildResultFallbackNoticeSummary(packet));
@@ -406,14 +374,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildResultNoticeResult(SocialListClientGuildResultPacket packet)
         {
-            if (TryBuildNoGuildContextOwnedResultIgnore(
-                    packet.RawSubtype,
-                    "guild-result notice",
-                    out string ignoredMessage))
-            {
-                return ignoredMessage;
-            }
-
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildResultNoticeSummary(packet));
@@ -1184,7 +1144,8 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.IsBlocked)
             {
                 MemberId = entry.MemberId,
-                IsLocalPlayer = entry.IsLocalPlayer
+                IsLocalPlayer = entry.IsLocalPlayer,
+                ClientGuildGrade = absoluteGrade
             };
 
             _packetOwnedRosterByTab[tab] = true;

@@ -292,6 +292,11 @@ namespace HaCreator.MapSimulator.UI
 
             window.AttachAnimationDisplayerWindowOverlayOwner(_productionEnhancementAnimationDisplayer.Owner);
             window.BeforeShow = HandleBeforeShowWindow;
+            if (_windowFont != null)
+            {
+                window.SetFont(_windowFont);
+            }
+
             windows.Add(window);
             windowsByName[window.WindowName] = window;
             lazyWindowRegistrars.Remove(window.WindowName);

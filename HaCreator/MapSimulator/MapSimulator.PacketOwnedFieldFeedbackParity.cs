@@ -52,6 +52,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedSummonSoundStringPoolId = 0x8BE;
         private const int PacketOwnedScreenEffectStringPoolId = 0x9ED;
         private const int PacketOwnedRewardRoulettePathJoinStringPoolId = 0x3DA;
+        private const int PacketOwnedSuppressedIncomingWhisperNotificationOpcode = 141;
+        private const byte PacketOwnedSuppressedIncomingWhisperNotificationSubtype = 34;
         private const int PacketOwnedWhisperChaseTransferFieldRequestOpcode = 41;
         private const byte PacketOwnedWhisperChaseSyntheticFieldKey = 0;
         private const int PacketOwnedUiReferenceWidth = 800;
@@ -246,6 +248,7 @@ namespace HaCreator.MapSimulator
                 IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
                 IsGroupMessageFamilyEnabled = IsPacketOwnedGroupMessageFamilyEnabled,
                 IsIncomingWhisperEnabled = () => _packetOwnedIncomingWhisperEnabled,
+                EmitSuppressedIncomingWhisperNotification = EmitPacketOwnedSuppressedIncomingWhisperNotification,
                 IsUnderCover = static () => false,
                 QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
                 ConsumeWhisperChaseTransferRequest = ConsumePacketOwnedWhisperChaseTransferRequest,
@@ -291,6 +294,13 @@ namespace HaCreator.MapSimulator
             bool armed = _packetOwnedWhisperChaseTransferArmed;
             _packetOwnedWhisperChaseTransferArmed = false;
             return armed;
+        }
+
+        private void EmitPacketOwnedSuppressedIncomingWhisperNotification(string sender, int currentTick)
+        {
+            PacketOwnedSuppressedWhisperNotificationDispatchResult result =
+                DispatchPacketOwnedSuppressedIncomingWhisperNotification(sender, currentTick);
+            ShowUtilityFeedbackMessage(result.Summary);
         }
 
         private void UpdatePacketOwnedWhisperUserListLocation(string target, string locationText, byte result, int value)
@@ -847,6 +857,111 @@ namespace HaCreator.MapSimulator
             return new PacketOwnedWhisperChaseTransferDispatchResult(
                 AcceptedByClientTransport: false,
                 Summary: $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PacketOwnedWhisperChaseTransferFieldRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}");
+        }
+
+        private PacketOwnedSuppressedWhisperNotificationDispatchResult DispatchPacketOwnedSuppressedIncomingWhisperNotification(
+            string sender,
+            int currentTick)
+        {
+            string normalizedSender = sender?.Trim() ?? string.Empty;
+            if (!TryBuildPacketOwnedSuppressedIncomingWhisperNotificationPayload(
+                    normalizedSender,
+                    currentTick,
+                    out byte[] payload))
+            {
+                return new PacketOwnedSuppressedWhisperNotificationDispatchResult(
+                    AcceptedByClientTransport: false,
+                    Summary: "Could not build the packet-owned suppressed-whisper notification payload.");
+            }
+
+            string payloadHex = Convert.ToHexString(payload);
+            string summary = $"Mirrored CField::OnWhisper suppressed-whisper notification as opcode {PacketOwnedSuppressedIncomingWhisperNotificationOpcode} [{payloadHex}] with subtype {PacketOwnedSuppressedIncomingWhisperNotificationSubtype}, update time {currentTick}, and sender {normalizedSender}.";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PacketOwnedSuppressedIncomingWhisperNotificationOpcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return new PacketOwnedSuppressedWhisperNotificationDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}");
+            }
+
+            string outboxStatus = "generic packet outbox not attempted.";
+            string queuedBridgeStatus = string.Empty;
+            bool deferredBridgeQueued = _localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedSuppressedIncomingWhisperNotificationOpcode,
+                    payload,
+                    out queuedBridgeStatus);
+            if (deferredBridgeQueued)
+            {
+                return new PacketOwnedSuppressedWhisperNotificationDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Deferred bridge: {queuedBridgeStatus}");
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PacketOwnedSuppressedIncomingWhisperNotificationOpcode,
+                payload,
+                out outboxStatus))
+            {
+                return new PacketOwnedSuppressedWhisperNotificationDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}");
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                PacketOwnedSuppressedIncomingWhisperNotificationOpcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return new PacketOwnedSuppressedWhisperNotificationDispatchResult(
+                    AcceptedByClientTransport: true,
+                    Summary: $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}");
+            }
+
+            return new PacketOwnedSuppressedWhisperNotificationDispatchResult(
+                AcceptedByClientTransport: false,
+                Summary: $"{summary} The notification remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PacketOwnedSuppressedIncomingWhisperNotificationOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}");
+        }
+
+        private static bool TryBuildPacketOwnedSuppressedIncomingWhisperNotificationPayload(
+            string sender,
+            int updateTime,
+            out byte[] payload)
+        {
+            payload = Array.Empty<byte>();
+            string normalizedSender = sender?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedSender))
+            {
+                return false;
+            }
+
+            try
+            {
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+                writer.Write(PacketOwnedSuppressedIncomingWhisperNotificationSubtype);
+                writer.Write(updateTime);
+                WritePacketOwnedMapleString(writer, normalizedSender);
+                writer.Flush();
+                payload = stream.ToArray();
+                return true;
+            }
+            catch
+            {
+                payload = Array.Empty<byte>();
+                return false;
+            }
+        }
+
+        internal static byte[] BuildPacketOwnedSuppressedIncomingWhisperNotificationPayloadForTest(
+            string sender,
+            int updateTime)
+        {
+            return TryBuildPacketOwnedSuppressedIncomingWhisperNotificationPayload(sender, updateTime, out byte[] payload)
+                ? payload
+                : Array.Empty<byte>();
         }
 
         private static bool ShouldUseSimulatorWhisperChaseMapChangeFallback(bool acceptedByClientTransport)
@@ -3580,6 +3695,10 @@ namespace HaCreator.MapSimulator
             string PropertyPath);
 
         private readonly record struct PacketOwnedWhisperChaseTransferDispatchResult(
+            bool AcceptedByClientTransport,
+            string Summary);
+
+        private readonly record struct PacketOwnedSuppressedWhisperNotificationDispatchResult(
             bool AcceptedByClientTransport,
             string Summary);
 

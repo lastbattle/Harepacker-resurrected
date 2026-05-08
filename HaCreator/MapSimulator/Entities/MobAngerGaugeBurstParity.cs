@@ -18,6 +18,24 @@ namespace HaCreator.MapSimulator.Entities
         public const char RecoveredNativeOwnerPathSeparator = '/';
         public const int MobAngerGaugeFullChargeEffectFunctionAddress = 0x6490B0;
         public const int AnimationDisplayerFullChargedAngerGaugeFunctionAddress = 0x457D00;
+        private static readonly MobAngerGaugeFullChargeCallerOperationKind[] RecoveredCallerOperations =
+        {
+            MobAngerGaugeFullChargeCallerOperationKind.ReadUpdateTime,
+            MobAngerGaugeFullChargeCallerOperationKind.CheckReplayGate,
+            MobAngerGaugeFullChargeCallerOperationKind.RefreshStartTime,
+            MobAngerGaugeFullChargeCallerOperationKind.GetTemplatePathString,
+            MobAngerGaugeFullChargeCallerOperationKind.FormatTemplatePath,
+            MobAngerGaugeFullChargeCallerOperationKind.ReleaseTemplatePathBstr,
+            MobAngerGaugeFullChargeCallerOperationKind.AppendSlashSeparator,
+            MobAngerGaugeFullChargeCallerOperationKind.GetEffectNameString,
+            MobAngerGaugeFullChargeCallerOperationKind.AppendEffectName,
+            MobAngerGaugeFullChargeCallerOperationKind.ReleaseEffectNameBstr,
+            MobAngerGaugeFullChargeCallerOperationKind.RetainActionLayerOverlayParent,
+            MobAngerGaugeFullChargeCallerOperationKind.RetainHeadOriginVector,
+            MobAngerGaugeFullChargeCallerOperationKind.CopySourceUolForDisplayer,
+            MobAngerGaugeFullChargeCallerOperationKind.CallAnimationDisplayerOwner,
+            MobAngerGaugeFullChargeCallerOperationKind.ReleaseSourceUol
+        };
 
         public static int ResolveRepeatIntervalMs(IReadOnlyList<IDXObject> frames)
         {
@@ -97,6 +115,28 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return nextAllowedTick != int.MinValue && HasReachedTick(currentTick, nextAllowedTick);
+        }
+
+        public static bool ShouldRegisterPendingBurst(
+            int currentChargeCount,
+            int chargeTarget,
+            bool hasPendingRegistration)
+        {
+            return hasPendingRegistration
+                && chargeTarget > 0
+                && currentChargeCount >= chargeTarget;
+        }
+
+        public static bool ShouldKeepOwnerRegistrationPending(
+            int currentChargeCount,
+            int chargeTarget,
+            bool attemptedRegistration,
+            bool registeredOwnerBurst)
+        {
+            return attemptedRegistration
+                && !registeredOwnerBurst
+                && chargeTarget > 0
+                && currentChargeCount >= chargeTarget;
         }
 
         public static string ResolveOwnerEffectPath(string mobTemplateId, string loadedEffectPath)
@@ -220,7 +260,8 @@ namespace HaCreator.MapSimulator.Entities
                 UsesRecoveredSlashPathSeparator: true,
                 UsesMobHeadOrigin: true,
                 UsesMobActionLayerOverlayParent: true,
-                CallsAnimationDisplayerOwner: true);
+                CallsAnimationDisplayerOwner: true,
+                RecoveredOperationOrder: RecoveredCallerOperations);
         }
 
         public static MobAngerGaugeBurstWzAuthoringTrace CreateRecoveredAstarothWzTrace()
@@ -285,7 +326,27 @@ namespace HaCreator.MapSimulator.Entities
         bool UsesRecoveredSlashPathSeparator,
         bool UsesMobHeadOrigin,
         bool UsesMobActionLayerOverlayParent,
-        bool CallsAnimationDisplayerOwner);
+        bool CallsAnimationDisplayerOwner,
+        IReadOnlyList<MobAngerGaugeFullChargeCallerOperationKind> RecoveredOperationOrder);
+
+    internal enum MobAngerGaugeFullChargeCallerOperationKind
+    {
+        ReadUpdateTime = 0,
+        CheckReplayGate = 1,
+        RefreshStartTime = 2,
+        GetTemplatePathString = 3,
+        FormatTemplatePath = 4,
+        ReleaseTemplatePathBstr = 5,
+        AppendSlashSeparator = 6,
+        GetEffectNameString = 7,
+        AppendEffectName = 8,
+        ReleaseEffectNameBstr = 9,
+        RetainActionLayerOverlayParent = 10,
+        RetainHeadOriginVector = 11,
+        CopySourceUolForDisplayer = 12,
+        CallAnimationDisplayerOwner = 13,
+        ReleaseSourceUol = 14
+    }
 
     internal readonly record struct MobAngerGaugeBurstWzAuthoringTrace(
         int MobTemplateId,

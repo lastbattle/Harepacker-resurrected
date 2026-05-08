@@ -11,7 +11,8 @@ namespace HaCreator.MapSimulator.Fields
         None = 0,
         LevelLimit = 1,
         PartyOnly = 2,
-        ExpeditionOnly = 3
+        ExpeditionOnly = 3,
+        LevelForceMove = 4
     }
 
     public static class FieldEntryRestrictionEvaluator
@@ -21,6 +22,14 @@ namespace HaCreator.MapSimulator.Fields
             int requiredLevel = GetLevelLimit(mapInfo);
             return requiredLevel > 0
                 ? $"Field admission requires level {requiredLevel}."
+                : null;
+        }
+
+        public static string GetLevelForceMoveEntryMessage(MapInfo mapInfo)
+        {
+            int maximumLevel = GetLevelForceMove(mapInfo);
+            return maximumLevel > 0
+                ? $"Field admission forces characters at or above level {maximumLevel} out of this map."
                 : null;
         }
 
@@ -44,6 +53,7 @@ namespace HaCreator.MapSimulator.Fields
             return restrictionType switch
             {
                 FieldEntryRestrictionType.LevelLimit => $"This map requires level {GetLevelLimit(mapInfo)}.",
+                FieldEntryRestrictionType.LevelForceMove => $"This map only allows characters below level {GetLevelForceMove(mapInfo)}.",
                 FieldEntryRestrictionType.PartyOnly => "This map can only be entered while in a party.",
                 FieldEntryRestrictionType.ExpeditionOnly => "This map can only be entered while in an expedition.",
                 _ => null
@@ -62,6 +72,12 @@ namespace HaCreator.MapSimulator.Fields
             if (requiredLevel > 0 && playerLevel < requiredLevel)
             {
                 return FieldEntryRestrictionType.LevelLimit;
+            }
+
+            int forceMoveLevel = GetLevelForceMove(mapInfo);
+            if (forceMoveLevel > 0 && playerLevel >= forceMoveLevel)
+            {
+                return FieldEntryRestrictionType.LevelForceMove;
             }
 
             bool hasPartyAdmission = context.UsesPacketOwnedPartyAdmissionContext
@@ -98,6 +114,11 @@ namespace HaCreator.MapSimulator.Fields
         public static int GetLevelLimit(MapInfo mapInfo)
         {
             return Math.Max(0, mapInfo?.lvLimit ?? GetInfoInt(mapInfo, "lvLimit") ?? 0);
+        }
+
+        public static int GetLevelForceMove(MapInfo mapInfo)
+        {
+            return Math.Max(0, mapInfo?.lvForceMove ?? GetInfoInt(mapInfo, "lvForceMove") ?? 0);
         }
 
         private static bool IsInfoFlagSet(MapInfo mapInfo, string propertyName)

@@ -64,6 +64,7 @@ namespace HaCreator.MapSimulator.UI
         SharedFadeYesNoModalType Type,
         SharedFadeYesNoModalPhase Phase,
         int StackIndex,
+        int PendingCount,
         int LifetimeMilliseconds,
         int CreatedTick,
         int FadePhaseTick,
@@ -97,6 +98,7 @@ namespace HaCreator.MapSimulator.UI
         };
 
         private SharedFadeYesNoModalRequest _activeRequest;
+        private readonly Queue<SharedFadeYesNoModalRequest> _pendingRequests = new();
         private SharedFadeYesNoModalPhase _phase = SharedFadeYesNoModalPhase.Closed;
         private int _createdTick = int.MinValue;
         private int _phaseTick = int.MinValue;
@@ -105,6 +107,7 @@ namespace HaCreator.MapSimulator.UI
         internal bool IsActive => _activeRequest != null && _phase != SharedFadeYesNoModalPhase.Closed;
         internal SharedFadeYesNoModalType ActiveType => _activeRequest?.Type ?? SharedFadeYesNoModalType.Generic;
         internal int ActiveStackIndex => Math.Max(0, _activeRequest?.StackIndex ?? 0);
+        internal int PendingCount => _pendingRequests.Count;
 
         internal void Show(SharedFadeYesNoModalRequest request, int currentTick)
         {
@@ -113,6 +116,39 @@ namespace HaCreator.MapSimulator.UI
             _phaseTick = currentTick;
             _phase = SharedFadeYesNoModalPhase.FadingIn;
             _onceClicked = false;
+        }
+
+        internal bool Enqueue(SharedFadeYesNoModalRequest request, int currentTick)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            if (!IsActive)
+            {
+                Show(request, currentTick);
+                return true;
+            }
+
+            _pendingRequests.Enqueue(request);
+            return false;
+        }
+
+        internal bool TryActivateNext(int currentTick)
+        {
+            if (IsActive || _pendingRequests.Count == 0)
+            {
+                return false;
+            }
+
+            Show(_pendingRequests.Dequeue(), currentTick);
+            return true;
+        }
+
+        internal void ClearPending()
+        {
+            _pendingRequests.Clear();
         }
 
         internal bool Update(int currentTick)
@@ -129,6 +165,18 @@ namespace HaCreator.MapSimulator.UI
                 _phaseTick = currentTick;
             }
 
+            if (_phase == SharedFadeYesNoModalPhase.FadingOut)
+            {
+                if (currentTick - _phaseTick >= FadeOutMilliseconds)
+                {
+                    _activeRequest = null;
+                    _phase = SharedFadeYesNoModalPhase.Closed;
+                    _phaseTick = int.MinValue;
+                }
+
+                return false;
+            }
+
             int lifetime = _activeRequest.LifetimeMilliseconds;
             if (lifetime >= 0
                 && currentTick - _createdTick >= lifetime)
@@ -143,7 +191,7 @@ namespace HaCreator.MapSimulator.UI
         internal bool TryClick(int buttonId, int currentTick, out SharedFadeYesNoModalButton clickedButton)
         {
             clickedButton = default;
-            if (!IsActive || _onceClicked)
+            if (!IsActive || _onceClicked || _phase == SharedFadeYesNoModalPhase.FadingOut)
             {
                 return false;
             }
@@ -183,10 +231,20 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_phase == SharedFadeYesNoModalPhase.FadingOut)
+            {
+                return;
+            }
+
             _phase = SharedFadeYesNoModalPhase.FadingOut;
             _phaseTick = currentTick;
+        }
+
+        internal void CloseImmediately()
+        {
             _activeRequest = null;
             _phase = SharedFadeYesNoModalPhase.Closed;
+            _phaseTick = int.MinValue;
         }
 
         internal SharedFadeYesNoModalSnapshot CaptureSnapshot()
@@ -198,6 +256,7 @@ namespace HaCreator.MapSimulator.UI
                     SharedFadeYesNoModalType.Generic,
                     SharedFadeYesNoModalPhase.Closed,
                     0,
+                    PendingCount,
                     0,
                     int.MinValue,
                     int.MinValue,
@@ -214,6 +273,7 @@ namespace HaCreator.MapSimulator.UI
                 ActiveType,
                 _phase,
                 ActiveStackIndex,
+                PendingCount,
                 _activeRequest.LifetimeMilliseconds,
                 _createdTick,
                 _phaseTick,
@@ -297,6 +357,7 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.DrawRoute,
                 snapshot.Phase,
                 snapshot.StackIndex,
+                snapshot.PendingCount,
                 snapshot.LifetimeMilliseconds,
                 snapshot.ButtonLayout.OkId,
                 snapshot.ButtonLayout.ButtonX,

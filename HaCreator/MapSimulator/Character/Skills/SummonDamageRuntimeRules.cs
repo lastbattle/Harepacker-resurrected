@@ -17,6 +17,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Math.Max(0, resolvedCurrentHealth - damage);
         }
 
+        public static bool ShouldConsumeClientOwnedHealthFromHit(int damage)
+        {
+            // CSummoned::SetDamaged / OnHit own hit feedback and hit-period state.
+            // Summon removal remains server/expiry-owned; the client does not retire the actor by
+            // subtracting packet/body-contact hit damage from an exposed HP value.
+            return false;
+        }
+
         public static int ResolveHitPeriodRemainingMs(int damage, int hitPeriodDurationMs)
         {
             int duration = Math.Max(0, hitPeriodDurationMs);

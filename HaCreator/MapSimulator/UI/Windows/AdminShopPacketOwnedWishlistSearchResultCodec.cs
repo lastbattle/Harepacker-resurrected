@@ -39,6 +39,9 @@ namespace HaCreator.MapSimulator.UI
         public string Query { get; init; } = string.Empty;
         public string CategoryKey { get; init; } = string.Empty;
         public int PriceRangeIndex { get; init; } = -1;
+        public int RemoteTotalCount { get; init; } = -1;
+        public int RemotePageIndex { get; init; } = -1;
+        public int RemotePageSize { get; init; } = -1;
         public bool UsedFallbackRequestContext { get; init; }
         public IReadOnlyList<int> ItemIds { get; init; } = Array.Empty<int>();
         public IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> ResultRows { get; init; }
@@ -54,12 +57,14 @@ namespace HaCreator.MapSimulator.UI
         private const byte Version1 = 1;
         private const byte Version2 = 2;
         private const byte Version3 = 3;
+        private const byte Version4 = 4;
         private const int HeaderSize = 4 + 1 + 4 + 4 + 1;
         private const int LegacySessionHeaderSize = sizeof(int) * 2;
         private const int LegacyHeaderSize = sizeof(int) + sizeof(int) + sizeof(ushort);
         private const byte FlagQuery = 1 << 0;
         private const byte FlagCategory = 1 << 1;
         private const byte FlagPriceRange = 1 << 2;
+        private const byte FlagRemotePaging = 1 << 3;
         private const byte RowFlagResultItemId = 1 << 0;
         private const byte RowFlagPrice = 1 << 1;
         private const byte RowFlagAlreadyWishlisted = 1 << 2;
@@ -78,10 +83,59 @@ namespace HaCreator.MapSimulator.UI
             int priceRangeIndex,
             IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> rows)
         {
+            return Encode(
+                Version3,
+                serviceSessionId,
+                searchSessionId,
+                query,
+                categoryKey,
+                priceRangeIndex,
+                remoteTotalCount: -1,
+                remotePageIndex: -1,
+                remotePageSize: -1,
+                rows);
+        }
+
+        internal static byte[] EncodeVersion4(
+            int serviceSessionId,
+            int searchSessionId,
+            string query,
+            string categoryKey,
+            int priceRangeIndex,
+            int remoteTotalCount,
+            int remotePageIndex,
+            int remotePageSize,
+            IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> rows)
+        {
+            return Encode(
+                Version4,
+                serviceSessionId,
+                searchSessionId,
+                query,
+                categoryKey,
+                priceRangeIndex,
+                remoteTotalCount,
+                remotePageIndex,
+                remotePageSize,
+                rows);
+        }
+
+        private static byte[] Encode(
+            byte version,
+            int serviceSessionId,
+            int searchSessionId,
+            string query,
+            string categoryKey,
+            int priceRangeIndex,
+            int remoteTotalCount,
+            int remotePageIndex,
+            int remotePageSize,
+            IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> rows)
+        {
             rows ??= Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
             using PacketWriter writer = new();
             writer.Write(Magic);
-            writer.WriteByte(Version3);
+            writer.WriteByte(version);
             writer.WriteInt(serviceSessionId);
             writer.WriteInt(searchSessionId);
 
@@ -101,12 +155,24 @@ namespace HaCreator.MapSimulator.UI
                 flags |= FlagPriceRange;
             }
 
+            if (version >= Version4 && (remoteTotalCount >= 0 || remotePageIndex >= 0 || remotePageSize >= 0))
+            {
+                flags |= FlagRemotePaging;
+            }
+
             writer.WriteByte(flags);
             WriteByteString(writer, query, (flags & FlagQuery) != 0);
             WriteByteString(writer, categoryKey, (flags & FlagCategory) != 0);
             if ((flags & FlagPriceRange) != 0)
             {
                 writer.Write((short)Math.Clamp(priceRangeIndex, short.MinValue, short.MaxValue));
+            }
+
+            if ((flags & FlagRemotePaging) != 0)
+            {
+                writer.WriteInt(Math.Max(-1, remoteTotalCount));
+                writer.Write((short)Math.Clamp(remotePageIndex, short.MinValue, short.MaxValue));
+                writer.Write((short)Math.Clamp(remotePageSize, short.MinValue, short.MaxValue));
             }
 
             writer.Write((ushort)Math.Clamp(rows.Count, 0, ushort.MaxValue));
@@ -162,7 +228,10 @@ namespace HaCreator.MapSimulator.UI
 
                 writer.WriteInt(row.ItemId);
                 writer.WriteByte(rowFlags);
-                writer.WriteByte(rowFlags2);
+                if (version >= Version3)
+                {
+                    writer.WriteByte(rowFlags2);
+                }
                 if ((rowFlags & RowFlagResultItemId) != 0)
                 {
                     writer.WriteInt(row.ResultItemId);
@@ -212,7 +281,7 @@ namespace HaCreator.MapSimulator.UI
 
             int offset = Magic.Length;
             byte version = span[offset++];
-            if (version != Version1 && version != Version2 && version != Version3)
+            if (version != Version1 && version != Version2 && version != Version3 && version != Version4)
             {
                 return false;
             }
@@ -245,6 +314,24 @@ namespace HaCreator.MapSimulator.UI
                 offset += sizeof(short);
             }
 
+            int remoteTotalCount = -1;
+            int remotePageIndex = -1;
+            int remotePageSize = -1;
+            if ((flags & FlagRemotePaging) != 0)
+            {
+                if (version < Version4 || span.Length - offset < sizeof(int) + sizeof(short) + sizeof(short))
+                {
+                    return false;
+                }
+
+                remoteTotalCount = BitConverter.ToInt32(payload, offset);
+                offset += sizeof(int);
+                remotePageIndex = BitConverter.ToInt16(payload, offset);
+                offset += sizeof(short);
+                remotePageSize = BitConverter.ToInt16(payload, offset);
+                offset += sizeof(short);
+            }
+
             if (span.Length - offset < sizeof(ushort))
             {
                 return false;
@@ -258,7 +345,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<AdminShopPacketOwnedWishlistSearchResultRow> rows = new(itemCount);
-            if (version == Version2 || version == Version3)
+            if (version == Version2 || version == Version3 || version == Version4)
             {
                 for (int i = 0; i < itemCount; i++)
                 {
@@ -271,7 +358,7 @@ namespace HaCreator.MapSimulator.UI
                     offset += sizeof(int);
                     byte rowFlags = span[offset++];
                     byte rowFlags2 = 0;
-                    if (version == Version3)
+                    if (version == Version3 || version == Version4)
                     {
                         if (span.Length - offset < sizeof(byte))
                         {
@@ -386,6 +473,9 @@ namespace HaCreator.MapSimulator.UI
                 Query = query ?? string.Empty,
                 CategoryKey = categoryKey ?? string.Empty,
                 PriceRangeIndex = priceRangeIndex,
+                RemoteTotalCount = remoteTotalCount,
+                RemotePageIndex = remotePageIndex,
+                RemotePageSize = remotePageSize,
                 ItemIds = itemIds,
                 ResultRows = rows,
                 TrailingByteCount = Math.Max(0, payload.Length - offset)
@@ -514,6 +604,9 @@ namespace HaCreator.MapSimulator.UI
                 Query = string.Empty,
                 CategoryKey = string.Empty,
                 PriceRangeIndex = -1,
+                RemoteTotalCount = -1,
+                RemotePageIndex = -1,
+                RemotePageSize = -1,
                 ItemIds = rows.Select(row => row.ItemId).ToList(),
                 ResultRows = rows,
                 IsStateOnlySessionSnapshot = false,
@@ -534,6 +627,9 @@ namespace HaCreator.MapSimulator.UI
                 Query = string.Empty,
                 CategoryKey = string.Empty,
                 PriceRangeIndex = -1,
+                RemoteTotalCount = -1,
+                RemotePageIndex = -1,
+                RemotePageSize = -1,
                 ItemIds = Array.Empty<int>(),
                 ResultRows = Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>(),
                 IsStateOnlySessionSnapshot = true,

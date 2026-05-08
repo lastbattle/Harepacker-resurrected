@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string, bool> IsBlockedFriendName { get; init; }
         internal Func<byte, bool> IsGroupMessageFamilyEnabled { get; init; }
         internal Func<bool> IsIncomingWhisperEnabled { get; init; }
+        internal Action<string, int> EmitSuppressedIncomingWhisperNotification { get; init; }
         internal Func<bool> IsUnderCover { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
         internal Func<bool> ConsumeWhisperChaseTransferRequest { get; init; }
@@ -861,6 +862,7 @@ namespace HaCreator.MapSimulator.Interaction
                         if (!fromAdmin && ShouldSuppressIncomingWhisper(sender, callbacks))
                         {
                             callbacks?.RememberWhisperTarget?.Invoke(sender);
+                            callbacks?.EmitSuppressedIncomingWhisperNotification?.Invoke(sender, currentTick);
                             _lastWhisperTarget = sender;
                             _statusMessage = $"Suppressed packet-owned whisper from disabled or blacklisted sender {sender}.";
                             message = _statusMessage;

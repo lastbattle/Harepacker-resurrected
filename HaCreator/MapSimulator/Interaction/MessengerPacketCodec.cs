@@ -59,6 +59,13 @@ namespace HaCreator.MapSimulator.Interaction
         string ResultText,
         bool CompletesPendingRequest);
 
+    internal readonly record struct MessengerOfficialClaimServerAvailableTimePacket(
+        byte OpenTime,
+        byte CloseTime);
+
+    internal readonly record struct MessengerOfficialClaimServerStatusChangedPacket(
+        bool Connected);
+
     internal readonly record struct MessengerClientBlockedAutoRejectPacket(
         string InviterName,
         string LocalCharacterName,
@@ -228,6 +235,21 @@ namespace HaCreator.MapSimulator.Interaction
                 writer.WriteInt(Math.Max(0, remainingClaimCount));
             }
 
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildOfficialClaimServerAvailableTimePayload(byte openTime, byte closeTime)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(openTime);
+            writer.WriteByte(closeTime);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildOfficialClaimServerStatusPayload(bool connected)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(connected ? (byte)1 : (byte)0);
             return writer.ToArray();
         }
 
@@ -1019,6 +1041,50 @@ namespace HaCreator.MapSimulator.Interaction
             catch (Exception ex)
             {
                 error = $"Messenger official claim-result payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryParseOfficialClaimServerAvailableTime(
+            ReadOnlySpan<byte> payload,
+            out MessengerOfficialClaimServerAvailableTimePacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                byte openTime = reader.ReadByte();
+                byte closeTime = reader.ReadByte();
+                packet = new MessengerOfficialClaimServerAvailableTimePacket(openTime, closeTime);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger claim-server available-time payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryParseOfficialClaimServerStatusChanged(
+            ReadOnlySpan<byte> payload,
+            out MessengerOfficialClaimServerStatusChangedPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                packet = new MessengerOfficialClaimServerStatusChangedPacket(reader.ReadByte() != 0);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger claim-server status payload could not be decoded: {ex.Message}";
                 return false;
             }
         }

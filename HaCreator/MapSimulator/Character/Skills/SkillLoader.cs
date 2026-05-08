@@ -6694,6 +6694,18 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 bool characterLevel = IsClientSkillAssetCharacterLevelContextSegment(segment);
                 bool level = IsClientSkillAssetSkillLevelContextSegment(segment);
+                if (!characterLevel
+                    && !level
+                    && TryReadClientSkillAssetUolRecordVariantLevel(
+                        segment,
+                        out bool embeddedCharacterLevelVariant,
+                        out int embeddedVariantLevel))
+                {
+                    isCharacterLevelVariant = embeddedCharacterLevelVariant;
+                    variantLevel = embeddedVariantLevel;
+                    return true;
+                }
+
                 if (!characterLevel && !level)
                 {
                     continue;
@@ -6949,6 +6961,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                         variantLevel,
                         propertyName)
                     : entryPathParts;
+                foreach (ClientSummonedUolStructuredRecordCandidateValue recordCandidate in EnumerateClientSummonedUolHeaderValueTableEntryCandidateValues(
+                             tableEntry,
+                             skillId))
+                {
+                    string[] contextPathParts = recordCandidate.HasVariantLevel
+                        ? BuildClientSkillAssetVariantContextPathParts(
+                            variantEntryPathParts,
+                            recordCandidate.IsCharacterLevelVariant,
+                            recordCandidate.VariantLevel,
+                            propertyName)
+                        : variantEntryPathParts;
+
+                    yield return new ClientSummonedUolCandidateValue(
+                        recordCandidate.Value,
+                        contextPathParts);
+                }
+
                 string value = GetClientSummonedUolCandidateValue(tableEntry);
                 if (!string.IsNullOrWhiteSpace(value))
                 {
@@ -6993,6 +7022,210 @@ namespace HaCreator.MapSimulator.Character.Skills
                         BuildResolvedClientSummonedUolNestedPathParts(variantEntryPathParts, tableValue.RelativePath));
                 }
             }
+        }
+
+        private static IEnumerable<ClientSummonedUolStructuredRecordCandidateValue> EnumerateClientSummonedUolHeaderValueTableEntryCandidateValues(
+            WzImageProperty tableEntry,
+            int skillId)
+        {
+            if (tableEntry?.WzProperties == null || skillId <= 0)
+            {
+                yield break;
+            }
+
+            foreach ((IReadOnlyList<string> Headers, IReadOnlyList<string> Values) in EnumerateClientSummonedUolHeaderValueTableEntryRows(tableEntry))
+            {
+                int fieldCount = Math.Min(Headers.Count, Values.Count);
+                if (fieldCount <= 0)
+                {
+                    continue;
+                }
+
+                var fields = new List<string>();
+                for (int fieldIndex = 0; fieldIndex < fieldCount; fieldIndex++)
+                {
+                    string header = Headers[fieldIndex];
+                    string value = Values[fieldIndex];
+                    if (string.IsNullOrWhiteSpace(header) || string.IsNullOrWhiteSpace(value))
+                    {
+                        continue;
+                    }
+
+                    fields.Add($"{header}={value}");
+                }
+
+                if (fields.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (ClientSummonedUolStructuredRecordCandidateValue candidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValuesForSingleRecord(
+                             string.Join(";", fields),
+                             skillId))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<(IReadOnlyList<string> Headers, IReadOnlyList<string> Values)> EnumerateClientSummonedUolHeaderValueTableEntryRows(
+            WzImageProperty tableEntry)
+        {
+            if (tableEntry?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty headerNode in tableEntry.WzProperties)
+            {
+                if (!IsClientSummonedUolHeaderListFieldName(headerNode?.Name))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<string> headers = ReadClientSummonedUolDelimitedOrIndexedList(headerNode, preferredDelimiter: '\0');
+                if (headers.Count == 0
+                    || !headers.Any(IsClientSummonedUolTableOwnerFieldName)
+                    || !headers.Any(IsClientSummonedUolTableEntryValueName))
+                {
+                    continue;
+                }
+
+                char preferredDelimiter = DetectClientSummonedUolListDelimiter(GetClientSummonedUolCandidateValue(headerNode));
+                foreach (WzImageProperty valueNode in tableEntry.WzProperties)
+                {
+                    if (!IsClientSummonedUolValueListFieldName(valueNode?.Name))
+                    {
+                        continue;
+                    }
+
+                    IReadOnlyList<string> values = ReadClientSummonedUolDelimitedOrIndexedList(valueNode, preferredDelimiter);
+                    if (values.Count > 0)
+                    {
+                        yield return (headers, values);
+                    }
+                }
+            }
+        }
+
+        private static IReadOnlyList<string> ReadClientSummonedUolDelimitedOrIndexedList(
+            WzImageProperty node,
+            char preferredDelimiter)
+        {
+            if (node == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            if (node.WzProperties != null)
+            {
+                var indexedValues = new SortedDictionary<int, string>();
+                foreach (WzImageProperty child in node.WzProperties)
+                {
+                    if (child == null
+                        || string.IsNullOrWhiteSpace(child.Name)
+                        || !int.TryParse(
+                            NormalizeClientSummonedUolFieldNameSyntax(child.Name),
+                            NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,
+                            out int index)
+                        || index < 0)
+                    {
+                        continue;
+                    }
+
+                    string value = TrimClientSummonedUolRecordTextFieldToken(GetClientSummonedUolCandidateValue(child));
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        indexedValues[index] = value;
+                    }
+                }
+
+                if (indexedValues.Count > 0)
+                {
+                    return indexedValues.Values.ToArray();
+                }
+            }
+
+            string text = GetClientSummonedUolCandidateValue(node);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            string normalizedText = NormalizeClientSummonedUolEncodedPathSyntax(text).Trim();
+            char delimiter = preferredDelimiter != '\0'
+                ? preferredDelimiter
+                : DetectClientSummonedUolListDelimiter(normalizedText);
+            if (delimiter == '\0')
+            {
+                return new[] { TrimClientSummonedUolRecordTextFieldToken(normalizedText) }
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .ToArray();
+            }
+
+            return SplitClientSummonedUolDelimitedRecordLine(normalizedText, delimiter)
+                .Select(TrimClientSummonedUolRecordTextFieldToken)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .ToArray();
+        }
+
+        private static char DetectClientSummonedUolListDelimiter(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return '\0';
+            }
+
+            if (value.IndexOf('\t') >= 0)
+            {
+                return '\t';
+            }
+
+            if (value.IndexOf('|') >= 0)
+            {
+                return '|';
+            }
+
+            if (value.IndexOf(',') >= 0)
+            {
+                return ',';
+            }
+
+            if (value.IndexOf(';') >= 0)
+            {
+                return ';';
+            }
+
+            return '\0';
+        }
+
+        private static bool IsClientSummonedUolHeaderListFieldName(string name)
+        {
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
+            return normalizedName.Equals("header", StringComparison.Ordinal)
+                   || normalizedName.Equals("headers", StringComparison.Ordinal)
+                   || normalizedName.Equals("column", StringComparison.Ordinal)
+                   || normalizedName.Equals("columns", StringComparison.Ordinal)
+                   || normalizedName.Equals("field", StringComparison.Ordinal)
+                   || normalizedName.Equals("fields", StringComparison.Ordinal)
+                   || normalizedName.Equals("fieldname", StringComparison.Ordinal)
+                   || normalizedName.Equals("fieldnames", StringComparison.Ordinal)
+                   || normalizedName.Equals("keynames", StringComparison.Ordinal);
+        }
+
+        private static bool IsClientSummonedUolValueListFieldName(string name)
+        {
+            string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(name);
+            return normalizedName.Equals("value", StringComparison.Ordinal)
+                   || normalizedName.Equals("values", StringComparison.Ordinal)
+                   || normalizedName.Equals("rowvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("rowvalues", StringComparison.Ordinal)
+                   || normalizedName.Equals("rowdata", StringComparison.Ordinal)
+                   || normalizedName.Equals("recordvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("recordvalues", StringComparison.Ordinal)
+                   || normalizedName.Equals("fieldvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("fieldvalues", StringComparison.Ordinal);
         }
 
         private static bool TryReadClientSkillAssetUolTableEntryVariantLevel(
@@ -7095,6 +7328,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (TryReadClientSkillAssetUolCompactRecordVariantLevel(
+                    fieldName,
+                    out isCharacterLevelVariant,
+                    out variantLevel))
+            {
+                return true;
+            }
+
             foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolRecordTextFields(fieldName))
             {
                 if (TryReadClientSkillAssetUolRecordVariantLevel(
@@ -7105,6 +7346,76 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        private static bool TryReadClientSkillAssetUolCompactRecordVariantLevel(
+            string fieldName,
+            out bool isCharacterLevelVariant,
+            out int variantLevel)
+        {
+            isCharacterLevelVariant = false;
+            variantLevel = 0;
+            if (string.IsNullOrWhiteSpace(fieldName))
+            {
+                return false;
+            }
+
+            string normalizedName = NormalizeClientSkillAssetUolVariantFieldName(fieldName);
+            if (TryReadClientSkillAssetUolCompactRecordVariantLevel(
+                    normalizedName,
+                    ClientSkillAssetCharacterLevelFieldNames,
+                    out variantLevel))
+            {
+                isCharacterLevelVariant = true;
+                return true;
+            }
+
+            if (TryReadClientSkillAssetUolCompactRecordVariantLevel(
+                    normalizedName,
+                    ClientSkillAssetSkillLevelFieldNames,
+                    out variantLevel))
+            {
+                isCharacterLevelVariant = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadClientSkillAssetUolCompactRecordVariantLevel(
+            string normalizedName,
+            IReadOnlyList<string> variantFieldNames,
+            out int variantLevel)
+        {
+            variantLevel = 0;
+            if (string.IsNullOrWhiteSpace(normalizedName)
+                || variantFieldNames == null)
+            {
+                return false;
+            }
+
+            foreach (string fieldName in variantFieldNames)
+            {
+                string normalizedFieldName = NormalizeClientSkillAssetUolVariantFieldName(fieldName);
+                if (string.IsNullOrWhiteSpace(normalizedFieldName)
+                    || normalizedName.Length <= normalizedFieldName.Length
+                    || !normalizedName.StartsWith(normalizedFieldName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string levelToken = normalizedName.Substring(normalizedFieldName.Length);
+                if (!int.TryParse(levelToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLevel)
+                    || parsedLevel <= 0)
+                {
+                    continue;
+                }
+
+                variantLevel = parsedLevel;
+                return true;
             }
 
             return false;
@@ -8111,12 +8422,53 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield return tokenNamedEntry;
             }
 
+            foreach (WzImageProperty headerValueEntry in EnumerateClientSummonedUolTableHeaderValueEntryNodes(
+                         tableNode,
+                         skillId,
+                         depthRemaining: ClientSummonedUolTableOwnerFieldTraversalDepth))
+            {
+                yield return headerValueEntry;
+            }
+
             foreach (WzImageProperty ownerMatchedEntry in EnumerateClientSummonedUolTableOwnerFieldEntryNodes(
                          tableNode,
                          skillId,
                          depthRemaining: ClientSummonedUolTableOwnerFieldTraversalDepth))
             {
                 yield return ownerMatchedEntry;
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolTableHeaderValueEntryNodes(
+            WzImageProperty node,
+            int skillId,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || skillId <= 0 || depthRemaining < 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                if (EnumerateClientSummonedUolHeaderValueTableEntryCandidateValues(child, skillId).Any())
+                {
+                    yield return child;
+                    continue;
+                }
+
+                foreach (WzImageProperty nestedEntry in EnumerateClientSummonedUolTableHeaderValueEntryNodes(
+                             child,
+                             skillId,
+                             depthRemaining - 1))
+                {
+                    yield return nestedEntry;
+                }
             }
         }
 
@@ -13005,13 +13357,19 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             AddActionNames(actionNames, seen, new[]
             {
-                GetPropertyStringValue(resolvedActionNode["0"]),
-                GetPropertyStringValue(resolvedActionNode["action"])
+                GetPropertyStringValue(resolvedActionNode["0"], allowNumericRawActionValue: true),
+                GetPropertyStringValue(resolvedActionNode["action"], allowNumericRawActionValue: true)
             });
 
             foreach (WzImageProperty property in resolvedActionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
             {
-                AddActionName(actionNames, seen, GetPropertyStringValue(property));
+                AddActionName(
+                    actionNames,
+                    seen,
+                    GetPropertyStringValue(
+                        property,
+                        allowNumericRawActionValue: IsNumericPropertyName(property.Name)
+                                                    || IsMorphActionNodeName(property.Name)));
             }
 
             if (nestedDepth <= 0)
@@ -13136,23 +13494,39 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private static string GetPropertyStringValue(WzImageProperty property)
+        private static string GetPropertyStringValue(WzImageProperty property, bool allowNumericRawActionValue = false)
         {
-            return GetPropertyStringValue(property, new HashSet<WzImageProperty>());
+            return GetPropertyStringValue(property, new HashSet<WzImageProperty>(), allowNumericRawActionValue);
         }
 
-        private static string GetPropertyStringValue(WzImageProperty property, ISet<WzImageProperty> seen)
+        private static string GetPropertyStringValue(
+            WzImageProperty property,
+            ISet<WzImageProperty> seen,
+            bool allowNumericRawActionValue)
         {
             return property switch
             {
                 WzStringProperty stringProperty => stringProperty.Value,
+                WzIntProperty intProperty when allowNumericRawActionValue => GetClientActionNameFromRawActionValue(intProperty.Value),
+                WzShortProperty shortProperty when allowNumericRawActionValue => GetClientActionNameFromRawActionValue(shortProperty.Value),
+                WzLongProperty longProperty when allowNumericRawActionValue
+                                                && longProperty.Value >= int.MinValue
+                                                && longProperty.Value <= int.MaxValue
+                    => GetClientActionNameFromRawActionValue((int)longProperty.Value),
                 WzUOLProperty uolProperty when seen != null
                                             && seen.Add(uolProperty)
                                             && uolProperty.GetLinkedWzImageProperty() is WzImageProperty linkedProperty
                                             && !ReferenceEquals(linkedProperty, uolProperty)
-                    => GetPropertyStringValue(linkedProperty, seen),
+                    => GetPropertyStringValue(linkedProperty, seen, allowNumericRawActionValue),
                 _ => null
             };
+        }
+
+        private static string GetClientActionNameFromRawActionValue(int rawActionCode)
+        {
+            return CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                ? actionName
+                : null;
         }
 
         private static bool MatchesAction(string actionName, params string[] keywords)

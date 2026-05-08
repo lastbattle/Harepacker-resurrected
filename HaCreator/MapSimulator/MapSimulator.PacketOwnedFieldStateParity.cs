@@ -339,6 +339,11 @@ namespace HaCreator.MapSimulator
                 _packetStageTransitionNamedObjectSideLaneLifecycle.Remove(mapObject);
             }
 
+            if (sideLaneSnapshot.UpdatesQuestVisible)
+            {
+                ApplyQuestObjectVisibility(mapObject);
+            }
+
             string stateSfx = metadata.ResolveStateSfx(stateIndex);
             if (!string.IsNullOrWhiteSpace(stateSfx))
             {

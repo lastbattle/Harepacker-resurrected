@@ -98,6 +98,26 @@ namespace HaCreator.MapSimulator.Managers
             return SetExtraCharacterEntitlement(false);
         }
 
+        public bool ApplyAuthoritativeBuyCharacterCountSnapshot(int buyCharacterCount, int? accountId = null)
+        {
+            int resolvedAccountId = accountId.HasValue && accountId.Value > 0
+                ? accountId.Value
+                : AuthenticatedAccountId.GetValueOrDefault();
+            if (resolvedAccountId <= 0)
+            {
+                return false;
+            }
+
+            bool canHaveExtraCharacter = Math.Max(0, buyCharacterCount) > 0;
+            _lastExtraCharInfoResultProfile = new LoginExtraCharInfoResultProfile
+            {
+                AccountId = resolvedAccountId,
+                ResultFlag = canHaveExtraCharacter ? (byte)0 : (byte)1,
+                CanHaveExtraCharacter = canHaveExtraCharacter
+            };
+            return ReevaluateExtraCharacterEntitlement();
+        }
+
         public bool SetExtraCharacterEntitlement(bool canHaveExtraCharacter)
         {
             if (CanHaveExtraCharacter == canHaveExtraCharacter)

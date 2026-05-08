@@ -338,6 +338,11 @@ namespace HaCreator.MapSimulator.Character
             public int ObservedPlayerActionTriggerTime { get; set; } = int.MinValue;
             public int? ObservedPlayerRawActionCode { get; set; }
             public int LastForcedReplayActionTriggerTime { get; set; } = int.MinValue;
+            public bool UsesOneTimeLayerObject { get; set; }
+            public int LayerObjectId { get; set; }
+            public int LayerListNodeObjectId { get; set; }
+            public int RegisteredAnimationObjectId { get; set; }
+            public int ParentUnderFaceLayerObjectId { get; set; }
         }
 
         private sealed class MirrorImageState
@@ -387,6 +392,7 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasOverlayParentSignature { get; set; }
             public int LastInsertCanvasOverlayParentObjectId { get; set; }
             public int LastInsertCanvasOverlayInsertionIndex { get; set; } = int.MinValue;
+            public int LastInsertCanvasOverlaySiblingSignature { get; set; }
             public int LastInsertCanvasPreparedLayerFilter { get; set; } = int.MinValue;
             public int LastInsertCanvasPreparedLayerZ { get; set; } = int.MinValue;
             public int LastInsertCanvasPreparedLayerColor { get; set; }
@@ -6515,8 +6521,10 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasSourceLayerOriginSignature = 0,
                     LastInsertCanvasSourceLayerClockSignature = 0,
                     LastInsertCanvasSourceFrameSignature = 0,
+                    LastInsertCanvasOverlayParentSignature = 0,
                     LastInsertCanvasOverlayParentObjectId = 0,
                     LastInsertCanvasOverlayInsertionIndex = int.MinValue,
+                    LastInsertCanvasOverlaySiblingSignature = 0,
                     LastInsertCanvasPreparedLayerRelMoveEndTime = int.MinValue,
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
@@ -6731,6 +6739,9 @@ namespace HaCreator.MapSimulator.Character
             int liveOverlayInsertionIndex = ResolveMirrorImageOverlayInsertionIndex(
                 frame,
                 preparedLayer.OverlayTargetLayer);
+            int liveOverlaySiblingSignature = ComputeMirrorImageOverlaySiblingSignature(
+                frame,
+                preparedLayer.OverlayTargetLayer);
             bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
@@ -6764,6 +6775,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasOverlayParentObjectId,
                 liveOverlayInsertionIndex,
                 preparedLayer.LastInsertCanvasOverlayInsertionIndex,
+                liveOverlaySiblingSignature,
+                preparedLayer.LastInsertCanvasOverlaySiblingSignature,
                 preparedLayer.PreparedLayerFilter,
                 preparedLayer.LastInsertCanvasPreparedLayerFilter,
                 preparedLayer.PreparedLayerZ,
@@ -6790,6 +6803,7 @@ namespace HaCreator.MapSimulator.Character
                     overlayParentSignature: liveOverlayParentSignature,
                     overlayParentObjectId: liveOverlayParentObjectId,
                     overlayInsertionIndex: liveOverlayInsertionIndex,
+                    overlaySiblingSignature: liveOverlaySiblingSignature,
                     preparedLayerRelMoveEndTime: preparedLayer.PreparedRelMoveEndTime);
             }
 
@@ -7040,6 +7054,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasOverlayParentSignature = 0;
             preparedLayer.LastInsertCanvasOverlayParentObjectId = 0;
             preparedLayer.LastInsertCanvasOverlayInsertionIndex = int.MinValue;
+            preparedLayer.LastInsertCanvasOverlaySiblingSignature = 0;
             preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
             preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
             preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
@@ -7067,6 +7082,7 @@ namespace HaCreator.MapSimulator.Character
             int overlayParentSignature = 0,
             int overlayParentObjectId = 0,
             int overlayInsertionIndex = int.MinValue,
+            int overlaySiblingSignature = 0,
             int preparedLayerRelMoveEndTime = int.MinValue)
         {
             if (preparedLayer == null)
@@ -7096,6 +7112,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasOverlayParentSignature = 0;
                 preparedLayer.LastInsertCanvasOverlayParentObjectId = 0;
                 preparedLayer.LastInsertCanvasOverlayInsertionIndex = int.MinValue;
+                preparedLayer.LastInsertCanvasOverlaySiblingSignature = 0;
                 preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
                 preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
                 preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
@@ -7115,6 +7132,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasOverlayInsertionIndex = ResolveMirrorImageLastInsertCanvasOverlayInsertionIndex(
                 preparedLayer.LastInsertCanvasOverlayInsertionIndex,
                 overlayInsertionIndex,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasOverlaySiblingSignature = ResolveMirrorImageLastInsertCanvasOverlaySiblingSignature(
+                preparedLayer.LastInsertCanvasOverlaySiblingSignature,
+                overlaySiblingSignature,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertedSourceCanvasSignature = ResolveMirrorImageLastInsertedSourceSignature(
                 preparedLayer.LastInsertedSourceCanvasSignature,
@@ -7686,6 +7707,16 @@ namespace HaCreator.MapSimulator.Character
                 : existingOverlayInsertionIndex;
         }
 
+        internal static int ResolveMirrorImageLastInsertCanvasOverlaySiblingSignature(
+            int existingOverlaySiblingSignature,
+            int currentOverlaySiblingSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOverlaySiblingSignature != 0
+                ? currentOverlaySiblingSignature
+                : existingOverlaySiblingSignature;
+        }
+
         internal static int ResolveMirrorImageOverlayParentObjectId(
             AssembledFrame frame,
             AvatarRenderLayer overlayTargetLayer)
@@ -7737,6 +7768,56 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return signature.ToHashCode();
+        }
+
+        internal static int ComputeMirrorImageOverlaySiblingSignature(
+            AssembledFrame frame,
+            AvatarRenderLayer overlayTargetLayer)
+        {
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int insertionIndex = ResolveMirrorImageOverlayInsertionIndex(frame, overlayTargetLayer);
+            var signature = new HashCode();
+            signature.Add((int)overlayTargetLayer);
+            signature.Add(insertionIndex);
+            signature.Add(frame.Parts.Count);
+            signature.Add(RuntimeHelpers.GetHashCode(frame.Parts));
+            AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex - 1);
+            AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex);
+            AddMirrorImageOverlaySiblingPartIdentity(ref signature, frame.Parts, insertionIndex + 1);
+            return signature.ToHashCode();
+        }
+
+        private static void AddMirrorImageOverlaySiblingPartIdentity(
+            ref HashCode signature,
+            IReadOnlyList<AssembledPart> parts,
+            int partIndex)
+        {
+            signature.Add(partIndex);
+            if (parts == null || (uint)partIndex >= (uint)parts.Count)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            AssembledPart part = parts[partIndex];
+            signature.Add(RuntimeHelpers.GetHashCode(part));
+            if (part == null)
+            {
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add((int)part.RenderLayer);
+            signature.Add(part.ZIndex);
+            signature.Add(part.IsVisible);
+            signature.Add(part.VisibilityPriority);
+            signature.Add(part.OffsetX);
+            signature.Add(part.OffsetY);
+            signature.Add(part.ZLayer, StringComparer.Ordinal);
         }
 
         internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerFilter(
@@ -8054,6 +8135,8 @@ namespace HaCreator.MapSimulator.Character
             int lastInsertCanvasOverlayParentObjectId = 0,
             int overlayInsertionIndex = int.MinValue,
             int lastInsertCanvasOverlayInsertionIndex = int.MinValue,
+            int overlaySiblingSignature = 0,
+            int lastInsertCanvasOverlaySiblingSignature = 0,
             int preparedLayerFilter = int.MinValue,
             int lastInsertCanvasPreparedLayerFilter = int.MinValue,
             int preparedLayerZ = int.MinValue,
@@ -8160,6 +8243,9 @@ namespace HaCreator.MapSimulator.Character
             bool overlayInsertionIndexChanged = overlayInsertionIndex != int.MinValue
                 && lastInsertCanvasOverlayInsertionIndex != int.MinValue
                 && overlayInsertionIndex != lastInsertCanvasOverlayInsertionIndex;
+            bool overlaySiblingChanged = overlaySiblingSignature != 0
+                && lastInsertCanvasOverlaySiblingSignature != 0
+                && overlaySiblingSignature != lastInsertCanvasOverlaySiblingSignature;
             bool preparedLayerFilterChanged = preparedLayerFilter != int.MinValue
                 && lastInsertCanvasPreparedLayerFilter != int.MinValue
                 && preparedLayerFilter != lastInsertCanvasPreparedLayerFilter;
@@ -8190,6 +8276,7 @@ namespace HaCreator.MapSimulator.Character
                 || overlayParentChanged
                 || overlayParentObjectChanged
                 || overlayInsertionIndexChanged
+                || overlaySiblingChanged
                 || preparedLayerFilterChanged
                 || preparedLayerZChanged
                 || preparedLayerColorChanged
@@ -8223,6 +8310,8 @@ namespace HaCreator.MapSimulator.Character
                 && (overlayParentObjectId == 0 || lastInsertCanvasOverlayParentObjectId == 0);
             bool overlayInsertionIndexMetadataMissing = (overlayInsertionIndex != int.MinValue || lastInsertCanvasOverlayInsertionIndex != int.MinValue)
                 && (overlayInsertionIndex == int.MinValue || lastInsertCanvasOverlayInsertionIndex == int.MinValue);
+            bool overlaySiblingMetadataMissing = (overlaySiblingSignature != 0 || lastInsertCanvasOverlaySiblingSignature != 0)
+                && (overlaySiblingSignature == 0 || lastInsertCanvasOverlaySiblingSignature == 0);
             bool preparedLayerFilterMetadataMissing = (preparedLayerFilter != int.MinValue || lastInsertCanvasPreparedLayerFilter != int.MinValue)
                 && (preparedLayerFilter == int.MinValue || lastInsertCanvasPreparedLayerFilter == int.MinValue);
             bool preparedLayerZMetadataMissing = (preparedLayerZ != int.MinValue || lastInsertCanvasPreparedLayerZ != int.MinValue)
@@ -8244,6 +8333,7 @@ namespace HaCreator.MapSimulator.Character
                 || overlayParentMetadataMissing
                 || overlayParentObjectMetadataMissing
                 || overlayInsertionIndexMetadataMissing
+                || overlaySiblingMetadataMissing
                 || preparedLayerFilterMetadataMissing
                 || preparedLayerZMetadataMissing
                 || preparedLayerColorMetadataMissing
@@ -9621,6 +9711,7 @@ namespace HaCreator.MapSimulator.Character
                 {
                     _activeShadowPartner.CurrentActionStartTime = currentTime;
                     _activeShadowPartner.CurrentFacingRight = facingRight;
+                    ApplyShadowPartnerLayerChoreography();
                     StoreShadowPartnerActionOwnerCounter(currentTime);
                     return;
                 }
@@ -9658,7 +9749,27 @@ namespace HaCreator.MapSimulator.Character
                 ? restoredActionStartTime
                 : currentTime;
             RefreshShadowPartnerClientOffsetTarget(currentTime, facingRight);
+            ApplyShadowPartnerLayerChoreography();
             StoreShadowPartnerActionOwnerCounter(currentTime);
+        }
+
+        private void ApplyShadowPartnerLayerChoreography()
+        {
+            if (_activeShadowPartner == null)
+            {
+                return;
+            }
+
+            ShadowPartnerClientActionResolver.ShadowPartnerLayerChoreography choreography =
+                ShadowPartnerClientActionResolver.ResolveShadowPartnerLayerChoreography(
+                    _activeShadowPartner.SkillId,
+                    _activeShadowPartner.ObservedPlayerRawActionCode);
+
+            _activeShadowPartner.UsesOneTimeLayerObject = choreography.UsesOneTimeLayer;
+            _activeShadowPartner.LayerObjectId = choreography.LayerObjectId;
+            _activeShadowPartner.LayerListNodeObjectId = choreography.ListNodeObjectId;
+            _activeShadowPartner.RegisteredAnimationObjectId = choreography.RegisteredAnimationObjectId;
+            _activeShadowPartner.ParentUnderFaceLayerObjectId = choreography.ParentUnderFaceLayerObjectId;
         }
 
         private string GetShadowPartnerObservedPlayerActionName()
@@ -12525,7 +12636,11 @@ namespace HaCreator.MapSimulator.Character
         private static bool IsAutomaticTamingMobTransitionAction(string actionName)
         {
             return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "msummon", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "msummon2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rpunch", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsMechanicTamingMobPart(CharacterPart mountPart)

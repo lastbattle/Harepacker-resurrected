@@ -70,7 +70,8 @@ namespace HaCreator.MapSimulator.Interaction
                 existingEntry.IsBlocked || localEntry.IsBlocked)
             {
                 MemberId = existingEntry.MemberId ?? localEntry.MemberId,
-                IsLocalPlayer = true
+                IsLocalPlayer = true,
+                ClientGuildGrade = existingEntry.ClientGuildGrade ?? localEntry.ClientGuildGrade
             };
         }
 

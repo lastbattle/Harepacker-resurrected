@@ -172,6 +172,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int MAX_ACTIVE_NUMBERS = 100;
         internal const int DamageNumberFormatStringPoolId = 0x1A15;
         internal const int TemporaryCanvasFactoryStringPoolId = 0x03D0;
+        internal const int CriticalBannerSpriteStringPoolId = 0x1AAD;
         internal const string DamageNumberEffectCategoryName = "effect";
         internal const string DamageNumberBasicEffectImageName = "BasicEff.img";
         internal const string DamageNumberSpecialTextOwnerSetName = DamageNumberLoader.DamageNumberSpecialTextOwnerSetName;
@@ -754,8 +755,9 @@ namespace HaCreator.MapSimulator.Effects
             if (useCriticalPresentation
                 && (largeDigitSet.CriticalEffectTexture != null || largeDigitSet.CriticalEffectOrigin != Point.Zero))
             {
+                string criticalBannerSpriteName = ResolveCriticalBannerSpriteName();
                 criticalBanner = new PreparedSpriteDrawInfo(
-                    "effect",
+                    criticalBannerSpriteName,
                     -(largeDigitSet.CriticalEffectOrigin.X - composedWidth / 2),
                     DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y
                     + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y
@@ -1209,6 +1211,7 @@ namespace HaCreator.MapSimulator.Effects
                 preparedSources,
                 temporaryCanvasOperations,
                 keepsOverlayOnSeparateLayer,
+                keepsOverlayOnSeparateLayer ? CriticalBannerSpriteStringPoolId : 0,
                 keepsOverlayOnSeparateLayer ? compositionTrace.CriticalBannerLayerCanvasPath : null,
                 keepsOverlayOnSeparateLayer ? overlaySpriteName : null,
                 keepsOverlayOnSeparateLayer ? overlayOffset : Point.Zero,
@@ -1284,6 +1287,14 @@ namespace HaCreator.MapSimulator.Effects
                 InitialLayerOptionValue: unchecked((int)0xC0050004),
                 LayerPriorityValue: -1,
                 FinalizeLayerOptionValue: 0);
+        }
+
+        internal static string ResolveCriticalBannerSpriteName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                CriticalBannerSpriteStringPoolId,
+                "effect",
+                appendFallbackSuffix: false);
         }
 
         internal static CompositeCanvasPlacement ResolveCompositeCanvasPlacement(

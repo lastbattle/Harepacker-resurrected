@@ -215,7 +215,7 @@ namespace HaCreator.MapSimulator.UI
                 Point idleOverlayOrigin = ResolveClientOwnedSurfaceOrigin(
                     renderWidth,
                     WorldOverlayTopMargin,
-                    ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvIdleSurfaceHeight, idleFrames));
+                    ResolveClientOwnedSurfaceBounds(_visualAssets.ClientSurfaceWidth, _visualAssets.ClientIdleSurfaceHeight, idleFrames));
                 DrawAnimationFrame(sprite, idleFrame, idleOverlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 return;
             }
@@ -233,7 +233,12 @@ namespace HaCreator.MapSimulator.UI
             Point overlayOrigin = ResolveClientOwnedSurfaceOrigin(
                 renderWidth,
                 WorldOverlayTopMargin,
-                ResolveActiveSurfaceBounds(onFrames, mediaFrames));
+                ResolveActiveSurfaceBounds(
+                    onFrames,
+                    mediaFrames,
+                    _visualAssets.ClientSurfaceWidth,
+                    _visualAssets.ClientMediaSurfaceHeight,
+                    _visualAssets.ClientIdleSurfaceHeight));
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -242,7 +247,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 skeletonMeshRenderer,
                 tickCount,
-                ResolveFamilyTopLeft(overlayOrigin, ResolveCompositeBounds(240, 180, mediaFrames)),
+                ResolveFamilyTopLeft(overlayOrigin, ResolveCompositeBounds(_visualAssets.ClientSurfaceWidth, _visualAssets.ClientMediaSurfaceHeight, mediaFrames)),
                 snapshot);
             DrawChatText(
                 sprite,
@@ -408,10 +413,10 @@ namespace HaCreator.MapSimulator.UI
                 DrawAnimationFrame(sprite, chatFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 DrawPreviewAvatars(
                     sprite,
-                    skeletonMeshRenderer,
-                    tickCount,
-                    ResolveFamilyTopLeft(previewOrigin, ResolveCompositeBounds(240, 180, mediaFrames)),
-                    snapshot);
+                skeletonMeshRenderer,
+                tickCount,
+                ResolveFamilyTopLeft(previewOrigin, ResolveCompositeBounds(_visualAssets.ClientSurfaceWidth, _visualAssets.ClientMediaSurfaceHeight, mediaFrames)),
+                snapshot);
                 DrawChatText(
                     sprite,
                     snapshot.DisplayLines,
@@ -630,19 +635,22 @@ namespace HaCreator.MapSimulator.UI
 
         internal static Rectangle ResolveActiveSurfaceBounds(
             IReadOnlyList<MapleTvAnimationFrame> onFrames,
-            IReadOnlyList<MapleTvAnimationFrame> mediaFrames)
+            IReadOnlyList<MapleTvAnimationFrame> mediaFrames,
+            int surfaceWidth = MapleTvSurfaceWidth,
+            int mediaSurfaceHeight = MapleTvMediaSurfaceHeight,
+            int idleSurfaceHeight = MapleTvIdleSurfaceHeight)
         {
             if (mediaFrames != null && mediaFrames.Count > 0)
             {
-                return ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight, mediaFrames);
+                return ResolveClientOwnedSurfaceBounds(surfaceWidth, mediaSurfaceHeight, mediaFrames);
             }
 
             if (onFrames != null && onFrames.Count > 0)
             {
-                return ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvIdleSurfaceHeight, onFrames);
+                return ResolveClientOwnedSurfaceBounds(surfaceWidth, idleSurfaceHeight, onFrames);
             }
 
-            return CreateBaseSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight);
+            return CreateBaseSurfaceBounds(surfaceWidth, mediaSurfaceHeight);
         }
 
         private static Rectangle NormalizeBounds(Rectangle bounds)
@@ -736,7 +744,10 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> mediaFrames,
             int defaultMediaIndex,
             IReadOnlyList<int> availableMediaIndices,
-            int explicitWzDefaultMediaIndex)
+            int explicitWzDefaultMediaIndex,
+            int clientSurfaceWidth = 240,
+            int clientMediaSurfaceHeight = 180,
+            int clientIdleSurfaceHeight = 90)
         {
             OnFrames = onFrames ?? Array.Empty<MapleTvAnimationFrame>();
             BasicFrames = basicFrames ?? Array.Empty<MapleTvAnimationFrame>();
@@ -751,6 +762,9 @@ namespace HaCreator.MapSimulator.UI
                 .OrderBy(index => index)
                 .ToArray()
                 ?? Array.Empty<int>();
+            ClientSurfaceWidth = Math.Max(1, clientSurfaceWidth);
+            ClientMediaSurfaceHeight = Math.Max(1, clientMediaSurfaceHeight);
+            ClientIdleSurfaceHeight = Math.Max(1, clientIdleSurfaceHeight);
         }
 
         internal IReadOnlyList<MapleTvAnimationFrame> OnFrames { get; }
@@ -761,6 +775,9 @@ namespace HaCreator.MapSimulator.UI
         internal int DefaultMediaIndex { get; }
         internal int ExplicitWzDefaultMediaIndex { get; }
         internal IReadOnlyList<int> AvailableMediaIndices { get; }
+        internal int ClientSurfaceWidth { get; }
+        internal int ClientMediaSurfaceHeight { get; }
+        internal int ClientIdleSurfaceHeight { get; }
 
         internal IReadOnlyList<MapleTvAnimationFrame> GetChatFrames(int mediaIndex)
         {

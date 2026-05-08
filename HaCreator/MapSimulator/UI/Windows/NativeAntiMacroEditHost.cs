@@ -246,6 +246,14 @@ namespace HaCreator.MapSimulator.UI
             return DlgcWantArrows | DlgcWantTab | DlgcHasSetSel | DlgcWantChars;
         }
 
+        internal static bool ShouldPlaceCaretAtEndOnProgrammaticFocus(bool wasFocused)
+        {
+            // CUIInitialQuiz::OnCreate calls CWnd::SetFocusChild once after
+            // creating the CCtrlEdit. Later owner update/draw sync must not
+            // keep rewriting the live edit selection.
+            return !wasFocused;
+        }
+
         public void Reset()
         {
             if (!IsAttached)
@@ -270,9 +278,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            bool wasFocused = HasFocus;
             SetFocus(_editHandle);
-            int textLength = GetWindowTextLength(_editHandle);
-            SendMessage(_editHandle, EmSetSel, new IntPtr(textLength), new IntPtr(textLength));
+            if (ShouldPlaceCaretAtEndOnProgrammaticFocus(wasFocused))
+            {
+                int textLength = GetWindowTextLength(_editHandle);
+                SendMessage(_editHandle, EmSetSel, new IntPtr(textLength), new IntPtr(textLength));
+            }
+
             UpdateImePlacement();
         }
 

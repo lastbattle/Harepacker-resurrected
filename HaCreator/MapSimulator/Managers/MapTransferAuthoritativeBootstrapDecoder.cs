@@ -1420,12 +1420,6 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if ((characterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0 &&
-                !TrySkipTwoIntValueRecord(payload, offset, out offset))
-            {
-                return false;
-            }
-
             if ((characterDataFlags & CharacterDataWildHunterInfoFlag) != 0 &&
                 characterJobId / 100 == 33)
             {

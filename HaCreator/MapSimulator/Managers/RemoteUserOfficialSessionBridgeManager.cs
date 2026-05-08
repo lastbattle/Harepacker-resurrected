@@ -44,7 +44,7 @@ namespace HaCreator.MapSimulator.Managers
         private const ushort V95TutorMsgLocalOpcode = LocalUtilityPacketInboxManager.TutorMsgClientPacketType;
         private const int MinOfficialSessionTutorInferenceProofCount = 2;
 
-        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserLocal::OnPacket (0x9340c0) resolves the full v95 local-user owner table in that 231-276 range with tutor on 255/256 only; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; CUserPool::Update couple-chair lock admission at 0x94c9f4/0x94ca01 consumes raw pair records only when dwPairCharacterID is 0 or the current owner.";
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserCommonPacket (0x94cdb0) dispatches common-user ownership on 181-208 with no tutor owner branch; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserLocal::OnPacket (0x9340c0) resolves the full v95 local-user owner table in that 231-276 range with tutor on 255/256 only; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; CUserPool::Update couple-chair lock admission at 0x94c9f4/0x94ca01 consumes raw pair records only when dwPairCharacterID is 0 or the current owner.";
         private const string OfficialPortableChairRecordEvidence = "WZ Item/Install/0301.img/03012000/info authors distanceX=53, distanceY=0, maxDiff=6, direction=21 and Effect/ItemEff.img/3012000/0 provides seat-bound 300ms effect frames; compact 8-byte chair payloads remain ambiguous with seat-state traffic, so only the extended 16-byte packet-owned couple-chair record-add wrapper is promoted from live capture.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
@@ -99,6 +99,45 @@ namespace HaCreator.MapSimulator.Managers
             [228] = "CUserRemote::OnGuildNameChanged",
             [229] = "CUserRemote::OnGuildMarkChanged",
             [230] = "CUserRemote::OnThrowGrenade"
+        };
+
+        private static readonly IReadOnlyDictionary<ushort, string> KnownCommonUserOwnerMapV95 = new Dictionary<ushort, string>
+        {
+            [179] = "CUserPool::OnUserEnterField",
+            [180] = "CUserPool::OnUserLeaveField",
+            [181] = "CUser::OnChat",
+            [182] = "CUser::OnChat",
+            [183] = "CUser::OnADBoard",
+            [184] = "CUser::OnMiniRoomBalloon",
+            [185] = "CUser::SetConsumeItemEffect",
+            [186] = "CUser::ShowItemUpgradeEffect",
+            [187] = "CUser::ShowItemHyperUpgradeEffect",
+            [188] = "CUser::ShowItemOptionUpgradeEffect",
+            [189] = "CUser::ShowItemReleaseEffect",
+            [190] = "CUser::ShowItemUnreleaseEffect",
+            [191] = "CUser::OnHitByUser",
+            [192] = "CUser::OnTeslaTriangle",
+            [193] = "CUser::OnFollowCharacter",
+            [194] = "CUser::OnShowPQReward",
+            [195] = "CUser::OnSetPhase",
+            [197] = "CUser::ShowRecoverUpgradeCountEffect",
+            [198] = "CUser::OnPetPacket",
+            [199] = "CUser::OnPetPacket",
+            [200] = "CUser::OnPetPacket",
+            [201] = "CUser::OnPetPacket",
+            [202] = "CUser::OnPetPacket",
+            [203] = "CUser::OnPetPacket",
+            [204] = "CUser::OnPetPacket",
+            [205] = "CUser::OnPetPacket",
+            [206] = "CUser::OnDragonPacket",
+            [207] = "CUser::OnDragonPacket",
+            [208] = "CUser::OnDragonPacket"
+        };
+
+        private static readonly IReadOnlySet<ushort> KnownNoHandlerCommonUserOpcodesV95 = new HashSet<ushort>
+        {
+            196,
+            209
         };
 
         private static readonly IReadOnlyDictionary<ushort, string> KnownNonTutorLocalOwnerMapV95 = new Dictionary<ushort, string>
@@ -1041,9 +1080,9 @@ namespace HaCreator.MapSimulator.Managers
 
                     if (!hasMappedPacketType
                         && !resolvedFromBuildScopedTutorMapping
-                        && TryResolveKnownRemoteUserOwnerFromV95OwnerTable(opcode, out string knownRemoteOwnerReason))
+                        && TryResolveKnownNonLocalUserOwnerFromV95OwnerTable(opcode, out string knownRemoteOwnerReason))
                     {
-                        LastStatus = $"Ignored native non-local CUser opcode {opcode}: known recovered CUserPool::OnUserRemotePacket owner ({knownRemoteOwnerReason}) has no CTutor/CSummoned tutor branch, so tutor-shaped payloads are not promoted from remote-user opcodes. {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Ignored native non-local CUser opcode {opcode}: known recovered CUserPool owner ({knownRemoteOwnerReason}) has no CTutor/CSummoned tutor branch, so tutor-shaped payloads are not promoted from non-local CUser opcodes. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 
@@ -1594,6 +1633,30 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        internal static bool TryResolveKnownCommonUserOwnerFromV95OwnerTable(ushort opcode, out string reason)
+        {
+            if (KnownCommonUserOwnerMapV95.TryGetValue(opcode, out string owner))
+            {
+                reason = $"v95 CUserPool::OnUserCommonPacket case {opcode} -> {owner}";
+                return true;
+            }
+
+            if (KnownNoHandlerCommonUserOpcodesV95.Contains(opcode))
+            {
+                reason = $"v95 CUserPool::OnUserCommonPacket case {opcode} has no handler";
+                return true;
+            }
+
+            reason = string.Empty;
+            return false;
+        }
+
+        internal static bool TryResolveKnownNonLocalUserOwnerFromV95OwnerTable(ushort opcode, out string reason)
+        {
+            return TryResolveKnownCommonUserOwnerFromV95OwnerTable(opcode, out reason)
+                || TryResolveKnownRemoteUserOwnerFromV95OwnerTable(opcode, out reason);
         }
 
         private static bool HasMatchingTutorOwnerProof(

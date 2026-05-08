@@ -1914,11 +1914,11 @@ namespace HaCreator.MapSimulator.Physics
             List<MovePathElement> snapshot = new(
                 CMovePathClientPacketCodec.NormalizeForPortalOwnedClientFlushRetention(
                     BuildMovePathSnapshot(currentTimeMs, appendLatestState: false)));
-            SetClientMovePathEncodeHeaderToTail(snapshot);
 
             bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
             if (shortUpdate || isFlying)
             {
+                SetClientMovePathEncodeHeaderToTail(snapshot);
                 _movePath.Clear();
                 _pathGatherDurationMs = 0;
                 _lastPathFlushTime = currentTimeMs;
@@ -1937,12 +1937,14 @@ namespace HaCreator.MapSimulator.Physics
 
             if (lastGroundedIndex < 0 || lastGroundedIndex >= snapshot.Count - 1)
             {
+                SetClientMovePathEncodeHeaderToTail(snapshot);
                 _movePath.Clear();
                 _pathGatherDurationMs = 0;
                 _lastPathFlushTime = currentTimeMs;
                 return;
             }
 
+            SetClientMovePathEncodeHeader(snapshot[lastGroundedIndex]);
             _movePath.Clear();
             _pathGatherDurationMs = 0;
             for (int i = lastGroundedIndex + 1; i < snapshot.Count; i++)
@@ -1961,6 +1963,12 @@ namespace HaCreator.MapSimulator.Physics
             _lastPathFlushTime = currentTimeMs;
         }
 
+        private void SetClientMovePathEncodeHeader(MovePathElement element)
+        {
+            _clientMovePathEncodeHeader = element;
+            _hasClientMovePathEncodeHeader = true;
+        }
+
         private void SetClientMovePathEncodeHeaderToTail(IReadOnlyList<MovePathElement> path)
         {
             if (path == null || path.Count == 0)
@@ -1968,8 +1976,7 @@ namespace HaCreator.MapSimulator.Physics
                 return;
             }
 
-            _clientMovePathEncodeHeader = path[path.Count - 1];
-            _hasClientMovePathEncodeHeader = true;
+            SetClientMovePathEncodeHeader(path[path.Count - 1]);
         }
 
         internal static int GetClientTickElapsed(int currentTimeMs, int previousTimeMs)
