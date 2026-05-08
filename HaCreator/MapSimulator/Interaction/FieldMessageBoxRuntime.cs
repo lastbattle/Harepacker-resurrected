@@ -40,6 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MinBoardWidth = 92;
         private const int MaxBodyLineCount = 4;
         private const int CreateFailedStringPoolId = 0x1EA;
+        private const int ChalkboardDialogOkButtonId = 1;
+        private const int ChalkboardDialogCancelButtonId = 2;
         private const int ClientMessageBoxPropertyStringPoolId = 0x660;
         private const string ClientMessageBoxPropertyName = "messageBox";
         private const string ChalkboardSamplePropertyName = "sample";
@@ -76,6 +78,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly ManagedOneTimeAnimationDisplayer _oneTimeAnimationDisplayer = new();
         private readonly Random _random = new();
         private CompletedConsumeRequestEntry _lastConsumeRequestCompletion;
+        private ChalkboardDialogState _chalkboardDialogState;
         private GraphicsDevice _graphicsDevice;
         private Texture2D _pixelTexture;
         private SpriteBatch _snapshotSpriteBatch;
@@ -106,6 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
             _leavingEntries.Clear();
             _pendingConsumeRequests.Clear();
             _lastConsumeRequestCompletion = null;
+            _chalkboardDialogState = null;
             _oneTimeAnimationDisplayer.Clear();
             _statusMessage = "Field message-box pool cleared.";
         }
@@ -122,22 +126,25 @@ namespace HaCreator.MapSimulator.Interaction
             int leavingCount = _leavingEntries.Count;
             int pendingCount = _pendingConsumeRequests.Count;
             string activeSummary = $"{_entries.Count} active ({packetActiveCount} packet, {localActiveCount} local)";
+            string dialogSummary = _chalkboardDialogState == null
+                ? string.Empty
+                : $" Chalkboard dialog open for slot {_chalkboardDialogState.InventoryPosition}, item {_chalkboardDialogState.ItemId}.";
             if (leavingCount > 0 && pendingCount > 0)
             {
-                return $"{activeSummary}, {leavingCount} leaving, {pendingCount} pending consume request(s). {_statusMessage}";
+                return $"{activeSummary}, {leavingCount} leaving, {pendingCount} pending consume request(s). {_statusMessage}{dialogSummary}";
             }
 
             if (leavingCount > 0)
             {
-                return $"{activeSummary}, {leavingCount} leaving. {_statusMessage}";
+                return $"{activeSummary}, {leavingCount} leaving. {_statusMessage}{dialogSummary}";
             }
 
             if (pendingCount > 0)
             {
-                return $"{activeSummary}, {pendingCount} pending consume request(s). {_statusMessage}";
+                return $"{activeSummary}, {pendingCount} pending consume request(s). {_statusMessage}{dialogSummary}";
             }
 
-            return $"{activeSummary}. {_statusMessage}";
+            return $"{activeSummary}. {_statusMessage}{dialogSummary}";
         }
 
         internal string CreateLocalMessageBox(
@@ -868,6 +875,122 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryOpenChalkboardDialog(
+            int inventoryPosition,
+            int itemId,
+            string initialText,
+            out string message)
+        {
+            message = string.Empty;
+            if (inventoryPosition < short.MinValue || inventoryPosition > short.MaxValue)
+            {
+                message = $"Chalkboard dialog inventory position {inventoryPosition} is outside the signed 16-bit client packet range.";
+                return false;
+            }
+
+            if (!IsKnownChalkboardConsumeRequestItem(itemId))
+            {
+                message = $"Chalkboard dialog item {itemId} is outside the WZ-observed cash chalkboard consume family (5370000-5370002).";
+                return false;
+            }
+
+            string normalizedText = NormalizeChalkboardDialogText(initialText);
+            _chalkboardDialogState = new ChalkboardDialogState(
+                inventoryPosition,
+                itemId,
+                normalizedText,
+                ResolveItemName(itemId),
+                ResolveChalkboardDialogDescription(itemId));
+            message = $"Opened chalkboard consume dialog for {_chalkboardDialogState.ItemName} from slot {inventoryPosition}; OK button {ChalkboardDialogOkButtonId} will submit opcode 0x{ConsumeCashItemUseRequestOpcode:X} and Cancel button {ChalkboardDialogCancelButtonId} will close without staging a board.";
+            if (!string.IsNullOrEmpty(normalizedText))
+            {
+                message += $" Draft text length {normalizedText.Length}.";
+            }
+
+            return true;
+        }
+
+        internal bool TrySetChalkboardDialogText(string text, out string message)
+        {
+            message = string.Empty;
+            if (_chalkboardDialogState == null)
+            {
+                message = "No chalkboard consume dialog is open.";
+                return false;
+            }
+
+            string normalizedText = NormalizeChalkboardDialogText(text);
+            _chalkboardDialogState = _chalkboardDialogState with { MessageText = normalizedText };
+            message = $"Updated chalkboard consume dialog draft text length {normalizedText.Length}.";
+            return true;
+        }
+
+        internal bool TryCancelChalkboardDialog(out string message)
+        {
+            message = string.Empty;
+            if (_chalkboardDialogState == null)
+            {
+                message = "No chalkboard consume dialog is open.";
+                return false;
+            }
+
+            int itemId = _chalkboardDialogState.ItemId;
+            int inventoryPosition = _chalkboardDialogState.InventoryPosition;
+            _chalkboardDialogState = null;
+            message = $"Cancelled chalkboard consume dialog for item {itemId} from slot {inventoryPosition}; no pending CUserLocal::ConsumeCashItem request was staged.";
+            return true;
+        }
+
+        internal bool TryConsumeChalkboardDialogSubmit(
+            out int inventoryPosition,
+            out int itemId,
+            out string messageText,
+            out string message)
+        {
+            inventoryPosition = 0;
+            itemId = 0;
+            messageText = string.Empty;
+            message = string.Empty;
+            if (_chalkboardDialogState == null)
+            {
+                message = "No chalkboard consume dialog is open.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(_chalkboardDialogState.MessageText))
+            {
+                message = "Chalkboard consume dialog OK is disabled until message text is entered.";
+                return false;
+            }
+
+            inventoryPosition = _chalkboardDialogState.InventoryPosition;
+            itemId = _chalkboardDialogState.ItemId;
+            messageText = _chalkboardDialogState.MessageText;
+            _chalkboardDialogState = null;
+            message = $"Accepted chalkboard consume dialog for item {itemId} from slot {inventoryPosition}; routing OK button {ChalkboardDialogOkButtonId} through CUserLocal::ConsumeCashItem opcode 0x{ConsumeCashItemUseRequestOpcode:X}.";
+            return true;
+        }
+
+        internal string DescribeChalkboardDialog()
+        {
+            if (_chalkboardDialogState == null)
+            {
+                return "No chalkboard consume dialog is open.";
+            }
+
+            string okState = string.IsNullOrWhiteSpace(_chalkboardDialogState.MessageText)
+                ? "disabled"
+                : "enabled";
+            return $"Chalkboard consume dialog open for {_chalkboardDialogState.ItemName} ({_chalkboardDialogState.ItemId}) from slot {_chalkboardDialogState.InventoryPosition}; OK button {ChalkboardDialogOkButtonId} is {okState}, Cancel button {ChalkboardDialogCancelButtonId} is enabled, draft length {_chalkboardDialogState.MessageText.Length}. {_chalkboardDialogState.ItemDescription}";
+        }
+
+        private sealed record ChalkboardDialogState(
+            int InventoryPosition,
+            int ItemId,
+            string MessageText,
+            string ItemName,
+            string ItemDescription);
+
         internal int PendingConsumeRequestCountForTest => _pendingConsumeRequests.Count;
 
         internal (int ItemId, int InventoryPosition, string CompletionKind, int? MessageBoxId)? LastConsumeRequestCompletionForTest
@@ -999,6 +1122,24 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool IsKnownChalkboardConsumeRequestItem(int itemId)
         {
             return KnownConsumeCashItemUseRequestItemIds.Contains(itemId);
+        }
+
+        private static string NormalizeChalkboardDialogText(string text)
+        {
+            return string.IsNullOrWhiteSpace(text)
+                ? string.Empty
+                : text.Trim();
+        }
+
+        private static string ResolveChalkboardDialogDescription(int itemId)
+        {
+            return itemId switch
+            {
+                5370000 => "WZ Cash.img describes this as a chalkboard message item usable anywhere including Free Market Entrance except inside Free Market.",
+                5370001 => "WZ Cash.img describes this as a one-day blackboard message item unavailable inside the market.",
+                5370002 => "WZ Cash.img describes this as a three-day chalkboard message item usable anywhere including Free Market Entrance except inside Free Market.",
+                _ => "No WZ chalkboard description is cached for this item."
+            };
         }
 
         private static string ResolveCharacterNameForRequest(string characterName)

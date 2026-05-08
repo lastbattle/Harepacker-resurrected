@@ -454,7 +454,10 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
-        internal string OnClearMessage(bool preserveQueue = true)
+        internal string OnClearMessage(
+            bool preserveQueue = true,
+            bool preserveDisplayLines = false,
+            bool preservePendingSendResultFeedback = false)
         {
             _showMessage = false;
             _queueExists = preserveQueue;
@@ -462,8 +465,16 @@ namespace HaCreator.MapSimulator.Interaction
             _activeDurationMs = 0;
             _queueConfirmationWaitSeconds = 0;
             _awaitingQueueReuseConfirmation = false;
-            Array.Clear(_displayLines, 0, _displayLines.Length);
-            _pendingSendResultFeedback = null;
+            if (!preserveDisplayLines)
+            {
+                Array.Clear(_displayLines, 0, _displayLines.Length);
+            }
+
+            if (!preservePendingSendResultFeedback)
+            {
+                _pendingSendResultFeedback = null;
+            }
+
             _statusMessage = preserveQueue
                 ? "MapleTV display cleared. The queue remains active."
                 : "MapleTV display cleared.";
@@ -836,7 +847,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyClearMessagePacket(int currentTick, string source = null)
         {
-            string cleared = OnClearMessage(preserveQueue: true);
+            // CMapleTVMan::OnClearMessage only sets m_bShowMessage=0,
+            // m_bQueueExists=1, and m_nTotalWaitTime=0. The display strings
+            // and independently queued send-result chat notice are left alone.
+            string cleared = OnClearMessage(
+                preserveQueue: true,
+                preserveDisplayLines: true,
+                preservePendingSendResultFeedback: true);
             RecordOfficialPacket(PacketTypeClearMessage, currentTick, -1, -1, source);
             return cleared;
         }

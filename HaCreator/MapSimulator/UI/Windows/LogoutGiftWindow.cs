@@ -25,6 +25,11 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientSelectButtonHeight = 18;
         private const int ClientSelectionHighlightPadding = 4;
         private const int ClientTooltipAnchorOffset = 20;
+        private const int ClientCashCommoditySerialNumberBase = 80000000;
+        private const int ClientCashCommoditySerialNumberRange = 9999999;
+        private const int ClientCashPackageItemFamily = 910;
+        private const int ClientCashItemTooltipFamily = 5430;
+        private const int ClientEquipExtItemFamily = 555;
         private const int CloseButtonSize = 16;
 
         private readonly Texture2D _pixel;
@@ -295,7 +300,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             LogoutGiftEntrySnapshot entry = _snapshot.Entries[_hoveredEntryIndex];
-            if (entry.CommoditySerialNumber <= 0 || entry.ItemId <= 0)
+            if (!ShouldShowClientCommodityTooltip(entry.CommoditySerialNumber, entry.ItemId))
             {
                 return;
             }
@@ -458,6 +463,47 @@ namespace HaCreator.MapSimulator.UI
             return new Point(
                 mousePosition.X + ClientTooltipAnchorOffset,
                 mousePosition.Y + ClientTooltipAnchorOffset);
+        }
+
+        internal static bool ShouldShowClientCommodityTooltip(int commoditySerialNumber, int itemId)
+        {
+            if (commoditySerialNumber <= 0 || itemId <= 0)
+            {
+                return false;
+            }
+
+            return IsClientCashCommoditySerialNumber(commoditySerialNumber)
+                || IsClientCashPackageItem(itemId)
+                || IsClientSlotIncreaseItem(itemId)
+                || IsClientCashItemTooltipFamily(itemId)
+                || IsClientEquipExtItemFamily(itemId);
+        }
+
+        internal static bool IsClientCashCommoditySerialNumber(int commoditySerialNumber)
+        {
+            return commoditySerialNumber >= ClientCashCommoditySerialNumberBase
+                && commoditySerialNumber - ClientCashCommoditySerialNumberBase <= ClientCashCommoditySerialNumberRange;
+        }
+
+        private static bool IsClientCashPackageItem(int itemId)
+        {
+            return itemId / 10000 == ClientCashPackageItemFamily;
+        }
+
+        private static bool IsClientCashItemTooltipFamily(int itemId)
+        {
+            return itemId / 1000 == ClientCashItemTooltipFamily;
+        }
+
+        private static bool IsClientEquipExtItemFamily(int itemId)
+        {
+            return itemId / 10000 == ClientEquipExtItemFamily;
+        }
+
+        private static bool IsClientSlotIncreaseItem(int itemId)
+        {
+            int family = itemId / 10000;
+            return family is 911 or 912 or 913 or 914;
         }
 
         internal static Rectangle GetClientSelectButtonBounds(Point origin, int index, LogoutGiftButtonSkin skin = null)

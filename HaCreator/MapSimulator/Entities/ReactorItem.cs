@@ -830,7 +830,38 @@ namespace HaCreator.MapSimulator.Entities
                 return frames;
             }
 
-            return TryLoadFramesFromSourceProperty(sourceProperty);
+            IDXObject[] loadedFrames = TryLoadFramesFromSourceProperty(sourceProperty);
+            if (loadedFrames.Length > 0)
+            {
+                StoreHitAnimationFrames(sourceKind, state, properEventIndex, loadedFrames);
+            }
+
+            return loadedFrames;
+        }
+
+        private void StoreHitAnimationFrames(
+            HitAnimationSourceKind sourceKind,
+            int state,
+            int properEventIndex,
+            IDXObject[] frames)
+        {
+            if (frames == null || frames.Length == 0)
+            {
+                return;
+            }
+
+            switch (sourceKind)
+            {
+                case HitAnimationSourceKind.StateLayer:
+                    _stateFrames[state] = frames;
+                    break;
+                case HitAnimationSourceKind.IndexedHit:
+                    _stateIndexedHitFrames[(state, properEventIndex)] = frames;
+                    break;
+                case HitAnimationSourceKind.StateHit:
+                    _stateHitFrames[state] = frames;
+                    break;
+            }
         }
 
         private IDXObject[] TryLoadFramesFromSourceProperty(WzImageProperty sourceProperty)

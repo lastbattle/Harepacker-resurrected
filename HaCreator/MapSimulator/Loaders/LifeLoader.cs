@@ -1237,6 +1237,7 @@ namespace HaCreator.MapSimulator.Loaders
                 EffectFacingAttach = effectFacingAttach,
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
+                HasAttackAfterMetadata = WzInfoTools.GetRealProperty(infoNode?["attackAfter"]) != null,
                 RandDelayAttack = InfoTool.GetInt(infoNode["randDelayAttack"], 0),
                 HasPrimaryEffect = infoNode["effect"] != null,
                 HasAreaWarning = infoNode["areaWarning"] != null,

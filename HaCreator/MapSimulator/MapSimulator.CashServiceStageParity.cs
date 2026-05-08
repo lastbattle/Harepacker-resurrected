@@ -311,7 +311,8 @@ namespace HaCreator.MapSimulator
                         PrepaidCashBalance = stageWindow.PrepaidCashBalance,
                         ChargeParam = stageWindow.ChargeParam,
                         StatusMessage = stageWindow.StatusMessage,
-                        DetailSummaries = stageWindow.GetStatusOwnerDetailLines()
+                        DetailSummaries = stageWindow.GetStatusOwnerDetailLines(),
+                        ButtonControls = BuildCashShopStatusButtonControlStates()
                     };
                 });
                 statusWindow.SetExternalAction("BtCharge", () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator.");
@@ -1484,6 +1485,7 @@ namespace HaCreator.MapSimulator
                             : 0),
                     PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
                     HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
+                    ButtonControls = BuildCashShopListButtonControlStates(),
                     VisibleEntries = packetEntries,
                     RecentPackets = recentPackets
                 };
@@ -1500,6 +1502,7 @@ namespace HaCreator.MapSimulator
                     SelectedIndex = -1,
                     PlateFocusIndex = -1,
                     HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
+                    ButtonControls = BuildCashShopListButtonControlStates(),
                     RecentPackets = recentPackets
                 };
             }
@@ -1531,8 +1534,64 @@ namespace HaCreator.MapSimulator
                 TotalCount = snapshot.TotalCount,
                 PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
                 HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
+                ButtonControls = BuildCashShopListButtonControlStates(),
                 VisibleEntries = entries,
                 RecentPackets = recentPackets
+            };
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.ListOwnerState.ButtonControlState> BuildCashShopListButtonControlStates()
+        {
+            return new[]
+            {
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtBuy",
+                    ControlId = 1000,
+                    NativeButtonId = 0,
+                    Position = new Microsoft.Xna.Framework.Point(442, 364),
+                    Width = 37,
+                    Height = 19,
+                    KeyFocusedWidth = 41,
+                    KeyFocusedHeight = 23,
+                    HasKeyFocusCanvas = true
+                },
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtGift",
+                    ControlId = 1000,
+                    NativeButtonId = 1,
+                    Position = new Microsoft.Xna.Framework.Point(505, 364),
+                    Width = 37,
+                    Height = 19,
+                    KeyFocusedWidth = 41,
+                    KeyFocusedHeight = 23,
+                    HasKeyFocusCanvas = true
+                },
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtReserve",
+                    ControlId = 1000,
+                    NativeButtonId = 2,
+                    Position = new Microsoft.Xna.Framework.Point(568, 364),
+                    Width = 37,
+                    Height = 19,
+                    KeyFocusedWidth = 41,
+                    KeyFocusedHeight = 23,
+                    HasKeyFocusCanvas = true
+                },
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtRemove",
+                    ControlId = 1000,
+                    NativeButtonId = 3,
+                    Position = new Microsoft.Xna.Framework.Point(631, 364),
+                    Width = 37,
+                    Height = 19,
+                    KeyFocusedWidth = 41,
+                    KeyFocusedHeight = 23,
+                    HasKeyFocusCanvas = true
+                }
             };
         }
 
@@ -1658,6 +1717,49 @@ namespace HaCreator.MapSimulator
             AppendCashShopStatusLine(lines, stageWindow.CashPurchaseRecordSummary);
             AppendCashShopStatusLine(lines, stageWindow.CashItemLastSummary);
             return lines;
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.ListOwnerState.ButtonControlState> BuildCashShopStatusButtonControlStates()
+        {
+            return new[]
+            {
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtCharge",
+                    ControlId = 1000,
+                    NativeButtonId = 1000,
+                    Position = new Microsoft.Xna.Framework.Point(248, 13),
+                    Width = 41,
+                    Height = 41
+                },
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtCheck",
+                    ControlId = 1001,
+                    NativeButtonId = 1001,
+                    Position = new Microsoft.Xna.Framework.Point(289, 13),
+                    Width = 41,
+                    Height = 41
+                },
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtCoupon",
+                    ControlId = 1002,
+                    NativeButtonId = 1002,
+                    Position = new Microsoft.Xna.Framework.Point(330, 13),
+                    Width = 41,
+                    Height = 41
+                },
+                new CashShopStageChildWindow.ListOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtExit",
+                    ControlId = 1003,
+                    NativeButtonId = 1003,
+                    Position = new Microsoft.Xna.Framework.Point(378, 15),
+                    Width = 168,
+                    Height = 49
+                }
+            };
         }
 
         private static void AppendCashShopStatusLine(List<string> lines, string summary)

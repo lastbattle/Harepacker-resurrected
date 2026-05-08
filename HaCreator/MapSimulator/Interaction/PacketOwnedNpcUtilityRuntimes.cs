@@ -3536,6 +3536,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal int DirectMinCriticalDamage => _directMinCriticalDamage;
         internal int RecoveryTotal => _recoveryTotal;
         internal int RecoveryCount => _recoveryCount;
+        internal long DamageTotalAttrRate => _damageTotalAttrRate;
         internal int AverageAttrRate => _averageAttrRate;
         internal int AverageDamagePerHit => _averageDamagePerHit;
         internal int AverageDamagePerSecond => _averageDamagePerSecond;
@@ -3843,6 +3844,23 @@ namespace HaCreator.MapSimulator.Interaction
             return StatusMessage;
         }
 
+        internal string ApplyAttrDamageRateInfo(int attrRate)
+        {
+            if (!(OnCalc && ServerOnCalc))
+            {
+                StatusMessage = $"CBattleRecordMan::SetAttrDamageRateInfo ignored nCurRate={attrRate.ToString(CultureInfo.InvariantCulture)} because m_bOnCalc/m_bServerOnCalc were not both armed.";
+                AppendNote(StatusMessage);
+                return StatusMessage;
+            }
+
+            _damageTotalAttrRate += attrRate;
+            LastAttrRate = attrRate;
+            _lastDecodedAttrRate = attrRate;
+            StatusMessage = $"CBattleRecordMan::SetAttrDamageRateInfo accumulated nCurRate={attrRate.ToString(CultureInfo.InvariantCulture)} into totalAttrRate={_damageTotalAttrRate.ToString(CultureInfo.InvariantCulture)}; the native function itself does not recalculate average attr rate until the next CalcAverageAttrRate path.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
         internal string ApplyBattleRecoveryInfo(
             int hpRecovery,
             int mpRecovery,
@@ -4029,7 +4047,7 @@ namespace HaCreator.MapSimulator.Interaction
                     lines.Add($"Damage bounds: min={FormatDamage(MinDamage)}, max={FormatDamage(MaxDamage)}, avg={FormatAverageDamage()}");
                     lines.Add($"Direct manager totals: attacks={_directAttackCount.ToString(CultureInfo.InvariantCulture)}, damage={_directDamageTotal.ToString(CultureInfo.InvariantCulture)}, critical={_directCriticalCount.ToString(CultureInfo.InvariantCulture)}, miss={_directMissCount.ToString(CultureInfo.InvariantCulture)}");
                     lines.Add($"Recovery totals: count={_recoveryCount.ToString(CultureInfo.InvariantCulture)}, amount={_recoveryTotal.ToString(CultureInfo.InvariantCulture)}");
-                    lines.Add($"SetBattleDamageInfo averages: attrRate={_averageAttrRate.ToString(CultureInfo.InvariantCulture)}, damage/hit={_averageDamagePerHit.ToString(CultureInfo.InvariantCulture)}, damage/sec={_averageDamagePerSecond.ToString(CultureInfo.InvariantCulture)}, hit/sec={_averageHitPerSecond.ToString("0.##", CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleDamageInfo averages: totalAttrRate={_damageTotalAttrRate.ToString(CultureInfo.InvariantCulture)}, attrRate={_averageAttrRate.ToString(CultureInfo.InvariantCulture)}, damage/hit={_averageDamagePerHit.ToString(CultureInfo.InvariantCulture)}, damage/sec={_averageDamagePerSecond.ToString(CultureInfo.InvariantCulture)}, hit/sec={_averageHitPerSecond.ToString("0.##", CultureInfo.InvariantCulture)}");
                     lines.Add($"SetBattleRecoveryInfo totals: HP req/apply={_recoveryTotalHpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalHpIncApply.ToString(CultureInfo.InvariantCulture)}, MP req/apply={_recoveryTotalMpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalMpIncApply.ToString(CultureInfo.InvariantCulture)}");
                     lines.Add($"SetBattleRecoveryInfo item usage: total={_recoveryTotalUseItem.ToString(CultureInfo.InvariantCulture)} (hp={_recoveryTotalUseHpItem.ToString(CultureInfo.InvariantCulture)}, mp={_recoveryTotalUseMpItem.ToString(CultureInfo.InvariantCulture)}, hp+mp={_recoveryTotalUseHpMpItem.ToString(CultureInfo.InvariantCulture)}), merit HP/MP={_recoveryMeritRateHp.ToString(CultureInfo.InvariantCulture)}/{_recoveryMeritRateMp.ToString(CultureInfo.InvariantCulture)}%, forecast/hour={_recoveryForecastUsePerHour.ToString(CultureInfo.InvariantCulture)}");
                     lines.Add($"SetBattleRecoveryInfo averages: HP req/apply={_recoveryAverageHpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageHpIncApply.ToString(CultureInfo.InvariantCulture)}, MP req/apply={_recoveryAverageMpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageMpIncApply.ToString(CultureInfo.InvariantCulture)}, merit HP/MP={_recoveryAverageMeritRateHp.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageMeritRateMp.ToString(CultureInfo.InvariantCulture)}%");

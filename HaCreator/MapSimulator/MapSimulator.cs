@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator
         private const int PetAutoSpeechLowHpAlertCooldownMs = 60000;
         private const int PetAutoSpeechPotionFailureMaxRepeats = 3;
         private const int MobFearEffectPulseCount = 5;
+        private const int DirectMobSkillAffectedAreaObjectIdBase = 1300000000;
         private const int LocalPlayerAffectedAreaObjectIdBase = 1700000000;
         private const int LocalPlayerAffectedAreaObjectIdMax = 1799999999;
         public int mapShiftX = 0;
@@ -21779,6 +21780,98 @@ namespace HaCreator.MapSimulator
                 Vector2 iconPosition = ResolveMobSkillIconPosition(mobItem);
                 _animationEffects?.AddOneTime(effectData.MobIconFrames, iconPosition.X, iconPosition.Y, false, currentTick, 1);
             }
+
+            ApplyDirectMobSkillTileArea(mobItem, skill, effectData, currentTick);
+        }
+
+        private void ApplyDirectMobSkillTileArea(MobItem mobItem, MobSkillEntry skill, MobSkillEffectData effectData, int currentTick)
+        {
+            if (_affectedAreaPool == null
+                || mobItem?.AI == null
+                || skill == null
+                || effectData?.HasTileAnimation != true)
+            {
+                return;
+            }
+
+            MobSkillRuntimeData runtimeData = ResolveMobSkillRuntimeData(skill.SkillId, skill.Level);
+            if (runtimeData == null || runtimeData.DurationMs <= 0)
+            {
+                return;
+            }
+
+            Rectangle area = CreateMobSkillArea(mobItem, runtimeData);
+            if (area.Width <= 0 || area.Height <= 0)
+            {
+                return;
+            }
+
+            int objectId = ResolveDirectMobSkillAffectedAreaObjectId(mobItem, skill, currentTick);
+            if (objectId <= 0)
+            {
+                return;
+            }
+
+            _affectedAreaPool.Upsert(
+                new AffectedAreaCreateInfo(
+                    objectId,
+                    type: 0,
+                    ownerId: Math.Max(1, mobItem.PoolId),
+                    skillId: skill.SkillId,
+                    skillLevel: Math.Max(1, skill.Level),
+                    worldBounds: area,
+                    startDelayUnits: 0,
+                    elementAttribute: runtimeData.ElementAttribute,
+                    phase: 0,
+                    sourceKind: AffectedAreaSourceKind.MobSkill,
+                    durationOverrideMs: runtimeData.DurationMs),
+                currentTick);
+        }
+
+        internal static int ResolveDirectMobSkillAffectedAreaObjectIdForTesting(
+            int mobPoolId,
+            int skillId,
+            int skillLevel,
+            int stateStartTime)
+        {
+            return ResolveDirectMobSkillAffectedAreaObjectIdCore(mobPoolId, skillId, skillLevel, stateStartTime);
+        }
+
+        private static int ResolveDirectMobSkillAffectedAreaObjectId(MobItem mobItem, MobSkillEntry skill, int currentTick)
+        {
+            if (mobItem?.AI == null || skill == null)
+            {
+                return 0;
+            }
+
+            int stateStartTime = currentTick - mobItem.AI.StateElapsed(currentTick);
+            return ResolveDirectMobSkillAffectedAreaObjectIdCore(
+                mobItem.PoolId,
+                skill.SkillId,
+                Math.Max(1, skill.Level),
+                stateStartTime);
+        }
+
+        private static int ResolveDirectMobSkillAffectedAreaObjectIdCore(
+            int mobPoolId,
+            int skillId,
+            int skillLevel,
+            int stateStartTime)
+        {
+            if (mobPoolId <= 0 || skillId <= 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + mobPoolId;
+                hash = hash * 31 + skillId;
+                hash = hash * 31 + Math.Max(1, skillLevel);
+                hash = hash * 31 + stateStartTime;
+                return DirectMobSkillAffectedAreaObjectIdBase + (hash & 0x0FFFFFFF);
+            }
         }
 
 
@@ -36638,8 +36731,8 @@ namespace HaCreator.MapSimulator
 
 
             // Set up flying-map flags from map info.
-            bool isFlyingMap = _mapBoard.MapInfo.fly == true;
-            bool requiresFlyingSkillForMap = _mapBoard.MapInfo.needSkillForFly == true;
+            bool isFlyingMap = FieldInteractionRestrictionEvaluator.IsFlyingMap(_mapBoard.MapInfo);
+            bool requiresFlyingSkillForMap = FieldInteractionRestrictionEvaluator.RequiresFlyingSkillForMap(_mapBoard.MapInfo);
             bool noLandingMap = !FieldInteractionRestrictionEvaluator.CanLandOnFoothold(_mapBoard.MapInfo);
             if (isFlyingMap)
             {
@@ -36806,8 +36899,8 @@ namespace HaCreator.MapSimulator
 
 
             // Set up flying map flags
-            bool isFlyingMap = _mapBoard.MapInfo.fly == true;
-            bool requiresFlyingSkillForMap = _mapBoard.MapInfo.needSkillForFly == true;
+            bool isFlyingMap = FieldInteractionRestrictionEvaluator.IsFlyingMap(_mapBoard.MapInfo);
+            bool requiresFlyingSkillForMap = FieldInteractionRestrictionEvaluator.RequiresFlyingSkillForMap(_mapBoard.MapInfo);
             bool noLandingMap = !FieldInteractionRestrictionEvaluator.CanLandOnFoothold(_mapBoard.MapInfo);
             _playerManager.SetFlyingMap(isFlyingMap, requiresFlyingSkillForMap);
             _playerManager.SetNoLandingMap(noLandingMap);

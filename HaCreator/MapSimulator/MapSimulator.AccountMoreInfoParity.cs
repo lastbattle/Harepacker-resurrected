@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator
                 HandlePacketOwnedAccountMoreInfoSaveRequested,
                 () => ClosePacketOwnedAccountMoreInfoOwner("CUIAccountMoreInfo cancel/close button closed UI owner 40."),
                 (field, delta) => _accountMoreInfoRuntime.AdjustField(field, delta),
+                (field, value) => _accountMoreInfoRuntime.SelectField(field, value),
                 index => _accountMoreInfoRuntime.TogglePlayStyle(index),
                 index => _accountMoreInfoRuntime.ToggleActivity(index));
         }

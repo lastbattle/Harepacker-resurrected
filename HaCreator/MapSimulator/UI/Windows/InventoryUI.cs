@@ -157,6 +157,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _tooltipIconTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
+        private readonly Dictionary<int, Texture2D> _rootEffectPreviewTextureCache = new();
         private readonly Dictionary<int, TooltipSampleUiFrame> _sampleUiFrameCache = new();
         private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
         private CharacterLoader _characterLoader;
@@ -2380,6 +2381,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] rewardPreviewTextures = HasDrawableBitmap(iconRewardTextures)
                 ? Array.Empty<Texture2D>()
                 : ResolveRewardPreviewTextures(slot.ItemId);
+            Texture2D rootEffectPreviewTexture = HasDrawableBitmap(iconRewardTextures) || HasDrawableBitmap(rewardPreviewTextures)
+                ? null
+                : ResolveRootEffectPreviewTexture(slot.ItemId);
             TooltipSampleUiFrame sampleUiFrame = sampleTexture == null
                 ? ResolveSampleUiFrame(slot.ItemId)
                 : null;
@@ -2449,6 +2453,7 @@ namespace HaCreator.MapSimulator.UI
             float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
             float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
             float rewardPreviewHeight = MeasureHorizontalBitmapStripHeight(rewardPreviewTextures);
+            float rootEffectPreviewHeight = rootEffectPreviewTexture?.Height ?? 0f;
             float bitmapPreviewHeight = sampleHeight;
             if (iconRewardHeight > 0f)
             {
@@ -2457,6 +2462,10 @@ namespace HaCreator.MapSimulator.UI
             else if (rewardPreviewHeight > 0f)
             {
                 bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + rewardPreviewHeight;
+            }
+            else if (rootEffectPreviewHeight > 0f)
+            {
+                bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + rootEffectPreviewHeight;
             }
 
             float bitmapPreviewGap = bitmapPreviewHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
@@ -2526,6 +2535,12 @@ namespace HaCreator.MapSimulator.UI
                     rewardPreviewTextures,
                     backgroundRect,
                     sampleY + sampleTexture.Height + TOOLTIP_BITMAP_GAP);
+                DrawCenteredTooltipBitmap(
+                    sprite,
+                    rootEffectPreviewTexture,
+                    backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (rootEffectPreviewTexture?.Width ?? 0)) / 2),
+                    sampleY + sampleTexture.Height + TOOLTIP_BITMAP_GAP,
+                    rootEffectPreviewTexture?.Width ?? 0);
             }
             else if (drawAuthoredSampleInFrame)
             {
@@ -2543,6 +2558,12 @@ namespace HaCreator.MapSimulator.UI
                     rewardPreviewTextures,
                     backgroundRect,
                     sampleY + (int)Math.Ceiling(sampleHeight) + TOOLTIP_BITMAP_GAP);
+                DrawCenteredTooltipBitmap(
+                    sprite,
+                    rootEffectPreviewTexture,
+                    backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (rootEffectPreviewTexture?.Width ?? 0)) / 2),
+                    sampleY + (int)Math.Ceiling(sampleHeight) + TOOLTIP_BITMAP_GAP,
+                    rootEffectPreviewTexture?.Width ?? 0);
             }
             else if (iconRewardHeight > 0f)
             {
@@ -2553,6 +2574,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 int rewardY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
                 DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, rewardY);
+            }
+            else if (rootEffectPreviewHeight > 0f)
+            {
+                int effectY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
+                int effectX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - rootEffectPreviewTexture.Width) / 2);
+                sprite.Draw(rootEffectPreviewTexture, new Vector2(effectX, effectY), Color.White);
             }
         }
 
@@ -2917,6 +2944,28 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] resolvedTextures = textures.ToArray();
             _rewardPreviewTextureCache[itemId] = resolvedTextures;
             return resolvedTextures;
+        }
+
+        private Texture2D ResolveRootEffectPreviewTexture(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_rootEffectPreviewTextureCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = null;
+            if (InventoryItemMetadataResolver.TryResolveRootEffectFirstCanvas(itemId, out WzCanvasProperty effectCanvas))
+            {
+                texture = effectCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+
+            _rootEffectPreviewTextureCache[itemId] = texture;
+            return texture;
         }
 
         private static bool HasDrawableBitmap(IReadOnlyList<Texture2D> textures)

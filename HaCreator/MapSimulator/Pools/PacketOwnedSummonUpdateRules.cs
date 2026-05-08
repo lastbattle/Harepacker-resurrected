@@ -44,7 +44,10 @@ namespace HaCreator.MapSimulator.Pools
                    && !summon.IsPendingRemoval
                    && summon.HitPeriodRemainingMs == 0
                    && registersAsPuppet
-                   && currentTime - summon.LastBodyContactTime >= bodyContactCooldownMs;
+                   && SummonRuntimeRules.HasClientTickElapsedAtLeast(
+                       currentTime,
+                       summon.LastBodyContactTime,
+                       bodyContactCooldownMs);
         }
 
         public static bool IsClientBodyAttackMobCandidate(
@@ -89,7 +92,7 @@ namespace HaCreator.MapSimulator.Pools
                 return Vector2.Zero;
             }
 
-            float elapsedSeconds = Math.Max(0f, (currentTime - summon.StartTime) / 1000f);
+            float elapsedSeconds = SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, summon.StartTime) / 1000f;
             Vector2 resolvedOwnerPosition = ownerPosition ?? new Vector2(summon.AnchorX, summon.AnchorY);
             SummonMovementStyle movementStyle = ResolveEffectiveMovementStyle(summon);
 
@@ -601,7 +604,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return spawnDuration > 0
-                   && currentTime - summon.StartTime < spawnDuration;
+                   && SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, summon.StartTime) < spawnDuration;
         }
 
         private static float MoveTowards(float current, float target, float maxDelta)

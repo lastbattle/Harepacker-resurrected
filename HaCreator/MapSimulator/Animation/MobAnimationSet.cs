@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator.Animation
             public int RangeRadius { get; set; }
             public int EffectAfter { get; set; }
             public int AttackAfter { get; set; }
+            public bool HasAttackAfterMetadata { get; set; }
             public int RandDelayAttack { get; set; }
             public int AreaCount { get; set; }
             public int AttackCount { get; set; }

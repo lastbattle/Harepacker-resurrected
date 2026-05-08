@@ -238,6 +238,44 @@ namespace HaCreator.MapSimulator.Fields
             return GetLandingRestrictionMessage(mapInfo) == null;
         }
 
+        public static bool IsFlyingMap(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "fly", GetMapleBoolValue(mapInfo?.fly)) == true;
+        }
+
+        public static bool RequiresFlyingSkillForMap(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "needSkillForFly", GetMapleBoolValue(mapInfo?.needSkillForFly)) == true;
+        }
+
+        public static string GetFlyingMapEntryMessage(MapInfo mapInfo)
+        {
+            return IsFlyingMap(mapInfo)
+                ? "Flying-map movement metadata is active in this map."
+                : null;
+        }
+
+        public static string GetNeedSkillForFlyEntryMessage(MapInfo mapInfo)
+        {
+            return RequiresFlyingSkillForMap(mapInfo)
+                ? "Flying-map movement requires the WZ-authored flight skill gate."
+                : null;
+        }
+
+        public static string GetZakumJumpQuestMoveCheckEntryMessage(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "zakum2Hack", GetMapleBoolValue(mapInfo?.zakum2Hack)) == true
+                ? "Zakum jump-quest movement-check metadata is active in this map."
+                : null;
+        }
+
+        public static string GetAllMoveCheckEntryMessage(MapInfo mapInfo)
+        {
+            return ResolveInfoBool(mapInfo, "allMoveCheck", GetMapleBoolValue(mapInfo?.allMoveCheck)) == true
+                ? "All-move movement-check metadata is active in this map."
+                : null;
+        }
+
         public static string GetActiveSkillCancelRestrictionMessage(MapInfo mapInfo)
         {
             return IsInfoFlagSetWithCopiedBranchFallback(mapInfo, "noCancelSkill")
@@ -790,6 +828,10 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetLandingRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetFlyingMapEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetNeedSkillForFlyEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetZakumJumpQuestMoveCheckEntryMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetAllMoveCheckEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, GetActiveSkillCancelRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetLevelLimitEntryMessage(mapInfo));
             AddFieldEntryMessage(messages, FieldEntryRestrictionEvaluator.GetPartyOnlyEntryMessage(mapInfo));

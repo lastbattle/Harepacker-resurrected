@@ -553,13 +553,15 @@ namespace HaCreator.MapSimulator.Pools
                 = Array.Empty<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
             public List<RemoteActiveEffectMotionBlurSnapshot> Snapshots { get; } = new();
             private int _simulatedOverlaySnapshotRefCount;
-            private readonly Dictionary<(AvatarRenderLayer Layer, int HandleId), int> _simulatedLayerSnapshotRefCounts = new();
+            private readonly Dictionary<int, int> _simulatedLayerOwnerRefCountsByHandle = new();
+            private readonly Dictionary<int, int> _simulatedLayerSnapshotRefCountsByHandle = new();
 
             public void CaptureRegisteredLayerReferences()
             {
                 SimulatedOverlayLayerHandleRefCount = SimulatedOverlayLayerHandleId > 0 ? 1 : 0;
                 _simulatedOverlaySnapshotRefCount = 0;
-                _simulatedLayerSnapshotRefCounts.Clear();
+                _simulatedLayerOwnerRefCountsByHandle.Clear();
+                _simulatedLayerSnapshotRefCountsByHandle.Clear();
                 var operations = new List<AnimationEffects.SecondaryMotionBlurLayerReferenceOperation>();
                 if (SimulatedOverlayLayerHandleId > 0)
                 {
@@ -573,11 +575,8 @@ namespace HaCreator.MapSimulator.Pools
                     .Where(static entry => entry.Value > 0)
                     .ToDictionary(static entry => entry.Key, static entry => entry.Value)
                     ?? new Dictionary<AvatarRenderLayer, int>();
-                SimulatedLayerHandleRefCounts = SimulatedLayerHandleIds?
-                    .Where(static entry => entry.Value > 0)
-                    .ToDictionary(static entry => entry.Key, static _ => 1)
-                    ?? new Dictionary<AvatarRenderLayer, int>();
-                foreach ((AvatarRenderLayer layer, int handleId) in SimulatedLayerHandleIds)
+                SimulatedLayerHandleRefCounts = ResolveRemoteActiveEffectMotionBlurLayerHandleRefCounts(SimulatedLayerHandleIds);
+                foreach ((AvatarRenderLayer layer, int handleId) in EnumerateRemoteActiveEffectMotionBlurLayerCopyOrder(SimulatedLayerHandleIds))
                 {
                     operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.CaptureOwnerReference(
                         (int)layer,
@@ -613,7 +612,8 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (SimulatedLayerHandleRefCounts != null)
                 {
-                    foreach ((AvatarRenderLayer layer, int refCount) in SimulatedLayerHandleRefCounts)
+                    var remainingOwnerRefCountsByHandle = new Dictionary<int, int>(_simulatedLayerOwnerRefCountsByHandle);
+                    foreach ((AvatarRenderLayer layer, int refCount) in EnumerateRemoteActiveEffectMotionBlurLayerCopyOrder(SimulatedLayerHandleRefCounts))
                     {
                         if (refCount <= 0
                             || SimulatedLayerHandleIds == null
@@ -623,12 +623,28 @@ namespace HaCreator.MapSimulator.Pools
                             continue;
                         }
 
+                        remainingOwnerRefCountsByHandle.TryGetValue(handleId, out int remainingRefCount);
+                        remainingRefCount = Math.Max(0, remainingRefCount - 1);
+                        if (remainingRefCount > 0)
+                        {
+                            remainingOwnerRefCountsByHandle[handleId] = remainingRefCount;
+                        }
+                        else
+                        {
+                            remainingOwnerRefCountsByHandle.Remove(handleId);
+                        }
+
                         operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.ReleaseOwnerReference(
                             (int)layer,
-                            handleId));
+                            handleId,
+                            remainingRefCount
+                            + (_simulatedLayerSnapshotRefCountsByHandle.TryGetValue(handleId, out int snapshotRefCount)
+                                ? snapshotRefCount
+                                : 0)));
                     }
                 }
 
+                _simulatedLayerOwnerRefCountsByHandle.Clear();
                 SimulatedOverlayLayerHandleRefCount = 0;
                 SimulatedLayerHandleRefCounts = SimulatedLayerHandleRefCounts?
                     .ToDictionary(static entry => entry.Key, static _ => 0)
@@ -658,9 +674,8 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (snapshot.Layers != null)
                 {
-                    for (int i = 0; i < snapshot.Layers.Count; i++)
+                    foreach (RemoteActiveEffectMotionBlurLayerSnapshot layer in EnumerateRemoteActiveEffectMotionBlurLayerSnapshotCopyOrder(snapshot.Layers))
                     {
-                        RemoteActiveEffectMotionBlurLayerSnapshot layer = snapshot.Layers[i];
                         if (layer == null)
                         {
                             continue;
@@ -669,27 +684,23 @@ namespace HaCreator.MapSimulator.Pools
                         if (layer.SimulatedLayerHandleId > 0 && layer.SimulatedLayerHandleRefCount > 1)
                         {
                             int remainingSnapshotRefCount = 0;
-                            var snapshotRefKey = (Layer: layer.SourceLayer, HandleId: layer.SimulatedLayerHandleId);
-                            if (_simulatedLayerSnapshotRefCounts.TryGetValue(snapshotRefKey, out int existingSnapshotRefCount))
+                            if (_simulatedLayerSnapshotRefCountsByHandle.TryGetValue(layer.SimulatedLayerHandleId, out int existingSnapshotRefCount))
                             {
                                 remainingSnapshotRefCount = Math.Max(0, existingSnapshotRefCount - 1);
                                 if (remainingSnapshotRefCount > 0)
                                 {
-                                    _simulatedLayerSnapshotRefCounts[snapshotRefKey] = remainingSnapshotRefCount;
+                                    _simulatedLayerSnapshotRefCountsByHandle[layer.SimulatedLayerHandleId] = remainingSnapshotRefCount;
                                 }
                                 else
                                 {
-                                    _simulatedLayerSnapshotRefCounts.Remove(snapshotRefKey);
+                                    _simulatedLayerSnapshotRefCountsByHandle.Remove(layer.SimulatedLayerHandleId);
                                 }
                             }
 
                             operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
                                 (int)layer.SourceLayer,
                                 layer.SimulatedLayerHandleId,
-                                SimulatedLayerHandleRefCounts != null
-                                    && SimulatedLayerHandleRefCounts.TryGetValue(layer.SourceLayer, out int ownerRefCount)
-                                    ? ownerRefCount + remainingSnapshotRefCount
-                                    : remainingSnapshotRefCount));
+                                ResolveRemoteActiveEffectMotionBlurOwnerLayerHandleRefCount(layer.SimulatedLayerHandleId) + remainingSnapshotRefCount));
                         }
 
                         if (layer.SimulatedSnapshotLayerHandleId > 0)
@@ -737,9 +748,8 @@ namespace HaCreator.MapSimulator.Pools
                     return operations;
                 }
 
-                for (int i = 0; i < layerSnapshots.Count; i++)
+                foreach (RemoteActiveEffectMotionBlurLayerSnapshot snapshot in EnumerateRemoteActiveEffectMotionBlurLayerSnapshotCopyOrder(layerSnapshots))
                 {
-                    RemoteActiveEffectMotionBlurLayerSnapshot snapshot = layerSnapshots[i];
                     if (snapshot == null)
                     {
                         continue;
@@ -748,14 +758,10 @@ namespace HaCreator.MapSimulator.Pools
                     int layerCode = (int)snapshot.SourceLayer;
                     if (snapshot.SimulatedLayerHandleId > 0)
                     {
-                        var snapshotRefKey = (Layer: snapshot.SourceLayer, HandleId: snapshot.SimulatedLayerHandleId);
-                        _simulatedLayerSnapshotRefCounts.TryGetValue(snapshotRefKey, out int snapshotRefCount);
+                        _simulatedLayerSnapshotRefCountsByHandle.TryGetValue(snapshot.SimulatedLayerHandleId, out int snapshotRefCount);
                         snapshotRefCount++;
-                        _simulatedLayerSnapshotRefCounts[snapshotRefKey] = snapshotRefCount;
-                        int ownerRefCount = SimulatedLayerHandleRefCounts != null
-                            && SimulatedLayerHandleRefCounts.TryGetValue(snapshot.SourceLayer, out int resolvedOwnerRefCount)
-                            ? resolvedOwnerRefCount
-                            : 0;
+                        _simulatedLayerSnapshotRefCountsByHandle[snapshot.SimulatedLayerHandleId] = snapshotRefCount;
+                        int ownerRefCount = ResolveRemoteActiveEffectMotionBlurOwnerLayerHandleRefCount(snapshot.SimulatedLayerHandleId);
                         operations.Add(AnimationEffects.SecondaryMotionBlurLayerReferenceOperation.CopySnapshotReference(
                             layerCode,
                             snapshot.SimulatedLayerHandleId,
@@ -783,6 +789,39 @@ namespace HaCreator.MapSimulator.Pools
                     .Concat(operations)
                     .ToArray();
                 return operations;
+            }
+
+            private int ResolveRemoteActiveEffectMotionBlurOwnerLayerHandleRefCount(int handleId)
+            {
+                return handleId > 0
+                    && _simulatedLayerOwnerRefCountsByHandle.TryGetValue(handleId, out int refCount)
+                    ? refCount
+                    : 0;
+            }
+
+            private IReadOnlyDictionary<AvatarRenderLayer, int> ResolveRemoteActiveEffectMotionBlurLayerHandleRefCounts(
+                IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+            {
+                var refCountsByLayer = new Dictionary<AvatarRenderLayer, int>();
+                if (layerHandleIds == null || layerHandleIds.Count == 0)
+                {
+                    return refCountsByLayer;
+                }
+
+                foreach ((AvatarRenderLayer layer, int handleId) in EnumerateRemoteActiveEffectMotionBlurLayerCopyOrder(layerHandleIds))
+                {
+                    if (handleId <= 0)
+                    {
+                        continue;
+                    }
+
+                    _simulatedLayerOwnerRefCountsByHandle.TryGetValue(handleId, out int refCount);
+                    refCount++;
+                    _simulatedLayerOwnerRefCountsByHandle[handleId] = refCount;
+                    refCountsByLayer[layer] = refCount;
+                }
+
+                return refCountsByLayer;
             }
         }
 
@@ -4968,13 +5007,9 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static bool ShouldAttachRemotePacketOwnedStringEffectForParity(RemoteUserEffectSubtype? subtype)
         {
-            // CUser::OnEffect uses packet-time world anchors for:
-            // - case 20 (ReservedEffect): Effect_Reserved(x,y)
-            // - case 25 (StringEffect): Effect_General(..., x, y, ...)
-            // - case 26 (ItemSoundStringEffect): Effect_General(..., x, y, ...)
-            // Keep those detached from live vecctrl follow.
+            // CUser::OnEffect case 20 and case 26 snapshot x/y into the
+            // animation call. Cases 24 and 25 pass the live user vecctrl.
             return subtype != RemoteUserEffectSubtype.ReservedEffect
-                && subtype != RemoteUserEffectSubtype.StringEffect
                 && subtype != RemoteUserEffectSubtype.ItemSoundStringEffect;
         }
 
@@ -4988,7 +5023,6 @@ namespace HaCreator.MapSimulator.Pools
             Vector2? ownerPosition)
         {
             if (packet.KnownSubtype != RemoteUserEffectSubtype.ReservedEffect
-                && packet.KnownSubtype != RemoteUserEffectSubtype.StringEffect
                 && packet.KnownSubtype != RemoteUserEffectSubtype.ItemSoundStringEffect)
             {
                 return null;
@@ -5838,7 +5872,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int elapsed = Math.Max(0, currentTime - prepared.StartTime);
+            int elapsed = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, prepared.StartTime);
             if (prepared.AutoEnterHold)
             {
                 if (prepared.PrepareDurationMs > 0 && elapsed < prepared.PrepareDurationMs)
@@ -6138,7 +6172,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            elapsedMs = Math.Max(0, currentTime - actor.RemoteDragonAttackStartTime);
+            elapsedMs = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, actor.RemoteDragonAttackStartTime);
             if (!timeline.Loop
                 && timeline.TotalDurationMs > 0
                 && elapsedMs >= timeline.TotalDurationMs)
@@ -6256,7 +6290,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            elapsedMs = Math.Max(0, currentTime - actor.RemoteDragonAttackStartTime);
+            elapsedMs = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, actor.RemoteDragonAttackStartTime);
             if (!timeline.Loop
                 && timeline.TotalDurationMs > 0
                 && elapsedMs >= timeline.TotalDurationMs)
@@ -6341,7 +6375,7 @@ namespace HaCreator.MapSimulator.Pools
                     : int.MinValue;
             }
 
-            return Math.Max(0, currentTime - dragon.ActionStartTime);
+            return ResolveRemoteTemporaryStatTickElapsedMs(currentTime, dragon.ActionStartTime);
         }
 
         private static Vector2 ResolveRemoteDragonCompanionVisualAnchor(
@@ -6362,7 +6396,7 @@ namespace HaCreator.MapSimulator.Pools
                 return dragon.VisualAnchor;
             }
 
-            int elapsedMs = Math.Max(0, currentTime - dragon.LastFollowUpdateTime);
+            int elapsedMs = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, dragon.LastFollowUpdateTime);
             dragon.LastFollowUpdateTime = currentTime;
             if (elapsedMs <= 0)
             {
@@ -6546,7 +6580,7 @@ namespace HaCreator.MapSimulator.Pools
                 return prepared.DragonVisualAnchor;
             }
 
-            int elapsedMs = Math.Max(0, currentTime - prepared.DragonLastFollowUpdateTime);
+            int elapsedMs = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, prepared.DragonLastFollowUpdateTime);
             prepared.DragonLastFollowUpdateTime = currentTime;
             if (elapsedMs <= 0)
             {
@@ -7168,7 +7202,7 @@ namespace HaCreator.MapSimulator.Pools
                     : int.MinValue;
             }
 
-            return Math.Max(0, currentTime - prepared.DragonActionStartTime);
+            return ResolveRemoteTemporaryStatTickElapsedMs(currentTime, prepared.DragonActionStartTime);
         }
 
         private static int ResolveRemoteDragonPhaseStartTime(RemotePreparedSkillState prepared, bool isHolding)
@@ -9466,6 +9500,51 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return 2;
+        }
+
+        private static IEnumerable<KeyValuePair<AvatarRenderLayer, int>> EnumerateRemoteActiveEffectMotionBlurLayerCopyOrder(
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            if (layerHandleIds == null || layerHandleIds.Count == 0)
+            {
+                yield break;
+            }
+
+            var emitted = new HashSet<AvatarRenderLayer>();
+            for (int i = 0; i < RemoteActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = RemoteActiveEffectMotionBlurLayerCaptureOrder[i];
+                if (layerHandleIds.TryGetValue(layer, out int handleId))
+                {
+                    emitted.Add(layer);
+                    yield return new KeyValuePair<AvatarRenderLayer, int>(layer, handleId);
+                }
+            }
+
+            foreach ((AvatarRenderLayer layer, int handleId) in layerHandleIds.OrderBy(static entry => (int)entry.Key))
+            {
+                if (emitted.Add(layer))
+                {
+                    yield return new KeyValuePair<AvatarRenderLayer, int>(layer, handleId);
+                }
+            }
+        }
+
+        private static IEnumerable<RemoteActiveEffectMotionBlurLayerSnapshot> EnumerateRemoteActiveEffectMotionBlurLayerSnapshotCopyOrder(
+            IReadOnlyList<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots)
+        {
+            if (layerSnapshots == null || layerSnapshots.Count == 0)
+            {
+                yield break;
+            }
+
+            foreach (RemoteActiveEffectMotionBlurLayerSnapshot snapshot in layerSnapshots
+                         .Where(static snapshot => snapshot != null)
+                         .OrderBy(static snapshot => snapshot.SourceLayerCaptureOrder)
+                         .ThenBy(static snapshot => Array.IndexOf(RemoteActiveEffectMotionBlurLayerCaptureOrder, snapshot.SourceLayer)))
+            {
+                yield return snapshot;
+            }
         }
 
         private static int ResolveRemoteActiveEffectMotionBlurCopiedOverlayLayerHandleRefCount(
@@ -13547,7 +13626,18 @@ namespace HaCreator.MapSimulator.Pools
                     shiftCadenceUpdateCount),
                 startAlpha: tailStartAlpha,
                 endAlpha: 0f);
+            tailState.RecordShiftAffectedSkillAnimationMutation(
+                ResolveRemoteTemporaryStatAffectedLayerAlphaByte(tailStartAlpha),
+                alphaEnd: 0,
+                movesTailToHead: true,
+                forcedShift: ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(previousState, currentState),
+                shiftCadenceUpdateCount);
             return true;
+        }
+
+        private static int ResolveRemoteTemporaryStatAffectedLayerAlphaByte(float alpha)
+        {
+            return MathHelper.Clamp((int)MathF.Round(alpha * 255f), 0, 255);
         }
 
         private static int ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(

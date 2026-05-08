@@ -48,10 +48,13 @@ namespace HaCreator.MapSimulator.UI
         };
 
         private readonly string _windowName;
+        private readonly Dictionary<AccountMoreInfoEditableField, Rectangle> _comboBounds = new();
+        private readonly Dictionary<int, Rectangle> _comboOptionBounds = new();
         private Func<AccountMoreInfoOwnerSnapshot> _snapshotProvider;
         private Action _saveRequested;
         private Action _cancelRequested;
         private Action<AccountMoreInfoEditableField, int> _fieldAdjusted;
+        private Action<AccountMoreInfoEditableField, int> _fieldSelected;
         private Action<int> _playStyleToggled;
         private Action<int> _activityToggled;
         private UIObject _okButton;
@@ -67,6 +70,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _checkboxCheckedHoverTexture;
         private Texture2D _fallbackPixelTexture;
         private MouseState _currentMouseState;
+        private bool _comboExpanded;
+        private AccountMoreInfoEditableField _expandedComboField;
 
         internal AccountMoreInfoWindow(IDXObject frame, string windowName)
             : base(frame)
@@ -85,12 +90,14 @@ namespace HaCreator.MapSimulator.UI
             Action saveRequested,
             Action cancelRequested,
             Action<AccountMoreInfoEditableField, int> fieldAdjusted,
+            Action<AccountMoreInfoEditableField, int> fieldSelected,
             Action<int> playStyleToggled,
             Action<int> activityToggled)
         {
             _saveRequested = saveRequested;
             _cancelRequested = cancelRequested;
             _fieldAdjusted = fieldAdjusted;
+            _fieldSelected = fieldSelected;
             _playStyleToggled = playStyleToggled;
             _activityToggled = activityToggled;
         }
@@ -183,16 +190,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AccountMoreInfoOwnerSnapshot snapshot = GetSnapshot();
-            DrawComboBox(sprite, AreaGroupRect, ResolveComboBoxDisplayText(snapshot.AreaGroupText, snapshot.AreaGroup), false);
-            DrawComboBox(sprite, AreaDetailRect, ResolveComboBoxDisplayText(snapshot.AreaDetailText, snapshot.AreaDetail), false);
+            DrawComboBox(sprite, AccountMoreInfoEditableField.AreaGroup, AreaGroupRect, ResolveComboBoxDisplayText(snapshot.AreaGroupText, snapshot.AreaGroup), false);
+            DrawComboBox(sprite, AccountMoreInfoEditableField.AreaDetail, AreaDetailRect, ResolveComboBoxDisplayText(snapshot.AreaDetailText, snapshot.AreaDetail), false);
 
-            DrawComboBox(sprite, BirthYearRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthYear), false);
-            DrawComboBox(sprite, BirthMonthRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthMonth), false);
-            DrawComboBox(sprite, BirthDayRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthDay), false);
+            DrawComboBox(sprite, AccountMoreInfoEditableField.BirthYear, BirthYearRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthYear), false);
+            DrawComboBox(sprite, AccountMoreInfoEditableField.BirthMonth, BirthMonthRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthMonth), false);
+            DrawComboBox(sprite, AccountMoreInfoEditableField.BirthDay, BirthDayRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthDay), false);
 
             DrawCheckboxGrid(sprite, snapshot.PlayStyleLabels, snapshot.PlayStyleSelections, PlayStyleCheckboxPositions);
 
             DrawCheckboxGrid(sprite, snapshot.ActivityLabels, snapshot.ActivitySelections, ActivityCheckboxPositions);
+            DrawExpandedComboBoxOptions(sprite, snapshot);
         }
 
         private AccountMoreInfoOwnerSnapshot GetSnapshot()
@@ -210,9 +218,10 @@ namespace HaCreator.MapSimulator.UI
             return Managers.AccountMoreInfoRuntime.ResolveRegionComboText(fallbackCode);
         }
 
-        private void DrawComboBox(SpriteBatch sprite, Rectangle bounds, string value, bool disabled)
+        private void DrawComboBox(SpriteBatch sprite, AccountMoreInfoEditableField field, Rectangle bounds, string value, bool disabled)
         {
             Rectangle absoluteBounds = Translate(bounds);
+            _comboBounds[field] = absoluteBounds;
             if (_comboBoxLeftTexture != null && _comboBoxMiddleTexture != null && _comboBoxButtonTexture != null)
             {
                 sprite.Draw(_comboBoxLeftTexture, new Vector2(absoluteBounds.X, absoluteBounds.Y), disabled ? Color.Gray : Color.White);
@@ -243,6 +252,53 @@ namespace HaCreator.MapSimulator.UI
                 disabled ? new Color(140, 140, 140) : new Color(35, 35, 35),
                 SmallTextScale,
                 Math.Max(10f, absoluteBounds.Width - 24f));
+        }
+
+        private void DrawExpandedComboBoxOptions(SpriteBatch sprite, AccountMoreInfoOwnerSnapshot snapshot)
+        {
+            if (!_comboExpanded || sprite == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<AccountMoreInfoComboItem> items = ResolveComboItems(snapshot, _expandedComboField);
+            if (items.Count == 0 || !_comboBounds.TryGetValue(_expandedComboField, out Rectangle comboBounds))
+            {
+                _comboOptionBounds.Clear();
+                return;
+            }
+
+            Texture2D fallbackPixel = GetFallbackPixelTexture(sprite.GraphicsDevice);
+            if (fallbackPixel == null)
+            {
+                return;
+            }
+
+            int selectedIndex = ResolveSelectedComboIndex(items, ResolveComboSelectedValue(snapshot, _expandedComboField));
+            (int startIndex, int count) = ResolveVisibleComboItemRangeForTesting(items.Count, selectedIndex, ClientComboBoxMaxShownItems);
+            RebuildComboBoxOptionBounds(comboBounds, startIndex, count);
+            for (int visibleIndex = 0; visibleIndex < count; visibleIndex++)
+            {
+                int itemIndex = startIndex + visibleIndex;
+                if (!_comboOptionBounds.TryGetValue(itemIndex, out Rectangle optionBounds))
+                {
+                    continue;
+                }
+
+                bool selected = itemIndex == selectedIndex;
+                sprite.Draw(fallbackPixel, optionBounds, selected ? ClientComboBoxFocusedBackColor : ClientComboBoxBackColor);
+                sprite.Draw(fallbackPixel, new Rectangle(optionBounds.X, optionBounds.Y, optionBounds.Width, 1), ClientComboBoxBorderColor);
+                sprite.Draw(fallbackPixel, new Rectangle(optionBounds.X, optionBounds.Bottom - 1, optionBounds.Width, 1), ClientComboBoxBorderColor);
+                sprite.Draw(fallbackPixel, new Rectangle(optionBounds.X, optionBounds.Y, 1, optionBounds.Height), ClientComboBoxBorderColor);
+                sprite.Draw(fallbackPixel, new Rectangle(optionBounds.Right - 1, optionBounds.Y, 1, optionBounds.Height), ClientComboBoxBorderColor);
+                DrawWindowText(
+                    sprite,
+                    items[itemIndex].Text,
+                    new Vector2(optionBounds.X + 6, optionBounds.Y + ClientComboBoxTextOffsetY),
+                    new Color(35, 35, 35),
+                    SmallTextScale,
+                    Math.Max(10f, optionBounds.Width - 12f));
+            }
         }
 
         private void DrawClientComboBoxFallback(SpriteBatch sprite, Rectangle bounds, bool disabled)
@@ -338,6 +394,33 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboard)
         {
+            if (_comboExpanded)
+            {
+                if (WasPressed(keyboard, Keys.Escape))
+                {
+                    _comboExpanded = false;
+                    return;
+                }
+
+                if (WasPressed(keyboard, Keys.Up))
+                {
+                    _fieldAdjusted?.Invoke(_expandedComboField, -1);
+                    return;
+                }
+
+                if (WasPressed(keyboard, Keys.Down))
+                {
+                    _fieldAdjusted?.Invoke(_expandedComboField, 1);
+                    return;
+                }
+
+                if (WasPressed(keyboard, Keys.Enter))
+                {
+                    _comboExpanded = false;
+                    return;
+                }
+            }
+
             if (WasPressed(keyboard, Keys.Enter))
             {
                 _saveRequested?.Invoke();
@@ -405,6 +488,34 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleMouseClick(int mouseX, int mouseY, int direction)
         {
+            if (_comboExpanded)
+            {
+                if (direction > 0)
+                {
+                    foreach (KeyValuePair<int, Rectangle> optionBounds in _comboOptionBounds)
+                    {
+                        if (!optionBounds.Value.Contains(mouseX, mouseY))
+                        {
+                            continue;
+                        }
+
+                        IReadOnlyList<AccountMoreInfoComboItem> items = ResolveComboItems(GetSnapshot(), _expandedComboField);
+                        if (optionBounds.Key >= 0 && optionBounds.Key < items.Count)
+                        {
+                            _fieldSelected?.Invoke(_expandedComboField, items[optionBounds.Key].Value);
+                        }
+
+                        _comboExpanded = false;
+                        return;
+                    }
+                }
+
+                if (!IsMouseInsideExpandedCombo(mouseX, mouseY))
+                {
+                    _comboExpanded = false;
+                }
+            }
+
             if (TryAdjustField(mouseX, mouseY, direction))
             {
                 return;
@@ -448,35 +559,151 @@ namespace HaCreator.MapSimulator.UI
 
             if (Translate(AreaGroupRect).Contains(mouseX, mouseY))
             {
-                _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.AreaGroup, direction);
+                HandleComboBoxClick(AccountMoreInfoEditableField.AreaGroup, direction);
                 return true;
             }
 
             if (Translate(AreaDetailRect).Contains(mouseX, mouseY))
             {
-                _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.AreaDetail, direction);
+                HandleComboBoxClick(AccountMoreInfoEditableField.AreaDetail, direction);
                 return true;
             }
 
             if (Translate(BirthYearRect).Contains(mouseX, mouseY))
             {
-                _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthYear, direction);
+                HandleComboBoxClick(AccountMoreInfoEditableField.BirthYear, direction);
                 return true;
             }
 
             if (Translate(BirthMonthRect).Contains(mouseX, mouseY))
             {
-                _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthMonth, direction);
+                HandleComboBoxClick(AccountMoreInfoEditableField.BirthMonth, direction);
                 return true;
             }
 
             if (Translate(BirthDayRect).Contains(mouseX, mouseY))
             {
-                _fieldAdjusted?.Invoke(AccountMoreInfoEditableField.BirthDay, direction);
+                HandleComboBoxClick(AccountMoreInfoEditableField.BirthDay, direction);
                 return true;
             }
 
             return false;
+        }
+
+        private void HandleComboBoxClick(AccountMoreInfoEditableField field, int direction)
+        {
+            if (direction > 0)
+            {
+                _expandedComboField = field;
+                _comboExpanded = !_comboExpanded || _expandedComboField != field;
+                return;
+            }
+
+            _comboExpanded = false;
+            _fieldAdjusted?.Invoke(field, direction);
+        }
+
+        private bool IsMouseInsideExpandedCombo(int mouseX, int mouseY)
+        {
+            if (_comboBounds.TryGetValue(_expandedComboField, out Rectangle comboBounds)
+                && comboBounds.Contains(mouseX, mouseY))
+            {
+                return true;
+            }
+
+            foreach (Rectangle optionBounds in _comboOptionBounds.Values)
+            {
+                if (optionBounds.Contains(mouseX, mouseY))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void RebuildComboBoxOptionBounds(Rectangle comboBounds, int startIndex, int count)
+        {
+            _comboOptionBounds.Clear();
+            for (int visibleIndex = 0; visibleIndex < count; visibleIndex++)
+            {
+                int itemIndex = startIndex + visibleIndex;
+                _comboOptionBounds[itemIndex] = new Rectangle(
+                    comboBounds.X,
+                    comboBounds.Bottom + (visibleIndex * comboBounds.Height),
+                    comboBounds.Width,
+                    comboBounds.Height);
+            }
+        }
+
+        internal static (int StartIndex, int Count) ResolveVisibleComboItemRangeForTesting(
+            int itemCount,
+            int selectedIndex,
+            int maxShownItems)
+        {
+            if (itemCount <= 0 || maxShownItems <= 0)
+            {
+                return (0, 0);
+            }
+
+            int count = Math.Min(itemCount, maxShownItems);
+            int safeSelectedIndex = Math.Clamp(selectedIndex, 0, itemCount - 1);
+            int startIndex = Math.Clamp(safeSelectedIndex - (count / 2), 0, itemCount - count);
+            return (startIndex, count);
+        }
+
+        private static int ResolveSelectedComboIndex(IReadOnlyList<AccountMoreInfoComboItem> items, int selectedValue)
+        {
+            if (items == null)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (items[i].Value == selectedValue)
+                {
+                    return i;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int ResolveComboSelectedValue(AccountMoreInfoOwnerSnapshot snapshot, AccountMoreInfoEditableField field)
+        {
+            if (snapshot == null)
+            {
+                return 0;
+            }
+
+            return field switch
+            {
+                AccountMoreInfoEditableField.AreaGroup => snapshot.AreaGroup,
+                AccountMoreInfoEditableField.AreaDetail => snapshot.AreaDetail,
+                AccountMoreInfoEditableField.BirthYear => snapshot.BirthYear,
+                AccountMoreInfoEditableField.BirthMonth => snapshot.BirthMonth,
+                AccountMoreInfoEditableField.BirthDay => snapshot.BirthDay,
+                _ => 0
+            };
+        }
+
+        private static IReadOnlyList<AccountMoreInfoComboItem> ResolveComboItems(AccountMoreInfoOwnerSnapshot snapshot, AccountMoreInfoEditableField field)
+        {
+            if (snapshot == null)
+            {
+                return Array.Empty<AccountMoreInfoComboItem>();
+            }
+
+            return field switch
+            {
+                AccountMoreInfoEditableField.AreaGroup => snapshot.AreaGroupItems ?? Array.Empty<AccountMoreInfoComboItem>(),
+                AccountMoreInfoEditableField.AreaDetail => snapshot.AreaDetailItems ?? Array.Empty<AccountMoreInfoComboItem>(),
+                AccountMoreInfoEditableField.BirthYear => snapshot.BirthYearItems ?? Array.Empty<AccountMoreInfoComboItem>(),
+                AccountMoreInfoEditableField.BirthMonth => snapshot.BirthMonthItems ?? Array.Empty<AccountMoreInfoComboItem>(),
+                AccountMoreInfoEditableField.BirthDay => snapshot.BirthDayItems ?? Array.Empty<AccountMoreInfoComboItem>(),
+                _ => Array.Empty<AccountMoreInfoComboItem>()
+            };
         }
 
         private Rectangle Translate(Rectangle relativeBounds)

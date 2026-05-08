@@ -231,6 +231,7 @@ namespace HaCreator.MapSimulator.Fields
         private MemoryGamePromptState _pendingPrompt;
         private string _statusMessageBeforePrompt;
         private Action _readyClickSoundCallback;
+        private Action _participantEnterSoundCallback;
         private bool _localTieRequestSent;
         private bool _localTieRequestSentThisTurn;
         private bool _localGiveUpRequestSent;
@@ -464,6 +465,11 @@ namespace HaCreator.MapSimulator.Fields
         public void SetReadyClickSoundCallback(Action callback)
         {
             _readyClickSoundCallback = callback;
+        }
+
+        public void SetParticipantEnterSoundCallback(Action callback)
+        {
+            _participantEnterSoundCallback = callback;
         }
 
 
@@ -1782,6 +1788,7 @@ namespace HaCreator.MapSimulator.Fields
             string seatDescription = slot < 2 ? ResolveSeatLabel(slot) : $"Visitor seat {slot}";
             _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {participant.Name} entered the Match Cards room ({seatDescription}).");
             SyncMiniRoomRuntime();
+            _participantEnterSoundCallback?.Invoke();
             message = $"{participant.Name} entered MiniRoom slot {slot} with job {participant.JobCode}.";
             return true;
         }

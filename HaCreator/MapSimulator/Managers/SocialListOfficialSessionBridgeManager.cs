@@ -52,6 +52,11 @@ namespace HaCreator.MapSimulator.Managers
         public const ushort ClientFriendResultOpcode = 65;
         public const ushort ClientGuildResultOpcode = 67;
         public const ushort ClientAllianceResultOpcode = 68;
+        public const ushort ClientBlacklistRequestOpcode = 144;
+        public const ushort ClientPartyRequestOpcode = 145;
+        public const ushort ClientGuildRequestOpcode = 149;
+        public const ushort ClientFriendRequestOpcode = 153;
+        public const ushort ClientAllianceRequestOpcode = 167;
         private const int MaxRecentPackets = 32;
         private const string DefaultProcessName = "MapleStory";
 

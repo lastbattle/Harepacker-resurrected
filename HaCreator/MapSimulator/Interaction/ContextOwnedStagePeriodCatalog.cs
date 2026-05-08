@@ -456,8 +456,20 @@ namespace HaCreator.MapSimulator.Interaction
 
             string backgroundSet = stageBackImageGroup.Name;
             int entryCountBeforeWrapperParse = entries.Count;
-            AppendNativeStageBackImageEntries(backgroundSet, GetChildProperty(stageBackImageGroup, "back"), front: false, entries);
-            AppendNativeStageBackImageEntries(backgroundSet, GetChildProperty(stageBackImageGroup, "front"), front: true, entries);
+            WzImageProperty backContainer = GetChildProperty(stageBackImageGroup, "back");
+            WzImageProperty frontContainer = GetChildProperty(stageBackImageGroup, "front");
+            AppendNativeStageBackImageEntries(
+                backgroundSet,
+                backContainer,
+                front: false,
+                entries,
+                sourceStageBackImageObject: backContainer != null ? stageBackImageGroup : null);
+            AppendNativeStageBackImageEntries(
+                backgroundSet,
+                frontContainer,
+                front: true,
+                entries,
+                sourceStageBackImageObject: frontContainer != null ? stageBackImageGroup : null);
             if (entries.Count != entryCountBeforeWrapperParse)
             {
                 return;
@@ -465,7 +477,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             // `LoadStageBackImgInfo` enumerates each background set under
             // `aStageBackImg` and then its numeric object children directly.
-            AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup, front: false, entries);
+            AppendNativeStageBackImageEntries(
+                backgroundSet,
+                stageBackImageGroup,
+                front: false,
+                entries,
+                sourceStageBackImageObject: null);
         }
 
         private static void AppendNativeStageBackSideContainerEntries(
@@ -480,7 +497,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (WzImageProperty backgroundSetProperty in sideContainer.WzProperties.OfType<WzImageProperty>())
             {
-                AppendNativeStageBackImageEntries(backgroundSetProperty.Name, backgroundSetProperty, front, entries);
+                AppendNativeStageBackImageEntries(
+                    backgroundSetProperty.Name,
+                    backgroundSetProperty,
+                    front,
+                    entries,
+                    sourceStageBackImageObject: null);
             }
         }
 
@@ -506,7 +528,8 @@ namespace HaCreator.MapSimulator.Interaction
             string backgroundSet,
             WzImageProperty container,
             bool front,
-            List<ContextOwnedStageBackImageEntry> entries)
+            List<ContextOwnedStageBackImageEntry> entries,
+            WzImageProperty sourceStageBackImageObject)
         {
             if (string.IsNullOrWhiteSpace(backgroundSet) || container == null || entries == null)
             {
@@ -515,14 +538,24 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (WzImageProperty property in container.WzProperties.OfType<WzImageProperty>())
             {
-                if (TryAppendNativeStageBackImageEntry(backgroundSet, property, front, entries))
+                if (TryAppendNativeStageBackImageEntry(
+                    backgroundSet,
+                    property,
+                    front,
+                    entries,
+                    sourceStageBackImageObject))
                 {
                     continue;
                 }
 
                 foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
                 {
-                    TryAppendNativeStageBackImageEntry(property.Name, child, front, entries);
+                    TryAppendNativeStageBackImageEntry(
+                        property.Name,
+                        child,
+                        front,
+                        entries,
+                        sourceStageBackImageObject);
                 }
             }
         }
@@ -531,7 +564,8 @@ namespace HaCreator.MapSimulator.Interaction
             string backgroundSet,
             WzImageProperty property,
             bool front,
-            List<ContextOwnedStageBackImageEntry> entries)
+            List<ContextOwnedStageBackImageEntry> entries,
+            WzImageProperty sourceStageBackImageObject)
         {
             if (string.IsNullOrWhiteSpace(backgroundSet)
                 || property == null
@@ -561,7 +595,8 @@ namespace HaCreator.MapSimulator.Interaction
                 null,
                 false,
                 UseSourceBackPieceFields: true,
-                SourceStageBackObject: property);
+                SourceStageBackObject: property,
+                SourceStageBackImageObject: sourceStageBackImageObject);
             UpsertNativeStageBackImageEntry(entries, entry);
             return true;
         }
@@ -753,7 +788,8 @@ namespace HaCreator.MapSimulator.Interaction
                 spineAnimation,
                 ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo),
                 SourceStageBackObject: property,
-                SourceBackImgInfoObject: backImgInfo);
+                SourceBackImgInfoObject: backImgInfo,
+                SourceStageBackImageObject: property);
             return true;
         }
 
@@ -1669,7 +1705,8 @@ namespace HaCreator.MapSimulator.Interaction
         bool UseSourceBackPieceFields = false,
         WzImageProperty SourceStageBackObject = null,
         WzImageProperty SourceBackImgInfoObject = null,
-        WzImageProperty SourceBackPieceObject = null);
+        WzImageProperty SourceBackPieceObject = null,
+        WzImageProperty SourceStageBackImageObject = null);
 
     internal sealed class ContextOwnedStageUnitEnableState
     {

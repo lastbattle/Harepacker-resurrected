@@ -140,6 +140,7 @@ namespace HaCreator.MapSimulator.AI
         public bool IsAreaOfEffect { get; set; }    // True for AoE attacks
         public int EffectAfter { get; set; }        // Effect delay (tEffectAfter)
         public int AttackAfter { get; set; }        // Attack delay (tAttackAfter)
+        public bool AttackAfterIsAuthored { get; set; } = true; // attackN/info/attackAfter exists in WZ
         public string AnimationName { get; set; }   // Animation to play (e.g., "attack1")
         public int BulletSpeed { get; set; }        // Projectile speed from Mob.wz info/attack
         public int ProjectileCount { get; set; }    // Multi-ball count for boss/projectile attacks
@@ -1264,7 +1265,7 @@ namespace HaCreator.MapSimulator.AI
             MobAttackEntry attack = GetCurrentAttack();
             if (attack?.IsSpecialAttack == true)
             {
-                return attack.AttackAfter <= 0;
+                return !attack.AttackAfterIsAuthored || attack.AttackAfter <= 0;
             }
 
             return _runtimeAngerGaugeFullChargeEffectIntervalMs <= 0;
@@ -2496,7 +2497,9 @@ namespace HaCreator.MapSimulator.AI
         {
             if (attack?.IsSpecialAttack == true)
             {
-                _runtimeAngerGaugeFullChargeEffectIntervalMs = Math.Max(0, attack.AttackAfter);
+                _runtimeAngerGaugeFullChargeEffectIntervalMs = attack.AttackAfterIsAuthored
+                    ? Math.Max(0, attack.AttackAfter)
+                    : 0;
             }
         }
         #endregion

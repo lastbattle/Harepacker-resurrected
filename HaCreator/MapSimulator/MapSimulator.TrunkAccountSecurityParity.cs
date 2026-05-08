@@ -1,6 +1,9 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator
 {
@@ -76,12 +79,15 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string body = TrunkDialogClientParityText.BuildSendGetConfirmationBody(slotData, mesoCost: 0);
-            ConfigureInGameConfirmDialog(
-                "Storage",
-                body,
+            IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> steps =
+                TrunkDialogClientParityText.BuildSendGetConfirmationChoreography(slotData, mesoCost: 0);
+            return ShowPacketOwnedTrunkConfirmSequence(
+                confirmDialogWindow,
+                steps,
+                "CTrunkDlg::SendGetItemRequest",
+                "67 [04]",
                 "Recovered CTrunkDlg::SendGetItemRequest CUtilDlg::YesNo confirmation owner.",
-                onConfirm: () =>
+                onAccepted: () =>
                 {
                     TrunkUI.PacketOwnedTrunkRequestResult result = DispatchPacketOwnedTrunkGetItemRequest(
                         inventoryType,
@@ -91,20 +97,7 @@ namespace HaCreator.MapSimulator
                     {
                         trunkWindow.RefreshSecurityStatus(result.Message);
                     }
-                },
-                onCancel: () =>
-                {
-                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)
-                    {
-                        trunkWindow.RefreshSecurityStatus(
-                            "CTrunkDlg::SendGetItemRequest confirmation was cancelled before opcode 67 [04].");
-                    }
                 });
-            ShowWindow(
-                MapSimulatorWindowNames.InGameConfirmDialog,
-                confirmDialogWindow,
-                trackDirectionModeOwner: true);
-            return true;
         }
 
         private TrunkUI.PacketOwnedTrunkRequestResult HandlePacketOwnedTrunkPutItemRequested(
@@ -175,17 +168,20 @@ namespace HaCreator.MapSimulator
             int availableQuantity = System.Math.Max(1, slotData.Quantity);
             bool treatSingly = inventoryType == InventoryType.EQUIP ||
                 InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData.MaxStackSize) <= 1;
-            string body = TrunkDialogClientParityText.BuildSendPutConfirmationBody(
-                slotData,
-                treatSingly,
-                availableQuantity,
-                mesoCost: 0,
-                includeAskCount: false);
-            ConfigureInGameConfirmDialog(
-                "Storage",
-                body,
+            IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> steps =
+                TrunkDialogClientParityText.BuildSendPutConfirmationChoreography(
+                    slotData,
+                    treatSingly,
+                    availableQuantity,
+                    mesoCost: 0,
+                    includeAskCount: false);
+            return ShowPacketOwnedTrunkConfirmSequence(
+                confirmDialogWindow,
+                steps,
+                "CTrunkDlg::SendPutItemRequest",
+                "67 [05]",
                 "Recovered CTrunkDlg::SendPutItemRequest CUtilDlg::YesNo confirmation owner.",
-                onConfirm: () =>
+                onAccepted: () =>
                 {
                     InventorySlotData acceptedSlotData = slotData;
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI confirmTrunkWindow)
@@ -214,20 +210,83 @@ namespace HaCreator.MapSimulator
                     {
                         trunkWindow.RefreshSecurityStatus(result.Message);
                     }
+                });
+        }
+
+        private bool ShowPacketOwnedTrunkConfirmSequence(
+            InGameConfirmDialogWindow confirmDialogWindow,
+            IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> steps,
+            string ownerCall,
+            string opcodeLabel,
+            string footerPrefix,
+            Action onAccepted)
+        {
+            if (confirmDialogWindow == null || steps == null || steps.Count == 0)
+            {
+                return false;
+            }
+
+            ShowPacketOwnedTrunkConfirmStep(
+                confirmDialogWindow,
+                steps,
+                stepIndex: 0,
+                ownerCall,
+                opcodeLabel,
+                footerPrefix,
+                onAccepted);
+            return true;
+        }
+
+        private void ShowPacketOwnedTrunkConfirmStep(
+            InGameConfirmDialogWindow confirmDialogWindow,
+            IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> steps,
+            int stepIndex,
+            string ownerCall,
+            string opcodeLabel,
+            string footerPrefix,
+            Action onAccepted)
+        {
+            TrunkDialogClientParityText.ConfirmationStep step = steps[stepIndex];
+            string footer =
+                $"{footerPrefix} Step {(stepIndex + 1).ToString(CultureInfo.InvariantCulture)}/{steps.Count.ToString(CultureInfo.InvariantCulture)}: {step.OwnerCall} StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)}.";
+            ConfigureInGameConfirmDialog(
+                "Storage",
+                step.Text,
+                footer,
+                onConfirm: () =>
+                {
+                    int nextStepIndex = stepIndex + 1;
+                    if (nextStepIndex < steps.Count)
+                    {
+                        if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow nextConfirmDialogWindow)
+                        {
+                            ShowPacketOwnedTrunkConfirmStep(
+                                nextConfirmDialogWindow,
+                                steps,
+                                nextStepIndex,
+                                ownerCall,
+                                opcodeLabel,
+                                footerPrefix,
+                                onAccepted);
+                        }
+
+                        return;
+                    }
+
+                    onAccepted?.Invoke();
                 },
                 onCancel: () =>
                 {
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)
                     {
                         trunkWindow.RefreshSecurityStatus(
-                            "CTrunkDlg::SendPutItemRequest confirmation was cancelled before opcode 67 [05].");
+                            $"{ownerCall} confirmation step {(stepIndex + 1).ToString(CultureInfo.InvariantCulture)}/{steps.Count.ToString(CultureInfo.InvariantCulture)} (StringPool 0x{step.StringPoolId.ToString("X", CultureInfo.InvariantCulture)}) was cancelled before opcode {opcodeLabel}.");
                     }
                 });
             ShowWindow(
                 MapSimulatorWindowNames.InGameConfirmDialog,
                 confirmDialogWindow,
                 trackDirectionModeOwner: true);
-            return true;
         }
 
         private bool TryDispatchPacketOwnedTrunkOutboundRequest(

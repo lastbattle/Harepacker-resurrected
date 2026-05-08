@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxPacketOwnedReceiveRows = 10;
         private const int ParcelDialogSendRequestOpcode = 70;
         private const byte ParcelDialogSendRequestSubtype = 2;
+        private const int QuickDeliveryCouponItemId = 5330000; // CTabQuickSend::SendQuickDelivery probes CWvsContext::IsExist(0x515450).
 
         private enum MemoAttachmentKind
         {
@@ -83,6 +84,7 @@ namespace HaCreator.MapSimulator.Interaction
         private ParcelComposeMode _composeMode = ParcelComposeMode.Send;
         private bool _awaitingItemSelection;
         private bool _showTaxInfo;
+        private int _quickDeliveryCouponPosition;
         private int _nextMemoId = 1;
         private string _lastActionSummary = "Parcel delivery ready.";
         private ParcelDialogOutboundRequestSnapshot _lastOutboundRequest;
@@ -543,6 +545,16 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Closed parcel fee information.";
         }
 
+        internal void SetQuickDeliveryCouponPosition(int inventoryPosition)
+        {
+            _quickDeliveryCouponPosition = inventoryPosition > 0
+                ? inventoryPosition
+                : 0;
+            _lastActionSummary = _quickDeliveryCouponPosition > 0
+                ? $"Quick Delivery Coupon slot set to {_quickDeliveryCouponPosition}."
+                : "Quick Delivery Coupon slot cleared.";
+        }
+
         internal void ClearParcelSession()
         {
             _memos.Clear();
@@ -937,7 +949,7 @@ namespace HaCreator.MapSimulator.Interaction
                 attachment,
                 isQuickDelivery: true,
                 quickDeliveryMemo: body,
-                quickDeliveryCouponPosition: 0);
+                quickDeliveryCouponPosition: _quickDeliveryCouponPosition);
             _showTaxInfo = false;
 
             message = MapleStoryStringPool.GetOrFallback(
@@ -1584,7 +1596,7 @@ namespace HaCreator.MapSimulator.Interaction
             MemoAttachmentState attachment,
             bool isQuickDelivery,
             string quickDeliveryMemo,
-            short quickDeliveryCouponPosition = 0)
+            int quickDeliveryCouponPosition = 0)
         {
             string normalizedRecipient = recipient?.Trim() ?? string.Empty;
             string normalizedQuickMemo = isQuickDelivery ? quickDeliveryMemo?.Trim() ?? string.Empty : string.Empty;
@@ -1613,6 +1625,7 @@ namespace HaCreator.MapSimulator.Interaction
                 FeeMeso = feeMeso,
                 Recipient = normalizedRecipient,
                 IsQuickDelivery = isQuickDelivery,
+                QuickDeliveryCouponItemId = isQuickDelivery ? QuickDeliveryCouponItemId : 0,
                 QuickDeliveryCouponPosition = isQuickDelivery ? Math.Max(0, (int)quickDeliveryCouponPosition) : 0,
                 QuickDeliveryMemo = normalizedQuickMemo,
                 Payload = payload

@@ -523,6 +523,13 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (ClientOwnedVehicleSkillClassifier.IsWzOnlyClientOwnedVehicleActionName(
+                    VehicleItemId,
+                    actionName))
+            {
+                return false;
+            }
+
             if (BattleshipExclusiveActionNames.Contains(actionName))
             {
                 return VehicleItemId == BattleshipTamingMobItemId;

@@ -745,10 +745,15 @@ namespace HaCreator.MapSimulator
                 AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, token);
             }
 
+            foreach (string token in SplitPacketOwnedDynamicObjectNameLookupTokens(name, splitComma: false))
+            {
+                AddPacketOwnedDynamicObjectNameLookupCandidate(candidates, token);
+            }
+
             return candidates.ToArray();
         }
 
-        private static IEnumerable<string> SplitPacketOwnedDynamicObjectNameLookupTokens(string name)
+        private static IEnumerable<string> SplitPacketOwnedDynamicObjectNameLookupTokens(string name, bool splitComma = true)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -758,7 +763,7 @@ namespace HaCreator.MapSimulator
             int tokenStart = -1;
             for (int i = 0; i < name.Length; i++)
             {
-                if (IsPacketOwnedDynamicObjectNameTokenSeparator(name[i]))
+                if (IsPacketOwnedDynamicObjectNameTokenSeparator(name[i], splitComma))
                 {
                     if (tokenStart >= 0)
                     {
@@ -769,7 +774,10 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (tokenStart < 0)
+                {
                     tokenStart = i;
+                }
             }
 
             if (tokenStart >= 0)
@@ -778,9 +786,9 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static bool IsPacketOwnedDynamicObjectNameTokenSeparator(char value)
+        private static bool IsPacketOwnedDynamicObjectNameTokenSeparator(char value, bool splitComma)
         {
-            return value == ','
+            return (splitComma && value == ',')
                 || value == ';'
                 || value == '|'
                 || char.IsControl(value);

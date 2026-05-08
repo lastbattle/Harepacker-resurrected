@@ -175,9 +175,8 @@ namespace HaCreator.MapSimulator.Combat
 
         internal static int ResolveMesoBonusPercent(MobAI mobAI)
         {
-            int showdownBonusPercent = ResolveShowdownBonusPercent(mobAI);
             int richBonusPercent = ResolveRichBonusPercent(mobAI);
-            return showdownBonusPercent + richBonusPercent;
+            return richBonusPercent;
         }
 
         private static int ResolveRichBonusPercent(MobAI mobAI)

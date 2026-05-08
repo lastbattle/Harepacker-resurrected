@@ -3581,9 +3581,9 @@ namespace HaCreator.MapSimulator
             }
 
             FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
-            int remainingMs = Math.Max(0, request.AckAt - currentTickCount);
-            int resultRemainingMs = Math.Max(0, request.ResultAt - currentTickCount);
-            int remoteRemainingMs = Math.Max(0, request.RemoteResultDeadlineAt - currentTickCount);
+            int remainingMs = ResolvePacketOwnedTickRemainingMs(currentTickCount, request.AckAt);
+            int resultRemainingMs = ResolvePacketOwnedTickRemainingMs(currentTickCount, request.ResultAt);
+            int remoteRemainingMs = ResolvePacketOwnedTickRemainingMs(currentTickCount, request.RemoteResultDeadlineAt);
             return string.Format(
                 CultureInfo.InvariantCulture,
                 "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] opcode={5} slot={6} runtimeSlot={7} state={8} ownership={9} dispatchState={10} path={11} ackIn={12}ms resultIn={13}ms observeIn={14}ms qty0={15} force={16} buffSkill={17} requestIndex={18} petSerial={19} payload={20} dispatch=\"{21}\". {22}",
@@ -3614,6 +3614,17 @@ namespace HaCreator.MapSimulator
                 string.IsNullOrWhiteSpace(request.PayloadHex) ? "none" : request.PayloadHex,
                 request.TransportDisposition ?? string.Empty,
                 contextStatus);
+        }
+
+        internal static int ResolvePacketOwnedTickRemainingMs(int currentTickCount, int targetTickCount)
+        {
+            if (targetTickCount == int.MinValue)
+            {
+                return 0;
+            }
+
+            int remainingMs = unchecked(targetTickCount - currentTickCount);
+            return remainingMs > 0 ? remainingMs : 0;
         }
 
         private int GetNextFieldHazardPetAutoConsumeRequestId()
@@ -3984,8 +3995,8 @@ namespace HaCreator.MapSimulator
                     _packetOwnedFieldFadeOverlay.FadeInMs,
                     _packetOwnedFieldFadeOverlay.HoldMs,
                     _packetOwnedFieldFadeOverlay.FadeOutMs,
-                    Math.Max(0, _packetOwnedFieldFadeOverlay.FadeOutStartsAt - currentTickCount),
-                    Math.Max(0, _packetOwnedFieldFadeOverlay.ExpiresAt - currentTickCount),
+                    ResolvePacketOwnedTickRemainingMs(currentTickCount, _packetOwnedFieldFadeOverlay.FadeOutStartsAt),
+                    ResolvePacketOwnedTickRemainingMs(currentTickCount, _packetOwnedFieldFadeOverlay.ExpiresAt),
                     DescribePacketOwnedFadeAlpha(_packetOwnedFieldFadeOverlay.StartingAlpha),
                     _packetOwnedFieldFadeOverlay.RequestedLayerZ)
                 : "Fade inactive.";
@@ -4005,7 +4016,7 @@ namespace HaCreator.MapSimulator
                         CultureInfo.InvariantCulture,
                         "avatar width={0}, remaining={1}ms, text=\"{2}\"",
                         avatarMessage.RequestedWidth,
-                        Math.Max(0, avatarMessage.ExpiresAt - currentTickCount),
+                        ResolvePacketOwnedTickRemainingMs(currentTickCount, avatarMessage.ExpiresAt),
                         avatarMessage.Text);
                 string fieldStatus = fieldMessages.Count == 0
                     ? "field=0"
@@ -4016,7 +4027,7 @@ namespace HaCreator.MapSimulator
                         fieldMessages[^1].WorldAnchor.X,
                         fieldMessages[^1].WorldAnchor.Y,
                         fieldMessages[^1].RequestedWidth,
-                        Math.Max(0, fieldMessages[^1].ExpiresAt - currentTickCount),
+                        ResolvePacketOwnedTickRemainingMs(currentTickCount, fieldMessages[^1].ExpiresAt),
                         fieldMessages[^1].Text);
                 balloonStatus = $"Balloon active: {avatarStatus}; {fieldStatus}.";
             }
@@ -5278,12 +5289,13 @@ namespace HaCreator.MapSimulator
 
             int startedAt = _packetOwnedFieldFadeOverlay.StartedAt;
             int fadeOutStartsAt = _packetOwnedFieldFadeOverlay.FadeOutStartsAt;
-            if (_packetOwnedFieldFadeOverlay.FadeInMs > 0 && currentTickCount < startedAt + _packetOwnedFieldFadeOverlay.FadeInMs)
+            if (_packetOwnedFieldFadeOverlay.FadeInMs > 0
+                && ResolvePacketOwnedTickRemainingMs(currentTickCount, startedAt + _packetOwnedFieldFadeOverlay.FadeInMs) > 0)
             {
                 return "fade-in";
             }
 
-            if (currentTickCount < fadeOutStartsAt)
+            if (ResolvePacketOwnedTickRemainingMs(currentTickCount, fadeOutStartsAt) > 0)
             {
                 return _packetOwnedFieldFadeOverlay.HoldMs > 0 ? "hold" : "opaque";
             }

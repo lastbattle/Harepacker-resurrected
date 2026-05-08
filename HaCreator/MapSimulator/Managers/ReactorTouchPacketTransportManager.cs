@@ -92,7 +92,6 @@ namespace HaCreator.MapSimulator.Managers
             int resolvedTick = ResolveCurrentTick(currentTick);
             lock (_queueLock)
             {
-                FlushQueuedOutboundPacketsUnsafe(resolvedTick);
                 if (_pendingOutboundPackets.Count > 0)
                 {
                     bool queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(

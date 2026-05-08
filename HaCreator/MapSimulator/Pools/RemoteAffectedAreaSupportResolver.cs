@@ -969,6 +969,15 @@ namespace HaCreator.MapSimulator.Pools
                     PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
+            if (ContainsToken(hostileSearchText, "polymorph"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Polymorph,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 1),
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
+            }
+
             if (ContainsToken(hostileSearchText, "amplifyDamage"))
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
@@ -1046,6 +1055,7 @@ namespace HaCreator.MapSimulator.Pools
                     "curse",
                     "reverse",
                     "undead",
+                    "polymorph",
                     "dark",
                     "blind",
                     "poison",

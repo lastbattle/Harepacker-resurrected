@@ -52,6 +52,13 @@ namespace HaCreator.MapSimulator.Interaction
         bool Succeeded,
         string ResultText);
 
+    internal readonly record struct MessengerOfficialClaimResultPacket(
+        byte ResultCode,
+        bool Succeeded,
+        int RemainingClaimCount,
+        string ResultText,
+        bool CompletesPendingRequest);
+
     internal readonly record struct MessengerClientBlockedAutoRejectPacket(
         string InviterName,
         string LocalCharacterName,
@@ -208,6 +215,19 @@ namespace HaCreator.MapSimulator.Interaction
             PacketWriter writer = new();
             writer.WriteByte(succeeded ? (byte)1 : (byte)0);
             writer.WriteMapleString(NormalizeText(resultText));
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildOfficialClaimResultPayload(byte resultCode, bool succeeded = false, int remainingClaimCount = 0)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(resultCode);
+            if (resultCode == 2)
+            {
+                writer.WriteByte(succeeded ? (byte)1 : (byte)0);
+                writer.WriteInt(Math.Max(0, remainingClaimCount));
+            }
+
             return writer.ToArray();
         }
 
@@ -962,6 +982,61 @@ namespace HaCreator.MapSimulator.Interaction
                 error = $"Messenger claim-result payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        public static bool TryParseOfficialClaimResult(ReadOnlySpan<byte> payload, out MessengerOfficialClaimResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                byte resultCode = reader.ReadByte();
+                if (resultCode == 2)
+                {
+                    bool succeeded = reader.ReadByte() != 0;
+                    int remainingClaimCount = Math.Max(0, reader.ReadInt());
+                    packet = new MessengerOfficialClaimResultPacket(
+                        resultCode,
+                        succeeded,
+                        remainingClaimCount,
+                        succeeded
+                            ? $"Claim accepted; remaining claim count {remainingClaimCount}."
+                            : "Claim request failed.",
+                        CompletesPendingRequest: true);
+                    return true;
+                }
+
+                packet = new MessengerOfficialClaimResultPacket(
+                    resultCode,
+                    Succeeded: false,
+                    RemainingClaimCount: 0,
+                    FormatOfficialClaimResultText(resultCode),
+                    CompletesPendingRequest: resultCode is 3 or 65 or 66 or 67 or 68 or 69 or 71 or 72);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger official claim-result payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static string FormatOfficialClaimResultText(byte resultCode)
+        {
+            return resultCode switch
+            {
+                3 => "Claim request rejected by the server.",
+                65 => "Claim request blocked by the claim server.",
+                66 => "Claim request rejected because the claim server is unavailable.",
+                67 => "Claim request rejected by the claim target branch.",
+                68 => "Claim request rejected by the claim category branch.",
+                69 => "Claim request rejected by the claim cooldown branch.",
+                71 => "Claim request rejected because the claim server is outside its available time.",
+                72 => "Claim request rejected by the claim server state branch.",
+                _ => $"Claim result code {resultCode}."
+            };
         }
 
         public static bool TryParseClientBlockedAutoRejectRequest(ReadOnlySpan<byte> payload, out MessengerClientBlockedAutoRejectPacket packet, out string error)

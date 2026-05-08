@@ -546,13 +546,12 @@ namespace HaCreator.MapSimulator.Companions
                             {
                                 if (!TryResolvePassiveEquipInventoryItemId(equipInventorySlots, fromPosition, out int sourceItemId))
                                 {
-                                    if (!TryResolveObservedMechanicItemId(observedMechanicItems, targetMechanicSlot, out sourceItemId))
-                                    {
-                                        // Keep scanning in case this payload also carries a mode-0
-                                        // add entry for the same mechanic slot with the authoritative
-                                        // item id in the shared header.
-                                        break;
-                                    }
+                                    // CWvsContext::OnInventoryOperation mode 2 only carries source
+                                    // and target positions. The pre-swap mechanic target item is not
+                                    // proof of the positive inventory source item, so passive
+                                    // equip-in recovery must wait for a live equip-inventory source
+                                    // snapshot or a mode-0 add entry that carries the item id.
+                                    break;
                                 }
 
                                 if (!TryValidateMechanicItemFamilyForSlot(sourceItemId, targetMechanicSlot, out rejectReason))
@@ -2364,21 +2363,6 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             itemId = equipInventorySlots[sourceIndex]?.ItemId ?? 0;
-            return itemId > 0;
-        }
-
-        private static bool TryResolveObservedMechanicItemId(
-            IReadOnlyDictionary<MechanicEquipSlot, int> observedMechanicItems,
-            MechanicEquipSlot slot,
-            out int itemId)
-        {
-            itemId = 0;
-            if (observedMechanicItems == null
-                || !observedMechanicItems.TryGetValue(slot, out itemId))
-            {
-                return false;
-            }
-
             return itemId > 0;
         }
 

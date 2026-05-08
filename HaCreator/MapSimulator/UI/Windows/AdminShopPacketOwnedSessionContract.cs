@@ -90,7 +90,6 @@ namespace HaCreator.MapSimulator.UI
         public bool ShouldRestoreOwnerSurfaceAfterUniqueModelessBlockerClears =>
             IsActive
             && (OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
-                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByUniqueModelessOwner
                 || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByFieldRestriction);
         public bool ShouldRestoreOwnerSurfaceAfterCashShopFamilyVisible =>
             IsActive
@@ -269,7 +268,7 @@ namespace HaCreator.MapSimulator.UI
         public void RecordBlockedByOwner(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string blockingOwner)
         {
             snapshot ??= new AdminShopPacketOwnedOpenPayloadSnapshot();
-            IsActive = true;
+            IsActive = false;
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;

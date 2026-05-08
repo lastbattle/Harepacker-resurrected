@@ -109,7 +109,6 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                FlushQueuedTouchRequestsViaProxyUnsafe(currentTick);
                 if (_pendingTouchRequests.Count > 0)
                 {
                     byte[] deferredPacket = BuildTouchRequestPacket(objectId, isTouching);

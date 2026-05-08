@@ -63,7 +63,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<byte, string> _observedMapleTvResultCodePayloadSamples = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
 
-        private readonly record struct PendingOutboundPacket(int Opcode, byte[] RawPacket);
+        private readonly record struct PendingOutboundPacket(int Opcode, byte[] RawPacket, string Source);
         private readonly record struct PendingResultExpectation(
             int RequestOpcode,
             byte RequestSubtype,
@@ -520,11 +520,12 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, rawPacket));
+            const string source = "simulator-queue";
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, rawPacket, source));
             QueuedCount++;
             LastQueuedOpcode = opcode;
             LastQueuedRawPacket = rawPacket;
-            RecordObservedOutboundPacket(rawPacket, "simulator-queue");
+            RecordObservedOutboundPacket(rawPacket, source);
             status = $"Queued {_ownerName} outbound opcode {opcode} for deferred live-session injection.";
             LastStatus = status;
             return true;
@@ -675,7 +676,10 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount++;
                 LastSentOpcode = packet.Opcode;
                 LastSentRawPacket = packet.RawPacket;
-                RecordObservedOutboundPacket(packet.RawPacket, "deferred-flush");
+                RecordObservedOutboundPacket(
+                    packet.RawPacket,
+                    $"deferred-flush:{packet.Source}",
+                    recordResultExpectation: false);
                 flushed++;
             }
 
@@ -786,7 +790,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
+        private void RecordObservedOutboundPacket(byte[] rawPacket, string source, bool recordResultExpectation = true)
         {
             if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
             {
@@ -808,7 +812,8 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
 
-                if (PacketOwnedSocialUtilityPacketTable.TryBuildRecoveredResultExpectation(
+                if (recordResultExpectation
+                    && PacketOwnedSocialUtilityPacketTable.TryBuildRecoveredResultExpectation(
                         _ownerName,
                         opcode,
                         payload,

@@ -92,7 +92,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            float remainingAlpha = MathHelper.Clamp((mob.ActiveActionSpeechExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
+            int fadeDurationMs = Math.Max(1, mob.ActiveActionSpeechFadeDurationMs);
+            float remainingAlpha = MathHelper.Clamp((mob.ActiveActionSpeechExpiresAt - renderContext.TickCount) / (float)fadeDurationMs, 0f, 1f);
             ResolveMobActionSpeechColors(
                 mob.ActiveActionSpeechChatBalloon,
                 mob.ActiveActionSpeechFloatNotice,
@@ -670,12 +671,36 @@ namespace HaCreator.MapSimulator
             float lineHeight = Math.Max(1f, MeasureChatTextWithFallback("Ay").Y);
             int textInsetX = skinMetrics?.LeftTextInset ?? 9;
             int textInsetY = skinMetrics?.TopTextInset ?? 6;
-            Vector2 position = new Vector2(bounds.Left + textInsetX, bounds.Top + textInsetY);
-            foreach (string line in layout.Lines)
+            int textAreaWidth = Math.Max(1, bounds.Width - textInsetX - (skinMetrics?.RightTextInset ?? 9));
+            for (int i = 0; i < layout.Lines.Count; i++)
             {
+                string line = layout.Lines[i];
+                Vector2 lineSize = MeasureChatTextWithFallback(line);
+                Vector2 position = ResolveMobActionSpeechLinePosition(
+                    bounds,
+                    lineSize,
+                    textInsetX,
+                    textInsetY,
+                    textAreaWidth,
+                    i,
+                    lineHeight);
                 DrawChatTextWithFallback(line, position, textColor);
-                position.Y += lineHeight;
             }
+        }
+
+        internal static Vector2 ResolveMobActionSpeechLinePosition(
+            Rectangle bounds,
+            Vector2 lineSize,
+            int textInsetX,
+            int textInsetY,
+            int textAreaWidth,
+            int lineIndex,
+            float lineHeight)
+        {
+            int safeTextAreaWidth = Math.Max(1, textAreaWidth);
+            float x = bounds.Left + textInsetX + Math.Max(0f, (safeTextAreaWidth - lineSize.X) / 2f);
+            float y = bounds.Top + textInsetY + (Math.Max(0, lineIndex) * Math.Max(1f, lineHeight));
+            return new Vector2(x, y);
         }
 
         internal static bool IsMobActionSpeechScreenChat(int chatBalloon)

@@ -222,6 +222,7 @@ namespace HaCreator.MapSimulator
                 GetCurrentChannelId = () => 1,
                 GetLastOutgoingWhisperText = () => _chat?.LastOutgoingWhisperText ?? string.Empty,
                 GetLastOutgoingWhisperTarget = () => _chat?.LastOutgoingWhisperTarget ?? string.Empty,
+                ClearWhisperSentState = () => _chat?.ClearLastOutgoingWhisperEcho(),
                 TriggerTremble = (force, durationMs) => _screenEffects.TriggerTremble(Math.Max(1, force), false, 0, Math.Max(0, durationMs), true, currTickCount),
                 ClearFieldFade = () => ClearPacketOwnedLocalOverlayState("fade"),
                 RequestBgm = descriptor => RequestSpecialFieldBgmOverride(ResolvePacketOwnedFieldBgmOverrideName(descriptor)),

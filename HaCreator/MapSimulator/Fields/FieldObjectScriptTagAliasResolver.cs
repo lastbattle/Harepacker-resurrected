@@ -92,6 +92,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*reverse\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ArrayReverseAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>reverse|toReversed)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex ArrayConcatAliasAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*concat\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -827,6 +831,29 @@ namespace HaCreator.MapSimulator.Fields
                 CopyArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
             }
 
+            foreach ((string TargetName, string SourceName, string MethodName) reverseAssignment in EnumerateArrayReverseAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(reverseAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(reverseAssignment.SourceName)
+                    || !objectMemberAliasMap.TryGetValue(reverseAssignment.SourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    reverseAssignment.TargetName);
+                if (!reverseAssignment.TargetName.Equals(reverseAssignment.SourceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    CopyArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
+                }
+
+                if (reverseAssignment.MethodName.Equals("toReversed", StringComparison.OrdinalIgnoreCase))
+                {
+                    ReverseArrayMemberAliases(targetMemberAliasMap);
+                }
+            }
+
             foreach ((string TargetName, string MethodName, IReadOnlyList<string> Arguments) arrayFactoryAssignment in EnumerateArrayFactoryAliasAssignments(scriptName))
             {
                 if (!IsPotentialFunctionAliasName(arrayFactoryAssignment.TargetName)
@@ -1234,6 +1261,44 @@ namespace HaCreator.MapSimulator.Fields
                 if (string.IsNullOrWhiteSpace(value[(openIndex + 1)..closeIndex]))
                 {
                     yield return objectName;
+                }
+            }
+        }
+
+        private static IEnumerable<(string TargetName, string SourceName, string MethodName)> EnumerateArrayReverseAliasAssignments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ArrayReverseAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
+                string methodName = NormalizeFunctionAliasArgument(match.Groups["method"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(targetName)
+                    || !IsPotentialFunctionAliasName(sourceName)
+                    || string.IsNullOrWhiteSpace(methodName))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(value[(openIndex + 1)..closeIndex]))
+                {
+                    yield return (targetName, sourceName, methodName);
                 }
             }
         }
@@ -3983,6 +4048,15 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (TryResolveStaticDelayFunctionExpression(
+                    normalizedValue,
+                    localAliasMap,
+                    seenDelayExpressions,
+                    out parsedInt))
+            {
+                return true;
+            }
+
             return TryResolveArithmeticDelayExpression(
                 normalizedValue,
                 localAliasMap,
@@ -4095,6 +4169,163 @@ namespace HaCreator.MapSimulator.Fields
 
             delayValue = product;
             return true;
+        }
+
+        private static bool TryResolveStaticDelayFunctionExpression(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            ISet<string> seenDelayExpressions,
+            out int parsedInt)
+        {
+            parsedInt = 0;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = StripOuterBalancedParentheses(value.Trim());
+            int openIndex = FindTrailingCallOpenParenthesis(normalizedValue);
+            if (openIndex <= 0 || FindMatchingCloseParenthesis(normalizedValue, openIndex) != normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string functionName = NormalizeFunctionAliasArgument(normalizedValue[..openIndex]).TrimEnd(';');
+            var arguments = new List<string>(SplitFunctionArguments(normalizedValue[(openIndex + 1)..^1]));
+            if (arguments.Count == 0)
+            {
+                return false;
+            }
+
+            var values = new List<double>(arguments.Count);
+            for (int i = 0; i < arguments.Count; i++)
+            {
+                if (!TryResolveStaticDelayNumericValue(
+                        arguments[i],
+                        localAliasMap,
+                        seenDelayExpressions,
+                        out double argumentValue))
+                {
+                    return false;
+                }
+
+                values.Add(argumentValue);
+            }
+
+            double resolvedValue;
+            switch (functionName)
+            {
+                case "Number":
+                    if (values.Count != 1)
+                    {
+                        return false;
+                    }
+
+                    resolvedValue = values[0];
+                    break;
+                case "parseInt":
+                case "parseFloat":
+                    if (values.Count is < 1 or > 2)
+                    {
+                        return false;
+                    }
+
+                    resolvedValue = values[0];
+                    break;
+                case "Math.max":
+                    resolvedValue = values[0];
+                    for (int i = 1; i < values.Count; i++)
+                    {
+                        resolvedValue = Math.Max(resolvedValue, values[i]);
+                    }
+
+                    break;
+                case "Math.min":
+                    resolvedValue = values[0];
+                    for (int i = 1; i < values.Count; i++)
+                    {
+                        resolvedValue = Math.Min(resolvedValue, values[i]);
+                    }
+
+                    break;
+                case "Math.round":
+                    if (values.Count != 1)
+                    {
+                        return false;
+                    }
+
+                    resolvedValue = Math.Round(values[0], MidpointRounding.AwayFromZero);
+                    break;
+                case "Math.floor":
+                    if (values.Count != 1)
+                    {
+                        return false;
+                    }
+
+                    resolvedValue = Math.Floor(values[0]);
+                    break;
+                case "Math.ceil":
+                    if (values.Count != 1)
+                    {
+                        return false;
+                    }
+
+                    resolvedValue = Math.Ceiling(values[0]);
+                    break;
+                case "Math.trunc":
+                    if (values.Count != 1)
+                    {
+                        return false;
+                    }
+
+                    resolvedValue = Math.Truncate(values[0]);
+                    break;
+                default:
+                    return false;
+            }
+
+            if (resolvedValue <= 0)
+            {
+                return false;
+            }
+
+            parsedInt = resolvedValue >= int.MaxValue
+                ? int.MaxValue
+                : checked((int)Math.Round(resolvedValue, MidpointRounding.AwayFromZero));
+            return parsedInt > 0;
+        }
+
+        private static bool TryResolveStaticDelayNumericValue(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            ISet<string> seenDelayExpressions,
+            out double numericValue)
+        {
+            numericValue = 0;
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                return false;
+            }
+
+            if (double.TryParse(
+                    normalizedValue,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out double parsedDouble)
+                && parsedDouble >= 0)
+            {
+                numericValue = parsedDouble;
+                return true;
+            }
+
+            if (TryResolvePositiveDelayMs(normalizedValue, localAliasMap, seenDelayExpressions, out int parsedInt))
+            {
+                numericValue = parsedInt;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryParsePositiveDelayMs(string value, out int parsedInt)

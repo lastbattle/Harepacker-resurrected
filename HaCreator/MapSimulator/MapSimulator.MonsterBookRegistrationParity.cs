@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator
         private const int MonsterBookOwnershipSaveResponseDelayMs = 120;
         private const int MonsterBookOwnershipSaveSyntheticResultTimeoutMs = 2000;
         private const int MonsterBookOwnershipSaveOfficialSessionTimeoutMs = 5000;
+        private const int MonsterBookFirstCardItemId = 2380000;
+        private const ushort MonsterBookFirstCardClientKey = MonsterBookFirstCardItemId & 0xFFFF;
         // No recovered dedicated Monster Book save opcode is wired yet in this local utility seam,
         // so save requests currently ride the ownership-sync channel contract.
         private const int MonsterBookOwnershipSaveRequestOpcode = LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType;
@@ -1258,7 +1260,18 @@ namespace HaCreator.MapSimulator
 
             int remaining = payload.Length - entriesOffset;
             int rowStride;
-            if (remaining == entryCount * (sizeof(int) + sizeof(byte)))
+            bool compactClientCardKeyRows = false;
+            if (remaining == entryCount * (sizeof(ushort) + sizeof(byte)))
+            {
+                rowStride = sizeof(ushort) + sizeof(byte);
+                compactClientCardKeyRows = true;
+            }
+            else if (remaining == entryCount * (sizeof(ushort) + sizeof(int)))
+            {
+                rowStride = sizeof(ushort) + sizeof(int);
+                compactClientCardKeyRows = true;
+            }
+            else if (remaining == entryCount * (sizeof(int) + sizeof(byte)))
             {
                 rowStride = sizeof(int) + sizeof(byte);
             }
@@ -1274,10 +1287,24 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < entryCount; i++)
             {
                 int entryOffset = entriesOffset + (i * rowStride);
-                int ownershipKey = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset, sizeof(int)));
-                int count = rowStride == sizeof(int) + sizeof(byte)
-                    ? payload[entryOffset + sizeof(int)]
-                    : BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset + sizeof(int), sizeof(int)));
+                int ownershipKey;
+                int count;
+                if (compactClientCardKeyRows)
+                {
+                    ushort clientCardKey = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(entryOffset, sizeof(ushort)));
+                    ownershipKey = ResolveMonsterBookCardItemIdFromClientKey(clientCardKey);
+                    count = rowStride == sizeof(ushort) + sizeof(byte)
+                        ? payload[entryOffset + sizeof(ushort)]
+                        : BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset + sizeof(ushort), sizeof(int)));
+                }
+                else
+                {
+                    ownershipKey = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset, sizeof(int)));
+                    count = rowStride == sizeof(int) + sizeof(byte)
+                        ? payload[entryOffset + sizeof(int)]
+                        : BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(entryOffset + sizeof(int), sizeof(int)));
+                }
+
                 if (ownershipKey <= 0 || count <= 0)
                 {
                     return false;
@@ -1287,6 +1314,14 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private static int ResolveMonsterBookCardItemIdFromClientKey(ushort clientCardKey)
+        {
+            // CMonsterBookMan::LoadCard builds ushort lookup keys from the low word of the
+            // 0238 card id by subtracting the low-word base for card item 2380000.
+            int cardOffset = clientCardKey - MonsterBookFirstCardClientKey;
+            return cardOffset < 0 ? 0 : MonsterBookFirstCardItemId + cardOffset;
         }
 
         private static bool TryDecodeMonsterBookOwnershipSaveAckBinaryPayload(

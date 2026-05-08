@@ -117,6 +117,7 @@ namespace HaCreator.MapSimulator.UI
         private const int NpcPreviewY = 92;
         private const int StatusTextX = 14;
         private const int StatusTextY = 303;
+        private const int ClientHitTestDragSplitY = 64;
         private const int ScrollBarX = 212;
         private const int ScrollBarY = 109;
         private const int ScrollBarHeight = 203;
@@ -194,6 +195,12 @@ namespace HaCreator.MapSimulator.UI
         {
             _font = font;
             base.SetFont(font);
+        }
+
+        public override bool CanStartDragAt(int x, int y)
+        {
+            return base.CanStartDragAt(x, y)
+                   && IsClientDragRegionFromRelativePoint(y - Position.Y);
         }
 
         public void SetTooltipTextures(Texture2D[] tooltipFrames)
@@ -453,7 +460,9 @@ namespace HaCreator.MapSimulator.UI
                 UpdateButtonStates();
             }
 
-            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            bool handled = CanStartDragAt(mouseState.X, mouseState.Y)
+                ? base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight)
+                : CheckButtonMouseEvents(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor);
             _previousMouseState = mouseState;
             return handled;
         }
@@ -1667,6 +1676,25 @@ namespace HaCreator.MapSimulator.UI
         internal static Point ResolveClientRowChromeDrawPoint(bool selected, bool hasSelectedTexture)
         {
             return new Point(selected && hasSelectedTexture ? SelectedRowLeft : RowLeft, RowTop);
+        }
+
+        internal static bool IsClientDragRegionFromRelativePoint(int relativeY)
+        {
+            return relativeY >= 0 && relativeY < ClientHitTestDragSplitY;
+        }
+
+        private bool CheckButtonMouseEvents(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor)
+        {
+            foreach (UIObject uiButton in uiButtons)
+            {
+                if (uiButton.CheckMouseEvent(shiftCenteredX, shiftCenteredY, Position.X, Position.Y, mouseState))
+                {
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private int ResolveSelectionIndex(CharacterPart previousPart, InventorySlotData previousInventorySlot, int previousEncodedSlotPosition, bool previousIsInventorySlot, int preferredItemId)

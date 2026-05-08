@@ -110,6 +110,8 @@ namespace HaCreator.MapSimulator.UI
         public string Title { get; init; } = "Collection Book";
         public string Subtitle { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
+        public int ClientOpenCloseSoundStringPoolId { get; init; } = CollectionBookClientResources.OpenCloseSoundStringPoolId;
+        public string ClientOpenCloseSoundKey { get; init; } = CollectionBookClientResources.ResolveOpenCloseSoundKey();
         public IReadOnlyList<CollectionBookClientTextStyleSnapshot> TextStyleMatrix { get; init; } = Array.Empty<CollectionBookClientTextStyleSnapshot>();
         public IReadOnlyList<CollectionBookPageSnapshot> Pages { get; init; } = Array.Empty<CollectionBookPageSnapshot>();
     }
@@ -239,6 +241,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int PrevButtonStringPoolId = 0x0D99;
         internal const int NextButtonStringPoolId = 0x0D9A;
         internal const int CloseButtonStringPoolId = 0x0D9B;
+        internal const int OpenCloseSoundStringPoolId = 0x0924;
 
         internal static string ResolveDot0ResourcePath() =>
             MapleStoryStringPool.GetOrFallback(Dot0StringPoolId, "UI/UIWindow2.img/UtilDlgEx/dot0");
@@ -254,6 +257,9 @@ namespace HaCreator.MapSimulator.UI
 
         internal static string ResolveCloseButtonResourcePath() =>
             MapleStoryStringPool.GetOrFallback(CloseButtonStringPoolId, "UI/UIWindow.img/Book/BtClose");
+
+        internal static string ResolveOpenCloseSoundKey() =>
+            MapleStoryStringPool.GetOrFallback(OpenCloseSoundStringPoolId, "WorldmapOpen");
     }
 
     internal static class CollectionBookSnapshotFactory
@@ -375,6 +381,8 @@ namespace HaCreator.MapSimulator.UI
                 Title = "Collection Book",
                 Subtitle = BuildCompactCollectionSubtitle(build, ownerContext),
                 StatusText = BuildCompactCollectionStatusText(pages.Count, ownerContext),
+                ClientOpenCloseSoundStringPoolId = CollectionBookClientResources.OpenCloseSoundStringPoolId,
+                ClientOpenCloseSoundKey = CollectionBookClientResources.ResolveOpenCloseSoundKey(),
                 TextStyleMatrix = BuildClientTextStyleMatrix(),
                 Pages = pages
             };

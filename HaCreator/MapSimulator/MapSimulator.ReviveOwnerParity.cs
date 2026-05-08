@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib;
@@ -25,6 +26,7 @@ namespace HaCreator.MapSimulator
         private const int ReviveOwnerTransferFieldRequestOpcode = 41;
         private const int ReviveOwnerUpgradeTombEffectOpcode = 58;
         private const int ReviveOwnerUpgradeTombItemId = 5510000;
+        private const string ReviveOwnerUpgradeTombEffectUol = "Effect/Tomb.img/fall";
         private const int ReviveOwnerPremiumSafetyCharmContextSlot = 2073;
         private const int ReviveOwnerSafetyCharmResultStringPoolId = 0x0BC2;
         private const int ReviveOwnerNamedSafetyCharmResultStringPoolId = 0x0BC3;
@@ -45,6 +47,18 @@ namespace HaCreator.MapSimulator
         private ReviveOwnerTransferRequest? _pendingReviveOwnerTransferRequest;
         private int _pendingReviveOwnerTransferTick = int.MinValue;
         private bool _packetOwnedRevivePremiumSafetyCharmLastObservedOfficialSessionConnected;
+        private ReviveOwnerUpgradeTombAnimationOwnerState _reviveOwnerUpgradeTombAnimationOwnerState;
+
+        private sealed class ReviveOwnerUpgradeTombAnimationOwnerState
+        {
+            public int ItemId { get; init; }
+            public string EffectUol { get; init; }
+            public Vector2 Position { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
 
         private void WireReviveConfirmationWindow()
         {
@@ -1414,13 +1428,147 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _animationEffects.AddOneTime(
+            string ownerActionName = ResolveAnimationDisplayerLocalPacketOwnedActionName(_playerManager?.Player?.Build?.Id ?? 0);
+            bool ownerFacingRight = _playerManager?.Player?.FacingRight ?? true;
+            int initialElapsedMs = ResolveReviveOwnerUpgradeTombInitialElapsed(
+                ReviveOwnerUpgradeTombItemId,
+                ReviveOwnerUpgradeTombEffectUol,
+                revivePoint,
+                ownerActionName,
+                ownerFacingRight,
+                currentTick,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(_tombFallFrames));
+
+            _animationEffects.AddPacketOwnedUpgradeTomb(
                 _tombFallFrames,
+                ReviveOwnerUpgradeTombEffectUol,
                 revivePoint.X,
                 revivePoint.Y,
-                flip: false,
                 currentTick,
-                zOrder: 1);
+                zOrder: 1,
+                initialElapsedMs: initialElapsedMs);
+        }
+
+        private int ResolveReviveOwnerUpgradeTombInitialElapsed(
+            int itemId,
+            string effectUol,
+            Vector2 position,
+            string ownerActionName,
+            bool ownerFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (itemId <= 0
+                || string.IsNullOrWhiteSpace(effectUol)
+                || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_reviveOwnerUpgradeTombAnimationOwnerState != null)
+            {
+                initialElapsedMs = ResolveReviveOwnerUpgradeTombRestoreElapsed(
+                    _reviveOwnerUpgradeTombAnimationOwnerState.ItemId,
+                    _reviveOwnerUpgradeTombAnimationOwnerState.EffectUol,
+                    _reviveOwnerUpgradeTombAnimationOwnerState.Position,
+                    _reviveOwnerUpgradeTombAnimationOwnerState.OwnerActionName,
+                    _reviveOwnerUpgradeTombAnimationOwnerState.OwnerFacingRight,
+                    _reviveOwnerUpgradeTombAnimationOwnerState.AnimationStartTime,
+                    itemId,
+                    effectUol,
+                    position,
+                    ownerActionName,
+                    ownerFacingRight,
+                    currentTime,
+                    durationMs);
+            }
+
+            _reviveOwnerUpgradeTombAnimationOwnerState = new ReviveOwnerUpgradeTombAnimationOwnerState
+            {
+                ItemId = itemId,
+                EffectUol = effectUol,
+                Position = position,
+                OwnerActionName = ownerActionName,
+                OwnerFacingRight = ownerFacingRight,
+                AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                DurationMs = durationMs
+            };
+
+            return initialElapsedMs;
+        }
+
+        internal static string BuildReviveOwnerUpgradeTombOwnerSlotKeyForTesting(int itemId)
+        {
+            return itemId <= 0
+                ? string.Empty
+                : $"aux.packetOwnedUpgradeTomb.oneTime:{itemId.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        internal static string GetReviveOwnerUpgradeTombEffectUolForTesting()
+        {
+            return ReviveOwnerUpgradeTombEffectUol;
+        }
+
+        internal static int ResolveReviveOwnerUpgradeTombRestoreElapsedForTesting(
+            int previousItemId,
+            string previousEffectUol,
+            Vector2 previousPosition,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            int currentItemId,
+            string currentEffectUol,
+            Vector2 currentPosition,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveReviveOwnerUpgradeTombRestoreElapsed(
+                previousItemId,
+                previousEffectUol,
+                previousPosition,
+                previousActionName,
+                previousFacingRight,
+                previousAnimationStartTime,
+                currentItemId,
+                currentEffectUol,
+                currentPosition,
+                currentActionName,
+                currentFacingRight,
+                currentTime,
+                durationMs);
+        }
+
+        private static int ResolveReviveOwnerUpgradeTombRestoreElapsed(
+            int previousItemId,
+            string previousEffectUol,
+            Vector2 previousPosition,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            int currentItemId,
+            string currentEffectUol,
+            Vector2 currentPosition,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousItemId != currentItemId
+                || previousPosition != currentPosition
+                || previousFacingRight != currentFacingRight
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(previousActionName, currentActionName, StringComparison.Ordinal))
+            {
+                return 0;
+            }
+
+            int elapsedMs = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTime, previousAnimationStartTime);
+            return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
         internal static bool TryBuildReviveOwnerTransferFieldPayload(bool premium, out byte[] payload)

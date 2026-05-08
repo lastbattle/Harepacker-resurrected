@@ -383,6 +383,7 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasSourceLayerClockSignature { get; set; }
             public int LastInsertCanvasSourceCanvasObjectId { get; set; }
             public int LastInsertCanvasSourceFrameSignature { get; set; }
+            public int LastInsertCanvasOverlayParentSignature { get; set; }
             public int LastInsertCanvasPreparedLayerFilter { get; set; } = int.MinValue;
             public int LastInsertCanvasPreparedLayerZ { get; set; } = int.MinValue;
             public int LastInsertCanvasPreparedLayerColor { get; set; }
@@ -6712,6 +6713,9 @@ namespace HaCreator.MapSimulator.Character
                 (_avatarActionLayerState?.HeldActionFrameDelay ?? (Assembler?.HeldActionFrameDelay ?? false)) ? 1 : 0,
                 _avatarActionLayerState?.AllowLoop ?? ShouldCurrentAvatarActionLayerLoop());
             int liveSourceFrameSignature = ComputeMirrorImageSourceFrameSignature(frame, preparedLayer.RenderLayer);
+            int liveOverlayParentSignature = ComputeMirrorImageOverlayParentSignature(
+                frame,
+                preparedLayer.OverlayTargetLayer);
             bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
@@ -6739,6 +6743,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceCanvasObjectId,
                 liveSourceFrameSignature,
                 preparedLayer.LastInsertCanvasSourceFrameSignature,
+                liveOverlayParentSignature,
+                preparedLayer.LastInsertCanvasOverlayParentSignature,
                 preparedLayer.PreparedLayerFilter,
                 preparedLayer.LastInsertCanvasPreparedLayerFilter,
                 preparedLayer.PreparedLayerZ,
@@ -6759,7 +6765,8 @@ namespace HaCreator.MapSimulator.Character
                     sourceParts: liveSourceParts,
                     insertsLiveSourceCanvas: true,
                     sourceLayerClockSignature: liveSourceLayerClockSignature,
-                    sourceFrameSignature: liveSourceFrameSignature);
+                    sourceFrameSignature: liveSourceFrameSignature,
+                    overlayParentSignature: liveOverlayParentSignature);
             }
 
             return shouldUseLiveSourceLayer;
@@ -7002,6 +7009,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
             preparedLayer.LastInsertCanvasSourceCanvasObjectId = 0;
             preparedLayer.LastInsertCanvasSourceFrameSignature = 0;
+            preparedLayer.LastInsertCanvasOverlayParentSignature = 0;
             preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
             preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
             preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
@@ -7024,7 +7032,8 @@ namespace HaCreator.MapSimulator.Character
             IReadOnlyList<AssembledPart> sourceParts,
             bool insertsLiveSourceCanvas,
             int sourceLayerClockSignature = 0,
-            int sourceFrameSignature = 0)
+            int sourceFrameSignature = 0,
+            int overlayParentSignature = 0)
         {
             if (preparedLayer == null)
             {
@@ -7050,6 +7059,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceLayerOriginSignature = 0;
                 preparedLayer.LastInsertCanvasSourceLayerClockSignature = 0;
                 preparedLayer.LastInsertCanvasSourceFrameSignature = 0;
+                preparedLayer.LastInsertCanvasOverlayParentSignature = 0;
                 preparedLayer.LastInsertCanvasPreparedLayerFilter = int.MinValue;
                 preparedLayer.LastInsertCanvasPreparedLayerZ = int.MinValue;
                 preparedLayer.LastInsertCanvasPreparedLayerColor = 0;
@@ -7108,6 +7118,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasSourceFrameSignature = ResolveMirrorImageLastInsertCanvasSourceFrameSignature(
                 preparedLayer.LastInsertCanvasSourceFrameSignature,
                 sourceFrameSignature,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasOverlayParentSignature = ResolveMirrorImageLastInsertCanvasOverlayParentSignature(
+                preparedLayer.LastInsertCanvasOverlayParentSignature,
+                overlayParentSignature,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasPreparedLayerFilter = ResolveMirrorImageLastInsertCanvasPreparedLayerFilter(
                 preparedLayer.LastInsertCanvasPreparedLayerFilter,
@@ -7580,6 +7594,48 @@ namespace HaCreator.MapSimulator.Character
             return signature.ToHashCode();
         }
 
+        internal static int ResolveMirrorImageLastInsertCanvasOverlayParentSignature(
+            int existingOverlayParentSignature,
+            int currentOverlayParentSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentOverlayParentSignature != 0
+                ? currentOverlayParentSignature
+                : existingOverlayParentSignature;
+        }
+
+        internal static int ComputeMirrorImageOverlayParentSignature(
+            AssembledFrame frame,
+            AvatarRenderLayer overlayTargetLayer)
+        {
+            if (frame?.Parts == null)
+            {
+                return 0;
+            }
+
+            int[] insertionIndices = GetAvatarRenderLayerInsertionIndices(frame.Parts);
+            int insertionIndex = ResolveMirrorImageOverlayInsertionIndex(insertionIndices, frame.Parts.Count);
+            var signature = new HashCode();
+            signature.Add((int)overlayTargetLayer);
+            signature.Add(insertionIndex);
+            signature.Add(frame.Parts.Count);
+            signature.Add(RuntimeHelpers.GetHashCode(frame.Parts));
+            if (insertionIndices != null)
+            {
+                signature.Add(insertionIndices.Length);
+                for (int layerIndex = 0; layerIndex < insertionIndices.Length; layerIndex++)
+                {
+                    signature.Add(insertionIndices[layerIndex]);
+                }
+            }
+            else
+            {
+                signature.Add(0);
+            }
+
+            return signature.ToHashCode();
+        }
+
         internal static int ResolveMirrorImageLastInsertCanvasPreparedLayerFilter(
             int existingPreparedLayerFilter,
             int currentPreparedLayerFilter,
@@ -7872,6 +7928,8 @@ namespace HaCreator.MapSimulator.Character
             int lastInsertCanvasSourceCanvasObjectId = 0,
             int sourceFrameSignature = 0,
             int lastInsertCanvasSourceFrameSignature = 0,
+            int overlayParentSignature = 0,
+            int lastInsertCanvasOverlayParentSignature = 0,
             int preparedLayerFilter = int.MinValue,
             int lastInsertCanvasPreparedLayerFilter = int.MinValue,
             int preparedLayerZ = int.MinValue,
@@ -7967,6 +8025,9 @@ namespace HaCreator.MapSimulator.Character
             bool sourceFrameSignatureChanged = sourceFrameSignature != 0
                 && lastInsertCanvasSourceFrameSignature != 0
                 && sourceFrameSignature != lastInsertCanvasSourceFrameSignature;
+            bool overlayParentChanged = overlayParentSignature != 0
+                && lastInsertCanvasOverlayParentSignature != 0
+                && overlayParentSignature != lastInsertCanvasOverlayParentSignature;
             bool preparedLayerFilterChanged = preparedLayerFilter != int.MinValue
                 && lastInsertCanvasPreparedLayerFilter != int.MinValue
                 && preparedLayerFilter != lastInsertCanvasPreparedLayerFilter;
@@ -7991,6 +8052,7 @@ namespace HaCreator.MapSimulator.Character
                 || sourceLayerClockChanged
                 || sourceCanvasObjectChanged
                 || sourceFrameSignatureChanged
+                || overlayParentChanged
                 || preparedLayerFilterChanged
                 || preparedLayerZChanged
                 || preparedLayerColorChanged
@@ -8017,6 +8079,8 @@ namespace HaCreator.MapSimulator.Character
                 && (sourceCanvasObjectId == 0 || lastInsertCanvasSourceCanvasObjectId == 0);
             bool sourceFrameSignatureMetadataMissing = (sourceFrameSignature != 0 || lastInsertCanvasSourceFrameSignature != 0)
                 && (sourceFrameSignature == 0 || lastInsertCanvasSourceFrameSignature == 0);
+            bool overlayParentMetadataMissing = (overlayParentSignature != 0 || lastInsertCanvasOverlayParentSignature != 0)
+                && (overlayParentSignature == 0 || lastInsertCanvasOverlayParentSignature == 0);
             bool preparedLayerFilterMetadataMissing = (preparedLayerFilter != int.MinValue || lastInsertCanvasPreparedLayerFilter != int.MinValue)
                 && (preparedLayerFilter == int.MinValue || lastInsertCanvasPreparedLayerFilter == int.MinValue);
             bool preparedLayerZMetadataMissing = (preparedLayerZ != int.MinValue || lastInsertCanvasPreparedLayerZ != int.MinValue)
@@ -8033,6 +8097,7 @@ namespace HaCreator.MapSimulator.Character
                 || sourceLayerClockMetadataMissing
                 || sourceCanvasObjectMetadataMissing
                 || sourceFrameSignatureMetadataMissing
+                || overlayParentMetadataMissing
                 || preparedLayerFilterMetadataMissing
                 || preparedLayerZMetadataMissing
                 || preparedLayerColorMetadataMissing

@@ -147,6 +147,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (key is Keys.Home or Keys.End)
+            {
+                return controlHeld;
+            }
+
             if (suppressImeOwnedForwarding
                 && !ShouldForwardImeNavigationKeyToParent(key))
             {
@@ -158,7 +163,6 @@ namespace HaCreator.MapSimulator.UI
                 Keys.Back => false,
                 Keys.Delete => false,
                 Keys.C or Keys.V or Keys.X => !controlHeld,
-                Keys.Home or Keys.End => controlHeld,
                 Keys.Down => true,
                 // `CCtrlEdit::OnKey` forwards plain Insert to the owner callback;
                 // Shift+Insert stays in the local paste command path.

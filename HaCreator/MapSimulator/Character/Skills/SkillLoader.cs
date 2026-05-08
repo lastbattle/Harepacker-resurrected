@@ -151,6 +151,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             "nskill",
             "skillpath",
             "skillidpath",
+            "name",
+            "entryname",
+            "rowname",
+            "keyname",
+            "propertyname",
+            "nodename",
             "id",
             "key",
             "owner",
@@ -178,8 +184,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             "level",
             "skilllevel",
+            "slv",
+            "nslv",
             "nskilllevel",
             "reqlevel",
+            "reqskilllevel",
+            "requiredskilllevel",
             "requiredlevel"
         };
         private static readonly string[] ClientTileUolPropertyNames =
@@ -333,6 +343,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterChargeAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, SkillAnimation> _clientDefaultHitAnimationCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _missingClientDefaultHitAnimationKeys = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, SkillAnimation> _clientCashBulletHitAnimationCache = new();
+        private readonly HashSet<int> _missingClientCashBulletHitAnimationKeys = new();
         private readonly Dictionary<ItemBulletAnimationCacheKey, SkillAnimation> _itemBulletAnimationCache = new();
         private readonly HashSet<ItemBulletAnimationCacheKey> _itemsWithoutBulletAnimation = new();
         private readonly Dictionary<SummonActionCacheKey, SkillAnimation> _summonActionCache = new();
@@ -427,6 +441,111 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillAnimation animation = LoadSkillAnimation(property, propertySegments[^1]);
             return animation.Frames.Count > 0 ? animation : null;
+        }
+
+        public SkillAnimation LoadClientDefaultHitAnimation(string branchName)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return null;
+            }
+
+            string normalizedBranchName = branchName.Trim();
+            if (_clientDefaultHitAnimationCache.TryGetValue(normalizedBranchName, out SkillAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            if (_missingClientDefaultHitAnimationKeys.Contains(normalizedBranchName))
+            {
+                return null;
+            }
+
+            WzImage image = Program.FindImage("Character", "Afterimage/hit.img");
+            if (image == null)
+            {
+                _missingClientDefaultHitAnimationKeys.Add(normalizedBranchName);
+                return null;
+            }
+
+            image.ParseImage();
+            WzImageProperty branchNode = image[normalizedBranchName];
+            if (branchNode == null)
+            {
+                _missingClientDefaultHitAnimationKeys.Add(normalizedBranchName);
+                return null;
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(branchNode, $"Character/Afterimage/hit.img/{normalizedBranchName}");
+            if (animation?.Frames?.Count > 0)
+            {
+                _clientDefaultHitAnimationCache[normalizedBranchName] = animation;
+                return animation;
+            }
+
+            _missingClientDefaultHitAnimationKeys.Add(normalizedBranchName);
+            return null;
+        }
+
+        public SkillAnimation LoadClientCashBulletHitAnimation(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            if (_clientCashBulletHitAnimationCache.TryGetValue(itemId, out SkillAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            if (_missingClientCashBulletHitAnimationKeys.Contains(itemId)
+                || !TryResolveClientCashBulletHitAnimationPath(itemId, out string imagePath, out string itemNodeName))
+            {
+                return null;
+            }
+
+            WzImage image = Program.FindImage("Item", imagePath);
+            if (image == null)
+            {
+                _missingClientCashBulletHitAnimationKeys.Add(itemId);
+                return null;
+            }
+
+            image.ParseImage();
+            WzImageProperty hitNode = image[itemNodeName]?["hit"];
+            if (hitNode == null)
+            {
+                _missingClientCashBulletHitAnimationKeys.Add(itemId);
+                return null;
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(hitNode, $"Item/{imagePath}/{itemNodeName}/hit");
+            if (animation?.Frames?.Count > 0)
+            {
+                _clientCashBulletHitAnimationCache[itemId] = animation;
+                return animation;
+            }
+
+            _missingClientCashBulletHitAnimationKeys.Add(itemId);
+            return null;
+        }
+
+        internal static bool TryResolveClientCashBulletHitAnimationPath(
+            int itemId,
+            out string imagePath,
+            out string itemNodeName)
+        {
+            imagePath = null;
+            itemNodeName = null;
+            if (itemId <= 0 || itemId / 1000000 != 5)
+            {
+                return false;
+            }
+
+            imagePath = $"Cash/{itemId / 10000:D4}";
+            itemNodeName = itemId.ToString("D8", CultureInfo.InvariantCulture);
+            return true;
         }
 
         public string EnsureCastSoundRegistered(SkillData skill, SoundManager soundManager)
@@ -1364,7 +1483,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             var ballNode = skillNode["ball"];
             if (ballNode != null
                 || !string.IsNullOrWhiteSpace(skill.ClientBallUolPath)
-                || !string.IsNullOrWhiteSpace(skill.ClientFlipBallUolPath))
+                || !string.IsNullOrWhiteSpace(skill.ClientFlipBallUolPath)
+                || HasClientSkillAssetUolVariantPaths(skill.ClientCharacterLevelBallUolPaths)
+                || HasClientSkillAssetUolVariantPaths(skill.ClientCharacterLevelFlipBallUolPaths)
+                || HasClientSkillAssetUolVariantPaths(skill.ClientLevelBallUolPaths)
+                || HasClientSkillAssetUolVariantPaths(skill.ClientLevelFlipBallUolPaths))
             {
                 skill.Projectile = LoadProjectile(
                     skill.SkillId,
@@ -2296,6 +2419,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return action;
             }
 
+            action.ActionName = actionNode.Name;
+            if (CharacterPart.TryGetClientRawActionCode(actionNode.Name, out int rawActionCode))
+            {
+                action.RawActionCode = rawActionCode;
+            }
+
             Point? lt = GetVector(actionNode, "lt");
             Point? rb = GetVector(actionNode, "rb");
             if (lt.HasValue || rb.HasValue)
@@ -2314,7 +2443,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                MeleeAfterImageFrameSet frameSet = LoadAfterImageFrameSet(child);
+                MeleeAfterImageFrameSet frameSet = LoadAfterImageFrameSet(child, action);
                 if (frameSet.Frames.Count > 0)
                 {
                     action.FrameSets[frameIndex] = frameSet;
@@ -2324,7 +2453,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return action;
         }
 
-        private MeleeAfterImageFrameSet LoadAfterImageFrameSet(WzImageProperty frameSetNode)
+        private MeleeAfterImageFrameSet LoadAfterImageFrameSet(WzImageProperty frameSetNode, MeleeAfterImageAction action)
         {
             var frameSet = new MeleeAfterImageFrameSet();
             if (frameSetNode == null)
@@ -2337,12 +2466,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SkillFrame directFrame = LoadAfterImageFrame(frameSetNode);
                 if (directFrame != null)
                 {
+                    ApplyAfterImageCanvasMetadata(directFrame, action, 0);
                     frameSet.Frames.Add(directFrame);
                 }
 
                 return frameSet;
             }
 
+            int canvasOrdinal = 0;
             foreach (WzImageProperty child in EnumerateAfterImageFrameChildrenInClientOrder(frameSetNode))
             {
                 if (child == null)
@@ -2353,11 +2484,29 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SkillFrame frame = LoadAfterImageFrame(child);
                 if (frame != null)
                 {
+                    ApplyAfterImageCanvasMetadata(frame, action, canvasOrdinal);
                     frameSet.Frames.Add(frame);
                 }
+
+                canvasOrdinal++;
             }
 
             return frameSet;
+        }
+
+        private static void ApplyAfterImageCanvasMetadata(
+            SkillFrame frame,
+            MeleeAfterImageAction action,
+            int canvasOrdinal)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+
+            frame.AfterimageActionName = action?.ActionName;
+            frame.AfterimageActionRawCode = action?.RawActionCode;
+            frame.AfterimageCanvasOrdinal = canvasOrdinal;
         }
 
         private SkillFrame LoadAfterImageFrame(WzImageProperty frameNode)
@@ -3604,6 +3753,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return canvasChildNames.Count > 0 ? canvasChildNames.AsReadOnly() : Array.Empty<string>();
         }
 
+        private static readonly string[] ShadowPartnerClientActionPieceEventDelayPropertyNames =
+        {
+            "event-delay",
+            "eventDelay"
+        };
+
         private static int? ResolveShadowPartnerClientActionPieceEventDelayMs(WzImageProperty pieceNode)
         {
             if (pieceNode == null)
@@ -3611,14 +3766,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            if (pieceNode["event-delay"] != null)
+            foreach (string propertyName in ShadowPartnerClientActionPieceEventDelayPropertyNames)
             {
-                return GetInt(pieceNode, "event-delay");
-            }
-
-            if (pieceNode["eventDelay"] != null)
-            {
-                return GetInt(pieceNode, "eventDelay");
+                if (pieceNode[propertyName] != null)
+                {
+                    return GetInt(pieceNode, propertyName);
+                }
             }
 
             return null;
@@ -6786,6 +6939,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (TryParseClientSummonedUolRecordTextField(
+                        child.Name,
+                        out string encodedFieldName,
+                        out string encodedFieldValue)
+                    && TryReadClientSkillAssetUolRecordVariantLevel(
+                        encodedFieldName,
+                        encodedFieldValue,
+                        out isCharacterLevelVariant,
+                        out variantLevel))
+                {
+                    return true;
+                }
+
                 string normalizedName = NormalizeClientSummonedUolHeuristicPathSegment(child.Name);
                 bool characterLevelField = ClientSkillAssetCharacterLevelFieldNames.Contains(
                     normalizedName,
@@ -6795,6 +6961,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                     StringComparer.Ordinal);
                 if (!characterLevelField && !skillLevelField)
                 {
+                    if (TryReadClientSkillAssetUolRecordVariantLevel(
+                            child.Name,
+                            out bool encodedCharacterLevelVariant,
+                            out int encodedVariantLevel))
+                    {
+                        isCharacterLevelVariant = encodedCharacterLevelVariant;
+                        variantLevel = encodedVariantLevel;
+                        return true;
+                    }
+
                     continue;
                 }
 
@@ -6807,6 +6983,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                 isCharacterLevelVariant = characterLevelField;
                 variantLevel = parsedLevel;
                 return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadClientSkillAssetUolRecordVariantLevel(
+            string fieldName,
+            out bool isCharacterLevelVariant,
+            out int variantLevel)
+        {
+            isCharacterLevelVariant = false;
+            variantLevel = 0;
+            if (string.IsNullOrWhiteSpace(fieldName))
+            {
+                return false;
+            }
+
+            foreach ((string FieldName, string FieldValue) in EnumerateClientSummonedUolRecordTextFields(fieldName))
+            {
+                if (TryReadClientSkillAssetUolRecordVariantLevel(
+                        FieldName,
+                        FieldValue,
+                        out isCharacterLevelVariant,
+                        out variantLevel))
+                {
+                    return true;
+                }
             }
 
             return false;
@@ -6974,6 +7177,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     : $"{relativePathPrefix}/{child.Name}";
                 if (IsClientSummonedUolCandidateValueProperty(child)
                     && !IsClientSummonedUolTableEntryValueName(child.Name)
+                    && !IsClientSummonedUolTableOwnerFieldName(child.Name)
+                    && !TryReadClientSummonedUolTableOwnerSkillIdFromFieldName(child.Name, out _)
                     && !TryParseRequiredSkillId(child.Name, out _))
                 {
                     yield return (child, relativePath);
@@ -7223,7 +7428,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                if (inQuote || (current != ',' && current != ';' && current != '|' && current != '\r' && current != '\n'))
+                if (inQuote || (current != ',' && current != ';' && current != '|' && current != '&' && current != '\r' && current != '\n' && current != '\t'))
                 {
                     continue;
                 }
@@ -7991,13 +8196,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || name.Equals("summonedUOLPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("summoned", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("summonedValue", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("data", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("payload", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("target", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("targetValue", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetUol", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetUolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetUOLPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetUolStr", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("targetUolString", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("pathValue", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourceUol", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourceUolPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("sourceUOLPath", StringComparison.OrdinalIgnoreCase)
@@ -8010,6 +8219,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || name.Equals("clientPath", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("clientUol", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("clientUolPath", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("uolData", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uolValue", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("uolTarget", StringComparison.OrdinalIgnoreCase)
                    || name.Equals("value", StringComparison.OrdinalIgnoreCase)
@@ -8019,8 +8229,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || normalizedName.Equals("summonuolpath", StringComparison.Ordinal)
                    || normalizedName.Equals("summoneduol", StringComparison.Ordinal)
                    || normalizedName.Equals("summoneduolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("uoldata", StringComparison.Ordinal)
                    || normalizedName.Equals("targetuol", StringComparison.Ordinal)
                    || normalizedName.Equals("targetuolpath", StringComparison.Ordinal)
+                   || normalizedName.Equals("targetvalue", StringComparison.Ordinal)
+                   || normalizedName.Equals("pathvalue", StringComparison.Ordinal)
                    || normalizedName.Equals("sourceuol", StringComparison.Ordinal)
                    || normalizedName.Equals("sourceuolpath", StringComparison.Ordinal)
                    || normalizedName.Equals("clientuol", StringComparison.Ordinal)
@@ -12092,6 +12305,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            var seenLinkedContainers = new HashSet<WzImageProperty>();
             var stack = new Stack<WzImageProperty>(
                 skillNode.WzProperties
                     .Where(static child => child != null)
@@ -12106,7 +12320,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                foreach (WzImageProperty child in node.WzProperties?
+                WzImageProperty traversalNode = ResolveMorphSkillActionNode(node);
+                if (traversalNode == null)
+                {
+                    continue;
+                }
+
+                if (!ReferenceEquals(traversalNode, node)
+                    && !seenLinkedContainers.Add(traversalNode))
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty child in traversalNode.WzProperties?
                              .Where(static child => child != null)
                              .Reverse()
                          ?? Enumerable.Empty<WzImageProperty>())
@@ -12173,8 +12399,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             AddActionNames(actionNames, seen, new[]
             {
-                GetString(actionNode, "0"),
-                GetString(actionNode, "action")
+                GetPropertyStringValue(actionNode?["0"]),
+                GetPropertyStringValue(actionNode?["action"])
             });
 
             foreach (WzImageProperty property in actionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
@@ -12243,9 +12469,19 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static string GetPropertyStringValue(WzImageProperty property)
         {
+            return GetPropertyStringValue(property, new HashSet<WzImageProperty>());
+        }
+
+        private static string GetPropertyStringValue(WzImageProperty property, ISet<WzImageProperty> seen)
+        {
             return property switch
             {
                 WzStringProperty stringProperty => stringProperty.Value,
+                WzUOLProperty uolProperty when seen != null
+                                            && seen.Add(uolProperty)
+                                            && uolProperty.GetLinkedWzImageProperty() is WzImageProperty linkedProperty
+                                            && !ReferenceEquals(linkedProperty, uolProperty)
+                    => GetPropertyStringValue(linkedProperty, seen),
                 _ => null
             };
         }

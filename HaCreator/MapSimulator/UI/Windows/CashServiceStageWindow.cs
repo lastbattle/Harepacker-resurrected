@@ -4640,10 +4640,13 @@ namespace HaCreator.MapSimulator.UI
                 _itcPacketCatalogEntries.Add(entry);
             }
 
-            if (stream.Position < stream.Length)
-            {
-                _ = reader.ReadByte();
-            }
+            string trailingSummary = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                (int)stream.Position,
+                decodedRowCount: 0,
+                title: isSearchResult ? "Search-list trailing body" : "Main-list trailing body",
+                seller: "CITC list owner",
+                stateLabel: isSearchResult ? "Search body" : "List body");
 
             PacketCatalogEntry selectedEntry = _itcPacketCatalogEntries.FirstOrDefault();
             _itcNormalItemSelectedListingId = selectedEntry?.ListingId ?? 0;
@@ -4657,6 +4660,12 @@ namespace HaCreator.MapSimulator.UI
                 : "The packet-owned CITC list is empty.";
             message =
                 $"{(isSearchResult ? "CITC::OnGetSearchITCListDone" : "CITC::OnGetITCListDone")} loaded {_itcNormalItemPageEntryCount.ToString(CultureInfo.InvariantCulture)} row(s) out of {_itcCurrentCategoryItemCount.ToString(CultureInfo.InvariantCulture)} for category {_itcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}/{_itcNormalItemSubCategory.ToString(CultureInfo.InvariantCulture)} page {_itcNormalItemPage.ToString(CultureInfo.InvariantCulture)}.";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+                _noticeState += $" {trailingSummary}";
+            }
+
             return true;
         }
 
@@ -4690,10 +4699,13 @@ namespace HaCreator.MapSimulator.UI
                 limitedCount = Math.Max(0, reader.ReadInt32());
             }
 
-            if (stream.Position < stream.Length)
-            {
-                _ = reader.ReadByte();
-            }
+            string trailingSummary = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                (int)stream.Position,
+                decodedRowCount: 0,
+                title: isPurchaseList ? "Purchase-list trailing body" : "Sale-list trailing body",
+                seller: isPurchaseList ? "CITC purchase owner" : "CITC sale owner",
+                stateLabel: isPurchaseList ? "Purchase body" : "Sale body");
 
             if (isPurchaseList)
             {
@@ -4713,6 +4725,12 @@ namespace HaCreator.MapSimulator.UI
             PacketCatalogEntry selectedEntry = target.FirstOrDefault();
             _itcNormalItemSelectedListingId = selectedEntry?.ListingId ?? _itcNormalItemSelectedListingId;
             _itcNormalItemSelectedPrice = selectedEntry?.Price ?? _itcNormalItemSelectedPrice;
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+                _noticeState += $" {trailingSummary}";
+            }
+
             return true;
         }
 
@@ -4746,6 +4764,19 @@ namespace HaCreator.MapSimulator.UI
                 ? $"Wish-sale owner loaded {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-authored row(s)."
                 : "Wish-sale owner loaded no packet-authored rows.";
             message = $"CITC::OnLoadWishSaleListDone loaded {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-authored wish-sale row(s).";
+            string trailingSummary = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                (int)stream.Position,
+                decodedRowCount: 0,
+                title: "Wish-sale trailing body",
+                seller: "CITC wish owner",
+                stateLabel: "Wish body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+                _noticeState += $" {trailingSummary}";
+            }
+
             return true;
         }
 
@@ -4911,6 +4942,19 @@ namespace HaCreator.MapSimulator.UI
 
             _noticeState = $"Register-sale failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
             message = $"CITC::OnNormalItemResRegisterSaleEntryFailed rejected the focused listing (reason {reason.ToString(CultureInfo.InvariantCulture)}).";
+            string trailingSummary = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                payload?.Length >= 1 + sizeof(int) ? 1 + sizeof(int) : Math.Min(1, payload?.Length ?? 0),
+                decodedRowCount: 0,
+                title: "Register-sale failed body",
+                seller: "CITC sale owner",
+                stateLabel: "Failed body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+                _noticeState += $" {trailingSummary}";
+            }
+
             AppendItcResultPacketEntry(new PacketCatalogEntry
             {
                 Title = "Register sale failed",
@@ -4951,6 +4995,19 @@ namespace HaCreator.MapSimulator.UI
 
             _noticeState = $"Sale-to-wish failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
             message = $"CITC::OnSaleCurrentItemToWishFailed rejected the focused listing (reason {reason.ToString(CultureInfo.InvariantCulture)}).";
+            string trailingSummary = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                payload?.Length >= 1 + sizeof(int) ? 1 + sizeof(int) : Math.Min(1, payload?.Length ?? 0),
+                decodedRowCount: 0,
+                title: "Sale-to-wish failed body",
+                seller: "CITC wish owner",
+                stateLabel: "Failed body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+                _noticeState += $" {trailingSummary}";
+            }
+
             AppendItcResultPacketEntry(new PacketCatalogEntry
             {
                 Title = "Sale-to-wish failed",
@@ -4975,6 +5032,19 @@ namespace HaCreator.MapSimulator.UI
 
             _noticeState = $"Bid auction failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
             message = $"CITC::OnBidAuctionFailed reported reason {reason.ToString(CultureInfo.InvariantCulture)}.";
+            string trailingSummary = AppendItcRawTailResultEntryIfNeeded(
+                payload,
+                payload?.Length >= 1 + sizeof(int) ? 1 + sizeof(int) : Math.Min(1, payload?.Length ?? 0),
+                decodedRowCount: 0,
+                title: "Bid-failed body",
+                seller: "CITC purchase owner",
+                stateLabel: "Failed body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+                _noticeState += $" {trailingSummary}";
+            }
+
             AppendItcResultPacketEntry(new PacketCatalogEntry
             {
                 Title = "Bid failed",

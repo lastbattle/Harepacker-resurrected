@@ -89,6 +89,19 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class ListOwnerState
         {
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int ControlId { get; init; }
+                public int NativeButtonId { get; init; }
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int KeyFocusedWidth { get; init; }
+                public int KeyFocusedHeight { get; init; }
+                public bool HasKeyFocusCanvas { get; init; }
+            }
+
             public string PaneLabel { get; init; } = string.Empty;
             public string BrowseModeLabel { get; init; } = string.Empty;
             public string CategoryLabel { get; init; } = string.Empty;
@@ -99,6 +112,18 @@ namespace HaCreator.MapSimulator.UI
             public int TotalCount { get; init; }
             public int PlateFocusIndex { get; init; } = -1;
             public bool HasKeyFocusCanvas { get; init; }
+            public int SelectorControlId { get; init; } = 1000;
+            public int SelectorInitArg { get; init; } = 4;
+            public int SelectorX { get; init; } = 412;
+            public int SelectorY { get; init; } = 406;
+            public int ScrollBarControlId { get; init; } = 1001;
+            public int ScrollBarUpButtonId { get; init; } = 1;
+            public int ScrollBarDownButtonId { get; init; }
+            public int ScrollBarX { get; init; } = 381;
+            public int ScrollBarY { get; init; } = 44;
+            public int ScrollBarHeight { get; init; } = 339;
+            public int WheelRange { get; init; } = 412;
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
             public IReadOnlyList<ListOwnerEntryState> VisibleEntries { get; init; } = Array.Empty<ListOwnerEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
         }
@@ -111,6 +136,7 @@ namespace HaCreator.MapSimulator.UI
             public int ChargeParam { get; init; }
             public string StatusMessage { get; init; } = string.Empty;
             public IReadOnlyList<string> DetailSummaries { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<ListOwnerState.ButtonControlState> ButtonControls { get; init; } = Array.Empty<ListOwnerState.ButtonControlState>();
         }
 
         public sealed class OneADayOwnerState
@@ -833,7 +859,13 @@ namespace HaCreator.MapSimulator.UI
             lineY += _font.LineSpacing + 2f;
             sprite.DrawString(
                 _font,
-                $"Plate {state.PlateFocusIndex.ToString(CultureInfo.InvariantCulture)}  Button {Math.Max(-1, _listButtonFocusIndex).ToString(CultureInfo.InvariantCulture)}  KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}",
+                $"Selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} init {state.SelectorInitArg.ToString(CultureInfo.InvariantCulture)} at {state.SelectorX.ToString(CultureInfo.InvariantCulture)},{state.SelectorY.ToString(CultureInfo.InvariantCulture)}  Plate {state.PlateFocusIndex.ToString(CultureInfo.InvariantCulture)}  Button {Math.Max(-1, _listButtonFocusIndex).ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                mutedColor);
+            lineY += _font.LineSpacing + 2f;
+            sprite.DrawString(
+                _font,
+                $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Controls {state.ButtonControls.Count.ToString(CultureInfo.InvariantCulture)}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 mutedColor);
             lineY += _font.LineSpacing + 2f;
@@ -843,6 +875,14 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 mutedColor);
             lineY += _font.LineSpacing + 2f;
+            if (state.ButtonControls.Count > 0)
+            {
+                string controlLine = string.Join(
+                    "  ",
+                    state.ButtonControls.Select((control, index) =>
+                        $"{(index == _listButtonFocusIndex ? ">" : string.Empty)}{control.ActionKey}#{control.NativeButtonId.ToString(CultureInfo.InvariantCulture)} {control.Width.ToString(CultureInfo.InvariantCulture)}x{control.Height.ToString(CultureInfo.InvariantCulture)}/{control.KeyFocusedWidth.ToString(CultureInfo.InvariantCulture)}x{control.KeyFocusedHeight.ToString(CultureInfo.InvariantCulture)}"));
+                DrawWrapped(sprite, controlLine, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, mutedColor);
+            }
 
             foreach (ListOwnerEntryState entry in state.VisibleEntries.Take(5))
             {
@@ -915,6 +955,14 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
+            if (state.ButtonControls.Count > 0)
+            {
+                string controlLine = string.Join(
+                    "  ",
+                    state.ButtonControls.Select((control, index) =>
+                        $"{(index == focusIndex ? ">" : string.Empty)}{control.ActionKey}#{control.NativeButtonId.ToString(CultureInfo.InvariantCulture)} {control.Width.ToString(CultureInfo.InvariantCulture)}x{control.Height.ToString(CultureInfo.InvariantCulture)}"));
+                DrawWrapped(sprite, controlLine, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
 
             DrawWrapped(sprite, _statusActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
             DrawWrapped(sprite, state.StatusMessage, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
@@ -2446,12 +2494,12 @@ namespace HaCreator.MapSimulator.UI
 
             UpdateScrollBarRuntimeObject(
                 _listScrollBarObject,
-                1001,
-                1,
-                0,
-                new Point(381, 44),
-                339,
-                412,
+                state?.ScrollBarControlId ?? 1001,
+                state?.ScrollBarUpButtonId ?? 1,
+                state?.ScrollBarDownButtonId ?? 0,
+                new Point(state?.ScrollBarX ?? 381, state?.ScrollBarY ?? 44),
+                state?.ScrollBarHeight ?? 339,
+                state?.WheelRange ?? 412,
                 scrollOffset,
                 Math.Max(0, totalCount - 5),
                 _draggingListScrollThumb);

@@ -1055,12 +1055,55 @@ namespace HaCreator.MapSimulator.Effects
                 }
             }
 
+            foreach (WzImageProperty portalProperty in portalRoot.WzProperties)
+            {
+                if (portalProperty == null || nextFloorMapId > 0)
+                {
+                    continue;
+                }
+
+                string portalName = (portalProperty["pn"] as WzStringProperty)?.Value ?? string.Empty;
+                string targetPortalName = (portalProperty["tn"] as WzStringProperty)?.Value ?? string.Empty;
+                int targetMapId = NormalizeTransferMapId((portalProperty["tm"] as WzIntProperty)?.GetInt() ?? -1);
+
+                if (TryResolveAuthoredDojoNextFloorPortalContract(
+                        mapId,
+                        portalName,
+                        targetMapId,
+                        targetPortalName,
+                        out string resolvedPortalName))
+                {
+                    nextFloorMapId = targetMapId;
+                    nextFloorPortalName = resolvedPortalName;
+                }
+            }
+
             return nextFloorMapId > 0 || hasExitPortal;
         }
 
         private static bool IsAuthoredDojoNextFloorPortal(int currentMapId, PortalInstance portal, int targetMapId)
         {
-            if (portal == null || currentMapId <= 0 || targetMapId <= 0 || targetMapId <= currentMapId)
+            if (portal == null)
+            {
+                return false;
+            }
+
+            return TryResolveAuthoredDojoNextFloorPortalContract(
+                currentMapId,
+                portal.pn,
+                targetMapId,
+                ResolveNextFloorPortalName(portal),
+                out _);
+        }
+        internal static bool TryResolveAuthoredDojoNextFloorPortalContract(
+            int currentMapId,
+            string sourcePortalName,
+            int targetMapId,
+            string targetPortalName,
+            out string resolvedTargetPortalName)
+        {
+            resolvedTargetPortalName = string.Empty;
+            if (currentMapId <= 0 || targetMapId <= 0 || targetMapId <= currentMapId)
             {
                 return false;
             }
@@ -1070,8 +1113,6 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            string sourcePortalName = portal.pn ?? string.Empty;
-            string targetPortalName = ResolveNextFloorPortalName(portal);
             if (!sourcePortalName.StartsWith("in", StringComparison.OrdinalIgnoreCase)
                 || !targetPortalName.StartsWith("out", StringComparison.OrdinalIgnoreCase))
             {
@@ -1080,8 +1121,13 @@ namespace HaCreator.MapSimulator.Effects
 
             int sameStageCandidate = currentMapId + 1;
             int nextStageCandidate = ResolveNextFloorMapIdCore(currentMapId, hasNextFloorPortal: true, HasMapImage);
-            return targetMapId == sameStageCandidate
-                || targetMapId == nextStageCandidate;
+            if (targetMapId != sameStageCandidate && targetMapId != nextStageCandidate)
+            {
+                return false;
+            }
+
+            resolvedTargetPortalName = targetPortalName;
+            return true;
         }
         private static string ResolveNextFloorPortalName(PortalInstance portal)
         {

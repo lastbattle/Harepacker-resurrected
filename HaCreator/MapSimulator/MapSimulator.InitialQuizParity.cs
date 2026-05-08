@@ -171,6 +171,12 @@ namespace HaCreator.MapSimulator
             bool OkButtonFocused,
             int OkButtonX,
             int OkButtonY,
+            int OkButtonVisualX,
+            int OkButtonVisualY,
+            int OkButtonVisualWidth,
+            int OkButtonVisualHeight,
+            int OkButtonFrameOriginX,
+            int OkButtonFrameOriginY,
             string OkButtonResourcePath)
         {
             internal static InitialQuizOwnerControlStackSnapshot Destroyed { get; } = new(
@@ -203,6 +209,12 @@ namespace HaCreator.MapSimulator
                 OkButtonFocused: false,
                 OkButtonX: 0,
                 OkButtonY: 0,
+                OkButtonVisualX: 0,
+                OkButtonVisualY: 0,
+                OkButtonVisualWidth: 0,
+                OkButtonVisualHeight: 0,
+                OkButtonFrameOriginX: 0,
+                OkButtonFrameOriginY: 0,
                 OkButtonResourcePath: null);
         }
 
@@ -1652,7 +1664,24 @@ namespace HaCreator.MapSimulator
                 generation: _initialQuizOwnerControlStackSnapshot.Generation,
                 childState: ownerActive ? controlState : InitialQuizOwnerChildControlState.Inactive,
                 focusTarget: ownerActive ? _initialQuizOwnerFocusTarget : InitialQuizOwnerFocusTarget.Owner,
-                editMaxHorzUnits: ownerActive ? _initialQuizOwnerEditTextElementLimit : 0);
+                editMaxHorzUnits: ownerActive ? _initialQuizOwnerEditTextElementLimit : 0,
+                okButtonFrameOrigin: ResolveInitialQuizOwnerOkButtonHitOrigin(
+                    _initialQuizOwnerOkButtonNormalFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonHoverFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonPressedFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonDisabledFrame?.Origin ?? Point.Zero,
+                    _initialQuizOwnerOkButtonKeyFocusedFrame?.Origin ?? Point.Zero),
+                okButtonFrameSize: ResolveInitialQuizOwnerOkButtonHitSize(
+                    _initialQuizOwnerOkButtonNormalFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonNormalFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonHoverFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonHoverFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonPressedFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonPressedFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Height ?? 0,
+                    _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Width ?? 0,
+                    _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Height ?? 0));
             NativeAntiMacroEditHost nativeEditHost = EnsureInitialQuizOwnerNativeEditHost();
             if (nativeEditHost != null && nativeEditHost.IsAttached)
             {
@@ -1692,7 +1721,9 @@ namespace HaCreator.MapSimulator
             int generation,
             InitialQuizOwnerChildControlState childState,
             InitialQuizOwnerFocusTarget focusTarget,
-            int editMaxHorzUnits = InitialQuizOwnerInputMaxLength)
+            int editMaxHorzUnits = InitialQuizOwnerInputMaxLength,
+            Point? okButtonFrameOrigin = null,
+            Point? okButtonFrameSize = null)
         {
             if (!created)
             {
@@ -1710,6 +1741,14 @@ namespace HaCreator.MapSimulator
                 focusTarget,
                 editControlId,
                 okButtonControlId);
+            Point resolvedOkButtonFrameOrigin = okButtonFrameOrigin ?? Point.Zero;
+            Point resolvedOkButtonFrameSize = okButtonFrameSize ?? new Point(InitialQuizOwnerOkButtonWidth, InitialQuizOwnerOkButtonHeight);
+            Rectangle okButtonVisualBounds = ResolveInitialQuizOwnerOkButtonVisualBounds(
+                InitialQuizOwnerOkButtonLeft,
+                InitialQuizOwnerOkButtonTop,
+                resolvedOkButtonFrameSize.X,
+                resolvedOkButtonFrameSize.Y,
+                resolvedOkButtonFrameOrigin);
             return new InitialQuizOwnerControlStackSnapshot(
                 Created: true,
                 Generation: Math.Max(1, generation),
@@ -1740,9 +1779,40 @@ namespace HaCreator.MapSimulator
                 OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton,
                 OkButtonX: InitialQuizOwnerOkButtonLeft,
                 OkButtonY: InitialQuizOwnerOkButtonTop,
+                OkButtonVisualX: okButtonVisualBounds.X,
+                OkButtonVisualY: okButtonVisualBounds.Y,
+                OkButtonVisualWidth: okButtonVisualBounds.Width,
+                OkButtonVisualHeight: okButtonVisualBounds.Height,
+                OkButtonFrameOriginX: resolvedOkButtonFrameOrigin.X,
+                OkButtonFrameOriginY: resolvedOkButtonFrameOrigin.Y,
                 OkButtonResourcePath: MapleStoryStringPool.GetOrFallback(
                     InitialQuizOwnerOkButtonStringPoolId,
                     "UI/UIWindow2.img/InitialQuiz/BtOK"));
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerOkButtonVisualBounds(
+            int controlX,
+            int controlY,
+            int frameWidth,
+            int frameHeight,
+            Point frameOrigin)
+        {
+            int resolvedWidth = Math.Max(1, frameWidth);
+            int resolvedHeight = Math.Max(1, frameHeight);
+            if (frameOrigin != Point.Zero)
+            {
+                return new Rectangle(
+                    -frameOrigin.X,
+                    -frameOrigin.Y,
+                    resolvedWidth,
+                    resolvedHeight);
+            }
+
+            return new Rectangle(
+                controlX,
+                controlY,
+                resolvedWidth,
+                resolvedHeight);
         }
 
         internal static int ResolveInitialQuizOwnerFocusChildControlId(

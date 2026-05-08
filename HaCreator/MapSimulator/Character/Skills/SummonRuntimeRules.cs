@@ -1511,7 +1511,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                        summon.AssistType,
                        explicitBranchName: summon.CurrentAnimationBranchName)
                    && summon.SupportSuspendUntilTime != int.MinValue
-                   && currentTime >= summon.SupportSuspendUntilTime;
+                   && HasClientTickReached(currentTime, summon.SupportSuspendUntilTime);
         }
 
         internal static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon, int currentTime, int healingRobotSkillId)
@@ -1545,10 +1545,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             int fallbackStartTime = summon.OneTimeActionFallbackStartTime == int.MinValue
                 ? currentTime
                 : summon.OneTimeActionFallbackStartTime;
-            int elapsed = Math.Max(0, currentTime - fallbackStartTime);
+            int elapsed = ResolveClientTickElapsedMs(currentTime, fallbackStartTime);
             return elapsed < remainingDuration
                    && (summon.OneTimeActionFallbackEndTime == int.MinValue
-                       || currentTime < summon.OneTimeActionFallbackEndTime);
+                       || !HasClientTickReached(currentTime, summon.OneTimeActionFallbackEndTime));
+        }
+
+        internal static int ResolveClientTickElapsedMs(int currentTime, int startTime)
+        {
+            if (startTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            int elapsed = unchecked(currentTime - startTime);
+            return elapsed > 0 ? elapsed : 0;
+        }
+
+        internal static bool HasClientTickReached(int currentTime, int targetTime)
+        {
+            return targetTime != int.MinValue
+                   && unchecked(currentTime - targetTime) >= 0;
+        }
+
+        internal static bool HasClientTickElapsedAtLeast(int currentTime, int startTime, int durationMs)
+        {
+            return startTime == int.MinValue
+                   || ResolveClientTickElapsedMs(currentTime, startTime) >= Math.Max(0, durationMs);
         }
 
         internal static bool CanInitiateTeslaCoilAttack(ActiveSummon summon, int teslaCoilSkillId)

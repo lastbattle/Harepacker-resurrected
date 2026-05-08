@@ -122,8 +122,17 @@ namespace HaCreator.MapSimulator.Animation
             public IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> SimulatedLayerReferenceOperations { get; private set; }
                 = Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
             private int _simulatedOverlaySnapshotRefCount;
-            private readonly Dictionary<(int LayerCode, int HandleId), int> _simulatedLayerSnapshotRefCounts = new();
+            private readonly Dictionary<int, int> _simulatedLayerOwnerRefCountsByHandle = new();
+            private readonly Dictionary<int, int> _simulatedLayerSnapshotRefCountsByHandle = new();
             private readonly HashSet<SecondaryMotionBlurSnapshotReleaseKey> _releasedSnapshotTraces = new();
+            private static readonly int[] ClientLayerCopyOrder =
+            {
+                (int)AvatarRenderLayer.Face,
+                (int)AvatarRenderLayer.OverFace,
+                (int)AvatarRenderLayer.UnderFace,
+                (int)AvatarRenderLayer.OverCharacter,
+                (int)AvatarRenderLayer.UnderCharacter
+            };
 
             internal void CaptureRegisteredLayerReferences(
                 int overlayLayerHandleId,
@@ -132,7 +141,8 @@ namespace HaCreator.MapSimulator.Animation
                 SimulatedOverlayLayerHandleId = Math.Max(0, overlayLayerHandleId);
                 SimulatedOverlayLayerHandleRefCount = SimulatedOverlayLayerHandleId > 0 ? 1 : 0;
                 _simulatedOverlaySnapshotRefCount = 0;
-                _simulatedLayerSnapshotRefCounts.Clear();
+                _simulatedLayerOwnerRefCountsByHandle.Clear();
+                _simulatedLayerSnapshotRefCountsByHandle.Clear();
                 _releasedSnapshotTraces.Clear();
                 var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
                 if (SimulatedOverlayLayerHandleId > 0)
@@ -154,10 +164,9 @@ namespace HaCreator.MapSimulator.Animation
                 SimulatedLayerHandleIdsByLayerCode = layerHandleIdsByLayerCode
                     .Where(static entry => entry.Value > 0)
                     .ToDictionary(static entry => entry.Key, static entry => entry.Value);
-                SimulatedLayerHandleRefCountsByLayerCode = layerHandleIdsByLayerCode
-                    .Where(static entry => entry.Value > 0)
-                    .ToDictionary(static entry => entry.Key, static _ => 1);
-                foreach ((int layerCode, int handleId) in SimulatedLayerHandleIdsByLayerCode)
+                SimulatedLayerHandleRefCountsByLayerCode =
+                    ResolveLayerHandleRefCountsByLayerCode(SimulatedLayerHandleIdsByLayerCode);
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(SimulatedLayerHandleIdsByLayerCode))
                 {
                     operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureOwnerReference(
                         layerCode,
@@ -191,7 +200,8 @@ namespace HaCreator.MapSimulator.Animation
                     return;
                 }
 
-                foreach ((int layerCode, int refCount) in SimulatedLayerHandleRefCountsByLayerCode)
+                var remainingOwnerRefCountsByHandle = new Dictionary<int, int>(_simulatedLayerOwnerRefCountsByHandle);
+                foreach ((int layerCode, int refCount) in EnumerateClientLayerCopyOrder(SimulatedLayerHandleRefCountsByLayerCode))
                 {
                     if (refCount <= 0
                         || SimulatedLayerHandleIdsByLayerCode == null
@@ -201,11 +211,27 @@ namespace HaCreator.MapSimulator.Animation
                         continue;
                     }
 
+                    remainingOwnerRefCountsByHandle.TryGetValue(handleId, out int remainingRefCount);
+                    remainingRefCount = Math.Max(0, remainingRefCount - 1);
+                    if (remainingRefCount > 0)
+                    {
+                        remainingOwnerRefCountsByHandle[handleId] = remainingRefCount;
+                    }
+                    else
+                    {
+                        remainingOwnerRefCountsByHandle.Remove(handleId);
+                    }
+
                     operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseOwnerReference(
                         layerCode,
-                        handleId));
+                        handleId,
+                        remainingRefCount
+                        + (_simulatedLayerSnapshotRefCountsByHandle.TryGetValue(handleId, out int snapshotRefCount)
+                            ? snapshotRefCount
+                            : 0)));
                 }
 
+                _simulatedLayerOwnerRefCountsByHandle.Clear();
                 SimulatedLayerHandleRefCountsByLayerCode = SimulatedLayerHandleRefCountsByLayerCode
                     .ToDictionary(static entry => entry.Key, static _ => 0);
                 SimulatedLayerReferenceOperations = operations;
@@ -233,7 +259,7 @@ namespace HaCreator.MapSimulator.Animation
 
                 if (trace.SimulatedLayerHandleIdsByLayerCode != null)
                 {
-                    foreach ((int layerCode, int handleId) in trace.SimulatedLayerHandleIdsByLayerCode)
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(trace.SimulatedLayerHandleIdsByLayerCode))
                     {
                         if (handleId <= 0
                             || trace.SimulatedLayerHandleRefCountsByLayerCode == null
@@ -244,33 +270,29 @@ namespace HaCreator.MapSimulator.Animation
                         }
 
                         int remainingSnapshotRefCount = 0;
-                        var snapshotRefKey = (LayerCode: layerCode, HandleId: handleId);
-                        if (_simulatedLayerSnapshotRefCounts.TryGetValue(snapshotRefKey, out int existingSnapshotRefCount))
+                        if (_simulatedLayerSnapshotRefCountsByHandle.TryGetValue(handleId, out int existingSnapshotRefCount))
                         {
                             remainingSnapshotRefCount = Math.Max(0, existingSnapshotRefCount - 1);
                             if (remainingSnapshotRefCount > 0)
                             {
-                                _simulatedLayerSnapshotRefCounts[snapshotRefKey] = remainingSnapshotRefCount;
+                                _simulatedLayerSnapshotRefCountsByHandle[handleId] = remainingSnapshotRefCount;
                             }
                             else
                             {
-                                _simulatedLayerSnapshotRefCounts.Remove(snapshotRefKey);
+                                _simulatedLayerSnapshotRefCountsByHandle.Remove(handleId);
                             }
                         }
 
                         operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseSnapshotReference(
                             layerCode,
                             handleId,
-                            SimulatedLayerHandleRefCountsByLayerCode != null
-                                && SimulatedLayerHandleRefCountsByLayerCode.TryGetValue(layerCode, out int ownerRefCount)
-                                ? ownerRefCount + remainingSnapshotRefCount
-                                : remainingSnapshotRefCount));
+                            ResolveOwnerLayerHandleRefCount(handleId) + remainingSnapshotRefCount));
                     }
                 }
 
                 if (trace.SimulatedSnapshotLayerHandleIdsByLayerCode != null)
                 {
-                    foreach ((int layerCode, int handleId) in trace.SimulatedSnapshotLayerHandleIdsByLayerCode)
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(trace.SimulatedSnapshotLayerHandleIdsByLayerCode))
                     {
                         if (handleId <= 0)
                         {
@@ -286,7 +308,7 @@ namespace HaCreator.MapSimulator.Animation
 
                 if (trace.SimulatedRepeatAnimationStateIdsByLayerCode != null)
                 {
-                    foreach ((int layerCode, int stateId) in trace.SimulatedRepeatAnimationStateIdsByLayerCode)
+                    foreach ((int layerCode, int stateId) in EnumerateClientLayerCopyOrder(trace.SimulatedRepeatAnimationStateIdsByLayerCode))
                     {
                         if (stateId <= 0)
                         {
@@ -326,21 +348,17 @@ namespace HaCreator.MapSimulator.Animation
                 var resolvedLayerHandleRefCounts = new Dictionary<int, int>();
                 if (layerHandleIds != null)
                 {
-                    foreach ((int layerCode, int handleId) in layerHandleIds)
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIds))
                     {
                         if (handleId <= 0)
                         {
                             continue;
                         }
 
-                        var snapshotRefKey = (LayerCode: layerCode, HandleId: handleId);
-                        _simulatedLayerSnapshotRefCounts.TryGetValue(snapshotRefKey, out int snapshotRefCount);
+                        _simulatedLayerSnapshotRefCountsByHandle.TryGetValue(handleId, out int snapshotRefCount);
                         snapshotRefCount++;
-                        _simulatedLayerSnapshotRefCounts[snapshotRefKey] = snapshotRefCount;
-                        int ownerRefCount = SimulatedLayerHandleRefCountsByLayerCode != null
-                            && SimulatedLayerHandleRefCountsByLayerCode.TryGetValue(layerCode, out int resolvedOwnerRefCount)
-                            ? resolvedOwnerRefCount
-                            : 0;
+                        _simulatedLayerSnapshotRefCountsByHandle[handleId] = snapshotRefCount;
+                        int ownerRefCount = ResolveOwnerLayerHandleRefCount(handleId);
                         int refCount = ownerRefCount + snapshotRefCount;
                         resolvedLayerHandleRefCounts[layerCode] = refCount;
                         operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopySnapshotReference(
@@ -352,7 +370,7 @@ namespace HaCreator.MapSimulator.Animation
 
                 if (snapshotLayerHandleIds != null)
                 {
-                    foreach ((int layerCode, int handleId) in snapshotLayerHandleIds)
+                    foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(snapshotLayerHandleIds))
                     {
                         if (handleId <= 0)
                         {
@@ -372,7 +390,7 @@ namespace HaCreator.MapSimulator.Animation
 
                 if (repeatAnimationStateIds != null)
                 {
-                    foreach ((int layerCode, int stateId) in repeatAnimationStateIds)
+                    foreach ((int layerCode, int stateId) in EnumerateClientLayerCopyOrder(repeatAnimationStateIds))
                     {
                         if (stateId <= 0)
                         {
@@ -391,6 +409,67 @@ namespace HaCreator.MapSimulator.Animation
                     .Concat(operations)
                     .ToArray();
                 return operations;
+            }
+
+            private int ResolveOwnerLayerHandleRefCount(int handleId)
+            {
+                return handleId > 0
+                    && _simulatedLayerOwnerRefCountsByHandle.TryGetValue(handleId, out int refCount)
+                    ? refCount
+                    : 0;
+            }
+
+            private IReadOnlyDictionary<int, int> ResolveLayerHandleRefCountsByLayerCode(
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                var refCountsByLayerCode = new Dictionary<int, int>();
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    return refCountsByLayerCode;
+                }
+
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        continue;
+                    }
+
+                    _simulatedLayerOwnerRefCountsByHandle.TryGetValue(handleId, out int refCount);
+                    refCount++;
+                    _simulatedLayerOwnerRefCountsByHandle[handleId] = refCount;
+                    refCountsByLayerCode[layerCode] = refCount;
+                }
+
+                return refCountsByLayerCode;
+            }
+
+            private static IEnumerable<KeyValuePair<int, int>> EnumerateClientLayerCopyOrder(
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    yield break;
+                }
+
+                var emitted = new HashSet<int>();
+                for (int i = 0; i < ClientLayerCopyOrder.Length; i++)
+                {
+                    int layerCode = ClientLayerCopyOrder[i];
+                    if (layerHandleIdsByLayerCode.TryGetValue(layerCode, out int handleId))
+                    {
+                        emitted.Add(layerCode);
+                        yield return new KeyValuePair<int, int>(layerCode, handleId);
+                    }
+                }
+
+                foreach ((int layerCode, int handleId) in layerHandleIdsByLayerCode.OrderBy(static entry => entry.Key))
+                {
+                    if (emitted.Add(layerCode))
+                    {
+                        yield return new KeyValuePair<int, int>(layerCode, handleId);
+                    }
+                }
             }
 
             internal void MarkTerminated()
@@ -542,13 +621,14 @@ namespace HaCreator.MapSimulator.Animation
 
             public static SecondaryMotionBlurLayerReferenceOperation ReleaseOwnerReference(
                 int layerCode,
-                int handleId)
+                int handleId,
+                int refCount = 0)
             {
                 return new SecondaryMotionBlurLayerReferenceOperation(
                     SecondaryMotionBlurLayerReferenceOperationKind.ReleaseOwnerReference,
                     layerCode,
                     Math.Max(0, handleId),
-                    0);
+                    Math.Max(0, refCount));
             }
 
             public static SecondaryMotionBlurLayerReferenceOperation ReleaseSnapshotReference(
@@ -934,6 +1014,27 @@ namespace HaCreator.MapSimulator.Animation
                 y,
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedDropExplosion,
+                zOrder,
+                initialElapsedMs);
+        }
+
+        internal void AddPacketOwnedUpgradeTomb(
+            List<IDXObject> frames,
+            string sourceUol,
+            float x,
+            float y,
+            int currentTimeMs,
+            int zOrder = 1,
+            int initialElapsedMs = 0)
+        {
+            AddPacketOwnedBasicOneTime(
+                frames,
+                sourceUol,
+                getPosition: null,
+                x,
+                y,
+                currentTimeMs,
+                AnimationOneTimeOwner.PacketOwnedUpgradeTomb,
                 zOrder,
                 initialElapsedMs);
         }
@@ -3659,7 +3760,8 @@ namespace HaCreator.MapSimulator.Animation
         PacketOwnedMobBullet = 11,
         PacketOwnedMobSwallow = 12,
         PacketOwnedAreaExplosion = 13,
-        PacketOwnedDropExplosion = 14
+        PacketOwnedDropExplosion = 14,
+        PacketOwnedUpgradeTomb = 15
     }
 
     internal enum AnimationFallingOwner
@@ -3696,6 +3798,12 @@ namespace HaCreator.MapSimulator.Animation
         RegisterRepeatAnimation = 5
     }
 
+    internal enum FollowParticleRecoveredNativeRelOffsetMode
+    {
+        ParentRelative = 0,
+        AbsoluteOrigin = 1
+    }
+
     internal readonly record struct FollowParticleRecoveredNativeOperation(
         FollowParticleRecoveredNativeOperationKind Kind,
         bool RelativeToTarget,
@@ -3707,7 +3815,11 @@ namespace HaCreator.MapSimulator.Animation
         int AlphaStart,
         int AlphaEnd,
         int SourceEffectVariantIndex = -1,
-        int SourceVariantOrdinal = -1);
+        int SourceVariantOrdinal = -1,
+        FollowParticleRecoveredNativeRelOffsetMode RelOffsetMode = FollowParticleRecoveredNativeRelOffsetMode.ParentRelative,
+        Vector2 RelOffsetDelta = default,
+        int RelOffsetDurationMs = 0,
+        int AlphaRelMoveDurationMs = 0);
 
     internal readonly record struct FollowParticleRecoveredNativeLayerState(
         bool RelativeToTarget,
@@ -3720,7 +3832,11 @@ namespace HaCreator.MapSimulator.Animation
         int AlphaEnd,
         bool RegistersRepeatLayer,
         int SourceEffectVariantIndex = -1,
-        int SourceVariantOrdinal = -1);
+        int SourceVariantOrdinal = -1,
+        FollowParticleRecoveredNativeRelOffsetMode RelOffsetMode = FollowParticleRecoveredNativeRelOffsetMode.ParentRelative,
+        Vector2 RelOffsetDelta = default,
+        int RelOffsetDurationMs = 0,
+        int AlphaRelMoveDurationMs = 0);
 
     internal readonly record struct FollowParticleRecoveredNativeLifetimeState(
         int SimulatedLayerHandleId,
@@ -4172,7 +4288,10 @@ namespace HaCreator.MapSimulator.Animation
         Point SourceOrigin,
         int SourceWidth,
         int SourceHeight,
-        Point CanvasOffset);
+        Point CanvasOffset,
+        Rectangle CanvasDestinationBounds,
+        Rectangle VisibleCanvasBounds,
+        bool ClipsToTemporaryCanvas);
 
     internal enum CanvasLayerRecoveredTemporaryCanvasOperationKind
     {
@@ -6811,18 +6930,31 @@ namespace HaCreator.MapSimulator.Animation
             int sourceEffectVariantIndex = -1,
             int sourceVariantOrdinal = -1)
         {
+            int resolvedDurationMs = Math.Max(1, durationMs);
             return new FollowParticleRecoveredNativeLayerState(
                 relativeToTarget,
                 appliesOwnerFlip,
                 startOffset,
                 endOffset,
                 zOrder,
-                Math.Max(1, durationMs),
+                resolvedDurationMs,
                 AlphaStart: byte.MaxValue,
                 AlphaEnd: byte.MinValue,
                 RegistersRepeatLayer: true,
                 SourceEffectVariantIndex: sourceEffectVariantIndex,
-                SourceVariantOrdinal: sourceVariantOrdinal);
+                SourceVariantOrdinal: sourceVariantOrdinal,
+                RelOffsetMode: ResolveRecoveredNativeRelOffsetMode(relativeToTarget),
+                RelOffsetDelta: endOffset - startOffset,
+                RelOffsetDurationMs: resolvedDurationMs,
+                AlphaRelMoveDurationMs: resolvedDurationMs);
+        }
+
+        internal static FollowParticleRecoveredNativeRelOffsetMode ResolveRecoveredNativeRelOffsetMode(
+            bool relativeToTarget)
+        {
+            return relativeToTarget
+                ? FollowParticleRecoveredNativeRelOffsetMode.ParentRelative
+                : FollowParticleRecoveredNativeRelOffsetMode.AbsoluteOrigin;
         }
 
         internal static FollowParticleRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
@@ -6914,7 +7046,11 @@ namespace HaCreator.MapSimulator.Animation
                 layerState.AlphaStart,
                 layerState.AlphaEnd,
                 layerState.SourceEffectVariantIndex,
-                layerState.SourceVariantOrdinal);
+                layerState.SourceVariantOrdinal,
+                layerState.RelOffsetMode,
+                layerState.RelOffsetDelta,
+                layerState.RelOffsetDurationMs,
+                layerState.AlphaRelMoveDurationMs);
         }
     }
 

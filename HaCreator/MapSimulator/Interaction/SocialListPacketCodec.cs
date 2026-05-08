@@ -224,7 +224,8 @@ namespace HaCreator.MapSimulator.Interaction
         bool UsesSharedResultNoticeFallback = false,
         string ExplicitBranchSummary = null,
         string GuildName = null,
-        IReadOnlyList<SocialListGuildSkillRecordPacket> GuildSkillRecords = null);
+        IReadOnlyList<SocialListGuildSkillRecordPacket> GuildSkillRecords = null,
+        bool ClearsGuildData = false);
 
     internal readonly record struct SocialListClientGuildMemberEntry(
         int MemberId,
@@ -1084,6 +1085,28 @@ namespace HaCreator.MapSimulator.Interaction
 
                     case SocialListClientGuildResultKind.GuildDataSnapshot:
                     {
+                        if (payload.Length == 2 && payload[1] == 0)
+                        {
+                            _ = reader.ReadBoolean();
+                            packet = new SocialListClientGuildResultPacket(
+                                kind,
+                                0,
+                                Array.Empty<GuildRankingSeedEntry>(),
+                                Array.Empty<SocialListClientGuildMemberEntry>(),
+                                Array.Empty<string>(),
+                                null,
+                                null,
+                                0,
+                                0,
+                                HasExplicitNotice: false,
+                                null,
+                                default,
+                                null,
+                                RawSubtype: rawSubtype,
+                                ClearsGuildData: true);
+                            return true;
+                        }
+
                         int guildId = reader.ReadInt32();
                         string guildName = reader.ReadString16().Trim();
                         string[] rankTitles = new string[5];

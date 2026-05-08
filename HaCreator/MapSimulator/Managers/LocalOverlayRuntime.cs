@@ -178,7 +178,7 @@ namespace HaCreator.MapSimulator.Managers
                 : currentTickCount;
             if (LastFieldHazardFollowUpUpdatedAt != int.MinValue)
             {
-                LastFieldHazardNoticeExpiresAt = Math.Max(LastFieldHazardNoticeExpiresAt, currentTickCount + 1400);
+                ExtendFieldHazardNoticeExpiry(currentTickCount, 1400);
             }
         }
 
@@ -193,7 +193,7 @@ namespace HaCreator.MapSimulator.Managers
             LastFieldHazardTransportDetail = normalizedDetail;
             if (!string.IsNullOrWhiteSpace(LastFieldHazardTransportDetail))
             {
-                LastFieldHazardNoticeExpiresAt = Math.Max(LastFieldHazardNoticeExpiresAt, currentTickCount + 1400);
+                ExtendFieldHazardNoticeExpiry(currentTickCount, 1400);
             }
         }
 
@@ -245,6 +245,20 @@ namespace HaCreator.MapSimulator.Managers
 
             int elapsedMs = unchecked(currentTickCount - startedAt);
             return elapsedMs > 0 ? elapsedMs : 0;
+        }
+
+        private void ExtendFieldHazardNoticeExpiry(int currentTickCount, int extensionMs)
+        {
+            if (LastFieldHazardNoticeExpiresAt == int.MinValue)
+            {
+                return;
+            }
+
+            int candidateExpiresAt = currentTickCount + Math.Max(0, extensionMs);
+            if (unchecked(candidateExpiresAt - LastFieldHazardNoticeExpiresAt) > 0)
+            {
+                LastFieldHazardNoticeExpiresAt = candidateExpiresAt;
+            }
         }
 
         private int AllocateStatusBarFloatNoticeOwnerIdentity()

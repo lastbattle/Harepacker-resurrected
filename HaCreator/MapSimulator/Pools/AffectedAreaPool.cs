@@ -387,7 +387,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int startTime = ResolveStartTime(currentTime, createInfo.StartDelayUnits);
-            int expireTime = ResolveExpireTime(startTime, effectData.Time);
+            int expireTime = ResolveMobSkillAreaExpireTimeForParity(
+                startTime,
+                effectData.Time,
+                createInfo.DurationOverrideMs);
 
             return new ActiveAffectedArea
             {
@@ -406,6 +409,16 @@ namespace HaCreator.MapSimulator.Pools
                 Animation = effectData.TileAnimation,
                 SourceKind = createInfo.SourceKind
             };
+        }
+
+        internal static int ResolveMobSkillAreaExpireTimeForParity(
+            int startTime,
+            int effectTimeSeconds,
+            int durationOverrideMs)
+        {
+            return durationOverrideMs > 0
+                ? ResolveExpireTimeByDurationMs(startTime, durationOverrideMs)
+                : ResolveExpireTime(startTime, effectTimeSeconds);
         }
 
         private ActiveAffectedArea BuildAreaBuffItemArea(AffectedAreaCreateInfo createInfo, int currentTime)

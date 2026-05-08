@@ -673,7 +673,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             RemoteOpenGateKey key = new(packet.OwnerCharacterId, packet.IsFirstSlot);
             RemoteOpenGateState? existingState = _remoteOpenGates.TryGetValue(key, out RemoteOpenGateState existingStateValue)
-                ? existingStateValue
+                ? FilterRemoteOpenGateStateByCurrentMap(existingStateValue, currentMapId)
                 : null;
             (byte resolvedState, RemoteOpenGateVisualPhase phase, int phaseStartedAt) = ResolveRemoteOpenGateCreateLifecycle(
                 packet.State,
@@ -693,7 +693,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (phase == RemoteOpenGateVisualPhase.Stable)
             {
-                PromoteRemoteOpenGatePartnerAfterPartnerCreate(packet.OwnerCharacterId, packet.IsFirstSlot, currentTime);
+                PromoteRemoteOpenGatePartnerAfterPartnerCreate(packet.OwnerCharacterId, packet.IsFirstSlot, currentMapId, currentTime);
             }
 
             SyncRemoteOpenGateVisuals();
@@ -763,15 +763,16 @@ namespace HaCreator.MapSimulator.Fields
                 _remoteOpenGates.Remove(key);
             }
 
-            RestartRemoteOpenGatePartnerAfterPartnerLoss(packet.OwnerCharacterId, packet.IsFirstSlot, currentTime);
+            RestartRemoteOpenGatePartnerAfterPartnerLoss(packet.OwnerCharacterId, packet.IsFirstSlot, currentMapId, currentTime);
             SyncRemoteOpenGateVisuals();
             return true;
         }
 
-        private void RestartRemoteOpenGatePartnerAfterPartnerLoss(uint ownerCharacterId, bool removedFirstSlot, int currentTime)
+        private void RestartRemoteOpenGatePartnerAfterPartnerLoss(uint ownerCharacterId, bool removedFirstSlot, int currentMapId, int currentTime)
         {
             RemoteOpenGateKey partnerKey = new(ownerCharacterId, !removedFirstSlot);
-            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner))
+            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner)
+                || partner.MapId != currentMapId)
             {
                 return;
             }
@@ -789,10 +790,11 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
-        private void PromoteRemoteOpenGatePartnerAfterPartnerCreate(uint ownerCharacterId, bool createdFirstSlot, int currentTime)
+        private void PromoteRemoteOpenGatePartnerAfterPartnerCreate(uint ownerCharacterId, bool createdFirstSlot, int currentMapId, int currentTime)
         {
             RemoteOpenGateKey partnerKey = new(ownerCharacterId, !createdFirstSlot);
-            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner))
+            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner)
+                || partner.MapId != currentMapId)
             {
                 return;
             }
@@ -825,6 +827,15 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return (RemoteOpenGateVisualPhase.Stable, currentTime);
+        }
+
+        private static RemoteOpenGateState? FilterRemoteOpenGateStateByCurrentMap(
+            RemoteOpenGateState existingState,
+            int currentMapId)
+        {
+            return existingState.MapId == currentMapId
+                ? existingState
+                : null;
         }
 
         private void SyncRemoteTownPortalVisuals()
@@ -4612,6 +4623,53 @@ namespace HaCreator.MapSimulator.Fields
                     PhaseStartedAt: existingPhaseStartedAt)
                 : null;
             return ResolveRemoteOpenGateCreateLifecycle(packetState, state, currentTime);
+        }
+
+        internal static (byte ResolvedState, RemoteOpenGateVisualPhase Phase, int PhaseStartedAt) ResolveRemoteOpenGateCreateLifecycleForCurrentMapForTesting(
+            byte packetState,
+            bool hasExistingState,
+            byte existingState,
+            int existingMapId,
+            int currentMapId,
+            RemoteOpenGateVisualPhase existingPhase,
+            int existingPhaseStartedAt,
+            int currentTime)
+        {
+            RemoteOpenGateState? state = hasExistingState
+                ? FilterRemoteOpenGateStateByCurrentMap(
+                    new RemoteOpenGateState(
+                        OwnerCharacterId: 1,
+                        State: existingState,
+                        MapId: existingMapId,
+                        X: 0,
+                        Y: 0,
+                        IsFirstSlot: true,
+                        PartyId: 0,
+                        Phase: existingPhase,
+                        PhaseStartedAt: existingPhaseStartedAt),
+                    currentMapId)
+                : null;
+            return ResolveRemoteOpenGateCreateLifecycle(packetState, state, currentTime);
+        }
+
+        internal static RemoteOpenGateVisualPhase ResolveRemoteOpenGatePartnerPromotionForCurrentMapForTesting(
+            RemoteOpenGateVisualPhase partnerPhase,
+            int partnerMapId,
+            int currentMapId)
+        {
+            RemoteOpenGateState partner = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: partnerMapId,
+                X: 0,
+                Y: 0,
+                IsFirstSlot: true,
+                PartyId: 0,
+                Phase: partnerPhase,
+                PhaseStartedAt: 0);
+            return partner.MapId == currentMapId
+                ? ResolveRemoteOpenGatePartnerPromotion(partner, currentTime: 1000).Phase
+                : partner.Phase;
         }
 
         internal static int ResolveRemoteOpenGatePartnerLossPhaseStartedAtForTesting(

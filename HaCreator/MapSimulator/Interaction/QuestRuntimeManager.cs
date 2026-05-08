@@ -1194,7 +1194,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int CountCompletedQuestsForCompletionDemand()
         {
-            return _progress.Count(entry => entry.Value?.State == QuestStateType.Completed);
+            return _progress.Count(entry =>
+            {
+                if (entry.Value?.State != QuestStateType.Completed)
+                {
+                    return false;
+                }
+
+                int areaCode = _definitions.TryGetValue(entry.Key, out QuestDefinition definition)
+                    ? definition.AreaCode
+                    : 0;
+                return !IsExcludedCompletedQuestForCompletionDemand(entry.Key, areaCode);
+            });
         }
 
         internal static bool HasUnmetCompletionMorphDemand(int requiredMorphTemplateId, int currentMorphTemplateId)
@@ -1209,6 +1220,14 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return requiredCompletedQuestCount.HasValue
                    && requiredCompletedQuestCount.Value > Math.Max(0, currentCompletedQuestCount);
+        }
+
+        internal static bool IsExcludedCompletedQuestForCompletionDemand(int questId, int areaCode)
+        {
+            // CQuestMan::GetCompletedQuestCnt(cd, bExcluseEvent = 1) skips
+            // event-range quests and QuestInfo category 51.
+            return (questId >= 9000 && questId <= 10999)
+                   || areaCode == 51;
         }
 
         internal static int? ResolvePartyQuestRankCountForCompletionDemand(

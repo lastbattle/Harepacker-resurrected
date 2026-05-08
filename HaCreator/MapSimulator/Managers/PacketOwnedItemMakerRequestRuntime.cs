@@ -9,9 +9,28 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int ClientRequestOpcode = 125;
         public const int ClientCraftRecipeClass = 1;
+        public const int ClientHiddenRecipeClass = 2;
         public const int ClientRecipeSlotCraftClass = 3;
         public const int ClientDisassembleEquipRecipeClass = 4;
+        public const int ClientHiddenRecipeTargetItemId = 999;
         private const int ClientEquipInventoryTypeIndex = 1;
+
+        public static int ResolveCraftRecipeClass(bool isHiddenRecipe)
+        {
+            return isHiddenRecipe
+                ? ClientHiddenRecipeClass
+                : ClientCraftRecipeClass;
+        }
+
+        public static int ResolveCraftRequestTargetItemId(int recipeOutputItemId, bool isHiddenRecipe)
+        {
+            if (isHiddenRecipe)
+            {
+                return ClientHiddenRecipeTargetItemId;
+            }
+
+            return recipeOutputItemId > 0 ? recipeOutputItemId : 0;
+        }
 
         public static byte[] BuildCraftRequestPayload(
             int targetItemId,
@@ -36,7 +55,7 @@ namespace HaCreator.MapSimulator.Managers
                 return Array.Empty<byte>();
             }
 
-            if (clientRecipeClass is not 1 and not 2)
+            if (clientRecipeClass is not ClientCraftRecipeClass and not ClientHiddenRecipeClass)
             {
                 return Array.Empty<byte>();
             }

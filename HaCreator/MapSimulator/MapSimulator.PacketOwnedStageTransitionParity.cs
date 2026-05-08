@@ -421,6 +421,7 @@ namespace HaCreator.MapSimulator
                         objInst.cx,
                         objInst.cy),
                     ResolvePacketOwnedNamedObjectAuthoredStateMotionByIndex(objectInfo?.ParentObject as WzImageProperty),
+                    ResolvePacketOwnedNamedObjectAuthoredStateMetadataLanesByIndex(objectInfo?.ParentObject as WzImageProperty),
                     ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
                         objInst.r,
                         objInst.flow,
@@ -609,6 +610,36 @@ namespace HaCreator.MapSimulator
             return motionByIndex;
         }
 
+        internal static IReadOnlyDictionary<int, PacketOwnedNamedObjectMetadataLane> ResolvePacketOwnedNamedObjectAuthoredStateMetadataLanesByIndex(WzImageProperty objectProperty)
+        {
+            Dictionary<int, PacketOwnedNamedObjectMetadataLane> lanesByIndex = new();
+            if (objectProperty == null)
+            {
+                return lanesByIndex;
+            }
+
+            foreach (WzImageProperty child in objectProperty.WzProperties)
+            {
+                if (!TryResolvePacketOwnedNamedObjectAuthoredStateIndex(child?.Name, out int stateIndex))
+                {
+                    continue;
+                }
+
+                WzImageProperty realChild = WzInfoTools.GetRealProperty(child);
+                PacketOwnedNamedObjectMotionProfile motionProfile = PacketOwnedNamedObjectMotionProfile.FromWzProperty(realChild);
+                PacketOwnedNamedObjectMetadataLane lanes = ResolvePacketOwnedNamedObjectMetadataLanesForPacketParity(
+                    hasChangingObjectMetadata: motionProfile != null,
+                    hasReflectionMetadata: false,
+                    hasQuestVisibleMetadata: realChild?["quest"] is WzImageProperty);
+                if (lanes != PacketOwnedNamedObjectMetadataLane.None)
+                {
+                    lanesByIndex[stateIndex] = lanes;
+                }
+            }
+
+            return lanesByIndex;
+        }
+
         internal static IReadOnlySet<int> ResolvePacketOwnedNamedObjectAuthoredStateIndexes(WzImageProperty objectProperty)
         {
             HashSet<int> stateIndexes = new();
@@ -759,19 +790,22 @@ namespace HaCreator.MapSimulator
 
         private static bool TryBuildPacketOwnedNamedObjectMovingState(
             PacketOwnedNamedObjectStateMetadata metadata,
+            int stateIndex,
             int currentTick,
             out PacketOwnedNamedObjectMovingState movingState)
         {
             movingState = null;
+            PacketOwnedNamedObjectMotionProfile motionProfile = metadata?.ResolveMotionProfile(stateIndex);
             if (metadata == null ||
+                motionProfile == null ||
                 !TryResolvePacketOwnedNamedObjectMoveVector(
                     metadata.X,
                     metadata.Y,
-                    metadata.Flow,
-                    metadata.Rx,
-                    metadata.Ry,
-                    metadata.Cx,
-                    metadata.Cy,
+                    motionProfile.Flow,
+                    motionProfile.Rx,
+                    motionProfile.Ry,
+                    motionProfile.Cx,
+                    motionProfile.Cy,
                     out int targetOffsetX,
                     out int targetOffsetY))
             {

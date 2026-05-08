@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ConfirmButtonY = 46;
         private const int ConfirmOkButtonX = 36;
         private const int ConfirmCancelButtonX = 116;
+        private const long DoubleClickThresholdMilliseconds = 500;
 
         private readonly Texture2D _backgroundTexture;
         private readonly Texture2D _iconPlaceholderTexture;
@@ -67,6 +68,8 @@ namespace HaCreator.MapSimulator.UI
         private bool _isRegisterConfirmationOpen;
         private bool _confirmAcceptFocused = true;
         private string _statusMessage = string.Empty;
+        private string _lastClickedEntryKey = string.Empty;
+        private long _lastClickMilliseconds;
 
         public AdminShopWishListSearchResultUI(
             IDXObject frame,
@@ -148,6 +151,8 @@ namespace HaCreator.MapSimulator.UI
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
             _statusMessage = owner?.GetStatusMessage() ?? string.Empty;
+            _lastClickedEntryKey = string.Empty;
+            _lastClickMilliseconds = 0;
             PositionRelativeToOwner(owner);
         }
 
@@ -180,6 +185,8 @@ namespace HaCreator.MapSimulator.UI
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
             _statusMessage = string.Empty;
+            _lastClickedEntryKey = string.Empty;
+            _lastClickMilliseconds = 0;
             UpdateButtons();
         }
 
@@ -512,6 +519,21 @@ namespace HaCreator.MapSimulator.UI
 
         private void SelectVisibleRow(int visibleRow)
         {
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> visibleResults = GetVisibleResults();
+            if (visibleRow < 0 || visibleRow >= visibleResults.Count)
+            {
+                return;
+            }
+
+            string clickedEntryKey = visibleResults[visibleRow]?.EntryKey ?? string.Empty;
+            long clickMilliseconds = Environment.TickCount64;
+            bool activate = ShouldActivateClientWishlistSearchResultClick(
+                _lastClickedEntryKey,
+                clickedEntryKey,
+                clickMilliseconds - _lastClickMilliseconds);
+            _lastClickedEntryKey = clickedEntryKey;
+            _lastClickMilliseconds = clickMilliseconds;
+
             if (UseOwnerSession)
             {
                 if (_owner.TrySelectWishlistSearchResultSessionVisibleRow(visibleRow, out string message))
@@ -524,10 +546,31 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 UpdateButtons();
+                if (activate)
+                {
+                    ApplySelectedResult();
+                }
+
                 return;
             }
 
             SelectIndex((_pageIndex * ResultsPerPage) + visibleRow);
+            if (activate)
+            {
+                ApplySelectedResult();
+            }
+        }
+
+        internal static bool ShouldActivateClientWishlistSearchResultClick(
+            string previousEntryKey,
+            string clickedEntryKey,
+            long elapsedMilliseconds)
+        {
+            return !string.IsNullOrWhiteSpace(previousEntryKey)
+                && !string.IsNullOrWhiteSpace(clickedEntryKey)
+                && string.Equals(previousEntryKey, clickedEntryKey, StringComparison.Ordinal)
+                && elapsedMilliseconds >= 0
+                && elapsedMilliseconds <= DoubleClickThresholdMilliseconds;
         }
 
         private void MoveSelection(int delta)

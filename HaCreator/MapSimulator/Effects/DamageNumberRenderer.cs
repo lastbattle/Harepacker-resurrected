@@ -1132,15 +1132,9 @@ namespace HaCreator.MapSimulator.Effects
             for (int i = 0; i < insertCommands.Length; i++)
             {
                 PreparedDamageNumberCompositionInsertCommand command = insertCommands[i];
-                preparedSources[i] = new CanvasLayerRecoveredPreparedSourceTrace(
-                    command.SourceSetName,
-                    command.SpriteName,
-                    command.SourceCanvasPath,
-                    command.UseLargeDigitSet,
-                    command.SourceOrigin,
-                    command.SourceWidth,
-                    command.SourceHeight,
-                    command.CanvasOffset);
+                preparedSources[i] = BuildRecoveredPreparedSourceTrace(
+                    command,
+                    compositionTrace.CanvasSettings);
             }
 
             PreparedDamageNumberCompositionNativeOperation[] nativeOperations = compositionTrace.NativeOperations
@@ -1152,15 +1146,9 @@ namespace HaCreator.MapSimulator.Effects
                 PreparedDamageNumberCompositionNativeOperation operation = nativeOperations[i];
                 PreparedDamageNumberCompositionInsertCommand command = operation.InsertCommand;
                 CanvasLayerRecoveredPreparedSourceTrace sourceTrace = operation.Kind == DamageNumberRecoveredCompositionOperationKind.InsertCanvas
-                    ? new CanvasLayerRecoveredPreparedSourceTrace(
-                        command.SourceSetName,
-                        command.SpriteName,
-                        command.SourceCanvasPath,
-                        command.UseLargeDigitSet,
-                        command.SourceOrigin,
-                        command.SourceWidth,
-                        command.SourceHeight,
-                        command.CanvasOffset)
+                    ? BuildRecoveredPreparedSourceTrace(
+                        command,
+                        operation.CanvasSettings)
                     : default;
                 temporaryCanvasOperations[i] = new CanvasLayerRecoveredTemporaryCanvasOperation(
                     operation.Kind == DamageNumberRecoveredCompositionOperationKind.CreateCanvas
@@ -1206,6 +1194,50 @@ namespace HaCreator.MapSimulator.Effects
                 keepsOverlayOnSeparateLayer ? overlaySourceWidth : 0,
                 keepsOverlayOnSeparateLayer ? overlaySourceHeight : 0,
                 overlayLayerPositionOffsetY);
+        }
+
+        internal static CanvasLayerRecoveredPreparedSourceTrace BuildRecoveredPreparedSourceTrace(
+            PreparedDamageNumberCompositionInsertCommand command,
+            CanvasLayerRecoveredCanvasSettings canvasSettings)
+        {
+            Rectangle destinationBounds = ResolveCompositionInsertDestinationBounds(command);
+            Rectangle visibleBounds = ResolveCompositionInsertVisibleCanvasBounds(
+                destinationBounds,
+                canvasSettings);
+            return new CanvasLayerRecoveredPreparedSourceTrace(
+                command.SourceSetName,
+                command.SpriteName,
+                command.SourceCanvasPath,
+                command.UseLargeDigitSet,
+                command.SourceOrigin,
+                command.SourceWidth,
+                command.SourceHeight,
+                command.CanvasOffset,
+                destinationBounds,
+                visibleBounds,
+                visibleBounds != destinationBounds);
+        }
+
+        internal static Rectangle ResolveCompositionInsertDestinationBounds(
+            PreparedDamageNumberCompositionInsertCommand command)
+        {
+            return new Rectangle(
+                command.CanvasOffset.X,
+                command.CanvasOffset.Y,
+                Math.Max(0, command.SourceWidth),
+                Math.Max(0, command.SourceHeight));
+        }
+
+        internal static Rectangle ResolveCompositionInsertVisibleCanvasBounds(
+            Rectangle destinationBounds,
+            CanvasLayerRecoveredCanvasSettings canvasSettings)
+        {
+            Rectangle canvasBounds = new(
+                0,
+                0,
+                Math.Max(0, canvasSettings.Width),
+                Math.Max(0, canvasSettings.Height));
+            return Rectangle.Intersect(destinationBounds, canvasBounds);
         }
 
         internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()

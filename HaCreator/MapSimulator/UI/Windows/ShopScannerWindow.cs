@@ -39,18 +39,18 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private const int SearchMaxLength = 40;
-        private const int SearchTextX = 56;
-        private const int SearchTextY = 31;
+        private const int SearchTextX = 23;
+        private const int SearchTextY = 79;
         private const int SearchTextWidth = 130;
         private const int SearchFieldHeight = 16;
         private const int ListX = 14;
-        private const int ListY = 62;
-        private const int ListWidth = 218;
+        private const int ListY = 108;
+        private const int ListWidth = 190;
         private const int RowHeight = 20;
-        private const int VisibleRows = 8;
-        private const int FooterY = 239;
-        private const int InitialRequestOpcode = 72;
-        private const int InitialRequestSubtype = 5;
+        private const int VisibleRows = 6;
+        private const int FooterY = 221;
+        internal const int InitialRequestOpcode = 72;
+        internal const int InitialRequestSubtype = 5;
         private static readonly object ScannerIndexLock = new();
         private static IReadOnlyList<ScannerIndexEntry> _scannerIndex;
 
@@ -58,10 +58,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _resultBackgroundTexture;
         private readonly Texture2D _iconPlaceholderTexture;
         private readonly Texture2D _pixelTexture;
+        private readonly UIObject _top10Button;
+        private readonly UIObject _categoryButton;
         private readonly UIObject _searchButton;
-        private readonly UIObject _retryButton;
         private readonly UIObject _closeButton;
-        private readonly UIObject _backButton;
         private readonly List<UIObject> _rowButtons = new();
         private readonly GraphicsDevice _device;
 
@@ -77,35 +77,36 @@ namespace HaCreator.MapSimulator.UI
         private bool _softKeyboardActive;
         private string _statusMessage = "CUIShopScanner::OnCreate waits on the scanner item-name feed.";
         private int _initialRequestCount;
+        private ScannerAddOnMode _activeAddOnMode;
 
         public ShopScannerWindow(
             IDXObject frame,
             Texture2D searchBackgroundTexture,
             Texture2D resultBackgroundTexture,
             Texture2D iconPlaceholderTexture,
+            UIObject top10Button,
+            UIObject categoryButton,
             UIObject searchButton,
-            UIObject retryButton,
             UIObject closeButton,
-            UIObject backButton,
             GraphicsDevice device)
             : base(frame)
         {
             _searchBackgroundTexture = searchBackgroundTexture;
             _resultBackgroundTexture = resultBackgroundTexture;
             _iconPlaceholderTexture = iconPlaceholderTexture;
+            _top10Button = top10Button;
+            _categoryButton = categoryButton;
             _searchButton = searchButton;
-            _retryButton = retryButton;
             _closeButton = closeButton;
-            _backButton = backButton;
             _device = device;
 
             _pixelTexture = new Texture2D(device, 1, 1);
             _pixelTexture.SetData(new[] { Color.White });
 
-            RegisterButton(_searchButton, 194, 30, ExecuteSearch);
-            RegisterButton(_retryButton, 96, 241, ExecuteSearch);
-            RegisterButton(_backButton, 30, 241, ClearSearch);
-            RegisterButton(_closeButton, 162, 241, Hide);
+            RegisterButton(_top10Button, 13, 51, ToggleHotList);
+            RegisterButton(_categoryButton, 75, 51, ToggleCategory);
+            RegisterButton(_searchButton, 160, 78, ExecuteSearch);
+            RegisterButton(_closeButton, 196, 6, Hide);
 
             for (int i = 0; i < VisibleRows; i++)
             {
@@ -130,6 +131,15 @@ namespace HaCreator.MapSimulator.UI
 
         public int InitialRequestCount => _initialRequestCount;
         public string LastInitialRequestSummary { get; private set; } = string.Empty;
+        public Func<int, IReadOnlyList<byte>, string> InitialScannerRequestDispatcher { get; set; }
+
+        private enum ScannerAddOnMode
+        {
+            None,
+            HotList,
+            Category,
+            SearchResult
+        }
 
         public override void Show()
         {
@@ -270,7 +280,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_searchBackgroundTexture, bounds.Location.ToVector2(), Color.White);
             }
 
-            if (_resultBackgroundTexture != null && _results.Count > 0)
+            if (_resultBackgroundTexture != null && _activeAddOnMode != ScannerAddOnMode.None)
             {
                 sprite.Draw(_resultBackgroundTexture, new Vector2(bounds.X, bounds.Y), Color.White * 0.18f);
             }
@@ -302,7 +312,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string countLabel = _results.Count == 0
-                ? "No scanner rows staged."
+                ? GetEmptyListLabel()
                 : $"{Math.Min(_selectedIndex + 1, _results.Count).ToString(CultureInfo.InvariantCulture)} / {_results.Count.ToString(CultureInfo.InvariantCulture)}";
             sprite.DrawString(_font, TrimToWidth(countLabel, 32), new Vector2(bounds.X + 14, bounds.Y + FooterY - 17), new Color(255, 233, 160));
             sprite.DrawString(_font, TrimToWidth(_statusMessage, 38), new Vector2(bounds.X + 14, bounds.Y + FooterY), new Color(214, 223, 236));
@@ -324,7 +334,11 @@ namespace HaCreator.MapSimulator.UI
         private void DispatchInitialScannerRequest()
         {
             _initialRequestCount++;
-            LastInitialRequestSummary = $"CUIShopScanner::OnCreate mirrored COutPacket opcode {InitialRequestOpcode} subtype {InitialRequestSubtype}.";
+            byte[] payload = BuildInitialScannerRequestPayload();
+            string dispatchSummary = InitialScannerRequestDispatcher?.Invoke(InitialRequestOpcode, Array.AsReadOnly(payload));
+            LastInitialRequestSummary = string.IsNullOrWhiteSpace(dispatchSummary)
+                ? $"CUIShopScanner::OnCreate mirrored COutPacket opcode {InitialRequestOpcode} subtype {InitialRequestSubtype} simulator-local."
+                : dispatchSummary;
             _statusMessage = $"{LastInitialRequestSummary} Search edit focused.";
         }
 
@@ -334,6 +348,7 @@ namespace HaCreator.MapSimulator.UI
             _results = Search(query, 200).ToList();
             _selectedIndex = _results.Count > 0 ? 0 : -1;
             _scrollOffset = 0;
+            _activeAddOnMode = ScannerAddOnMode.SearchResult;
             _statusMessage = _results.Count > 0
                 ? $"Scanner index matched {_results.Count.ToString(CultureInfo.InvariantCulture)} item-name row(s)."
                 : "Scanner index found no item-name rows for that query.";
@@ -347,8 +362,57 @@ namespace HaCreator.MapSimulator.UI
             _results.Clear();
             _selectedIndex = -1;
             _scrollOffset = 0;
+            _activeAddOnMode = ScannerAddOnMode.None;
             _searchFieldFocused = true;
             _statusMessage = "Scanner search reset; edit focus restored.";
+            RefreshRows();
+        }
+
+        private void ToggleHotList()
+        {
+            if (_activeAddOnMode == ScannerAddOnMode.HotList)
+            {
+                ClearSearch();
+                return;
+            }
+
+            _results = GetScannerIndex()
+                .Where(entry => !entry.IsBlockedByScanBlock && !entry.IsScannerItem)
+                .Take(10)
+                .Select(ToScannerResult)
+                .ToList();
+            _selectedIndex = _results.Count > 0 ? 0 : -1;
+            _scrollOffset = 0;
+            _activeAddOnMode = ScannerAddOnMode.HotList;
+            _statusMessage = "CUIShopScanner hot-list add-on toggled from button 2000.";
+            RefreshRows();
+        }
+
+        private void ToggleCategory()
+        {
+            if (_activeAddOnMode == ScannerAddOnMode.Category)
+            {
+                ClearSearch();
+                return;
+            }
+
+            _results = GetScannerIndex()
+                .Where(entry => !entry.IsBlockedByScanBlock && !entry.IsScannerItem)
+                .GroupBy(entry => entry.InventoryType)
+                .OrderBy(group => group.Key)
+                .Select((group, index) => new ScannerResult
+                {
+                    ItemId = group.Count(),
+                    Name = $"{group.Key} item-name rows",
+                    NoSpaceName = CollapseSpaces(group.Key.ToString()),
+                    InventoryType = group.Key,
+                    ClientListOrder = index
+                })
+                .ToList();
+            _selectedIndex = _results.Count > 0 ? 0 : -1;
+            _scrollOffset = 0;
+            _activeAddOnMode = ScannerAddOnMode.Category;
+            _statusMessage = "CUIShopScanner category add-on toggled from button 2001.";
             RefreshRows();
         }
 
@@ -433,6 +497,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _results.Skip(_scrollOffset).Take(VisibleRows).ToList();
+        }
+
+        private string GetEmptyListLabel()
+        {
+            return _activeAddOnMode switch
+            {
+                ScannerAddOnMode.HotList => "No hot-list rows staged.",
+                ScannerAddOnMode.Category => "No category rows staged.",
+                ScannerAddOnMode.SearchResult => "No result rows staged.",
+                _ => "No scanner rows staged."
+            };
         }
 
         private Rectangle GetSearchFieldBounds()
@@ -552,6 +627,25 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return 0;
+        }
+
+        internal static byte[] BuildInitialScannerRequestPayload()
+        {
+            return new[] { unchecked((byte)InitialRequestSubtype) };
+        }
+
+        private static ScannerResult ToScannerResult(ScannerIndexEntry entry)
+        {
+            return new ScannerResult
+            {
+                ItemId = entry.ItemId,
+                Name = entry.Name,
+                NoSpaceName = entry.NoSpaceName,
+                InventoryType = entry.InventoryType,
+                ClientListOrder = entry.ClientListOrder,
+                IsBlockedByScanBlock = entry.IsBlockedByScanBlock,
+                IsScannerItem = entry.IsScannerItem
+            };
         }
 
         private static IReadOnlyList<ScannerIndexEntry> GetScannerIndex()

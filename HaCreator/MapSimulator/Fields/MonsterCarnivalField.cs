@@ -2015,9 +2015,11 @@ namespace HaCreator.MapSimulator.Fields
                 : _activeTab;
             bool isLocalRequestOwner = IsLocalRequestOwner(characterName);
             bool hasMissingRequestOwner = string.IsNullOrWhiteSpace(characterName);
+            MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
             bool consumedPendingLocalRequest = TryConsumePendingLocalRequestForResultOwnership(
                 tab,
                 entryIndex,
+                entry != null,
                 isLocalRequestOwner,
                 hasMissingRequestOwner,
                 out PendingLocalRequestToken consumedPendingToken);
@@ -2027,7 +2029,6 @@ namespace HaCreator.MapSimulator.Fields
             int resolvedRequestIndex = consumedPendingLocalRequest
                 ? consumedPendingToken.EntryIndex
                 : entryIndex;
-            MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
             if (entry == null)
             {
                 if (consumedPendingLocalRequest
@@ -3814,6 +3815,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryConsumePendingLocalRequestForResultOwnership(
             MonsterCarnivalTab tab,
             int entryIndex,
+            bool packetEntryResolvable,
             bool isLocalRequestOwner,
             bool hasMissingRequestOwner,
             out PendingLocalRequestToken consumedToken)
@@ -3841,7 +3843,9 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return TryConsumeNextResolvablePendingLocalRequest(
-                pending => isLocalRequestOwner || hasMissingRequestOwner || pending.AcceptsOfficialClientResultOwner,
+                pending => isLocalRequestOwner
+                           || hasMissingRequestOwner
+                           || (!packetEntryResolvable && pending.AcceptsOfficialClientResultOwner),
                 out consumedToken);
         }
 

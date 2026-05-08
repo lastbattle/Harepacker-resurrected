@@ -542,11 +542,12 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            // CActionMan::LoadMorphAction enumerates the morph action property instead of
-            // assuming dense 0..N frame keys, so sparse authored rows still publish frames.
+            // CActionMan::LoadMorphAction enumerates the morph action property and accepts
+            // each child that resolves to IWzCanvas, so sparse and nonnumeric authored rows
+            // still publish frames.
             foreach (WzImageProperty frameNode in actionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
             {
-                if (frameNode != null && int.TryParse(frameNode.Name, out _))
+                if (frameNode != null && TryResolveMorphFrameCanvas(frameNode, out _))
                 {
                     yield return new KeyValuePair<string, WzImageProperty>(frameNode.Name, frameNode);
                 }

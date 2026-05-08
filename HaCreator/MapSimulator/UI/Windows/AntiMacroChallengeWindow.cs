@@ -124,6 +124,7 @@ namespace HaCreator.MapSimulator.UI
         string ISoftKeyboardHost.GetSoftKeyboardText() => CurrentInput ?? string.Empty;
 
         public event Action<string> SubmitRequested;
+        public event Action EditFocusGained;
 
         public string CurrentInput => UsingNativeEditHost ? _nativeEditHost.Text : _editControl.Text;
         public int ExpiresAt => _expiresAt;
@@ -167,6 +168,7 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 _editControl.ActivateByOwner();
+                NotifyEditFocusGained();
             }
 
             _softKeyboardActive = false;
@@ -331,6 +333,7 @@ namespace HaCreator.MapSimulator.UI
                         _lastManagedInputClickTick = Environment.TickCount;
                         _lastManagedInputClickPosition = mouseState.Position;
                         _softKeyboardActive = true;
+                        NotifyEditFocusGained();
                     }
 
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -815,8 +818,27 @@ namespace HaCreator.MapSimulator.UI
             {
                 _softKeyboardActive = false;
             }
+            else
+            {
+                NotifyEditFocusGained();
+            }
 
             _submitButton?.SetEnabled(CanSubmitAnswer());
+        }
+
+        private void NotifyEditFocusGained()
+        {
+            if (ShouldReleaseActiveKeydownSkillOnEditFocus(hasFocus: true))
+            {
+                EditFocusGained?.Invoke();
+            }
+        }
+
+        internal static bool ShouldReleaseActiveKeydownSkillOnEditFocus(bool hasFocus)
+        {
+            // `CCtrlEdit::OnSetFocus(true)` calls `CUserLocal::OnKeyDownSkillEnd`
+            // before clearing composition and disabling IME for the focused edit.
+            return hasFocus;
         }
     }
 }

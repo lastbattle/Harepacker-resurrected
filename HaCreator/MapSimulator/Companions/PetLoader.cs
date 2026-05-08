@@ -1423,19 +1423,23 @@ namespace HaCreator.MapSimulator.Companions
                         layerEntries.Max(static entry => entry.Bounds.Right),
                         layerEntries.Max(static entry => entry.Bounds.Bottom));
 
-                    using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
+                    using var composedBitmap = new SD.Bitmap(
+                        Math.Max(1, composedBounds.Width),
+                        Math.Max(1, composedBounds.Height),
+                        System.Drawing.Imaging.PixelFormat.Format32bppArgb);
                     using (SDG graphics = SDG.FromImage(composedBitmap))
                     {
                         graphics.Clear(SD.Color.Transparent);
                         ApplyNativeCanvasCopySettings(graphics);
-                        foreach (LayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, LayeredFrameEntryComparer.Instance))
-                        {
-                            DrawCanvasCopyAlpha255(
-                                graphics,
-                                layerEntry.Bitmap,
-                                layerEntry.Bounds.X - composedBounds.X,
-                                layerEntry.Bounds.Y - composedBounds.Y);
-                        }
+                    }
+
+                    foreach (LayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, LayeredFrameEntryComparer.Instance))
+                    {
+                        DrawCanvasCopyAlpha255(
+                            composedBitmap,
+                            layerEntry.Bitmap,
+                            layerEntry.Bounds.X - composedBounds.X,
+                            layerEntry.Bounds.Y - composedBounds.Y);
                     }
 
                     Texture2D texture = composedBitmap.ToTexture2DAndDispose(_device);
@@ -1515,19 +1519,23 @@ namespace HaCreator.MapSimulator.Companions
                     layerEntries.Max(static entry => entry.Bounds.Right),
                     layerEntries.Max(static entry => entry.Bounds.Bottom));
 
-                using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
+                using var composedBitmap = new SD.Bitmap(
+                    Math.Max(1, composedBounds.Width),
+                    Math.Max(1, composedBounds.Height),
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
                 using (SDG graphics = SDG.FromImage(composedBitmap))
                 {
                     graphics.Clear(SD.Color.Transparent);
                     ApplyNativeCanvasCopySettings(graphics);
-                    foreach (LayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, LayeredFrameEntryComparer.Instance))
-                    {
-                        DrawCanvasCopyAlpha255(
-                            graphics,
-                            layerEntry.Bitmap,
-                            layerEntry.Bounds.X - composedBounds.X,
-                            layerEntry.Bounds.Y - composedBounds.Y);
-                    }
+                }
+
+                foreach (LayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, LayeredFrameEntryComparer.Instance))
+                {
+                    DrawCanvasCopyAlpha255(
+                        composedBitmap,
+                        layerEntry.Bitmap,
+                        layerEntry.Bounds.X - composedBounds.X,
+                        layerEntry.Bounds.Y - composedBounds.Y);
                 }
 
                 Texture2D texture = composedBitmap.ToTexture2DAndDispose(_device);
@@ -1682,17 +1690,23 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static SD.Color ResolveNativeCanvasCopyPixelForTesting(SD.Color destination, SD.Color source)
         {
-            using var bitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            bitmap.SetPixel(0, 0, destination);
-            using (SDG graphics = SDG.FromImage(bitmap))
-            using (var sourceBitmap = new SD.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            return BlendNativeCanvasCopyPixel(destination, source);
+        }
+
+        internal static SD.Color ResolveNativeCanvasCopyPixelsForTesting(params SD.Color[] layers)
+        {
+            SD.Color result = SD.Color.Transparent;
+            if (layers == null)
             {
-                sourceBitmap.SetPixel(0, 0, source);
-                ApplyNativeCanvasCopySettings(graphics);
-                DrawCanvasCopyAlpha255(graphics, sourceBitmap, 0, 0);
+                return result;
             }
 
-            return bitmap.GetPixel(0, 0);
+            foreach (SD.Color layer in layers)
+            {
+                result = BlendNativeCanvasCopyPixel(result, layer);
+            }
+
+            return result;
         }
 
         private static void ApplyNativeCanvasCopySettings(SDG graphics)
@@ -1711,14 +1725,91 @@ namespace HaCreator.MapSimulator.Companions
             graphics.PageScale = ResolveNativeCanvasCopyPageScaleForTesting();
         }
 
-        private static void DrawCanvasCopyAlpha255(SDG graphics, SD.Bitmap bitmap, int x, int y)
+        private static void DrawCanvasCopyAlpha255(SD.Bitmap destination, SD.Bitmap source, int x, int y)
         {
-            if (graphics == null || bitmap == null)
+            if (destination == null || source == null)
             {
                 return;
             }
 
-            graphics.DrawImageUnscaled(bitmap, x, y);
+            for (int sourceY = 0; sourceY < source.Height; sourceY++)
+            {
+                int destinationY = y + sourceY;
+                if (destinationY < 0 || destinationY >= destination.Height)
+                {
+                    continue;
+                }
+
+                for (int sourceX = 0; sourceX < source.Width; sourceX++)
+                {
+                    int destinationX = x + sourceX;
+                    if (destinationX < 0 || destinationX >= destination.Width)
+                    {
+                        continue;
+                    }
+
+                    SD.Color sourcePixel = source.GetPixel(sourceX, sourceY);
+                    if (sourcePixel.A == 0)
+                    {
+                        continue;
+                    }
+
+                    SD.Color destinationPixel = destination.GetPixel(destinationX, destinationY);
+                    destination.SetPixel(destinationX, destinationY, BlendNativeCanvasCopyPixel(destinationPixel, sourcePixel));
+                }
+            }
+        }
+
+        private static SD.Color BlendNativeCanvasCopyPixel(SD.Color destination, SD.Color source)
+        {
+            if (source.A == 0)
+            {
+                return destination;
+            }
+
+            if (source.A == 255)
+            {
+                return source;
+            }
+
+            int inverseSourceAlpha = 255 - source.A;
+            int destinationAlphaContribution = DivideBy255Rounded(destination.A * inverseSourceAlpha);
+            int alpha = source.A + destinationAlphaContribution;
+            if (alpha <= 0)
+            {
+                return SD.Color.Transparent;
+            }
+
+            int red = Unpremultiply(
+                source.R * source.A + DivideBy255Rounded(destination.R * destination.A * inverseSourceAlpha),
+                alpha);
+            int green = Unpremultiply(
+                source.G * source.A + DivideBy255Rounded(destination.G * destination.A * inverseSourceAlpha),
+                alpha);
+            int blue = Unpremultiply(
+                source.B * source.A + DivideBy255Rounded(destination.B * destination.A * inverseSourceAlpha),
+                alpha);
+
+            return SD.Color.FromArgb(
+                ClampByte(alpha),
+                ClampByte(red),
+                ClampByte(green),
+                ClampByte(blue));
+        }
+
+        private static int DivideBy255Rounded(int value)
+        {
+            return (value + 127) / 255;
+        }
+
+        private static int Unpremultiply(int premultipliedChannel, int alpha)
+        {
+            return alpha <= 0 ? 0 : (premultipliedChannel + (alpha / 2)) / alpha;
+        }
+
+        private static int ClampByte(int value)
+        {
+            return Math.Max(0, Math.Min(255, value));
         }
 
         private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)

@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _activeActionSpeechExpiresAt;
         private int _activeActionSpeechChatBalloon;
         private int _activeActionSpeechFloatNotice;
+        private int _activeActionSpeechFadeDurationMs;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -119,6 +120,8 @@ namespace HaCreator.MapSimulator.Entities
         public int ActiveActionSpeechChatBalloon => _activeActionSpeechChatBalloon;
 
         public int ActiveActionSpeechFloatNotice => _activeActionSpeechFloatNotice;
+
+        public int ActiveActionSpeechFadeDurationMs => _activeActionSpeechFadeDurationMs;
 
         internal bool PacketOwnedExpiryClientSuspended { get; private set; }
 
@@ -946,6 +949,7 @@ namespace HaCreator.MapSimulator.Entities
                     IsAreaOfEffect = isArea,
                     EffectAfter = effectAfter,
                     AttackAfter = attackAfter,
+                    AttackAfterIsAuthored = attackInfo?.HasAttackAfterMetadata == true,
                     BulletSpeed = (attackMeta?.BulletSpeed ?? 0) > 0 ? attackMeta.BulletSpeed : (isRanged ? 320 : 0),
                     ProjectileCount = ResolveProjectileCount(attackMeta, attackInfo, isBoss, isRanged, isArea, actionIndex),
                     AreaWidth = areaWidth,
@@ -1442,7 +1446,13 @@ namespace HaCreator.MapSimulator.Entities
             _activeActionSpeechText = SanitizeActionSpeakMessage(message);
             _activeActionSpeechChatBalloon = selectedVariant.ChatBalloon;
             _activeActionSpeechFloatNotice = selectedVariant.FloatNotice;
-            _activeActionSpeechExpiresAt = currentTick + GetActionSpeakDurationMs(_activeActionSpeechText);
+            ResolveActionSpeakTiming(
+                ResolveCurrentActionDelayMs(action),
+                IsClientOneShotMobAction(action),
+                out int timeoutMs,
+                out int fadeDurationMs);
+            _activeActionSpeechFadeDurationMs = fadeDurationMs;
+            _activeActionSpeechExpiresAt = currentTick + timeoutMs;
         }
 
         public bool IsActionSpeechActive(int currentTick)
@@ -1467,6 +1477,7 @@ namespace HaCreator.MapSimulator.Entities
             _activeActionSpeechExpiresAt = 0;
             _activeActionSpeechChatBalloon = 0;
             _activeActionSpeechFloatNotice = 0;
+            _activeActionSpeechFadeDurationMs = 0;
         }
 
         internal static bool ShouldTriggerActionSpeak(
@@ -1608,6 +1619,40 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return Math.Clamp(2400 + (text.Trim().Length * 45), 2400, 5200);
+        }
+
+        internal static void ResolveActionSpeakTiming(
+            int actionDelayMs,
+            bool isActionOwnedSpeech,
+            out int timeoutMs,
+            out int fadeDurationMs)
+        {
+            if (isActionOwnedSpeech && actionDelayMs > 0)
+            {
+                timeoutMs = Math.Max(1, (actionDelayMs * 4) / 5);
+                fadeDurationMs = Math.Max(0, actionDelayMs - timeoutMs);
+                return;
+            }
+
+            timeoutMs = 5000;
+            fadeDurationMs = 600;
+        }
+
+        private int ResolveCurrentActionDelayMs(string action)
+        {
+            IReadOnlyList<IDXObject> frames = _animationSet?.GetFrames(action);
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int totalDelayMs = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDelayMs += Math.Max(10, frames[i]?.Delay ?? 100);
+            }
+
+            return totalDelayMs;
         }
 
         private static string SanitizeActionSpeakMessage(string message)

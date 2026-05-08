@@ -178,6 +178,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // is_event_vehicle_type1(v6) before generic IsAbleTamingMob* checks.
                 144 // comboJudgement
             );
+        private static readonly string[] WzOnlyEventVehicleType1ActionNames =
+        {
+            // WZ publishes this root on Character/TamingMob/01932001 and 01932002, but
+            // v95 LoadTamingMobAction has no float raw-action admission for type-1 event
+            // vehicles; only shared mounted actions and raw 144 reach load_tamingmob_action.
+            "float"
+        };
         private static readonly string[] ClientConfirmedWildHunterJaguarOneTimeActionNames =
             ResolveClientRawActionNames(
                 // IDA `IsAbleTamingMobOneTimeAction` has a dedicated wild-hunter jaguar
@@ -577,13 +584,23 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsWzOnlyClientOwnedVehicleOneTimeActionName(int mountItemId, string actionName)
         {
+            return IsWzOnlyClientOwnedVehicleActionName(mountItemId, actionName);
+        }
+
+        internal static bool IsWzOnlyClientOwnedVehicleActionName(int mountItemId, string actionName)
+        {
             if (mountItemId == MechanicTamingMobItemId)
             {
                 return IsWzOnlyMechanicVehicleOneTimeActionName(actionName);
             }
 
-            return IsWildHunterJaguarTamingMobItemId(mountItemId)
-                   && IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(actionName);
+            if (IsWildHunterJaguarTamingMobItemId(mountItemId))
+            {
+                return IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(actionName);
+            }
+
+            return IsEventVehicleType1TamingMobItemId(mountItemId)
+                   && ContainsActionName(WzOnlyEventVehicleType1ActionNames, actionName);
         }
 
         internal static bool IsOverlappingMechanicVehicleOneTimeActionName(string actionName)

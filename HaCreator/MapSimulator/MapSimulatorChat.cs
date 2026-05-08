@@ -1470,6 +1470,12 @@ namespace HaCreator.MapSimulator
             _replyTarget = normalizedTarget;
         }
 
+        internal void ClearLastOutgoingWhisperEcho()
+        {
+            _lastOutgoingWhisperTarget = string.Empty;
+            _lastOutgoingWhisperText = string.Empty;
+        }
+
         public void AddIncomingTargetedMessage(
             MapSimulatorChatTargetType targetType,
             string speaker,
@@ -3197,6 +3203,7 @@ namespace HaCreator.MapSimulator
 
         private void SetInputText(string text, bool selectAll = false)
         {
+            ClearImeEditState();
             _inputText.Clear();
             if (!string.IsNullOrEmpty(text))
             {

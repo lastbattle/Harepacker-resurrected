@@ -924,14 +924,20 @@ namespace HaCreator.MapSimulator
         private bool HasPacketOwnedAntiMacroBridgeCorrelatedInboundResult(IReadOnlyList<byte> payload)
         {
             if (payload == null
-                || payload.Count == 0)
+                || payload.Count == 0
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket == null
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket.Length == 0)
             {
                 return false;
             }
 
-            return _localUtilityOfficialSessionBridge.HasReceivedInboundPacketPayloadSince(
+            return _localUtilityOfficialSessionBridge.HasReceivedInboundPacketPayloadAfterOutboundSubmit(
                 PacketOwnedAntiMacroPacketType,
                 payload,
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal),
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeObservedOutboundOrdinal),
                 Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal));
         }
 

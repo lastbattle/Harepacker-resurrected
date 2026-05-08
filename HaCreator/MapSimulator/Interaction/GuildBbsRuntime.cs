@@ -138,6 +138,8 @@ namespace HaCreator.MapSimulator.Interaction
         private GuildBbsPermissionMask? _packetPermissionMask;
         private GuildBbsPermissionMask? _linkedPermissionMask;
         private string _linkedPermissionSourceLabel;
+        private bool _hasLinkedBoardAuthKey;
+        private string _linkedBoardAuthKeySourceLabel;
         private bool _hasPacketCashOwnershipOverride;
         private int _selectedThreadId;
         private int _threadPageIndex;
@@ -178,7 +180,9 @@ namespace HaCreator.MapSimulator.Interaction
             string guildRoleLabel,
             IEnumerable<int> ownedCashEmoticonItemIds,
             GuildBbsPermissionMask? linkedPermissionMask = null,
-            string linkedPermissionSourceLabel = null)
+            string linkedPermissionSourceLabel = null,
+            bool hasLinkedBoardAuthKey = false,
+            string linkedBoardAuthKeySourceLabel = null)
         {
             _localPlayerName = string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName.Trim();
             _guildName = string.IsNullOrWhiteSpace(guildName) ? "Maple Guild" : guildName.Trim();
@@ -191,6 +195,10 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
             _linkedPermissionSourceLabel = linkedPermissionMask.HasValue && !string.IsNullOrWhiteSpace(linkedPermissionSourceLabel)
                 ? linkedPermissionSourceLabel.Trim()
+                : null;
+            _hasLinkedBoardAuthKey = hasLinkedBoardAuthKey;
+            _linkedBoardAuthKeySourceLabel = hasLinkedBoardAuthKey && !string.IsNullOrWhiteSpace(linkedBoardAuthKeySourceLabel)
+                ? linkedBoardAuthKeySourceLabel.Trim()
                 : null;
 
             _inventoryOwnedCashEmoticonIds.Clear();
@@ -1169,6 +1177,7 @@ namespace HaCreator.MapSimulator.Interaction
                 CanDeleteReply = selectedThread != null && selectedThread.Comments.Any(CanDeleteComment),
                 OwnedCashEmoticonCount = OwnedCashEmoticonCount,
                 AuthoritySourceLabel = AuthoritySourceLabel,
+                BoardAuthoritySourceLabel = BoardAuthoritySourceLabel,
                 CashOwnershipSourceLabel = CashOwnershipSourceLabel,
                 PermissionMaskText = DescribePermissionMask(EffectivePermissionMask)
             };
@@ -2006,6 +2015,9 @@ namespace HaCreator.MapSimulator.Interaction
             : _linkedPermissionMask.HasValue
                 ? string.IsNullOrWhiteSpace(_linkedPermissionSourceLabel) ? "Linked packet guild authority" : _linkedPermissionSourceLabel
                 : "Guild role";
+        private string BoardAuthoritySourceLabel => _hasLinkedBoardAuthKey
+            ? string.IsNullOrWhiteSpace(_linkedBoardAuthKeySourceLabel) ? "Packet guild-board auth key" : _linkedBoardAuthKeySourceLabel
+            : "Local board session";
         private string CashOwnershipSourceLabel => _hasPacketCashOwnershipOverride ? "Packet" : "Inventory";
         private static GuildBbsPermissionMask ResolvePermissionMask(GuildBbsPermissionLevel permissionLevel)
         {
@@ -2811,6 +2823,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string PermissionLabel { get; init; } = string.Empty;
         public string AuthoritySourceLabel { get; init; } = string.Empty;
+        public string BoardAuthoritySourceLabel { get; init; } = string.Empty;
         public string CashOwnershipSourceLabel { get; init; } = string.Empty;
         public string PermissionMaskText { get; init; } = string.Empty;
         public bool CanWrite { get; init; }

@@ -467,7 +467,9 @@ namespace HaCreator.MapSimulator.Pools
         PreviousWorldRank = 1 << 22,
         PreviousJobRank = 1 << 23,
         Marriage = 1 << 24,
-        PetProfileNames = 1 << 25
+        PetProfileNames = 1 << 25,
+        LocationSummary = 1 << 26,
+        Channel = 1 << 27
     }
 
     public readonly record struct RemoteUserProfilePacket(
@@ -511,7 +513,9 @@ namespace HaCreator.MapSimulator.Pools
           int? MakerUnlockedHiddenRecipeCount = null,
           int? PreviousWorldRank = null,
           int? PreviousJobRank = null,
-          bool? IsMarried = null);
+          bool? IsMarried = null,
+          string LocationSummary = null,
+          int? Channel = null);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
     public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
@@ -2409,6 +2413,13 @@ namespace HaCreator.MapSimulator.Pools
                     makerUnlockedHiddenRecipeCount = reader.ReadInt32();
                 }
 
+                string locationSummary = HasProfileFlag(flags, RemoteUserProfilePacketFlags.LocationSummary)
+                    ? reader.ReadString16()
+                    : null;
+                int? channel = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Channel)
+                    ? reader.ReadInt32()
+                    : null;
+
                 if (reader.RemainingLength != 0)
                 {
                     error = $"Remote user profile packet has {reader.RemainingLength} unread bytes remaining.";
@@ -2462,7 +2473,9 @@ namespace HaCreator.MapSimulator.Pools
                     makerUnlockedHiddenRecipeCount,
                     previousWorldRank,
                     previousJobRank,
-                    isMarried);
+                    isMarried,
+                    locationSummary,
+                    channel);
                 return true;
             }
             catch (InvalidOperationException ex)

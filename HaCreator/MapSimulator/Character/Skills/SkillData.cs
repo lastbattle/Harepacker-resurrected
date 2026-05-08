@@ -296,12 +296,23 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HasZoomStart { get; set; }
         public bool HasZoomEnd { get; set; }
         public int RotationDegrees { get; set; }
+        public string AfterimageActionName { get; set; }
+        public int? AfterimageActionRawCode { get; set; }
+        public int AfterimageCanvasOrdinal { get; set; } = -1;
     }
 
-    public readonly record struct AfterimageRenderableLayer(SkillFrame Frame, float Alpha, float Zoom = 1f);
+    public readonly record struct AfterimageRenderableLayer(
+        SkillFrame Frame,
+        float Alpha,
+        float Zoom = 1f,
+        int CanvasObjectId = 0,
+        int CanvasOrdinal = -1,
+        int? RawActionCode = null);
 
     public enum AfterimageLayerOperationKind
     {
+        ResetAlpha,
+        RemoveAllCanvases,
         RemoveCanvas,
         InsertCanvas
     }
@@ -314,7 +325,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         int StartAlpha,
         int EndAlpha,
         int StartZoom,
-        int EndZoom);
+        int EndZoom,
+        int CanvasObjectId = 0,
+        int CanvasOrdinal = -1,
+        int? RawActionCode = null);
 
     /// <summary>
     /// Skill effect animation
@@ -430,6 +444,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
     public class MeleeAfterImageAction
     {
+        public string ActionName { get; set; }
+        public int? RawActionCode { get; set; }
         public Rectangle Range { get; set; } = Rectangle.Empty;
         public Dictionary<int, MeleeAfterImageFrameSet> FrameSets { get; set; } = new();
 
@@ -2210,7 +2226,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool CanDrawMainAnimation(int currentTime)
         {
             return Presentation != null
-                   && SkillManager.HasBulletAnimationOwnerTickReached(currentTime, Presentation.StartTime)
+                   && SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(currentTime, Presentation.StartTime) > 0
                    && !SkillManager.HasBulletAnimationOwnerTickReached(currentTime, Presentation.EndTime);
         }
     }
@@ -2245,7 +2261,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool IsExpired(int currentTime)
         {
-            if (RegisteredAnimationEndTime > RegisteredAnimationStartTime)
+            if (HasRegisteredAnimationTimeline())
             {
                 return SkillManager.HasBulletAnimationOwnerTickReached(currentTime, RegisteredAnimationEndTime);
             }
@@ -2299,12 +2315,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int ResolveLifetimeMs()
         {
-            if (RegisteredAnimationEndTime > RegisteredAnimationStartTime)
+            if (HasRegisteredAnimationTimeline())
             {
                 return Math.Max(1, SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(RegisteredAnimationEndTime, RegisteredAnimationStartTime));
             }
 
             return Math.Max(1, Duration);
+        }
+
+        private bool HasRegisteredAnimationTimeline()
+        {
+            return SkillManager.ResolveBulletAnimationOwnerTickElapsedMs(RegisteredAnimationEndTime, RegisteredAnimationStartTime) > 0;
         }
 
         private int ResolveAlphaVectorStart()
@@ -2639,12 +2660,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool HasReachedNaturalExpiry(int currentTime)
         {
-            return Duration > 0 && currentTime - StartTime >= Duration;
+            return Duration > 0
+                   && SummonRuntimeRules.HasClientTickElapsedAtLeast(currentTime, StartTime, Duration);
         }
 
         public bool IsExpired(int currentTime)
         {
-            return IsPendingRemoval && currentTime >= PendingRemovalTime;
+            return IsPendingRemoval
+                   && SummonRuntimeRules.HasClientTickReached(currentTime, PendingRemovalTime);
         }
 
         public int GetRemainingTime(int currentTime)
@@ -2659,7 +2682,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            return Math.Max(0, (StartTime + Duration) - currentTime);
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, StartTime);
+            return Math.Max(0, Duration - elapsed);
         }
     }
 

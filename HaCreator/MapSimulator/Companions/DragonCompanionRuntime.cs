@@ -357,11 +357,6 @@ namespace HaCreator.MapSimulator.Companions
             _actionLayerOwnerZProvider = actionLayerOwnerZProvider;
         }
 
-        internal void SetClientKeyPadStateProvider(Func<byte?> clientKeyPadStateProvider)
-        {
-            _clientKeyPadStateProvider = clientKeyPadStateProvider;
-        }
-
         public void SetOwnerPhaseActionAlphaProvider(Func<int?> ownerPhaseActionAlphaProvider)
         {
             _ownerPhaseContextProvider = ownerPhaseActionAlphaProvider == null
@@ -372,6 +367,11 @@ namespace HaCreator.MapSimulator.Companions
         internal void SetOwnerPhaseContextProvider(Func<OwnerPhaseContext> ownerPhaseContextProvider)
         {
             _ownerPhaseContextProvider = ownerPhaseContextProvider;
+        }
+
+        internal void SetClientKeyPadStateProvider(Func<byte?> clientKeyPadStateProvider)
+        {
+            _clientKeyPadStateProvider = clientKeyPadStateProvider;
         }
 
         internal static OwnerPhaseContext ResolveLegacyOwnerPhaseContext(int? ownerPhaseAlpha)
@@ -969,7 +969,7 @@ namespace HaCreator.MapSimulator.Companions
 
             MovePathElement seed = CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity);
             _clientVecCtrlMovePathBuffer.Add(seed);
-            _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, seed, _clientKeyPadStateProvider));
+            _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlDragonKeyPadStateForCurrentInput(owner, seed));
         }
 
         private void RecordClientVecCtrlMovePathStep(PlayerCharacter owner, Vector2 previousAnchor)
@@ -978,7 +978,7 @@ namespace HaCreator.MapSimulator.Companions
             {
                 MovePathElement seed = CreateClientVecCtrlMovePathElement(owner, previousAnchor, _followVelocity);
                 _clientVecCtrlMovePathBuffer.Add(seed);
-                _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, seed, _clientKeyPadStateProvider));
+                _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlDragonKeyPadStateForCurrentInput(owner, seed));
             }
 
             int lastIndex = _clientVecCtrlMovePathBuffer.Count - 1;
@@ -987,16 +987,16 @@ namespace HaCreator.MapSimulator.Companions
             _clientVecCtrlMovePathBuffer[lastIndex] = tail;
             if (_clientVecCtrlMovePathKeyPadStates.Count <= lastIndex)
             {
-                _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, tail, _clientKeyPadStateProvider));
+                _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlDragonKeyPadStateForCurrentInput(owner, tail));
             }
             else
             {
-                _clientVecCtrlMovePathKeyPadStates[lastIndex] = CreateClientVecCtrlPassiveKeyPadState(owner, tail, _clientKeyPadStateProvider);
+                _clientVecCtrlMovePathKeyPadStates[lastIndex] = CreateClientVecCtrlDragonKeyPadStateForCurrentInput(owner, tail);
             }
 
             MovePathElement next = CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity);
             _clientVecCtrlMovePathBuffer.Add(next);
-            _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, next, _clientKeyPadStateProvider));
+            _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlDragonKeyPadStateForCurrentInput(owner, next));
 
             while (_clientVecCtrlMovePathBuffer.Count > MaxClientVecCtrlMovePathElements)
             {
@@ -1039,18 +1039,19 @@ namespace HaCreator.MapSimulator.Companions
             };
         }
 
-        private static byte CreateClientVecCtrlPassiveKeyPadState(
-            PlayerCharacter? owner,
-            MovePathElement element,
-            Func<byte?> clientKeyPadStateProvider)
+        internal static byte CreateClientVecCtrlDragonKeyPadState(PlayerCharacter? owner, MovePathElement element)
         {
-            byte? clientKeyPadState = clientKeyPadStateProvider?.Invoke();
-            return clientKeyPadState.HasValue
-                ? NormalizeClientVecCtrlPassiveKeyPadState(clientKeyPadState.Value)
-                : CreateClientVecCtrlPassiveKeyPadState(owner, element);
+            _ = owner;
+            int inputX = Math.Sign(element.VelocityX);
+            return ResolveClientVecCtrlDragonKeyPadStateFromInput(inputX, inputY: 0);
         }
 
-        internal static byte CreateClientVecCtrlPassiveKeyPadState(PlayerCharacter? owner, MovePathElement element)
+        private byte CreateClientVecCtrlDragonKeyPadStateForCurrentInput(PlayerCharacter? owner, MovePathElement element)
+        {
+            return _clientKeyPadStateProvider?.Invoke() ?? CreateClientVecCtrlDragonKeyPadState(owner, element);
+        }
+
+        internal static byte ResolveClientVecCtrlDragonKeyPadStateFromInput(int inputX, int inputY)
         {
             const byte Up = 1 << 0;
             const byte Down = 1 << 1;
@@ -1058,29 +1059,22 @@ namespace HaCreator.MapSimulator.Companions
             const byte Right = 1 << 3;
 
             byte state = 0;
-            if (element.VelocityX < 0)
-            {
-                state |= Left;
-            }
-            else if (element.VelocityX > 0)
-            {
-                state |= Right;
-            }
-
-            if (element.VelocityY < 0)
+            if (inputY < 0)
             {
                 state |= Up;
             }
-            else if (element.VelocityY > 0)
+            else if (inputY > 0)
             {
                 state |= Down;
             }
 
-            if (state == 0
-                && owner?.State is PlayerState.Ladder or PlayerState.Rope
-                && element.VelocityY < 0)
+            if (inputX < 0)
             {
-                state = Up;
+                state |= Left;
+            }
+            else if (inputX > 0)
+            {
+                state |= Right;
             }
 
             return NormalizeClientVecCtrlPassiveKeyPadState(state);

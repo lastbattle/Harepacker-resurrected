@@ -2225,16 +2225,9 @@ namespace HaCreator.MapSimulator.UI
 
             int alreadyWishlistedCount = matches.Count(match =>
                 match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)));
-            matches = matches
-                .Where(match => AdminShopPacketOwnedWishlistSearchSessionParity.CanAddClientWishlistResult(
-                    match.Entry.SupportsWishlist,
-                    match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry))))
-                .ToList();
             if (matches.Count == 0)
             {
-                message = alreadyWishlistedCount > 0
-                    ? $"SearchItemName only found rows that are already saved for \"{trimmedQuery}\" in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}."
-                    : $"No wish-list results were found for \"{trimmedQuery}\" in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
+                message = $"No wish-list results were found for \"{trimmedQuery}\" in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
                 _footerMessage = message;
                 UpdateActionButtonStates();
                 return Array.Empty<WishlistSearchResult>();
@@ -2285,9 +2278,7 @@ namespace HaCreator.MapSimulator.UI
                 .SourceEntries
                 .Select((entry, sourceIndex) => (Entry: entry, SourceIndex: sourceIndex))
                 .Where(entry => entry.Entry != null
-                                && AdminShopPacketOwnedWishlistSearchSessionParity.CanAddClientWishlistResult(
-                                    entry.Entry.SupportsWishlist,
-                                    entry.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(entry.Entry)))
+                                && AdminShopPacketOwnedWishlistSearchSessionParity.CanStageClientWishlistResult(entry.Entry.SupportsWishlist)
                                 && MatchesWishlistCategory(entry.Entry, categoryKey))
                 .OrderBy(entry => ResolveWishlistSearchClientListOrder(entry.Entry))
                 .ThenBy(entry => entry.SourceIndex)
@@ -2335,13 +2326,6 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (!matchedEntry.SupportsWishlist)
-            {
-                return false;
-            }
-
-            if (!AdminShopPacketOwnedWishlistSearchSessionParity.CanAddClientWishlistResult(
-                    matchedEntry.SupportsWishlist,
-                    matchedEntry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(matchedEntry))))
             {
                 return false;
             }
@@ -2927,7 +2911,7 @@ namespace HaCreator.MapSimulator.UI
             string gender = AdminShopPacketOwnedSellTemplateParity.ResolveCommodityGenderLabel(commodity.Gender);
             string price = Math.Max(0L, commodity.Price).ToString("N0", CultureInfo.InvariantCulture);
             string sale = commodity.OnSale ? "on sale" : "unavailable";
-            return $"{quantity} / {period} / {gender} / {price} mesos / {sale}";
+            return $"{quantity} / {period} / {gender} / {price} NX / {sale}";
         }
 
         internal static string AppendPacketOwnedCommodityMetadataDetail(string detail, int rewardQuantity, int periodDays, int gender = 2)
@@ -6082,7 +6066,10 @@ namespace HaCreator.MapSimulator.UI
                 RewardItemId = entry.RewardItemId,
                 IconTexture = entry.IconTexture,
                 AlreadyWishlisted = entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(entryKey),
-                Score = score
+                Score = score,
+                CanRegister = AdminShopPacketOwnedWishlistSearchSessionParity.CanRegisterClientWishlistResult(
+                    entry.SupportsWishlist,
+                    entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(entryKey))
             };
         }
 

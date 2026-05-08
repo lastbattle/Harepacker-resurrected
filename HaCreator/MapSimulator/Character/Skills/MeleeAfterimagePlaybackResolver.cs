@@ -433,10 +433,62 @@ namespace HaCreator.MapSimulator.Character.Skills
                 layers.Add(new AfterimageRenderableLayer(
                     frame,
                     ResolveFrameAlpha(frame, localFrameElapsed),
-                    ResolveFrameZoom(frame, localFrameElapsed)));
+                    ResolveFrameZoom(frame, localFrameElapsed),
+                    ResolveAfterimageCanvasObjectId(frame),
+                    ResolveAfterimageCanvasOrdinal(frame),
+                    frame.AfterimageActionRawCode));
             }
 
             return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        public static IReadOnlyList<AfterimageLayerOperation> ResolveCreateAfterimageLayerOperations(
+            MeleeAfterImageFrameSet frameSet)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            var operations = new List<AfterimageLayerOperation>((frames?.Count ?? 0) + 2)
+            {
+                new(
+                    AfterimageLayerOperationKind.ResetAlpha,
+                    null,
+                    0,
+                    0,
+                    255,
+                    255,
+                    100,
+                    100),
+                new(
+                    AfterimageLayerOperationKind.RemoveAllCanvases,
+                    null,
+                    0,
+                    0,
+                    255,
+                    255,
+                    100,
+                    100)
+            };
+
+            if (frames == null || frames.Count == 0)
+            {
+                return operations;
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                SkillFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                operations.Add(CreateAfterimageLayerOperation(
+                    AfterimageLayerOperationKind.InsertCanvas,
+                    frame,
+                    0,
+                    ResolveClientInsertCanvasDurationMs(frame)));
+            }
+
+            return operations;
         }
 
         public static IReadOnlyList<AfterimageLayerOperation> ResolveLayerOperations(
@@ -578,7 +630,43 @@ namespace HaCreator.MapSimulator.Character.Skills
                 startAlpha,
                 endAlpha,
                 startZoom,
-                endZoom);
+                endZoom,
+                ResolveAfterimageCanvasObjectId(frame),
+                ResolveAfterimageCanvasOrdinal(frame),
+                frame?.AfterimageActionRawCode);
+        }
+
+        internal static int ResolveAfterimageCanvasObjectId(SkillFrame frame)
+        {
+            if (frame == null)
+            {
+                return 0;
+            }
+
+            int rawActionCode = frame.AfterimageActionRawCode.GetValueOrDefault(-1);
+            int canvasOrdinal = ResolveAfterimageCanvasOrdinal(frame);
+            unchecked
+            {
+                int hash = 17;
+                hash = (hash * 31) + rawActionCode;
+                if (rawActionCode < 0 && !string.IsNullOrWhiteSpace(frame.AfterimageActionName))
+                {
+                    foreach (char token in frame.AfterimageActionName.Trim())
+                    {
+                        hash = (hash * 31) + char.ToLowerInvariant(token);
+                    }
+                }
+
+                hash = (hash * 31) + canvasOrdinal;
+                return hash == 0 ? 1 : hash;
+            }
+        }
+
+        private static int ResolveAfterimageCanvasOrdinal(SkillFrame frame)
+        {
+            return frame?.AfterimageCanvasOrdinal >= 0
+                ? frame.AfterimageCanvasOrdinal
+                : -1;
         }
 
         internal static bool TryResolveNonLoopingFrameTimingAtTime(

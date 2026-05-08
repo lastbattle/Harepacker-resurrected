@@ -293,19 +293,21 @@ namespace HaCreator.MapSimulator.Fields
                 return "Evan characters cannot use active skills in no-dragon fields.";
             }
 
-            if (mapInfo.fieldType == FieldType.FIELDTYPE_COCONUT
+            FieldType? fieldType = GetInfoFieldType(mapInfo);
+
+            if (fieldType == FieldType.FIELDTYPE_COCONUT
                 && runtimeState?.CoconutBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Coconut minigame owns basic attacks.";
             }
 
-            if (mapInfo.fieldType == FieldType.FIELDTYPE_SNOWBALL
+            if (fieldType == FieldType.FIELDTYPE_SNOWBALL
                 && runtimeState?.SnowBallBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Snowball minigame owns basic attacks.";
             }
 
-            if (mapInfo.fieldType == FieldType.FIELDTYPE_GUILDBOSS
+            if (fieldType == FieldType.FIELDTYPE_GUILDBOSS
                 && runtimeState?.GuildBossBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Guild Boss field owns basic attacks.";
@@ -363,21 +365,23 @@ namespace HaCreator.MapSimulator.Fields
                 return null;
             }
 
-            if (mapInfo.fieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE
+            FieldType? fieldType = GetInfoFieldType(mapInfo);
+
+            if (fieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE
                 && skill.SkillId == MechanicSiegeModeSkillId)
             {
                 return "This Mechanic skill cannot be used in Monster Carnival restricted fields.";
             }
 
             if (ClientDojoOrBalrogOnlySkillIds.Contains(skill.SkillId)
-                && mapInfo.fieldType != FieldType.FIELDTYPE_DOJANG
-                && mapInfo.fieldType != FieldType.FIELDTYPE_BALROG)
+                && fieldType != FieldType.FIELDTYPE_DOJANG
+                && fieldType != FieldType.FIELDTYPE_BALROG)
             {
                 return "This event skill can only be used in Dojo or Balrog fields.";
             }
 
             if (ClientMassacreOnlySkillIds.Contains(skill.SkillId)
-                && mapInfo.fieldType != FieldType.FIELDTYPE_MASSACRE)
+                && fieldType != FieldType.FIELDTYPE_MASSACRE)
             {
                 return "This event skill can only be used in massacre fields.";
             }
@@ -544,6 +548,24 @@ namespace HaCreator.MapSimulator.Fields
             {
                 yield return imageProperty;
             }
+        }
+
+        private static FieldType? GetInfoFieldType(MapInfo mapInfo)
+        {
+            if (mapInfo?.fieldType.HasValue == true)
+            {
+                return mapInfo.fieldType.Value;
+            }
+
+            foreach (WzImageProperty fieldTypeProperty in EnumerateInfoFieldProperties(mapInfo, "fieldType"))
+            {
+                if (TryReadInt(fieldTypeProperty, out int value))
+                {
+                    return (FieldType)value;
+                }
+            }
+
+            return null;
         }
 
         private static bool MatchesListedSkill(WzImageProperty property, int skillId)

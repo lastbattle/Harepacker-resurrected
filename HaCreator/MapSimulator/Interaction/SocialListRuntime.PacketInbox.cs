@@ -184,6 +184,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildDataSnapshot(SocialListClientGuildResultPacket packet)
         {
+            if (packet.ClearsGuildData)
+            {
+                return ApplyClientGuildDataSnapshotClear(packet.RawSubtype);
+            }
+
             if (ShouldIgnoreGuildScopedResult(packet.GuildId, out int activeGuildId))
             {
                 return $"Ignored client OnGuildResult({packet.RawSubtype}) for guild {packet.GuildId} because the active packet-owned guild context is {activeGuildId}.";
@@ -204,6 +209,19 @@ namespace HaCreator.MapSimulator.Interaction
             int skillRecordCount = packet.GuildSkillRecords?.Count ?? 0;
             int memberCount = packet.GuildMembers?.Count ?? 0;
             string summary = $"Client OnGuildResult({packet.RawSubtype}) decoded guild snapshot for {resolvedGuildName} (id={packet.GuildId}, level={Math.Max(0, packet.GuildLevel)}, points={Math.Max(0, packet.GuildPoints)}, members={memberCount}, skillRecords={skillRecordCount}).";
+            return SetPacketSyncSummary(SocialListTab.Guild, summary);
+        }
+
+        private string ApplyClientGuildDataSnapshotClear(byte rawSubtype)
+        {
+            SetPacketGuildUiContext(hasGuildMembership: false, "No Guild", guildLevel: 0);
+            _entriesByTab[SocialListTab.Guild].Clear();
+            _packetOwnedRosterByTab[SocialListTab.Guild] = true;
+            _lastPendingRequestByTab[SocialListTab.Guild] = null;
+            _packetGuildRosterRevision = AdvanceGuildDialogRevision(_packetGuildRosterRevision);
+            ResetSelectionAfterMutation(SocialListTab.Guild);
+
+            string summary = $"Client OnGuildResult({rawSubtype}) cleared guild data from the packet-owned guild snapshot.";
             return SetPacketSyncSummary(SocialListTab.Guild, summary);
         }
 

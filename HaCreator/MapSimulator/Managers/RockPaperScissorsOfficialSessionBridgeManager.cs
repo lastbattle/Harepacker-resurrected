@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Managers
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
         private short? _currentInitializedSessionVersion;
         private long? _currentInitializedProxySessionId;
+        private readonly HashSet<InitializedProxySessionKey> _initializedProxySessions = new();
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -68,6 +69,8 @@ namespace HaCreator.MapSimulator.Managers
             string Summary,
             string PayloadHex,
             string RawPacketHex);
+
+        private readonly record struct InitializedProxySessionKey(short SessionVersion, long ProxySessionId);
 
         public enum LiveOwnershipVerificationState
         {
@@ -1271,7 +1274,7 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = _recentOutboundPackets.Count - 1; i >= 0; i--)
             {
                 OutboundPacketTrace candidate = _recentOutboundPackets[i];
-                if (IsCurrentInitializedLiveProxiedSource(candidate))
+                if (IsInitializedLiveProxiedSource(candidate))
                 {
                     latestLiveTrace = candidate;
                     break;
@@ -1288,7 +1291,7 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = _recentInboundPackets.Count - 1; i >= 0; i--)
             {
                 InboundPacketTrace candidate = _recentInboundPackets[i];
-                if (IsCurrentInitializedLiveProxiedSource(candidate))
+                if (IsInitializedLiveProxiedSource(candidate))
                 {
                     latestLiveTrace = candidate;
                     break;
@@ -1309,31 +1312,26 @@ namespace HaCreator.MapSimulator.Managers
             return IsLiveProxiedSource(trace.Source, trace.SessionVersion, trace.ProxySessionId);
         }
 
-        private bool IsCurrentInitializedLiveProxiedSource(OutboundPacketTrace trace)
+        private bool IsInitializedLiveProxiedSource(OutboundPacketTrace trace)
         {
             return IsLiveProxiedSource(trace)
-                && MatchesCurrentInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+                && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
         }
 
-        private bool IsCurrentInitializedLiveProxiedSource(InboundPacketTrace trace)
+        private bool IsInitializedLiveProxiedSource(InboundPacketTrace trace)
         {
             return IsLiveProxiedSource(trace)
-                && MatchesCurrentInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
+                && IsInitializedProxySession(trace.SessionVersion, trace.ProxySessionId);
         }
 
-        private bool MatchesCurrentInitializedProxySession(short? sessionVersion, long? proxySessionId)
+        private bool IsInitializedProxySession(short? sessionVersion, long? proxySessionId)
         {
-            if (!_currentInitializedSessionVersion.HasValue && !_currentInitializedProxySessionId.HasValue)
+            if (!sessionVersion.HasValue || !proxySessionId.HasValue)
             {
-                return true;
+                return false;
             }
 
-            return _currentInitializedSessionVersion.HasValue
-                && _currentInitializedProxySessionId.HasValue
-                && sessionVersion.HasValue
-                && proxySessionId.HasValue
-                && sessionVersion.Value == _currentInitializedSessionVersion.Value
-                && proxySessionId.Value == _currentInitializedProxySessionId.Value;
+            return _initializedProxySessions.Contains(new InitializedProxySessionKey(sessionVersion.Value, proxySessionId.Value));
         }
 
         private string DescribeCurrentInitializedProxySession()
@@ -1341,7 +1339,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 return _currentInitializedSessionVersion.HasValue && _currentInitializedProxySessionId.HasValue
-                    ? $"initialized proxy session version={_currentInitializedSessionVersion.Value} proxySessionId={_currentInitializedProxySessionId.Value}"
+                    ? $"initialized proxy session version={_currentInitializedSessionVersion.Value} proxySessionId={_currentInitializedProxySessionId.Value} initializedSessionCount={_initializedProxySessions.Count}"
                     : "no initialized proxy session";
             }
         }

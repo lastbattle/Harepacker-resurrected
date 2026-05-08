@@ -45,7 +45,9 @@ namespace HaCreator.MapSimulator.Entities
             MobAttackEntry currentAttack,
             int configuredSpecialAttackAfterMs)
         {
-            if (currentAttack?.IsSpecialAttack == true && currentAttack.AttackAfter > 0)
+            if (currentAttack?.IsSpecialAttack == true
+                && currentAttack.AttackAfterIsAuthored
+                && currentAttack.AttackAfter > 0)
             {
                 return currentAttack.AttackAfter;
             }

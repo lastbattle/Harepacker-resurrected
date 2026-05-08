@@ -150,14 +150,12 @@ namespace HaCreator.MapSimulator
                 PacketDropLeaveReason.PlayerPickup => DropPickupActorKind.Player,
                 PacketDropLeaveReason.PetPickup => DropPickupActorKind.Pet,
                 PacketDropLeaveReason.MobPickup => DropPickupActorKind.Mob,
-                PacketDropLeaveReason.OtherPickup => DropPickupActorKind.Other,
                 _ => default
             };
 
             return reason == PacketDropLeaveReason.PlayerPickup
                 || reason == PacketDropLeaveReason.PetPickup
-                || reason == PacketDropLeaveReason.MobPickup
-                || reason == PacketDropLeaveReason.OtherPickup;
+                || reason == PacketDropLeaveReason.MobPickup;
         }
 
         internal static bool ShouldReplayMissingDropPacketPickupNotice(
@@ -180,8 +178,7 @@ namespace HaCreator.MapSimulator
 
             return reason == PacketDropLeaveReason.PlayerPickup
                 || reason == PacketDropLeaveReason.PetPickup
-                || reason == PacketDropLeaveReason.MobPickup
-                || reason == PacketDropLeaveReason.OtherPickup;
+                || reason == PacketDropLeaveReason.MobPickup;
         }
 
         private string DescribeRemoteDropStatus()

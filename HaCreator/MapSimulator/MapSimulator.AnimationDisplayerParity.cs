@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerVioletCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoViolet0";
         private const string AnimationDisplayerCatchEffectBaseUol = "Effect/BasicEff.img/Catch";
         private const int AnimationDisplayerCatchMobHeadVerticalOffset = 15;
+        private const int AnimationDisplayerCatchFailClientLifetimeMs = 400;
         private const int AnimationDisplayerMobSwallowTargetVerticalOffset = 40;
         private const int AnimationDisplayerMobSwallowTargetHorizontalOffset = 70;
         private const string AnimationDisplayerMobSwallowPrimaryAction = "attack1";
@@ -1316,6 +1317,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            frames = BuildAnimationDisplayerCatchPlaybackFrames(success, frames);
             int initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(
                 packetOwnedOwnerContext,
                 frames);
@@ -1649,6 +1651,38 @@ namespace HaCreator.MapSimulator
             return new Vector2(
                 mobHeadAnchor.X,
                 mobHeadAnchor.Y - AnimationDisplayerCatchMobHeadVerticalOffset);
+        }
+
+        internal static List<IDXObject> BuildAnimationDisplayerCatchPlaybackFrames(
+            bool success,
+            List<IDXObject> frames)
+        {
+            if (success || frames == null || frames.Count != 1)
+            {
+                return frames;
+            }
+
+            int repeatCount = ResolveAnimationDisplayerCatchFailFrameRepeatCount(frames[0]?.Delay ?? 0);
+            if (repeatCount <= 1)
+            {
+                return frames;
+            }
+
+            var expandedFrames = new List<IDXObject>(repeatCount);
+            for (int i = 0; i < repeatCount; i++)
+            {
+                expandedFrames.Add(frames[0]);
+            }
+
+            return expandedFrames;
+        }
+
+        internal static int ResolveAnimationDisplayerCatchFailFrameRepeatCount(int frameDelayMs)
+        {
+            int clampedFrameDelayMs = Math.Max(10, frameDelayMs);
+            return Math.Max(
+                1,
+                (int)Math.Ceiling(AnimationDisplayerCatchFailClientLifetimeMs / (double)clampedFrameDelayMs));
         }
 
         internal static string ResolveAnimationDisplayerCoolEffectUol(

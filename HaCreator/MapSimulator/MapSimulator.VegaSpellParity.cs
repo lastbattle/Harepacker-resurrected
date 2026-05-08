@@ -468,6 +468,7 @@ namespace HaCreator.MapSimulator
         private void HandleVegaSpellResultPopupStarted()
         {
             StopVegaResultLoopSound();
+            ClearVegaExclusiveRequestState(currTickCount);
         }
 
         private void HandleVegaSpellResultAcknowledged()
@@ -833,10 +834,14 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.Result = result;
                 if (_pendingVegaCastState.PacketOwnedTerminalCode.HasValue)
                 {
-                    if (DoesVegaTerminalMatchPrelude(success, _pendingVegaCastState.PacketOwnedTerminalCode.Value))
+                    if (TryResolveVegaTerminalCompletionSuccess(
+                            success,
+                            _pendingVegaCastState.PacketOwnedTerminalCode.Value,
+                            out bool completionSuccess,
+                            out _))
                     {
-                        _pendingVegaCastState.PacketOwnedTerminalSuccess = success;
-                        _pendingVegaCastState.ResolvedSuccess = success;
+                        _pendingVegaCastState.PacketOwnedTerminalSuccess = completionSuccess;
+                        _pendingVegaCastState.ResolvedSuccess = completionSuccess;
                         _pendingVegaCastState.ResultReadyAtTick = ResolveVegaPacketOwnedTerminalApplyReadyTick(
                             currTickCount,
                             _pendingVegaCastState.PacketOwnedPreludeStartedAtTick ?? currTickCount,
@@ -865,13 +870,11 @@ namespace HaCreator.MapSimulator
                 if (_pendingVegaCastState.PacketOwnedPreludeSuccess.HasValue)
                 {
                     bool preludeSuccess = _pendingVegaCastState.PacketOwnedPreludeSuccess.Value;
-                    if (!DoesVegaTerminalMatchPrelude(preludeSuccess, resultCode))
-                    {
-                        message = $"Observed mismatched packet-owned Vega terminal result code {resultCode} after {(_pendingVegaCastState.PacketOwnedPreludeCode.HasValue ? _pendingVegaCastState.PacketOwnedPreludeCode.Value.ToString() : "unknown")} prelude; preserving deferred fallback until the matching terminal packet arrives.";
-                        return true;
-                    }
-
-                    terminalSuccess = preludeSuccess;
+                    TryResolveVegaTerminalCompletionSuccess(
+                        preludeSuccess,
+                        resultCode,
+                        out terminalSuccess,
+                        out _);
                 }
 
                 if (!_pendingVegaCastState.OutcomeResolved)
@@ -2378,9 +2381,47 @@ namespace HaCreator.MapSimulator
                 : terminalResultCode == VegaPacketOwnedFailTerminalCode;
         }
 
+        private static bool TryResolveVegaTerminalCompletionSuccess(
+            bool? preludeSuccess,
+            byte terminalResultCode,
+            out bool success,
+            out bool terminalMatchesPrelude)
+        {
+            success = false;
+            terminalMatchesPrelude = false;
+            if (!TryMapPacketOwnedVegaTerminalCode(terminalResultCode, out bool terminalSuccess))
+            {
+                return false;
+            }
+
+            if (!preludeSuccess.HasValue)
+            {
+                success = terminalSuccess;
+                terminalMatchesPrelude = true;
+                return true;
+            }
+
+            success = preludeSuccess.Value;
+            terminalMatchesPrelude = DoesVegaTerminalMatchPrelude(preludeSuccess.Value, terminalResultCode);
+            return true;
+        }
+
         internal static bool DoesVegaTerminalMatchPreludeForTests(bool preludeSuccess, byte terminalResultCode)
         {
             return DoesVegaTerminalMatchPrelude(preludeSuccess, terminalResultCode);
+        }
+
+        internal static bool TryResolveVegaTerminalCompletionSuccessForTests(
+            bool? preludeSuccess,
+            byte terminalResultCode,
+            out bool success,
+            out bool terminalMatchesPrelude)
+        {
+            return TryResolveVegaTerminalCompletionSuccess(
+                preludeSuccess,
+                terminalResultCode,
+                out success,
+                out terminalMatchesPrelude);
         }
 
         internal static bool TryResolvePacketOwnedVegaOutcomeSuccessForTests(int outcomeResultValue, out bool success)

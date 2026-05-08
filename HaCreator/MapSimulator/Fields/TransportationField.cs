@@ -754,7 +754,7 @@ namespace HaCreator.MapSimulator.Fields
                     if (_shipKind == 0)
                     {
                         LeaveShipMove();
-                        message = $"Applied OnContiState ({state}, {stateValue}) -> LeaveShipMove after the Balrog appear gate fallthrough.";
+                        message = $"Applied OnContiState ({state}, {stateValue}) -> LeaveShipMove through the recovered regular-ship fallthrough after the Balrog appear gate.";
                         return true;
                     }
 

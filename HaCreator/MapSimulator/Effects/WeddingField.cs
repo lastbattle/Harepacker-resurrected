@@ -2300,6 +2300,7 @@ namespace HaCreator.MapSimulator.Effects
             state = ApplyRelationshipRecordToAvatarModifiedState(state, relationshipType, relationshipRecord);
             StoreAvatarModifiedState(participant, state);
             MirrorRelationshipRecordToCanonicalOwnerParticipant(participant, relationshipType, relationshipRecord);
+            MirrorRelationshipRecordToExplicitPairParticipant(participant, relationshipType, relationshipRecord);
         }
 
         private void MirrorRelationshipRecordToCanonicalOwnerParticipant(
@@ -2325,6 +2326,31 @@ namespace HaCreator.MapSimulator.Effects
             ownerState = ApplyRelationshipRecordToAvatarModifiedState(ownerState, relationshipType, relationshipRecord);
             StoreAvatarModifiedState(ownerParticipant, ownerState);
             RegisterRelationshipRecordDispatchKeys(relationshipType, default, relationshipRecord, ownerParticipant.CharacterId);
+        }
+
+        private void MirrorRelationshipRecordToExplicitPairParticipant(
+            WeddingRemoteParticipant packetParticipant,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            if (packetParticipant == null
+                || relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !relationshipRecord.IsActive
+                || relationshipRecord.PairCharacterId.GetValueOrDefault() <= 0
+                || relationshipRecord.PairCharacterId.Value == packetParticipant.CharacterId
+                || !TryResolveParticipantForTemporaryStats(
+                    relationshipRecord.PairCharacterId.Value,
+                    out WeddingRemoteParticipant pairParticipant,
+                    out _))
+            {
+                return;
+            }
+
+            RemoteUserAvatarModifiedPacket pairState = pairParticipant.AvatarModifiedState
+                ?? CreateDefaultAvatarModifiedState(pairParticipant.CharacterId);
+            pairState = ApplyRelationshipRecordToAvatarModifiedState(pairState, relationshipType, relationshipRecord);
+            StoreAvatarModifiedState(pairParticipant, pairState);
+            RegisterRelationshipRecordDispatchKeys(relationshipType, default, relationshipRecord, relationshipRecord.CharacterId.GetValueOrDefault(packetParticipant.CharacterId));
         }
 
         private void ApplyRelationshipRecordRemoveForRelatedOwner(
@@ -2470,7 +2496,9 @@ namespace HaCreator.MapSimulator.Effects
                 ownerItemSerial = dispatchKey.Serial;
             }
 
-            long? matchedItemSerial = matchedRecord.ItemSerial;
+            long? matchedItemSerial = ResolveWeddingRelationshipRecordSerialForOwner(
+                matchedOwnerCharacterId,
+                matchedRecord);
             if (!ownerItemSerial.HasValue || !matchedItemSerial.HasValue)
             {
                 return relationshipRecord;
@@ -2513,6 +2541,26 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return packetOwnerCharacterId <= matchedOwnerCharacterId;
+        }
+
+        private static long? ResolveWeddingRelationshipRecordSerialForOwner(
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            if (ownerCharacterId > 0)
+            {
+                if (relationshipRecord.CharacterId.GetValueOrDefault() == ownerCharacterId)
+                {
+                    return relationshipRecord.ItemSerial;
+                }
+
+                if (relationshipRecord.PairCharacterId.GetValueOrDefault() == ownerCharacterId)
+                {
+                    return relationshipRecord.PairItemSerial;
+                }
+            }
+
+            return relationshipRecord.ItemSerial ?? relationshipRecord.PairItemSerial;
         }
 
         private RemoteUserRelationshipRecord NormalizeWeddingRelationshipItemEffectRecordForApply(

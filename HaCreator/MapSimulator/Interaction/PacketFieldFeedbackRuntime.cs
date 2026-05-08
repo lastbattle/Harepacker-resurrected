@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<int> GetCurrentChannelId { get; init; }
         internal Func<string> GetLastOutgoingWhisperText { get; init; }
         internal Func<string> GetLastOutgoingWhisperTarget { get; init; }
+        internal Action ClearWhisperSentState { get; init; }
         internal Action<int, int> TriggerTremble { get; init; }
         internal Action ClearFieldFade { get; init; }
         internal Action<string> RequestBgm { get; init; }
@@ -880,11 +881,13 @@ namespace HaCreator.MapSimulator.Interaction
                                 WhisperDisabledFallback,
                                 MakeWhisperNoticeTargetLower(target));
                             callbacks?.AddClientChatMessage?.Invoke(warning, 12, null);
+                            callbacks?.ClearWhisperSentState?.Invoke();
                             _statusMessage = $"Applied packet-owned whisper failure for {target}.";
                             message = _statusMessage;
                             return true;
                         }
 
+                        callbacks?.ClearWhisperSentState?.Invoke();
                         _statusMessage = $"Applied packet-owned whisper send-result update for {target}.";
                         message = _statusMessage;
                         return true;
@@ -915,7 +918,9 @@ namespace HaCreator.MapSimulator.Interaction
                             && !hiddenFieldResult
                             && HasWhisperTransferTarget(value, callbacks)
                             && hasTransferPosition;
-                        bool chaseTransferArmed = canRequestChaseTransfer
+                        bool chaseTransferArmed = subtype == 9
+                            && result == 1
+                            && hasTransferPosition
                             && callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
                         bool transferRequestDispatched = false;
                         if (canRequestChaseTransfer
@@ -928,6 +933,7 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             callbacks?.UpdateWhisperUserListLocation?.Invoke(target, resolved, result, value);
                             callbacks?.InvalidateWhisperUserListWindow?.Invoke();
+                            callbacks?.ClearWhisperSentState?.Invoke();
                             _statusMessage = $"Updated packet-owned whisper find-reply for {target}.";
                             message = _statusMessage;
                             return true;
@@ -944,6 +950,7 @@ namespace HaCreator.MapSimulator.Interaction
                         _statusMessage = transferRequestDispatched
                             ? $"Applied packet-owned whisper chase response for {target} and dispatched transfer request."
                             : $"Applied packet-owned whisper location response for {target}.";
+                        callbacks?.ClearWhisperSentState?.Invoke();
                         message = _statusMessage;
                         return true;
                     }
@@ -1848,6 +1855,8 @@ namespace HaCreator.MapSimulator.Interaction
                 if (IsDbcsLeadByte(normalized[index], isDbcsLeadByte)
                     && index + 1 < normalized.Length)
                 {
+                    normalized[index] = 0x20;
+                    normalized[index + 1] = 0x20;
                     index += 2;
                     continue;
                 }

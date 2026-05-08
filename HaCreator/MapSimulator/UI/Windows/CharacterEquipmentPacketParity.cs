@@ -77,7 +77,13 @@ namespace HaCreator.MapSimulator.UI
                 bool sawConflictingCharacterMutation = false;
                 string conflictingCharacterMutationRejectReason = null;
                 bool requiresSecondaryStatChangedPointTrailer = false;
-                _ = reader.ReadByte(); // bExclRequestSent reset marker
+                bool clearsExclusiveRequest = reader.ReadByte() != 0;
+                if (!clearsExclusiveRequest)
+                {
+                    rejectReason = "Inventory-operation payload did not carry the exclusive-request reset marker required for active character equipment completion.";
+                    return false;
+                }
+
                 int operationCount = reader.ReadByte();
                 if (operationCount <= 0)
                 {

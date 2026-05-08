@@ -136,8 +136,10 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedTutorBalloonClientVerticalAnchorOffset = 90;
         private const int PacketOwnedLevelUpEffectStringPoolId = 0x092C;
         private const int PacketOwnedLevelUpSoundStringPoolId = 0x1A4C;
+        private const int PacketOwnedLevelUpApCapNoticeStringPoolId = 0x1540;
         private const string PacketOwnedLevelUpEffectFallbackDescriptor = "Effect/BasicEff.img/LevelUp";
         private const string PacketOwnedLevelUpSoundFallbackDescriptor = "Game.img/LevelUp";
+        private const string PacketOwnedLevelUpApCapNoticeFallback = "Currently%2C the highest level in MapleStory\r\nis at 200!";
         private PacketOwnedSocialUtilityDialogDispatcher _packetOwnedSocialUtilityDialogDispatcher;
         private const string PacketOwnedApspPromptExactBody =
             "Congratulations! You have reached Lv.30/50/70 during the event period and have been selected as a winner of an AP/SP reset item!\r\n"
@@ -570,6 +572,7 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.ClassCompetition,
             MapSimulatorWindowNames.AccountMoreInfo,
             MapSimulatorWindowNames.NpcShop,
+            MapSimulatorWindowNames.ShopScanner,
             MapSimulatorWindowNames.StoreBank,
             MapSimulatorWindowNames.BattleRecord,
             MapSimulatorWindowNames.MiniRoom,
@@ -1448,6 +1451,7 @@ namespace HaCreator.MapSimulator
                 MapSimulatorWindowNames.QuestDelivery => "Quest Delivery",
                 MapSimulatorWindowNames.ClassCompetition => "Class Competition",
                 MapSimulatorWindowNames.NpcShop => "NPC Shop",
+                MapSimulatorWindowNames.ShopScanner => "Shop Scanner",
                 MapSimulatorWindowNames.StoreBank => "Store Bank",
                 MapSimulatorWindowNames.BattleRecord => "Battle Record",
                 MapSimulatorWindowNames.MiniRoom => "Mini Room",
@@ -5630,7 +5634,7 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedMesoGiveSucceededPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveSucceeded(payload, out int mesoAmount, out int trailingByteCount, out string decodeError))
+            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveSucceeded(payload, out uint mesoAmount, out int trailingByteCount, out string decodeError))
             {
                 message = decodeError ?? "Meso-give success payload could not be decoded.";
                 return false;
@@ -11043,14 +11047,19 @@ namespace HaCreator.MapSimulator
             string source,
             out string message)
         {
-            if (!TryDecodePacketOwnedRevivePremiumSafetyCharmContextPayload(payload, out bool hasOverride, out bool armed, out message))
+            bool mutationFromOfficialSession = IsPacketOwnedRevivePremiumSafetyCharmContextOfficialSessionSource(source);
+            if (!TryDecodePacketOwnedRevivePremiumSafetyCharmContextPayload(
+                    payload,
+                    treatCompactZeroAsExplicitValue: mutationFromOfficialSession,
+                    out bool hasOverride,
+                    out bool armed,
+                    out message))
             {
                 return false;
             }
 
             int runtimeCharacterId = Math.Max(0, _playerManager?.Player?.Build?.Id ?? 0);
             string mutationSource = $"packet-owned-revive-premium-safety-charm:{packetType}:{(string.IsNullOrWhiteSpace(source) ? "local-utility" : source)}";
-            bool mutationFromOfficialSession = IsPacketOwnedRevivePremiumSafetyCharmContextOfficialSessionSource(source);
             if (!ShouldAllowPacketOwnedRevivePremiumSafetyCharmContextMutationSource(
                     _localUtilityOfficialSessionBridge.HasConnectedSession,
                     mutationFromOfficialSession))
@@ -11095,6 +11104,21 @@ namespace HaCreator.MapSimulator
             out bool armed,
             out string message)
         {
+            return TryDecodePacketOwnedRevivePremiumSafetyCharmContextPayload(
+                payload,
+                treatCompactZeroAsExplicitValue: false,
+                out hasOverride,
+                out armed,
+                out message);
+        }
+
+        internal static bool TryDecodePacketOwnedRevivePremiumSafetyCharmContextPayload(
+            byte[] payload,
+            bool treatCompactZeroAsExplicitValue,
+            out bool hasOverride,
+            out bool armed,
+            out string message)
+        {
             hasOverride = false;
             armed = false;
             message = "Revive premium safety charm context payload is missing.";
@@ -11135,10 +11159,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            hasOverride = payload[0] != 0;
+            hasOverride = treatCompactZeroAsExplicitValue || payload[0] != 0;
             armed = hasOverride && (payload.Length == 1 || payload[1] != 0);
             message = hasOverride
-                ? $"Decoded revive premium safety charm context armed={(armed ? 1 : 0)}."
+                ? treatCompactZeroAsExplicitValue && payload[0] == 0
+                    ? $"Decoded packet-authored CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}] compact byte armed=0."
+                    : $"Decoded revive premium safety charm context armed={(armed ? 1 : 0)}."
                 : "Decoded revive premium safety charm context clear.";
             return true;
         }
@@ -14433,6 +14459,14 @@ namespace HaCreator.MapSimulator
                 : "No active pet auto-speaking owner accepted the packet-owned level-up event.";
             levelUpSummary = $"{levelUpSummary} {petSpeakingSummary}";
 
+            int currentAp = Math.Max(0, _playerManager?.Player?.Build?.AP ?? 0);
+            if (ShouldApplyPacketOwnedTutorLevelUpApCapNotice(currentAp, currentJobId))
+            {
+                string apCapNotice = ResolvePacketOwnedTutorLevelUpApCapNoticeText();
+                ShowPacketOwnedRewardResultNotice(apCapNotice);
+                levelUpSummary = $"{levelUpSummary} AP-cap branch: displayed CUtilDlg::Notice StringPool 0x{PacketOwnedLevelUpApCapNoticeStringPoolId:X}.";
+            }
+
             if (ShouldApplyPacketOwnedTutorJobChangeStatWindow(previousObservedJobId, currentJobId))
             {
                 string jobChangeEffectDescriptor = MapleStoryStringPool.GetOrFallback(
@@ -14476,6 +14510,26 @@ namespace HaCreator.MapSimulator
             }
 
             return !IsPacketOwnedTutorEvanJobChangeLevel(currentJobId, currentLevel);
+        }
+
+        internal static bool ShouldApplyPacketOwnedTutorLevelUpApCapNotice(int currentAp, int currentJobId)
+        {
+            // Client evidence: CWvsContext::OnStatChanged shows CUtilDlg::Notice(StringPool[0x1540])
+            // after the level-up branch when AP >= 200, except for manager-family jobs.
+            return currentAp >= 200
+                && (Math.Max(0, currentJobId) % 1000) / 100 != 9;
+        }
+
+        internal static string ResolvePacketOwnedTutorLevelUpApCapNoticeTextForTests()
+        {
+            return ResolvePacketOwnedTutorLevelUpApCapNoticeText();
+        }
+
+        private static string ResolvePacketOwnedTutorLevelUpApCapNoticeText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                PacketOwnedLevelUpApCapNoticeStringPoolId,
+                PacketOwnedLevelUpApCapNoticeFallback);
         }
 
         internal static bool ShouldApplyPacketOwnedTutorJobChangeStatWindow(int previousJobId, int currentJobId)
@@ -20626,9 +20680,19 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodePacketOwnedEventAlarmTextBinaryPayload(
+                    payload,
+                    out clearRequested,
+                    out lines,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || lines.Length > 0;
+            }
+
             if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
             {
-                message = "Event-alarm text payload must decode to MapleString, UTF-8 text, or a JSON text body.";
+                message = "Event-alarm text payload must decode to a binary CT_INFO envelope, MapleString, UTF-8 text, or a JSON text body.";
                 return false;
             }
 
@@ -20662,6 +20726,94 @@ namespace HaCreator.MapSimulator
             summary = $"Applied packet-authored event-alarm text with {lines.Length.ToString(CultureInfo.InvariantCulture)} CT line(s).";
             message = summary;
             return true;
+        }
+
+        private static bool TryDecodePacketOwnedEventAlarmTextBinaryPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out EventAlarmLineSnapshot[] lines,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            lines = Array.Empty<EventAlarmLineSnapshot>();
+            summary = string.Empty;
+            message = "Event-alarm binary payload did not match a CT_INFO owner-line envelope.";
+            if (payload == null || payload.Length < 7)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                if (reader.ReadByte() != (byte)'C'
+                    || reader.ReadByte() != (byte)'T'
+                    || reader.ReadByte() != (byte)'A')
+                {
+                    return false;
+                }
+
+                byte version = reader.ReadByte();
+                if (version != 1)
+                {
+                    return false;
+                }
+
+                byte flags = reader.ReadByte();
+                if ((flags & 0xFC) != 0)
+                {
+                    return false;
+                }
+
+                clearRequested = (flags & 0x1) != 0;
+                int lineCount = reader.ReadUInt16();
+                if (lineCount < 0 || lineCount > EventAlarmOwnerMaxVisibleLines)
+                {
+                    return false;
+                }
+
+                List<EventAlarmLineSnapshot> parsedLines = new(lineCount);
+                for (int i = 0; i < lineCount; i++)
+                {
+                    string text = ReadPacketOwnedMapleString(reader)?.Trim();
+                    int left = reader.ReadInt16();
+                    int top = reader.ReadInt16();
+                    byte lineFlags = reader.ReadByte();
+                    int colorArgb = reader.ReadInt32();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        continue;
+                    }
+
+                    parsedLines.Add(new EventAlarmLineSnapshot
+                    {
+                        Text = text,
+                        Left = left,
+                        Top = top,
+                        FontIndex = ResolvePacketOwnedEventAlarmLineFontIndex(lineFlags),
+                        IsHighlighted = (lineFlags & 0x1) != 0,
+                        TextColorArgb = colorArgb == 0 ? null : colorArgb
+                    });
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                lines = parsedLines.ToArray();
+                summary = clearRequested
+                    ? "Cleared packet-authored binary event-alarm CT lines."
+                    : $"Applied packet-authored binary event-alarm CT_INFO payload with {lines.Length.ToString(CultureInfo.InvariantCulture)} line(s).";
+                message = summary;
+                return clearRequested || lines.Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         internal static bool TryDecodePacketOwnedEventAlarmTextPayloadForTests(
@@ -22812,7 +22964,12 @@ namespace HaCreator.MapSimulator
 
             if (subtype == EngagementProposalRuntime.RequestPayloadValue)
             {
-                string proposerName = ResolvePacketOwnedEngagementSourceName(source, _lastPacketOwnedMateName);
+                if (!TryResolvePacketOwnedEngagementSourceName(source, _lastPacketOwnedMateName, out string proposerName, out string sourceMessage))
+                {
+                    message = sourceMessage;
+                    return false;
+                }
+
                 string partnerName = ResolvePacketOwnedEngagementLocalName();
                 if (!_engagementProposalController.TryOpenIncomingProposalFromRequestPayload(
                         proposerName,
@@ -22830,7 +22987,8 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                message = $"Applied client-shaped engagement request packet {EngagementProposalRuntime.AcceptPacketType} [00] from {proposerName}. {message}";
+                string sourceSuffix = string.IsNullOrWhiteSpace(sourceMessage) ? string.Empty : $" {sourceMessage}";
+                message = $"Applied client-shaped engagement request packet {EngagementProposalRuntime.AcceptPacketType} [00] from {proposerName}. {message}{sourceSuffix}";
                 return true;
             }
 
@@ -22855,27 +23013,53 @@ namespace HaCreator.MapSimulator
 
         internal static string ResolvePacketOwnedEngagementSourceName(string source, string packetOwnedMateName)
         {
+            return TryResolvePacketOwnedEngagementSourceName(source, packetOwnedMateName, out string proposerName, out _)
+                ? proposerName
+                : "Requester";
+        }
+
+        internal static bool TryResolvePacketOwnedEngagementSourceName(
+            string source,
+            string packetOwnedMateName,
+            out string proposerName,
+            out string message)
+        {
             string normalized = source?.Trim();
             string mateName = packetOwnedMateName?.Trim();
             if (string.IsNullOrWhiteSpace(normalized))
             {
-                return string.IsNullOrWhiteSpace(mateName) ? "Requester" : mateName;
+                proposerName = string.IsNullOrWhiteSpace(mateName) ? "Requester" : mateName;
+                message = string.Empty;
+                return true;
             }
 
             Match match = Regex.Match(normalized, @"(?:^|[;,\s])(?:from|proposer|requester|name)[:=](?<name>[^;,\s]+)", RegexOptions.IgnoreCase);
             if (match.Success && !string.IsNullOrWhiteSpace(match.Groups["name"].Value))
             {
-                return match.Groups["name"].Value.Trim();
+                proposerName = match.Groups["name"].Value.Trim();
+                message = "Resolved the engagement proposer from the packet source metadata.";
+                return true;
             }
 
             if (normalized.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase))
             {
-                return string.IsNullOrWhiteSpace(mateName) ? "Requester" : mateName;
+                if (!string.IsNullOrWhiteSpace(mateName))
+                {
+                    proposerName = mateName;
+                    message = "Resolved the official-session engagement proposer from the packet-owned pass-mate-name state.";
+                    return true;
+                }
+
+                proposerName = string.Empty;
+                message = "Official-session engagement request did not carry proposer metadata and no packet-owned pass-mate-name state is available; refusing to open CEngageDlg with the simulator fallback requester name.";
+                return false;
             }
 
-            return normalized.Length <= 12 && normalized.All(ch => char.IsLetterOrDigit(ch) || ch == '_')
+            proposerName = normalized.Length <= 12 && normalized.All(ch => char.IsLetterOrDigit(ch) || ch == '_')
                 ? normalized
                 : string.IsNullOrWhiteSpace(mateName) ? "Requester" : mateName;
+            message = string.Empty;
+            return true;
         }
 
         private string ResolvePacketOwnedEngagementLocalName()

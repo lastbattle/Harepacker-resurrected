@@ -76,6 +76,7 @@ namespace HaCreator.MapSimulator.UI
         private const int VegasSpellTenPercentId = 5610000;
         private const int VegasSpellSixtyPercentId = 5610001;
         private const int ViciousHammerId = 5570000;
+        private const int PerfectInnocenceScrollId = 5064200;
         private static readonly int[] CleanSlateScrollIds =
         {
             2049000, 2049001, 2049002, 2049003, 2049004, 2049005, 2049006,
@@ -2277,7 +2278,10 @@ namespace HaCreator.MapSimulator.UI
                 return slotRecoveryConsumable;
             }
 
-            EnhancementConsumable innocenceConsumable = GetFirstAvailableConsumable(state, selectedPart, InnocenceScrollIds);
+            EnhancementConsumable innocenceConsumable = GetFirstAvailableConsumable(
+                state,
+                selectedPart,
+                InnocenceScrollIds.Concat(new[] { PerfectInnocenceScrollId }).ToArray());
             if (innocenceConsumable != null)
             {
                 return innocenceConsumable;
@@ -3408,6 +3412,11 @@ namespace HaCreator.MapSimulator.UI
                 return TryCreateWzConsumeDefinition(itemId, ConsumableEffectType.Reset, out definition);
             }
 
+            if (itemId == PerfectInnocenceScrollId)
+            {
+                return TryCreateWzConsumeDefinition(itemId, ConsumableEffectType.Reset, out definition, InventoryType.CASH);
+            }
+
             if (GoldenHammerIds.Contains(itemId))
             {
                 return TryCreateWzHammerDefinition(itemId, InventoryType.USE, HammerBehavior.None, out definition);
@@ -3649,10 +3658,15 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private static bool TryCreateWzConsumeDefinition(int itemId, ConsumableEffectType effectType, out EnhancementConsumableDefinition definition)
+        private static bool TryCreateWzConsumeDefinition(
+            int itemId,
+            ConsumableEffectType effectType,
+            out EnhancementConsumableDefinition definition,
+            InventoryType inventoryType = InventoryType.USE)
         {
             definition = default;
-            string imagePath = $"Consume/{(itemId / 10000):D4}.img";
+            string category = inventoryType == InventoryType.CASH ? "Cash" : "Consume";
+            string imagePath = $"{category}/{(itemId / 10000):D4}.img";
             WzImage image = HaCreator.Program.DataSource?.GetImage("Item", imagePath);
             if (image == null)
             {
@@ -3677,7 +3691,7 @@ namespace HaCreator.MapSimulator.UI
                 false,
                 false,
                 MathHelper.Clamp(success / 100f, 0f, 1.0f),
-                InventoryType.USE,
+                inventoryType,
                 effectType,
                 PotentialTier.Rare,
                 MathHelper.Clamp(cursed / 100f, 0f, 1.0f),

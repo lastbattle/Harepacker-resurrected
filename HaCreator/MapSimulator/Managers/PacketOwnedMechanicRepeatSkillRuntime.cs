@@ -3093,6 +3093,11 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (TryParseSg88PacketComparisonDecimalByteList(trimmed, out bytes))
+            {
+                return true;
+            }
+
             StringBuilder hex = new(trimmed.Length);
             for (int i = 0; i < trimmed.Length; i++)
             {
@@ -3149,6 +3154,95 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return TryParseSg88PacketComparisonHexDumpBytes(trimmed, out bytes);
+        }
+
+        private static bool TryParseSg88PacketComparisonDecimalByteList(string value, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(value)
+                || value.IndexOf("0x", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
+            }
+
+            string normalized = NormalizeSg88PacketComparisonDecimalByteList(value.Trim().Trim('"', '\''));
+            if (normalized.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (char ch in normalized)
+            {
+                if (char.IsDigit(ch)
+                    || char.IsWhiteSpace(ch)
+                    || ch is ',' or ';' or ':' or '[' or ']' or '(' or ')' or '{' or '}')
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            MatchCollection matches = Regex.Matches(
+                normalized,
+                @"(?<!\d)\d{1,3}(?!\d)",
+                RegexOptions.CultureInvariant);
+            if (matches.Count < 2)
+            {
+                return false;
+            }
+
+            List<byte> parsed = new(matches.Count);
+            bool hasDecimalOnlySignal = false;
+            foreach (Match match in matches.Cast<Match>())
+            {
+                if (!int.TryParse(
+                        match.Value,
+                        System.Globalization.NumberStyles.Integer,
+                        null,
+                        out int parsedValue)
+                    || parsedValue < byte.MinValue
+                    || parsedValue > byte.MaxValue)
+                {
+                    return false;
+                }
+
+                if (parsedValue > 99 || match.Value.Length == 3)
+                {
+                    hasDecimalOnlySignal = true;
+                }
+
+                parsed.Add((byte)parsedValue);
+            }
+
+            if (!hasDecimalOnlySignal)
+            {
+                return false;
+            }
+
+            bytes = parsed.ToArray();
+            return bytes.Length > 0;
+        }
+
+        private static string NormalizeSg88PacketComparisonDecimalByteList(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string normalized = value.Trim();
+            normalized = Regex.Replace(
+                normalized,
+                @"^\s*Uint8Array\s*\(\s*\d+\s*\)\s*",
+                string.Empty,
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            normalized = Regex.Replace(
+                normalized,
+                @"^\s*(?:byte|bytes)\s*\[\s*\]\s*",
+                string.Empty,
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            return normalized.TrimStart(':', '=').Trim();
         }
 
         private static bool LooksLikeSg88PacketComparisonHexDump(string value)

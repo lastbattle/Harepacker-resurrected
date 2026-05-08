@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const float NameTagScale = 0.5f;
         private const int ClientEmployeeActionRandomModulo = 50;
         private const int ClientEmployeeDefaultFrameDelayMs = 180;
+        private const int ClientEmployeeFrameAdvanceStepMs = 30;
         private const int MaxEmployeeActionCacheEntries = 512;
         private const int MaxEmployeeImageCacheEntries = 128;
         private const int ClientEmployeeCacheSweepIntervalMs = 60000;
@@ -199,7 +200,7 @@ namespace HaCreator.MapSimulator.Interaction
             SyncActorPosition(player, actor, snapshot);
 
             actor.MovementEnabled = false;
-            actor.Update(elapsedMs);
+            actor.Update(ResolveClientEmployeeFrameAdvanceStepMs());
         }
 
         public void Draw(
@@ -628,6 +629,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             int normalizedRandomValue = Math.Abs(randomModuloValue) % ClientEmployeeActionRandomModulo;
             return normalizedRandomValue % actionCount;
+        }
+
+        private static int ResolveClientEmployeeFrameAdvanceStepMs()
+        {
+            return ClientEmployeeFrameAdvanceStepMs;
+        }
+
+        internal static int ResolveClientEmployeeFrameAdvanceStepMsForTesting()
+        {
+            return ResolveClientEmployeeFrameAdvanceStepMs();
         }
 
         private string ResolveContextualIdleAction(

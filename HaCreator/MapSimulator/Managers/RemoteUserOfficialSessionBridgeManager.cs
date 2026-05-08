@@ -132,6 +132,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
         private readonly Dictionary<ushort, string> _portableChairRecordInferenceMap = new();
         private readonly Dictionary<string, Dictionary<int, ushort>> _portableChairRecordAddOpcodeByCharacterByBuild = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Dictionary<ushort, PortableChairRecordOpcodeEvidence>> _portableChairRecordOpcodeEvidenceByBuild = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<PortableChairRecordCaptureEntry> _portableChairRecordCaptureOrder = new();
         private readonly Dictionary<string, Dictionary<ushort, LearnedOpcodeEntry>> _learnedTutorPacketMapByBuild = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<ushort, PendingTutorInferenceEvidence> _pendingTutorInferenceMap = new();
@@ -476,6 +477,66 @@ namespace HaCreator.MapSimulator.Managers
             string Source,
             string Reason);
 
+        private sealed class PortableChairRecordOpcodeEvidence
+        {
+            private readonly HashSet<int> _characterIds = new();
+            private readonly HashSet<int> _payloadLengths = new();
+            private readonly HashSet<string> _sources = new(StringComparer.OrdinalIgnoreCase);
+            private readonly HashSet<string> _reasons = new(StringComparer.OrdinalIgnoreCase);
+
+            public PortableChairRecordOpcodeEvidence(int packetType, string operation)
+            {
+                PacketType = packetType;
+                Operation = string.IsNullOrWhiteSpace(operation) ? "unknown" : operation;
+            }
+
+            public int PacketType { get; }
+            public string Operation { get; }
+            public int ObservationCount { get; private set; }
+
+            public void Record(int characterId, int payloadLength, string source, string reason)
+            {
+                ObservationCount++;
+                if (characterId > 0)
+                {
+                    _characterIds.Add(characterId);
+                }
+
+                if (payloadLength >= 0)
+                {
+                    _payloadLengths.Add(payloadLength);
+                }
+
+                if (!string.IsNullOrWhiteSpace(source))
+                {
+                    _sources.Add(source.Trim());
+                }
+
+                if (!string.IsNullOrWhiteSpace(reason))
+                {
+                    _reasons.Add(reason.Trim());
+                }
+            }
+
+            public string Describe()
+            {
+                string owners = _characterIds.Count == 0
+                    ? "none"
+                    : string.Join("|", _characterIds.OrderBy(id => id));
+                string payloadLengths = _payloadLengths.Count == 0
+                    ? "none"
+                    : string.Join("|", _payloadLengths.OrderBy(length => length));
+                string sources = _sources.Count == 0
+                    ? "none"
+                    : string.Join("|", _sources.OrderBy(source => source, StringComparer.OrdinalIgnoreCase).Take(3));
+                string reasons = _reasons.Count == 0
+                    ? "none"
+                    : string.Join("|", _reasons.OrderBy(reason => reason, StringComparer.OrdinalIgnoreCase).Take(2));
+
+                return $"{Operation}(type={RemoteUserPacketInboxManager.DescribePacketType(PacketType)}; count={ObservationCount}; owners={owners}; payloadBytes={payloadLengths}; sources={sources}; reasons={reasons})";
+            }
+        }
+
         public RemoteUserOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
         {
             _roleSessionProxy = (roleSessionProxyFactory ?? (() => MapleRoleSessionProxyFactory.GlobalV95.CreateChannel()))();
@@ -501,7 +562,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected Maple session {RemoteHost}:{RemotePort}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; portableChairRecordInference={DescribePortableChairRecordInferences()}; portableChairRecordOrder={DescribePortableChairRecordCaptureOrder()}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; portableChairRecordInference={DescribePortableChairRecordInferences()}; portableChairRecordProof={DescribePortableChairRecordOpcodeEvidence()}; portableChairRecordOrder={DescribePortableChairRecordCaptureOrder()}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -565,6 +626,31 @@ namespace HaCreator.MapSimulator.Managers
                     ", ",
                     _portableChairRecordCaptureOrder.Select(entry =>
                         $"{entry.BuildTag}#{entry.Sequence}:{entry.Operation}@{entry.Opcode}:{entry.CharacterId}({entry.PayloadLength}b; source={entry.Source}; reason={entry.Reason})"));
+            }
+        }
+
+        private string DescribePortableChairRecordOpcodeEvidence()
+        {
+            lock (_sync)
+            {
+                if (_portableChairRecordOpcodeEvidenceByBuild.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    ", ",
+                    _portableChairRecordOpcodeEvidenceByBuild
+                        .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(entry =>
+                        {
+                            string evidence = string.Join(
+                                ";",
+                                entry.Value
+                                    .OrderBy(opcodeEntry => opcodeEntry.Key)
+                                    .Select(opcodeEntry => $"{opcodeEntry.Key}:{opcodeEntry.Value.Describe()}"));
+                            return $"{entry.Key}[{evidence}]";
+                        }));
             }
         }
 
@@ -1831,6 +1917,15 @@ namespace HaCreator.MapSimulator.Managers
                 payload?.Length ?? 0,
                 string.IsNullOrWhiteSpace(source) ? "unknown-source" : source,
                 string.IsNullOrWhiteSpace(reason) ? "captured dispatch" : reason));
+            RememberPortableChairRecordOpcodeEvidenceNoLock(
+                buildTag,
+                opcode,
+                packetType,
+                operation,
+                characterId,
+                payload?.Length ?? 0,
+                source,
+                reason);
 
             if (_portableChairRecordCaptureOrder.Count > MaxPortableChairRecordCaptureOrderEntries)
             {
@@ -1838,6 +1933,38 @@ namespace HaCreator.MapSimulator.Managers
                     0,
                     _portableChairRecordCaptureOrder.Count - MaxPortableChairRecordCaptureOrderEntries);
             }
+        }
+
+        private void RememberPortableChairRecordOpcodeEvidenceNoLock(
+            string buildTag,
+            ushort opcode,
+            int packetType,
+            string operation,
+            int characterId,
+            int payloadLength,
+            string source,
+            string reason)
+        {
+            string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+            if (!_portableChairRecordOpcodeEvidenceByBuild.TryGetValue(normalizedBuildTag, out Dictionary<ushort, PortableChairRecordOpcodeEvidence> evidenceByOpcode))
+            {
+                evidenceByOpcode = new Dictionary<ushort, PortableChairRecordOpcodeEvidence>();
+                _portableChairRecordOpcodeEvidenceByBuild[normalizedBuildTag] = evidenceByOpcode;
+            }
+
+            if (!evidenceByOpcode.TryGetValue(opcode, out PortableChairRecordOpcodeEvidence evidence)
+                || evidence.PacketType != packetType
+                || !string.Equals(evidence.Operation, operation, StringComparison.OrdinalIgnoreCase))
+            {
+                evidence = new PortableChairRecordOpcodeEvidence(packetType, operation);
+                evidenceByOpcode[opcode] = evidence;
+            }
+
+            evidence.Record(
+                characterId,
+                payloadLength,
+                string.IsNullOrWhiteSpace(source) ? "unknown-source" : source,
+                string.IsNullOrWhiteSpace(reason) ? "captured dispatch" : reason);
         }
 
         private void RememberLearnedTutorOpcodeByBuildNoLock(

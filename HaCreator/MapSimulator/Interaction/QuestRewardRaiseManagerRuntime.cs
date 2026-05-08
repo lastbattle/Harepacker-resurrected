@@ -8,6 +8,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class QuestRewardRaiseManagerRuntime
     {
+        private static readonly Point ClientDefaultItemOwnerPosition = new(0, 150);
+
         private sealed record QuestRewardRaiseOwnerSnapshot(
             int ManagerSessionId,
             int OwnerRequestId,
@@ -38,7 +40,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            QuestRewardRaiseState state = Open(prompt, QuestRewardRaiseSourceKind.InventoryItem, defaultPosition);
+            QuestRewardRaiseState state = Open(
+                prompt,
+                QuestRewardRaiseSourceKind.InventoryItem,
+                ResolveClientItemOwnerDefaultPosition(defaultPosition));
             if (state == null)
             {
                 return null;
@@ -904,6 +909,13 @@ namespace HaCreator.MapSimulator.Interaction
                 Math.Max(
                     Math.Max(observedState?.MaxDropCount ?? 1, snapshot?.MaxDropCount ?? 1),
                     Math.Max(payload?.PlacedPieceCount ?? 0, payload?.MaxDropCount ?? 0)));
+        }
+
+        private static Point ResolveClientItemOwnerDefaultPosition(Point defaultPosition)
+        {
+            return defaultPosition == Point.Zero
+                ? ClientDefaultItemOwnerPosition
+                : defaultPosition;
         }
 
         private static bool ShouldReuseRetainedClosedRaise(QuestRewardRaiseState retainedState, QuestRewardChoicePrompt prompt)

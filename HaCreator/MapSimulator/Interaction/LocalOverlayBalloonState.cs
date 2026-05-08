@@ -129,8 +129,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string sanitizedText = SanitizeText(text);
             int normalizedLifetimeMs = Math.Max(0, lifetimeMs);
-            int expiresAt = currentTickCount + normalizedLifetimeMs;
-            return string.IsNullOrEmpty(sanitizedText) || expiresAt <= currentTickCount
+            int expiresAt = unchecked(currentTickCount + normalizedLifetimeMs);
+            return string.IsNullOrEmpty(sanitizedText) || normalizedLifetimeMs <= 0
                 ? null
                 : new LocalOverlayBalloonMessage(
                     sanitizedText,

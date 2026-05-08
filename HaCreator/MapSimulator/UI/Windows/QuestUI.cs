@@ -1276,14 +1276,6 @@ namespace HaCreator.MapSimulator.UI
                     ? MeasureCategoryText(labelText, labelScale, emphasized: false)
                     : MeasureClientText(labelText, labelScale);
 
-                DrawCategoryText(
-                    sprite,
-                    labelText,
-                    new Vector2(textX, textY),
-                    labelColor,
-                    labelScale,
-                    emphasized: false,
-                    maxWidth: Math.Max(0f, availableLabelWidth));
                 if (HasClientCategoryButtonArt())
                 {
                     renderedCountText = useClientCategoryText
@@ -1326,6 +1318,14 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else
                 {
+                    DrawCategoryText(
+                        sprite,
+                        labelText,
+                        new Vector2(textX, textY),
+                        labelColor,
+                        labelScale,
+                        emphasized: false,
+                        maxWidth: Math.Max(0f, availableLabelWidth));
                     int countRight = bounds.Right - 5;
                     Vector2 countMeasure = MeasureClientText(countText, countScale);
                     int countLeft = (int)MathF.Floor(countRight - countMeasure.X);

@@ -2589,37 +2589,55 @@ namespace HaCreator.MapSimulator.Combat
                 return target;
             }
 
-            // Mirrors CMob::SetBallDestPoint: require a forward lane and clamp the
-            // vertical slope before normalizing the authored launch vector to range/r.
-            float forwardDelta = sourceFacesRight
-                ? target.X - spawn.X
-                : spawn.X - target.X;
-            float verticalDelta = target.Y - spawn.Y;
+            return ResolveClientSetBallDestPoint(spawn, target, sourceFacesRight, rangeRadius);
+        }
+
+        internal static Vector2 ResolveClientSetBallDestPoint(
+            Vector2 start,
+            Vector2 target,
+            bool sourceFacesRight,
+            int rangeRadius)
+        {
+            if (rangeRadius <= 0)
+            {
+                return target;
+            }
+
+            float signedForwardDelta = sourceFacesRight
+                ? target.X - start.X
+                : start.X - target.X;
             float adjustedTargetX = target.X;
             float adjustedTargetY = target.Y;
+            float verticalDelta = adjustedTargetY - start.Y;
 
-            if (forwardDelta <= 0f)
+            if (signedForwardDelta <= 0f)
             {
-                adjustedTargetX = spawn.X + (sourceFacesRight ? 1f : -1f);
-                adjustedTargetY = spawn.Y;
+                signedForwardDelta = 1f;
+                adjustedTargetX = start.X + (sourceFacesRight ? 1f : -1f);
+                adjustedTargetY = start.Y;
+                verticalDelta = 0f;
             }
             else
             {
-                float maxVerticalOffset = forwardDelta * 0.6f;
-                if (Math.Abs(verticalDelta) > maxVerticalOffset)
+                float maxVerticalDelta = signedForwardDelta * 0.6f;
+                if (Math.Abs(verticalDelta) > maxVerticalDelta)
                 {
-                    adjustedTargetY = spawn.Y + Math.Sign(verticalDelta) * maxVerticalOffset;
+                    verticalDelta = Math.Sign(verticalDelta) * maxVerticalDelta;
+                    adjustedTargetY = start.Y + verticalDelta;
                 }
             }
 
-            Vector2 direction = new Vector2(adjustedTargetX - spawn.X, adjustedTargetY - spawn.Y);
-            if (direction.LengthSquared() < 0.0001f)
+            float horizontalDelta = adjustedTargetX - start.X;
+            float distance = MathF.Sqrt((horizontalDelta * horizontalDelta) + (verticalDelta * verticalDelta));
+            if (distance <= 0.0001f)
             {
-                return spawn;
+                return new Vector2((int)start.X, (int)start.Y);
             }
 
-            direction.Normalize();
-            return spawn + (direction * rangeRadius);
+            float scale = rangeRadius / distance;
+            return new Vector2(
+                (int)(start.X + (horizontalDelta * scale)),
+                (int)(start.Y + (verticalDelta * scale)));
         }
 
         internal static int ResolveProjectileTravelTimeMs(

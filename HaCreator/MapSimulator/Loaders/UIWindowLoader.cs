@@ -2648,6 +2648,7 @@ namespace HaCreator.MapSimulator.Loaders
             manager.RegisterLazyWindow(MapSimulatorWindowNames.NpcShop, m => RegisterPacketOwnedNpcShopWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 2), y + (cascade * 6))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.StoreBank, m => RegisterPacketOwnedStoreBankWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 3), y + (cascade * 6))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.BattleRecord, m => RegisterPacketOwnedBattleRecordWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 6))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.ShopScanner, m => RegisterShopScannerWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + (cascade * 6))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.KeyConfig, m => RegisterKeyConfigWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 4))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.OptionMenu, m => RegisterOptionMenuWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + cascade)));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.Ranking, m => RegisterRankingWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 2))));
@@ -8780,9 +8781,24 @@ namespace HaCreator.MapSimulator.Loaders
             IDXObject content = LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd3", device, out Point contentOffset);
             window.AddLayer(overlay, overlayOffset);
             window.AddLayer(content, contentOffset);
+            // CUIJoyPad::OnCreate creates button 1009 from StringPool[0x180F] before
+            // the OK/Cancel pair. The mounted v95 UI set has the matching Default art
+            // under the shared KeyConfig button seam rather than OptionMenu itself.
+            UIObject defaultButton = LoadButton(uiWindow2Image?["KeyConfig"] as WzSubProperty, "BtDefault", btClickSound, btOverSound, device);
             window.InitializeButtons(
+                defaultButton,
                 LoadButton(sourceProperty, "BtOK", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty, "BtCancle", btClickSound, btOverSound, device));
+
+            UIObject closeButton = LoadButton(basicImage, "BtClose", btClickSound, btOverSound, device);
+            if (closeButton != null)
+            {
+                // CUIJoyPad::OnButtonClicked still handles inherited button id 8.
+                closeButton.X = Math.Max(8, frameTexture.Width - 22);
+                closeButton.Y = 10;
+                window.InitializeCloseButton(closeButton);
+            }
+
             return window;
         }
         private static UIWindowBase CreateRankingWindow(

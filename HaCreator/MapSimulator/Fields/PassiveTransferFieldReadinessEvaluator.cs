@@ -417,6 +417,11 @@ namespace HaCreator.MapSimulator.Fields
                 ShouldPlayTransferFieldPortalSound: ShouldPlayTransferFieldPortalSound(portalType));
         }
 
+        public static bool ShouldProbeAuthoredPortalBeforeTemporaryPortal(bool hasAuthoredPortalCollision)
+        {
+            return hasAuthoredPortalCollision;
+        }
+
         public static bool IsPassiveTransferFieldPortalType(PortalType portalType)
         {
             return portalType != PortalType.CollisionScript

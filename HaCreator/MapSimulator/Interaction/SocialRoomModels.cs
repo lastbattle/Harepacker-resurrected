@@ -1608,12 +1608,11 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialRoomPacketType.LockTrade:
                     return ToggleTradeLock(out message);
                 case SocialRoomPacketType.CompleteTrade:
-                    return TryCompleteTrade(out message);
+                    message = "Trading-room settlement is packet-owned by CTradingRoomDlg::OnTrade subtype 17 and the subtype 20 CRC follow-up. Use previewcomplete for the simulator-only settlement preview.";
+                    return false;
                 case SocialRoomPacketType.ResetTrade:
-                    ResetTrade();
-                    resolvedMessage = StatusMessage;
-                    message = resolvedMessage;
-                    return true;
+                    message = "Trading-room reset is not a recovered CTradingRoomDlg::OnPacket branch; the client packet owner only models 15/16/17/20/21. Use previewreset for the simulator-only draft reset.";
+                    return false;
                 case SocialRoomPacketType.CloseRoom:
                     if (Kind == SocialRoomKind.PersonalShop)
                     {
@@ -1804,6 +1803,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             StatusMessage = "Trading-room BtEnter stayed on the dedicated CTradingRoomDlg surface; chat text still enters through the shared MiniRoom base chat packet owner.";
+            PersistState();
+        }
+
+        public void SubmitTradingRoomClaimButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            StatusMessage = "Trading-room BtClame stays on the dedicated CTradingRoomDlg/CDialog control surface; settlement remains owned by subtype 17 and subtype 20 packet verification.";
+            PersistState();
+        }
+
+        public void SubmitTradingRoomResetButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            StatusMessage = "Trading-room BtReset is WZ-authored, but no CTradingRoomDlg::OnPacket reset branch is recovered; simulator reset is available only through previewreset.";
             PersistState();
         }
 
@@ -4216,6 +4237,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop &&
+                TryApplyMerchantShopFullRefreshPacket(nestedPayload, out string fullRefreshMessage))
+            {
+                string fullRefreshPayloadPreview = BuildPacketHexPreview(nestedPayload);
+                string fullRefreshDetail = $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded direct CPersonalShopDlg::OnRefresh item-array payload into {_shopDialogPacketOwner?.OwnerName ?? "CPersonalShopDlg"}. {fullRefreshMessage} | payload={fullRefreshPayloadPreview} | bytes={nestedPayload.Length}";
+                _lastPacketOwnerSummary = fullRefreshDetail;
+                message = fullRefreshDetail;
+                PersistState();
+                return true;
+            }
+
             PacketReader nestedReader = new(nestedPayload);
             byte nestedPacketType;
             try
@@ -5069,9 +5101,116 @@ namespace HaCreator.MapSimulator.Interaction
                 case EntrustedShopArrangeItemResultPacketType:
                     packetLength = 1 + sizeof(int);
                     return remaining >= packetLength;
+                case MerchantShopRowRefreshPacketType:
+                    packetLength = 1 + sizeof(byte) + sizeof(int) + sizeof(short) + sizeof(int);
+                    return remaining >= packetLength;
+                case PersonalShopSoldItemResultPacketType:
+                    return TryMeasureMiniRoomSubtype6SoldItemResultPacketLength(payload, offset, out packetLength);
+                case PersonalShopMoveItemToInventoryPacketType:
+                    packetLength = 1 + sizeof(byte) + sizeof(short);
+                    return remaining >= packetLength;
+                case EntrustedShopVisitListResultPacketType:
+                    return TryMeasureMiniRoomSubtype6EntrustedVisitListPacketLength(payload, offset, out packetLength);
+                case EntrustedShopBlackListResultPacketType:
+                    return TryMeasureMiniRoomSubtype6EntrustedBlacklistPacketLength(payload, offset, out packetLength);
                 default:
                     return false;
             }
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6SoldItemResultPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1 + sizeof(byte) + sizeof(short);
+            if (!TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor))
+            {
+                return false;
+            }
+
+            packetLength = cursor - offset;
+            return true;
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6EntrustedVisitListPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset + 1 + sizeof(short) > payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1;
+            int count = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(cursor, sizeof(short)));
+            cursor += sizeof(short);
+            if (count < 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor)
+                    || cursor + sizeof(int) > payload.Length)
+                {
+                    return false;
+                }
+
+                cursor += sizeof(int);
+            }
+
+            packetLength = cursor - offset;
+            return true;
+        }
+
+        private static bool TryMeasureMiniRoomSubtype6EntrustedBlacklistPacketLength(byte[] payload, int offset, out int packetLength)
+        {
+            packetLength = 0;
+            if (payload == null || offset < 0 || offset + 1 + sizeof(short) > payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset + 1;
+            int count = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(cursor, sizeof(short)));
+            cursor += sizeof(short);
+            if (count < 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryAdvanceMiniRoomSubtype6MapleString(payload, ref cursor))
+                {
+                    return false;
+                }
+            }
+
+            packetLength = cursor - offset;
+            return true;
+        }
+
+        private static bool TryAdvanceMiniRoomSubtype6MapleString(byte[] payload, ref int cursor)
+        {
+            if (payload == null || cursor < 0 || cursor + sizeof(short) > payload.Length)
+            {
+                return false;
+            }
+
+            int length = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(cursor, sizeof(ushort)));
+            cursor += sizeof(ushort);
+            if (length < 0 || cursor + length > payload.Length)
+            {
+                return false;
+            }
+
+            cursor += length;
+            return true;
         }
 
         private bool TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(
@@ -6288,6 +6427,147 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private bool TryApplyMerchantShopFullRefreshPacket(byte[] payload, out string message)
+        {
+            if (!TryDecodeMerchantShopFullRefreshPayload(payload, out List<MerchantPacketItemRow> rows, out message))
+            {
+                return false;
+            }
+
+            List<SocialRoomItemEntry> removedEntries = _items
+                .Where(IsClientVisibleMerchantPacketEntry)
+                .ToList();
+            if (removedEntries.Count > 0)
+            {
+                _items.RemoveAll(item => removedEntries.Contains(item));
+                _inventoryEscrow.RemoveAll(escrow => removedEntries.Contains(escrow.Entry));
+            }
+
+            for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                MerchantPacketItemRow row = rows[rowIndex];
+                int packetSlotIndex = rowIndex;
+                string itemName = ResolveItemName(row.Item.ItemId);
+                int bundleQuantity = Math.Max(1, (int)row.Number);
+                int bundleSetCount = Math.Max(0, (int)row.Set);
+                int bundlePrice = Math.Max(0, row.Price);
+                string detail = $"Packet row {packetSlotIndex} | CPersonalShopDlg::OnRefresh full item-array refresh | nNumber {bundleQuantity} | nSet {bundleSetCount}";
+                _items.Add(new SocialRoomItemEntry(
+                    OwnerName,
+                    itemName,
+                    bundleQuantity,
+                    bundlePrice,
+                    detail,
+                    itemId: row.Item.ItemId,
+                    packetSlotIndex: packetSlotIndex));
+            }
+
+            NormalizeActiveMerchantPacketSlots();
+            RoomState = Kind == SocialRoomKind.EntrustedShop ? "Updating sale list" : "Closed for setup";
+            ModeName = Kind == SocialRoomKind.EntrustedShop ? "Restock" : "Repricing";
+            EnsureMerchantPacketNotes();
+            _notes[0] = $"CPersonalShopDlg::OnRefresh replaced the packet-owned merchant item array with {rows.Count} row(s).";
+            _notes[1] = rows.Count == 0
+                ? "The server refresh cleared every client-visible merchant row."
+                : $"First refreshed row: {ResolveItemName(rows[0].Item.ItemId)} x{Math.Max(1, (int)rows[0].Number)} for {Math.Max(0, rows[0].Price):N0} meso.";
+            StatusMessage = $"CPersonalShopDlg::OnRefresh applied full merchant item-array refresh from CMiniRoomBaseDlg::OnPacketBase subtype 6: {rows.Count} row(s) decoded as count/nNumber/nSet/nPrice/GW_ItemSlotBase.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private static bool TryDecodeMerchantShopFullRefreshPayload(byte[] payload, out List<MerchantPacketItemRow> rows, out string message)
+        {
+            rows = null;
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            int rowCount = payload[0];
+            if (rowCount == 0)
+            {
+                if (payload.Length != 1)
+                {
+                    message = $"Merchant shop full refresh declared zero rows but carried {payload.Length - 1} trailing byte(s).";
+                    return false;
+                }
+
+                rows = new List<MerchantPacketItemRow>();
+                return true;
+            }
+
+            const int fixedRowHeaderLength = sizeof(short) + sizeof(short) + sizeof(int);
+            const int minimumBundleItemLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(ushort) + sizeof(short) + sizeof(short);
+            int minimumRowLength = fixedRowHeaderLength + minimumBundleItemLength;
+            if (payload.Length < 1 + (rowCount * minimumRowLength))
+            {
+                return false;
+            }
+
+            List<MerchantPacketItemRow> decodedRows = new(rowCount);
+            if (!TryDecodeMerchantShopFullRefreshRows(payload.AsSpan(1), rowCount, decodedRows, out message))
+            {
+                return false;
+            }
+
+            rows = decodedRows;
+            return true;
+        }
+
+        private static bool TryDecodeMerchantShopFullRefreshRows(
+            ReadOnlySpan<byte> payload,
+            int rowsRemaining,
+            List<MerchantPacketItemRow> rows,
+            out string message)
+        {
+            message = null;
+            if (rowsRemaining == 0)
+            {
+                if (payload.Length == 0)
+                {
+                    return true;
+                }
+
+                message = $"Merchant shop full refresh had {payload.Length} trailing byte(s) after the declared row array.";
+                return false;
+            }
+
+            const int fixedRowHeaderLength = sizeof(short) + sizeof(short) + sizeof(int);
+            const int minimumBundleItemLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(ushort) + sizeof(short) + sizeof(short);
+            const int minimumRowLength = fixedRowHeaderLength + minimumBundleItemLength;
+            if (payload.Length < minimumRowLength * rowsRemaining)
+            {
+                message = "Merchant shop full refresh ended before the declared row array could be decoded.";
+                return false;
+            }
+
+            short number = BinaryPrimitives.ReadInt16LittleEndian(payload[..sizeof(short)]);
+            short set = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(sizeof(short), sizeof(short)));
+            int price = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(sizeof(short) + sizeof(short), sizeof(int)));
+            ReadOnlySpan<byte> itemAndTail = payload[fixedRowHeaderLength..];
+            int maxItemLength = itemAndTail.Length - ((rowsRemaining - 1) * minimumRowLength);
+            for (int itemLength = minimumBundleItemLength; itemLength <= maxItemLength; itemLength++)
+            {
+                if (!TryDecodePacketOwnedTradeItem(itemAndTail[..itemLength], out PacketOwnedTradeItem item, out _))
+                {
+                    continue;
+                }
+
+                rows.Add(new MerchantPacketItemRow(number, set, price, item));
+                if (TryDecodeMerchantShopFullRefreshRows(itemAndTail[itemLength..], rowsRemaining - 1, rows, out message))
+                {
+                    return true;
+                }
+
+                rows.RemoveAt(rows.Count - 1);
+            }
+
+            message ??= "Merchant shop full refresh row did not contain a decodable GW_ItemSlotBase body.";
+            return false;
         }
 
         private static bool TryDecodeMerchantShopRowRefreshPayload(byte[] payload, out MerchantShopRowRefresh rowRefresh, out string message)

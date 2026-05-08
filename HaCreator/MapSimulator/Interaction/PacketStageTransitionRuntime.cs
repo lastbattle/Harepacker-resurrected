@@ -1748,20 +1748,23 @@ namespace HaCreator.MapSimulator.Interaction
             if ((characterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0)
             {
                 long sectionStart = reader.BaseStream.Position;
+                Dictionary<string, int> twoIntValueRecordFieldByteCounts = new(StringComparer.Ordinal);
                 PacketCharacterDataTwoIntValueRecord twoIntValueRecord = new(
-                    reader.ReadInt32(),
-                    reader.ReadInt32());
+                    ReadTrackedCharacterDataField(reader, twoIntValueRecordFieldByteCounts, nameof(PacketCharacterDataTwoIntValueRecord.Value1), static fieldReader => fieldReader.ReadInt32()),
+                    ReadTrackedCharacterDataField(reader, twoIntValueRecordFieldByteCounts, nameof(PacketCharacterDataTwoIntValueRecord.Value2), static fieldReader => fieldReader.ReadInt32()),
+                    checked((int)(reader.BaseStream.Position - sectionStart)),
+                    twoIntValueRecordFieldByteCounts,
+                    0,
+                    true,
+                    0,
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
                 snapshot = snapshot with
                 {
                     PreInventoryHeaderValue1 = twoIntValueRecord.Value1,
                     PreInventoryHeaderValue2 = twoIntValueRecord.Value2,
                     TwoIntValueRecord = twoIntValueRecord,
-                    TwoIntValueRecordByteCount = checked((int)(reader.BaseStream.Position - sectionStart)),
-                    TwoIntValueRecordFieldByteCounts = new Dictionary<string, int>(StringComparer.Ordinal)
-                    {
-                        [nameof(PacketCharacterDataTwoIntValueRecord.Value1)] = sizeof(int),
-                        [nameof(PacketCharacterDataTwoIntValueRecord.Value2)] = sizeof(int)
-                    }
+                    TwoIntValueRecordByteCount = twoIntValueRecord.DecodedByteCount,
+                    TwoIntValueRecordFieldByteCounts = twoIntValueRecordFieldByteCounts
                 };
                 decodedSectionFlags |= CharacterDataTwoIntValueRecordFlag;
                 decodedSectionByteCounts[CharacterDataTwoIntValueRecordFlag] = checked((int)(reader.BaseStream.Position - sectionStart));
@@ -3349,7 +3352,9 @@ namespace HaCreator.MapSimulator.Interaction
                         out int wildHunterInfoByteCount,
                         out int wildHunterInfoModeByteCount,
                         out int wildHunterInfoCapturedMobRecordByteCount,
-                        out IReadOnlyDictionary<string, int> wildHunterInfoFieldByteCounts);
+                        out IReadOnlyDictionary<string, int> wildHunterInfoFieldByteCounts,
+                        out PacketCharacterDataWildHunterModeRecord wildHunterInfoModeRecord,
+                        out IReadOnlyList<PacketCharacterDataWildHunterCapturedMobRecord> wildHunterInfoCapturedMobRecords);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         HasWildHunterInfo = true,
@@ -3357,7 +3362,9 @@ namespace HaCreator.MapSimulator.Interaction
                         WildHunterInfoByteCount = wildHunterInfoByteCount,
                         WildHunterInfoModeByteCount = wildHunterInfoModeByteCount,
                         WildHunterInfoCapturedMobRecordByteCount = wildHunterInfoCapturedMobRecordByteCount,
-                        WildHunterInfoFieldByteCounts = wildHunterInfoFieldByteCounts
+                        WildHunterInfoFieldByteCounts = wildHunterInfoFieldByteCounts,
+                        WildHunterInfoModeRecord = wildHunterInfoModeRecord,
+                        WildHunterInfoCapturedMobRecords = wildHunterInfoCapturedMobRecords
                     };
                     decodedSectionFlags |= CharacterDataWildHunterInfoFlag;
                     decodedSectionByteCounts[CharacterDataWildHunterInfoFlag] =
@@ -4052,15 +4059,46 @@ namespace HaCreator.MapSimulator.Interaction
             out int byteCount,
             out int modeByteCount,
             out int capturedMobRecordByteCount,
-            out IReadOnlyDictionary<string, int> fieldByteCounts)
+            out IReadOnlyDictionary<string, int> fieldByteCounts,
+            out PacketCharacterDataWildHunterModeRecord modeRecord,
+            out IReadOnlyList<PacketCharacterDataWildHunterCapturedMobRecord> capturedMobRecords)
         {
             long sectionStart = reader.BaseStream.Position;
             int[] capturedMobIds = new int[5];
-            byte rawMode = reader.ReadByte();
+            long modeStart = reader.BaseStream.Position;
+            Dictionary<string, int> modeFieldByteCounts = new(StringComparer.Ordinal);
+            byte rawMode = ReadTrackedCharacterDataField(reader, modeFieldByteCounts, nameof(PacketCharacterDataWildHunterModeRecord.RawMode), static fieldReader => fieldReader.ReadByte());
             modeByteCount = sizeof(byte);
+            modeRecord = new PacketCharacterDataWildHunterModeRecord(
+                rawMode,
+                (byte)(rawMode / 10),
+                (byte)(rawMode % 10),
+                modeByteCount,
+                modeFieldByteCounts,
+                0,
+                true,
+                checked((int)(modeStart - sectionStart)),
+                checked((int)(reader.BaseStream.Position - sectionStart)));
+            PacketCharacterDataWildHunterCapturedMobRecord[] capturedRecords =
+                new PacketCharacterDataWildHunterCapturedMobRecord[capturedMobIds.Length];
             for (int i = 0; i < capturedMobIds.Length; i++)
             {
-                capturedMobIds[i] = reader.ReadInt32();
+                long recordStart = reader.BaseStream.Position;
+                Dictionary<string, int> capturedMobFieldByteCounts = new(StringComparer.Ordinal);
+                capturedMobIds[i] = ReadTrackedCharacterDataField(
+                    reader,
+                    capturedMobFieldByteCounts,
+                    nameof(PacketCharacterDataWildHunterCapturedMobRecord.MobId),
+                    static fieldReader => fieldReader.ReadInt32());
+                capturedRecords[i] = new PacketCharacterDataWildHunterCapturedMobRecord(
+                    i,
+                    capturedMobIds[i],
+                    sizeof(int),
+                    capturedMobFieldByteCounts,
+                    i,
+                    true,
+                    checked((int)(recordStart - sectionStart)),
+                    checked((int)(reader.BaseStream.Position - sectionStart)));
             }
 
             capturedMobRecordByteCount = checked(capturedMobIds.Length * sizeof(int));
@@ -4070,6 +4108,7 @@ namespace HaCreator.MapSimulator.Interaction
                 [nameof(PacketCharacterDataWildHunterInfo.RawMode)] = modeByteCount,
                 [nameof(PacketCharacterDataWildHunterInfo.CapturedMobIds)] = capturedMobRecordByteCount
             };
+            capturedMobRecords = capturedRecords;
             return new PacketCharacterDataWildHunterInfo(
                 rawMode,
                 (byte)(rawMode / 10),
@@ -4970,6 +5009,27 @@ namespace HaCreator.MapSimulator.Interaction
                 : 0;
     }
 
+    internal readonly record struct PacketCharacterDataWildHunterModeRecord(
+        byte RawMode,
+        byte ModeHighDigit,
+        byte ModeLowDigit,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null,
+        int NativeIndex = -1,
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
+
+    internal readonly record struct PacketCharacterDataWildHunterCapturedMobRecord(
+        int Index,
+        int MobId,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null,
+        int NativeIndex = -1,
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
+
     internal sealed record PacketCharacterDataSnapshot(
         int CharacterId,
         string CharacterName,
@@ -5195,6 +5255,8 @@ namespace HaCreator.MapSimulator.Interaction
         int WildHunterInfoModeByteCount = 0,
         int WildHunterInfoCapturedMobRecordByteCount = 0,
         IReadOnlyDictionary<string, int> WildHunterInfoFieldByteCounts = null,
+        PacketCharacterDataWildHunterModeRecord? WildHunterInfoModeRecord = null,
+        IReadOnlyList<PacketCharacterDataWildHunterCapturedMobRecord> WildHunterInfoCapturedMobRecords = null,
         PacketCharacterDataWildHunterInfo? WildHunterInfo = null,
         int QuestCompleteRecordCount = 0,
         int QuestCompleteRecordNativeCount = 0,
@@ -5305,7 +5367,13 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketCharacterDataTwoIntValueRecord(
         int Value1,
-        int Value2);
+        int Value2,
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null,
+        int NativeIndex = -1,
+        bool IsSemanticRecord = true,
+        int SectionRecordStartOffset = -1,
+        int SectionRecordEndOffset = -1);
 
     internal readonly record struct PacketCharacterDataItemSlot(
         InventoryType InventoryType,

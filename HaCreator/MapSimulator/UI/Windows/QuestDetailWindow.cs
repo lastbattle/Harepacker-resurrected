@@ -1209,6 +1209,23 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < entries.Count; i++)
             {
                 QuestDetailCtEntry entry = entries[i];
+                if (ShouldStartImplicitClientCtRow(entries, i))
+                {
+                    List<QuestDetailCtEntry> implicitRow = new();
+                    int rowHeight = entry.RowHeight;
+                    do
+                    {
+                        implicitRow.Add(entries[i]);
+                        i++;
+                    }
+                    while (i < entries.Count && IsImplicitClientCtRowContinuation(entries[i], rowHeight));
+
+                    i--;
+                    QuestDetailCtEntry[] rowEntries = OrderCtEntriesWithinClientRow(implicitRow).ToArray();
+                    yield return new CtEntryRow(rowEntries, rowEntries.Length > 1 || rowEntries[0].RowHeight > 0);
+                    continue;
+                }
+
                 yield return new CtEntryRow(new[] { entry }, entry?.RowHeight > 0);
             }
         }
@@ -1231,6 +1248,55 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static bool ShouldStartImplicitClientCtRow(IReadOnlyList<QuestDetailCtEntry> entries, int index)
+        {
+            if (entries == null || index < 0 || index >= entries.Count)
+            {
+                return false;
+            }
+
+            QuestDetailCtEntry entry = entries[index];
+            if (entry?.RowHeight <= 0 || entry.RowIndex.HasValue)
+            {
+                return false;
+            }
+
+            if (index + 1 >= entries.Count || !IsImplicitClientCtRowContinuation(entries[index + 1], entry.RowHeight))
+            {
+                return false;
+            }
+
+            bool hasCanvas = entry.Kind == QuestDetailCtEntryKind.Canvas;
+            bool hasTextFamily = IsClientCtTextFamily(entry);
+            for (int i = index + 1; i < entries.Count && IsImplicitClientCtRowContinuation(entries[i], entry.RowHeight); i++)
+            {
+                hasCanvas |= entries[i].Kind == QuestDetailCtEntryKind.Canvas;
+                hasTextFamily |= IsClientCtTextFamily(entries[i]);
+                if (hasCanvas && hasTextFamily)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsImplicitClientCtRowContinuation(QuestDetailCtEntry entry, int rowHeight)
+        {
+            return entry != null &&
+                   !entry.RowIndex.HasValue &&
+                   rowHeight > 0 &&
+                   entry.RowHeight == rowHeight;
+        }
+
+        private static bool IsClientCtTextFamily(QuestDetailCtEntry entry)
+        {
+            return entry?.Kind is QuestDetailCtEntryKind.RichText or
+                QuestDetailCtEntryKind.SectionHeader or
+                QuestDetailCtEntryKind.ConditionLines or
+                QuestDetailCtEntryKind.Progress;
         }
 
         private static IEnumerable<QuestDetailCtEntry> OrderCtEntriesWithinClientRow(IEnumerable<QuestDetailCtEntry> entries)

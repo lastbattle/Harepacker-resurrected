@@ -98,9 +98,22 @@ namespace HaCreator.MapSimulator.Fields
             EvaluateShareViewRemoteLoop,
             SkipRemoteViewrangeBecauseShareViewDisabled,
             SkipRemoteViewrangeBecauseLocalUserMissing,
+            SkipRemoteViewrangeBecauseDelayedLoad,
             ResolveRemoteUserPosition,
             CopyRemoteViewrange,
             AppendPreviousMaskHistory
+        }
+
+        internal readonly struct ClientOwnedRemoteViewrangeTarget
+        {
+            public ClientOwnedRemoteViewrangeTarget(Vector2 topLeft, bool isDelayedLoad)
+            {
+                TopLeft = topLeft;
+                IsDelayedLoad = isDelayedLoad;
+            }
+
+            public Vector2 TopLeft { get; }
+            public bool IsDelayedLoad { get; }
         }
 
         internal readonly struct ClientOwnedDrawViewrangeOperation
@@ -1119,17 +1132,47 @@ namespace HaCreator.MapSimulator.Fields
             int viewrangeHeight,
             Rectangle? darkLayerBounds)
         {
+            return BuildClientOwnedDrawViewrangeOperationPlan(
+                previousMaskTopLefts,
+                localMaskTopLeft,
+                ConvertClientOwnedRemoteViewrangeTargets(remoteMaskTopLefts),
+                shareView,
+                viewrangeWidth,
+                viewrangeHeight,
+                darkLayerBounds);
+        }
+
+        internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(
+            IReadOnlyList<Vector2> previousMaskTopLefts,
+            Vector2? localMaskTopLeft,
+            IReadOnlyList<ClientOwnedRemoteViewrangeTarget> remoteMaskTargets,
+            bool shareView,
+            int viewrangeWidth,
+            int viewrangeHeight,
+            Rectangle? darkLayerBounds)
+        {
             List<Vector2> currentMaskTopLefts = new();
             if (localMaskTopLeft.HasValue)
             {
                 currentMaskTopLefts.Add(localMaskTopLeft.Value);
             }
 
-            if (shareView && localMaskTopLeft.HasValue && remoteMaskTopLefts != null)
+            List<ClientOwnedDrawViewrangeOperation> delayedRemoteSkips = new();
+            if (shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null)
             {
-                for (int i = 0; i < remoteMaskTopLefts.Count; i++)
+                for (int i = 0; i < remoteMaskTargets.Count; i++)
                 {
-                    currentMaskTopLefts.Add(remoteMaskTopLefts[i]);
+                    ClientOwnedRemoteViewrangeTarget target = remoteMaskTargets[i];
+                    if (target.IsDelayedLoad)
+                    {
+                        delayedRemoteSkips.Add(new ClientOwnedDrawViewrangeOperation(
+                            ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseDelayedLoad,
+                            NormalizeClientOwnedMaskTopLeft(target.TopLeft),
+                            i + 1));
+                        continue;
+                    }
+
+                    currentMaskTopLefts.Add(target.TopLeft);
                 }
             }
 
@@ -1140,7 +1183,16 @@ namespace HaCreator.MapSimulator.Fields
                 viewrangeHeight,
                 darkLayerBounds));
 
-            if (!shareView && localMaskTopLeft.HasValue && remoteMaskTopLefts != null && remoteMaskTopLefts.Count > 0)
+            if (shareView && localMaskTopLeft.HasValue && delayedRemoteSkips.Count > 0)
+            {
+                int remoteLoopIndex = operations.FindIndex(operation => operation.Kind == ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop);
+                int insertIndex = remoteLoopIndex >= 0
+                    ? remoteLoopIndex + 1
+                    : operations.Count;
+                operations.InsertRange(insertIndex, delayedRemoteSkips);
+            }
+
+            if (!shareView && localMaskTopLeft.HasValue && remoteMaskTargets != null && remoteMaskTargets.Count > 0)
             {
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop,
@@ -1151,7 +1203,7 @@ namespace HaCreator.MapSimulator.Fields
                     Vector2.Zero,
                     -1));
             }
-            else if (shareView && !localMaskTopLeft.HasValue && remoteMaskTopLefts != null && remoteMaskTopLefts.Count > 0)
+            else if (shareView && !localMaskTopLeft.HasValue && remoteMaskTargets != null && remoteMaskTargets.Count > 0)
             {
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseLocalUserMissing,
@@ -1160,6 +1212,22 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return operations;
+        }
+
+        private static IReadOnlyList<ClientOwnedRemoteViewrangeTarget> ConvertClientOwnedRemoteViewrangeTargets(IReadOnlyList<Vector2> remoteMaskTopLefts)
+        {
+            if (remoteMaskTopLefts == null)
+            {
+                return null;
+            }
+
+            ClientOwnedRemoteViewrangeTarget[] targets = new ClientOwnedRemoteViewrangeTarget[remoteMaskTopLefts.Count];
+            for (int i = 0; i < remoteMaskTopLefts.Count; i++)
+            {
+                targets[i] = new ClientOwnedRemoteViewrangeTarget(remoteMaskTopLefts[i], isDelayedLoad: false);
+            }
+
+            return targets;
         }
 
         internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(
@@ -1616,6 +1684,7 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.EvaluateShareViewRemoteLoop:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseShareViewDisabled:
                     case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseLocalUserMissing:
+                    case ClientOwnedDrawViewrangeOperationKind.SkipRemoteViewrangeBecauseDelayedLoad:
                     case ClientOwnedDrawViewrangeOperationKind.ResolveRemoteUserPosition:
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch:

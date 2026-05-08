@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int FeeMeso { get; init; }
         public string Recipient { get; init; } = string.Empty;
         public bool IsQuickDelivery { get; init; }
+        public int QuickDeliveryCouponItemId { get; init; }
         public string QuickDeliveryMemo { get; init; } = string.Empty;
         public int QuickDeliveryCouponPosition { get; init; }
         public int ParcelSerial { get; init; }

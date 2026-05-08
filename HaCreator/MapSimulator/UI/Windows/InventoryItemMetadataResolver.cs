@@ -1176,6 +1176,66 @@ namespace HaCreator.MapSimulator.UI
             return canvas != null;
         }
 
+        public static bool TryResolveRootEffectFirstCanvas(int itemId, out WzCanvasProperty canvas)
+        {
+            if (itemId <= 0)
+            {
+                canvas = null;
+                return false;
+            }
+
+            return TryResolveRootEffectFirstCanvas(LoadItemProperty(itemId), out canvas);
+        }
+
+        private static bool TryResolveRootEffectFirstCanvas(WzSubProperty itemProperty, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            WzSubProperty effectProperty = ResolveLinkedSubProperty(itemProperty?["effect"]);
+            if (effectProperty == null)
+            {
+                return false;
+            }
+
+            if (TryResolveCanvasAtPath(effectProperty, "default/0", out canvas)
+                || TryResolveCanvasAtPath(effectProperty, "0", out canvas))
+            {
+                return true;
+            }
+
+            List<(int Index, WzSubProperty Group)> groups = new();
+            if (effectProperty.WzProperties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in effectProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                WzSubProperty group = ResolveLinkedSubProperty(child);
+                if (group != null)
+                {
+                    groups.Add((index, group));
+                }
+            }
+
+            groups.Sort((left, right) => left.Index.CompareTo(right.Index));
+            for (int i = 0; i < groups.Count; i++)
+            {
+                IReadOnlyList<WzCanvasProperty> frames = GetNumericNamedCanvasRows(groups[i].Group, 1);
+                if (frames.Count > 0)
+                {
+                    canvas = frames[0];
+                    return canvas != null;
+                }
+            }
+
+            return false;
+        }
+
         public static bool TryResolveSampleUiFrame(
             int itemId,
             out WzCanvasProperty topCanvas,
@@ -2609,6 +2669,21 @@ namespace HaCreator.MapSimulator.UI
             AppendRandomPickupItemIds(itemIds, seenItemIds, specProperty?["randomPickup"] as WzSubProperty);
             AppendRandomPickupItemIds(itemIds, seenItemIds, specExProperty?["randomPickup"] as WzSubProperty);
             return itemIds;
+        }
+
+        internal static IReadOnlyList<int> ResolveRandomPickupItemIdsForRuntime(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            return ResolveRandomPickupItemIds(specProperty, specExProperty);
+        }
+
+        internal static bool IsRandomPickupConsumeForRuntime(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            return IsEnabledFlag(specProperty?["randomPickupConsume"])
+                   || IsEnabledFlag(specExProperty?["randomPickupConsume"]);
         }
 
         private static void AppendRandomPickupItemIds(
@@ -5357,6 +5432,11 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryResolveEffectPathForTests(string effectPath, out string imagePath, out string propertyPath)
         {
             return TryResolveEffectPath(effectPath, out imagePath, out propertyPath);
+        }
+
+        public static bool TryResolveRootEffectFirstCanvasForTests(WzSubProperty itemProperty, out WzCanvasProperty canvas)
+        {
+            return TryResolveRootEffectFirstCanvas(itemProperty, out canvas);
         }
 
         public static bool TrySelectConsumeItemRequirementForTests(

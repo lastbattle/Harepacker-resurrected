@@ -1941,13 +1941,11 @@ namespace HaCreator.MapSimulator.Physics
             for (int i = lastGroundedIndex + 1; i < snapshot.Count; i++)
             {
                 MovePathElement retained = snapshot[i];
-                if (i < snapshot.Count - 1)
+                int retainedDurationMs = Math.Max(0, (int)retained.Duration);
+                _pathGatherDurationMs += retainedDurationMs;
+                if (i == snapshot.Count - 1)
                 {
-                    _pathGatherDurationMs += Math.Max(0, (int)retained.Duration);
-                }
-                else
-                {
-                    retained.TimeStamp = unchecked(currentTimeMs - Math.Max(0, (int)retained.Duration));
+                    retained.TimeStamp = unchecked(currentTimeMs - retainedDurationMs);
                 }
 
                 _movePath.Add(retained);

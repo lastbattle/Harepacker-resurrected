@@ -70,6 +70,27 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static void RegisterShopScannerWindow(
+            UIWindowManager manager,
+            WzImage uiWindowImage,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.ShopScanner) != null)
+            {
+                return;
+            }
+
+            ShopScannerWindow window = CreateShopScannerWindow(uiWindowImage, uiWindow2Image, basicImage, soundUIImage, device, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
         private static UIWindowBase CreatePacketOwnedNpcShopWindow(
             WzImage uiWindow2Image,
             WzImage basicImage,
@@ -98,6 +119,53 @@ namespace HaCreator.MapSimulator.Loaders
                 "Packet-owned owner for CShopDlg::OnPacket.",
                 "The client opens this unique modeless dialog directly from packet 364 and routes result packet 365 through the same owner.");
             AttachUtilityCloseButton(window, basicImage, soundUIImage, device, frameTexture.Width);
+            return window;
+        }
+
+        private static ShopScannerWindow CreateShopScannerWindow(
+            WzImage uiWindowImage,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty searchRoot = uiWindow2Image?["itemSearch"]?["search"] as WzSubProperty;
+            WzSubProperty mainProperty = searchRoot?["main"] as WzSubProperty;
+            WzSubProperty subProperty = searchRoot?["sub"] as WzSubProperty;
+            WzSubProperty legacySearchProperty = uiWindowImage?["itemSearch"] as WzSubProperty;
+            WzSubProperty buttonProperty = mainProperty ?? legacySearchProperty;
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            Texture2D frameTexture = LoadCanvasTexture(mainProperty, "backgrnd", device)
+                ?? LoadCanvasTexture(legacySearchProperty, "backgrnd", device)
+                ?? CreatePlaceholderWindowTexture(device, 220, 249, "Shop Scanner");
+            Texture2D resultTexture = LoadCanvasTexture(subProperty, "backgrnd", device)
+                ?? LoadCanvasTexture(legacySearchProperty, "resultback", device);
+            Texture2D iconTexture = LoadCanvasTexture(subProperty, "icon1", device)
+                ?? LoadCanvasTexture(legacySearchProperty, "icon0", device);
+            UIObject top10Button = LoadButton(buttonProperty, "BtTop10", btClickSound, btOverSound, device)
+                ?? LoadButton(legacySearchProperty, "BtRetry", btClickSound, btOverSound, device);
+            UIObject categoryButton = LoadButton(buttonProperty, "BtCategory", btClickSound, btOverSound, device)
+                ?? LoadButton(legacySearchProperty, "BtBack", btClickSound, btOverSound, device);
+            UIObject searchButton = LoadButton(buttonProperty, "BtSearch", btClickSound, btOverSound, device);
+            UIObject closeButton = LoadButton(subProperty, "BtClose", btClickSound, btOverSound, device)
+                ?? LoadButton(legacySearchProperty, "BtCancel", btClickSound, btOverSound, device);
+
+            ShopScannerWindow window = new(
+                new DXObject(0, 0, frameTexture, 0),
+                frameTexture,
+                resultTexture,
+                iconTexture,
+                top10Button,
+                categoryButton,
+                searchButton,
+                closeButton,
+                device)
+            {
+                Position = position
+            };
+
             return window;
         }
 

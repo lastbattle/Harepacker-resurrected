@@ -204,6 +204,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<DestinationEntry> WorldMapRequested { get; set; }
         public Action<int> ManualMapMoveRequested { get; set; }
         public Func<int, string> PromptMapLabelResolver { get; set; }
+        public Func<DestinationEntry, bool> RegisterConfirmationPreflight { get; set; }
 
         public override void Show()
         {
@@ -874,6 +875,11 @@ namespace HaCreator.MapSimulator.UI
 
         private void RequestRegisterConfirmation(DestinationEntry selectedEntry)
         {
+            if (RegisterConfirmationPreflight != null && !RegisterConfirmationPreflight(selectedEntry))
+            {
+                return;
+            }
+
             string targetLabel = ResolveRegisterTargetLabel(selectedEntry);
             RequestConfirmation(
                 MapTransferClientParityText.BuildRegisterConfirmationPrompt(targetLabel),

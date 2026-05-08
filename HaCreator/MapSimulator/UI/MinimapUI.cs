@@ -159,6 +159,7 @@ namespace HaCreator.MapSimulator.UI
             public float WorldY { get; set; }
             public HelperMarkerType MarkerType { get; set; }
             public bool ShowDirectionOverlay { get; set; } = true;
+            public bool DirectionOverlayOnly { get; set; }
             public string TooltipText { get; set; }
         }
 
@@ -1492,6 +1493,32 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY);
+                if (trackedUser.DirectionOverlayOnly)
+                {
+                    Rectangle directionHoverBounds = DrawDirectionOnlyOverlayForPoint(
+                        minimapPoint,
+                        trackedUser.ShowDirectionOverlay,
+                        sprite,
+                        skeletonMeshRenderer,
+                        gameTime,
+                        drawReflectionInfo,
+                        renderParameters,
+                        tickCount);
+                    if (ShouldRegisterTrackedUserHoverTargetForTesting(
+                            isWithinMinimapImage: false,
+                            trackedUser.ShowDirectionOverlay,
+                            trackedUser.TooltipText,
+                            directionHoverBounds))
+                    {
+                        AddHoverTarget(
+                            trackedUser.TooltipText,
+                            directionHoverBounds,
+                            ClientHoverTargetKind.RemoteDirection);
+                    }
+
+                    continue;
+                }
+
                 BaseDXDrawableItem marker = ResolveHelperMarker(trackedUser.MarkerType);
                 if (marker == null)
                     continue;
@@ -1510,6 +1537,31 @@ namespace HaCreator.MapSimulator.UI
                         ResolveTrackedUserHoverTargetKindForTesting(isWithinMinimapImage));
                 }
             }
+        }
+
+        private Rectangle DrawDirectionOnlyOverlayForPoint(
+            Point minimapPoint,
+            bool showDirectionOverlay,
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int tickCount)
+        {
+            if (!showDirectionOverlay || IsWithinMinimapImage(minimapPoint))
+            {
+                return Rectangle.Empty;
+            }
+
+            return DrawDirectionOverlayForPoint(
+                minimapPoint,
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                drawReflectionInfo,
+                renderParameters,
+                tickCount);
         }
 
         internal static bool ShouldRegisterTrackedUserHoverTargetForTesting(
@@ -1898,7 +1950,7 @@ namespace HaCreator.MapSimulator.UI
         internal static bool IsClientNpcHoverCandidateForTesting(bool templateHidesName, MapleBool instanceHideFlag)
         {
             return !templateHidesName
-                && instanceHideFlag != MapleBool.True;
+                && IsClientOptionalBoolZeroOrMissingForTesting(instanceHideFlag);
         }
 
         private static bool IsClientPortalHoverCandidate(PortalItem portal)
@@ -1920,8 +1972,15 @@ namespace HaCreator.MapSimulator.UI
             int targetMapId)
         {
             return IsClientMinimapTooltipPortalType(portalType)
-                && hideTooltip != MapleBool.True
+                && IsClientOptionalBoolZeroOrMissingForTesting(hideTooltip)
                 && targetMapId != -1;
+        }
+
+        internal static bool IsClientOptionalBoolZeroOrMissingForTesting(MapleBool value)
+        {
+            byte rawValue = value;
+            return rawValue == MapleBool.NotExist
+                || rawValue == MapleBool.False;
         }
 
         internal static bool IsClientMinimapTooltipPortalType(PortalType portalType)

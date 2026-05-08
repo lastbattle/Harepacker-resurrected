@@ -247,7 +247,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (TryBuildPacketOwnedNamedObjectMovingState(metadata, currTickCount, out PacketOwnedNamedObjectMovingState movingState))
+            if (TryBuildPacketOwnedNamedObjectMovingState(metadata, stateIndex, currTickCount, out PacketOwnedNamedObjectMovingState movingState))
             {
                 _packetStageTransitionNamedObjectMovingStates[mapObject] = movingState;
                 movingState.Apply(mapObject, currTickCount);
@@ -404,6 +404,7 @@ namespace HaCreator.MapSimulator
             IReadOnlyDictionary<int, int> AuthoredStateRepeatByIndex,
             PacketOwnedNamedObjectMotionProfile BaseMotionProfile,
             IReadOnlyDictionary<int, PacketOwnedNamedObjectMotionProfile> AuthoredStateMotionByIndex,
+            IReadOnlyDictionary<int, PacketOwnedNamedObjectMetadataLane> AuthoredStateMetadataLanesByIndex,
             PacketOwnedNamedObjectMetadataLane MetadataLanes,
             IReadOnlySet<int> AuthoredStateIndexes)
         {
@@ -452,6 +453,19 @@ namespace HaCreator.MapSimulator
                 return BaseMotionProfile;
             }
 
+            public PacketOwnedNamedObjectMetadataLane ResolveMetadataLanes(int stateIndex)
+            {
+                PacketOwnedNamedObjectMetadataLane lanes = MetadataLanes;
+                if (stateIndex >= 0 &&
+                    AuthoredStateMetadataLanesByIndex != null &&
+                    AuthoredStateMetadataLanesByIndex.TryGetValue(stateIndex, out PacketOwnedNamedObjectMetadataLane stateLanes))
+                {
+                    lanes |= stateLanes;
+                }
+
+                return lanes;
+            }
+
             public string BuildSelectedStateDebugSuffix(int stateIndex)
             {
                 List<string> parts = new();
@@ -471,6 +485,12 @@ namespace HaCreator.MapSimulator
                 if (motionProfile != null)
                 {
                     parts.Add($"selectedMotion={motionProfile.BuildDebugText()}");
+                }
+
+                PacketOwnedNamedObjectMetadataLane selectedLanes = ResolveMetadataLanes(stateIndex);
+                if (selectedLanes != MetadataLanes && selectedLanes != PacketOwnedNamedObjectMetadataLane.None)
+                {
+                    parts.Add($"selectedMetadata={FormatMetadataLanes(selectedLanes)}");
                 }
 
                 return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
@@ -504,6 +524,11 @@ namespace HaCreator.MapSimulator
                     if (AuthoredStateMotionByIndex?.Count > 0)
                     {
                         parts.Add($"stateMotion={string.Join("/", AuthoredStateMotionByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value.BuildDebugText()}"))}");
+                    }
+
+                    if (AuthoredStateMetadataLanesByIndex?.Count > 0)
+                    {
+                        parts.Add($"stateMetadata={string.Join("/", AuthoredStateMetadataLanesByIndex.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{FormatMetadataLanes(pair.Value)}"))}");
                     }
 
                     if (MetadataLanes != PacketOwnedNamedObjectMetadataLane.None)

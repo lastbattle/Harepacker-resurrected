@@ -1204,7 +1204,9 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon.CurrentAnimationBranchName);
             if (state.Summon.LastAttackAnimationStartTime == int.MinValue
                 || prepareDuration <= 0
-                || currentTime - state.Summon.LastAttackAnimationStartTime > prepareDuration)
+                || SummonRuntimeRules.ResolveClientTickElapsedMs(
+                    currentTime,
+                    state.Summon.LastAttackAnimationStartTime) > prepareDuration)
             {
                 state.Summon.LastAttackAnimationStartTime = currentTime;
             }
@@ -1652,7 +1654,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (TryResolveBodyContactDamage(state, currentTime))
                 {
-                    if (state.Summon.IsPendingRemoval && currentTime >= state.Summon.PendingRemovalTime)
+                    if (state.Summon.IsExpired(currentTime))
                     {
                         RemoveState(state);
                     }
@@ -1660,7 +1662,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (state.Summon.IsPendingRemoval && currentTime >= state.Summon.PendingRemovalTime)
+                if (state.Summon.IsExpired(currentTime))
                 {
                     RemoveState(state);
                     continue;
@@ -2064,7 +2066,7 @@ namespace HaCreator.MapSimulator.Pools
 
             float deltaTimeSeconds = state.LastPassiveMovementUpdateTime == int.MinValue
                 ? 0f
-                : Math.Max(0f, currentTime - state.LastPassiveMovementUpdateTime) / 1000f;
+                : SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, state.LastPassiveMovementUpdateTime) / 1000f;
             state.LastPassiveMovementUpdateTime = currentTime;
 
             summon.PreviousPositionX = summon.PositionX;
@@ -2092,7 +2094,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (PacketOwnedSummonUpdateRules.ShouldEmitPassiveEffectFromMotion(summon)
-                && currentTime - summon.LastPassiveEffectTime >= PacketOwnedSummonPassiveEffectCooldownMs)
+                && SummonRuntimeRules.HasClientTickElapsedAtLeast(
+                    currentTime,
+                    summon.LastPassiveEffectTime,
+                    PacketOwnedSummonPassiveEffectCooldownMs))
             {
                 float movedDistanceSq = Vector2.DistanceSquared(
                     new Vector2(summon.PreviousPositionX, summon.PreviousPositionY),
@@ -2553,7 +2558,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return oneTimeActionEndTime != int.MinValue
-                   && currentTime < oneTimeActionEndTime;
+                   && !SummonRuntimeRules.HasClientTickReached(currentTime, oneTimeActionEndTime);
         }
 
         private static bool IsSummonAnimationActive(SkillAnimation animation, int animationStartTime, int currentTime, int initialDelay = 0)
@@ -2563,9 +2568,9 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int elapsed = currentTime - animationStartTime;
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, animationStartTime);
             int duration = initialDelay + (GetSkillAnimationDuration(animation) ?? 0);
-            return elapsed >= 0 && duration > 0 && elapsed < duration;
+            return duration > 0 && elapsed < duration;
         }
 
         private static bool ShouldClearPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
@@ -2586,7 +2591,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int elapsed = Math.Max(0, currentTime - summon.LastHitPeriodUpdateTime);
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, summon.LastHitPeriodUpdateTime);
             summon.LastHitPeriodUpdateTime = currentTime;
             if (elapsed <= 0 || summon.HitPeriodRemainingMs == 0)
             {
@@ -2620,7 +2625,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             return summon?.IsPendingRemoval == true
                 && summon.RemovalAnimationStartTime != int.MinValue
-                && currentTime < summon.RemovalAnimationStartTime;
+                && !SummonRuntimeRules.HasClientTickReached(currentTime, summon.RemovalAnimationStartTime);
         }
 
         private static int ResolveSummonPendingRemovalActionDurationMs(ActiveSummon summon)
@@ -4473,7 +4478,7 @@ namespace HaCreator.MapSimulator.Pools
                    && candidate.InView
                    && !candidate.IsSuspended
                    && (exceptMobObjectId <= 0 || candidate.MobObjectId != exceptMobObjectId)
-                   && (wishMobId <= 0 || candidate.WishMobId == wishMobId || candidate.MobObjectId == wishMobId)
+                   && (wishMobId <= 0 || candidate.MobObjectId == wishMobId)
                    && (wishTemplateId <= 0 || candidate.TemplateId == wishTemplateId)
                    && (!candidate.IsDamagedByMob || includeEscortMob)
                    && (!candidate.IsEscortMob || includeEscortMob)
@@ -10630,7 +10635,8 @@ namespace HaCreator.MapSimulator.Pools
             if (totalDuration <= 0)
             {
                 animationTime = baseAnimationTime;
-                return summon.OneTimeActionFallbackEndTime > currentTime;
+                return summon.OneTimeActionFallbackEndTime == int.MinValue
+                       || !SummonRuntimeRules.HasClientTickReached(currentTime, summon.OneTimeActionFallbackEndTime);
             }
 
             int remainingDuration = Math.Max(0, totalDuration - Math.Min(baseAnimationTime, totalDuration));
@@ -10642,7 +10648,7 @@ namespace HaCreator.MapSimulator.Pools
             int fallbackStartTime = summon.OneTimeActionFallbackStartTime == int.MinValue
                 ? currentTime
                 : summon.OneTimeActionFallbackStartTime;
-            int elapsed = Math.Max(0, currentTime - fallbackStartTime);
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, fallbackStartTime);
             if (elapsed >= remainingDuration)
             {
                 return false;
@@ -10687,7 +10693,7 @@ namespace HaCreator.MapSimulator.Pools
             if (totalDuration <= 0)
             {
                 animationTime = Math.Max(0, clip.BaseAnimationTime);
-                return currentTime < clip.EndTime;
+                return !SummonRuntimeRules.HasClientTickReached(currentTime, clip.EndTime);
             }
 
             int baseAnimationTime = Math.Max(0, clip.BaseAnimationTime);
@@ -10697,8 +10703,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int elapsed = Math.Max(0, currentTime - clip.StartTime);
-            if (elapsed >= remainingDuration || currentTime >= clip.EndTime)
+            int elapsed = SummonRuntimeRules.ResolveClientTickElapsedMs(currentTime, clip.StartTime);
+            if (elapsed >= remainingDuration || SummonRuntimeRules.HasClientTickReached(currentTime, clip.EndTime))
             {
                 return false;
             }

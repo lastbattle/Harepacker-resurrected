@@ -2806,7 +2806,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string actionName in EnumeratePiecedShadowPartnerActionNames())
             {
-                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
+                    && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
@@ -2814,7 +2816,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string actionName in EnumerateRemappedShadowPartnerActionNames())
             {
-                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
+                    && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
@@ -2854,7 +2858,9 @@ namespace HaCreator.MapSimulator.Character
             // raw action codes 0..272 against Character/00002000.img, skipping raw code 55.
             foreach (string actionName in EnumerateClientInitializedShadowPartnerRawActionNames())
             {
-                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
+                    && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
@@ -2862,7 +2868,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string actionName in GenericHelperSurfaceActionNames)
             {
-                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && IsSupportedRawActionName(actionName, supportedRawActionNames)
+                    && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }

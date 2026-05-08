@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.AranSkillGuide,
             MapSimulatorWindowNames.Revive,
             MapSimulatorWindowNames.NpcShop,
+            MapSimulatorWindowNames.ShopScanner,
             MapSimulatorWindowNames.StoreBank,
             MapSimulatorWindowNames.BattleRecord,
             MapSimulatorWindowNames.LogoutGift,
