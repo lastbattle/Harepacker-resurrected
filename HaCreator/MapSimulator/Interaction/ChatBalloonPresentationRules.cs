@@ -45,6 +45,29 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int ADBoardButtonWidth = 12;
         internal const int ADBoardButtonHeight = 12;
         internal const int ADBoardPressedAlpha = 253;
+        internal static ChatBalloonCanvasSkinMetrics OrdinarySkinMetrics { get; } = new(
+            "UI/ChatBalloon.img/0",
+            CornerWidth: 6,
+            CornerHeight: 6,
+            CenterTileWidth: 12,
+            CenterTileHeight: 14,
+            ArrowWidth: 13,
+            ArrowHeight: 13,
+            ArrowOrigin: new Point(1, 0),
+            TextPaddingX: 6,
+            TextPaddingY: 6);
+
+        internal static ChatBalloonCanvasSkinMetrics ADBoardSkinMetrics { get; } = new(
+            "UI/ChatBalloon.img/adboard/0",
+            CornerWidth: 18,
+            CornerHeight: 19,
+            CenterTileWidth: 14,
+            CenterTileHeight: 14,
+            ArrowWidth: 14,
+            ArrowHeight: 23,
+            ArrowOrigin: Point.Zero,
+            TextPaddingX: 18,
+            TextPaddingY: 19);
 
         internal static string FormatMiniRoomCount(byte value)
         {
@@ -197,6 +220,37 @@ namespace HaCreator.MapSimulator.Interaction
             return MousePointCheck(layerBounds, buttonOffset, point);
         }
 
+        internal static ChatBalloonCanvasComposition ResolveCreateCanvasComposition(
+            ChatBalloonCanvasSkinMetrics skin,
+            int contentWidth,
+            int contentHeight,
+            bool includeArrow)
+        {
+            int bodyWidth = Math.Max(
+                skin.CenterTileWidth,
+                contentWidth + (skin.TextPaddingX * 2));
+            int bodyHeight = Math.Max(
+                skin.CenterTileHeight,
+                contentHeight + (skin.TextPaddingY * 2));
+            int fullWidth = bodyWidth + (skin.CornerWidth * 2);
+            int fullHeight = bodyHeight + (skin.CornerHeight * 2) + (includeArrow ? skin.ArrowHeight : 0);
+            Rectangle bodyBounds = new(
+                skin.CornerWidth,
+                skin.CornerHeight,
+                bodyWidth,
+                bodyHeight);
+            Point arrowPosition = includeArrow
+                ? new Point((fullWidth / 2) - skin.ArrowOrigin.X, bodyBounds.Bottom)
+                : Point.Zero;
+
+            return new ChatBalloonCanvasComposition(
+                skin.Path,
+                new Point(fullWidth, fullHeight),
+                bodyBounds,
+                arrowPosition,
+                includeArrow);
+        }
+
         private static int ResolveLongestTitlePrefixLength(
             string text,
             Func<string, float> measureWidth,
@@ -217,4 +271,23 @@ namespace HaCreator.MapSimulator.Interaction
             return bestLength;
         }
     }
+
+    internal readonly record struct ChatBalloonCanvasSkinMetrics(
+        string Path,
+        int CornerWidth,
+        int CornerHeight,
+        int CenterTileWidth,
+        int CenterTileHeight,
+        int ArrowWidth,
+        int ArrowHeight,
+        Point ArrowOrigin,
+        int TextPaddingX,
+        int TextPaddingY);
+
+    internal readonly record struct ChatBalloonCanvasComposition(
+        string SkinPath,
+        Point CanvasSize,
+        Rectangle BodyBounds,
+        Point ArrowPosition,
+        bool IncludesArrow);
 }

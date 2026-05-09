@@ -36,6 +36,12 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizOwnerOkButtonTop = 199;
         private const int InitialQuizOwnerOkButtonWidth = 47;
         private const int InitialQuizOwnerOkButtonHeight = 18;
+        private const int InitialQuizOwnerEditAllocationSize = 0xBC;
+        private const int InitialQuizOwnerOkButtonAllocationSize = 0xADC;
+        private const int InitialQuizOwnerZRefPointerOffset = 8;
+        private const int InitialQuizOwnerEditCreateOrder = 1;
+        private const int InitialQuizOwnerOkButtonCreateOrder = 2;
+        private const int InitialQuizOwnerOkButtonCreateOption = 0;
         private const int InitialQuizOwnerCreateWndLayer = 10;
         private const int InitialQuizOwnerCreateWndShow = 1;
         private const int InitialQuizOwnerCreateWndOption = 0;
@@ -166,7 +172,15 @@ namespace HaCreator.MapSimulator
             int Height,
             int StringPoolId,
             InitialQuizOwnerDrawTextFont Font,
-            string Text);
+            string Text)
+        {
+            internal string ClientCanvasMethodName => "IWzCanvas::DrawTextA";
+            internal int ClientMissingVariantArgumentCount => 2;
+            internal bool AcquiresBasicFontPerCall => true;
+            internal bool CreatesBstrPerCall => true;
+            internal bool ReleasesFontAfterCall => true;
+            internal bool ClearsVariantsAfterCall => true;
+        }
 
         internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
         {
@@ -182,6 +196,9 @@ namespace HaCreator.MapSimulator
             int FocusChildControlId,
             int EditControlId,
             int OkButtonControlId,
+            int EditAllocationSize,
+            int EditZRefPointerOffset,
+            int EditCreateOrder,
             bool EditVisible,
             bool EditEnabled,
             bool EditFocused,
@@ -208,8 +225,12 @@ namespace HaCreator.MapSimulator
             bool OkButtonVisible,
             bool OkButtonEnabled,
             bool OkButtonFocused,
+            int OkButtonAllocationSize,
+            int OkButtonZRefPointerOffset,
+            int OkButtonCreateOrder,
             int OkButtonX,
             int OkButtonY,
+            int OkButtonCreateOption,
             int OkButtonVisualX,
             int OkButtonVisualY,
             int OkButtonVisualWidth,
@@ -226,6 +247,9 @@ namespace HaCreator.MapSimulator
                 FocusChildControlId: 0,
                 EditControlId: 0,
                 OkButtonControlId: 0,
+                EditAllocationSize: 0,
+                EditZRefPointerOffset: 0,
+                EditCreateOrder: 0,
                 EditVisible: false,
                 EditEnabled: false,
                 EditFocused: false,
@@ -252,8 +276,12 @@ namespace HaCreator.MapSimulator
                 OkButtonVisible: false,
                 OkButtonEnabled: false,
                 OkButtonFocused: false,
+                OkButtonAllocationSize: 0,
+                OkButtonZRefPointerOffset: 0,
+                OkButtonCreateOrder: 0,
                 OkButtonX: 0,
                 OkButtonY: 0,
+                OkButtonCreateOption: 0,
                 OkButtonVisualX: 0,
                 OkButtonVisualY: 0,
                 OkButtonVisualWidth: 0,
@@ -1882,6 +1910,9 @@ namespace HaCreator.MapSimulator
                 FocusChildControlId: focusChildControlId,
                 EditControlId: editControlId,
                 OkButtonControlId: okButtonControlId,
+                EditAllocationSize: InitialQuizOwnerEditAllocationSize,
+                EditZRefPointerOffset: InitialQuizOwnerZRefPointerOffset,
+                EditCreateOrder: InitialQuizOwnerEditCreateOrder,
                 EditVisible: editVisible,
                 EditEnabled: editEnabled,
                 EditFocused: editVisible && editEnabled && focusTarget == InitialQuizOwnerFocusTarget.Input,
@@ -1908,8 +1939,12 @@ namespace HaCreator.MapSimulator
                 OkButtonVisible: okButtonVisible,
                 OkButtonEnabled: okButtonEnabled,
                 OkButtonFocused: okButtonEnabled && focusTarget == InitialQuizOwnerFocusTarget.OkButton,
+                OkButtonAllocationSize: InitialQuizOwnerOkButtonAllocationSize,
+                OkButtonZRefPointerOffset: InitialQuizOwnerZRefPointerOffset,
+                OkButtonCreateOrder: InitialQuizOwnerOkButtonCreateOrder,
                 OkButtonX: InitialQuizOwnerOkButtonLeft,
                 OkButtonY: InitialQuizOwnerOkButtonTop,
+                OkButtonCreateOption: InitialQuizOwnerOkButtonCreateOption,
                 OkButtonVisualX: okButtonVisualBounds.X,
                 OkButtonVisualY: okButtonVisualBounds.Y,
                 OkButtonVisualWidth: okButtonVisualBounds.Width,

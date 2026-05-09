@@ -54,6 +54,12 @@ namespace HaCreator.MapSimulator.Character
         private const int BlockedWeaponStickerItemIdA = 1702099;
         private const int BlockedWeaponStickerItemIdB = 1702190;
         private const int MechanicTamingMobItemId = 1932016;
+        private const int ClientMorphImagePathStringPoolId = 0x0DEE;
+        private const string ClientMorphImagePathFallbackFormat = "Morph/{0:D4}.img";
+        private const int ClientMorphInfoStringPoolId = 0x03D5;
+        private const string ClientMorphInfoFallbackName = "info";
+        private const int ClientMorphLinkStringPoolId = 0x03D6;
+        private const string ClientMorphLinkFallbackName = "link";
         private const int ClientMorphReplayTailStringPoolId = 0x049F;
         private const string ClientMorphReplayTailFallbackName = "zigzag";
         private const int ClientMorphFrameDelayStringPoolId = 0x1AA9;
@@ -303,7 +309,7 @@ namespace HaCreator.MapSimulator.Character
                 return cached;
             }
 
-            string imageName = morphTemplateId.ToString("D4") + ".img";
+            string imageName = GetClientMorphImageName(morphTemplateId);
             WzImage morphImage = Program.FindImage("Morph", imageName);
             MorphImageEntry morphImageEntry = GetMorphImageEntry(morphTemplateId, morphImage);
             if (morphImageEntry == null || morphImageEntry.ActionNodes.Count == 0)
@@ -379,8 +385,8 @@ namespace HaCreator.MapSimulator.Character
                 foreach (int candidateTemplateId in EnumerateMorphTemplateCandidates(morphTemplateId, exactMorphImage))
                 {
                     WzImage candidateImage = candidateTemplateId == morphTemplateId
-                        ? exactMorphImage ?? Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img")
-                        : Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img");
+                        ? exactMorphImage ?? Program.FindImage("Morph", GetClientMorphImageName(candidateTemplateId))
+                        : Program.FindImage("Morph", GetClientMorphImageName(candidateTemplateId));
                     if (candidateImage == null)
                     {
                         continue;
@@ -760,6 +766,62 @@ namespace HaCreator.MapSimulator.Character
             return GetClientMorphReplayTailPropertyName();
         }
 
+        internal static string GetClientMorphImageNameForTesting(int morphTemplateId)
+        {
+            return GetClientMorphImageName(morphTemplateId);
+        }
+
+        internal static string GetClientMorphInfoPropertyNameForTesting()
+        {
+            return GetClientMorphInfoPropertyName();
+        }
+
+        internal static string GetClientMorphLinkPropertyNameForTesting()
+        {
+            return GetClientMorphLinkPropertyName();
+        }
+
+        internal static int GetMorphLinkTemplateIdForTesting(WzImage morphImage)
+        {
+            return GetMorphLinkTemplateId(morphImage);
+        }
+
+        private static string GetClientMorphImageName(int morphTemplateId)
+        {
+            if (morphTemplateId <= 0)
+            {
+                return null;
+            }
+
+            string morphImagePathFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                ClientMorphImagePathStringPoolId,
+                ClientMorphImagePathFallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            string morphImagePath = string.Format(
+                CultureInfo.InvariantCulture,
+                morphImagePathFormat,
+                morphTemplateId);
+            const string morphPathPrefix = "Morph/";
+            return morphImagePath.StartsWith(morphPathPrefix, StringComparison.OrdinalIgnoreCase)
+                ? morphImagePath.Substring(morphPathPrefix.Length)
+                : morphImagePath.TrimStart('/', '\\');
+        }
+
+        private static string GetClientMorphInfoPropertyName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientMorphInfoStringPoolId,
+                ClientMorphInfoFallbackName);
+        }
+
+        private static string GetClientMorphLinkPropertyName()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientMorphLinkStringPoolId,
+                ClientMorphLinkFallbackName);
+        }
+
         private static string GetClientMorphFrameDelayPropertyName()
         {
             return MapleStoryStringPool.GetOrFallback(
@@ -837,7 +899,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                WzImage candidateImage = Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img");
+                WzImage candidateImage = Program.FindImage("Morph", GetClientMorphImageName(candidateTemplateId));
                 if (candidateImage == null)
                 {
                     continue;
@@ -937,7 +999,7 @@ namespace HaCreator.MapSimulator.Character
 
                 WzImage candidateImage = candidateTemplateId == morphTemplateId
                     ? exactMorphImage
-                    : Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img");
+                    : Program.FindImage("Morph", GetClientMorphImageName(candidateTemplateId));
                 if (candidateImage == null)
                 {
                     continue;
@@ -1052,7 +1114,7 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            WzImage morphImage = exactMorphImage ?? Program.FindImage("Morph", morphTemplateId.ToString("D4") + ".img");
+            WzImage morphImage = exactMorphImage ?? Program.FindImage("Morph", GetClientMorphImageName(morphTemplateId));
             int linkedTemplateId = GetMorphLinkTemplateId(morphImage);
             if (linkedTemplateId <= 0 || linkedTemplateId == morphTemplateId)
             {
@@ -1144,17 +1206,18 @@ namespace HaCreator.MapSimulator.Character
 
             morphImage.ParseImage();
 
-            if (morphImage["info"] is not WzSubProperty infoNode)
+            if (morphImage[GetClientMorphInfoPropertyName()] is not WzSubProperty infoNode)
             {
                 return 0;
             }
 
-            if (GetIntValue(infoNode["link"]) is int linkedTemplateId && linkedTemplateId > 0)
+            string linkPropertyName = GetClientMorphLinkPropertyName();
+            if (GetIntValue(infoNode[linkPropertyName]) is int linkedTemplateId && linkedTemplateId > 0)
             {
                 return linkedTemplateId;
             }
 
-            if (GetStringValue(infoNode["link"]) is string linkedTemplateText
+            if (GetStringValue(infoNode[linkPropertyName]) is string linkedTemplateText
                 && int.TryParse(linkedTemplateText, out linkedTemplateId)
                 && linkedTemplateId > 0)
             {
@@ -1173,7 +1236,7 @@ namespace HaCreator.MapSimulator.Character
 
             morphImage.ParseImage();
 
-            if (morphImage["info"] is not WzSubProperty infoNode)
+            if (morphImage[GetClientMorphInfoPropertyName()] is not WzSubProperty infoNode)
             {
                 return false;
             }

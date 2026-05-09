@@ -462,7 +462,7 @@ namespace HaCreator.MapSimulator.UI
             DrawWrapped(sprite, _runtime.MiniRoomOmokButtonStateSummary, statePanel.X + 12, ref buttonStateY, statePanel.Width - 24, ValueColor, 0.48f);
 
             DrawText(sprite, "COmokDlg", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
-            DrawOmokDialogBanner(sprite, new Rectangle(notePanel.X + 10, notePanel.Y + 28, notePanel.Width - 20, 24));
+            DrawOmokDialogBanner(sprite, new Rectangle(notePanel.X + 178, notePanel.Y + 12, notePanel.Width - 188, 24));
             DrawOmokDialogInfoPanels(sprite, notePanel);
 
             DrawText(sprite, "Chat", new Vector2(chatPanel.X + 12, chatPanel.Y + 10), HeaderColor, 0.68f);
@@ -590,9 +590,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawOmokDialogInfoPanels(SpriteBatch sprite, Rectangle notePanel)
         {
-            Rectangle info0Rect = new Rectangle(notePanel.X + 10, notePanel.Y + 56, (notePanel.Width / 2) - 15, 20);
-            Rectangle info1Rect = new Rectangle(info0Rect.Right + 10, info0Rect.Y, notePanel.Right - info0Rect.Right - 20, 20);
-            Rectangle buttonRect = new Rectangle(notePanel.X + 10, notePanel.Y + 76, notePanel.Width - 20, 18);
+            Rectangle info0Rect = new Rectangle(notePanel.X + 10, notePanel.Y + 16, 77, 64);
+            Rectangle info1Rect = new Rectangle(info0Rect.Right + 6, info0Rect.Y, 77, 64);
+            Rectangle buttonRect = new Rectangle(notePanel.X + 178, notePanel.Y + 42, notePanel.Width - 188, 18);
 
             if (_miniRoomOmokInfo0Texture != null)
             {
@@ -613,9 +613,9 @@ namespace HaCreator.MapSimulator.UI
             }
             sprite.Draw(_panelTexture, buttonRect, new Color(225, 221, 210, 196));
 
-            DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo0Text, 42), new Vector2(info0Rect.X + 4, info0Rect.Y + 3), ValueColor, 0.42f);
-            DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo1Text, 42), new Vector2(info1Rect.X + 4, info1Rect.Y + 3), MutedColor, 0.42f);
-            DrawText(sprite, Truncate(_runtime.MiniRoomOmokButtonStateSummary, 92), new Vector2(buttonRect.X + 4, buttonRect.Y + 2), HeaderColor, 0.4f);
+            DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo0Text, 24), new Vector2(info0Rect.X + 4, info0Rect.Y + 4), ValueColor, 0.38f);
+            DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo1Text, 24), new Vector2(info1Rect.X + 4, info1Rect.Y + 4), MutedColor, 0.38f);
+            DrawText(sprite, Truncate(_runtime.MiniRoomOmokButtonStateSummary, 54), new Vector2(buttonRect.X + 4, buttonRect.Y + 2), HeaderColor, 0.4f);
         }
 
         private Color ResolveOmokDialogBannerColor()

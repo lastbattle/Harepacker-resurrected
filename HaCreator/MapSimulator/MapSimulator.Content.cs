@@ -248,6 +248,7 @@ namespace HaCreator.MapSimulator
                 WzBinaryProperty portalSound = (WzBinaryProperty)soundGameImage["Portal"];
                 if (portalSound != null)
                 {
+                    _portalSoundProperty = portalSound;
                     _soundManager.RegisterSound("Portal", portalSound);
                 }
 
@@ -256,6 +257,7 @@ namespace HaCreator.MapSimulator
                 WzBinaryProperty jumpSound = (WzBinaryProperty)soundGameImage["Jump"];
                 if (jumpSound != null)
                 {
+                    _jumpSoundProperty = jumpSound;
                     _soundManager.RegisterSound("Jump", jumpSound);
                 }
 
@@ -264,6 +266,7 @@ namespace HaCreator.MapSimulator
                 WzBinaryProperty dropItemSound = (WzBinaryProperty)soundGameImage["DropItem"];
                 if (dropItemSound != null)
                 {
+                    _dropItemSoundProperty = dropItemSound;
                     _soundManager.RegisterSound("DropItem", dropItemSound);
                 }
 
@@ -272,12 +275,14 @@ namespace HaCreator.MapSimulator
                 WzBinaryProperty pickUpItemSound = (WzBinaryProperty)soundGameImage["PickUpItem"];
                 if (pickUpItemSound != null)
                 {
+                    _pickUpItemSoundProperty = pickUpItemSound;
                     _soundManager.RegisterSound("PickUpItem", pickUpItemSound);
                 }
 
                 WzBinaryProperty loginEntryGameInSound = (WzBinaryProperty)soundGameImage["GameIn"];
                 if (loginEntryGameInSound != null)
                 {
+                    _loginEntryGameInSoundProperty = loginEntryGameInSound;
                     _soundManager.RegisterSound(LoginEntryGameInSoundKey, loginEntryGameInSound);
                 }
             }
@@ -287,6 +292,7 @@ namespace HaCreator.MapSimulator
             WzBinaryProperty cooldownNoticeSound = soundUiImage?["DlgNotice"] as WzBinaryProperty;
             if (cooldownNoticeSound != null)
             {
+                _skillCooldownNoticeSoundProperty = cooldownNoticeSound;
                 _soundManager.RegisterSound(SkillCooldownNoticeSoundKey, cooldownNoticeSound);
             }
 
@@ -297,6 +303,7 @@ namespace HaCreator.MapSimulator
                 ?? soundUiImage?["BtMouseClick"] as WzBinaryProperty;
             if (bookLifecycleSound != null)
             {
+                _bookDialogLifecycleSoundProperty = bookLifecycleSound;
                 _soundManager.RegisterSound(BookDialogLifecycleSoundKey, bookLifecycleSound);
             }
 
@@ -314,6 +321,7 @@ namespace HaCreator.MapSimulator
                     out _,
                     strictClientSoundFamily: true))
             {
+                _memoryGameReadyClickSoundProperty = miniGameReadySound;
                 _soundManager.RegisterSound(MemoryGameReadyClickSoundKey, miniGameReadySound);
             }
 
@@ -328,6 +336,7 @@ namespace HaCreator.MapSimulator
                     out _,
                     strictClientSoundFamily: true))
             {
+                _memoryGameTimerWarningSoundProperty = miniGameTimerSound;
                 _soundManager.RegisterSound(MemoryGameTimerWarningSoundKey, miniGameTimerSound);
             }
 
@@ -503,6 +512,7 @@ namespace HaCreator.MapSimulator
 
                     MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
                     npcItem?.SetAnimationEffects(_animationEffects);
+                    ConfigureMobActionSpeechConditionContext(npcItem);
                     ConfigureMobAutoSkillSelection(npcItem);
 
 
@@ -975,6 +985,7 @@ namespace HaCreator.MapSimulator
             _npcInteractionOverlay = new NpcInteractionOverlay(GraphicsDevice);
             _npcInteractionOverlay.SetFont(_fontChat);
             RegisterChatCommands();
+            RegisterChatBalloonPresentationCommand();
             RegisterRemoteUserChatCommand();
             RegisterSummonedPacketChatCommand();
             RegisterMobAttackPacketChatCommand();
@@ -1675,6 +1686,7 @@ namespace HaCreator.MapSimulator
                         continue;
                     MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
                     mobItem?.SetAnimationEffects(_animationEffects);
+                    ConfigureMobActionSpeechConditionContext(mobItem);
                     ConfigureMobAutoSkillSelection(mobItem);
                     mapObjects_Mobs.Add(mobItem);
                     loadedCount++;
@@ -2244,6 +2256,7 @@ namespace HaCreator.MapSimulator
             statusBarChatUI.ImeCandidateListRefreshedRequested = state => _chat.HandleImeCandidateList(state);
             statusBarChatUI.ImeCandidateSelectedRequested = (listIndex, candidateIndex) =>
                 WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window?.Handle ?? IntPtr.Zero, listIndex, candidateIndex);
+            statusBarChatUI.ImeEditStateReleasedRequested = () => _chat.ReleaseImeEditStateAfterNativeCandidateSelection();
         }
     }
 }

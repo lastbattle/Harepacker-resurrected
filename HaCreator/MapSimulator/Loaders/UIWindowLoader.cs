@@ -2099,6 +2099,14 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D loginNoticeBarTexture = LoadCanvasTexture(loginNoticeProperty?["backgrnd"] as WzSubProperty, "2", device)
                                               ?? loginNoticeTexture;
             WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            Texture2D fieldMessageBoxChalkboardComposeTexture = CreateUtilDlgNoticeFrameTexture(
+                    utilDlgProperty,
+                    uiWindowImage,
+                    uiWindow2Image,
+                    device,
+                    width: 312,
+                    height: 132)
+                ?? frameTexture;
             WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty
                                               ?? uiWindowImage?["FadeYesNo"] as WzSubProperty;
             Texture2D fadeYesNoTexture = LoadCanvasTexture(fadeYesNoProperty, "backgrnd7", device)
@@ -2133,6 +2141,7 @@ namespace HaCreator.MapSimulator.Loaders
                 [LoginUtilityDialogFrameVariant.LoginNoticeBar] = new DXObject(0, 0, loginNoticeBarTexture, 0),
                 [LoginUtilityDialogFrameVariant.InGameFadeYesNo] = new DXObject(0, 0, fadeYesNoTexture, 0),
                 [LoginUtilityDialogFrameVariant.UtilDlgNotice] = new DXObject(0, 0, frameTexture, 0),
+                [LoginUtilityDialogFrameVariant.FieldMessageBoxChalkboardCompose] = new DXObject(0, 0, fieldMessageBoxChalkboardComposeTexture, 0),
             };
 
             LoginUtilityDialogWindow window = new LoginUtilityDialogWindow(
@@ -2991,7 +3000,14 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            ChannelSelectWindow channelSelectWindow = CreateChannelSelectWindow(loginWorldSelectProperty, channelProperty, clickSound, overSound, device, worldBadges);
+            ChannelSelectWindow channelSelectWindow = CreateChannelSelectWindow(
+                loginWorldSelectProperty,
+                loginImage?["WorldNotice"] as WzSubProperty,
+                channelProperty,
+                clickSound,
+                overSound,
+                device,
+                worldBadges);
             if (channelSelectWindow != null)
             {
                 channelSelectWindow.Position = new Point(Math.Max(24, (screenWidth / 2) - 185), Math.Max(24, (screenHeight / 2) - 84));
@@ -3225,6 +3241,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static ChannelSelectWindow CreateChannelSelectWindow(
             WzSubProperty loginWorldSelectProperty,
+            WzSubProperty worldNoticeProperty,
             WzSubProperty channelProperty,
             WzBinaryProperty clickSound,
             WzBinaryProperty overSound,
@@ -3329,11 +3346,39 @@ namespace HaCreator.MapSimulator.Loaders
                 gaugeTexture,
                 selectionFrames,
                 150,
-                new Dictionary<int, Texture2D>(),
+                LoadChannelPopulationLevelBadges(worldNoticeProperty, device),
                 changeButton,
                 cancelButton,
                 channelButtons,
                 worldBadges);
+        }
+
+        private static Dictionary<int, Texture2D> LoadChannelPopulationLevelBadges(
+            WzSubProperty worldNoticeProperty,
+            GraphicsDevice device)
+        {
+            Dictionary<int, Texture2D> badges = new();
+            WzSubProperty populatedProperty = worldNoticeProperty?["Populated"] as WzSubProperty;
+            if (populatedProperty == null || device == null)
+            {
+                return badges;
+            }
+
+            foreach (WzImageProperty property in populatedProperty.WzProperties)
+            {
+                if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int populationLevel))
+                {
+                    continue;
+                }
+
+                Texture2D texture = LoadCanvasTexture(populatedProperty, property.Name, device);
+                if (texture != null)
+                {
+                    badges[populationLevel] = texture;
+                }
+            }
+
+            return badges;
         }
 
 
@@ -4854,9 +4899,9 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject coinButton = LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device);
             UIObject acceptButton = LoadButton(tradeProperty, "BtClame", clickSound, overSound, device);
             UIObject enterButton = LoadButton(tradeProperty, "BtEnter", clickSound, overSound, device);
-            window.BindButton(tradeButton, () => runtime.TryApplyTradingRoomLocalTradeRequest(out _, out _));
+            window.BindButton(tradeButton, runtime.SubmitTradingRoomTradeButton);
             window.BindButton(resetButton, runtime.SubmitTradingRoomResetButton);
-            window.BindButton(coinButton, runtime.IncreaseTradeOffer);
+            window.BindButton(coinButton, runtime.SubmitTradingRoomCoinButton);
             window.BindButton(acceptButton, runtime.SubmitTradingRoomClaimButton);
             window.BindButton(enterButton, runtime.SubmitTradingRoomEnterButton);
             window.RegisterTradingRoomButtons(tradeButton, resetButton, coinButton, acceptButton, enterButton);

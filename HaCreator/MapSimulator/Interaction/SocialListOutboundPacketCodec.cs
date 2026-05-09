@@ -106,6 +106,11 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListOutboundRequestKind.AllianceWithdraw:
                     return;
 
+                case SocialListOutboundRequestKind.FriendAdd:
+                    writer.WriteMapleString(NormalizeTarget(draft.TargetName));
+                    writer.WriteMapleString(NormalizeTarget(draft.GroupName));
+                    return;
+
                 case SocialListOutboundRequestKind.PartyWithdraw:
                     writer.Write((byte)0);
                     return;

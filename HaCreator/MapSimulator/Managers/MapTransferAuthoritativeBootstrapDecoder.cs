@@ -1384,30 +1384,6 @@ namespace HaCreator.MapSimulator.Managers
         {
             offset = 0;
 
-            if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0 &&
-                !TrySkipInt16ValueRecordGroup(payload, offset, out offset))
-            {
-                return false;
-            }
-
-            if ((characterDataFlags & CharacterDataInt16ValueRecordFlag) != 0 &&
-                !TrySkipInt16ValueRecordGroup(payload, offset, out offset))
-            {
-                return false;
-            }
-
-            if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0 &&
-                !TrySkipQuestRecordGroup(payload, offset, out offset))
-            {
-                return false;
-            }
-
-            if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0 &&
-                !TrySkipShortFileTimeRecordGroup(payload, offset, out offset))
-            {
-                return false;
-            }
-
             if ((characterDataFlags & CharacterDataNewYearCardRecordFlag) != 0 &&
                 !TrySkipNewYearCardRecordGroup(payload, offset, out offset))
             {

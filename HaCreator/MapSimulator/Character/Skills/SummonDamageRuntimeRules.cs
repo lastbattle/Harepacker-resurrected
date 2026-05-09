@@ -99,12 +99,21 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static int ResolveBodyContactRelativeMotionX(
             float mobCurrentX,
-            float mobVelocityX,
+            float mobPreviousX,
             float summonCurrentX,
-            float summonPreviousX)
+            float summonPreviousX,
+            float summonCurrentY = 0f,
+            float summonPreviousY = 0f,
+            bool summonOnLadderOrRope = false)
         {
+            if (summonOnLadderOrRope && summonCurrentY - summonPreviousY < 0f)
+            {
+                return int.MaxValue;
+            }
+
+            float mobDeltaX = mobCurrentX - mobPreviousX;
             float summonDeltaX = summonCurrentX - summonPreviousX;
-            return (int)MathF.Round(mobVelocityX - summonDeltaX);
+            return (int)MathF.Round(mobDeltaX - summonDeltaX);
         }
 
         public static bool? ResolveBodyContactHitFacingRight(int relativeMotionX)

@@ -556,6 +556,8 @@ namespace HaCreator.MapSimulator.Interaction
         private IInventoryRuntime _inventoryRuntime;
         public Func<LoginAvatarLook, CharacterBuild> AvatarBuildResolver { get; set; }
         public Action<string, int> SocialChatObserved { get; set; }
+        public Func<SocialRoomRuntime, string> TradingRoomTradeButtonRequested { get; set; }
+        public Func<SocialRoomRuntime, string> TradingRoomCoinButtonRequested { get; set; }
 
         private SocialRoomRuntime(
             SocialRoomKind kind,
@@ -587,7 +589,7 @@ namespace HaCreator.MapSimulator.Interaction
             _inventoryEscrow = new List<InventoryEscrowEntry>();
             _remoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
             _soldItems = new List<SocialRoomSoldItemEntry>();
-            _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex)).ToList()
+            _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex, item.BundleSetCount)).ToList()
                 ?? new List<SocialRoomItemEntry>();
             _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
                 ?? new List<SocialRoomOccupant>();
@@ -755,6 +757,7 @@ namespace HaCreator.MapSimulator.Interaction
                 LocalSeatIndex = _miniRoomLocalSeatIndex,
                 PersonalShopTotalSoldGross = _personalShopTotalSoldGross,
                 PersonalShopTotalReceivedNet = _personalShopTotalReceivedNet,
+                InventoryBackedRows = _inventoryBackedRows,
                 MiniRoomModeIndex = _miniRoomModeIndex,
                 MiniRoomWagerAmount = _miniRoomWagerAmount,
                 MiniRoomOmokInProgress = _miniRoomOmokInProgress,
@@ -840,6 +843,7 @@ namespace HaCreator.MapSimulator.Interaction
                         ItemName = item.ItemName,
                         ItemId = item.ItemId,
                         Quantity = item.Quantity,
+                        BundleSetCount = item.BundleSetCount,
                         MesoAmount = item.MesoAmount,
                         Detail = item.Detail,
                         IsLocked = item.IsLocked,
@@ -909,7 +913,7 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 _inventoryEscrow.Clear();
-                _inventoryBackedRows = false;
+                _inventoryBackedRows = source?.InventoryBackedRows ?? _defaultSnapshot.InventoryBackedRows;
 
                 RoomTitle = source?.RoomTitle ?? _defaultSnapshot.RoomTitle;
                 OwnerName = source?.OwnerName ?? _defaultSnapshot.OwnerName;
@@ -998,7 +1002,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _items.Clear();
                 foreach (SocialRoomItemSnapshot item in (source?.Items?.Count > 0 ? source.Items : _defaultSnapshot.Items) ?? Enumerable.Empty<SocialRoomItemSnapshot>())
                 {
-                    _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex));
+                    _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex, item.BundleSetCount));
                 }
 
                 _soldItems.Clear();
@@ -6435,7 +6439,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokInProgress = true;
             _miniRoomOmokCurrentTurnIndex = Math.Clamp(firstTurnSeat, 0, 1);
             _miniRoomOmokWinnerIndex = -1;
-            ClearOmokDialogRequests();
+            ClearOmokDialogRequests(clearMatchRetreatRequest: true);
             ResetOmokTurnClock();
             RoomState = "Omok in progress";
             StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} opened the Omok round from a packet-backed start.";
@@ -6520,8 +6524,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             _miniRoomOmokCurrentTurnIndex = Math.Clamp(nextTurnSeat, 0, 1);
             _miniRoomOmokWinnerIndex = -1;
-            _miniRoomOmokRetreatRequestSentMatch = _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
             ClearOmokDialogRequests();
+            _miniRoomOmokRetreatRequestSentMatch = _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
             ResetOmokTurnClock();
             StartOmokStoneAnimation();
             UpdateLastOmokMoveFromHistory();
@@ -6537,7 +6541,7 @@ namespace HaCreator.MapSimulator.Interaction
         private void ApplyOmokGameResultPacket(int resultType, int winnerSeat)
         {
             _miniRoomOmokInProgress = false;
-            ClearOmokDialogRequests();
+            ClearOmokDialogRequests(clearMatchRetreatRequest: true);
             ClearOmokPendingPrompt();
             if (resultType == 1)
             {
@@ -6604,11 +6608,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int normalizedBundles = Math.Max(1, purchasedBundles);
-            int quantitySold = normalizedBundles * Math.Max(1, entry.Quantity);
+            int quantitySold = normalizedBundles * Math.Max(1, entry.BundleSetCount);
             int grossMesosReceived = Math.Max(0, normalizedBundles * entry.MesoAmount);
             int taxMesos = GetPersonalShopTax(grossMesosReceived);
             int netMesosReceived = Math.Max(0, grossMesosReceived - taxMesos);
-            entry.Update($"{entry.Detail} | Packet sold {normalizedBundles} bundle(s) to {buyerName}", entry.Quantity, entry.MesoAmount, entry.IsLocked, entry.IsClaimed);
+            entry.Update($"{entry.Detail} | Packet sold {normalizedBundles} bundle(s) to {buyerName}", entry.Quantity, entry.MesoAmount, entry.IsLocked, entry.IsClaimed, entry.BundleSetCount);
             _personalShopTotalSoldGross += grossMesosReceived;
             _personalShopTotalReceivedNet += netMesosReceived;
             MesoAmount += netMesosReceived;
@@ -6679,7 +6683,8 @@ namespace HaCreator.MapSimulator.Interaction
                     normalizedPrice,
                     detail,
                     itemId: itemId,
-                    packetSlotIndex: normalizedSlotIndex);
+                    packetSlotIndex: normalizedSlotIndex,
+                    bundleSetCount: normalizedQuantity);
                 _items.Add(entry);
             }
             else if (entry.ItemId != itemId)
@@ -6693,13 +6698,14 @@ namespace HaCreator.MapSimulator.Interaction
                     normalizedPrice,
                     detail,
                     itemId: itemId,
-                    packetSlotIndex: normalizedSlotIndex);
+                    packetSlotIndex: normalizedSlotIndex,
+                    bundleSetCount: normalizedQuantity);
                 _items.Insert(Math.Clamp(entryListIndex, 0, _items.Count), entry);
             }
             else
             {
                 entry.UpdatePacketIdentity(itemId, normalizedSlotIndex);
-                entry.Update(detail, normalizedQuantity, normalizedPrice, isLocked: false, isClaimed: false);
+                entry.Update(detail, normalizedQuantity, normalizedPrice, isLocked: false, isClaimed: false, normalizedQuantity);
             }
 
             _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
@@ -6762,7 +6768,8 @@ namespace HaCreator.MapSimulator.Interaction
                     bundlePrice,
                     detail,
                     itemId: row.Item.ItemId,
-                    packetSlotIndex: packetSlotIndex));
+                    packetSlotIndex: packetSlotIndex,
+                    bundleSetCount: bundleSetCount));
             }
 
             NormalizeActiveMerchantPacketSlots();
@@ -7129,6 +7136,11 @@ namespace HaCreator.MapSimulator.Interaction
             _entrustedChildDialogStatus = _blockedVisitors.Count < 20
                 ? "CBlackListDlg::OnCreate opened the dedicated blacklist owner. Add stays enabled while the client-side count remains below 20."
                 : "CBlackListDlg::OnCreate opened the dedicated blacklist owner at the client-side 20-name add limit.";
+            if (!string.IsNullOrWhiteSpace(pendingCompletion))
+            {
+                _entrustedChildDialogStatus = $"{_entrustedChildDialogStatus}{pendingCompletion}";
+            }
+
             StatusMessage = $"Applied entrusted-shop blacklist packet with {_blockedVisitors.Count} entr{(_blockedVisitors.Count == 1 ? "y" : "ies")} and opened {ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist)}.{pendingCompletion}";
             PersistState();
             message = StatusMessage;
@@ -7504,9 +7516,6 @@ namespace HaCreator.MapSimulator.Interaction
             _entrustedBlacklistNotice = null;
             if (TryDispatchEntrustedBlacklistMutationOutbound(resolvedName, add: true, out string outboundMessage))
             {
-                ApplyEntrustedBlacklistAddLocalPreview(
-                    resolvedName,
-                    $"{outboundMessage} CBlackListDlg::AddBlackList inserted the name into the child list immediately; waiting for server subtype {EntrustedShopBlackListResultPacketType} to reconcile the local row.");
                 message = outboundMessage;
                 return true;
             }
@@ -7550,9 +7559,6 @@ namespace HaCreator.MapSimulator.Interaction
             string removedName = _blockedVisitors[_entrustedBlacklistSelectedIndex];
             if (TryDispatchEntrustedBlacklistMutationOutbound(removedName, add: false, out string outboundMessage))
             {
-                ApplyEntrustedBlacklistDeleteLocalPreview(
-                    removedName,
-                    $"{outboundMessage} CBlackListDlg::DeleteBlackList removed the child-list row immediately; waiting for server subtype {EntrustedShopBlackListResultPacketType} to reconcile the local row.");
                 message = outboundMessage;
                 return true;
             }
@@ -8096,7 +8102,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokInProgress = true;
                 _miniRoomOmokCurrentTurnIndex = 0;
                 _miniRoomOmokWinnerIndex = -1;
-                ClearOmokDialogRequests();
+                ClearOmokDialogRequests(clearMatchRetreatRequest: true);
                 ResetOmokTurnClock();
                 RoomState = "Omok in progress";
                 StatusMessage = $"{OwnerName} has the first Omok turn with black stones.";
@@ -9044,6 +9050,46 @@ namespace HaCreator.MapSimulator.Interaction
             TryIncreaseTradeOffer(out _);
         }
 
+        public void SubmitTradingRoomTradeButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            string callbackMessage = TradingRoomTradeButtonRequested?.Invoke(this);
+            if (!string.IsNullOrWhiteSpace(callbackMessage))
+            {
+                StatusMessage = callbackMessage;
+                PersistState();
+                return;
+            }
+
+            if (!TryApplyTradingRoomLocalTradeRequest(out _, out string message))
+            {
+                StatusMessage = message;
+                PersistState();
+            }
+        }
+
+        public void SubmitTradingRoomCoinButton()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            string callbackMessage = TradingRoomCoinButtonRequested?.Invoke(this);
+            if (!string.IsNullOrWhiteSpace(callbackMessage))
+            {
+                StatusMessage = callbackMessage;
+                PersistState();
+                return;
+            }
+
+            IncreaseTradeOffer();
+        }
+
         public bool TryIncreaseTradeOffer(out string message)
         {
             message = null;
@@ -9349,7 +9395,7 @@ namespace HaCreator.MapSimulator.Interaction
             _items.Clear();
             foreach (SocialRoomItemEntry item in _defaultItems)
             {
-                _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, false, false));
+                _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, false, false, item.ItemId, item.PacketSlotIndex, item.BundleSetCount));
             }
 
             _occupants.Clear();
@@ -9552,7 +9598,8 @@ namespace HaCreator.MapSimulator.Interaction
                             item.IsLocked,
                             item.IsClaimed,
                             item.ItemId,
-                            item.PacketSlotIndex);
+                            item.PacketSlotIndex,
+                            item.BundleSetCount);
                     }
                 }
             }
@@ -10319,7 +10366,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokStoneAnimationTimeLeftMs = 0;
             _miniRoomOmokDialogEffectTimeLeftMs = 0;
             _miniRoomOmokDialogStatus = string.Empty;
-            ClearOmokDialogRequests();
+            ClearOmokDialogRequests(clearMatchRetreatRequest: true);
             ResetOmokTurnClock();
         }
 
@@ -10723,7 +10770,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokLastClientSoundPath = ResolveOmokSoundLabel(stringPoolId);
         }
 
-        private void ClearOmokDialogRequests()
+        private void ClearOmokDialogRequests(bool clearMatchRetreatRequest = false)
         {
             _miniRoomOmokTieRequested = false;
             _miniRoomOmokDrawRequestSent = false;
@@ -10731,7 +10778,11 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokRetreatRequested = false;
             _miniRoomOmokRetreatRequestSent = false;
             _miniRoomOmokRetreatRequestSentTurn = false;
-            _miniRoomOmokRetreatRequestSentMatch = false;
+            if (clearMatchRetreatRequest)
+            {
+                _miniRoomOmokRetreatRequestSentMatch = false;
+            }
+
             _miniRoomOmokLastOutboundPacketSummary = string.Empty;
         }
 

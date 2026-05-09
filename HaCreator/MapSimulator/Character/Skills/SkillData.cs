@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -373,7 +374,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         int LoadCanvasArgumentVariantOrdinal = -1,
         int RelMoveArgumentVariantOrdinal = -1,
         int RemoveCanvasArgumentVariantOrdinal = -1,
-        AfterimageLoadCanvasArguments? LoadCanvasArguments = null);
+        AfterimageLoadCanvasArguments? LoadCanvasArguments = null,
+        AfterimageRelMoveArguments? RelMoveArguments = null);
 
     public readonly record struct AfterimageLoadCanvasArguments(
         int DelayMs,
@@ -381,6 +383,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         int AlphaEnd,
         int ZoomStart,
         int ZoomEnd);
+
+    public readonly record struct AfterimageRelMoveArguments(
+        int Alpha,
+        int DurationMs);
 
     /// <summary>
     /// Skill effect animation
@@ -1326,6 +1332,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public HashSet<string> ShadowPartnerSupportedRawActionNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public int ShadowPartnerHorizontalOffsetPx { get; set; }
         public bool HideAvatarEffectOnLadderOrRope { get; set; }
+        public string ClientAvatarEffectLayerOwnerName { get; set; }
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
         public int SummonSpawnDistanceX { get; set; } = 50;
@@ -1353,6 +1360,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public ProjectileData Projectile { get; set; }       // Ball/projectile
         public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
         public string RepeatSoundKey { get; set; }           // Registered simulator sound key for repeated hits/shots
+        internal WzBinaryProperty CastSoundProperty { get; set; }
+        internal WzBinaryProperty RepeatSoundProperty { get; set; }
         public string ZoneType { get; set; }
         public bool IsMassSpell { get; set; }
         public string DebuffMessageToken { get; set; }
@@ -2297,6 +2306,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SimulatedAnimateMode { get; init; }
         public int SimulatedAnimateSequence { get; init; }
         public int SimulatedRegisterRepeatAnimationSequence { get; init; }
+        public int SimulatedSourceLayerAddRefCount { get; init; }
+        public int SimulatedSourceLayerReleaseCount { get; init; }
+        public int SimulatedRepeatLayerCreateRefCount { get; init; }
+        public int SimulatedRepeatLayerLocalReleaseCount { get; init; }
+        public int SimulatedRegisterRepeatAnimationLayerAddRefCount { get; init; }
         public int SimulatedRepeatLayerRefCount { get; set; }
         public int SimulatedListNodeRefCount { get; set; }
         public int SimulatedOriginVectorRefCount { get; set; }
@@ -2441,6 +2455,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public int SimulatedRegisterArgumentLayerLiveRefCount =>
             Math.Max(0, SimulatedRegisterArgumentLayerAddRefCount - SimulatedRegisterArgumentLayerReleaseCount);
+
+        public int SimulatedSourceLayerLiveRefCount =>
+            Math.Max(0, SimulatedSourceLayerAddRefCount - SimulatedSourceLayerReleaseCount);
+
+        public int SimulatedRepeatLayerLocalLiveRefCount =>
+            Math.Max(0, SimulatedRepeatLayerCreateRefCount - SimulatedRepeatLayerLocalReleaseCount);
     }
 
     /// <summary>
@@ -2644,6 +2664,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool? FacingRightOverride { get; set; }
         public int? DelayRateOverride { get; set; }
         public SkillManager.ClientDoActiveSummonMonsterPacketPayload? ClientDoActiveSummonMonsterPacketPayload { get; set; }
+        public SkillManager.ClientDoActiveTeslaCoilPacketPayload? ClientDoActiveTeslaCoilPacketPayload { get; set; }
 
         public float TargetX { get; set; }
         public float TargetY { get; set; }

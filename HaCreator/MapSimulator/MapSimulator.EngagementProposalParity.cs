@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Linq;
@@ -10,6 +11,10 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly EngagementProposalInboxManager _engagementProposalInbox = new();
+        private string _pendingEngagementProposalInputProposerName;
+        private string _pendingEngagementProposalInputPartnerName;
+        private int _pendingEngagementProposalInputRingItemId = EngagementProposalRuntime.DefaultRingItemId;
+        private bool _pendingEngagementProposalInputEnforceLocalChecks;
 
         private void EnsureEngagementProposalInboxState(bool shouldRun)
         {
@@ -103,6 +108,110 @@ namespace HaCreator.MapSimulator
                 rawText: "local dispatch");
             _engagementProposalInbox.EnqueueLocal(localMessage);
             return " Auto-dispatched the staged engagement request through the local engagement inbox adapter.";
+        }
+
+        private ChatCommandHandler.CommandResult ShowEngagementProposalRequestInputDialog(
+            string proposerName,
+            string partnerName,
+            int ringItemId,
+            bool enforceLocalRequesterChecks)
+        {
+            _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
+            if (!_engagementProposalController.TryValidateOutgoingOpen(
+                    proposerName,
+                    enforceLocalRequesterChecks,
+                    uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                    out string validationMessage))
+            {
+                return ChatCommandHandler.CommandResult.Error(validationMessage);
+            }
+
+            _pendingEngagementProposalInputProposerName = string.IsNullOrWhiteSpace(proposerName)
+                ? _playerManager?.Player?.Build?.Name
+                : proposerName.Trim();
+            _pendingEngagementProposalInputPartnerName = string.IsNullOrWhiteSpace(partnerName)
+                ? "Partner"
+                : partnerName.Trim();
+            _pendingEngagementProposalInputRingItemId = ringItemId > 0
+                ? ringItemId
+                : EngagementProposalRuntime.DefaultRingItemId;
+            _pendingEngagementProposalInputEnforceLocalChecks = enforceLocalRequesterChecks;
+
+            string prompt = EngagementProposalDialogText.GetEnterPartnerNameText();
+            ShowLoginUtilityDialog(
+                string.Empty,
+                prompt,
+                LoginUtilityDialogButtonLayout.YesNo,
+                LoginUtilityDialogAction.EngagementProposalRequestNote,
+                primaryLabel: "OK",
+                secondaryLabel: "Cancel",
+                inputPlaceholder: prompt,
+                inputMaxLength: EngagementProposalRuntime.RequestMessageMaxLength,
+                inputValue: string.Empty,
+                softKeyboardType: SoftKeyboardKeyboardType.FreeText,
+                inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                returnWindowName: MapSimulatorWindowNames.EngagementProposal,
+                trackDirectionModeOwner: true);
+
+            return ChatCommandHandler.CommandResult.Ok(
+                $"Opened CWvsContext::SendEngagementRequest CUtilDlgEx input prompt for {_pendingEngagementProposalInputPartnerName} " +
+                $"(dialog type {EngagementProposalRuntime.RequestInputDialogType}, StringPool 0x{EngagementProposalRuntime.RequestInputStringPoolId:X}, max {EngagementProposalRuntime.RequestMessageMaxLength}).");
+        }
+
+        private bool TryAcceptEngagementProposalRequestInput(out string message)
+        {
+            message = null;
+            if (_loginUtilityDialogAction != LoginUtilityDialogAction.EngagementProposalRequestNote)
+            {
+                return false;
+            }
+
+            string requestMessage = _loginUtilityDialogInputValue ?? string.Empty;
+            string openMessage = _engagementProposalController.OpenOutgoingProposal(
+                _pendingEngagementProposalInputProposerName,
+                _pendingEngagementProposalInputPartnerName,
+                _pendingEngagementProposalInputRingItemId,
+                requestMessage,
+                _pendingEngagementProposalInputEnforceLocalChecks,
+                uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                uiWindowManager,
+                _playerManager?.Player?.Build,
+                _fontChat,
+                ShowUtilityFeedbackMessage,
+                () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal),
+                out bool opened);
+
+            if (opened)
+            {
+                HideLoginUtilityDialog();
+                ClearPendingEngagementProposalRequestInput();
+                message = openMessage + TryAutoDispatchOutgoingEngagementProposalRequest();
+                return true;
+            }
+
+            message = openMessage;
+            return true;
+        }
+
+        private bool TryCancelEngagementProposalRequestInput(out string message)
+        {
+            message = null;
+            if (_loginUtilityDialogAction != LoginUtilityDialogAction.EngagementProposalRequestNote)
+            {
+                return false;
+            }
+
+            ClearPendingEngagementProposalRequestInput();
+            message = "Cancelled the CWvsContext::SendEngagementRequest input prompt before packet 161 [00] was emitted.";
+            return true;
+        }
+
+        private void ClearPendingEngagementProposalRequestInput()
+        {
+            _pendingEngagementProposalInputProposerName = null;
+            _pendingEngagementProposalInputPartnerName = null;
+            _pendingEngagementProposalInputRingItemId = EngagementProposalRuntime.DefaultRingItemId;
+            _pendingEngagementProposalInputEnforceLocalChecks = false;
         }
 
         private string DispatchEngagementProposalClientRequest(EngagementProposalResponse response, string source)

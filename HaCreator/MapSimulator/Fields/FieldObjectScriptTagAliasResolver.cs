@@ -112,6 +112,14 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Object\s*\.\s*(?<method>keys|values)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ObjectEntriesMapAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Object\s*\.\s*entries\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex ArrayStaticTransformAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<source>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>map|filter|flatMap|flat)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex ArrayFactoryAliasAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*Array\s*\.\s*(?<method>of|from)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -877,6 +885,33 @@ namespace HaCreator.MapSimulator.Fields
                 CopyObjectValuesAsArrayMemberAliases(targetMemberAliasMap, sourceKeyAliasMap);
             }
 
+            foreach ((string TargetName, string SourceName, bool ProjectKeys) entriesMapAssignment in EnumerateObjectEntriesMapAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(entriesMapAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(entriesMapAssignment.SourceName))
+                {
+                    continue;
+                }
+
+                IReadOnlyDictionary<string, string> sourceEntriesMap;
+                if (entriesMapAssignment.ProjectKeys)
+                {
+                    if (!objectKeyAliasMap.TryGetValue(entriesMapAssignment.SourceName, out sourceEntriesMap))
+                    {
+                        continue;
+                    }
+                }
+                else if (!objectMemberAliasMap.TryGetValue(entriesMapAssignment.SourceName, out sourceEntriesMap))
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    entriesMapAssignment.TargetName);
+                CopyObjectValuesAsArrayMemberAliases(targetMemberAliasMap, sourceEntriesMap);
+            }
+
             foreach ((string TargetName, string SourceName, IReadOnlyList<string> Arguments) concatAssignment in EnumerateArrayConcatAliasAssignments(scriptName))
             {
                 if (!IsPotentialFunctionAliasName(concatAssignment.TargetName)
@@ -910,6 +945,24 @@ namespace HaCreator.MapSimulator.Fields
 
                     string memberKey = GetNextArrayMemberIndex(targetMemberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
                     targetMemberAliasMap[memberKey] = resolvedAlias;
+                }
+            }
+
+            foreach ((string TargetName, string SourceName, string MethodName) transformAssignment in EnumerateArrayStaticTransformAliasAssignments(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(transformAssignment.TargetName)
+                    || !IsPotentialFunctionAliasName(transformAssignment.SourceName)
+                    || !objectMemberAliasMap.TryGetValue(transformAssignment.SourceName, out IReadOnlyDictionary<string, string> sourceMemberAliasMap))
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> targetMemberAliasMap = GetOrCreateMemberAliasMap(
+                    objectMemberAliasMap,
+                    transformAssignment.TargetName);
+                if (!transformAssignment.TargetName.Equals(transformAssignment.SourceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    CopyArrayMemberAliases(targetMemberAliasMap, sourceMemberAliasMap);
                 }
             }
 
@@ -1743,6 +1796,358 @@ namespace HaCreator.MapSimulator.Fields
                     yield return (targetName, sourceName, methodName);
                 }
             }
+        }
+
+        private static IEnumerable<(string TargetName, string SourceName, bool ProjectKeys)> EnumerateObjectEntriesMapAliasAssignments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ObjectEntriesMapAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(targetName))
+                {
+                    continue;
+                }
+
+                int entriesOpenIndex = value.IndexOf('(', match.Index);
+                if (entriesOpenIndex < 0)
+                {
+                    continue;
+                }
+
+                int entriesCloseIndex = FindMatchingCloseParenthesis(value, entriesOpenIndex);
+                if (entriesCloseIndex <= entriesOpenIndex)
+                {
+                    continue;
+                }
+
+                var entriesArguments = new List<string>(SplitFunctionArguments(value[(entriesOpenIndex + 1)..entriesCloseIndex]));
+                if (entriesArguments.Count != 1)
+                {
+                    continue;
+                }
+
+                string sourceName = NormalizeFunctionAliasArgument(entriesArguments[0]).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(sourceName))
+                {
+                    continue;
+                }
+
+                int mapMemberIndex = SkipWhitespace(value, entriesCloseIndex + 1);
+                const string mapMember = ".map";
+                if (mapMemberIndex < 0
+                    || mapMemberIndex + mapMember.Length > value.Length
+                    || !value.AsSpan(mapMemberIndex, mapMember.Length).Equals(mapMember.AsSpan(), StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                int mapOpenIndex = SkipWhitespace(value, mapMemberIndex + mapMember.Length);
+                if (mapOpenIndex < 0 || mapOpenIndex >= value.Length || value[mapOpenIndex] != '(')
+                {
+                    continue;
+                }
+
+                int mapCloseIndex = FindMatchingCloseParenthesis(value, mapOpenIndex);
+                if (mapCloseIndex <= mapOpenIndex)
+                {
+                    continue;
+                }
+
+                var mapArguments = new List<string>(SplitFunctionArguments(value[(mapOpenIndex + 1)..mapCloseIndex]));
+                if (mapArguments.Count != 1
+                    || !TryResolveObjectEntriesMapProjection(mapArguments[0], out bool projectKeys))
+                {
+                    continue;
+                }
+
+                yield return (targetName, sourceName, projectKeys);
+            }
+        }
+
+        private static IEnumerable<(string TargetName, string SourceName, string MethodName)> EnumerateArrayStaticTransformAliasAssignments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ArrayStaticTransformAliasAssignmentPattern.Matches(value))
+            {
+                string targetName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value).TrimEnd(';');
+                string sourceName = NormalizeFunctionAliasArgument(match.Groups["source"]?.Value).TrimEnd(';');
+                string methodName = NormalizeFunctionAliasArgument(match.Groups["method"]?.Value).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(targetName)
+                    || !IsPotentialFunctionAliasName(sourceName)
+                    || string.IsNullOrWhiteSpace(methodName))
+                {
+                    continue;
+                }
+
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                var arguments = new List<string>(SplitFunctionArguments(value[(openIndex + 1)..closeIndex]));
+                if (IsRecoverableStaticArrayTransform(methodName, arguments))
+                {
+                    yield return (targetName, sourceName, methodName);
+                }
+            }
+        }
+
+        private static bool TryResolveObjectEntriesMapProjection(string callback, out bool projectKeys)
+        {
+            projectKeys = false;
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            string parameterText;
+            string bodyExpression;
+            string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
+            if (TryParseArrowCallback(normalizedCallback, out parameterText, out bodyExpression))
+            {
+                return TryResolveObjectEntriesProjectionFromParts(parameterText, bodyExpression, out projectKeys);
+            }
+
+            if (TryParseSingleParameterFunctionCallback(normalizedCallback, out parameterText, out IReadOnlyList<string> returnExpressions))
+            {
+                for (int i = 0; i < returnExpressions.Count; i++)
+                {
+                    if (TryResolveObjectEntriesProjectionFromParts(parameterText, returnExpressions[i], out projectKeys))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsRecoverableStaticArrayTransform(string methodName, IReadOnlyList<string> arguments)
+        {
+            if (string.IsNullOrWhiteSpace(methodName))
+            {
+                return false;
+            }
+
+            if (methodName.Equals("flat", StringComparison.OrdinalIgnoreCase))
+            {
+                return arguments == null
+                    || arguments.Count == 0
+                    || (arguments.Count == 1
+                        && TryResolveBracketIndexKeyLiteral(arguments[0], out string depth)
+                        && string.Equals(depth, "1", StringComparison.Ordinal));
+            }
+
+            if (arguments == null || arguments.Count != 1)
+            {
+                return false;
+            }
+
+            string callback = StripOuterBalancedParentheses(arguments[0]?.Trim());
+            if (methodName.Equals("filter", StringComparison.OrdinalIgnoreCase)
+                && (callback.Equals("Boolean", StringComparison.OrdinalIgnoreCase)
+                    || callback.Equals("String", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            return TryResolveIdentityCallback(callback);
+        }
+
+        private static bool TryResolveObjectEntriesProjectionFromParts(string parameterText, string bodyExpression, out bool projectKeys)
+        {
+            projectKeys = false;
+            if (string.IsNullOrWhiteSpace(parameterText) || string.IsNullOrWhiteSpace(bodyExpression))
+            {
+                return false;
+            }
+
+            string normalizedParameter = StripOuterBalancedParentheses(parameterText.Trim());
+            string normalizedBody = StripOuterBalancedParentheses(bodyExpression.Trim()).TrimEnd(';');
+            if (normalizedParameter.Length >= 2 && normalizedParameter[0] == '[' && normalizedParameter[^1] == ']')
+            {
+                IReadOnlyList<string> destructuredNames = SplitTopLevelByComma(normalizedParameter[1..^1]);
+                for (int i = 0; i < destructuredNames.Count && i < 2; i++)
+                {
+                    string destructuredName = NormalizeFunctionAliasArgument(destructuredNames[i]).TrimEnd(';');
+                    if (IsPotentialFunctionAliasName(destructuredName)
+                        && normalizedBody.Equals(destructuredName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        projectKeys = i == 0;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            string parameterName = NormalizeFunctionAliasArgument(normalizedParameter).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(parameterName))
+            {
+                return false;
+            }
+
+            if (TryParseIndexedObjectAccess(normalizedBody, out string objectName, out string indexExpression)
+                && objectName.Equals(parameterName, StringComparison.OrdinalIgnoreCase)
+                && TryResolveBracketIndexKeyLiteral(indexExpression, out string entryIndex))
+            {
+                if (string.Equals(entryIndex, "0", StringComparison.Ordinal))
+                {
+                    projectKeys = true;
+                    return true;
+                }
+
+                if (string.Equals(entryIndex, "1", StringComparison.Ordinal))
+                {
+                    projectKeys = false;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveIdentityCallback(string callback)
+        {
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            string normalizedCallback = StripOuterBalancedParentheses(callback.Trim());
+            if (TryParseArrowCallback(normalizedCallback, out string parameterText, out string bodyExpression))
+            {
+                return IsIdentityCallbackBody(parameterText, bodyExpression);
+            }
+
+            if (TryParseSingleParameterFunctionCallback(normalizedCallback, out parameterText, out IReadOnlyList<string> returnExpressions))
+            {
+                for (int i = 0; i < returnExpressions.Count; i++)
+                {
+                    if (IsIdentityCallbackBody(parameterText, returnExpressions[i]))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsIdentityCallbackBody(string parameterText, string bodyExpression)
+        {
+            string parameterName = NormalizeFunctionAliasArgument(StripOuterBalancedParentheses(parameterText?.Trim())).TrimEnd(';');
+            string body = StripOuterBalancedParentheses(bodyExpression?.Trim()).TrimEnd(';');
+            return IsPotentialFunctionAliasName(parameterName)
+                && body.Equals(parameterName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryParseArrowCallback(string callback, out string parameterText, out string bodyExpression)
+        {
+            parameterText = string.Empty;
+            bodyExpression = string.Empty;
+            if (string.IsNullOrWhiteSpace(callback))
+            {
+                return false;
+            }
+
+            int arrowIndex = callback.IndexOf("=>", StringComparison.Ordinal);
+            if (arrowIndex <= 0 || arrowIndex >= callback.Length - 2)
+            {
+                return false;
+            }
+
+            parameterText = callback[..arrowIndex].Trim();
+            string body = callback[(arrowIndex + 2)..].Trim();
+            if (body.StartsWith("{", StringComparison.Ordinal) && body.EndsWith("}", StringComparison.Ordinal))
+            {
+                foreach (string returnExpression in EnumerateFunctionReturnExpressions("function()" + body))
+                {
+                    bodyExpression = returnExpression;
+                    return !string.IsNullOrWhiteSpace(bodyExpression);
+                }
+
+                return false;
+            }
+
+            bodyExpression = body;
+            return !string.IsNullOrWhiteSpace(parameterText) && !string.IsNullOrWhiteSpace(bodyExpression);
+        }
+
+        private static bool TryParseSingleParameterFunctionCallback(
+            string callback,
+            out string parameterText,
+            out IReadOnlyList<string> returnExpressions)
+        {
+            parameterText = string.Empty;
+            returnExpressions = Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(callback)
+                || !callback.StartsWith("function", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int openIndex = callback.IndexOf('(');
+            if (openIndex < 0)
+            {
+                return false;
+            }
+
+            int closeIndex = FindMatchingCloseParenthesis(callback, openIndex);
+            if (closeIndex <= openIndex)
+            {
+                return false;
+            }
+
+            IReadOnlyList<string> parameters = SplitTopLevelByComma(callback[(openIndex + 1)..closeIndex]);
+            if (parameters.Count != 1)
+            {
+                return false;
+            }
+
+            parameterText = parameters[0];
+            var expressions = new List<string>(EnumerateFunctionReturnExpressions(callback));
+            if (expressions.Count == 0)
+            {
+                return false;
+            }
+
+            returnExpressions = expressions;
+            return true;
+        }
+
+        private static int SkipWhitespace(string value, int startIndex)
+        {
+            if (string.IsNullOrEmpty(value) || startIndex < 0 || startIndex >= value.Length)
+            {
+                return -1;
+            }
+
+            for (int i = startIndex; i < value.Length; i++)
+            {
+                if (!char.IsWhiteSpace(value[i]))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static IEnumerable<(string TargetName, string MethodName, IReadOnlyList<string> Arguments)> EnumerateArrayFactoryAliasAssignments(string value)

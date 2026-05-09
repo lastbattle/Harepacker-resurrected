@@ -36,6 +36,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int PrimaryButtonBottomOffset = 31;
         internal const int ClientTextWrapWidth = 200;
         internal const bool PrimaryButtonAcceptsFocus = true;
+        internal const int RequestInputDialogType = 3;
+        internal const int RequestInputStringPoolId = EngagementProposalDialogText.EnterPartnerNameStringPoolId;
+        internal const int RequestInputDefaultStringLength = 0;
 
         private const string DefaultPlayerName = "Player";
         private const string DefaultPartnerName = "Partner";
@@ -759,7 +762,7 @@ namespace HaCreator.MapSimulator.Interaction
             return builder.ToString();
         }
 
-        private static string NormalizeRequestMessage(string requestMessage)
+        internal static string NormalizeRequestMessage(string requestMessage)
         {
             string trimmed = requestMessage?.Trim() ?? string.Empty;
             if (trimmed.Length <= RequestMessageMaxLength)

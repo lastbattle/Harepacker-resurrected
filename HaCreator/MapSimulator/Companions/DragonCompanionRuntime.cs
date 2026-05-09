@@ -1448,15 +1448,42 @@ namespace HaCreator.MapSimulator.Companions
             out byte[] payload,
             out string error)
         {
-            IReadOnlyList<MovePathElement> normalizedPath =
-                CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(movePath);
+            IReadOnlyList<MovePathElement> encodedMovePath =
+                ResolveClientDragonFlushEncodedMovePath(movePath);
+            IReadOnlyList<byte> encodedKeyPadStates =
+                ResolveClientDragonFlushEncodedKeyPadStates(movePath, passiveKeyPadStates);
             return CMovePathClientPacketCodec.TryEncode(
-                normalizedPath,
+                encodedMovePath,
                 out payload,
                 out error,
                 includeClientRandomCounts: false,
                 includeClientFlushTail: true,
-                passiveKeyPadStates: passiveKeyPadStates);
+                passiveKeyPadStates: encodedKeyPadStates);
+        }
+
+        private static IReadOnlyList<MovePathElement> ResolveClientDragonFlushEncodedMovePath(
+            IReadOnlyList<MovePathElement> movePath)
+        {
+            IReadOnlyList<MovePathElement> sourcePath = movePath ?? Array.Empty<MovePathElement>();
+            int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(sourcePath);
+            IReadOnlyList<MovePathElement> pathBeforeCarry = retainedStartIndex >= 0
+                ? sourcePath.Take(retainedStartIndex).ToList()
+                : sourcePath;
+            return CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(pathBeforeCarry);
+        }
+
+        private static IReadOnlyList<byte> ResolveClientDragonFlushEncodedKeyPadStates(
+            IReadOnlyList<MovePathElement> movePath,
+            IReadOnlyList<byte> passiveKeyPadStates)
+        {
+            IReadOnlyList<MovePathElement> sourcePath = movePath ?? Array.Empty<MovePathElement>();
+            int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(sourcePath);
+            IReadOnlyList<MovePathElement> pathBeforeCarry = retainedStartIndex >= 0
+                ? sourcePath.Take(retainedStartIndex).ToList()
+                : sourcePath;
+            return CMovePathClientPacketCodec.NormalizePassiveKeyPadStatesForClientMakeMovePath(
+                pathBeforeCarry,
+                passiveKeyPadStates);
         }
 
         internal static bool TryDecodeClientDragonEndUpdateActiveFlushTail(

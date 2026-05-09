@@ -15,7 +15,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "newyearcard",
                 "Inspect or drive CUINewYearCardDlg and CUINewYearCardSenderDlg parity",
-                "/newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|hide]",
+                "/newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|result <hex>|hide]",
                 HandleNewYearCardCommand);
         }
 
@@ -98,6 +98,18 @@ namespace HaCreator.MapSimulator
                         ? ChatCommandHandler.CommandResult.Ok(sendMessage)
                         : ChatCommandHandler.CommandResult.Error(sendMessage);
 
+                case "result":
+                case "packet":
+                    string parseError = null;
+                    if (args.Length < 2 || !TryParseNewYearCardHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] resultPayload, out parseError))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Usage: /newyearcard result <CWvsContext::OnNewYearCardRes payload hex>. {parseError}");
+                    }
+
+                    return _newYearCardRuntime.TryApplyResultPayload(resultPayload, out string resultMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(resultMessage)
+                        : ChatCommandHandler.CommandResult.Error(resultMessage);
+
                 case "hide":
                 case "close":
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.NewYearCardSender);
@@ -105,7 +117,7 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok("Closed New Year Card sender/read dialog owners.");
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|hide]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /newyearcard [status|sender|read [from to memo...]|draft <inventoryPosition> <itemId> <target> <memo...>|target <name>|memo <text...>|search [query...]|select <1-based index>|send [confirmempty]|result <hex>|hide]");
             }
         }
 
@@ -171,6 +183,38 @@ namespace HaCreator.MapSimulator
             _newYearCardRuntime.UpdateLocalSender(
                 _playerManager?.Player?.Build?.Name
                 ?? _loginCharacterRoster?.SelectedEntry?.Build?.Name);
+        }
+
+        private static bool TryParseNewYearCardHexBytes(string value, out byte[] bytes, out string error)
+        {
+            bytes = Array.Empty<byte>();
+            error = null;
+            string normalized = new((value ?? string.Empty)
+                .Where(c => !char.IsWhiteSpace(c) && c != '-' && c != ':')
+                .ToArray());
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring(2);
+            }
+
+            if (normalized.Length == 0 || normalized.Length % 2 != 0)
+            {
+                error = "Payload hex must contain an even number of digits.";
+                return false;
+            }
+
+            bytes = new byte[normalized.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (!byte.TryParse(normalized.Substring(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out bytes[i]))
+                {
+                    error = $"Invalid hex byte at offset {i}.";
+                    bytes = Array.Empty<byte>();
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

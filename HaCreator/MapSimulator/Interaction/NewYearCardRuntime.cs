@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _itemId = DefaultItemId;
         private int _selectedSearchResultIndex;
         private int _firstVisibleSearchResultIndex;
+        private NewYearCardResultSnapshot _lastResultSnapshot = NewYearCardResultSnapshot.Empty;
 
         internal NewYearCardRuntime()
         {
@@ -105,6 +106,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _memo,
                 WrapMemoForReadDialog(_memo));
         }
+
+        internal NewYearCardResultSnapshot LastResultSnapshot => _lastResultSnapshot;
 
         internal string ConfigureDraft(int inventoryPosition, int itemId, string targetName, string memo)
         {
@@ -191,6 +194,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyCompletion(NewYearCardCompletionKind kind, string targetName = null, string senderName = null, string memo = null)
         {
+            NewYearCardRecordSnapshot record = default;
             switch (kind)
             {
                 case NewYearCardCompletionKind.SendSuccess:
@@ -201,6 +205,8 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     _lastStatus = NewYearCardClientText.ResolveSendSuccessNotice(DisplayTargetName);
+                    record = new NewYearCardRecordSnapshot(0, 0, senderName ?? _senderName, false, 0, 0, _targetName, false, false, 0, memo ?? _memo);
+                    _lastResultSnapshot = NewYearCardResultSnapshot.FromCompletion(NewYearCardResultSubtype.None, kind, NewYearCardFailureReason.None, record, 0, _lastStatus);
                     return _lastStatus;
 
                 case NewYearCardCompletionKind.ReceiveSuccess:
@@ -210,12 +216,16 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     _lastStatus = NewYearCardClientText.ResolveReceiveSuccessNotice();
+                    record = new NewYearCardRecordSnapshot(0, 0, _senderName, false, 0, 0, _targetName, false, false, 0, _memo);
+                    _lastResultSnapshot = NewYearCardResultSnapshot.FromCompletion(NewYearCardResultSubtype.None, kind, NewYearCardFailureReason.None, record, 0, _lastStatus);
                     return _lastStatus;
 
                 case NewYearCardCompletionKind.DeleteSuccess:
                     _lastStatus = NewYearCardClientText.ResolveDeleteSuccessNotice();
+                    _lastResultSnapshot = NewYearCardResultSnapshot.FromCompletion(NewYearCardResultSubtype.None, kind, NewYearCardFailureReason.None, default, 0, _lastStatus);
                     return _lastStatus;
 
+                case NewYearCardCompletionKind.CannotSendToSelf:
                 case NewYearCardCompletionKind.NoFreeSlot:
                 case NewYearCardCompletionKind.NoCardToSend:
                 case NewYearCardCompletionKind.WrongInventory:
@@ -224,12 +234,94 @@ namespace HaCreator.MapSimulator.Interaction
                 case NewYearCardCompletionKind.DatabaseError:
                 case NewYearCardCompletionKind.UnknownError:
                     _lastStatus = NewYearCardClientText.ResolveFailureNotice(kind);
+                    _lastResultSnapshot = NewYearCardResultSnapshot.FromCompletion(NewYearCardResultSubtype.Failure, kind, NewYearCardResultPacketCodec.ToFailureReason(kind), default, 0, _lastStatus);
                     return _lastStatus;
 
                 default:
                     _lastStatus = $"Unhandled New Year Card completion kind {kind}.";
+                    _lastResultSnapshot = NewYearCardResultSnapshot.FromCompletion(NewYearCardResultSubtype.None, kind, NewYearCardFailureReason.None, default, 0, _lastStatus);
                     return _lastStatus;
             }
+        }
+
+        internal string ApplyResultPacket(NewYearCardResultPacket packet)
+        {
+            if (packet == null)
+            {
+                _lastStatus = "CWvsContext::OnNewYearCardRes rejected an empty packet.";
+                _lastResultSnapshot = NewYearCardResultSnapshot.Empty with { Message = _lastStatus };
+                return _lastStatus;
+            }
+
+            switch (packet.Subtype)
+            {
+                case NewYearCardResultSubtype.SendSuccess:
+                    string target = NormalizeName(packet.Record.ReceiverName, _targetName);
+                    if (!string.IsNullOrEmpty(target))
+                    {
+                        _targetName = target;
+                    }
+
+                    _lastStatus = NewYearCardClientText.ResolveSendSuccessNotice(DisplayTargetName);
+                    break;
+
+                case NewYearCardResultSubtype.ReceiveSuccess:
+                    ConfigureReadView(packet.Record.SenderName, packet.Record.ReceiverName, packet.Record.Content);
+                    _lastStatus = NewYearCardClientText.ResolveReceiveSuccessNotice();
+                    break;
+
+                case NewYearCardResultSubtype.DeleteSuccess:
+                    _lastStatus = NewYearCardClientText.ResolveDeleteSuccessNotice();
+                    break;
+
+                case NewYearCardResultSubtype.Failure:
+                    _lastStatus = NewYearCardClientText.ResolveFailureNotice(packet.CompletionKind);
+                    break;
+
+                case NewYearCardResultSubtype.ArrivalList:
+                case NewYearCardResultSubtype.ArrivalSingle:
+                    _lastStatus = packet.Arrivals.Count == 1
+                        ? $"CWvsContext::OnNewYearCardRes created one New Year Card arrival prompt from '{packet.Arrivals[0].SenderName}'."
+                        : $"CWvsContext::OnNewYearCardRes created {packet.Arrivals.Count} New Year Card arrival prompt(s).";
+                    break;
+
+                case NewYearCardResultSubtype.RemoteRecordAdd:
+                    _lastStatus = $"CWvsContext::OnNewYearCardRes routed New Year Card record add serial {packet.SerialNumber} to CUserPool owner {packet.RemoteUserId}.";
+                    break;
+
+                case NewYearCardResultSubtype.RemoteRecordRemove:
+                    _lastStatus = $"CWvsContext::OnNewYearCardRes routed New Year Card record remove serial {packet.SerialNumber} to CUserPool.";
+                    break;
+
+                default:
+                    _lastStatus = $"CWvsContext::OnNewYearCardRes preserved unknown subtype {(byte)packet.Subtype}.";
+                    break;
+            }
+
+            _lastResultSnapshot = new NewYearCardResultSnapshot(
+                packet.Subtype,
+                packet.CompletionKind,
+                packet.FailureReason,
+                packet.Record,
+                packet.SerialNumber,
+                packet.RemoteUserId,
+                packet.Arrivals,
+                _lastStatus);
+            return _lastStatus;
+        }
+
+        internal bool TryApplyResultPayload(byte[] payload, out string message)
+        {
+            if (!NewYearCardResultPacketCodec.TryDecode(payload, out NewYearCardResultPacket packet, out string decodeError))
+            {
+                message = decodeError;
+                _lastStatus = decodeError;
+                _lastResultSnapshot = NewYearCardResultSnapshot.Empty with { Message = decodeError };
+                return false;
+            }
+
+            message = ApplyResultPacket(packet);
+            return true;
         }
 
         internal NewYearCardSendRequest BuildSendRequest()
@@ -459,9 +551,11 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal enum NewYearCardCompletionKind
     {
+        None,
         SendSuccess,
         ReceiveSuccess,
         DeleteSuccess,
+        CannotSendToSelf,
         NoFreeSlot,
         NoCardToSend,
         WrongInventory,
@@ -469,5 +563,391 @@ namespace HaCreator.MapSimulator.Interaction
         IncoherentData,
         DatabaseError,
         UnknownError
+    }
+
+    internal enum NewYearCardResultSubtype
+    {
+        None = 0,
+        SendSuccess = 4,
+        SendFailure = 5,
+        ReceiveSuccess = 6,
+        ReceiveFailure = 7,
+        DeleteSuccess = 8,
+        DeleteFailure = 9,
+        ArrivalList = 10,
+        ReadFailure = 11,
+        ArrivalSingle = 12,
+        RemoteRecordAdd = 13,
+        RemoteRecordRemove = 14,
+        Failure = 255
+    }
+
+    internal enum NewYearCardFailureReason
+    {
+        None = 0,
+        CannotSendToSelf = 15,
+        NoFreeSlot = 16,
+        NoCardToSend = 17,
+        WrongInventory = 18,
+        TargetNotFound = 19,
+        IncoherentData = 20,
+        DatabaseError = 21,
+        UnknownError = 22
+    }
+
+    internal sealed record NewYearCardRecordSnapshot(
+        int SerialNumber,
+        int SenderId,
+        string SenderName,
+        bool SenderDiscarded,
+        long DateSentFileTime,
+        int ReceiverId,
+        string ReceiverName,
+        bool ReceiverDiscarded,
+        bool ReceiverReceivedCard,
+        long DateReceivedFileTime,
+        string Content);
+
+    internal sealed record NewYearCardArrivalPrompt(
+        int SerialNumber,
+        int SenderId,
+        string SenderName);
+
+    internal sealed record NewYearCardResultPacket(
+        NewYearCardResultSubtype Subtype,
+        NewYearCardCompletionKind CompletionKind,
+        NewYearCardFailureReason FailureReason,
+        NewYearCardRecordSnapshot Record,
+        int SerialNumber,
+        int RemoteUserId,
+        IReadOnlyList<NewYearCardArrivalPrompt> Arrivals);
+
+    internal sealed record NewYearCardResultSnapshot(
+        NewYearCardResultSubtype Subtype,
+        NewYearCardCompletionKind CompletionKind,
+        NewYearCardFailureReason FailureReason,
+        NewYearCardRecordSnapshot Record,
+        int SerialNumber,
+        int RemoteUserId,
+        IReadOnlyList<NewYearCardArrivalPrompt> Arrivals,
+        string Message)
+    {
+        internal static NewYearCardResultSnapshot Empty { get; } = new(
+            NewYearCardResultSubtype.None,
+            NewYearCardCompletionKind.None,
+            NewYearCardFailureReason.None,
+            default,
+            0,
+            0,
+            Array.Empty<NewYearCardArrivalPrompt>(),
+            string.Empty);
+
+        internal static NewYearCardResultSnapshot FromCompletion(
+            NewYearCardResultSubtype subtype,
+            NewYearCardCompletionKind completionKind,
+            NewYearCardFailureReason failureReason,
+            NewYearCardRecordSnapshot record,
+            int serialNumber,
+            string message)
+        {
+            return new NewYearCardResultSnapshot(
+                subtype,
+                completionKind,
+                failureReason,
+                record,
+                serialNumber,
+                0,
+                Array.Empty<NewYearCardArrivalPrompt>(),
+                message);
+        }
+    }
+
+    internal static class NewYearCardResultPacketCodec
+    {
+        internal static bool TryDecode(byte[] payload, out NewYearCardResultPacket packet, out string error)
+        {
+            packet = null;
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "CWvsContext::OnNewYearCardRes payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload);
+                using System.IO.BinaryReader reader = new(stream, Encoding.Default, leaveOpen: true);
+                NewYearCardResultSubtype subtype = DecodeSubtype(reader.ReadByte());
+                packet = subtype switch
+                {
+                    NewYearCardResultSubtype.SendSuccess => new NewYearCardResultPacket(
+                        subtype,
+                        NewYearCardCompletionKind.SendSuccess,
+                        NewYearCardFailureReason.None,
+                        DecodeRecord(reader),
+                        0,
+                        0,
+                        Array.Empty<NewYearCardArrivalPrompt>()),
+                    NewYearCardResultSubtype.ReceiveSuccess => new NewYearCardResultPacket(
+                        subtype,
+                        NewYearCardCompletionKind.ReceiveSuccess,
+                        NewYearCardFailureReason.None,
+                        DecodeRecord(reader),
+                        0,
+                        0,
+                        Array.Empty<NewYearCardArrivalPrompt>()),
+                    NewYearCardResultSubtype.DeleteSuccess => DecodeDeleteSuccess(reader, subtype),
+                    NewYearCardResultSubtype.SendFailure
+                        or NewYearCardResultSubtype.ReceiveFailure
+                        or NewYearCardResultSubtype.DeleteFailure
+                        or NewYearCardResultSubtype.ReadFailure => DecodeFailure(reader),
+                    NewYearCardResultSubtype.ArrivalList => DecodeArrivalList(reader, subtype),
+                    NewYearCardResultSubtype.ArrivalSingle => DecodeArrivalSingle(reader, subtype),
+                    NewYearCardResultSubtype.RemoteRecordAdd => DecodeRemoteRecordAdd(reader, subtype),
+                    NewYearCardResultSubtype.RemoteRecordRemove => DecodeRemoteRecordRemove(reader, subtype),
+                    _ => new NewYearCardResultPacket(
+                        subtype,
+                        NewYearCardCompletionKind.None,
+                        NewYearCardFailureReason.None,
+                        default,
+                        0,
+                        0,
+                        Array.Empty<NewYearCardArrivalPrompt>())
+                };
+
+                if (stream.Position != stream.Length)
+                {
+                    error = $"CWvsContext::OnNewYearCardRes decoded subtype {(byte)subtype} with {stream.Length - stream.Position} trailing byte(s).";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "CWvsContext::OnNewYearCardRes payload ended before the client-shaped fields were complete.";
+                return false;
+            }
+        }
+
+        internal static NewYearCardFailureReason ToFailureReason(NewYearCardCompletionKind kind)
+        {
+            return kind switch
+            {
+                NewYearCardCompletionKind.CannotSendToSelf => NewYearCardFailureReason.CannotSendToSelf,
+                NewYearCardCompletionKind.NoFreeSlot => NewYearCardFailureReason.NoFreeSlot,
+                NewYearCardCompletionKind.NoCardToSend => NewYearCardFailureReason.NoCardToSend,
+                NewYearCardCompletionKind.WrongInventory => NewYearCardFailureReason.WrongInventory,
+                NewYearCardCompletionKind.TargetNotFound => NewYearCardFailureReason.TargetNotFound,
+                NewYearCardCompletionKind.IncoherentData => NewYearCardFailureReason.IncoherentData,
+                NewYearCardCompletionKind.DatabaseError => NewYearCardFailureReason.DatabaseError,
+                NewYearCardCompletionKind.UnknownError => NewYearCardFailureReason.UnknownError,
+                _ => NewYearCardFailureReason.None
+            };
+        }
+
+        private static NewYearCardResultSubtype DecodeSubtype(byte value)
+        {
+            return value switch
+            {
+                4 => NewYearCardResultSubtype.SendSuccess,
+                5 => NewYearCardResultSubtype.SendFailure,
+                6 => NewYearCardResultSubtype.ReceiveSuccess,
+                7 => NewYearCardResultSubtype.ReceiveFailure,
+                8 => NewYearCardResultSubtype.DeleteSuccess,
+                9 => NewYearCardResultSubtype.DeleteFailure,
+                10 => NewYearCardResultSubtype.ArrivalList,
+                11 => NewYearCardResultSubtype.ReadFailure,
+                12 => NewYearCardResultSubtype.ArrivalSingle,
+                13 => NewYearCardResultSubtype.RemoteRecordAdd,
+                14 => NewYearCardResultSubtype.RemoteRecordRemove,
+                _ => (NewYearCardResultSubtype)value
+            };
+        }
+
+        private static NewYearCardResultPacket DecodeDeleteSuccess(System.IO.BinaryReader reader, NewYearCardResultSubtype subtype)
+        {
+            int serialNumber = reader.ReadInt32();
+            return new NewYearCardResultPacket(
+                subtype,
+                NewYearCardCompletionKind.DeleteSuccess,
+                NewYearCardFailureReason.None,
+                default,
+                serialNumber,
+                0,
+                Array.Empty<NewYearCardArrivalPrompt>());
+        }
+
+        private static NewYearCardResultPacket DecodeFailure(System.IO.BinaryReader reader)
+        {
+            NewYearCardFailureReason reason = DecodeFailureReason(reader.ReadByte());
+            return new NewYearCardResultPacket(
+                NewYearCardResultSubtype.Failure,
+                ToCompletionKind(reason),
+                reason,
+                default,
+                0,
+                0,
+                Array.Empty<NewYearCardArrivalPrompt>());
+        }
+
+        private static NewYearCardResultPacket DecodeArrivalList(System.IO.BinaryReader reader, NewYearCardResultSubtype subtype)
+        {
+            int count = reader.ReadInt32();
+            if (count < 1 || count > 99)
+            {
+                return new NewYearCardResultPacket(
+                    subtype,
+                    NewYearCardCompletionKind.None,
+                    NewYearCardFailureReason.None,
+                    default,
+                    count,
+                    0,
+                    Array.Empty<NewYearCardArrivalPrompt>());
+            }
+
+            List<NewYearCardArrivalPrompt> arrivals = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                arrivals.Add(new NewYearCardArrivalPrompt(
+                    reader.ReadInt32(),
+                    reader.ReadInt32(),
+                    ReadMapleString(reader)));
+            }
+
+            return new NewYearCardResultPacket(
+                subtype,
+                NewYearCardCompletionKind.None,
+                NewYearCardFailureReason.None,
+                default,
+                0,
+                0,
+                arrivals);
+        }
+
+        private static NewYearCardResultPacket DecodeArrivalSingle(System.IO.BinaryReader reader, NewYearCardResultSubtype subtype)
+        {
+            int serialNumber = reader.ReadInt32();
+            string senderName = ReadMapleString(reader);
+            return new NewYearCardResultPacket(
+                subtype,
+                NewYearCardCompletionKind.None,
+                NewYearCardFailureReason.None,
+                default,
+                serialNumber,
+                0,
+                new[] { new NewYearCardArrivalPrompt(serialNumber, 0, senderName) });
+        }
+
+        private static NewYearCardResultPacket DecodeRemoteRecordAdd(System.IO.BinaryReader reader, NewYearCardResultSubtype subtype)
+        {
+            int serialNumber = reader.ReadInt32();
+            int remoteUserId = reader.ReadInt32();
+            return new NewYearCardResultPacket(
+                subtype,
+                NewYearCardCompletionKind.None,
+                NewYearCardFailureReason.None,
+                default,
+                serialNumber,
+                remoteUserId,
+                Array.Empty<NewYearCardArrivalPrompt>());
+        }
+
+        private static NewYearCardResultPacket DecodeRemoteRecordRemove(System.IO.BinaryReader reader, NewYearCardResultSubtype subtype)
+        {
+            int serialNumber = reader.ReadInt32();
+            return new NewYearCardResultPacket(
+                subtype,
+                NewYearCardCompletionKind.None,
+                NewYearCardFailureReason.None,
+                default,
+                serialNumber,
+                0,
+                Array.Empty<NewYearCardArrivalPrompt>());
+        }
+
+        private static NewYearCardRecordSnapshot DecodeRecord(System.IO.BinaryReader reader)
+        {
+            int serialNumber = reader.ReadInt32();
+            int senderId = reader.ReadInt32();
+            string senderName = LimitClientFixedString(ReadMapleString(reader), NewYearCardRuntime.SenderTargetMaxChars);
+            bool senderDiscarded = reader.ReadByte() != 0;
+            long sentFileTime = reader.ReadInt64();
+            int receiverId = reader.ReadInt32();
+            string receiverName = LimitClientFixedString(ReadMapleString(reader), NewYearCardRuntime.SenderTargetMaxChars);
+            bool receiverDiscarded = reader.ReadByte() != 0;
+            bool receiverReceived = reader.ReadByte() != 0;
+            long receivedFileTime = reader.ReadInt64();
+            string content = LimitClientFixedString(ReadMapleString(reader), NewYearCardRuntime.SenderMemoMaxChars);
+
+            return new NewYearCardRecordSnapshot(
+                serialNumber,
+                senderId,
+                senderName,
+                senderDiscarded,
+                sentFileTime,
+                receiverId,
+                receiverName,
+                receiverDiscarded,
+                receiverReceived,
+                receivedFileTime,
+                content);
+        }
+
+        private static NewYearCardFailureReason DecodeFailureReason(byte reason)
+        {
+            return reason switch
+            {
+                15 => NewYearCardFailureReason.CannotSendToSelf,
+                16 => NewYearCardFailureReason.NoFreeSlot,
+                17 => NewYearCardFailureReason.NoCardToSend,
+                18 => NewYearCardFailureReason.WrongInventory,
+                19 => NewYearCardFailureReason.TargetNotFound,
+                20 => NewYearCardFailureReason.IncoherentData,
+                21 => NewYearCardFailureReason.DatabaseError,
+                22 => NewYearCardFailureReason.UnknownError,
+                _ => NewYearCardFailureReason.UnknownError
+            };
+        }
+
+        private static NewYearCardCompletionKind ToCompletionKind(NewYearCardFailureReason reason)
+        {
+            return reason switch
+            {
+                NewYearCardFailureReason.CannotSendToSelf => NewYearCardCompletionKind.CannotSendToSelf,
+                NewYearCardFailureReason.NoFreeSlot => NewYearCardCompletionKind.NoFreeSlot,
+                NewYearCardFailureReason.NoCardToSend => NewYearCardCompletionKind.NoCardToSend,
+                NewYearCardFailureReason.WrongInventory => NewYearCardCompletionKind.WrongInventory,
+                NewYearCardFailureReason.TargetNotFound => NewYearCardCompletionKind.TargetNotFound,
+                NewYearCardFailureReason.IncoherentData => NewYearCardCompletionKind.IncoherentData,
+                NewYearCardFailureReason.DatabaseError => NewYearCardCompletionKind.DatabaseError,
+                _ => NewYearCardCompletionKind.UnknownError
+            };
+        }
+
+        private static string ReadMapleString(System.IO.BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException();
+            }
+
+            return Encoding.Default.GetString(bytes);
+        }
+
+        private static string LimitClientFixedString(string value, int maxChars)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Length <= maxChars
+                ? value
+                : value.Substring(0, maxChars);
+        }
     }
 }

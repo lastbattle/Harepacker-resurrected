@@ -1536,15 +1536,12 @@ namespace HaCreator.MapSimulator.Fields
                 maskIndex,
                 sourceWidth: sourceWidth,
                 sourceHeight: sourceHeight));
-            if (includeRemotePositionResolution)
-            {
-                operations.Add(new ClientOwnedDrawViewrangeOperation(
-                    ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
-                    normalizedTopLeft,
-                    maskIndex,
-                    sourceWidth: sourceWidth,
-                    sourceHeight: sourceHeight));
-            }
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.QueryViewrangeCanvasDimensions,
+                normalizedTopLeft,
+                maskIndex,
+                sourceWidth: sourceWidth,
+                sourceHeight: sourceHeight));
 
             operations.Add(new ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind.ResolveViewrangeCopyRectangles,

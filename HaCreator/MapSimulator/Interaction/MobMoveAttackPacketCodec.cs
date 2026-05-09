@@ -41,7 +41,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal readonly record struct DecodedMovePathTailInfo(
             int PassiveKeyPadStateCount,
-            Rectangle PathBounds);
+            Rectangle PathBounds)
+        {
+            public IReadOnlyList<int> PassiveKeyPadStates { get; init; } = Array.Empty<int>();
+        }
 
         internal static MobTargetInfo CreateLockedTargetOverride(DecodedLockedTargetInfo? lockedTargetInfo)
         {
@@ -490,7 +493,10 @@ namespace HaCreator.MapSimulator.Interaction
                         action,
                         facingRight,
                         cursorTime,
-                        moveAction));
+                        moveAction)
+                    {
+                        Attribute = attr
+                    });
 
                     currentX = elementX;
                     currentY = elementY;
@@ -551,9 +557,15 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 int passiveKeyPadStateCount = reader.ReadByte();
                 int packedStateCount = (passiveKeyPadStateCount + 1) / 2;
+                var passiveKeyPadStates = new List<int>(passiveKeyPadStateCount);
                 for (int i = 0; i < packedStateCount; i++)
                 {
-                    _ = reader.ReadByte();
+                    byte packed = reader.ReadByte();
+                    passiveKeyPadStates.Add(packed & 0xF);
+                    if (passiveKeyPadStates.Count < passiveKeyPadStateCount)
+                    {
+                        passiveKeyPadStates.Add((packed >> 4) & 0xF);
+                    }
                 }
 
                 short left = reader.ReadShort();
@@ -564,7 +576,10 @@ namespace HaCreator.MapSimulator.Interaction
                 int height = Math.Max(0, bottom - top);
                 movePathTailInfo = new DecodedMovePathTailInfo(
                     passiveKeyPadStateCount,
-                    new Rectangle(left, top, width, height));
+                    new Rectangle(left, top, width, height))
+                {
+                    PassiveKeyPadStates = passiveKeyPadStates
+                };
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is ArgumentOutOfRangeException || ex is OverflowException)

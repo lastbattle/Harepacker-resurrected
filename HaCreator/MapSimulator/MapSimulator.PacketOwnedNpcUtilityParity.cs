@@ -214,7 +214,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -916,6 +916,28 @@ namespace HaCreator.MapSimulator
                             "Store Bank",
                             BuildPacketOwnedStoreBankFooter()));
 
+                case "get":
+                case "btget":
+                    if (args.Length < 2
+                        || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int ownerRow)
+                        || ownerRow <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank get <ownerRow>");
+                    }
+
+                    bool hasSelectedGetOutbound = _packetOwnedStoreBankRuntime.TryBuildSelectedGetOutboundRequest(
+                        ownerRow - 1,
+                        out PacketOwnedNpcUtilityOutboundRequest selectedGetRequest,
+                        out string selectedGetMessage);
+                    return hasSelectedGetOutbound
+                        ? ChatCommandHandler.CommandResult.Ok(
+                            DispatchPacketOwnedStoreBankOutboundRequest(
+                                hasSelectedGetOutbound,
+                                selectedGetRequest,
+                                selectedGetMessage,
+                                null))
+                        : ChatCommandHandler.CommandResult.Error(selectedGetMessage);
+
                 case "getall":
                 case "accept":
                     bool hasGetAllOutbound = _packetOwnedStoreBankRuntime.TryBuildPendingGetAllOutboundRequest(
@@ -946,7 +968,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeLocalMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank [status|show|getall|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank [status|show|get <ownerRow>|getall|close]");
             }
         }
 
@@ -1518,7 +1540,7 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord clear <damage|recovery|all>");
             }
 
-            return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.ClearInfo(option));
+            return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.ClearInfoFromOwnerButton(option));
         }
 
         private static bool TryParseOnOffArgument(string value, out bool enabled)

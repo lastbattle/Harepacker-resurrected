@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int ChildPreviousButtonId = 1001;
         internal const int ChildNextButtonId = 1002;
         internal const int ChildOkButtonId = 1003;
+        internal const int SearchResultDescendingCheckBoxId = 1004;
         internal const int ShopResultNextButtonId = 4000;
         internal const int ShopResultPreviousButtonId = 4001;
         internal const int SearchResultPageSize = 10;
@@ -156,6 +157,10 @@ namespace HaCreator.MapSimulator.UI
         private bool _categoryChildShown;
         private bool _searchResultChildShown;
         private bool _exclusiveScannerRequestPending;
+        private bool _descendingOrderChecked;
+        private bool _scanConfirmationPending;
+        private int _pendingScanConfirmationItemId;
+        private string _pendingScanConfirmationSummary = string.Empty;
         private int? _lastShopLinkResultCode;
         private string _lastShopLinkResultSummary = "No scanner shop-link result packet has been applied.";
         private int _lastScannerResultSubtype;
@@ -248,6 +253,10 @@ namespace HaCreator.MapSimulator.UI
             public bool CategoryChildShown { get; init; }
             public bool SearchResultChildShown { get; init; }
             public bool ExclusiveScannerRequestPending { get; init; }
+            public bool DescendingOrderChecked { get; init; }
+            public bool ScanConfirmationPending { get; init; }
+            public int PendingScanConfirmationItemId { get; init; }
+            public string PendingScanConfirmationSummary { get; init; } = string.Empty;
             public int? LastShopLinkResultCode { get; init; }
             public string LastShopLinkResultSummary { get; init; } = string.Empty;
             public int LastScannerResultSubtype { get; init; }
@@ -386,6 +395,10 @@ namespace HaCreator.MapSimulator.UI
                 CategoryChildShown = _categoryChildShown,
                 SearchResultChildShown = _searchResultChildShown,
                 ExclusiveScannerRequestPending = _exclusiveScannerRequestPending,
+                DescendingOrderChecked = _descendingOrderChecked,
+                ScanConfirmationPending = _scanConfirmationPending,
+                PendingScanConfirmationItemId = _pendingScanConfirmationItemId,
+                PendingScanConfirmationSummary = _pendingScanConfirmationSummary,
                 LastShopLinkResultCode = _lastShopLinkResultCode,
                 LastShopLinkResultSummary = _lastShopLinkResultSummary,
                 LastScannerResultSubtype = _lastScannerResultSubtype,

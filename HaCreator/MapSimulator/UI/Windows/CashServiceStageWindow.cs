@@ -2677,10 +2677,10 @@ namespace HaCreator.MapSimulator.UI
                 payload,
                 1 + sizeof(short),
                 maxCount: 2,
-                paneLabel: "Packet counter",
-                browseModeLabel: "Counter",
+                paneLabel: paneLabel,
+                browseModeLabel: browseModeLabel,
                 titlePrefix: "Counter packet body",
-                seller: "CCashShop",
+                seller: seller,
                 stateLabel: "Counter body");
             string valueDelta = previousValue > 0
                 ? $"{previousValue.ToString(CultureInfo.InvariantCulture)} -> {value.ToString(CultureInfo.InvariantCulture)}"
@@ -3767,13 +3767,31 @@ namespace HaCreator.MapSimulator.UI
             _cashNameChangeLastSummary = state.OpensLicenseDialog
                 ? $"CUIChangingLicenseNotice is ready with birth date {state.BirthDate.ToString(CultureInfo.InvariantCulture)} after CCashShop::OnCheckNameChangePossibleResult."
                 : ResolveCashNameChangePossibleFailureText(state.StatusCode);
+            string nameChangeTailSummary = AppendCashRawTailPacketEntryIfNeeded(
+                payload,
+                startOffset: state.DecodedByteLength,
+                decodedRowCount: 0,
+                paneLabel: "Packet rename",
+                browseModeLabel: "Name",
+                title: "Name-change possible-result trailing body",
+                seller: "CCashShop",
+                stateLabel: "Name body");
+            if (!string.IsNullOrWhiteSpace(nameChangeTailSummary))
+            {
+                _cashNameChangeLastSummary += $" {nameChangeTailSummary}";
+            }
+
             AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
             {
                 Title = "Name change",
                 Detail = _cashNameChangeLastSummary,
                 Seller = "CCashShop",
                 PriceLabel = state.BirthDate > 0 ? $"Birth {state.BirthDate.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = state.OpensLicenseDialog ? "License" : $"Result {state.StatusCode.ToString(CultureInfo.InvariantCulture)}"
+                StateLabel = state.OpensLicenseDialog ? "License" : $"Result {state.StatusCode.ToString(CultureInfo.InvariantCulture)}",
+                PacketSource = "CCashShop::OnCheckNameChangePossibleResult",
+                PacketFieldSummary = $"RequestId={state.RequestId.ToString(CultureInfo.InvariantCulture)}, status={state.StatusCode.ToString(CultureInfo.InvariantCulture)}, birthDate={state.BirthDate.ToString(CultureInfo.InvariantCulture)}, decodedBytes={state.DecodedByteLength.ToString(CultureInfo.InvariantCulture)}.",
+                PacketRawByteLength = Math.Max(0, payload?.Length ?? 0),
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = _cashNameChangeLastSummary;
             return _cashNameChangeLastSummary;
@@ -3811,13 +3829,31 @@ namespace HaCreator.MapSimulator.UI
             _cashTransferWorldLastSummary = state.OpensLicenseDialog
                 ? $"CUITransferWorldLicenseNotice is ready with birth date {state.BirthDate.ToString(CultureInfo.InvariantCulture)} and {state.WorldNames.Count.ToString(CultureInfo.InvariantCulture)} decoded world name(s)."
                 : ResolveCashTransferWorldPossibleFailureText(state.StatusCode);
+            string transferTailSummary = AppendCashRawTailPacketEntryIfNeeded(
+                payload,
+                startOffset: state.DecodedByteLength,
+                decodedRowCount: 0,
+                paneLabel: "Packet transfer",
+                browseModeLabel: "Transfer",
+                title: "Transfer-world possible-result trailing body",
+                seller: "CCashShop",
+                stateLabel: "Transfer body");
+            if (!string.IsNullOrWhiteSpace(transferTailSummary))
+            {
+                _cashTransferWorldLastSummary += $" {transferTailSummary}";
+            }
+
             AppendCashPacketCatalogEntry("Packet transfer", "Transfer", new PacketCatalogEntry
             {
                 Title = "Transfer world",
                 Detail = _cashTransferWorldLastSummary,
                 Seller = "CCashShop",
                 PriceLabel = state.WorldNames.Count > 0 ? state.WorldNames[0] : string.Empty,
-                StateLabel = state.OpensLicenseDialog ? "License" : $"Result {state.StatusCode.ToString(CultureInfo.InvariantCulture)}"
+                StateLabel = state.OpensLicenseDialog ? "License" : $"Result {state.StatusCode.ToString(CultureInfo.InvariantCulture)}",
+                PacketSource = "CCashShop::OnCheckTransferWorldPossibleResult",
+                PacketFieldSummary = $"RequestId={state.RequestId.ToString(CultureInfo.InvariantCulture)}, status={state.StatusCode.ToString(CultureInfo.InvariantCulture)}, birthDate={state.BirthDate.ToString(CultureInfo.InvariantCulture)}, hasWorldList={state.HasWorldList}, worldCount={state.WorldNames.Count.ToString(CultureInfo.InvariantCulture)}, decodedBytes={state.DecodedByteLength.ToString(CultureInfo.InvariantCulture)}.",
+                PacketRawByteLength = Math.Max(0, payload?.Length ?? 0),
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = _cashTransferWorldLastSummary;
             return _cashTransferWorldLastSummary;
@@ -3856,7 +3892,8 @@ namespace HaCreator.MapSimulator.UI
                 StateLabel = "Notice",
                 PacketSource = "CCashShop::OnPacket(396)",
                 PacketFieldSummary = string.IsNullOrWhiteSpace(notice) ? string.Empty : $"Notice: {notice}",
-                PacketRawByteLength = packetPayload.Length
+                PacketRawByteLength = packetPayload.Length,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(packetPayload)
             });
             return _noticeState;
         }
@@ -5750,7 +5787,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     RequestId = reader.ReadInt32(),
                     StatusCode = reader.ReadByte(),
-                    BirthDate = reader.ReadUInt32()
+                    BirthDate = reader.ReadUInt32(),
+                    DecodedByteLength = (int)stream.Position
                 };
                 return true;
             }
@@ -5820,7 +5858,8 @@ namespace HaCreator.MapSimulator.UI
                     StatusCode = statusCode,
                     BirthDate = birthDate,
                     HasWorldList = hasWorldList,
-                    WorldNames = worldNames
+                    WorldNames = worldNames,
+                    DecodedByteLength = (int)stream.Position
                 };
                 return true;
             }

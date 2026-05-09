@@ -343,7 +343,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             string soundName = damageSoundIndex >= 2 ? "CharDam2" : "CharDam1";
-            return RegisterSoundFromProperty(soundManager, normalizedTemplateId, soundName, mobSounds[soundName]);
+            return RegisterSoundFromProperty(null, soundManager, normalizedTemplateId, soundName, mobSounds[soundName]);
         }
 
         private static CachedMobActionAssets GetOrBuildCachedMobActionAssets(
@@ -1135,22 +1135,22 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             // Load Damage sound
-            string damageSE = RegisterSoundFromProperty(soundManager, mobId, "Damage", mobSounds["Damage"]);
+            string damageSE = RegisterSoundFromProperty(mobItem, soundManager, mobId, "Damage", mobSounds["Damage"]);
 
             // Load Die sound
-            string dieSE = RegisterSoundFromProperty(soundManager, mobId, "Die", mobSounds["Die"]);
+            string dieSE = RegisterSoundFromProperty(mobItem, soundManager, mobId, "Die", mobSounds["Die"]);
 
             // Load Attack1 sound
-            string attack1SE = RegisterSoundFromProperty(soundManager, mobId, "Attack1", mobSounds["Attack1"]);
+            string attack1SE = RegisterSoundFromProperty(mobItem, soundManager, mobId, "Attack1", mobSounds["Attack1"]);
 
             // Load Attack2 sound
-            string attack2SE = RegisterSoundFromProperty(soundManager, mobId, "Attack2", mobSounds["Attack2"]);
+            string attack2SE = RegisterSoundFromProperty(mobItem, soundManager, mobId, "Attack2", mobSounds["Attack2"]);
 
             // Load CharDam1 sound (character damage when mob hits player)
-            string charDam1SE = RegisterSoundFromProperty(soundManager, mobId, "CharDam1", mobSounds["CharDam1"]);
+            string charDam1SE = RegisterSoundFromProperty(mobItem, soundManager, mobId, "CharDam1", mobSounds["CharDam1"]);
 
             // Load CharDam2 sound
-            string charDam2SE = RegisterSoundFromProperty(soundManager, mobId, "CharDam2", mobSounds["CharDam2"]);
+            string charDam2SE = RegisterSoundFromProperty(mobItem, soundManager, mobId, "CharDam2", mobSounds["CharDam2"]);
 
             // Set sounds on mob item
             if (damageSE != null || dieSE != null)
@@ -1172,7 +1172,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>
         /// Helper method to load a sound from a WZ property (handles UOL links)
         /// </summary>
-        private static string RegisterSoundFromProperty(SoundManager soundManager, string mobId, string soundName, WzImageProperty prop)
+        private static string RegisterSoundFromProperty(MobItem mobItem, SoundManager soundManager, string mobId, string soundName, WzImageProperty prop)
         {
             if (prop == null || soundManager == null)
                 return null;
@@ -1184,6 +1184,7 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 string soundKey = $"Mob:{mobId}:{soundName}";
                 soundManager.RegisterSound(soundKey, soundProp);
+                mobItem?.SetClientSoundSource(soundKey, soundProp);
                 return soundKey;
             }
             return null;
@@ -1506,7 +1507,7 @@ namespace HaCreator.MapSimulator.Loaders
                 DirectCanvasFrameCount = CountMobActionFrameCanvasesForTests(actionProperty),
                 FrameMetadataCount = CountMobActionFrameMetadataForTests(actionProperty),
                 HasActionSpeakMetadata = actionSpeakMetadata != null,
-                ActionSpeakConditionGroupCount = actionSpeakMetadata?.ConditionGroups?.Count ?? 0,
+                ActionSpeakConditionGroupCount = CountMobActionSpeakConditionGroups(actionSpeakMetadata),
                 AppendsReversePlayback = ShouldAppendReversePlayback(actionProperty),
                 UsesClientSlotOwner = usesClientSlotOwner
             };
@@ -1884,6 +1885,30 @@ namespace HaCreator.MapSimulator.Loaders
         internal static MobAnimationSet.ActionSpeakMetadata BuildMobActionSpeakMetadataForTests(WzImageProperty speakProperty)
         {
             return BuildMobActionSpeakMetadata(speakProperty);
+        }
+
+        internal static int CountMobActionSpeakConditionGroupsForTests(MobAnimationSet.ActionSpeakMetadata metadata)
+        {
+            return CountMobActionSpeakConditionGroups(metadata);
+        }
+
+        private static int CountMobActionSpeakConditionGroups(MobAnimationSet.ActionSpeakMetadata metadata)
+        {
+            if (metadata == null)
+            {
+                return 0;
+            }
+
+            int count = metadata.ConditionGroups?.Count ?? 0;
+            if (metadata.Variants != null)
+            {
+                foreach (MobAnimationSet.ActionSpeakVariant variant in metadata.Variants)
+                {
+                    count += variant?.ConditionGroups?.Count ?? 0;
+                }
+            }
+
+            return count;
         }
 
         private static MobAnimationSet.ActionSpeakMetadata BuildMobActionSpeakMetadata(WzImageProperty speakProperty)
@@ -2715,7 +2740,13 @@ namespace HaCreator.MapSimulator.Loaders
                 nameTooltip,
                 npcDescTooltip,
                 LoadNpcIdleSpeech(source?["info"]?["speak"]));
-            npcItem.MarkMapleTvPresentationAvailable(source?["info"]?["MapleTV"]?.GetInt() != 0);
+            WzImageProperty infoProperty = source?["info"];
+            npcItem.MarkMapleTvPresentationAvailable(
+                infoProperty?["MapleTV"]?.GetInt() != 0,
+                infoProperty?["MapleTVmsgX"]?.GetInt() ?? 0,
+                infoProperty?["MapleTVmsgY"]?.GetInt() ?? 0,
+                infoProperty?["MapleTVadX"]?.GetInt() ?? 0,
+                infoProperty?["MapleTVadY"]?.GetInt() ?? 0);
             return npcItem;
         }
 

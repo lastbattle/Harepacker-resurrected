@@ -51,7 +51,8 @@ namespace HaCreator.MapSimulator.Managers
             string Source,
             string Summary,
             string RawPacketHex,
-            long? ProxySessionId);
+            long? ProxySessionId,
+            short? SessionVersion);
 
         private readonly record struct OutboundPacketTrace(
             MonsterCarnivalTab Tab,
@@ -59,7 +60,8 @@ namespace HaCreator.MapSimulator.Managers
             string Source,
             string Summary,
             string RawPacketHex,
-            long? ProxySessionId);
+            long? ProxySessionId,
+            short? SessionVersion);
 
         public enum LiveOwnershipVerificationState
         {
@@ -816,7 +818,8 @@ namespace HaCreator.MapSimulator.Managers
                 $"official-session:{e.SourceEndpoint}",
                 DescribePacketType(message.PacketType),
                 Convert.ToHexString(e.RawPacket ?? Array.Empty<byte>()),
-                e.ProxySessionId);
+                e.ProxySessionId,
+                e.SessionVersion);
             ReceivedCount++;
             LastStatus = $"Queued Monster Carnival opcode {message.PacketType} ({DescribePacketType(message.PacketType)}) from live session {e.SourceEndpoint}.";
         }
@@ -853,7 +856,8 @@ namespace HaCreator.MapSimulator.Managers
                         source,
                         $"tab={tab} index={entryIndex}",
                         Convert.ToHexString(e.RawPacket ?? Array.Empty<byte>()),
-                        e.ProxySessionId);
+                        e.ProxySessionId,
+                        e.SessionVersion);
                     LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {e.SourceEndpoint} and queued it as a pending local ownership token.";
                     return;
                 }
@@ -1024,6 +1028,18 @@ namespace HaCreator.MapSimulator.Managers
 
             while (_observedOutboundRequests.TryDequeue(out _))
             {
+                cleared++;
+            }
+
+            if (_liveInboundCarnivalPacketEvidence.HasValue)
+            {
+                _liveInboundCarnivalPacketEvidence = null;
+                cleared++;
+            }
+
+            if (_liveOutboundRequestEvidence.HasValue)
+            {
+                _liveOutboundRequestEvidence = null;
                 cleared++;
             }
 
@@ -1430,19 +1446,19 @@ namespace HaCreator.MapSimulator.Managers
             {
                 OutboundPacketTrace outbound = _liveOutboundRequestEvidence.Value;
                 InboundPacketTrace inbound = _liveInboundCarnivalPacketEvidence.Value;
-                return $"Live ownership verification evidence: outbound[{outbound.Summary} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}].";
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} proxySession={FormatProxySession(outbound.ProxySessionId, outbound.SessionVersion)} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} proxySession={FormatProxySession(inbound.ProxySessionId, inbound.SessionVersion)} raw={inbound.RawPacketHex}].";
             }
 
             if (_liveOutboundRequestEvidence.HasValue)
             {
                 OutboundPacketTrace outbound = _liveOutboundRequestEvidence.Value;
-                return $"Live ownership verification evidence: outbound[{outbound.Summary} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}], waiting for inbound.";
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} proxySession={FormatProxySession(outbound.ProxySessionId, outbound.SessionVersion)} raw={outbound.RawPacketHex}], waiting for inbound.";
             }
 
             if (_liveInboundCarnivalPacketEvidence.HasValue)
             {
                 InboundPacketTrace inbound = _liveInboundCarnivalPacketEvidence.Value;
-                return $"Live ownership verification evidence: inbound[{inbound.Summary} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}], waiting for outbound opcode {OutboundRequestOpcode}.";
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} proxySession={FormatProxySession(inbound.ProxySessionId, inbound.SessionVersion)} raw={inbound.RawPacketHex}], waiting for outbound opcode {OutboundRequestOpcode}.";
             }
 
             return "Live ownership verification evidence: none.";
@@ -1450,20 +1466,34 @@ namespace HaCreator.MapSimulator.Managers
 
         private bool HasPairedCurrentLiveOwnershipEvidence()
         {
-            return IsSameProxySession(_currentInitializedProxySessionId, _liveOutboundRequestEvidence?.ProxySessionId)
-                && IsSameProxySession(_currentInitializedProxySessionId, _liveInboundCarnivalPacketEvidence?.ProxySessionId);
+            return IsSameProxySession(
+                    _currentInitializedProxySessionId,
+                    _currentInitializedSessionVersion,
+                    _liveOutboundRequestEvidence?.ProxySessionId,
+                    _liveOutboundRequestEvidence?.SessionVersion)
+                && IsSameProxySession(
+                    _currentInitializedProxySessionId,
+                    _currentInitializedSessionVersion,
+                    _liveInboundCarnivalPacketEvidence?.ProxySessionId,
+                    _liveInboundCarnivalPacketEvidence?.SessionVersion);
         }
 
-        private static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)
+        private static bool IsSameProxySession(
+            long? currentProxySessionId,
+            short? currentSessionVersion,
+            long? evidenceProxySessionId,
+            short? evidenceSessionVersion)
         {
-            return leftProxySessionId.HasValue
-                && rightProxySessionId.HasValue
-                && leftProxySessionId.Value == rightProxySessionId.Value;
+            return currentProxySessionId.HasValue
+                && evidenceProxySessionId.HasValue
+                && currentProxySessionId.Value == evidenceProxySessionId.Value
+                && (!currentSessionVersion.HasValue
+                    || (evidenceSessionVersion.HasValue && currentSessionVersion.Value == evidenceSessionVersion.Value));
         }
 
-        private static string FormatProxySessionId(long? proxySessionId)
+        private static string FormatProxySession(long? proxySessionId, short? sessionVersion)
         {
-            return proxySessionId.HasValue ? proxySessionId.Value.ToString() : "unknown";
+            return DescribeProxySession(proxySessionId, sessionVersion);
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(

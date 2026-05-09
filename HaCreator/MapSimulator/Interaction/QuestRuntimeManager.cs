@@ -1337,6 +1337,15 @@ namespace HaCreator.MapSimulator.Interaction
                        || !isSuccessDailyPlayQuestProvider(Math.Max(0, questId)));
         }
 
+        internal static bool HasUnmetAllowedDayDemand(
+            IReadOnlyList<DayOfWeek> allowedDays,
+            DayOfWeek currentDay)
+        {
+            return allowedDays != null &&
+                   allowedDays.Count > 0 &&
+                   !allowedDays.Contains(currentDay);
+        }
+
         internal static bool HasUnmetCompletionUserInteractDemand(
             int? requiredUserInteract,
             string questRecordValue)
@@ -5640,6 +5649,10 @@ namespace HaCreator.MapSimulator.Interaction
                     : definition.EndFakeQuestId,
                 infoRequirements,
                 infoExRequirements);
+            bool hasUnmetCurrentQuestRecordRequirement = state == QuestStateType.Started &&
+                HasUnmetCurrentQuestRecordForCompletionDemand(
+                    definition.QuestId,
+                    HasQuestRecordOwner);
             bool hasUnmetTraitRequirement = state == QuestStateType.Not_Started
                 ? HasUnmetTraitRequirements(definition.StartTraitRequirements, build)
                 : state == QuestStateType.Started &&
@@ -5760,6 +5773,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetQuestRequirements(questRequirements),
                 hasUnmetJobRequirement,
                 hasUnmetQuestRecordRequirements,
+                hasUnmetCurrentQuestRecordRequirement,
                 hasUnmetTraitRequirement,
                 hasUnmetLevelRequirement,
                 hasUnmetFameRequirement,
@@ -5800,6 +5814,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetQuestRequirements,
             bool hasUnmetJobRequirement,
             bool hasUnmetQuestRecordRequirements,
+            bool hasUnmetCurrentQuestRecordRequirement,
             bool hasUnmetTraitRequirement,
             bool hasUnmetLevelRequirement,
             bool hasUnmetFameRequirement,
@@ -5925,6 +5940,20 @@ namespace HaCreator.MapSimulator.Interaction
                     "questRecord"))
             {
                 return blockedInfoPages;
+            }
+
+            if (hasUnmetCurrentQuestRecordRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> currentRecordPages,
+                    "info",
+                    "record",
+                    "questrecord",
+                    "questRecord",
+                    "currentQuestRecord",
+                    "currentRecord"))
+            {
+                return currentRecordPages;
             }
 
             if (hasUnmetTraitRequirement &&
@@ -7706,7 +7735,7 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add($"This quest could only be {actionLabel}ed until {FormatQuestDateTime(availableUntil.Value)}.");
             }
 
-            if (allowedDays != null && allowedDays.Count > 0 && !allowedDays.Contains(now.DayOfWeek))
+            if (HasUnmetAllowedDayDemand(allowedDays, now.DayOfWeek))
             {
                 issues.Add($"This quest can only be {actionLabel}ed on {FormatAllowedDays(allowedDays)}.");
             }
@@ -13256,8 +13285,57 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("recall", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("petRecall", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("petRecallLimit", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("questComplete", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("questCompleteCount", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("completeCount", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("questCount", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("partyQuest", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("partyQuestS", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("partyQuest_S", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("partyQuestRank", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("pq", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("daily", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("dailyPlay", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("dailyPlayTime", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("playTime", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("morph", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("morphId", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("morphTemplate", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("morphTemplateId", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("buffId", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("requiredBuff", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("needBuff", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("demandBuff", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("noBuff", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("exceptBuff", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("except", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("blockedBuff", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("excludedBuff", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("buffBlock", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("monsterBook", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("monsterBookCard", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("mb", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("mbmin", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("mbmax", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("card", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("cards", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("fieldSet", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("timeKeep", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("timeKeepFieldSet", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("kept", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("pvp", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("pvpGrade", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("grade", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("userInteract", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("userInteraction", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("gender", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("sex", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("genderType", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("marriage", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("married", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("marriaged", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("noMarriage", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("noMarriaged", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("map", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.EndsWith("EXP", StringComparison.OrdinalIgnoreCase);
         }

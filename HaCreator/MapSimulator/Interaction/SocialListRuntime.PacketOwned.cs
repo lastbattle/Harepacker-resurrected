@@ -96,6 +96,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryStagePacketOwnedRequest(SocialListTab tab, string requestKind, out string requestMessage)
         {
+            return TryStagePacketOwnedRequest(tab, requestKind, GetSelectedEntry(tab), out requestMessage);
+        }
+
+        private bool TryStagePacketOwnedRequest(SocialListTab tab, string requestKind, SocialEntryState requestEntry, out string requestMessage)
+        {
             if (!IsPacketOwned(tab))
             {
                 requestMessage = null;
@@ -104,16 +109,15 @@ namespace HaCreator.MapSimulator.Interaction
 
             string normalizedRequest = string.IsNullOrWhiteSpace(requestKind) ? "Roster update" : requestKind.Trim();
             _lastPendingRequestByTab[tab] = normalizedRequest;
-            SocialEntryState selectedEntry = GetSelectedEntry(tab);
             SocialListOutboundRequestDraft outboundDraft = BuildPacketOwnedOutboundDraft(
                 tab,
                 normalizedRequest,
-                selectedEntry);
+                requestEntry);
             string dispatchMessage = PacketOwnedRequestDispatcher?.Invoke(new SocialListPacketOwnedRequest(
                 tab,
                 normalizedRequest,
-                selectedEntry?.Name,
-                selectedEntry?.MemberId,
+                requestEntry?.Name,
+                requestEntry?.MemberId,
                 outboundDraft));
             requestMessage =
                 $"{normalizedRequest} is staged locally, and {tab} currently follows packet-owned roster authority until a matching client result resolves it.";
@@ -125,7 +129,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static SocialListOutboundRequestDraft BuildPacketOwnedOutboundDraft(
+        private SocialListOutboundRequestDraft BuildPacketOwnedOutboundDraft(
             SocialListTab tab,
             string requestKind,
             SocialEntryState selectedEntry)
@@ -138,7 +142,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             return normalizedRequest.ToLowerInvariant() switch
             {
-                "friend add" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.FriendAdd, selectedName),
+                "friend add" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.FriendAdd, selectedName, GroupName: ResolveFriendAddGroupName(selectedEntry)),
                 "friend delete" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.FriendDelete, selectedName, selectedMemberId),
                 "party create" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.PartyCreate),
                 "party invite" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.PartyInvite, selectedName, selectedMemberId),
@@ -159,8 +163,19 @@ namespace HaCreator.MapSimulator.Interaction
                 "alliance grade down" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.AllianceGradeChange, selectedName, selectedMemberId, -1),
                 "blacklist add" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.BlacklistAdd, selectedName, selectedMemberId),
                 "blacklist delete" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.BlacklistDelete, selectedName, selectedMemberId),
+                "blacklist remove" => new SocialListOutboundRequestDraft(SocialListOutboundRequestKind.BlacklistDelete, selectedName, selectedMemberId),
                 _ => new SocialListOutboundRequestDraft(ResolveFallbackOutboundKind(tab), selectedName, selectedMemberId)
             };
+        }
+
+        private string ResolveFriendAddGroupName(SocialEntryState selectedEntry)
+        {
+            if (selectedEntry != null && TryGetFriendGroupLabel(selectedEntry.Name, out string selectedGroupLabel))
+            {
+                return selectedGroupLabel;
+            }
+
+            return _friendGroups.Count > 0 ? _friendGroups[0] : string.Empty;
         }
 
         private static int ResolveGuildGradeChangeTarget(SocialEntryState selectedEntry, bool up)

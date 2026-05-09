@@ -212,6 +212,8 @@ namespace HaCreator.MapSimulator
                 AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AntiMacro, adminVariant: false, GraphicsDevice);
                 window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
+                window.EditFocusGained += HandlePacketOwnedAntiMacroEditFocusGained;
+                window.ClientForwardedFunctionKeyStateChanged += HandlePacketOwnedAntiMacroClientForwardedFunctionKeyStateChanged;
                 uiWindowManager.RegisterCustomWindow(window);
             }
 
@@ -220,6 +222,8 @@ namespace HaCreator.MapSimulator
                 AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AdminAntiMacro, adminVariant: true, GraphicsDevice);
                 window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
+                window.EditFocusGained += HandlePacketOwnedAntiMacroEditFocusGained;
+                window.ClientForwardedFunctionKeyStateChanged += HandlePacketOwnedAntiMacroClientForwardedFunctionKeyStateChanged;
                 uiWindowManager.RegisterCustomWindow(window);
             }
 
@@ -265,6 +269,16 @@ namespace HaCreator.MapSimulator
 
                 ConfigurePacketOwnedAntiMacroNoticeVisuals(noticeWindow, PacketOwnedAntiMacroAdminCanvas0Path);
             }
+        }
+
+        private void HandlePacketOwnedAntiMacroEditFocusGained()
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(Environment.TickCount);
+        }
+
+        private void HandlePacketOwnedAntiMacroClientForwardedFunctionKeyStateChanged(int functionKeyIndex, bool keyDown)
+        {
+            HandleSkillMacroClientForwardedFunctionKeyStateChanged(functionKeyIndex, keyDown);
         }
 
         private void RefreshPacketOwnedAntiMacroWindowPositions()
@@ -1561,7 +1575,7 @@ namespace HaCreator.MapSimulator
                         : 0;
                     if (!TryReadPacketOwnedAntiMacroCanvasPayload(
                         reader,
-                        IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource),
+                        requireClientLengthPrefix: true,
                         out byte[] jpegBytes,
                         out string canvasError))
                     {

@@ -34,5 +34,6 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct GuildCreateAgreementAcceptance(
         string MasterName,
         string GuildName,
-        DateTimeOffset AcceptedAtUtc);
+        DateTimeOffset AcceptedAtUtc,
+        bool Accepted = true);
 }

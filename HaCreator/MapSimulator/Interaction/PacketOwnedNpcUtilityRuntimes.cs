@@ -3578,6 +3578,22 @@ namespace HaCreator.MapSimulator.Interaction
             return StatusMessage;
         }
 
+        internal string ClearInfoFromOwnerButton(int option)
+        {
+            string message = ClearInfo(option);
+            if (option is not (0 or 1 or 3))
+            {
+                return message;
+            }
+
+            _timerSetMilliseconds = 0;
+            _timerStopRemainMilliseconds = 0;
+            _timerExpiryTick = 0;
+            StatusMessage = $"{message} CUIBattleRecord::OnButtonClicked reset the staged timer controls after the confirmed clear.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
         private void ClearDamageInfoValues()
         {
             TotalDamage = 0;

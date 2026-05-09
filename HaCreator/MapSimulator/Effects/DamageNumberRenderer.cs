@@ -1219,7 +1219,63 @@ namespace HaCreator.MapSimulator.Effects
                 keepsOverlayOnSeparateLayer ? overlaySourceOrigin : Point.Zero,
                 keepsOverlayOnSeparateLayer ? overlaySourceWidth : 0,
                 keepsOverlayOnSeparateLayer ? overlaySourceHeight : 0,
-                overlayLayerPositionOffsetY);
+                overlayLayerPositionOffsetY,
+                BuildRecoveredSourceCleanupSteps(
+                    BuildRecoveredEffectHpOwnerSelectionTrace(visual),
+                    preparedSources));
+        }
+
+        internal static CanvasLayerRecoveredEffectHpSourceCleanupStep[] BuildRecoveredSourceCleanupSteps(
+            CanvasLayerRecoveredEffectHpOwnerSelectionTrace ownerSelection,
+            IReadOnlyList<CanvasLayerRecoveredPreparedSourceTrace> preparedSources)
+        {
+            var cleanupSteps = new List<CanvasLayerRecoveredEffectHpSourceCleanupStep>(4);
+
+            cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                cleanupSteps.Count,
+                CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseFormattedText,
+                OwnerSetName: null,
+                SourceCanvasPath: null,
+                RunsAfterOneTimeRegistration: true));
+
+            CanvasLayerRecoveredPreparedSourceTrace? lastSource = null;
+            if (preparedSources != null && preparedSources.Count > 0)
+            {
+                lastSource = preparedSources[preparedSources.Count - 1];
+            }
+
+            if (lastSource.HasValue)
+            {
+                CanvasLayerRecoveredPreparedSourceTrace source = lastSource.Value;
+                cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                    cleanupSteps.Count,
+                    CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseLastSourceCanvas,
+                    source.SourceSetName,
+                    source.SourceCanvasPath,
+                    RunsAfterOneTimeRegistration: true));
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSelection.SmallOwnerSetName))
+            {
+                cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                    cleanupSteps.Count,
+                    CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseSmallOwnerProperty,
+                    ownerSelection.SmallOwnerSetName,
+                    SourceCanvasPath: null,
+                    RunsAfterOneTimeRegistration: true));
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerSelection.LargeOwnerSetName))
+            {
+                cleanupSteps.Add(new CanvasLayerRecoveredEffectHpSourceCleanupStep(
+                    cleanupSteps.Count,
+                    CanvasLayerRecoveredEffectHpSourceCleanupKind.ReleaseLargeOwnerProperty,
+                    ownerSelection.LargeOwnerSetName,
+                    SourceCanvasPath: null,
+                    RunsAfterOneTimeRegistration: true));
+            }
+
+            return cleanupSteps.ToArray();
         }
 
         internal static CanvasLayerRecoveredEffectHpOwnerSelectionTrace BuildRecoveredEffectHpOwnerSelectionTrace(

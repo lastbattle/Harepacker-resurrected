@@ -1,5 +1,6 @@
 using HaSharedLibrary.Render.DX;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Combat;
 using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -1559,7 +1560,8 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedMobBullet,
                 zOrder,
-                initialElapsedMs);
+                initialElapsedMs,
+                OneTimeAnimationRecoveredMobProjectileRegistrationTrace.CreateMobBullet(sourceUol));
         }
 
         internal void AddPacketOwnedMobSwallow(
@@ -1585,7 +1587,8 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs,
                 AnimationOneTimeOwner.PacketOwnedMobSwallow,
                 zOrder,
-                initialElapsedMs);
+                initialElapsedMs,
+                OneTimeAnimationRecoveredMobProjectileRegistrationTrace.CreateMobSwallow(sourceUol));
         }
 
         internal void AddPacketOwnedAreaExplosion(
@@ -1894,7 +1897,8 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             AnimationOneTimeOwner owner,
             int zOrder,
-            int initialElapsedMs)
+            int initialElapsedMs,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? mobProjectileRegistrationTrace = null)
         {
             if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
 
@@ -1915,7 +1919,8 @@ namespace HaCreator.MapSimulator.Animation
                 sourceUol,
                 usesOverlayParent: false,
                 registrationTrace,
-                initialElapsedMs);
+                initialElapsedMs,
+                mobProjectileRegistrationTrace);
             InsertOneTimeAnimation(anim);
         }
 
@@ -1928,7 +1933,8 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             AnimationOneTimeOwner owner,
             int zOrder,
-            int initialElapsedMs)
+            int initialElapsedMs,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? mobProjectileRegistrationTrace = null)
         {
             if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
 
@@ -1949,7 +1955,8 @@ namespace HaCreator.MapSimulator.Animation
                 sourceUol,
                 usesOverlayParent: false,
                 registrationTrace,
-                initialElapsedMs);
+                initialElapsedMs,
+                mobProjectileRegistrationTrace);
             InsertOneTimeAnimation(anim);
         }
 
@@ -2032,7 +2039,8 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             AnimationOneTimeOwner owner,
             int zOrder,
-            int initialElapsedMs)
+            int initialElapsedMs,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? mobProjectileRegistrationTrace = null)
         {
             if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
 
@@ -2053,7 +2061,8 @@ namespace HaCreator.MapSimulator.Animation
                 sourceUol,
                 usesOverlayParent: false,
                 registrationTrace,
-                initialElapsedMs);
+                initialElapsedMs,
+                mobProjectileRegistrationTrace);
             InsertOneTimeAnimation(anim);
         }
 
@@ -4106,6 +4115,11 @@ namespace HaCreator.MapSimulator.Animation
             _state.CaptureRegisteredLayerReferences(
                 _state.SimulatedOverlayLayerHandleId,
                 _state.SimulatedLayerHandleIdsByLayerCode);
+            _state.CaptureRegisteredOwnerListNode(
+                delayMs,
+                intervalMs,
+                alpha,
+                _state.SimulatedLayerHandleIdsByLayerCode);
         }
 
         public bool Update(int currentTimeMs)
@@ -4187,10 +4201,18 @@ namespace HaCreator.MapSimulator.Animation
             if (_state != null)
             {
                 _state.TerminateRequested = true;
+                _state.CaptureOwnerListTerminateRequest();
             }
 
-            _endTime = Math.Min(_endTime, currentTimeMs);
-            _nextUpdateTime = Math.Max(_nextUpdateTime, _endTime);
+            if (!ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTimeMs, _endTime))
+            {
+                _endTime = currentTimeMs;
+            }
+
+            if (!ClientOwnedAvatarEffectParity.HasUnsignedTickReached(_nextUpdateTime, _endTime))
+            {
+                _nextUpdateTime = _endTime;
+            }
         }
 
         public void MarkTerminated()
@@ -4721,6 +4743,64 @@ namespace HaCreator.MapSimulator.Animation
         MobActionLayer = 1
     }
 
+    internal enum OneTimeAnimationRecoveredMobProjectileOperationKind
+    {
+        LoadMobAction = 0,
+        RetainBallUol = 1,
+        RetainSourceCanvas = 2,
+        RetainTargetVector = 3,
+        AllocateBulletOwner = 4,
+        RetainBulletLocalReference = 5,
+        RetainBulletContainerReference = 6,
+        InsertIntoBulletContainer = 7,
+        ReleaseBulletLocalReference = 8,
+        ReleaseMobActionFrameList = 9,
+        ReleaseTargetVector = 10,
+        ReleaseBallUol = 11,
+        ReleaseSourceCanvas = 12
+    }
+
+    internal readonly record struct OneTimeAnimationRecoveredMobProjectileOperation(
+        OneTimeAnimationRecoveredMobProjectileOperationKind Kind,
+        string SourceUol,
+        AnimationOneTimeOwner Owner,
+        int LoadMobActionId,
+        bool UsesBallUol,
+        bool UsesActionFrameCanvas,
+        bool UsesProvidedCanvas,
+        int Value = 0);
+
+    internal readonly record struct OneTimeAnimationRecoveredMobProjectileRegistrationTrace(
+        string SourceUol,
+        AnimationOneTimeOwner Owner,
+        int LoadMobActionId,
+        bool UsesBallUol,
+        bool UsesActionFrameCanvas,
+        bool UsesProvidedCanvas)
+    {
+        public static OneTimeAnimationRecoveredMobProjectileRegistrationTrace CreateMobBullet(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileRegistrationTrace(
+                sourceUol,
+                AnimationOneTimeOwner.PacketOwnedMobBullet,
+                MobAttackSystem.ClientAnimationDisplayerMobBulletLoadAction,
+                UsesBallUol: true,
+                UsesActionFrameCanvas: true,
+                UsesProvidedCanvas: false);
+        }
+
+        public static OneTimeAnimationRecoveredMobProjectileRegistrationTrace CreateMobSwallow(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileRegistrationTrace(
+                sourceUol,
+                AnimationOneTimeOwner.PacketOwnedMobSwallow,
+                LoadMobActionId: -1,
+                UsesBallUol: false,
+                UsesActionFrameCanvas: false,
+                UsesProvidedCanvas: true);
+        }
+    }
+
     internal enum FollowParticleRecoveredNativeOperationKind
     {
         LoadLayer = 0,
@@ -4935,7 +5015,8 @@ namespace HaCreator.MapSimulator.Animation
         CreateMissingStartTimeVariant = 10,
         CreateMissingRepeatCountVariant = 11,
         ClearMissingRepeatCountVariant = 12,
-        ClearMissingStartTimeVariant = 13
+        ClearMissingStartTimeVariant = 13,
+        LoadLayerNoLayer = 14
     }
 
     internal readonly record struct OneTimeAnimationRecoveredNativeOperation(
@@ -5303,7 +5384,28 @@ namespace HaCreator.MapSimulator.Animation
         Point OverlaySourceOrigin,
         int OverlaySourceWidth,
         int OverlaySourceHeight,
-        int OverlayLayerPositionOffsetY);
+        int OverlayLayerPositionOffsetY,
+        CanvasLayerRecoveredEffectHpSourceCleanupStep[] SourceCleanupSteps);
+
+    internal enum CanvasLayerRecoveredEffectHpSourceCleanupKind
+    {
+        ReleaseFormattedText,
+        ReleaseLastSourceCanvas,
+        ReleaseSmallOwnerProperty,
+        ReleaseLargeOwnerProperty
+    }
+
+    /// <summary>
+    /// Recovered cleanup order for source-side Effect_HP objects after one-time registration.
+    /// The managed renderer keeps these as metadata because source WZ properties and canvases
+    /// are cached managed assets rather than native COM references.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredEffectHpSourceCleanupStep(
+        int Order,
+        CanvasLayerRecoveredEffectHpSourceCleanupKind Kind,
+        string OwnerSetName,
+        string SourceCanvasPath,
+        bool RunsAfterOneTimeRegistration);
 
     /// <summary>
     /// Recovered CAnimationDisplayer::Effect_HP family-owner selection.
@@ -6238,6 +6340,9 @@ namespace HaCreator.MapSimulator.Animation
         public OneTimeAnimationRecoveredRegistrationTrace? RecoveredRegistrationTrace { get; private set; }
         internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
             = Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
+        internal IReadOnlyList<OneTimeAnimationRecoveredMobProjectileOperation> RecoveredMobProjectileExecutionTrace { get; private set; }
+            = Array.Empty<OneTimeAnimationRecoveredMobProjectileOperation>();
+        internal OneTimeAnimationRecoveredMobProjectileRegistrationTrace? RecoveredMobProjectileRegistrationTrace { get; private set; }
         internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperationState> RecoveredNativeOperationStates { get; private set; }
             = Array.Empty<OneTimeAnimationRecoveredNativeOperationState>();
         internal OneTimeAnimationRecoveredNativeLifetimeState RecoveredNativeLifetimeState { get; private set; }
@@ -6288,7 +6393,8 @@ namespace HaCreator.MapSimulator.Animation
             string sourceUol,
             bool usesOverlayParent,
             OneTimeAnimationRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
-            int initialElapsedMs = 0)
+            int initialElapsedMs = 0,
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? recoveredMobProjectileRegistrationTrace = null)
         {
             _frames = frames;
             _x = x;
@@ -6311,7 +6417,10 @@ namespace HaCreator.MapSimulator.Animation
             OverlayParentKind = recoveredRegistrationTrace?.OverlayParentKind
                 ?? (usesOverlayParent ? AnimationOneTimeOverlayParentKind.MobActionLayer : AnimationOneTimeOverlayParentKind.None);
             RecoveredRegistrationTrace = recoveredRegistrationTrace;
+            RecoveredMobProjectileRegistrationTrace = recoveredMobProjectileRegistrationTrace;
             RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(recoveredRegistrationTrace);
+            RecoveredMobProjectileExecutionTrace =
+                BuildRecoveredMobProjectileExecutionTrace(recoveredMobProjectileRegistrationTrace);
             RecoveredNativeOperationStates = BuildRecoveredNativeOperationStates(
                 recoveredRegistrationTrace,
                 RecoveredNativeExecutionTrace);
@@ -6635,6 +6744,105 @@ namespace HaCreator.MapSimulator.Animation
             return operations.ToArray();
         }
 
+        internal static OneTimeAnimationRecoveredNativeOperation[] BuildRecoveredNativeNullLayerExecutionTraceForTesting(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            int capacity = 2
+                + (trace.UsesOverlayLayer ? 2 : 0)
+                + (trace.UsesOriginVector ? 2 : 0);
+            var operations = new List<OneTimeAnimationRecoveredNativeOperation>(capacity);
+
+            if (trace.UsesOverlayLayer)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOverlayParent,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
+            }
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.LoadLayerNoLayer,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                trace.UsesOriginVector,
+                trace.LoadLayerOriginOffsetX,
+                trace.LoadLayerOriginOffsetY,
+                trace.UsesOverlayLayer,
+                trace.OverlayParentKind,
+                trace.LoadLayerOptionValue,
+                trace.LoadLayerCanvasValue,
+                trace.LoadLayerAlphaValue,
+                trace.LoadLayerFlip,
+                trace.LoadLayerReservedValue));
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.ReleaseSourceUol,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                Value: 1));
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            if (trace.UsesOverlayLayer)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOverlayParent,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
+            }
+
+            return operations.ToArray();
+        }
+
         internal static OneTimeAnimationRecoveredNativeOperationState[] BuildRecoveredNativeOperationStates(
             OneTimeAnimationRecoveredRegistrationTrace? registrationTrace,
             IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> executionTrace = null,
@@ -6676,6 +6884,9 @@ namespace HaCreator.MapSimulator.Animation
                         break;
                     case OneTimeAnimationRecoveredNativeOperationKind.LoadLayer:
                         loadedLayerReferenceCount = Math.Max(loadedLayerReferenceCount, 1);
+                        role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
+                        break;
+                    case OneTimeAnimationRecoveredNativeOperationKind.LoadLayerNoLayer:
                         role = OneTimeAnimationRecoveredNativeObjectRole.LoadedLayer;
                         break;
                     case OneTimeAnimationRecoveredNativeOperationKind.CreateMissingStartTimeVariant:
@@ -6811,7 +7022,8 @@ namespace HaCreator.MapSimulator.Animation
                 overlayParentReferenceCountAfterRetain > 0 ? simulatedOverlayParentHandleId : 0,
                 overlayParentReferenceCountAfterRetain,
                 overlayParentReferenceCountAfterOwnerRelease,
-                trace.RegistersOneTimeAnimation,
+                trace.RegistersOneTimeAnimation
+                    && HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation),
                 HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer));
         }
 
@@ -6833,6 +7045,118 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return false;
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation[] BuildRecoveredMobProjectileExecutionTrace(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredMobProjectileOperation>();
+            }
+
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            int capacity = 7
+                + (trace.LoadMobActionId >= 0 ? 2 : 0)
+                + (trace.UsesBallUol ? 2 : 0)
+                + (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas ? 2 : 0);
+            var operations = new List<OneTimeAnimationRecoveredMobProjectileOperation>(capacity);
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.LoadMobAction,
+                    trace.LoadMobActionId));
+            }
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBallUol,
+                    1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainSourceCanvas,
+                    1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainTargetVector,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.AllocateBulletOwner,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletLocalReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletContainerReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.InsertIntoBulletContainer,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBulletLocalReference,
+                -1));
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseMobActionFrameList,
+                    -1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseTargetVector,
+                -1));
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBallUol,
+                    -1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseSourceCanvas,
+                    -1));
+            }
+
+            return operations.ToArray();
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation CreateMobProjectileOperation(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace,
+            OneTimeAnimationRecoveredMobProjectileOperationKind kind,
+            int value)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileOperation(
+                kind,
+                trace.SourceUol,
+                trace.Owner,
+                trace.LoadMobActionId,
+                trace.UsesBallUol,
+                trace.UsesActionFrameCanvas,
+                trace.UsesProvidedCanvas,
+                value);
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
@@ -7115,6 +7439,118 @@ namespace HaCreator.MapSimulator.Animation
             {
                 SeekElapsed(initialElapsedMs, currentTimeMs);
             }
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation[] BuildRecoveredMobProjectileExecutionTrace(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredMobProjectileOperation>();
+            }
+
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            int capacity = 7
+                + (trace.LoadMobActionId >= 0 ? 2 : 0)
+                + (trace.UsesBallUol ? 2 : 0)
+                + (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas ? 2 : 0);
+            var operations = new List<OneTimeAnimationRecoveredMobProjectileOperation>(capacity);
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.LoadMobAction,
+                    trace.LoadMobActionId));
+            }
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBallUol,
+                    1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.RetainSourceCanvas,
+                    1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainTargetVector,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.AllocateBulletOwner,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletLocalReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.RetainBulletContainerReference,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.InsertIntoBulletContainer,
+                1));
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBulletLocalReference,
+                -1));
+
+            if (trace.LoadMobActionId >= 0)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseMobActionFrameList,
+                    -1));
+            }
+
+            operations.Add(CreateMobProjectileOperation(
+                trace,
+                OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseTargetVector,
+                -1));
+
+            if (trace.UsesBallUol)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseBallUol,
+                    -1));
+            }
+
+            if (trace.UsesActionFrameCanvas || trace.UsesProvidedCanvas)
+            {
+                operations.Add(CreateMobProjectileOperation(
+                    trace,
+                    OneTimeAnimationRecoveredMobProjectileOperationKind.ReleaseSourceCanvas,
+                    -1));
+            }
+
+            return operations.ToArray();
+        }
+
+        private static OneTimeAnimationRecoveredMobProjectileOperation CreateMobProjectileOperation(
+            OneTimeAnimationRecoveredMobProjectileRegistrationTrace trace,
+            OneTimeAnimationRecoveredMobProjectileOperationKind kind,
+            int value)
+        {
+            return new OneTimeAnimationRecoveredMobProjectileOperation(
+                kind,
+                trace.SourceUol,
+                trace.Owner,
+                trace.LoadMobActionId,
+                trace.UsesBallUol,
+                trace.UsesActionFrameCanvas,
+                trace.UsesProvidedCanvas,
+                value);
         }
 
         public bool Update(int currentTimeMs, float deltaSeconds)

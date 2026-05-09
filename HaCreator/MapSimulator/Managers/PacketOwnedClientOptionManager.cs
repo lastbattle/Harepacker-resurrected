@@ -22,6 +22,21 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public void SetOpt(uint type, int value)
+        {
+            _options[type] = value;
+        }
+
+        public void SetOpt(int type, int value)
+        {
+            if (type < 0)
+            {
+                return;
+            }
+
+            SetOpt((uint)type, value);
+        }
+
         public int GetOpt(uint type)
         {
             return _options.TryGetValue(type, out int value)

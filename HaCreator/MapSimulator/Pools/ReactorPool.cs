@@ -1988,6 +1988,7 @@ namespace HaCreator.MapSimulator.Pools
                 x,
                 y,
                 data.PacketStateEndTime);
+            StartPacketStateMovement(reactor, data, currentTick);
             if (index < _spawnPoints.Count)
             {
                 _spawnPoints[index].X = x;

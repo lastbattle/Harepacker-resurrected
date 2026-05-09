@@ -567,19 +567,22 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-            if (_choiceButtonsEnabled)
+            for (int i = 0; i < ChoiceCount; i++)
             {
-                for (int i = 0; i < ChoiceCount; i++)
+                if (!Translate(_choiceButtonRects[i], panelX, panelY).Contains(mousePosition))
                 {
-                    if (!Translate(_choiceButtonRects[i], panelX, panelY).Contains(mousePosition))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    SendSelection((RockPaperScissorsChoice)i);
-                    message = CurrentStatusMessage;
+                if (!_choiceButtonsEnabled)
+                {
+                    message = "RPS choice buttons are disabled until the next client-owned round start.";
                     return true;
                 }
+
+                SendSelection((RockPaperScissorsChoice)i);
+                message = CurrentStatusMessage;
+                return true;
             }
 
             return false;

@@ -31,5 +31,6 @@ namespace HaCreator.MapSimulator
         EntrustedShopBlacklistAdd = 26,
         EntrustedShopBlacklistNotice = 27,
         FieldMessageBoxChalkboardCompose = 28,
+        EngagementProposalRequestNote = 29,
     }
 }

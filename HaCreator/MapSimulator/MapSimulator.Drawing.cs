@@ -226,6 +226,7 @@ namespace HaCreator.MapSimulator
 
             DrawMapleTvOverlay(gameTime, TickCount);
             DrawAvatarMegaphoneOverlay(TickCount);
+            DrawChatBalloonPresentationOverlay();
             _packetFieldStateRuntime.DrawHelpOverlay(
                 _spriteBatch,
                 _fontChat,

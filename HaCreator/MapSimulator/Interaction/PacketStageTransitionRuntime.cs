@@ -1564,8 +1564,93 @@ namespace HaCreator.MapSimulator.Interaction
                 CharacterDataSectionSemanticRecordByteCountsByFlag = BuildCharacterDataSectionSemanticRecordByteCounts(snapshot, recordByteCountsByFlag),
                 CharacterDataSectionNativeRecordByteCountsByFlag = recordByteCountsByFlag,
                 CharacterDataSectionFieldByteCountsByFlag = BuildCharacterDataSectionFieldByteCounts(snapshot, countByteCountsByFlag),
-                CharacterDataSubsectionOwnershipEntries = BuildCharacterDataSubsectionOwnershipEntries(snapshot)
+                CharacterDataSubsectionOwnershipEntries = BuildCharacterDataSubsectionOwnershipEntries(snapshot),
+                CharacterDataRecordOwnershipEntries = BuildCharacterDataRecordOwnershipEntries(snapshot)
             };
+        }
+
+        private static IReadOnlyList<PacketCharacterDataRecordOwnership> BuildCharacterDataRecordOwnershipEntries(PacketCharacterDataSnapshot snapshot)
+        {
+            List<PacketCharacterDataRecordOwnership> entries = new();
+
+            AddCharacterDataRecordOwnershipEntry(
+                entries,
+                CharacterDataStatFlag,
+                "GW_CharacterStat::Decode",
+                0,
+                0,
+                snapshot.CharacterDataStatByteCount,
+                snapshot.CharacterStatFieldByteCounts,
+                true,
+                (snapshot.DecodedSectionFlags & CharacterDataStatFlag) != 0);
+            AddCharacterDataRecordOwnershipEntry(
+                entries,
+                CharacterDataStatFlag,
+                "CharacterData::Decode.StatTrailer",
+                0,
+                snapshot.CharacterDataStatByteCount,
+                snapshot.CharacterDataStatTrailerByteCount,
+                snapshot.CharacterStatTrailerFieldByteCounts,
+                true,
+                snapshot.CharacterDataStatTrailerByteCount > 0);
+            AddCharacterDataRecordOwnershipEntry(
+                entries,
+                0x2UL,
+                "GW_CharacterStat::DecodeMoney",
+                0,
+                0,
+                snapshot.Meso.HasValue ? sizeof(int) : 0,
+                new Dictionary<string, int>(StringComparer.Ordinal) { [nameof(PacketCharacterDataSnapshot.Meso)] = sizeof(int) },
+                true,
+                snapshot.Meso.HasValue);
+            AddCharacterDataRecordOwnershipEntry(
+                entries,
+                0x80UL,
+                "CharacterData::Decode.InventorySlotLimits",
+                0,
+                0,
+                snapshot.InventorySlotLimits != null ? CharacterDataInventoryOrder.Length * sizeof(byte) : 0,
+                BuildCharacterDataInventorySlotLimitFieldByteCounts(snapshot),
+                true,
+                snapshot.InventorySlotLimits != null);
+
+            if (snapshot.TwoIntValueRecord.HasValue)
+            {
+                PacketCharacterDataTwoIntValueRecord record = snapshot.TwoIntValueRecord.Value;
+                AddCharacterDataRecordOwnershipEntry(
+                    entries,
+                    CharacterDataTwoIntValueRecordFlag,
+                    "CharacterData::Decode 0x100000 two-int header",
+                    record.NativeIndex,
+                    record.SectionRecordStartOffset,
+                    record.DecodedByteCount,
+                    record.FieldByteCounts,
+                    record.IsSemanticRecord,
+                    true);
+            }
+
+            AddCharacterDataInventoryRecordOwnershipEntries(entries, snapshot);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataSkillRecordFlag, "CharacterData::Decode.SkillRecords", snapshot.SkillNativeRecordEntries);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataSkillExpirationFlag, "CharacterData::Decode.SkillExpirationRecords", snapshot.SkillExpirationNativeRecordEntries);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataSkillCooldownFlag, "CharacterData::Decode.SkillCooldownRecords", snapshot.SkillCooldownNativeRecordEntries);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataInt16ValueRecordFlag, "CharacterData::Decode.Int16ValueRecords", snapshot.Int16ValueNativeRecordEntries);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataInt16ValueRecordFlag, "CharacterData::Decode.Int16ValueRecords", snapshot.OpaqueInt16ValueNativeRecordEntries);
+            AddCharacterDataOpaqueRecordOwnershipEntry(entries, snapshot);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataQuestRecordFlag, "CharacterData::Decode.QuestStringRecords", snapshot.QuestNativeRecordEntries);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataShortFileTimeRecordFlag, "CharacterData::Decode.ShortFileTimeRecords", snapshot.ShortFileTimeNativeRecordEntries);
+            AddCharacterDataFixedRecordOwnershipEntries(entries, CharacterDataMiniGameRecordFlag, snapshot.MiniGameRecordEntries);
+            AddCharacterDataFixedRecordOwnershipEntries(entries, CharacterDataRelationshipRecordFlag, snapshot.CoupleRecordEntries);
+            AddCharacterDataFixedRecordOwnershipEntries(entries, CharacterDataRelationshipRecordFlag, snapshot.FriendRecordEntries);
+            AddCharacterDataFixedRecordOwnershipEntries(entries, CharacterDataRelationshipRecordFlag, snapshot.MarriageRecordEntries);
+            AddCharacterDataMapTransferRecordOwnershipEntries(entries, CharacterDataMapTransferFlag, PacketCharacterDataMapTransferRecord.RegularGroup, snapshot.RegularMapTransferRecordEntries);
+            AddCharacterDataMapTransferRecordOwnershipEntries(entries, CharacterDataMapTransferFlag, PacketCharacterDataMapTransferRecord.ContinentGroup, snapshot.ContinentMapTransferRecordEntries);
+            AddCharacterDataNewYearCardRecordOwnershipEntries(entries, CharacterDataNewYearCardRecordFlag, "GW_NewYearCardRecord::Decode", snapshot.NewYearCardNativeRecords);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataQuestExRecordFlag, "CharacterData::Decode.QuestExRecords", snapshot.QuestExNativeRecordEntries);
+            AddCharacterDataWildHunterRecordOwnershipEntries(entries, snapshot);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataQuestCompleteRecordFlag, "CharacterData::Decode.QuestCompleteRecords", snapshot.QuestCompleteNativeRecordEntries);
+            AddCharacterDataRecordOwnershipEntries(entries, CharacterDataVisitorQuestRecordFlag, "CharacterData::Decode.VisitorQuestRecords", snapshot.VisitorQuestNativeRecordEntries);
+
+            return entries;
         }
 
         private static IReadOnlyList<PacketCharacterDataSubsectionOwnership> BuildCharacterDataSubsectionOwnershipEntries(PacketCharacterDataSnapshot snapshot)
@@ -1827,6 +1912,314 @@ namespace HaCreator.MapSimulator.Interaction
                     terminatorByteCount > 0 ? 1 : 0,
                     isPresent && terminatorByteCount > 0);
             }
+        }
+
+        private static IReadOnlyDictionary<string, int> BuildCharacterDataInventorySlotLimitFieldByteCounts(PacketCharacterDataSnapshot snapshot)
+        {
+            if (snapshot.InventorySlotLimits == null)
+            {
+                return null;
+            }
+
+            Dictionary<string, int> fieldByteCounts = new(StringComparer.Ordinal);
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                fieldByteCounts[$"{inventoryType}SlotLimit"] = sizeof(byte);
+            }
+
+            return fieldByteCounts;
+        }
+
+        private static void AddCharacterDataInventoryRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            PacketCharacterDataSnapshot snapshot)
+        {
+            if (snapshot.InventoryItemsByType == null)
+            {
+                return;
+            }
+
+            for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+            {
+                InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                if (!snapshot.InventoryItemsByType.TryGetValue(inventoryType, out IReadOnlyList<PacketCharacterDataItemSlot> items) ||
+                    items == null)
+                {
+                    continue;
+                }
+
+                for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
+                {
+                    PacketCharacterDataItemSlot item = items[itemIndex];
+                    AddCharacterDataRecordOwnershipEntry(
+                        entries,
+                        inventoryFlag,
+                        $"CharacterData::Decode.{inventoryType}.ItemSlot",
+                        item.NativeIndex,
+                        item.SectionRecordStartOffset,
+                        item.DecodedByteCount,
+                        item.FieldByteCounts,
+                        true,
+                        true);
+                }
+            }
+        }
+
+        private static void AddCharacterDataRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataSkillRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataSkillRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataSkillExpirationRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataSkillExpirationRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataInt16ValueRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataInt16ValueRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataUInt16StringRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataUInt16StringRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataUInt16FileTimeRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataUInt16FileTimeRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataUInt16ValueRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataUInt16ValueRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataFixedRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            IReadOnlyList<PacketCharacterDataFixedClientRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataFixedClientRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, record.ClientOwner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataMapTransferRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataMapTransferRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataMapTransferRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.Index, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, true, true);
+            }
+        }
+
+        private static void AddCharacterDataNewYearCardRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            IReadOnlyList<PacketCharacterDataNewYearCardRecord> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                PacketCharacterDataNewYearCardRecord record = records[i];
+                AddCharacterDataRecordOwnershipEntry(entries, sectionFlag, owner, record.NativeIndex, record.SectionRecordStartOffset, record.DecodedByteCount, record.FieldByteCounts, record.IsSemanticRecord, true);
+            }
+        }
+
+        private static void AddCharacterDataWildHunterRecordOwnershipEntries(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            PacketCharacterDataSnapshot snapshot)
+        {
+            if (!snapshot.HasWildHunterInfo)
+            {
+                return;
+            }
+
+            if (snapshot.WildHunterInfoModeRecord.HasValue)
+            {
+                PacketCharacterDataWildHunterModeRecord record = snapshot.WildHunterInfoModeRecord.Value;
+                AddCharacterDataRecordOwnershipEntry(
+                    entries,
+                    CharacterDataWildHunterInfoFlag,
+                    "GW_WildHunterInfo::Decode.Mode",
+                    record.NativeIndex,
+                    record.SectionRecordStartOffset,
+                    record.DecodedByteCount,
+                    record.FieldByteCounts,
+                    record.IsSemanticRecord,
+                    true);
+            }
+
+            if (snapshot.WildHunterInfoCapturedMobRecords == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < snapshot.WildHunterInfoCapturedMobRecords.Count; i++)
+            {
+                PacketCharacterDataWildHunterCapturedMobRecord record = snapshot.WildHunterInfoCapturedMobRecords[i];
+                AddCharacterDataRecordOwnershipEntry(
+                    entries,
+                    CharacterDataWildHunterInfoFlag,
+                    "GW_WildHunterInfo::Decode.CapturedMobId",
+                    record.NativeIndex,
+                    record.SectionRecordStartOffset,
+                    record.DecodedByteCount,
+                    record.FieldByteCounts,
+                    record.IsSemanticRecord,
+                    true);
+            }
+        }
+
+        private static void AddCharacterDataOpaqueRecordOwnershipEntry(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            PacketCharacterDataSnapshot snapshot)
+        {
+            if ((snapshot.OpaquePreMapTransferFlags & CharacterDataInt16ValueRecordFlag) == 0 ||
+                snapshot.OpaquePreMapTransferSectionByteCount <= 0)
+            {
+                return;
+            }
+
+            AddCharacterDataRecordOwnershipEntry(
+                entries,
+                CharacterDataInt16ValueRecordFlag,
+                "CharacterData::Decode.Opaque0x8000Bytes",
+                0,
+                0,
+                snapshot.OpaquePreMapTransferSectionByteCount,
+                snapshot.OpaquePreMapTransferSectionFieldByteCounts,
+                false,
+                true);
+        }
+
+        private static void AddCharacterDataRecordOwnershipEntry(
+            ICollection<PacketCharacterDataRecordOwnership> entries,
+            ulong sectionFlag,
+            string owner,
+            int nativeIndex,
+            int startOffset,
+            int byteCount,
+            IReadOnlyDictionary<string, int> fieldByteCounts,
+            bool isSemanticRecord,
+            bool isPresent)
+        {
+            if (!isPresent || byteCount <= 0)
+            {
+                return;
+            }
+
+            int normalizedStartOffset = Math.Max(0, startOffset);
+            entries.Add(new PacketCharacterDataRecordOwnership(
+                sectionFlag,
+                owner,
+                nativeIndex,
+                normalizedStartOffset,
+                checked(normalizedStartOffset + byteCount),
+                byteCount,
+                fieldByteCounts,
+                isSemanticRecord));
         }
 
         private static int ResolveCharacterDataInt16ValueSubsectionRecordByteCount(PacketCharacterDataSnapshot snapshot)
@@ -5509,6 +5902,16 @@ namespace HaCreator.MapSimulator.Interaction
         int RecordCount,
         bool IsPresent);
 
+    internal readonly record struct PacketCharacterDataRecordOwnership(
+        ulong SectionFlag,
+        string Owner,
+        int NativeIndex,
+        int StartOffset,
+        int EndOffset,
+        int ByteCount,
+        IReadOnlyDictionary<string, int> FieldByteCounts,
+        bool IsSemanticRecord);
+
     internal readonly record struct PacketCharacterDataSkillRecord(
         int SkillId,
         int SkillLevel,
@@ -5972,6 +6375,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyList<PacketCharacterDataSectionOwnership> CharacterDataSectionOwnershipEntries { get; init; } = null;
 
         internal IReadOnlyList<PacketCharacterDataSubsectionOwnership> CharacterDataSubsectionOwnershipEntries { get; init; } = null;
+
+        internal IReadOnlyList<PacketCharacterDataRecordOwnership> CharacterDataRecordOwnershipEntries { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> BackwardUpdatePrimaryMatchedSerialNumberCountsByFlag { get; init; } = null;
 

@@ -2238,9 +2238,11 @@ namespace HaCreator.MapSimulator.Pools
 
             int relativeMotionX = SummonDamageRuntimeRules.ResolveBodyContactRelativeMotionX(
                 mob?.MovementInfo?.X ?? 0f,
-                mob?.MovementInfo?.VelocityX ?? 0f,
+                mob?.MovementInfo?.PreviousX ?? mob?.MovementInfo?.X ?? 0f,
                 summon.PositionX,
-                summon.PreviousPositionX);
+                summon.PreviousPositionX,
+                summon.PositionY,
+                summon.PreviousPositionY);
             summon.LastBodyContactRelativeMotionX = relativeMotionX;
             summon.LastBodyContactHitFacingRight = SummonDamageRuntimeRules.ResolveBodyContactHitFacingRight(relativeMotionX);
         }
@@ -10204,6 +10206,19 @@ namespace HaCreator.MapSimulator.Pools
             string soundKey = _skillLoader?.EnsureRepeatSoundRegistered(skill, _soundManager);
             if (!string.IsNullOrWhiteSpace(soundKey))
             {
+                if (skill.RepeatSoundProperty != null)
+                {
+                    _soundManager.TryPlayClientSoundEffect(
+                        soundKey,
+                        skill.RepeatSoundProperty,
+                        startVolumeScale: 1f,
+                        loop: false,
+                        suppressWhileActive: false,
+                        out _,
+                        out _);
+                    return;
+                }
+
                 _soundManager.PlaySound(soundKey);
             }
         }

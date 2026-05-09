@@ -631,8 +631,10 @@ namespace HaCreator.MapSimulator.Fields
                     observationSource);
             }
 
-            RemoteTownPortalVisualPhase phase = ResolveRemoteTownPortalCreatePhase(packet.State, townScopedExistingState);
-            byte resolvedState = ResolveRemoteTownPortalCreateState(packet.State, townScopedExistingState);
+            (byte resolvedState, RemoteTownPortalVisualPhase phase, int phaseStartedAt) = ResolveRemoteTownPortalCreateLifecycle(
+                packet.State,
+                townScopedExistingState,
+                currentTime);
             _remoteTownPortals[packet.OwnerCharacterId] = new RemoteTownPortalState(
                 packet.OwnerCharacterId,
                 resolvedState,
@@ -641,7 +643,7 @@ namespace HaCreator.MapSimulator.Fields
                 packet.Y,
                 resolvedDestination,
                 phase,
-                currentTime,
+                phaseStartedAt,
                 null,
                 null);
             SyncRemoteTownPortalVisuals();
@@ -2643,41 +2645,34 @@ namespace HaCreator.MapSimulator.Fields
             byte packetState,
             RemoteTownPortalState? existingState)
         {
-            if (!existingState.HasValue || existingState.Value.Phase == RemoteTownPortalVisualPhase.Removing)
-            {
-                return packetState == 0
-                    ? RemoteTownPortalVisualPhase.Opening
-                    : RemoteTownPortalVisualPhase.Stable;
-            }
-
-            if (existingState.Value.State == 0)
-            {
-                return RemoteTownPortalVisualPhase.Stable;
-            }
-
-            if (packetState == 0)
-            {
-                return RemoteTownPortalVisualPhase.Stable;
-            }
-
-            return RemoteTownPortalVisualPhase.Stable;
+            return ResolveRemoteTownPortalCreateLifecycle(packetState, existingState, currentTime: 0).Phase;
         }
 
         private static byte ResolveRemoteTownPortalCreateState(
             byte packetState,
             RemoteTownPortalState? existingState)
         {
+            return ResolveRemoteTownPortalCreateLifecycle(packetState, existingState, currentTime: 0).ResolvedState;
+        }
+
+        private static (byte ResolvedState, RemoteTownPortalVisualPhase Phase, int PhaseStartedAt) ResolveRemoteTownPortalCreateLifecycle(
+            byte packetState,
+            RemoteTownPortalState? existingState,
+            int currentTime)
+        {
             if (!existingState.HasValue || existingState.Value.Phase == RemoteTownPortalVisualPhase.Removing)
             {
-                return packetState;
+                return packetState == 0
+                    ? (packetState, RemoteTownPortalVisualPhase.Opening, currentTime)
+                    : (packetState, RemoteTownPortalVisualPhase.Stable, currentTime);
             }
 
             if (existingState.Value.State == 0)
             {
-                return RemoteTownPortalOverlayState;
+                return (RemoteTownPortalOverlayState, RemoteTownPortalVisualPhase.Stable, currentTime);
             }
 
-            return existingState.Value.State;
+            return (existingState.Value.State, RemoteTownPortalVisualPhase.Stable, currentTime);
         }
 
         private static bool AreEquivalentRemoteTownPortalDestinations(
@@ -3778,6 +3773,30 @@ namespace HaCreator.MapSimulator.Fields
                     RemovalSnapshot: null)
                 : null;
             return ResolveRemoteTownPortalCreateState(packetState, existingState);
+        }
+
+        internal static (byte ResolvedState, RemoteTownPortalVisualPhase Phase, int PhaseStartedAt) ResolveRemoteTownPortalCreateLifecycleForTesting(
+            byte packetState,
+            bool hasExistingState,
+            byte existingPacketState,
+            RemoteTownPortalVisualPhase existingPhase,
+            int existingPhaseStartedAt,
+            int currentTime)
+        {
+            RemoteTownPortalState? existingState = hasExistingState
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: existingPacketState,
+                    MapId: 100000000,
+                    X: 0,
+                    Y: 0,
+                    Destination: null,
+                    Phase: existingPhase,
+                    PhaseStartedAt: existingPhaseStartedAt,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            return ResolveRemoteTownPortalCreateLifecycle(packetState, existingState, currentTime);
         }
 
         internal static bool HasActiveRemoteTownPortalStateForTownMapForTesting(

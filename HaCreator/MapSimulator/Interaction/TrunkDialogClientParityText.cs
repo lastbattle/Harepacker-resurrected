@@ -119,6 +119,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (slotData.ItemId / 1000000 == 5)
+            {
+                return true;
+            }
+
             return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
                 || slotData.OwnerAccountId.GetValueOrDefault() > 0
                 || slotData.OwnerCharacterId.GetValueOrDefault() > 0

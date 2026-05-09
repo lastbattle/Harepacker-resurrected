@@ -83,7 +83,13 @@ namespace HaCreator.MapSimulator.Effects
         private const int BarGaugeHeight = 13;
         private const int PlayerGaugeOffsetX = 308;
         private const int PlayerGaugeRightOffsetX = 309;
+        private const int PlayerGaugeLayerInitialOffsetX = -83;
+        private const int PlayerGaugeLayerRightEdgeOffsetX = -82;
+        private const int PlayerGaugeLayerOffsetY = 32;
         private const int MonsterGaugeOffsetX = 11;
+        private const int MonsterGaugeLayerOffsetX = 82;
+        private const int MonsterGaugeLayerOffsetY = 32;
+        private const int BarGaugeOriginY = 6;
         private const int BarGaugeOffsetY = 4;
         private const int EnergyGaugeWidth = 9;
         private const int EnergyGaugeHeight = 77;
@@ -203,6 +209,12 @@ namespace HaCreator.MapSimulator.Effects
             PlayerGaugeOffsetX,
             MonsterGaugeOffsetX,
             PlayerGaugeRightOffsetX,
+            PlayerGaugeLayerInitialOffsetX,
+            PlayerGaugeLayerRightEdgeOffsetX,
+            PlayerGaugeLayerOffsetY,
+            MonsterGaugeLayerOffsetX,
+            MonsterGaugeLayerOffsetY,
+            BarGaugeOriginY,
             BarGaugeOffsetY,
             EnergyOrigin,
             EnergyGaugeLayerAnchor,
@@ -2121,12 +2133,11 @@ namespace HaCreator.MapSimulator.Effects
             Rectangle monsterBounds = DrawTextureAtOrigin(spriteBatch, _monsterTexture, monsterAnchor, MonsterOrigin);
             if (_bossHpPercent.HasValue)
             {
-                Rectangle monsterGaugeBounds = new(
-                    monsterBounds.X + MonsterGaugeOffsetX,
-                    monsterBounds.Y + BarGaugeOffsetY,
-                    BarGaugeWidth,
-                    BarGaugeHeight);
-                DrawHorizontalGauge(spriteBatch, pixelTexture, _monsterGaugeTexture, monsterGaugeBounds, _bossHpPercent.Value);
+                DrawHorizontalGauge(
+                    spriteBatch,
+                    pixelTexture,
+                    _monsterGaugeTexture,
+                    ResolveMonsterGaugeFillBounds(monsterBounds, _bossHpPercent.Value));
             }
         }
         private void DrawEnergy(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture)
@@ -2259,10 +2270,26 @@ namespace HaCreator.MapSimulator.Effects
                 return Rectangle.Empty;
             }
 
-            int rightEdgeX = playerBounds.X + PlayerGaugeRightOffsetX;
+            int centerX = playerBounds.X + PlayerOrigin.X - PlayerOffsetX;
+            int rightEdgeX = centerX + PlayerGaugeLayerRightEdgeOffsetX;
             return new Rectangle(
                 rightEdgeX - fillWidth,
-                playerBounds.Y + BarGaugeOffsetY,
+                PlayerGaugeLayerOffsetY - BarGaugeOriginY,
+                fillWidth,
+                BarGaugeHeight);
+        }
+        internal static Rectangle ResolveMonsterGaugeFillBounds(Rectangle monsterBounds, float progress)
+        {
+            int fillWidth = Math.Clamp((int)MathF.Round(BarGaugeWidth * Math.Clamp(progress, 0f, 1f)), 0, BarGaugeWidth);
+            if (fillWidth <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int centerX = monsterBounds.X + MonsterOrigin.X - MonsterOffsetX;
+            return new Rectangle(
+                centerX + MonsterGaugeLayerOffsetX,
+                MonsterGaugeLayerOffsetY - BarGaugeOriginY,
                 fillWidth,
                 BarGaugeHeight);
         }
@@ -2336,6 +2363,12 @@ namespace HaCreator.MapSimulator.Effects
             int PlayerGaugeOffsetX,
             int MonsterGaugeOffsetX,
             int PlayerGaugeRightOffsetX,
+            int PlayerGaugeLayerInitialOffsetX,
+            int PlayerGaugeLayerRightEdgeOffsetX,
+            int PlayerGaugeLayerOffsetY,
+            int MonsterGaugeLayerOffsetX,
+            int MonsterGaugeLayerOffsetY,
+            int BarGaugeOriginY,
             int BarGaugeOffsetY,
             Point EnergyOrigin,
             Point EnergyGaugeLayerAnchor,

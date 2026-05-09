@@ -100,6 +100,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int CardHeight = 62;
         private const int DigitTextureCount = 10;
         private const byte MiniRoomBaseEnterPacketType = 4;
+        private const byte MiniRoomBaseEnterResultPacketType = 5;
         private const byte MiniRoomBaseGameplayPacketType = 6;
         private const byte MiniRoomBaseChatPacketType = 7;
         private const byte MiniRoomBaseChatRepeatPacketType = 8;
@@ -136,6 +137,9 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientPromptButtonHeight = 22;
         private const int ClientDialogLeaveUpdateArgument = 2;
         private const byte ClientEnterResultAckState = 1;
+        private const int ClientMiniGameRecordByteLength = 0x14;
+        private const int ClientEnterResultGuestMatchState = 1;
+        private const int ClientEnterResultGuestNextOperationDelayMs = 3000;
         private const uint ClientDialogUpdateButtonOne = 1;
         private const uint ClientDialogUpdateButtonTwo = 2;
         private const uint ClientDialogUpdateButtonEight = 8;
@@ -249,6 +253,15 @@ namespace HaCreator.MapSimulator.Fields
         private int _lastClientPromptResponseSubtype;
         private int _clientReadyButtonReleaseCount;
         private int _clientStartButtonDisableCount;
+        private int _clientStartButtonReleaseCount;
+        private int _clientBanButtonUpdateCount;
+        private int _clientEnterResultMatchState;
+        private int _clientEnterResultNextOperationTick;
+        private bool _clientTournamentMode;
+        private int _clientTournamentRound;
+        private bool _clientReadyButtonVisible = true;
+        private bool _clientStartButtonVisible = true;
+        private bool _clientEndButtonVisible = true;
 
 
         public enum RoomStage
@@ -409,6 +422,16 @@ namespace HaCreator.MapSimulator.Fields
         public int LastClientPromptResponseSubtype => _lastClientPromptResponseSubtype;
         public int ClientReadyButtonReleaseCount => _clientReadyButtonReleaseCount;
         public int ClientStartButtonDisableCount => _clientStartButtonDisableCount;
+        public int ClientStartButtonReleaseCount => _clientStartButtonReleaseCount;
+        public int ClientBanButtonUpdateCount => _clientBanButtonUpdateCount;
+        public int ClientEnterResultMatchState => _clientEnterResultMatchState;
+        public int ClientEnterResultNextOperationTick => _clientEnterResultNextOperationTick;
+        public bool ClientTournamentMode => _clientTournamentMode;
+        public int ClientTournamentRound => _clientTournamentRound;
+        public bool ClientReadyButtonVisible => _clientReadyButtonVisible;
+        public bool ClientStartButtonVisible => _clientStartButtonVisible;
+        public bool ClientEndButtonVisible => _clientEndButtonVisible;
+        public Point FirstCardOffset => _firstCardOffset;
         public bool ClientReadyLayerVisible => HasClientOpponentSeat();
         public bool ClientScoreLayerVisible => HasClientOpponentSeat();
         public bool ClientPromptLayerVisible => _clientPromptLayerMaterialized;
@@ -1113,6 +1136,7 @@ namespace HaCreator.MapSimulator.Fields
                 return basePacketType switch
                 {
                     MiniRoomBaseEnterPacketType => TryDispatchMiniRoomEnterPacket(reader, out message),
+                    MiniRoomBaseEnterResultPacketType => TryDispatchMiniRoomEnterResultPacket(reader, tickCount, out message),
                     MiniRoomBaseGameplayPacketType => TryDispatchMiniRoomGameplayPacket(reader, tickCount, out message),
                     MiniRoomBaseChatPacketType => TryDispatchMiniRoomChatPacket(reader, out message),
                     MiniRoomBaseChatRepeatPacketType => TryDispatchMiniRoomChatPacket(reader, out message),
@@ -1820,6 +1844,15 @@ namespace HaCreator.MapSimulator.Fields
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
+            _clientStartButtonReleaseCount = 0;
+            _clientBanButtonUpdateCount = 0;
+            _clientEnterResultMatchState = 0;
+            _clientEnterResultNextOperationTick = 0;
+            _clientTournamentMode = false;
+            _clientTournamentRound = 0;
+            _clientReadyButtonVisible = true;
+            _clientStartButtonVisible = true;
+            _clientEndButtonVisible = true;
         }
 
 
@@ -1837,6 +1870,56 @@ namespace HaCreator.MapSimulator.Fields
             SyncMiniRoomRuntime();
             _participantEnterSoundCallback?.Invoke();
             message = $"{participant.Name} entered MiniRoom slot {slot} with job {participant.JobCode}.";
+            return true;
+        }
+
+        private bool TryDispatchMiniRoomEnterResultPacket(PacketReader reader, int tickCount, out string message)
+        {
+            ApplyClientEnterResultLocalBranch(tickCount);
+
+            int decodedRecordCount = 0;
+            while (true)
+            {
+                int recordIndex = unchecked((sbyte)reader.ReadByte());
+                if (recordIndex < 0)
+                {
+                    break;
+                }
+
+                _ = reader.ReadBytes(ClientMiniGameRecordByteLength);
+                decodedRecordCount++;
+            }
+
+            string title = reader.ReadMapleString();
+            int gameKind = reader.ReadByte();
+            bool tournamentMode = reader.ReadByte() != 0;
+            int tournamentRound = tournamentMode ? reader.ReadByte() : 0;
+
+            ApplyClientEnterResultLayout(gameKind);
+            _title = string.IsNullOrWhiteSpace(title) ? "Match Cards" : title.Trim();
+            _clientTournamentMode = tournamentMode;
+            _clientTournamentRound = tournamentRound;
+            _stage = RoomStage.Lobby;
+            _statusMessage = tournamentMode
+                ? $"Enter result applied for {_title}: game kind {gameKind}, tournament round {tournamentRound}."
+                : $"Enter result applied for {_title}: game kind {gameKind}.";
+
+            if (tournamentMode)
+            {
+                if (_localPlayerIndex != 0)
+                {
+                    _clientReadyButtonVisible = false;
+                }
+                else
+                {
+                    _clientStartButtonVisible = false;
+                }
+
+                _clientEndButtonVisible = false;
+            }
+
+            SyncMiniRoomRuntime();
+            message = $"CMemoryGameDlg::OnEnterResult decoded {decodedRecordCount} MiniGame record entr{(decodedRecordCount == 1 ? "y" : "ies")}, title '{_title}', gameKind={gameKind}, tournament={(tournamentMode ? 1 : 0)}, round={tournamentRound}.";
             return true;
         }
 
@@ -2095,6 +2178,52 @@ namespace HaCreator.MapSimulator.Fields
             _clientStartButtonDisableCount++;
             message = $"Enter-result ack packet (11) sent with state {ClientEnterResultAckState}.";
             return true;
+        }
+
+        private void ApplyClientEnterResultLocalBranch(int tickCount)
+        {
+            if (_localPlayerIndex == 0)
+            {
+                _clientReadyButtonReleaseCount++;
+                _clientStartButtonDisableCount++;
+                if (_officialClientRelayEnabled)
+                {
+                    TryQueueOfficialClientRelayPacket(new[] { MemoryGameClientEnterResultAckPacketType, ClientEnterResultAckState });
+                }
+
+                return;
+            }
+
+            _clientStartButtonReleaseCount++;
+            _readyStates[_localPlayerIndex] = false;
+            _clientBanButtonUpdateCount++;
+            _clientEnterResultMatchState = ClientEnterResultGuestMatchState;
+            _clientEnterResultNextOperationTick = tickCount + ClientEnterResultGuestNextOperationDelayMs;
+        }
+
+        private void ApplyClientEnterResultLayout(int gameKind)
+        {
+            _gameKind = Math.Max(0, gameKind);
+            switch (_gameKind)
+            {
+                case 0:
+                    ApplyClientMemoryGameLayout(cardsPerRow: 4, cardCount: 12, firstCardOffset: new Point(89, 106));
+                    break;
+                case 1:
+                    ApplyClientMemoryGameLayout(cardsPerRow: 5, cardCount: 20, firstCardOffset: new Point(61, 72));
+                    break;
+                case 2:
+                    ApplyClientMemoryGameLayout(cardsPerRow: 6, cardCount: 30, firstCardOffset: new Point(33, 39));
+                    break;
+            }
+        }
+
+        private void ApplyClientMemoryGameLayout(int cardsPerRow, int cardCount, Point firstCardOffset)
+        {
+            _cardsPerRow = cardsPerRow;
+            _columns = cardsPerRow;
+            _rows = Math.Max(1, (cardCount + cardsPerRow - 1) / cardsPerRow);
+            _firstCardOffset = firstCardOffset;
         }
 
         private bool TryApplyOutgoingGiveUpRequest(out string message)
@@ -2508,6 +2637,7 @@ namespace HaCreator.MapSimulator.Fields
         private static bool IsMiniRoomBasePacketType(byte packetType)
         {
             return packetType == MiniRoomBaseEnterPacketType
+                || packetType == MiniRoomBaseEnterResultPacketType
                 || packetType == MiniRoomBaseGameplayPacketType
                 || packetType == MiniRoomBaseChatPacketType
                 || packetType == MiniRoomBaseChatRepeatPacketType

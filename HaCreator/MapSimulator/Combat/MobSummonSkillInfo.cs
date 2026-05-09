@@ -13,6 +13,8 @@ namespace HaCreator.MapSimulator
 
         public int SummonCount { get; set; }
 
+        public int SummonEffectId { get; set; }
+
         public Point? Lt { get; set; }
 
         public Point? Rb { get; set; }

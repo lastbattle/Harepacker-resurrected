@@ -2021,7 +2021,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int ResolveMiniRoomBoardEffectFrameDelay(int? frameDelay, int? canvasDelay)
         {
-            return Math.Max(1, frameDelay ?? canvasDelay ?? ClientEmployeeDefaultFrameDelayMs);
+            if (frameDelay.GetValueOrDefault() > 0)
+            {
+                return frameDelay.Value;
+            }
+
+            if (canvasDelay.GetValueOrDefault() > 0)
+            {
+                return canvasDelay.Value;
+            }
+
+            return ClientEmployeeDefaultFrameDelayMs;
         }
 
         internal static int ResolveMiniRoomBoardEffectFrameDelayForTesting(int? frameDelay, int? canvasDelay)

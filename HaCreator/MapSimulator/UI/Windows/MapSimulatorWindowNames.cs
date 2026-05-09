@@ -26,6 +26,9 @@ namespace HaCreator.MapSimulator.UI
         public const string CashAvatarPreview = "CashAvatarPreview";
         public const string CashShopLocker = "CashShopLocker";
         public const string CashShopInventory = "CashShopInventory";
+        public const string CashShopTab = "CashShopTab";
+        public const string CashShopItemSearch = "CashShopItemSearch";
+        public const string CashShopBest = "CashShopBest";
         public const string CashShopList = "CashShopList";
         public const string CashShopStatus = "CashShopStatus";
         public const string CashShopOneADay = "CashShopOneADay";

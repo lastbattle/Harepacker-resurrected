@@ -535,7 +535,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     AlphaVectorRefDelta: 1),
                 new(
                     AfterimageLayerReferenceOperationKind.RelMoveAlpha,
-                    targetLayerObjectId),
+                    targetLayerObjectId,
+                    RelMoveArguments: ClientResetAlphaRelMoveArguments),
                 new(
                     AfterimageLayerReferenceOperationKind.ReleaseAlphaVectorRef,
                     targetLayerObjectId,
@@ -739,6 +740,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public const int ClientRelMoveArgumentVariantCount = 2;
         public const int ClientRemoveCanvasArgumentVariantCount = 1;
         public const int ClientLoadCanvasArgumentVariantCount = 5;
+        public static readonly AfterimageRelMoveArguments ClientResetAlphaRelMoveArguments = new(255, 0);
 
         internal static AfterimageLoadCanvasArguments ResolveClientLoadCanvasArguments(SkillFrame frame)
         {

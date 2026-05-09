@@ -92,7 +92,8 @@ namespace HaCreator.MapSimulator
                 liveMob?.MovementInfo?.ApplyPacketMovePathTailInfo(
                     movePathTailInfo.PassiveKeyPadStateCount,
                     movePathTailInfo.PathBounds,
-                    currentTime);
+                    currentTime,
+                    movePathTailInfo.PassiveKeyPadStates);
             }
 
             if (!decodedPacket.NextAttackPossible)

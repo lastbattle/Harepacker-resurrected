@@ -549,7 +549,7 @@ namespace HaCreator.MapSimulator
                     out int candidateListIndex,
                     out int candidateIndex))
             {
-                ImeCandidateSelectedRequested?.Invoke(candidateListIndex, candidateIndex);
+                TryDispatchClientEditImeCandidateSelection(candidateListIndex, candidateIndex);
                 return true;
             }
 
@@ -3451,6 +3451,27 @@ namespace HaCreator.MapSimulator
                 newKeyboardState,
                 WasPressed);
             return candidateIndex >= 0;
+        }
+
+        internal bool TryDispatchClientEditImeCandidateSelection(int listIndex, int candidateIndex)
+        {
+            if (listIndex < 0 || candidateIndex < 0)
+            {
+                return false;
+            }
+
+            bool selected = ImeCandidateSelectedRequested?.Invoke(listIndex, candidateIndex) == true;
+            if (selected)
+            {
+                ReleaseImeEditStateAfterNativeCandidateSelection();
+            }
+
+            return selected;
+        }
+
+        internal void ReleaseImeEditStateAfterNativeCandidateSelection()
+        {
+            ClearImeEditState();
         }
 
         internal static ImeCandidateListState ResolveClientEditImeCandidateDownKeySelection(

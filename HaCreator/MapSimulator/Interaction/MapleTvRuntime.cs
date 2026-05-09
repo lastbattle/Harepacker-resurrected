@@ -1161,7 +1161,10 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case PacketTypeClearMessage:
-                    AdvanceClientRequestStage(MapleTvClientRequestStage.Cleared, currentTick, resultCode, stringPoolId);
+                    // CMapleTVMan::OnClearMessage is display lifecycle only. It does
+                    // not satisfy the pending CUserLocal::ConsumeCashItem request; the
+                    // authoritative terminal response for that request is still the
+                    // 407 OnSendMessageResult branch.
                     break;
 
                 case PacketTypeSendMessageResult:

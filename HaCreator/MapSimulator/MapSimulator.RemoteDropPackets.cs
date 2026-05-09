@@ -459,6 +459,97 @@ namespace HaCreator.MapSimulator
             return new Vector2(mob.MovementInfo.X, mob.MovementInfo.Y);
         }
 
+        private (int page, int zMass)? ResolvePacketDropFootholdLayerMetadata(float x, float y)
+        {
+            if (_mapBoard?.BoardItems?.FootholdLines == null)
+            {
+                return null;
+            }
+
+            return TryResolvePacketDropFootholdLayerMetadataForParity(
+                _mapBoard.BoardItems.FootholdLines
+                    .OfType<HaCreator.MapEditor.Instance.Shapes.FootholdLine>()
+                    .Select(line => new PacketDropFootholdLayerCandidate(
+                        line.FirstDot.X,
+                        line.FirstDot.Y,
+                        line.SecondDot.X,
+                        line.SecondDot.Y,
+                        line.LayerNumber,
+                        line.PlatformNumber)),
+                x,
+                y,
+                out int page,
+                out int zMass)
+                ? (Math.Max(0, page), Math.Max(0, zMass))
+                : null;
+        }
+
+        internal static bool TryResolvePacketDropFootholdLayerMetadataForParity(
+            IEnumerable<PacketDropFootholdLayerCandidate> footholds,
+            float x,
+            float y,
+            out int page,
+            out int zMass)
+        {
+            page = 0;
+            zMass = 0;
+            if (footholds == null)
+            {
+                return false;
+            }
+
+            foreach (PacketDropFootholdLayerCandidate foothold in footholds)
+            {
+                if (!DoesPacketDropCrossCandidateMatch(foothold, x, y))
+                {
+                    continue;
+                }
+
+                page = foothold.Page;
+                zMass = foothold.ZMass;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool DoesPacketDropCrossCandidateMatch(PacketDropFootholdLayerCandidate foothold, float x, float y)
+        {
+            const float ProbeHalfExtent = 1f;
+
+            float minX = Math.Min(foothold.X1, foothold.X2) - ProbeHalfExtent;
+            float maxX = Math.Max(foothold.X1, foothold.X2) + ProbeHalfExtent;
+            float minY = Math.Min(foothold.Y1, foothold.Y2) - ProbeHalfExtent;
+            float maxY = Math.Max(foothold.Y1, foothold.Y2) + ProbeHalfExtent;
+
+            if (x < minX || x > maxX || y < minY || y > maxY)
+            {
+                return false;
+            }
+
+            if (foothold.X1 == foothold.X2)
+            {
+                return Math.Abs(x - foothold.X1) <= ProbeHalfExtent;
+            }
+
+            float t = (x - foothold.X1) / (foothold.X2 - foothold.X1);
+            if (t < 0f || t > 1f)
+            {
+                return false;
+            }
+
+            float candidateY = foothold.Y1 + ((foothold.Y2 - foothold.Y1) * t);
+            return Math.Abs(y - candidateY) <= ProbeHalfExtent;
+        }
+
+        internal readonly record struct PacketDropFootholdLayerCandidate(
+            float X1,
+            float Y1,
+            float X2,
+            float Y2,
+            int Page,
+            int ZMass);
+
         private bool AreDropActorsInSameParty(int ownerId, int actorId)
         {
             RememberObservedDropPartyAnchor(ownerId);

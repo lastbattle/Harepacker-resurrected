@@ -151,7 +151,7 @@ namespace HaCreator.MapSimulator.Fields
                 yield return property;
             }
 
-            if (mapInfo.Image?["info"]?[propertyName] is WzImageProperty imageProperty)
+            if (FindImageInfoProperty(mapInfo, propertyName) is WzImageProperty imageProperty)
             {
                 yield return imageProperty;
             }
@@ -210,6 +210,36 @@ namespace HaCreator.MapSimulator.Fields
                     yield return property;
                 }
             }
+        }
+
+        private static WzImageProperty FindImageInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty info = mapInfo?.Image?["info"];
+            if (info == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty exactProperty = info[propertyName] as WzImageProperty;
+            if (exactProperty != null)
+            {
+                return exactProperty;
+            }
+
+            if (info.WzProperties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in info.WzProperties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
     }
 

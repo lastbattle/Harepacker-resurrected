@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|claimresult <success|fail> [text]|claimresultpacket <success|fail> [text]|claimresultraw <hex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|table|verify|clearverify|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|claimresult <success|fail> [text]|claimresultpacket <success|fail> [text]|claimresultraw <hex>|officialclaimresult <resultCode> [success remainingCount]|officialclaimtime <openHour> <closeHour>|officialclaimstatus <connected|disconnected>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -135,6 +135,62 @@ namespace HaCreator.MapSimulator
                 return _messengerRuntime.TryApplySessionOwnedClaimResultPayload(payload, out string resultMessage)
                     ? ChatCommandHandler.CommandResult.Ok(resultMessage)
                     : ChatCommandHandler.CommandResult.Error(resultMessage);
+            }
+
+            if (string.Equals(args[0], "officialclaimresult", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "onclaimresult", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !byte.TryParse(args[1], out byte resultCode))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session officialclaimresult <resultCode> [success remainingCount]");
+                }
+
+                bool succeeded = false;
+                if (args.Length >= 3 && !TryParseMessengerClaimResult(args[2], out succeeded))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session officialclaimresult <resultCode> [success remainingCount]");
+                }
+
+                int remainingClaimCount = 0;
+                if (args.Length >= 4 && (!int.TryParse(args[3], out remainingClaimCount) || remainingClaimCount < 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session officialclaimresult <resultCode> [success remainingCount]");
+                }
+
+                byte[] payload = MessengerPacketCodec.BuildOfficialClaimResultPayload(resultCode, succeeded, remainingClaimCount);
+                return _messengerRuntime.TryApplyOfficialClaimResultPayload(payload, out string officialResultMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(officialResultMessage)
+                    : ChatCommandHandler.CommandResult.Error(officialResultMessage);
+            }
+
+            if (string.Equals(args[0], "officialclaimtime", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "claimservertime", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3
+                    || !byte.TryParse(args[1], out byte openTime)
+                    || !byte.TryParse(args[2], out byte closeTime))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session officialclaimtime <openHour> <closeHour>");
+                }
+
+                byte[] payload = MessengerPacketCodec.BuildOfficialClaimServerAvailableTimePayload(openTime, closeTime);
+                return _messengerRuntime.TryApplyOfficialClaimServerAvailableTimePayload(payload, out string timeMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(timeMessage)
+                    : ChatCommandHandler.CommandResult.Error(timeMessage);
+            }
+
+            if (string.Equals(args[0], "officialclaimstatus", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "claimserverstatus", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !TryParseMessengerClaimServerConnected(args[1], out bool connected))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session officialclaimstatus <connected|disconnected>");
+                }
+
+                byte[] payload = MessengerPacketCodec.BuildOfficialClaimServerStatusPayload(connected);
+                return _messengerRuntime.TryApplyOfficialClaimServerStatusChangedPayload(payload, out string statusMessage)
+                    ? ChatCommandHandler.CommandResult.Ok(statusMessage)
+                    : ChatCommandHandler.CommandResult.Error(statusMessage);
             }
 
             if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)
@@ -384,6 +440,37 @@ namespace HaCreator.MapSimulator
                 case "denied":
                 case "0":
                     succeeded = false;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseMessengerClaimServerConnected(string token, out bool connected)
+        {
+            connected = false;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "connected":
+                case "connect":
+                case "online":
+                case "up":
+                case "true":
+                case "1":
+                    connected = true;
+                    return true;
+                case "disconnected":
+                case "disconnect":
+                case "offline":
+                case "down":
+                case "false":
+                case "0":
+                    connected = false;
                     return true;
                 default:
                     return false;

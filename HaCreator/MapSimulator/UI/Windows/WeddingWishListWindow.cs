@@ -366,6 +366,16 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (_snapshot.ModalKind == WeddingWishListModalKind.Notice)
+            {
+                if (Pressed(keyboardState, Keys.Enter))
+                {
+                    ShowFeedback(_cancelTransientPromptHandler?.Invoke());
+                }
+
+                return true;
+            }
+
             if (_snapshot.IsPutQuantityPromptOpen)
             {
                 if (Pressed(keyboardState, Keys.Back))
@@ -736,6 +746,8 @@ namespace HaCreator.MapSimulator.UI
 
             string hint = _snapshot.IsPutQuantityPromptOpen
                 ? "Digits: count  Enter: OK  Esc: Cancel"
+                : _snapshot.ModalKind == WeddingWishListModalKind.Notice
+                    ? "Enter/Esc: OK"
                 : "Enter: OK  Esc: Cancel";
             InventoryRenderUtil.DrawOutlinedText(sprite, _font, hint, new Vector2(promptBounds.X + 8, promptBounds.Bottom - 18), new Color(220, 220, 220), TooltipBodyScale);
         }
@@ -1065,7 +1077,8 @@ namespace HaCreator.MapSimulator.UI
             return _snapshot.IsGetConfirmationArmed
                 || _snapshot.IsPutQuantityPromptOpen
                 || _snapshot.IsPutConfirmationArmed
-                || _snapshot.IsInputConfirmationArmed;
+                || _snapshot.IsInputConfirmationArmed
+                || _snapshot.IsNoticePromptOpen;
         }
 
         private string BuildTransientPromptText()

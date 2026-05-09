@@ -2688,13 +2688,20 @@ namespace HaCreator.MapSimulator.Managers
             foreach (JsonProperty property in element.EnumerateObject())
             {
                 if (!TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName)
-                    || !ShouldInspectSg88PacketComparisonParticipant(
+                    || !TryParseSg88PacketComparisonJsonBytes(property.Value, out byte[] parsedBytes))
+                {
+                    continue;
+                }
+
+                bool participantPayload = IsSg88PayloadComparisonByteArrayLabel(property.Name)
+                                          || ContainsSg88PayloadComparisonByteArrayLabel(property.Value);
+                if (!ShouldInspectSg88PacketComparisonParticipant(
                         property.Name,
                         property.Value,
                         insidePairContainer,
                         insidePacketComparisonContainer,
                         insidePayloadComparisonContainer)
-                    || !TryParseSg88PacketComparisonJsonBytes(property.Value, out byte[] parsedBytes))
+                    && !TryClassifySg88PacketComparisonBytes(parsedBytes, out participantPayload))
                 {
                     continue;
                 }
@@ -2703,13 +2710,11 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     case "observed":
                         observedBytes = parsedBytes;
-                        observedPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name)
-                                           || ContainsSg88PayloadComparisonByteArrayLabel(property.Value);
+                        observedPayload |= participantPayload;
                         break;
                     case "rebuilt":
                         rebuiltBytes = parsedBytes;
-                        rebuiltPayload |= IsSg88PayloadComparisonByteArrayLabel(property.Name)
-                                          || ContainsSg88PayloadComparisonByteArrayLabel(property.Value);
+                        rebuiltPayload |= participantPayload;
                         break;
                 }
             }
@@ -2766,7 +2771,12 @@ namespace HaCreator.MapSimulator.Managers
 
             foreach (JsonProperty property in element.EnumerateObject())
             {
-                if (!IsSg88PacketComparisonByteArrayLabel(property.Name)
+                bool valueAlias = TryNormalizeSg88MismatchPairJsonPropertyName(
+                    property.Name,
+                    out string normalizedValueName)
+                    && normalizedValueName is "observed" or "rebuilt";
+                if (!valueAlias
+                    && !IsSg88PacketComparisonByteArrayLabel(property.Name)
                     && !IsSg88PayloadComparisonByteArrayLabel(property.Name)
                     && !IsSg88MismatchPairJsonValueContainerLabel(property.Name))
                 {
@@ -2778,9 +2788,17 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
+                bool valueAliasPayloadBytes = false;
+                if (valueAlias
+                    && !TryClassifySg88PacketComparisonBytes(parsedBytes, out valueAliasPayloadBytes))
+                {
+                    continue;
+                }
+
                 bytes = parsedBytes;
                 payloadBytes |= IsSg88PayloadComparisonByteArrayLabel(property.Name)
-                                || ContainsSg88PayloadComparisonByteArrayLabel(property.Value);
+                                || ContainsSg88PayloadComparisonByteArrayLabel(property.Value)
+                                || (valueAlias && valueAliasPayloadBytes);
                 return true;
             }
 
@@ -2868,6 +2886,44 @@ namespace HaCreator.MapSimulator.Managers
 
             return insidePairContainer
                    && propertyValue.ValueKind is JsonValueKind.Object or JsonValueKind.Array;
+        }
+
+        private static bool TryClassifySg88PacketComparisonBytes(byte[] bytes, out bool payloadBytes)
+        {
+            payloadBytes = false;
+            if (bytes == null)
+            {
+                return false;
+            }
+
+            const int payloadLength = (sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2;
+            const int rawPacketLength = sizeof(ushort) + payloadLength;
+            if (bytes.Length == rawPacketLength)
+            {
+                ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(0, sizeof(ushort)));
+                if (opcode != Sg88FirstUseSummonOpcode)
+                {
+                    return false;
+                }
+
+                int skillId = BinaryPrimitives.ReadInt32LittleEndian(
+                    bytes.AsSpan(sizeof(ushort) + sizeof(int), sizeof(int)));
+                return skillId == Sg88SkillId;
+            }
+
+            if (bytes.Length != payloadLength)
+            {
+                return false;
+            }
+
+            int payloadSkillId = BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(sizeof(int), sizeof(int)));
+            if (payloadSkillId != Sg88SkillId)
+            {
+                return false;
+            }
+
+            payloadBytes = true;
+            return true;
         }
 
         private static bool ContainsSg88PayloadComparisonByteArrayLabel(JsonElement value)

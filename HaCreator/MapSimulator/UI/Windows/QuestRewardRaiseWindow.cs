@@ -256,7 +256,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawHeader(sprite);
-            DrawPreview(sprite);
+            DrawPreview(sprite, TickCount);
             DrawOptions(sprite);
             DrawFooter(sprite);
         }
@@ -435,7 +435,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawPreview(SpriteBatch sprite)
+        private void DrawPreview(SpriteBatch sprite, int tickCount)
         {
             Rectangle previewBounds = new(Position.X + PreviewLeft, Position.Y + PreviewTop, PreviewSize, PreviewSize);
             if (_previewBackdrop != null)
@@ -470,6 +470,8 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(ownerSurface, ownerSurfacePosition, null, Color.White, 0f, Vector2.Zero, ownerSurfaceScale, SpriteEffects.None, 0f);
             }
 
+            DrawLevelUpAnimation(sprite, previewBounds, tickCount);
+
             Texture2D icon = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
                 ? ResolveItemIcon(selectedPiece?.ItemId ?? 0)
                 : selectedOption != null ? ResolveItemIcon(selectedOption.ItemId) : null;
@@ -496,6 +498,46 @@ namespace HaCreator.MapSimulator.UI
 
             DrawText(sprite, selectedOption?.Label ?? "Select a reward", new Vector2(Position.X + 18, Position.Y + PiecePreviewCaptionTop), new Color(72, 50, 31), 0.34f);
             DrawText(sprite, $"Quest #{_prompt?.QuestId ?? 0}", new Vector2(Position.X + 18, Position.Y + PiecePreviewDetailTop), new Color(132, 104, 78), 0.31f);
+        }
+
+        private void DrawLevelUpAnimation(SpriteBatch sprite, Rectangle previewBounds, int tickCount)
+        {
+            if (_state == null || !_state.IsLevelUpAnimationActive(tickCount))
+            {
+                return;
+            }
+
+            int elapsedMs = (int)Math.Min(
+                int.MaxValue,
+                unchecked((uint)(tickCount - _state.LevelUpAnimationStartTick)));
+            float progress = Math.Clamp(elapsedMs / (float)QuestRewardRaiseState.ClientLevelUpAnimationFadeMs, 0f, 1f);
+            byte pulseAlpha = (byte)Math.Clamp(190 - (int)(progress * 130f), 35, 190);
+            byte textAlpha = (byte)Math.Clamp(235 - (int)(progress * 180f), 40, 235);
+            int inset = Math.Clamp(4 + (int)(progress * 10f), 4, 14);
+            Rectangle pulseBounds = new(
+                previewBounds.X + inset,
+                previewBounds.Y + inset,
+                Math.Max(1, previewBounds.Width - (inset * 2)),
+                Math.Max(1, previewBounds.Height - (inset * 2)));
+
+            Color pulseColor = new(255, 229, 112, (int)pulseAlpha);
+            sprite.Draw(_pixel, new Rectangle(pulseBounds.X, pulseBounds.Y, pulseBounds.Width, 2), pulseColor);
+            sprite.Draw(_pixel, new Rectangle(pulseBounds.X, pulseBounds.Bottom - 2, pulseBounds.Width, 2), pulseColor);
+            sprite.Draw(_pixel, new Rectangle(pulseBounds.X, pulseBounds.Y, 2, pulseBounds.Height), pulseColor);
+            sprite.Draw(_pixel, new Rectangle(pulseBounds.Right - 2, pulseBounds.Y, 2, pulseBounds.Height), pulseColor);
+
+            if (CanDrawWindowText)
+            {
+                string label = _state.LevelUpCurrentQrData > _state.LevelUpPreviousQrData
+                    ? $"LEVEL {_state.LevelUpCurrentQrData}"
+                    : "LEVEL UP";
+                DrawText(
+                    sprite,
+                    label,
+                    new Vector2(previewBounds.X + 8, previewBounds.Y + 8),
+                    new Color(188, 111, 22, (int)textAlpha),
+                    0.34f);
+            }
         }
 
         private void DrawOptions(SpriteBatch sprite)

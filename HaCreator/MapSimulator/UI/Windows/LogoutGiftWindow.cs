@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.UI
         private int _pendingSelectionIndex;
         private int _hoveredEntryIndex = -1;
         private int _clientMouseToolTipIndex = -1;
+        private int _packetOwnedClientUpdateCount;
 
         internal LogoutGiftWindow(GraphicsDevice device)
             : base(new DXObject(0, 0, CreateFrameTexture(device), 0))
@@ -64,6 +65,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.LogoutGift;
         public override bool CapturesKeyboardInput => IsVisible;
         internal Point ActiveFrameSize => new(CurrentFrame?.Width ?? DefaultWidth, CurrentFrame?.Height ?? DefaultHeight);
+        internal int PacketOwnedClientUpdateCount => _packetOwnedClientUpdateCount;
 
         internal void ConfigureVisualAssets(Texture2D frameTexture, LogoutGiftButtonSkin buttonSkin)
         {
@@ -91,6 +93,13 @@ namespace HaCreator.MapSimulator.UI
             _selectHandler = selectHandler;
             _closeHandler = closeHandler;
             _feedbackHandler = feedbackHandler;
+        }
+
+        internal void ApplyPacketOwnedClientUpdateRefresh()
+        {
+            _packetOwnedClientUpdateCount++;
+            _snapshot = _snapshotProvider?.Invoke() ?? new LogoutGiftOwnerSnapshot();
+            _pendingSelectionIndex = ClampSelectionIndex(_snapshot.SelectedIndex);
         }
 
         public override void Update(GameTime gameTime)

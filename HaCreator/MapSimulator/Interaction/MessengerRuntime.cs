@@ -682,7 +682,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string chatLog = BuildClaimChatLog(claimableEntries);
+            string chatLog = BuildClaimChatLog(claimableEntries, targetParticipant.Name, localParticipant?.Name);
             if (string.IsNullOrWhiteSpace(chatLog))
             {
                 status = "Messenger claim request needs claimable chat text.";
@@ -690,7 +690,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             targetCharacterName = targetParticipant.Name;
-            chatLineCount = claimableEntries.Length;
+            chatLineCount = CountClaimChatLogLines(chatLog);
             payload = MessengerPacketCodec.BuildClaimRequestPayload(
                 targetCharacterName,
                 claimType,
@@ -2302,7 +2302,10 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
-        private static string BuildClaimChatLog(IReadOnlyList<MessengerLogEntryState> claimableEntries)
+        private static string BuildClaimChatLog(
+            IReadOnlyList<MessengerLogEntryState> claimableEntries,
+            string targetCharacterName,
+            string sendCharacterName)
         {
             if (claimableEntries == null || claimableEntries.Count == 0)
             {
@@ -2320,13 +2323,15 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                string whisperPrefix = entry.IsWhisper && !string.IsNullOrWhiteSpace(entry.TargetName)
-                    ? $"[W:{entry.TargetName}] "
-                    : string.Empty;
-                lines.Add($"{whisperPrefix}{entry.Author} : {entry.Message}");
+                lines.Add($"{entry.Author} : {entry.Message}");
             }
 
-            return lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
+            return lines.Count == 0
+                ? string.Empty
+                : ClientClaimChatLogParity.BuildChatLogOfTwoCharacters(
+                    lines,
+                    targetCharacterName,
+                    sendCharacterName).ChatLog;
         }
 
         private string HandleSlashCommand(string commandText)

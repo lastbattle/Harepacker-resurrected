@@ -199,7 +199,15 @@ namespace HaCreator.MapSimulator
             int MsPosition,
             int LastUpdateTick,
             PacketOwnedRadioClientHandleStatus HandleStatus,
-            string FailureReason);
+            string FailureReason,
+            bool IwzSoundRawBufferQueried = false,
+            bool AilQuickLoadMemSucceeded = false,
+            bool AilQuickLoadMemBeforeMsLength = false,
+            bool AilQuickUnloadOnRejectedPosition = false,
+            bool SetMsPositionBeforeMsPositionQuery = false,
+            bool MsPositionQueryBeforeLastUpdate = false,
+            bool LastUpdateBeforePlay = false,
+            bool PlayLoops = false);
 
         internal readonly record struct PacketOwnedRadioMmsStopPlan(
             bool EnteredStop,
@@ -12399,16 +12407,22 @@ namespace HaCreator.MapSimulator
                     NextLastUpdateTick: lastUpdateTick);
             }
 
+            int ailQuickStatusValue = ResolvePacketOwnedRadioAilQuickStatus(currentHandleStatus);
+            bool shouldStopOnComplete = currentHandleStatus != PacketOwnedRadioClientHandleStatus.None
+                && currentHandleStatus != PacketOwnedRadioClientHandleStatus.Unloaded
+                    ? ailQuickStatusValue == 1
+                    : ShouldCompletePacketOwnedRadioSchedule(
+                        currentTickCount,
+                        expectedStopTick,
+                        clientHandleStopped,
+                        useBackendStopSignal,
+                        backendStopped);
+
             return new PacketOwnedRadioUpdatePlan(
                 ShouldPoll: true,
-                ShouldStopOnComplete: ShouldCompletePacketOwnedRadioSchedule(
-                    currentTickCount,
-                    expectedStopTick,
-                    clientHandleStopped,
-                    useBackendStopSignal,
-                    backendStopped),
+                ShouldStopOnComplete: shouldStopOnComplete,
                 PolledAilQuickStatus: true,
-                AilQuickStatusValue: ResolvePacketOwnedRadioAilQuickStatus(currentHandleStatus),
+                AilQuickStatusValue: ailQuickStatusValue,
                 AdvancedLastUpdate: true,
                 NextLastUpdateTick: currentTickCount);
         }
@@ -12484,7 +12498,8 @@ namespace HaCreator.MapSimulator
                     MsPosition: normalizedPosition,
                     LastUpdateTick: int.MinValue,
                     HandleStatus: PacketOwnedRadioClientHandleStatus.Loaded,
-                    FailureReason: failureReason);
+                    FailureReason: failureReason,
+                    IwzSoundRawBufferQueried: true);
             }
 
             if (normalizedLength < normalizedPosition)
@@ -12504,7 +12519,11 @@ namespace HaCreator.MapSimulator
                     MsPosition: normalizedPosition,
                     LastUpdateTick: int.MinValue,
                     HandleStatus: PacketOwnedRadioClientHandleStatus.Unloaded,
-                    FailureReason: $"CRadioManager::MMS_Play rejected ms_position {normalizedPosition} because AIL_quick_ms_length returned {normalizedLength}.");
+                    FailureReason: $"CRadioManager::MMS_Play rejected ms_position {normalizedPosition} because AIL_quick_ms_length returned {normalizedLength}.",
+                    IwzSoundRawBufferQueried: true,
+                    AilQuickLoadMemSucceeded: true,
+                    AilQuickLoadMemBeforeMsLength: true,
+                    AilQuickUnloadOnRejectedPosition: true);
             }
 
             int lastUpdateTick = HasPacketOwnedRadioClientTrackDuration(normalizedLength)
@@ -12528,7 +12547,14 @@ namespace HaCreator.MapSimulator
                 MsPosition: normalizedPosition,
                 LastUpdateTick: lastUpdateTick,
                 HandleStatus: handleStatus,
-                FailureReason: string.Empty);
+                FailureReason: string.Empty,
+                IwzSoundRawBufferQueried: true,
+                AilQuickLoadMemSucceeded: true,
+                AilQuickLoadMemBeforeMsLength: true,
+                SetMsPositionBeforeMsPositionQuery: true,
+                MsPositionQueryBeforeLastUpdate: true,
+                LastUpdateBeforePlay: true,
+                PlayLoops: true);
         }
 
         private static bool TryLoadPacketOwnedRadioClientRawBuffer(WzBinaryProperty audioProperty, out int rawBufferLength, out string failureReason)
@@ -15997,6 +16023,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            bool poseChanged = HasPacketOwnedTutorSummonPoseChanged(
+                summon,
+                owner.Position.X,
+                owner.Position.Y,
+                owner.FacingRight);
             summon.PreviousPositionX = summon.PositionX;
             summon.PreviousPositionY = summon.PositionY;
             summon.AnchorX = owner.Position.X;
@@ -16004,7 +16035,6 @@ namespace HaCreator.MapSimulator
             summon.PositionX = owner.Position.X;
             summon.PositionY = owner.Position.Y;
             summon.FacingRight = owner.FacingRight;
-            summon.LastStateChangeTime = currentTickCount;
             bool hasVisibleMessage = _packetOwnedTutorRuntime.TryResolveDisplayMessageSnapshot(
                 displayVariant,
                 currentTickCount,
@@ -16037,7 +16067,63 @@ namespace HaCreator.MapSimulator
                 _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Remove(summon.ObjectId);
             }
 
-            summon.ActorState = SummonActorState.Idle;
+            SummonActorState actorState = ResolvePacketOwnedTutorSyncedActorState(summon, currentTickCount);
+            ApplyPacketOwnedTutorSyncedActorState(summon, actorState, poseChanged, currentTickCount);
+        }
+
+        internal static bool HasPacketOwnedTutorSummonPoseChanged(
+            ActiveSummon summon,
+            float targetX,
+            float targetY,
+            bool targetFacingRight)
+        {
+            return summon == null
+                || !ArePacketOwnedTutorCoordinatesEquivalent(summon.AnchorX, targetX)
+                || !ArePacketOwnedTutorCoordinatesEquivalent(summon.AnchorY, targetY)
+                || !ArePacketOwnedTutorCoordinatesEquivalent(summon.PositionX, targetX)
+                || !ArePacketOwnedTutorCoordinatesEquivalent(summon.PositionY, targetY)
+                || summon.FacingRight != targetFacingRight;
+        }
+
+        private static bool ArePacketOwnedTutorCoordinatesEquivalent(float current, float target)
+        {
+            return Math.Abs(current - target) < 0.001f;
+        }
+
+        internal static SummonActorState ResolvePacketOwnedTutorSyncedActorState(
+            ActiveSummon summon,
+            int currentTickCount)
+        {
+            return SummonedPool.TryResolvePacketOwnedActiveAttackActorState(
+                summon,
+                currentTickCount,
+                out SummonActorState activeAttackState)
+                ? activeAttackState
+                : SummonActorState.Idle;
+        }
+
+        internal static void ApplyPacketOwnedTutorSyncedActorState(
+            ActiveSummon summon,
+            SummonActorState actorState,
+            bool poseChanged,
+            int currentTickCount)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            if (summon.ActorState != actorState)
+            {
+                summon.ActorState = actorState;
+                summon.LastStateChangeTime = currentTickCount;
+                return;
+            }
+
+            if (poseChanged)
+            {
+                summon.LastStateChangeTime = currentTickCount;
+            }
         }
 
         internal static bool ShouldTriggerPacketOwnedTutorSayPlayback(int skillId, TutorMessageKind messageKind)
@@ -16864,20 +16950,21 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            PassiveTransferFieldHorizontalOnKeyDownDecision horizontalDecision =
-                PassiveTransferFieldReadinessEvaluator.EvaluateHorizontalOnKeyDown(
+            PassiveTransferFieldFollowCharacterReleaseInputDecision followReleaseDecision =
+                PassiveTransferFieldReadinessEvaluator.EvaluateFollowCharacterReleaseInput(
                     _passiveTransferRequestPending,
-                    leftKeyPressed: releaseKeyPressed,
-                    rightKeyPressed: false);
+                    isLocalUser: true,
+                    releaseKeyPressed: releaseKeyPressed,
+                    hasAttachedDriver: _localFollowRuntime.HasAttachedDriver);
 
-            if (horizontalDecision.ShouldStopSkillMacro)
+            if (followReleaseDecision.ShouldStopSkillMacro)
             {
                 StopSkillMacroForHandleUpKeyDown();
             }
 
-            if (horizontalDecision.ShouldClearQueuedRetry)
+            if (followReleaseDecision.ShouldClearQueuedRetry)
             {
-                ConsumePassiveTransferRequestFromLifecycleOwner(horizontalDecision.ClearOwner);
+                ConsumePassiveTransferRequestFromLifecycleOwner(followReleaseDecision.ClearOwner);
             }
 
             if (_localFollowRuntime.AttachedDriverId <= 0)

@@ -1076,6 +1076,19 @@ namespace HaCreator.MapSimulator.Interaction
             return _entitlementType is FamilyEntitlementType.MoveToMember or FamilyEntitlementType.SummonMember;
         }
 
+        internal string GetSelectedEntitlementTargetInputDefault()
+        {
+            if (!SelectedEntitlementRequiresTargetInput())
+            {
+                return string.Empty;
+            }
+
+            FamilyMemberState selectedMember = GetSelectedMember();
+            return selectedMember != null && !IsClientLocalMember(selectedMember.Id)
+                ? selectedMember.Name
+                : string.Empty;
+        }
+
         internal bool TryApplyResultPacketPayload(byte[] payload, out string message)
         {
             message = string.Empty;

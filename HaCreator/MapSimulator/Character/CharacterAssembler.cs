@@ -149,6 +149,7 @@ namespace HaCreator.MapSimulator.Character
                 ["prone"] = new[] { "sit", "stand1" },
                 ["swim"] = new[] { "fly", "sit", "move" },
                 ["fly"] = new[] { "walk1", "walk2", "sit", "move" },
+                ["wildbeast"] = new[] { "stand1", "stand2", "walk1", "walk2", "fly" },
                 ["ladder"] = new[] { "ladder2", "rope2", "rope", "sit" },
                 ["rope"] = new[] { "rope2", "ladder2", "ladder", "sit" },
                 ["alert"] = new[] { "stand1", "stand2", "sit" },

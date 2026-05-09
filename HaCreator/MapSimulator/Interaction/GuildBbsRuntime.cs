@@ -2437,12 +2437,29 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (payload.Length <= _cashEmoticonCount
+                && TryDecodeCashOwnershipByteList(payload, 0, payload.Length, ownedItemIds))
+            {
+                detail = $"matched a direct byte list with {payload.Length} cash emoticon id(s)";
+                return true;
+            }
+
             if (byteCount > 0
                 && byteCount <= _cashEmoticonCount
                 && payload.Length == 1 + (byteCount * sizeof(int))
                 && TryDecodeCashOwnershipIntList(payload, 1, byteCount, ownedItemIds))
             {
                 detail = $"matched a count-prefixed int list with {byteCount} cash emoticon id(s)";
+                return true;
+            }
+
+            int intCount = payload.Length / sizeof(int);
+            if (intCount > 0
+                && intCount <= _cashEmoticonCount
+                && payload.Length == intCount * sizeof(int)
+                && TryDecodeCashOwnershipIntList(payload, 0, intCount, ownedItemIds))
+            {
+                detail = $"matched a direct int list with {intCount} cash emoticon item id(s)";
                 return true;
             }
 

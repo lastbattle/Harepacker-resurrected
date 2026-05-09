@@ -445,6 +445,16 @@ namespace HaCreator.MapSimulator
                 && !IsPacketOwnedRevivePremiumSafetyCharmContextOfficialSessionSource(lastMutationSource);
         }
 
+        internal static bool ShouldClearRevivePremiumSafetyCharmContextOnOfficialSessionDetach(
+            bool officialSessionConnected,
+            bool hasContextValue,
+            string lastMutationSource)
+        {
+            return !officialSessionConnected
+                && hasContextValue
+                && IsPacketOwnedRevivePremiumSafetyCharmContextOfficialSessionSource(lastMutationSource);
+        }
+
         private bool ResolveRevivePremiumSafetyCharmContextArmed(bool fallbackArmed)
         {
             int runtimeCharacterId = ResolveReviveOwnerRuntimeCharacterId();
@@ -509,6 +519,18 @@ namespace HaCreator.MapSimulator
             _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved = false;
             if (!officialSessionConnected)
             {
+                if (ShouldClearRevivePremiumSafetyCharmContextOnOfficialSessionDetach(
+                        officialSessionConnected,
+                        _packetOwnedLocalUtilityContext.HasRevivePremiumSafetyCharmContextValue,
+                        _packetOwnedLocalUtilityContext.RevivePremiumSafetyCharmLastMutationSource))
+                {
+                    int detachRuntimeCharacterId = ResolveReviveOwnerRuntimeCharacterId();
+                    _packetOwnedLocalUtilityContext.ClearRevivePremiumSafetyCharmContextValue(
+                        "official-session-detach-reset",
+                        currentTick,
+                        detachRuntimeCharacterId);
+                }
+
                 ShowUtilityFeedbackMessage(
                     "Local utility official-session bridge disconnected; revive premium safety-charm ownership is unlocked for the next runtime session.");
                 return;

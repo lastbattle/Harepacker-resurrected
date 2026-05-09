@@ -189,18 +189,29 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            SharedFadeYesNoModalSnapshot beforeUpdateSnapshot = _fadeYesNoOwner.CaptureSnapshot();
             if (_fadeYesNoOwner.Update(Environment.TickCount))
             {
-                if (_fadeYesNoOwner.PendingCount == 0)
+                if (beforeUpdateSnapshot.CancelAction != null)
+                {
+                    beforeUpdateSnapshot.CancelAction.Invoke();
+                }
+                else if (_fadeYesNoOwner.PendingCount == 0)
                 {
                     CancelRequested?.Invoke();
-                    Hide();
                 }
 
                 return;
             }
 
             SharedFadeYesNoModalSnapshot snapshot = _fadeYesNoOwner.CaptureSnapshot();
+            if (!snapshot.IsActive && _lastAppliedSharedFadeCreatedTick != int.MinValue)
+            {
+                _lastAppliedSharedFadeCreatedTick = int.MinValue;
+                base.Hide();
+                return;
+            }
+
             if (snapshot.IsActive
                 && snapshot.CreatedTick != _lastAppliedSharedFadeCreatedTick
                 && snapshot.Phase != SharedFadeYesNoModalPhase.FadingOut)
@@ -365,11 +376,27 @@ namespace HaCreator.MapSimulator.UI
 
                 if (clickedButton == SharedFadeYesNoModalButton.Ok)
                 {
-                    ConfirmRequested?.Invoke();
+                    if (snapshot.ConfirmAction != null)
+                    {
+                        snapshot.ConfirmAction.Invoke();
+                    }
+                    else
+                    {
+                        ConfirmRequested?.Invoke();
+                    }
+
                     return;
                 }
 
-                CancelRequested?.Invoke();
+                if (snapshot.CancelAction != null)
+                {
+                    snapshot.CancelAction.Invoke();
+                }
+                else
+                {
+                    CancelRequested?.Invoke();
+                }
+
                 return;
             }
 

@@ -9598,37 +9598,17 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var indexedPoints = new List<(int Index, Vector2 Point)>();
-            var seenSegments = new HashSet<string>(StringComparer.Ordinal);
+            var points = new List<Vector2>(childCount);
             for (int i = 0; i < childCount; i++)
             {
-                WzImageProperty indexedRow = children[i];
-                string childName = indexedRow?.Name;
-                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childName, out int index)
-                    || !seenSegments.Add(childName))
-                {
-                    continue;
-                }
-
+                WzImageProperty indexedRow = resolvedGenerationPointProperty[i.ToString(CultureInfo.InvariantCulture)];
                 WzImageProperty resolvedChild = ResolveAnimationDisplayerLinkedRealProperty(indexedRow);
                 if (resolvedChild is not WzVectorProperty point)
                 {
-                    continue;
+                    break;
                 }
 
-                indexedPoints.Add((index, new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0)));
-            }
-
-            if (indexedPoints.Count == 0)
-            {
-                return null;
-            }
-
-            indexedPoints.Sort(static (left, right) => left.Index.CompareTo(right.Index));
-            var points = new List<Vector2>(indexedPoints.Count);
-            for (int i = 0; i < indexedPoints.Count; i++)
-            {
-                points.Add(indexedPoints[i].Point);
+                points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
             }
 
             return points.Count > 0

@@ -35,6 +35,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int PreviewY = 85;
         private const int ShakeStepMs = 65;
         private const int ShakeOffsetMagnitude = 5;
+        internal const int ChatLogType = 18;
+        internal const int TrembleForce = 16;
         internal const int SendDialogRowMax = 4;
         internal const int SendDialogMaxLineWidth = 97;
         internal const int SendDialogFontHeight = 15;
@@ -75,6 +77,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _draftWhisper;
         private int _draftChannelId = -1;
         private CharacterBuild _localAvatarTemplate;
+        private CharacterBuild _packetAvatarTemplate;
 
         private AvatarMegaphonePresentation _activePresentation;
         private int _presentationStartedAt = int.MinValue;
@@ -97,7 +100,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_activePresentation == null)
             {
                 AvatarMegaphoneItemProfile draftProfile = ResolveItemProfile(_draftItemId);
-                return $"Avatar megaphone idle: item {_draftItemId} ({draftProfile?.ResourcePath ?? "unresolved"}), sender '{_draftSender}', whisper={(_draftWhisper ? 1 : 0)}, channel={_draftChannelId}. {_statusMessage}";
+                return $"Avatar megaphone idle: item {_draftItemId} ({draftProfile?.ResourcePath ?? "unresolved"}), sender '{_draftSender}', preview={ResolvePreviewSourceLabel()}, whisper={(_draftWhisper ? 1 : 0)}, channel={_draftChannelId}. {_statusMessage}";
             }
 
             AvatarMegaphoneLayout layout = BuildLayout(currentTick, screenWidth);
@@ -167,6 +170,23 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _draftChannelId = channelId;
             _statusMessage = $"Avatar megaphone channel id set to {channelId}.";
+            return _statusMessage;
+        }
+
+        internal string SetPacketAvatarLook(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "Avatar megaphone packet AvatarLook payload could not be applied.";
+            }
+
+            _packetAvatarTemplate = build.Clone();
+            if (!string.IsNullOrWhiteSpace(_draftSender))
+            {
+                _packetAvatarTemplate.Name = _draftSender;
+            }
+
+            _statusMessage = "Avatar megaphone preview AvatarLook set from packet payload.";
             return _statusMessage;
         }
 
@@ -315,9 +335,9 @@ namespace HaCreator.MapSimulator.Interaction
             return ch > 0xFF ? 12 : 6;
         }
 
-        internal bool TryActivate(int currentTick, out string chatLogLine, out string message)
+        internal bool TryActivate(int currentTick, out AvatarMegaphoneChatLogEntry chatLogEntry, out string message)
         {
-            chatLogLine = string.Empty;
+            chatLogEntry = null;
             message = string.Empty;
 
             AvatarMegaphoneItemProfile profile = ResolveItemProfile(_draftItemId);
@@ -327,10 +347,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            CharacterBuild presentationBuild = _localAvatarTemplate?.Clone();
+            CharacterBuild presentationBuild = (_packetAvatarTemplate ?? _localAvatarTemplate)?.Clone();
             if (presentationBuild == null)
             {
-                message = "Avatar megaphone preview requires an active local character build.";
+                message = "Avatar megaphone preview requires an active local character build or packet AvatarLook.";
                 return false;
             }
 
@@ -356,13 +376,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             string joinedMessage = string.Concat(fragments);
             string filteredMessage = ClientCurseProcessParity.FilterTextForClientDisplay(joinedMessage);
-            chatLogLine = $"{_draftSender} : {filteredMessage}";
+            chatLogEntry = new AvatarMegaphoneChatLogEntry(
+                $"{_draftSender} : {filteredMessage}",
+                ChatLogType,
+                _draftWhisper ? _draftSender : null,
+                _draftChannelId);
             _statusMessage = $"Avatar megaphone activated for {_draftSender} with item {_draftItemId}.";
             message = _statusMessage;
             return true;
         }
 
-        internal string Clear()
+        internal string Clear(int currentTick)
         {
             if (_activePresentation == null)
             {
@@ -372,11 +396,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_dismissStartedAt == int.MinValue)
             {
-                _dismissStartedAt = Environment.TickCount;
+                _dismissStartedAt = currentTick;
                 _statusMessage = "Avatar megaphone started the client-owned Bye transition.";
             }
 
             return _statusMessage;
+        }
+
+        internal string Clear()
+        {
+            return Clear(Environment.TickCount);
         }
 
         internal void Update(int currentTick)
@@ -398,6 +427,21 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal bool ShouldTriggerTremble => _activePresentation?.ItemProfile?.TriggersTremble == true;
+
+        internal static bool ShouldItemTriggerTremble(int itemId)
+        {
+            return itemId is 5390006 or 5390007 or 5390008;
+        }
+
+        internal static int ResolveNameTagStringPoolIdForWidth(int senderNameWidth)
+        {
+            return senderNameWidth >= NameTagThresholdWidth ? 0x0FB1 : 0x0FB0;
+        }
+
+        internal static int ResolveNameTagXForWidth(int senderNameWidth)
+        {
+            return senderNameWidth >= NameTagThresholdWidth ? LongNameTagX : ShortNameTagX;
+        }
 
         internal void Draw(
             SpriteBatch spriteBatch,
@@ -423,9 +467,9 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<AvatarMegaphoneAnimationFrame> itemFrames = ResolveItemFrames(_activePresentation.ItemProfile.ResourcePath, device);
 
             int senderWidth = (int)Math.Ceiling(font.MeasureString(_activePresentation.Sender ?? string.Empty).X * 0.4f);
-            bool useLongNameTag = senderWidth >= NameTagThresholdWidth;
+            bool useLongNameTag = ResolveNameTagStringPoolIdForWidth(senderWidth) == 0x0FB1;
             Texture2D nameTagTexture = useLongNameTag ? longNameTagTexture : shortNameTagTexture;
-            int nameTagX = layout.PanelX + (useLongNameTag ? LongNameTagX : ShortNameTagX);
+            int nameTagX = layout.PanelX + ResolveNameTagXForWidth(senderWidth);
 
             if (backgroundTexture != null)
             {
@@ -642,7 +686,7 @@ namespace HaCreator.MapSimulator.Interaction
             WzSubProperty info = itemImage?[$"{itemId:D8}"]?["info"] as WzSubProperty;
             string path = (info?["path"] as WzStringProperty)?.Value ?? fallback?.ResourcePath;
             int emotion = (info?["emotion"] as WzIntProperty)?.Value ?? fallback?.EmotionId ?? 0;
-            bool tremble = itemId is 5390006 or 5390007 or 5390008;
+            bool tremble = ShouldItemTriggerTremble(itemId);
 
             if (string.IsNullOrWhiteSpace(path) || emotion <= 0)
             {
@@ -814,6 +858,11 @@ namespace HaCreator.MapSimulator.Interaction
             return current;
         }
 
+        private string ResolvePreviewSourceLabel()
+        {
+            return _packetAvatarTemplate != null ? "packet AvatarLook" : "local avatar";
+        }
+
         private sealed record AvatarMegaphonePresentation(
             int ItemId,
             AvatarMegaphoneItemProfile ItemProfile,
@@ -845,6 +894,22 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed record AvatarMegaphoneItemProfile(int ItemId, string ResourcePath, int EmotionId, bool TriggersTremble);
         private sealed record AvatarMegaphoneAnimationFrame(Texture2D Texture, Point Origin, int DelayMs);
         private readonly record struct AvatarMegaphoneLayout(int PanelX, int NameAlpha);
+    }
+
+    internal sealed class AvatarMegaphoneChatLogEntry
+    {
+        internal AvatarMegaphoneChatLogEntry(string text, int type, string whisperTargetCandidate, int channelId)
+        {
+            Text = text ?? string.Empty;
+            Type = type;
+            WhisperTargetCandidate = whisperTargetCandidate;
+            ChannelId = channelId;
+        }
+
+        internal string Text { get; }
+        internal int Type { get; }
+        internal string WhisperTargetCandidate { get; }
+        internal int ChannelId { get; }
     }
 
     internal sealed class AvatarMegaphoneSendDialogSnapshot

@@ -194,6 +194,24 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void ApplyCommittedClientOptionValuesFromOptionMenu(IReadOnlyDictionary<int, bool> committedOptions)
+        {
+            if (committedOptions == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, bool> option in committedOptions)
+            {
+                _packetOwnedClientOptions.SetOpt(option.Key, option.Value ? 1 : 0);
+            }
+
+            if (_packetOwnedClientOptions.TryGetOpt(MovePathRandomCounterClientOptionId, out int randomCounterRawValue))
+            {
+                _packetOwnedMovePathRandomCounterOptionEnabled = randomCounterRawValue != 0;
+            }
+        }
+
         private bool QueuePacketOwnedFieldTransfer(PacketStageFieldTransferRequest request)
         {
             if (request.MapId <= 0)
@@ -1026,8 +1044,42 @@ namespace HaCreator.MapSimulator
                 0,
                 targetOffsetX,
                 targetOffsetY,
-                targetRotationDegrees);
+                targetRotationDegrees,
+                vectorProfile.UsesEllipticalMove,
+                vectorProfile.EllipticalClockwise);
             return true;
+        }
+
+        internal static void ResolvePacketOwnedNamedObjectVectorMotionOffset(
+            float phase,
+            int startX,
+            int startY,
+            int targetX,
+            int targetY,
+            bool usesEllipticalMove,
+            bool ellipticalClockwise,
+            out int x,
+            out int y,
+            out float progress)
+        {
+            phase -= MathF.Floor(phase);
+            if (!usesEllipticalMove)
+            {
+                progress = phase <= 0.5f
+                    ? phase * 2f
+                    : (1f - phase) * 2f;
+                x = (int)Math.Round(startX + ((targetX - startX) * progress));
+                y = (int)Math.Round(startY + ((targetY - startY) * progress));
+                return;
+            }
+
+            float direction = ellipticalClockwise ? 1f : -1f;
+            float angle = phase * MathF.PI * 2f * direction;
+            x = startX + (int)Math.Round(targetX * MathF.Sin(angle));
+            y = startY + (int)Math.Round(targetY * (1f - MathF.Cos(angle)));
+            progress = phase <= 0.5f
+                ? phase * 2f
+                : (1f - phase) * 2f;
         }
 
         private sealed record PacketOwnedNamedObjectMovingState(
@@ -1037,7 +1089,9 @@ namespace HaCreator.MapSimulator
             int StartY,
             int TargetX,
             int TargetY,
-            float TargetRotationDegrees = 0f)
+            float TargetRotationDegrees = 0f,
+            bool UsesEllipticalMove = false,
+            bool EllipticalClockwise = true)
         {
             public const int DefaultDurationMs = 4000;
 
@@ -1055,13 +1109,19 @@ namespace HaCreator.MapSimulator
                     phase += 1f;
                 }
 
-                float pingPong = phase <= 0.5f
-                    ? phase * 2f
-                    : (1f - phase) * 2f;
-                int x = (int)Math.Round(StartX + ((TargetX - StartX) * pingPong));
-                int y = (int)Math.Round(StartY + ((TargetY - StartY) * pingPong));
+                ResolvePacketOwnedNamedObjectVectorMotionOffset(
+                    phase,
+                    StartX,
+                    StartY,
+                    TargetX,
+                    TargetY,
+                    UsesEllipticalMove,
+                    EllipticalClockwise,
+                    out int x,
+                    out int y,
+                    out float rotationProgress);
                 item.Position = new Microsoft.Xna.Framework.Point(x, y);
-                item.SetLayerRotationDegrees(TargetRotationDegrees * pingPong);
+                item.SetLayerRotationDegrees(TargetRotationDegrees * rotationProgress);
             }
         }
 

@@ -40,7 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
         GetConfirmation,
         PutQuantity,
         PutConfirmation,
-        InputConfirmation
+        InputConfirmation,
+        Notice
     }
 
     internal sealed class WeddingWishListRuntime
@@ -129,6 +130,9 @@ namespace HaCreator.MapSimulator.Interaction
         private byte[] _lastOutboundPacketPayload = Array.Empty<byte>();
         private string _lastOutboundPacketSummary = string.Empty;
         private bool _inputConfirmationArmed;
+        private bool _noticePromptOpen;
+        private bool _noticeClosesOwnerOnDismiss;
+        private string _noticePromptText = string.Empty;
         private bool _isOpen;
         private string _statusMessage = "Wedding wish-list dialog is idle.";
         private bool _seeded;
@@ -216,6 +220,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetTab(int tabIndex)
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (tabIndex < 0 || tabIndex >= TabInventoryTypes.Length)
             {
                 return $"Wedding wish-list tab must be between 0 and {TabInventoryTypes.Length - 1}.";
@@ -235,6 +244,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetActivePane(WeddingWishListSelectionPane pane)
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             _activePane = pane;
             ApplyInputPaneFocusBehavior();
             ClearTransientActionState();
@@ -246,6 +260,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SelectEntry(WeddingWishListSelectionPane pane, int index)
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             switch (pane)
             {
                 case WeddingWishListSelectionPane.GiftList:
@@ -273,6 +292,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string MoveSelection(int delta)
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             switch (_activePane)
             {
                 case WeddingWishListSelectionPane.GiftList:
@@ -298,6 +322,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ScrollPane(WeddingWishListSelectionPane pane, int delta)
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             int count = GetEntryCount(pane);
             int visibleRows = GetVisibleRowCount(pane);
             if (count <= visibleRows || visibleRows <= 0)
@@ -325,6 +354,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string TryPutSelectedItem()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (_mode != WeddingWishListDialogMode.Give)
             {
                 return "Wedding wish-list Put is only available in give mode.";
@@ -386,6 +420,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string TryGetSelectedItem()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (_mode != WeddingWishListDialogMode.Receive)
             {
                 return "Wedding wish-list Get is only available in receive mode.";
@@ -435,6 +474,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string TryAddCandidateWish()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (_mode != WeddingWishListDialogMode.Input)
             {
                 return "Wedding wish-list Enter is only available in input mode.";
@@ -475,6 +519,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string AppendCandidateQuery(char value)
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (_mode != WeddingWishListDialogMode.Input || char.IsControl(value))
             {
                 return string.Empty;
@@ -499,6 +548,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string BackspaceCandidateQuery()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (_mode != WeddingWishListDialogMode.Input || string.IsNullOrEmpty(_candidateQuery))
             {
                 return string.Empty;
@@ -519,6 +573,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string AppendPutQuantityDigit(char value)
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (!_isPutQuantityPromptOpen || !char.IsDigit(value))
             {
                 return string.Empty;
@@ -546,6 +605,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string BackspacePutQuantityDigit()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (!_isPutQuantityPromptOpen)
             {
                 return string.Empty;
@@ -561,6 +625,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string CancelTransientPrompt()
         {
+            if (_noticePromptOpen)
+            {
+                return DismissNoticePrompt();
+            }
+
             if (_isPutQuantityPromptOpen)
             {
                 _isPutQuantityPromptOpen = false;
@@ -600,6 +669,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string TryDeleteWish()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (_mode != WeddingWishListDialogMode.Input)
             {
                 return "Wedding wish-list Delete is only available in input mode.";
@@ -627,6 +701,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string Close()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             _isOpen = false;
             _statusMessage = "Closed the wedding wish-list dialog.";
             return _statusMessage;
@@ -634,6 +713,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ConfirmInput()
         {
+            if (_noticePromptOpen)
+            {
+                return GetNoticePendingText();
+            }
+
             if (!_isOpen)
             {
                 return "Wedding wish-list dialog is not open.";
@@ -806,9 +890,9 @@ namespace HaCreator.MapSimulator.Interaction
             RefreshCandidateEntries();
             ClampSelections();
             NormalizeViewportState();
-            _isOpen = false;
-            _mode = WeddingWishListDialogMode.None;
-            _statusMessage = $"{GetWishListGiftSentText()} Applied CWishListGiveDlg::OnPacket subtype {ClientPutItemSuccessSubtype} and closed the modeless give dialog through the client SetRet success path.";
+            ArmNoticePrompt(
+                $"{GetWishListGiftSentText()} Applied CWishListGiveDlg::OnPacket subtype {ClientPutItemSuccessSubtype}; dismissing this notice will close the modeless give dialog through the client SetRet success path.",
+                closeOwnerOnDismiss: true);
             return _statusMessage;
         }
 
@@ -825,7 +909,9 @@ namespace HaCreator.MapSimulator.Interaction
             RefreshCandidateEntries();
             ClampSelections();
             NormalizeViewportState();
-            _statusMessage = $"{noticeText} Applied CWishListGiveDlg::OnPacket subtype {subtype} and reopened Put actions.";
+            ArmNoticePrompt(
+                $"{noticeText} Applied CWishListGiveDlg::OnPacket subtype {subtype} and reopened Put actions after notice acknowledgement.",
+                closeOwnerOnDismiss: false);
             return _statusMessage;
         }
 
@@ -860,7 +946,9 @@ namespace HaCreator.MapSimulator.Interaction
             RefreshCandidateEntries();
             ClampSelections();
             NormalizeViewportState();
-            _statusMessage = $"{noticeText} Applied CWishListRecvDlg::OnPacket subtype {subtype} and reopened Get actions.";
+            ArmNoticePrompt(
+                $"{noticeText} Applied CWishListRecvDlg::OnPacket subtype {subtype} and reopened Get actions after notice acknowledgement.",
+                closeOwnerOnDismiss: false);
             return _statusMessage;
         }
 
@@ -925,6 +1013,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsPutQuantityPromptOpen = _isPutQuantityPromptOpen,
                 IsPutConfirmationArmed = _isPutConfirmationArmed,
                 IsInputConfirmationArmed = _inputConfirmationArmed,
+                IsNoticePromptOpen = _noticePromptOpen,
                 ModalKind = ResolveModalKind(),
                 ModalText = ResolveModalText(),
                 HasPendingTransferRequest = _hasPendingTransferRequest,
@@ -1421,6 +1510,11 @@ namespace HaCreator.MapSimulator.Interaction
             return "A wedding wish-list input request is already pending until opcode 162 subtype 9 completes.";
         }
 
+        private static string GetNoticePendingText()
+        {
+            return "A wedding wish-list notice is open; acknowledge it before routing another dialog action.";
+        }
+
         private static string GetWishListGiftAlreadySentText()
         {
             return MapleStoryStringPool.GetOrFallback(
@@ -1487,6 +1581,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private WeddingWishListModalKind ResolveModalKind()
         {
+            if (_noticePromptOpen)
+            {
+                return WeddingWishListModalKind.Notice;
+            }
+
             if (_isGetConfirmationArmed)
             {
                 return WeddingWishListModalKind.GetConfirmation;
@@ -1518,12 +1617,18 @@ namespace HaCreator.MapSimulator.Interaction
                 WeddingWishListModalKind.PutQuantity => $"{GetPutQuantityPromptText()} {ResolveItemLabel(_putQuantityPromptSourceItem)} [{_putQuantityPromptQuantity}/{GetPendingPutQuantityMax()}]",
                 WeddingWishListModalKind.PutConfirmation => GetPutConfirmationText(),
                 WeddingWishListModalKind.InputConfirmation => GetInputConfirmPromptText(),
+                WeddingWishListModalKind.Notice => _noticePromptText,
                 _ => string.Empty
             };
         }
 
         private bool CanGetSelectedItem()
         {
+            if (_noticePromptOpen)
+            {
+                return false;
+            }
+
             if (_mode != WeddingWishListDialogMode.Receive)
             {
                 return false;
@@ -1539,6 +1644,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanPutSelectedItem()
         {
+            if (_noticePromptOpen)
+            {
+                return false;
+            }
+
             if (_mode != WeddingWishListDialogMode.Give)
             {
                 return false;
@@ -1565,6 +1675,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanEnterSelectedWish()
         {
+            if (_noticePromptOpen)
+            {
+                return false;
+            }
+
             if (_mode != WeddingWishListDialogMode.Input)
             {
                 return false;
@@ -1581,6 +1696,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanDeleteSelectedWish()
         {
+            if (_noticePromptOpen)
+            {
+                return false;
+            }
+
             return _mode == WeddingWishListDialogMode.Input
                 && _selectedWishIndex >= 0
                 && _selectedWishIndex < _wishListEntries.Count;
@@ -1588,12 +1708,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanConfirmInput()
         {
-            return _isOpen && _mode == WeddingWishListDialogMode.Input && !_hasPendingInputRequest;
+            return _isOpen && _mode == WeddingWishListDialogMode.Input && !_hasPendingInputRequest && !_noticePromptOpen;
         }
 
         private bool CanCloseWindow()
         {
-            return _isOpen && (_mode == WeddingWishListDialogMode.Receive || _mode == WeddingWishListDialogMode.Give);
+            return _isOpen && (_mode == WeddingWishListDialogMode.Receive || _mode == WeddingWishListDialogMode.Give) && !_noticePromptOpen;
         }
 
         private string TryCommitGiftPut(InventorySlotData selectedWish, InventorySlotData source, int quantity)
@@ -1910,6 +2030,42 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingPutQuantity = 1;
             _pendingPutSourceSlotIndex = 0;
             _inputConfirmationArmed = false;
+            ClearNoticePrompt();
+        }
+
+        private void ArmNoticePrompt(string text, bool closeOwnerOnDismiss)
+        {
+            _noticePromptOpen = true;
+            _noticeClosesOwnerOnDismiss = closeOwnerOnDismiss;
+            _noticePromptText = text ?? string.Empty;
+            _statusMessage = _noticePromptText;
+        }
+
+        private string DismissNoticePrompt()
+        {
+            string dismissedText = _noticePromptText;
+            bool closeOwner = _noticeClosesOwnerOnDismiss;
+            ClearNoticePrompt();
+
+            if (closeOwner)
+            {
+                _isOpen = false;
+                _mode = WeddingWishListDialogMode.None;
+                _statusMessage = "Dismissed the wedding wish-list notice and closed the give dialog through the client SetRet success path.";
+                return _statusMessage;
+            }
+
+            _statusMessage = string.IsNullOrWhiteSpace(dismissedText)
+                ? "Dismissed the wedding wish-list notice."
+                : $"Dismissed the wedding wish-list notice: {dismissedText}";
+            return _statusMessage;
+        }
+
+        private void ClearNoticePrompt()
+        {
+            _noticePromptOpen = false;
+            _noticeClosesOwnerOnDismiss = false;
+            _noticePromptText = string.Empty;
         }
 
         private void NotifySocialChatObserved(string message)
@@ -2002,6 +2158,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsPutQuantityPromptOpen { get; init; }
         public bool IsPutConfirmationArmed { get; init; }
         public bool IsInputConfirmationArmed { get; init; }
+        public bool IsNoticePromptOpen { get; init; }
         public WeddingWishListModalKind ModalKind { get; init; }
         public string ModalText { get; init; } = string.Empty;
         public bool HasPendingTransferRequest { get; init; }

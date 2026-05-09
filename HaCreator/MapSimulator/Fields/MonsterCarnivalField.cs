@@ -93,6 +93,18 @@ namespace HaCreator.MapSimulator.Fields
         Closed = 5
     }
 
+    public enum MonsterCarnivalSeason2BtOkSendLifecycle
+    {
+        None = 0,
+        SentPendingResult = 1,
+        ObservedPendingResult = 2,
+        BlockedPendingResult = 3,
+        BlockedNoCp = 4,
+        BlockedCooldown = 5,
+        Accepted = 6,
+        Rejected = 7
+    }
+
     public enum MonsterCarnivalWaitingRoomLobbyPhase
     {
         None = 0,
@@ -1376,8 +1388,14 @@ namespace HaCreator.MapSimulator.Fields
         private int _season2SubDialogBtOkAcceptedSendRouteCount;
         private int _season2SubDialogBtOkRejectedSendRouteCount;
         private int _season2SubDialogBtOkObservedSendRouteCount;
+        private int _season2SubDialogBtOkBlockedPendingRouteCount;
+        private int _season2SubDialogBtOkBlockedNoCpRouteCount;
+        private int _season2SubDialogBtOkBlockedCooldownRouteCount;
         private int _season2SubDialogBtOkMouseRouteCount;
         private int _season2SubDialogBodyClickRouteCount;
+        private int _season2SubDialogLastSendTick = int.MinValue;
+        private MonsterCarnivalSeason2BtOkSendLifecycle _season2SubDialogBtOkSendLifecycle;
+        private string _season2SubDialogBtOkSendLifecycleSummary;
         private int _season2ChatWidgetRouteCount;
         private int _season2ChatWidgetType7RouteCount;
         private int _season2ChatWidgetType12RouteCount;
@@ -1456,8 +1474,13 @@ namespace HaCreator.MapSimulator.Fields
         public int Season2SubDialogBtOkAcceptedSendRouteCount => _season2SubDialogBtOkAcceptedSendRouteCount;
         public int Season2SubDialogBtOkRejectedSendRouteCount => _season2SubDialogBtOkRejectedSendRouteCount;
         public int Season2SubDialogBtOkObservedSendRouteCount => _season2SubDialogBtOkObservedSendRouteCount;
+        public int Season2SubDialogBtOkBlockedPendingRouteCount => _season2SubDialogBtOkBlockedPendingRouteCount;
+        public int Season2SubDialogBtOkBlockedNoCpRouteCount => _season2SubDialogBtOkBlockedNoCpRouteCount;
+        public int Season2SubDialogBtOkBlockedCooldownRouteCount => _season2SubDialogBtOkBlockedCooldownRouteCount;
         public int Season2SubDialogBtOkMouseRouteCount => _season2SubDialogBtOkMouseRouteCount;
         public int Season2SubDialogBodyClickRouteCount => _season2SubDialogBodyClickRouteCount;
+        public MonsterCarnivalSeason2BtOkSendLifecycle Season2SubDialogBtOkSendLifecycle => _season2SubDialogBtOkSendLifecycle;
+        public string Season2SubDialogBtOkSendLifecycleSummary => _season2SubDialogBtOkSendLifecycleSummary;
         public MonsterCarnivalTab? Season2SubDialogSelectedTab => _season2SubDialogSelectedTab;
         public int Season2SubDialogSelectedIndex => _season2SubDialogSelectedIndex;
         public string Season2SubDialogRouteTrailSummary => BuildSeason2SubDialogRouteTrailSummary();
@@ -1515,10 +1538,12 @@ namespace HaCreator.MapSimulator.Fields
             if (accepted)
             {
                 _season2SubDialogBtOkAcceptedSendRouteCount++;
+                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.Accepted;
             }
             else
             {
                 _season2SubDialogBtOkRejectedSendRouteCount++;
+                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.Rejected;
             }
 
             string tabText = entry != null
@@ -1527,6 +1552,8 @@ namespace HaCreator.MapSimulator.Fields
             int index = entry?.Index ?? pendingToken.EntryIndex;
             _season2SubDialogLastSendRoute =
                 $"btOK send route {(accepted ? "accepted" : "rejected")} tab={tabText}, index={index.ToString(CultureInfo.InvariantCulture)}.";
+            _season2SubDialogBtOkSendLifecycleSummary =
+                $"CUIMonsterCarnival::RequestResult cleared pending COutPacket(262) route as {(accepted ? "accepted" : "rejected")} for tab={tabText},index={index.ToString(CultureInfo.InvariantCulture)}.";
             RecordSeason2SubDialogSendRouteEvent(
                 $"btOK-result({(accepted ? "accepted" : "rejected")},tab={tabText},index={index.ToString(CultureInfo.InvariantCulture)})");
         }
@@ -1598,8 +1625,11 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogBtOkSendRouteCount++;
             _season2SubDialogBtOkPendingSendRouteCount++;
             _season2SubDialogBtOkObservedSendRouteCount++;
+            _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.ObservedPendingResult;
             _season2SubDialogLastSendRoute =
                 $"{_definition.ClientOwnerLabel} observed UIWindow2/MonsterCarnival/sub/BtOK -> COutPacket(262) {routeText} from {sourceText}";
+            _season2SubDialogBtOkSendLifecycleSummary =
+                $"Observed native CUIMonsterCarnival::RequestSend COutPacket(262) from {sourceText}; pending result owner is CField_MonsterCarnival::OnRequestResult.";
             RecordSeason2SubDialogSendRouteEvent(
                 entry == null
                     ? $"btok-observed(opcode=262,tab={(int)tab},index={entryIndex},source={sourceText})"
@@ -1920,12 +1950,7 @@ namespace HaCreator.MapSimulator.Fields
             if (selectedEntry != null)
             {
                 _season2SubDialogSelectedOkRouteCount++;
-                MarkPendingOfficialClientRequestCore(selectedEntry.Tab, selectedEntry.Index, recordObservedSendRoute: false);
-                _season2SubDialogBtOkSendRouteCount++;
-                _season2SubDialogBtOkPendingSendRouteCount++;
-                _season2SubDialogLastSendRoute =
-                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK -> COutPacket(262) tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},cost={selectedEntry.Cost}";
-                RecordSeason2SubDialogSendRouteEvent($"btok-send(opcode=262,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+                TryStartSeason2BtOkSendRoute(selectedEntry, tickCount);
             }
             else
             {
@@ -1947,6 +1972,66 @@ namespace HaCreator.MapSimulator.Fields
                 $"Season 2 sub dialog acknowledged through BtOK at tick {tickCount}; UIWindow2 sub surface closed locally while preserving packet-owner routing.",
                 MonsterCarnivalSeason2SubDialogPhase.ResultClosed);
             message = DescribeStatus();
+            return true;
+        }
+
+        private bool TryStartSeason2BtOkSendRoute(MonsterCarnivalEntry selectedEntry, int tickCount)
+        {
+            if (selectedEntry == null)
+            {
+                return false;
+            }
+
+            if (_season2SubDialogBtOkPendingSendRouteCount > 0)
+            {
+                _season2SubDialogBtOkNoSendRouteCount++;
+                _season2SubDialogBtOkBlockedPendingRouteCount++;
+                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedPendingResult;
+                _season2SubDialogLastSendRoute =
+                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (pending COutPacket(262) result)";
+                _season2SubDialogBtOkSendLifecycleSummary =
+                    "CUIMonsterCarnival::RequestSend guard blocked a second COutPacket(262) while CWvsContext request-pending was still set.";
+                RecordSeason2SubDialogSendRouteEvent($"btok-blocked(pending,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+                return false;
+            }
+
+            if (_enteredField && _personalCp <= 0)
+            {
+                _season2SubDialogBtOkNoSendRouteCount++;
+                _season2SubDialogBtOkBlockedNoCpRouteCount++;
+                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedNoCp;
+                _season2SubDialogLastSendRoute =
+                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (personal CP is 0)";
+                _season2SubDialogBtOkSendLifecycleSummary =
+                    "CUIMonsterCarnival::RequestSend guard blocked COutPacket(262) because the client CP fuse was not positive.";
+                RecordSeason2SubDialogSendRouteEvent($"btok-blocked(no-cp,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+                return false;
+            }
+
+            if (_season2SubDialogLastSendTick != int.MinValue
+                && unchecked(tickCount - _season2SubDialogLastSendTick) < 500)
+            {
+                _season2SubDialogBtOkNoSendRouteCount++;
+                _season2SubDialogBtOkBlockedCooldownRouteCount++;
+                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedCooldown;
+                _season2SubDialogLastSendRoute =
+                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (500ms request cooldown)";
+                _season2SubDialogBtOkSendLifecycleSummary =
+                    "CUIMonsterCarnival::RequestSend guard blocked COutPacket(262) because less than 500 ms elapsed since the previous request timestamp.";
+                RecordSeason2SubDialogSendRouteEvent($"btok-blocked(cooldown,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+                return false;
+            }
+
+            MarkPendingOfficialClientRequestCore(selectedEntry.Tab, selectedEntry.Index, recordObservedSendRoute: false);
+            _season2SubDialogBtOkSendRouteCount++;
+            _season2SubDialogBtOkPendingSendRouteCount++;
+            _season2SubDialogLastSendTick = tickCount;
+            _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.SentPendingResult;
+            _season2SubDialogLastSendRoute =
+                $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK -> COutPacket(262) tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id},cost={selectedEntry.Cost}";
+            _season2SubDialogBtOkSendLifecycleSummary =
+                $"CUIMonsterCarnival::RequestSend built COutPacket(262), encoded tab={(int)selectedEntry.Tab}, index={selectedEntry.Index}, set request-pending, and awaits CField_MonsterCarnival::OnRequestResult.";
+            RecordSeason2SubDialogSendRouteEvent($"btok-send(opcode=262,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
             return true;
         }
 
@@ -3052,8 +3137,14 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogBtOkAcceptedSendRouteCount = 0;
             _season2SubDialogBtOkRejectedSendRouteCount = 0;
             _season2SubDialogBtOkObservedSendRouteCount = 0;
+            _season2SubDialogBtOkBlockedPendingRouteCount = 0;
+            _season2SubDialogBtOkBlockedNoCpRouteCount = 0;
+            _season2SubDialogBtOkBlockedCooldownRouteCount = 0;
             _season2SubDialogBtOkMouseRouteCount = 0;
             _season2SubDialogBodyClickRouteCount = 0;
+            _season2SubDialogLastSendTick = int.MinValue;
+            _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.None;
+            _season2SubDialogBtOkSendLifecycleSummary = null;
             _season2SubDialogSelectedTab = null;
             _season2SubDialogSelectedIndex = -1;
             _season2SubDialogLastButtonRoute = null;
@@ -5179,7 +5270,13 @@ namespace HaCreator.MapSimulator.Fields
             string chatTrail = BuildSeason2ChatRouteTrailSummary();
             string sendTrail = BuildSeason2SubDialogSendRouteTrailSummary();
             string selectedRouteText = BuildSeason2SubDialogSelectedRouteText(out _);
-            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},mouseOkRoutes={_season2SubDialogBtOkMouseRouteCount},bodyClickRoutes={_season2SubDialogBodyClickRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},sendTrail={sendTrail}";
+            string lifecycleText = _season2SubDialogBtOkSendLifecycle == MonsterCarnivalSeason2BtOkSendLifecycle.None
+                ? "none"
+                : _season2SubDialogBtOkSendLifecycle.ToString();
+            string lifecycleSummary = string.IsNullOrWhiteSpace(_season2SubDialogBtOkSendLifecycleSummary)
+                ? "none"
+                : _season2SubDialogBtOkSendLifecycleSummary;
+            string sendText = $"sendRoutes={_season2SubDialogBtOkSendRouteCount},observedSendRoutes={_season2SubDialogBtOkObservedSendRouteCount},noSendRoutes={_season2SubDialogBtOkNoSendRouteCount},blockedPending={_season2SubDialogBtOkBlockedPendingRouteCount},blockedNoCp={_season2SubDialogBtOkBlockedNoCpRouteCount},blockedCooldown={_season2SubDialogBtOkBlockedCooldownRouteCount},mouseOkRoutes={_season2SubDialogBtOkMouseRouteCount},bodyClickRoutes={_season2SubDialogBodyClickRouteCount},pendingResults={_season2SubDialogBtOkPendingSendRouteCount},acceptedResults={_season2SubDialogBtOkAcceptedSendRouteCount},rejectedResults={_season2SubDialogBtOkRejectedSendRouteCount},sendLifecycle={lifecycleText},sendLifecycleSummary={lifecycleSummary},sendTrail={sendTrail}";
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
                 ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},selected={selectedRouteText},okSelectedRoutes={_season2SubDialogSelectedOkRouteCount},{sendText},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"

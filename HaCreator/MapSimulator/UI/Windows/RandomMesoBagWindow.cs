@@ -107,7 +107,6 @@ namespace HaCreator.MapSimulator.UI
 
             KeyboardState keyboardState = Keyboard.GetState();
             if (WasPressed(keyboardState, Keys.Enter)
-                || WasPressed(keyboardState, Keys.Space)
                 || WasPressed(keyboardState, Keys.Escape))
             {
                 Hide();
@@ -220,7 +219,6 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldDismissForKeyboard(Keys key)
         {
             return key == Keys.Enter
-                || key == Keys.Space
                 || key == Keys.Escape;
         }
 

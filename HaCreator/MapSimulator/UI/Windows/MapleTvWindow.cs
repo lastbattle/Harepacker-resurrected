@@ -87,6 +87,7 @@ namespace HaCreator.MapSimulator.UI
         internal int DefaultMediaIndex => _visualAssets?.DefaultMediaIndex ?? 1;
         internal int ExplicitWzDefaultMediaIndex => _visualAssets?.ExplicitWzDefaultMediaIndex ?? -1;
         internal IReadOnlyList<int> AvailableMediaIndices => _visualAssets?.AvailableMediaIndices ?? Array.Empty<int>();
+        internal MapleTvVisualAssets VisualAssets => _visualAssets;
 
         internal void SetSnapshotProvider(Func<MapleTvSnapshot> snapshotProvider)
         {

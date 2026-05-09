@@ -155,6 +155,19 @@ namespace HaCreator.MapSimulator.Interaction
             return message;
         }
 
+        internal bool TryValidateOutgoingOpen(
+            string proposerName,
+            bool enforceLocalRequesterChecks,
+            IInventoryRuntime inventory,
+            out string message)
+        {
+            return _runtime.TryValidateOutgoingOpen(
+                proposerName,
+                enforceLocalRequesterChecks,
+                inventory,
+                out message);
+        }
+
         internal string PerformPrimaryAction(UIWindowManager windowManager)
         {
             if (!_runtime.TryInvokePrimaryAction(out EngagementProposalResponse response, out string message))

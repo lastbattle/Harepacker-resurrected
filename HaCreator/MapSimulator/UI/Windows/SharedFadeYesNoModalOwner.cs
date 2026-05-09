@@ -69,7 +69,9 @@ namespace HaCreator.MapSimulator.UI
         int LifetimeMilliseconds = SharedFadeYesNoModalOwner.DefaultLifetimeMilliseconds,
         int StackIndex = 0,
         bool QuickDelivery = false,
-        InGameConfirmDialogPresentation Presentation = null);
+        InGameConfirmDialogPresentation Presentation = null,
+        Action ConfirmAction = null,
+        Action CancelAction = null);
 
     internal sealed record SharedFadeYesNoModalSnapshot(
         bool IsActive,
@@ -87,7 +89,9 @@ namespace HaCreator.MapSimulator.UI
         string Title,
         string Body,
         string Footer,
-        InGameConfirmDialogPresentation Presentation);
+        InGameConfirmDialogPresentation Presentation,
+        Action ConfirmAction,
+        Action CancelAction);
 
     internal sealed class SharedFadeYesNoModalOwner
     {
@@ -295,6 +299,8 @@ namespace HaCreator.MapSimulator.UI
                     string.Empty,
                     string.Empty,
                     string.Empty,
+                    null,
+                    null,
                     null);
             }
 
@@ -314,7 +320,9 @@ namespace HaCreator.MapSimulator.UI
                 _activeRequest.Title ?? string.Empty,
                 _activeRequest.Body ?? string.Empty,
                 _activeRequest.Footer ?? string.Empty,
-                _activeRequest.Presentation);
+                _activeRequest.Presentation,
+                _activeRequest.ConfirmAction,
+                _activeRequest.CancelAction);
         }
 
         internal static SharedFadeYesNoVisualProfile ResolveVisualProfile(SharedFadeYesNoModalType type, bool quickDelivery)

@@ -219,7 +219,15 @@ namespace HaCreator.MapSimulator
                     resolvedEntry.SourceBackPieceObject ?? sourceProperty);
             }
 
-            return backgrounds_back.Count > 0 || backgrounds_front.Count > 0;
+            return ShouldKeepContextOwnedStageBackReloadResult(_contextOwnedStageCurrentBackImages.Count);
+        }
+
+        internal static bool ShouldKeepContextOwnedStageBackReloadResult(int stageBackEntryCount)
+        {
+            // Once CStageSystem hands ReloadBack an active aStageBackImg list, the
+            // replacement layer is authoritative even if RestoreBack rejects every
+            // object for the current screen mode.
+            return stageBackEntryCount > 0;
         }
 
         private bool ShouldRenderContextOwnedStageBackForCurrentScreen(int screenMode)

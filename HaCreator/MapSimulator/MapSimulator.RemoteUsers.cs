@@ -456,6 +456,7 @@ namespace HaCreator.MapSimulator
                 helperPacket.MarkerType,
                 helperPacket.ShowDirectionOverlay,
                 helperPacket.DirectionOverlayOnly,
+                helperPacket.DirectionOverlay,
                 out string message)
                 ? ChatCommandHandler.CommandResult.Ok(helperPacket.MarkerType.HasValue
                     ? $"Remote user {characterId} helper marker set to {helperPacket.MarkerType.Value}."
@@ -1804,6 +1805,7 @@ namespace HaCreator.MapSimulator
                         helperPacket.MarkerType,
                         helperPacket.ShowDirectionOverlay,
                         helperPacket.DirectionOverlayOnly,
+                        helperPacket.DirectionOverlay,
                         out string helperMessage);
                     result = helperApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {helperPacket.CharacterId}."
@@ -2856,6 +2858,15 @@ namespace HaCreator.MapSimulator
             {
                 speakerName = $"User{packet.CharacterId}";
             }
+
+            _chatBalloonPresentationRuntime.MakeBalloon(
+                SanitizeRemoteUserChatText(packet.Text),
+                balloonType: 1004,
+                skinIndex: 0,
+                dead: false,
+                adjustCoordY: 0,
+                timeoutMs: 5000,
+                currentTickCount: currTickCount);
 
             if (packet.OnlyBalloon)
             {

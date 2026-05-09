@@ -824,6 +824,75 @@ namespace HaCreator.MapSimulator.UI
                 suppressHammerPresentation);
         }
 
+        public ItemUpgradeAttemptResult ConsumePacketOwnedPreparedUpgradeItemsAtSlots(
+            InventoryType consumableInventoryType,
+            int consumableSlotIndex,
+            InventoryType? modifierInventoryType,
+            int? modifierSlotIndex,
+            bool success)
+        {
+            _packetOwnedRequestPending = false;
+            _presentationState = WindowPresentationState.Idle;
+
+            ItemUpgradeAttemptResult validationResult = TryApplyPreparedUpgradeCore(
+                consumableInventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex,
+                forcedSuccess: success,
+                previewOnly: true);
+            if (!validationResult.Success.HasValue)
+            {
+                return validationResult;
+            }
+
+            if (!TryGetConsumableDefinition(validationResult.ConsumableItemId, out EnhancementConsumableDefinition consumableDefinition))
+            {
+                _statusMessage = "Packet-owned enhancement result did not identify a consumable item.";
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+            }
+
+            EnhancementConsumable consumable = new EnhancementConsumable(consumableDefinition);
+            if (!TryConsumePreparedInventoryItem(
+                    consumable,
+                    consumableInventoryType,
+                    consumableSlotIndex,
+                    out string consumableFailureReason))
+            {
+                _statusMessage = consumableFailureReason;
+                _lastUpgradeSucceeded = false;
+                return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+            }
+
+            if (validationResult.ModifierItemId != 0)
+            {
+                if (!TryGetConsumableDefinition(validationResult.ModifierItemId, out EnhancementConsumableDefinition modifierDefinition))
+                {
+                    _statusMessage = "Packet-owned enhancement result did not identify a valid modifier item.";
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+
+                EnhancementConsumable modifier = new EnhancementConsumable(modifierDefinition);
+                if (!TryConsumePreparedInventoryItem(
+                        modifier,
+                        modifierInventoryType,
+                        modifierSlotIndex,
+                        out string modifierFailureReason))
+                {
+                    _statusMessage = modifierFailureReason;
+                    _lastUpgradeSucceeded = false;
+                    return new ItemUpgradeAttemptResult(false, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+                }
+            }
+
+            _statusMessage = validationResult.StatusMessage;
+            _lastUpgradeSucceeded = success;
+            _preferredModifierItemId = null;
+            return new ItemUpgradeAttemptResult(success, _statusMessage, validationResult.ConsumableItemId, validationResult.ModifierItemId);
+        }
+
         public void PlayPacketOwnedViciousHammerRequestPresentation()
         {
             // CUIItemUpgrade::OnButtonClicked emits Effect_ViciousHammer with nFinished=0,

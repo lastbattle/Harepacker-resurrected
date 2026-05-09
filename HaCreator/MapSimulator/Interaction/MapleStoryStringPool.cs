@@ -37,6 +37,12 @@ namespace HaCreator.MapSimulator.Interaction
             // replay-tail metadata through these StringPool ids before enumerating
             // MORPHACTIONFRAMEENTRY rows.
             [0x049F] = "zigzag",
+            // Recovered from MapleStory.exe v95 `CActionMan::GetMorphImgEntry`.
+            // The morph image-entry loader formats Morph/<id>.img, then probes the
+            // `info/link` path before merging missing actions from the linked template.
+            [0x03D5] = "info",
+            [0x03D6] = "link",
+            [0x0DEE] = "Morph/%04d.img",
             [0x1AA9] = "delay",
             [0x1AB4] = "head",
             [0x1ABE] = "lt",

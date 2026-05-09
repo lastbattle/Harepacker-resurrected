@@ -1696,18 +1696,7 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static SD.Color ResolveNativeCanvasCopyPixelsForTesting(params SD.Color[] layers)
         {
-            SD.Color result = SD.Color.Transparent;
-            if (layers == null)
-            {
-                return result;
-            }
-
-            foreach (SD.Color layer in layers)
-            {
-                result = ClientNativeCanvasCopy.BlendAlpha255(result, layer);
-            }
-
-            return result;
+            return ClientNativeCanvasCopy.BlendAlpha255(layers);
         }
 
         private static void ApplyNativeCanvasCopySettings(SDG graphics)

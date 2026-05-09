@@ -548,7 +548,8 @@ namespace HaCreator.MapSimulator.Interaction
                     string.IsNullOrWhiteSpace(defaultLocation) ? "Unknown map" : defaultLocation.Trim(),
                     channel > 0 ? channel : Math.Max(1, defaultChannel),
                     channel > 0,
-                    isLocal));
+                    isLocal,
+                    characterId));
             }
 
             return members;

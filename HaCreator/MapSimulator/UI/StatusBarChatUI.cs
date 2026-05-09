@@ -374,6 +374,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<IntPtr> ResolveImeWindowHandle { get; set; }
         public Action<ImeCandidateListState> ImeCandidateListRefreshedRequested { get; set; }
         public Func<int, int, bool> ImeCandidateSelectedRequested { get; set; }
+        public Action ImeEditStateReleasedRequested { get; set; }
 
         private enum WhisperPickerButtonAction
         {
@@ -3754,7 +3755,11 @@ namespace HaCreator.MapSimulator.UI
                 return pressedListIndex >= 0 && pressedCandidateIndex >= 0;
             }
 
-            ImeCandidateSelectedRequested?.Invoke(pressedListIndex, pressedCandidateIndex);
+            if (ImeCandidateSelectedRequested?.Invoke(pressedListIndex, pressedCandidateIndex) == true)
+            {
+                ImeEditStateReleasedRequested?.Invoke();
+            }
+
             return true;
         }
 

@@ -602,7 +602,7 @@ namespace HaCreator.MapSimulator.Fields
                 yield return property;
             }
 
-            property = mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+            property = FindImageInfoProperty(mapInfo, propertyName);
             if (property != null)
             {
                 yield return property;
@@ -625,6 +625,23 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static WzImageProperty FindImageInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty info = mapInfo?.Image?["info"];
+            if (info == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty exactProperty = info[propertyName] as WzImageProperty;
+            if (exactProperty != null)
+            {
+                return exactProperty;
+            }
+
+            return FindNamedProperty(info.WzProperties, propertyName);
         }
 
         private static int NormalizeDecIntervalMs(int? decInterval)

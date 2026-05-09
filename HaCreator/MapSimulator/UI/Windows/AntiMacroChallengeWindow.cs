@@ -21,7 +21,19 @@ namespace HaCreator.MapSimulator.UI
         private const int InputWidth = 194;
         private const int InputHeight = 16;
         private const int InputMaxLength = 12;
+        private const int ClientEditBackColor = 0;
+        private const int ClientEditFontColor = unchecked((int)0xFF000000);
+        private const bool ClientEditNumberOnly = false;
         private const int ManagedDoubleClickDistancePadding = 2;
+
+        internal readonly record struct ClientEditCreateContract(
+            int ControlId,
+            Rectangle Bounds,
+            int FontStringPoolId,
+            int BackColor,
+            int FontColor,
+            int MaxHorzUnits,
+            bool NumberOnly);
 
         private sealed class LayoutProfile
         {
@@ -111,6 +123,7 @@ namespace HaCreator.MapSimulator.UI
             _nativeEditHost.TextChanged += OnNativeEditHostTextChanged;
             _nativeEditHost.SubmitRequested += OnNativeEditHostSubmitRequested;
             _nativeEditHost.FocusChanged += OnNativeEditHostFocusChanged;
+            _nativeEditHost.ClientForwardedFunctionKeyStateChanged += OnNativeEditHostClientForwardedFunctionKeyStateChanged;
         }
 
         public override string WindowName => _windowName;
@@ -125,6 +138,7 @@ namespace HaCreator.MapSimulator.UI
 
         public event Action<string> SubmitRequested;
         public event Action EditFocusGained;
+        public event Action<int, bool> ClientForwardedFunctionKeyStateChanged;
 
         public string CurrentInput => UsingNativeEditHost ? _nativeEditHost.Text : _editControl.Text;
         public int ExpiresAt => _expiresAt;
@@ -137,6 +151,23 @@ namespace HaCreator.MapSimulator.UI
         {
             _font = font;
             _editControl.SetFont(font);
+        }
+
+        internal static ClientEditCreateContract ResolveClientEditCreateContract(bool adminVariant)
+        {
+            // `CUIAntiMacro::OnCreate` and `CUIAdminAntiMacro::OnCreate` both
+            // create CCtrlEdit id 1000 with StringPool 0x1A25, black font,
+            // transparent owner background, and nHorzMax 12; only the owner-local
+            // rectangle differs between normal and admin frames.
+            Point inputOrigin = adminVariant ? AdminLayout.InputOrigin : NormalLayout.InputOrigin;
+            return new ClientEditCreateContract(
+                AntiMacroEditControl.ClientControlId,
+                new Rectangle(inputOrigin.X, inputOrigin.Y, InputWidth, InputHeight),
+                AntiMacroEditControl.ClientFontStringPoolId,
+                ClientEditBackColor,
+                ClientEditFontColor,
+                InputMaxLength,
+                ClientEditNumberOnly);
         }
 
         public void TryAttachNativeEditHost(IntPtr parentWindowHandle)
@@ -834,6 +865,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _submitButton?.SetEnabled(CanSubmitAnswer());
+        }
+
+        private void OnNativeEditHostClientForwardedFunctionKeyStateChanged(int functionKeyIndex, bool keyDown)
+        {
+            ClientForwardedFunctionKeyStateChanged?.Invoke(functionKeyIndex, keyDown);
         }
 
         private void NotifyEditFocusGained()

@@ -496,16 +496,16 @@ namespace HaCreator.MapSimulator.Managers
                 removedWorldId = Math.Max(0, removedViewAllEntry?.WorldId ?? 0);
                 ViewAllExpectedCharacterCount = Math.Max(0, _viewAllEntries.Count);
                 ViewAllRemainingServerCount = 0;
+            }
 
-                int slotCount = ResolveRosterSlotCount(ViewAllCharRosterProfile, SelectWorldRosterProfile);
-                int buyCharacterCount = ResolveRosterBuyCharacterCount(ViewAllCharRosterProfile, SelectWorldRosterProfile);
-                bool loginOpt = ViewAllCharRosterProfile?.LoginOpt ?? false;
-                LoginSelectWorldResultProfile aggregatedProfile = CreateRosterProfile(
-                    _viewAllEntries,
-                    slotCount,
-                    buyCharacterCount,
-                    loginOpt);
-                CacheViewAllWorldProfiles(aggregatedProfile);
+            if (TryRemoveCharacterFromProfileMap(_viewAllProfilesByWorld, characterId, out LoginSelectWorldCharacterEntry removedViewAllProfileEntry))
+            {
+                removed = true;
+                removedEntry ??= removedViewAllProfileEntry;
+                if (removedWorldId <= 0)
+                {
+                    removedWorldId = Math.Max(0, removedViewAllProfileEntry?.WorldId ?? 0);
+                }
             }
 
             if (TryRemoveCharacterFromProfileMap(_selectWorldProfilesByWorld, characterId, out LoginSelectWorldCharacterEntry removedSelectWorldEntry))
@@ -538,6 +538,11 @@ namespace HaCreator.MapSimulator.Managers
                 ActiveWorldId = removedWorldId;
             }
 
+            RebuildViewAllRosterProfile(
+                ResolveViewAllAggregateSlotCount(),
+                ResolveRosterBuyCharacterCount(ViewAllCharRosterProfile, SelectWorldRosterProfile),
+                ViewAllCharRosterProfile?.LoginOpt ?? false);
+            ViewAllExpectedCharacterCount = Math.Max(0, _viewAllEntries.Count);
             SetActiveWorld(ActiveWorldId);
             return true;
         }
@@ -651,7 +656,8 @@ namespace HaCreator.MapSimulator.Managers
                             ?? selectWorldProfile?.LoginOpt
                             ?? SelectWorldRosterProfile?.LoginOpt
                             ?? false;
-            CacheViewAllWorldProfiles(CreateRosterProfile(_viewAllEntries, slotCount, buyCharacterCount, loginOpt));
+            UpsertViewAllWorldProfile(resolvedWorldId, normalizedEntry, slotCount, buyCharacterCount, loginOpt);
+            RebuildViewAllRosterProfile(slotCount, buyCharacterCount, loginOpt);
 
             return changed;
         }
@@ -873,6 +879,37 @@ namespace HaCreator.MapSimulator.Managers
                 buyCharacterCount,
                 loginOpt);
             RebuildViewAllEntriesFromWorldProfiles();
+        }
+
+        private void UpsertViewAllWorldProfile(
+            int worldId,
+            LoginSelectWorldCharacterEntry normalizedEntry,
+            int slotCount,
+            int buyCharacterCount,
+            bool loginOpt)
+        {
+            int normalizedWorldId = Math.Max(0, worldId);
+            LoginSelectWorldResultProfile sourceProfile = _viewAllProfilesByWorld.TryGetValue(normalizedWorldId, out LoginSelectWorldResultProfile storedProfile)
+                ? storedProfile
+                : CreateRosterProfile(
+                    Array.Empty<LoginSelectWorldCharacterEntry>(),
+                    slotCount,
+                    buyCharacterCount,
+                    loginOpt);
+
+            LoginSelectWorldResultProfile updatedProfile = UpsertCharacterInProfile(
+                sourceProfile,
+                normalizedEntry,
+                out _,
+                out _);
+            _viewAllProfilesByWorld[normalizedWorldId] = new LoginSelectWorldResultProfile
+            {
+                ResultCode = updatedProfile.ResultCode,
+                Entries = updatedProfile.Entries,
+                LoginOpt = updatedProfile.LoginOpt,
+                SlotCount = Math.Max(slotCount, updatedProfile.SlotCount),
+                BuyCharacterCount = NormalizeBuyCharacterCount(Math.Max(buyCharacterCount, updatedProfile.BuyCharacterCount))
+            };
         }
 
         private void RebuildViewAllEntriesFromWorldProfiles()

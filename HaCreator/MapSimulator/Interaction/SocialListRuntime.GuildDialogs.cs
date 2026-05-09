@@ -63,6 +63,22 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
+            if (!acceptance.Accepted)
+            {
+                SocialListGuildDialogRequestPacket packet = new(
+                    SocialListGuildDialogRequestKind.CreateGuildAgreement,
+                    acceptance.GuildName.Trim(),
+                    null,
+                    _clientPartyId,
+                    false);
+                string dispatchMessage = GuildDialogRequestDispatcher?.Invoke(packet);
+                string declineMessage = $"Create guild agreement for {acceptance.GuildName.Trim()} was declined; no guild state or meso balance changed.";
+                return NotifyGuildDialogSocialChatObserved(
+                    string.IsNullOrWhiteSpace(dispatchMessage)
+                        ? declineMessage
+                        : $"{declineMessage} {dispatchMessage.Trim()}");
+            }
+
             return SubmitPendingGuildDialogRequest(new GuildDialogPendingRequest(
                 GuildDialogPendingRequestKind.CreateGuildAgreement,
                 "Create guild agreement",
@@ -71,6 +87,7 @@ namespace HaCreator.MapSimulator.Interaction
                 null,
                 0,
                 acceptance.AcceptedAtUtc,
+                true,
                 _packetGuildUiRevision,
                 _packetGuildMarkRevision,
                 _packetGuildPointsAndLevelRevision,
@@ -92,6 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
                 null,
                 DefaultGuildCreateCostMesos,
                 DateTimeOffset.UtcNow,
+                true,
                 _packetGuildUiRevision,
                 _packetGuildMarkRevision,
                 _packetGuildPointsAndLevelRevision,

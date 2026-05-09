@@ -244,9 +244,9 @@ namespace HaCreator.MapSimulator.Managers
 
             _areaGroup = ResolveLoadedAreaGroup(requestedAreaGroup);
             _areaDetail = ResolveLoadedAreaDetail(_areaGroup, requestedAreaDetail);
-            _birthYear = ResolveLoadedBirthYear(requestedBirthYear);
-            _birthMonth = ResolveLoadedBirthMonth(requestedBirthMonth);
-            _birthDay = ResolveLoadedBirthDay(_birthYear, _birthMonth, requestedBirthDay);
+            _birthYear = ResolveLoadedBirthYearFromCurrent(requestedBirthYear, _birthYear);
+            _birthMonth = ResolveLoadedBirthMonthFromCurrent(requestedBirthMonth, _birthMonth);
+            _birthDay = ResolveLoadedBirthDayFromCurrent(_birthYear, _birthMonth, requestedBirthDay, _birthDay);
             _hasLoadedProfile = true;
             _loadPending = false;
             _savePending = false;
@@ -636,6 +636,20 @@ namespace HaCreator.MapSimulator.Managers
                 : 1;
         }
 
+        internal static int ResolveLoadedBirthYearFromCurrent(int requestedYear, int currentYear)
+        {
+            return requestedYear >= GetMinimumBirthYear() && requestedYear <= DateTime.Now.Year
+                ? requestedYear
+                : ResolveLoadedBirthYear(currentYear);
+        }
+
+        internal static int ResolveLoadedBirthMonthFromCurrent(int requestedMonth, int currentMonth)
+        {
+            return requestedMonth >= 1 && requestedMonth <= 12
+                ? requestedMonth
+                : ResolveLoadedBirthMonth(currentMonth);
+        }
+
         internal static int ResolveLoadedBirthDay(int resolvedYear, int resolvedMonth, int requestedDay)
         {
             int safeYear = ResolveLoadedBirthYear(resolvedYear);
@@ -644,6 +658,23 @@ namespace HaCreator.MapSimulator.Managers
             return requestedDay >= 1 && requestedDay <= maxDay
                 ? requestedDay
                 : 1;
+        }
+
+        internal static int ResolveLoadedBirthDayFromCurrent(
+            int resolvedYear,
+            int resolvedMonth,
+            int requestedDay,
+            int currentDay)
+        {
+            int safeYear = ResolveLoadedBirthYear(resolvedYear);
+            int safeMonth = ResolveLoadedBirthMonth(resolvedMonth);
+            int maxDay = DateTime.DaysInMonth(safeYear, safeMonth);
+            if (requestedDay >= 1 && requestedDay <= maxDay)
+            {
+                return requestedDay;
+            }
+
+            return Math.Clamp(currentDay, 1, maxDay);
         }
 
         internal static IReadOnlyList<AccountMoreInfoComboItem> BuildBirthYearComboItems()

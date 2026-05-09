@@ -298,6 +298,13 @@ namespace HaCreator.MapSimulator.UI
             return GetLiveWishlistSearchResultSessionResults().Count > 0;
         }
 
+        public bool HasWishlistSearchResultDisplaySession()
+        {
+            return HasWishlistSearchResultSession()
+                   || (GetPacketOwnedWishlistSearchRemotePageIndex() >= 0
+                       && GetPacketOwnedWishlistSearchRemotePageCount() > 0);
+        }
+
         public int GetWishlistSearchResultSessionPageIndex()
         {
             return _searchResultSessionPageIndex;

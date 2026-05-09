@@ -335,6 +335,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildDirectNoticeResult(SocialListClientGuildResultPacket packet)
         {
+            string pendingRejection = TryRejectPendingGuildDialogRequestFromClientResult(
+                packet.RawSubtype,
+                BuildClientGuildDirectNoticeSummary(packet));
+            if (!string.IsNullOrWhiteSpace(pendingRejection))
+            {
+                return pendingRejection;
+            }
+
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildDirectNoticeSummary(packet));
@@ -367,6 +375,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildResultFallbackNoticeResult(SocialListClientGuildResultPacket packet)
         {
+            string pendingRejection = TryRejectPendingGuildDialogRequestFromClientResult(
+                packet.RawSubtype,
+                BuildClientGuildResultFallbackNoticeSummary(packet));
+            if (!string.IsNullOrWhiteSpace(pendingRejection))
+            {
+                return pendingRejection;
+            }
+
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildResultFallbackNoticeSummary(packet));
@@ -374,6 +390,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientGuildResultNoticeResult(SocialListClientGuildResultPacket packet)
         {
+            string pendingRejection = TryRejectPendingGuildDialogRequestFromClientResult(
+                packet.RawSubtype,
+                BuildClientGuildResultNoticeSummary(packet));
+            if (!string.IsNullOrWhiteSpace(pendingRejection))
+            {
+                return pendingRejection;
+            }
+
             return SetPacketSyncSummary(
                 SocialListTab.Guild,
                 BuildClientGuildResultNoticeSummary(packet));
@@ -1133,6 +1157,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             SocialEntryState entry = entries[entryIndex];
             string nextTitle = rankTitles[rankIndex];
+            bool isLocalGuildGradeChange = tab == SocialListTab.Guild && entry.IsLocalPlayer;
             entries[entryIndex] = new SocialEntryState(
                 entry.Name,
                 nextTitle,
@@ -1150,9 +1175,15 @@ namespace HaCreator.MapSimulator.Interaction
 
             _packetOwnedRosterByTab[tab] = true;
             _lastPendingRequestByTab[tab] = null;
+            if (isLocalGuildGradeChange)
+            {
+                ClearPacketGuildBoardAuthKey();
+            }
+
             _lastPacketSyncSummaryByTab[tab] =
                 $"Client {ownerLabel}-result grade change set {entry.Name} (#{gradeChange.MemberId}) to grade {absoluteGrade} ({nextTitle})"
-                + (ownerId > 0 ? $" for {ownerLabel} {ownerId}." : ".");
+                + (ownerId > 0 ? $" for {ownerLabel} {ownerId}." : ".")
+                + (isLocalGuildGradeChange ? " Local guild-board auth was cleared with the client grade-change branch." : string.Empty);
             ResetSelectionAfterMutation(tab);
             NotifySocialChatObserved($"{entry.Name}'s {ownerLabel} grade changed to {nextTitle}.");
             return _lastPacketSyncSummaryByTab[tab];

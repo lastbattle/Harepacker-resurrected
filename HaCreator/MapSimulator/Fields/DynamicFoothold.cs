@@ -648,8 +648,10 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             Vector2 direction = segment / length;
-            float offset = Vector2.Dot(new Vector2(platform.X, platform.Y) - first, direction);
+            Vector2 currentPosition = new(platform.X, platform.Y);
+            float offset = Vector2.Dot(currentPosition - first, direction);
             offset = MathHelper.Clamp(offset, 0f, length);
+            Vector2 packetPhysicalOffset = currentPosition - (first + direction * offset);
             bool movingTowardSecond = platform.CurrentWaypointIndex == 0;
             float period = length * 2f;
             float phase = movingTowardSecond
@@ -663,7 +665,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (phase < length)
             {
-                Vector2 position = first + direction * phase;
+                Vector2 position = first + direction * phase + packetPhysicalOffset;
                 platform.X = position.X;
                 platform.Y = position.Y;
                 platform.CurrentWaypointIndex = 0;
@@ -671,7 +673,7 @@ namespace HaCreator.MapSimulator.Fields
             }
             else if (phase > length)
             {
-                Vector2 position = second - direction * (phase - length);
+                Vector2 position = second - direction * (phase - length) + packetPhysicalOffset;
                 platform.X = position.X;
                 platform.Y = position.Y;
                 platform.CurrentWaypointIndex = 1;
@@ -679,16 +681,18 @@ namespace HaCreator.MapSimulator.Fields
             }
             else
             {
-                platform.X = second.X;
-                platform.Y = second.Y;
+                Vector2 position = second + packetPhysicalOffset;
+                platform.X = position.X;
+                platform.Y = position.Y;
                 platform.CurrentWaypointIndex = 1;
                 RefreshPacketOwnedWaypointReverseFlags(platform, -segment);
             }
 
             if (phase == 0f)
             {
-                platform.X = first.X;
-                platform.Y = first.Y;
+                Vector2 position = first + packetPhysicalOffset;
+                platform.X = position.X;
+                platform.Y = position.Y;
                 platform.CurrentWaypointIndex = 0;
                 RefreshPacketOwnedWaypointReverseFlags(platform, segment);
             }

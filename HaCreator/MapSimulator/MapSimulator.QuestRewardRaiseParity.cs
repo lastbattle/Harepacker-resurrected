@@ -1053,16 +1053,12 @@ namespace HaCreator.MapSimulator
 
             if (TryParseQuestRewardRaiseQrData(questRecordValue, out int qrData))
             {
-                QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
-                if (activeRaise != null && Math.Max(0, activeRaise.Prompt?.QuestId ?? 0) == questId)
-                {
-                    activeRaise.QrData = qrData;
-                }
-
+                QuestRewardRaiseState observedBeforeQrUpdate = _questRewardRaiseManager.GetObservedRaiseByQuestId(questId);
+                int previousQrData = observedBeforeQrUpdate?.QrData ?? 0;
                 if (_questRewardRaiseManager.SetQrDataWithQuestId(questId, qrData, out QuestRewardRaiseState observedRaise)
                     && observedRaise != null)
                 {
-                    observedRaise.QrData = qrData;
+                    ApplyQuestRewardRaiseQrData(observedRaise, previousQrData, qrData);
                 }
             }
 
@@ -1229,7 +1225,7 @@ namespace HaCreator.MapSimulator
                 return inactiveSummary;
             }
 
-            SyncActiveQuestRewardRaiseFromInboundPayload(observedRaise, decodedPayload);
+            SyncActiveQuestRewardRaiseFromInboundPayload(observedRaise, decodedPayload, currTickCount);
             string inboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, observedRaise);
             observedRaise.LastInboundSummary = inboundSummary;
 
@@ -1775,7 +1771,10 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static void SyncActiveQuestRewardRaiseFromInboundPayload(QuestRewardRaiseState activeRaise, QuestRewardRaisePacketPayload decodedPayload)
+        private void SyncActiveQuestRewardRaiseFromInboundPayload(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePacketPayload decodedPayload,
+            int currentTick)
         {
             if (activeRaise == null || decodedPayload == null)
             {
@@ -1792,11 +1791,36 @@ namespace HaCreator.MapSimulator
                 decodedPayload.OwnerItemId,
                 activeRaise.OwnerItemId,
                 Math.Max(0, activeRaise.Prompt?.OwnerContext?.OwnerItemId ?? 0));
-            activeRaise.QrData = decodedPayload.QrData;
+            ApplyQuestRewardRaiseQrDataAtTick(activeRaise, decodedPayload.QrData, currentTick);
             activeRaise.MaxDropCount = ResolveQuestRewardRaiseInboundMaxDropCount(activeRaise, decodedPayload);
             activeRaise.WindowMode = decodedPayload.WindowMode;
             activeRaise.DisplayMode = decodedPayload.DisplayMode;
             activeRaise.SyncSelectionProgressFromPayload(decodedPayload);
+        }
+
+        private void ApplyQuestRewardRaiseQrData(QuestRewardRaiseState activeRaise, int previousQrData, int qrData)
+        {
+            ApplyQuestRewardRaiseQrData(activeRaise, previousQrData, qrData, currTickCount);
+        }
+
+        private static void ApplyQuestRewardRaiseQrDataAtTick(QuestRewardRaiseState activeRaise, int qrData, int currentTick)
+        {
+            ApplyQuestRewardRaiseQrData(activeRaise, activeRaise?.QrData ?? 0, qrData, currentTick);
+        }
+
+        private static void ApplyQuestRewardRaiseQrData(
+            QuestRewardRaiseState activeRaise,
+            int previousQrData,
+            int qrData,
+            int currentTick)
+        {
+            if (activeRaise == null)
+            {
+                return;
+            }
+
+            activeRaise.QrData = qrData;
+            activeRaise.BeginLevelUpAnimation(previousQrData, qrData, currentTick);
         }
 
         private static int ResolvePositiveQuestRewardRaiseIdentityValue(int primaryValue, params int[] fallbackValues)

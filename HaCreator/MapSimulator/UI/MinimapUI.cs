@@ -92,7 +92,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _bIsCollapsedState = false; // minimised minimap state
         private bool _isMiniMapVisible = true;
         private int _currentOption = ClientOptionExpanded;
-        private int _previousExpandedOption = ClientOptionExpanded;
+        private int _previousExpandedOption = ClientOptionUnset;
         private readonly int _minimapImageWidth;
         private readonly int _minimapImageHeight;
         private readonly Point _compactMarkerOffset;
@@ -131,6 +131,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientOptionExpanded = 0;
         private const int ClientOptionCompact = 1;
         private const int ClientOptionCollapsed = 2;
+        private const int ClientOptionUnset = -1;
         private const int ClientPortalTypeVisible = 2;
         private const int ClientPortalTypeTownPortalPoint = 7;
         private const int ClientTopRowButtonTop = 4;
@@ -162,6 +163,7 @@ namespace HaCreator.MapSimulator.UI
             public HelperMarkerType MarkerType { get; set; }
             public bool ShowDirectionOverlay { get; set; } = true;
             public bool DirectionOverlayOnly { get; set; }
+            public DirectionArrow? DirectionOverlay { get; set; }
             public string TooltipText { get; set; }
         }
 
@@ -1405,6 +1407,7 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle DrawDirectionOverlayForPoint(
             Point minimapPoint,
+            DirectionArrow? directionOverlay,
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
             GameTime gameTime,
@@ -1415,7 +1418,7 @@ namespace HaCreator.MapSimulator.UI
             if (IsWithinMinimapImage(minimapPoint))
                 return Rectangle.Empty;
 
-            DirectionArrow direction = ResolveDirectionArrow(minimapPoint);
+            DirectionArrow direction = directionOverlay ?? ResolveDirectionArrow(minimapPoint);
             if (!_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) || arrow == null)
                 return Rectangle.Empty;
 
@@ -1501,11 +1504,13 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY);
+                DirectionArrow? packetDirectionOverlay = trackedUser.DirectionOverlay;
                 if (trackedUser.DirectionOverlayOnly)
                 {
                     Rectangle directionHoverBounds = DrawDirectionOnlyOverlayForPoint(
                         minimapPoint,
                         trackedUser.ShowDirectionOverlay,
+                        packetDirectionOverlay,
                         sprite,
                         skeletonMeshRenderer,
                         gameTime,
@@ -1522,7 +1527,11 @@ namespace HaCreator.MapSimulator.UI
                             trackedUser.TooltipText,
                             directionHoverBounds,
                             ClientHoverTargetKind.RemoteDirection,
-                            ResolveDirectionArrow(minimapPoint));
+                            ResolveTrackedUserRemoteDirectionForTesting(
+                                minimapPoint,
+                                packetDirectionOverlay,
+                                _minimapImageWidth,
+                                _minimapImageHeight));
                     }
 
                     continue;
@@ -1546,7 +1555,11 @@ namespace HaCreator.MapSimulator.UI
                         hoverBounds,
                         hoverTargetKind,
                         hoverTargetKind == ClientHoverTargetKind.RemoteDirection
-                            ? ResolveDirectionArrow(minimapPoint)
+                            ? ResolveTrackedUserRemoteDirectionForTesting(
+                                minimapPoint,
+                                packetDirectionOverlay,
+                                _minimapImageWidth,
+                                _minimapImageHeight)
                             : null);
                 }
             }
@@ -1555,6 +1568,7 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle DrawDirectionOnlyOverlayForPoint(
             Point minimapPoint,
             bool showDirectionOverlay,
+            DirectionArrow? directionOverlay,
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
             GameTime gameTime,
@@ -1569,6 +1583,7 @@ namespace HaCreator.MapSimulator.UI
 
             return DrawDirectionOverlayForPoint(
                 minimapPoint,
+                directionOverlay,
                 sprite,
                 skeletonMeshRenderer,
                 gameTime,
@@ -1594,6 +1609,18 @@ namespace HaCreator.MapSimulator.UI
             return isWithinMinimapImage
                 ? ClientHoverTargetKind.TrackedUser
                 : ClientHoverTargetKind.RemoteDirection;
+        }
+
+        internal static DirectionArrow ResolveTrackedUserRemoteDirectionForTesting(
+            Point minimapPoint,
+            DirectionArrow? packetDirectionOverlay,
+            int paneWidth = int.MaxValue,
+            int paneHeight = int.MaxValue)
+        {
+            return packetDirectionOverlay ?? ResolveDirectionArrowForTesting(
+                minimapPoint,
+                paneWidth,
+                paneHeight);
         }
 
         private BaseDXDrawableItem ResolveHelperMarker(HelperMarkerType markerType)
@@ -1680,6 +1707,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 return DrawDirectionOverlayForPoint(
                     minimapPoint,
+                    null,
                     sprite,
                     skeletonMeshRenderer,
                     gameTime,
@@ -1726,10 +1754,21 @@ namespace HaCreator.MapSimulator.UI
 
         private DirectionArrow ResolveDirectionArrow(Point minimapPoint)
         {
+            return ResolveDirectionArrowForTesting(
+                minimapPoint,
+                _minimapImageWidth,
+                _minimapImageHeight);
+        }
+
+        internal static DirectionArrow ResolveDirectionArrowForTesting(
+            Point minimapPoint,
+            int paneWidth,
+            int paneHeight)
+        {
             bool isLeft = minimapPoint.X < 0;
-            bool isRight = minimapPoint.X >= _minimapImageWidth;
+            bool isRight = minimapPoint.X >= paneWidth;
             bool isAbove = minimapPoint.Y < 0;
-            bool isBelow = minimapPoint.Y >= _minimapImageHeight;
+            bool isBelow = minimapPoint.Y >= paneHeight;
 
             if (isAbove && isLeft)
                 return DirectionArrow.NorthWest;

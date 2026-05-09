@@ -671,6 +671,71 @@ namespace HaCreator.MapSimulator.Managers
             return changed;
         }
 
+        public bool TryResolveExtraCharacterEntitlementForAccount(
+            string accountName,
+            int accountId,
+            out LoginExtraCharInfoResultProfile extraCharInfoResult,
+            out int buyCharacterCount)
+        {
+            extraCharInfoResult = null;
+            buyCharacterCount = 0;
+            if (accountId <= 0)
+            {
+                return false;
+            }
+
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            bool sawEntitlementEvidence = false;
+            bool sawGrantedEntitlement = false;
+
+            foreach (PersistedAccountState persistedState in EnumeratePersistedStatesForAccount(normalizedAccountName, accountId)
+                         .Where(state => state != null))
+            {
+                LoginExtraCharInfoResultProfile normalizedProfile =
+                    NormalizeExtraCharInfoResultProfile(persistedState.ExtraCharInfoResult, accountId);
+                if (normalizedProfile == null)
+                {
+                    continue;
+                }
+
+                sawEntitlementEvidence = true;
+                int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
+                    persistedState.BuyCharacterCount,
+                    normalizedProfile,
+                    accountId);
+                if (!CanHaveExtraCharacter(normalizedProfile, accountId) ||
+                    normalizedBuyCharacterCount <= 0)
+                {
+                    extraCharInfoResult = new LoginExtraCharInfoResultProfile
+                    {
+                        AccountId = accountId,
+                        ResultFlag = 1,
+                        CanHaveExtraCharacter = false
+                    };
+                    buyCharacterCount = 0;
+                    return true;
+                }
+
+                sawGrantedEntitlement = true;
+            }
+
+            if (!sawEntitlementEvidence)
+            {
+                return false;
+            }
+
+            extraCharInfoResult = new LoginExtraCharInfoResultProfile
+            {
+                AccountId = accountId,
+                ResultFlag = sawGrantedEntitlement ? (byte)0 : (byte)1,
+                CanHaveExtraCharacter = sawGrantedEntitlement
+            };
+            buyCharacterCount = sawGrantedEntitlement ? 1 : 0;
+            return true;
+        }
+
         public int PruneStatesForAccount(string accountName, IEnumerable<int> keepWorldIds, int? accountId = null)
         {
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)

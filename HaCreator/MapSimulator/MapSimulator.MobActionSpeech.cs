@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Entities;
 using MapleLib.WzLib;
@@ -33,6 +35,45 @@ namespace HaCreator.MapSimulator
         {
             public IReadOnlyList<string> Lines { get; init; }
             public Vector2 TextSize { get; init; }
+        }
+
+        private void ConfigureMobActionSpeechConditionContext(MobItem mob)
+        {
+            mob?.SetActionSpeakConditionContextProvider(BuildLiveMobActionSpeechConditionContext);
+        }
+
+        private MobAnimationSet.ActionSpeakConditionContext BuildLiveMobActionSpeechConditionContext()
+        {
+            return new MobAnimationSet.ActionSpeakConditionContext
+            {
+                QuestStateProvider = questId => _questRuntime == null ? null : (int?)_questRuntime.GetCurrentState(questId),
+                HasPetItem = HasMobActionSpeechConditionPetItem
+            };
+        }
+
+        private bool HasMobActionSpeechConditionPetItem(int petItemId)
+        {
+            if (petItemId <= 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
+            if (activePets == null || activePets.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < activePets.Count; i++)
+            {
+                PetRuntime pet = activePets[i];
+                if (pet != null && (pet.ItemId == petItemId || pet.PetWearItemId == petItemId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void DrawMobActionSpeechFeedback(in Managers.RenderContext renderContext)

@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.UI
         private const int InputPaddingX = 4;
         private const int InputPaddingY = 1;
         private const float UtilDlgNoticeBodyWrapWidth = 278f;
+        private const int FieldMessageBoxChalkboardButtonBottomPadding = 9;
 
         private readonly IReadOnlyDictionary<LoginUtilityDialogFrameVariant, IDXObject> _framesByVariant;
         private readonly UIObject _okButton;
@@ -488,6 +489,16 @@ namespace HaCreator.MapSimulator.UI
                 return (startX, startX + primaryWidth + buttonGap);
             }
 
+            if (UsesFieldMessageBoxChalkboardComposeLayout)
+            {
+                int frameWidth = Frame?.Width > 0 ? Frame.Width : 312;
+                int primaryWidth = _activePrimaryButton?.CanvasSnapshotWidth > 0 ? _activePrimaryButton.CanvasSnapshotWidth : 57;
+                int secondaryWidth = _activeSecondaryButton?.CanvasSnapshotWidth > 0 ? _activeSecondaryButton.CanvasSnapshotWidth : 57;
+                const int buttonGap = 9;
+                int startX = Math.Max(0, (frameWidth - (primaryWidth + secondaryWidth + buttonGap)) / 2);
+                return (startX, startX + primaryWidth + buttonGap);
+            }
+
             return _buttonLayout switch
             {
                 LoginUtilityDialogButtonLayout.NowLater => (NowButtonX, NoButtonX),
@@ -510,6 +521,8 @@ namespace HaCreator.MapSimulator.UI
                     => Math.Max(0, (Frame.Width - button.CanvasSnapshotWidth) / 2),
                 _ when UsesCompactFadeYesNoLayout && Frame?.Width > 0 && button.CanvasSnapshotWidth > 0
                     => Math.Max(0, (Frame.Width - button.CanvasSnapshotWidth) / 2),
+                _ when UsesFieldMessageBoxChalkboardComposeLayout && Frame?.Width > 0 && button.CanvasSnapshotWidth > 0
+                    => Math.Max(0, (Frame.Width - button.CanvasSnapshotWidth) / 2),
                 LoginUtilityDialogButtonLayout.Nexon => NoticeNexonButtonX,
                 _ => OkButtonX,
             };
@@ -518,6 +531,9 @@ namespace HaCreator.MapSimulator.UI
         private bool UsesCompactFadeYesNoLayout => UsesCompactFadeYesNoLayoutVariant(_frameVariant);
 
         private bool UsesUtilDlgNoticeLayout => UsesUtilDlgNoticeLayoutVariant(_frameVariant);
+
+        private bool UsesFieldMessageBoxChalkboardComposeLayout =>
+            UsesFieldMessageBoxChalkboardComposeLayoutVariant(_frameVariant);
 
         private float ResolveBodyWrapWidth()
         {
@@ -532,6 +548,13 @@ namespace HaCreator.MapSimulator.UI
                 int frameHeight = Frame?.Height > 0 ? Frame.Height : 60;
                 int buttonHeight = button?.CanvasSnapshotHeight > 0 ? button.CanvasSnapshotHeight : 16;
                 return Math.Max(18, frameHeight - buttonHeight - 6);
+            }
+
+            if (UsesFieldMessageBoxChalkboardComposeLayout)
+            {
+                int frameHeight = Frame?.Height > 0 ? Frame.Height : 132;
+                int buttonHeight = button?.CanvasSnapshotHeight > 0 ? button.CanvasSnapshotHeight : 16;
+                return Math.Max(18, frameHeight - buttonHeight - FieldMessageBoxChalkboardButtonBottomPadding);
             }
 
             return DialogButtonY;
@@ -988,10 +1011,16 @@ namespace HaCreator.MapSimulator.UI
             return frameVariant == LoginUtilityDialogFrameVariant.UtilDlgNotice;
         }
 
+        internal static bool UsesFieldMessageBoxChalkboardComposeLayoutVariant(LoginUtilityDialogFrameVariant frameVariant)
+        {
+            return frameVariant == LoginUtilityDialogFrameVariant.FieldMessageBoxChalkboardCompose;
+        }
+
         internal static bool ShouldDrawTitleHeader(LoginUtilityDialogFrameVariant frameVariant, string title)
         {
             return !UsesCompactFadeYesNoLayoutVariant(frameVariant)
                 && !UsesUtilDlgNoticeLayoutVariant(frameVariant)
+                && !UsesFieldMessageBoxChalkboardComposeLayoutVariant(frameVariant)
                 && !string.IsNullOrWhiteSpace(title);
         }
 
@@ -1009,12 +1038,23 @@ namespace HaCreator.MapSimulator.UI
                 return Math.Max(200f, Math.Min(UtilDlgNoticeBodyWrapWidth, normalizedFrameWidth - (TextOffsetX * 2f)));
             }
 
+            if (UsesFieldMessageBoxChalkboardComposeLayoutVariant(frameVariant))
+            {
+                int normalizedFrameWidth = frameWidth > 0 ? frameWidth : 312;
+                return Math.Max(200f, Math.Min(UtilDlgNoticeBodyWrapWidth, normalizedFrameWidth - (TextOffsetX * 2f)));
+            }
+
             return BodyWrapWidth;
         }
 
         internal static int ResolveBodyStartOffsetY(LoginUtilityDialogFrameVariant frameVariant)
         {
-            return UsesCompactFadeYesNoLayoutVariant(frameVariant)
+            if (UsesCompactFadeYesNoLayoutVariant(frameVariant))
+            {
+                return 15;
+            }
+
+            return UsesFieldMessageBoxChalkboardComposeLayoutVariant(frameVariant)
                 ? 15
                 : TextOffsetY;
         }

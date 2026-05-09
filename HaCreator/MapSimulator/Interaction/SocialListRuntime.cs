@@ -1255,17 +1255,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string AddFriend()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Friend, "Friend add", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
-            SocialEntryState nextFriend = DequeueNextUnique(_friendInviteSeeds, SocialListTab.Friend);
+            SocialEntryState nextFriend = PeekNextUnique(_friendInviteSeeds, SocialListTab.Friend);
             if (nextFriend == null)
             {
                 return "No additional simulator friends are waiting for invitation.";
             }
 
+            if (TryStagePacketOwnedRequest(SocialListTab.Friend, "Friend add", nextFriend, out string requestMessage))
+            {
+                return requestMessage;
+            }
+
+            nextFriend = DequeueNextUnique(_friendInviteSeeds, SocialListTab.Friend);
             _entriesByTab[SocialListTab.Friend].Add(nextFriend);
             SelectTab(SocialListTab.Friend);
             _selectedIndexByTab[SocialListTab.Friend] = GetFilteredEntries(SocialListTab.Friend).Count - 1;
@@ -1336,15 +1337,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string InviteFriendToParty()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
             if (selectedFriend == null || selectedFriend.IsLocalPlayer)
             {
                 return "Select a friend entry before inviting it into the party list.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", selectedFriend, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             if (_entriesByTab[SocialListTab.Party].Any(entry => string.Equals(entry.Name, selectedFriend.Name, StringComparison.OrdinalIgnoreCase)))
@@ -1366,11 +1367,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string InviteSelectedEntryToPartyFromTab(SocialListTab sourceTab, string owner)
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             if (!HasLocalPartyLeader())
             {
                 return $"Party invite from the {owner} tab needs a local party leader entry first.";
@@ -1380,6 +1376,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedEntry == null || selectedEntry.IsLocalPlayer)
             {
                 return $"Select a non-local {owner} entry before inviting it into the party roster.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", selectedEntry, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             if (!selectedEntry.IsOnline)
@@ -1433,15 +1434,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string DeleteFriend()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Friend, "Friend delete", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
             if (selectedFriend == null || selectedFriend.IsLocalPlayer)
             {
                 return "Select a removable friend entry before deleting it.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Friend, "Friend delete", selectedFriend, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             _entriesByTab[SocialListTab.Friend].RemoveAll(entry => string.Equals(entry.Name, selectedFriend.Name, StringComparison.OrdinalIgnoreCase));
@@ -1451,15 +1452,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BlockFriend()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist add", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
             if (selectedFriend == null || selectedFriend.IsLocalPlayer)
             {
                 return "Select a friend entry before blocking it.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist add", selectedFriend, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             if (_entriesByTab[SocialListTab.Blacklist].Any(entry => string.Equals(entry.Name, selectedFriend.Name, StringComparison.OrdinalIgnoreCase)))
@@ -1481,15 +1482,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string UnblockFriend()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist remove", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
             if (selectedFriend == null)
             {
                 return "Select a friend entry before unblocking it.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist remove", selectedFriend, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             _entriesByTab[SocialListTab.Blacklist].RemoveAll(entry => string.Equals(entry.Name, selectedFriend.Name, StringComparison.OrdinalIgnoreCase));
@@ -1526,17 +1527,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string AddPartyMember()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState friendCandidate = _entriesByTab[SocialListTab.Friend]
                 .FirstOrDefault(entry => !entry.IsLocalPlayer &&
                                          !_entriesByTab[SocialListTab.Party].Any(member => string.Equals(member.Name, entry.Name, StringComparison.OrdinalIgnoreCase)));
             if (friendCandidate == null)
             {
                 return "No additional friend entries are available for the party roster.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", friendCandidate, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             _entriesByTab[SocialListTab.Party].Add(new SocialEntryState(
@@ -1553,11 +1554,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string RemovePartyMember(bool localWithdraw)
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Party, localWithdraw ? "Party withdraw" : "Party kick", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedEntry = GetSelectedEntry(SocialListTab.Party);
             if (selectedEntry == null)
             {
@@ -1572,6 +1568,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (!localWithdraw && selectedEntry.IsLocalPlayer)
             {
                 return "Select a non-local party member to kick it from the roster.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Party, localWithdraw ? "Party withdraw" : "Party kick", selectedEntry, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             _entriesByTab[SocialListTab.Party].RemoveAll(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase));
@@ -1591,15 +1592,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ChangePartyLeader()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party leader change", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedEntry = GetSelectedEntry(SocialListTab.Party);
             if (selectedEntry == null)
             {
                 return "Select a party member before changing the leader.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party leader change", selectedEntry, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             List<SocialEntryState> partyEntries = _entriesByTab[SocialListTab.Party];
@@ -1625,7 +1626,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string AddGuildMember()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Guild, "Guild invite", out string requestMessage))
+            SocialEntryState recruit = PeekNextUnique(_guildInviteSeeds, SocialListTab.Guild);
+            if (recruit == null)
+            {
+                return "No additional simulator guild recruits are waiting.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Guild, "Guild invite", recruit, out string requestMessage))
             {
                 return requestMessage;
             }
@@ -1635,12 +1642,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Guild invite is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
             }
 
-            SocialEntryState recruit = DequeueNextUnique(_guildInviteSeeds, SocialListTab.Guild);
-            if (recruit == null)
-            {
-                return "No additional simulator guild recruits are waiting.";
-            }
-
+            recruit = DequeueNextUnique(_guildInviteSeeds, SocialListTab.Guild);
             _entriesByTab[SocialListTab.Guild].Add(recruit);
             return NotifySocialListTextObserved($"{recruit.Name} joined guild {_guildName}.");
         }
@@ -1648,15 +1650,15 @@ namespace HaCreator.MapSimulator.Interaction
         private string RemoveGuildMember(string owner)
         {
             SocialListTab tab = _currentTab;
-            if (TryStagePacketOwnedRequest(tab, owner == "alliance" ? "Alliance remove" : "Guild remove", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedEntry = GetSelectedEntry(tab);
             if (selectedEntry == null)
             {
                 return $"Select a {owner} entry before removing it.";
+            }
+
+            if (TryStagePacketOwnedRequest(tab, owner == "alliance" ? "Alliance remove" : "Guild remove", selectedEntry, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             if (!selectedEntry.IsLocalPlayer)
@@ -1732,11 +1734,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string AdjustGuildGrade(int delta)
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Guild, delta > 0 ? "Guild grade up" : "Guild grade down", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             if (!CanManageGuildRanks())
             {
                 return $"Guild grade changes are read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
@@ -1746,6 +1743,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedEntry == null)
             {
                 return "Select a guild member before changing its rank.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Guild, delta > 0 ? "Guild grade up" : "Guild grade down", selectedEntry, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             if (!TryResolveNextRankTitle(_guildRankTitles, selectedEntry, delta, out int currentIndex, out int nextIndex, out string nextTitle))
@@ -1779,7 +1781,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string AddAllianceMember()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Alliance, "Alliance invite", out string requestMessage))
+            SocialEntryState recruit = PeekNextUnique(_allianceInviteSeeds, SocialListTab.Alliance);
+            if (recruit == null)
+            {
+                return "No additional simulator alliance entries are waiting.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Alliance, "Alliance invite", recruit, out string requestMessage))
             {
                 return requestMessage;
             }
@@ -1789,12 +1797,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Alliance invite is read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
             }
 
-            SocialEntryState recruit = DequeueNextUnique(_allianceInviteSeeds, SocialListTab.Alliance);
-            if (recruit == null)
-            {
-                return "No additional simulator alliance entries are waiting.";
-            }
-
+            recruit = DequeueNextUnique(_allianceInviteSeeds, SocialListTab.Alliance);
             _entriesByTab[SocialListTab.Alliance].Add(recruit);
             return $"{recruit.Name} joined alliance {_allianceName}.";
         }
@@ -1809,11 +1812,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string AdjustAllianceGrade(int delta)
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Alliance, delta > 0 ? "Alliance grade up" : "Alliance grade down", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             if (!CanEditAllianceRanks())
             {
                 return $"Alliance grade changes are read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
@@ -1823,6 +1821,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedEntry == null)
             {
                 return "Select an alliance entry before changing its rank.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Alliance, delta > 0 ? "Alliance grade up" : "Alliance grade down", selectedEntry, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             if (!TryResolveNextRankTitle(_allianceRankTitles, selectedEntry, delta, out int currentIndex, out int nextIndex, out string nextTitle))
@@ -1872,14 +1875,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string AddBlacklistEntry()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist add", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
             if (selectedFriend != null && !selectedFriend.IsLocalPlayer)
             {
+                if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist add", selectedFriend, out string requestMessage))
+                {
+                    return requestMessage;
+                }
+
                 if (_entriesByTab[SocialListTab.Blacklist].Any(entry => string.Equals(entry.Name, selectedFriend.Name, StringComparison.OrdinalIgnoreCase)))
                 {
                     return $"{selectedFriend.Name} is already blocked.";
@@ -1897,27 +1900,33 @@ namespace HaCreator.MapSimulator.Interaction
                 return NotifySocialListTextObserved($"{selectedFriend.Name} was added to the blacklist.");
             }
 
-            SocialEntryState seed = DequeueNextUnique(_blacklistSeeds, SocialListTab.Blacklist);
+            SocialEntryState seed = PeekNextUnique(_blacklistSeeds, SocialListTab.Blacklist);
             if (seed == null)
             {
                 return "No additional blacklist seeds are available.";
             }
 
+            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist add", seed, out string stagedRequestMessage))
+            {
+                return stagedRequestMessage;
+            }
+
+            seed = DequeueNextUnique(_blacklistSeeds, SocialListTab.Blacklist);
             _entriesByTab[SocialListTab.Blacklist].Add(seed);
             return NotifySocialListTextObserved($"{seed.Name} was added to the blacklist.");
         }
 
         private string DeleteBlacklistEntry()
         {
-            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist delete", out string requestMessage))
-            {
-                return requestMessage;
-            }
-
             SocialEntryState selectedEntry = GetSelectedEntry(SocialListTab.Blacklist);
             if (selectedEntry == null)
             {
                 return "Select a blacklist entry before deleting it.";
+            }
+
+            if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist delete", selectedEntry, out string requestMessage))
+            {
+                return requestMessage;
             }
 
             _entriesByTab[SocialListTab.Blacklist].RemoveAll(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase));
@@ -2017,6 +2026,26 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 SocialEntryState candidate = queue.Dequeue();
                 queue.Enqueue(candidate);
+                if (_entriesByTab[tab].Any(entry => string.Equals(entry.Name, candidate.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                return candidate;
+            }
+
+            return null;
+        }
+
+        private SocialEntryState PeekNextUnique(Queue<SocialEntryState> queue, SocialListTab tab)
+        {
+            if (queue == null || queue.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (SocialEntryState candidate in queue)
+            {
                 if (_entriesByTab[tab].Any(entry => string.Equals(entry.Name, candidate.Name, StringComparison.OrdinalIgnoreCase)))
                 {
                     continue;

@@ -2197,31 +2197,10 @@ namespace HaCreator.MapSimulator
                 bodyWidth,
                 bodyHeight);
 
-            if (message.AnchorMode != LocalOverlayBalloonAnchorMode.Avatar)
-            {
-                Rectangle provisionalArrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
-                Rectangle provisionalCanvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, provisionalArrowBounds);
-                Point screenShift = ResolvePacketOwnedBalloonCanvasShift(provisionalCanvasBounds);
-                bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, screenShift);
-                provisionalArrowBounds = OffsetPacketOwnedBalloonBounds(provisionalArrowBounds, screenShift);
-                provisionalCanvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, provisionalArrowBounds);
-                if (occupiedBounds != null)
-                {
-                    ResolvePacketOwnedBalloonOverlap(occupiedBounds, placeAbove: placeAboveAnchor, ref bodyBounds, ref provisionalArrowBounds, ref provisionalCanvasBounds);
-                }
-            }
-
             arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, bodyBounds, placeBelowAnchor: !placeAboveAnchor);
             arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
             Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
             Rectangle canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
-            if (message.AnchorMode != LocalOverlayBalloonAnchorMode.Avatar)
-            {
-                Point finalScreenShift = ResolvePacketOwnedBalloonCanvasShift(canvasBounds);
-                bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, finalScreenShift);
-                arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, finalScreenShift);
-                canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
-            }
 
             Rectangle contentBounds = ResolvePacketOwnedBalloonContentBounds(bodyBounds, contentWidth);
             visualTexture = GetOrCreatePacketOwnedBalloonVisualTexture(
@@ -2277,15 +2256,7 @@ namespace HaCreator.MapSimulator
             int screenWidth)
         {
             int clientLayerX = anchor.X - (Math.Max(0, contentWidth) / 2);
-            if (anchorMode == LocalOverlayBalloonAnchorMode.Avatar)
-            {
-                return clientLayerX;
-            }
-
-            return Math.Clamp(
-                clientLayerX,
-                PacketOwnedBalloonScreenMargin,
-                Math.Max(PacketOwnedBalloonScreenMargin, screenWidth - bodyWidth - PacketOwnedBalloonScreenMargin));
+            return clientLayerX;
         }
 
         private void ResolvePacketOwnedBalloonOverlap(

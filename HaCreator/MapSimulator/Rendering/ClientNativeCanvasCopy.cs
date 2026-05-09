@@ -63,5 +63,21 @@ namespace HaCreator.MapSimulator.Rendering
             CopyAlpha255(destinationBitmap, sourceBitmap, 0, 0);
             return destinationBitmap.GetPixel(0, 0);
         }
+
+        internal static Color BlendAlpha255(params Color[] layers)
+        {
+            Color result = Color.Transparent;
+            if (layers == null)
+            {
+                return result;
+            }
+
+            foreach (Color layer in layers)
+            {
+                result = BlendAlpha255(result, layer);
+            }
+
+            return result;
+        }
     }
 }

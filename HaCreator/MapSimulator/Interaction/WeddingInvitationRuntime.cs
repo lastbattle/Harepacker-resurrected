@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int PriorOwnerCloseRetValue = 1;
         internal const int AcceptButtonControlId = 1;
         internal const bool ClientModalReturnIgnored = true;
+        internal const bool ClientDialogReleasedAfterModal = true;
+        internal const bool ClientOpenSubtypeSkipsResultNotice = true;
         internal const bool InvitationOwnsDownstreamHandoff = false;
 
         private const string DefaultGroomName = "Groom";
@@ -156,7 +158,7 @@ namespace HaCreator.MapSimulator.Interaction
             string packetEvidence = _lastOpenUsedMarriageResultPacket && _lastMarriageResultPacketPayload.Length > 0
                 ? $" The dialog was opened from {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} bytes [{FormatPayload(_lastMarriageResultPacketPayload)}]."
                 : string.Empty;
-            _statusMessage = $"Closed wedding invitation for {_groomName} and {_brideName} through the client OK button path. {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} calls {ClientPresentationMode} and ignores the modal return, so this owner does not stage a downstream invitation-owned handoff; proposal and wish-list progression remains owned by their separate seams.{packetEvidence}";
+            _statusMessage = $"Closed wedding invitation for {_groomName} and {_brideName} through the client OK button path. {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} calls {ClientPresentationMode}, releases the dialog reference after the modal returns, skips the generic result-notice branch, and ignores the modal return, so this owner does not stage a downstream invitation-owned handoff; proposal and wish-list progression remains owned by their separate seams.{packetEvidence}";
             return _statusMessage;
         }
 
@@ -240,6 +242,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientOpenResultSubtype = ClientOpenResultSubtype,
                 ClientPresentationMode = ClientPresentationMode,
                 ModalReturnIgnored = ClientModalReturnIgnored,
+                DialogReleasedAfterModal = ClientDialogReleasedAfterModal,
+                OpenSubtypeSkipsResultNotice = ClientOpenSubtypeSkipsResultNotice,
                 OwnsDownstreamHandoff = InvitationOwnsDownstreamHandoff
             };
             string packetState = observation.LastOpenUsedMarriageResultPacket
@@ -303,6 +307,8 @@ namespace HaCreator.MapSimulator.Interaction
                 PriorOwnerTypeName = PriorOwnerTypeName,
                 PriorOwnerCloseRetValue = PriorOwnerCloseRetValue,
                 ModalReturnIgnored = ClientModalReturnIgnored,
+                DialogReleasedAfterModal = ClientDialogReleasedAfterModal,
+                OpenSubtypeSkipsResultNotice = ClientOpenSubtypeSkipsResultNotice,
                 OwnsDownstreamHandoff = InvitationOwnsDownstreamHandoff,
                 LastMarriageResultPacketPayload = Array.AsReadOnly((byte[])_lastMarriageResultPacketPayload.Clone()),
                 SourceDescription = _sourceDescription,
@@ -347,10 +353,16 @@ namespace HaCreator.MapSimulator.Interaction
             string downstreamState = snapshot.OwnsDownstreamHandoff
                 ? " downstream=invitation-owned;"
                 : " downstream=not-invitation-owned;";
+            string modalState = snapshot.DialogReleasedAfterModal
+                ? " releasesDialogAfterModal=true;"
+                : string.Empty;
+            string noticeState = snapshot.OpenSubtypeSkipsResultNotice
+                ? " openSubtypeSkipsNotice=true;"
+                : string.Empty;
             string closeState = snapshot.LastCloseAction != WeddingInvitationCloseAction.None
                 ? $" lastClose={snapshot.LastCloseAction};"
                 : string.Empty;
-            return $"Wedding invitation {state} ({snapshot.Style}): {snapshot.GroomName} + {snapshot.BrideName}. Source={snapshot.SourceDescription}; asset={snapshot.InvitationAssetPath};{surfaceState} dialogUOL={snapshot.DialogUolText}; acceptUOL={snapshot.AcceptButtonUolText}; modalReturnIgnored={snapshot.ModalReturnIgnored};{packetPath}{downstreamState}{closeState} {snapshot.StatusMessage}";
+            return $"Wedding invitation {state} ({snapshot.Style}): {snapshot.GroomName} + {snapshot.BrideName}. Source={snapshot.SourceDescription}; asset={snapshot.InvitationAssetPath};{surfaceState} dialogUOL={snapshot.DialogUolText}; acceptUOL={snapshot.AcceptButtonUolText}; modalReturnIgnored={snapshot.ModalReturnIgnored};{modalState}{noticeState}{packetPath}{downstreamState}{closeState} {snapshot.StatusMessage}";
         }
 
         internal static byte[] BuildMarriageResultOpenPayload(string groomName, string brideName, int clientDialogType)
@@ -561,6 +573,8 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<byte> LastMarriageResultPacketPayload { get; init; } = Array.Empty<byte>();
         public bool ClosesPriorOwnerOnOpen { get; init; }
         public bool ModalReturnIgnored { get; init; }
+        public bool DialogReleasedAfterModal { get; init; }
+        public bool OpenSubtypeSkipsResultNotice { get; init; }
         public bool OwnsDownstreamHandoff { get; init; }
         public bool UseClientDialogInvitationSurface { get; init; }
         public bool AcceptButtonAcceptFocus { get; init; }
@@ -582,6 +596,8 @@ namespace HaCreator.MapSimulator.Interaction
         public WeddingInvitationCloseAction CloseAction { get; init; }
         public bool LastOpenUsedMarriageResultPacket { get; init; }
         public bool ModalReturnIgnored { get; init; }
+        public bool DialogReleasedAfterModal { get; init; }
+        public bool OpenSubtypeSkipsResultNotice { get; init; }
         public bool OwnsDownstreamHandoff { get; init; }
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }

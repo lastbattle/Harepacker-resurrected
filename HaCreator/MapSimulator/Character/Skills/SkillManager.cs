@@ -20,7 +20,9 @@ using HaSharedLibrary.Render.DX;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Globalization;
+using System.IO;
 using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator.Character.Skills
@@ -477,6 +479,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             int RandomCapturedMobTemplateId,
             Point PlacementPosition,
             int MoveActionLowBit);
+        internal const int ClientDoActiveSummonMonsterPacketOpcode = 103;
+        public readonly record struct ClientDoActiveTeslaCoilPacketPayload(
+            int RequestTime,
+            int SkillId,
+            int SkillLevel,
+            int ExistingTeslaCoilCount,
+            int[] ExistingTeslaCoilObjectIds,
+            Point PlacementPosition,
+            int MoveActionLowBit,
+            byte VecCtrlState);
         public readonly record struct AnimationDisplayerCatchRegistrationRequest(
             int TargetMobId,
             bool Success,
@@ -2695,6 +2707,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ClientPrepareThrowingStarAmmoStringPoolId = 0x0B50;
         private const int ClientPrepareBulletAmmoStringPoolId = 0x0B49;
         private const int ClientMechanicSummonNoSupportStringPoolId = 0x18AA;
+        private const int ClientTeslaCoilDistanceStringPoolId = 0x18A5;
+        private const int ClientMechanicTankModeSkillRestrictedStringPoolId = 0x18F8;
+        private const int ClientMechanicTankModeRequiredStringPoolId = 0x18BA;
         private const int ClientTownPortalBlockedMapCategory = 9;
         private const int TOWN_PORTAL_SKILL_ID = 2311002;
         private const int BEGINNER_TOWN_PORTAL_SKILL_ID = 8001;
@@ -3325,6 +3340,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            string doActiveFamilyPostSilentRestrictionMessage =
+                ResolveClientDoActiveSkillFamilyPostSilentRestrictionMessage(skill);
+            if (!string.IsNullOrWhiteSpace(doActiveFamilyPostSilentRestrictionMessage))
+            {
+                OnFieldSkillCastRejected?.Invoke(skill, doActiveFamilyPostSilentRestrictionMessage);
+                return false;
+            }
+
             string summonMonsterCapturedMobRestrictionMessage =
                 ResolveClientDoActiveSummonMonsterCapturedMobRestrictionMessage(skill);
             if (!string.IsNullOrWhiteSpace(summonMonsterCapturedMobRestrictionMessage))
@@ -3367,6 +3390,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
 
             if (ShouldThrottlePreparedSkillRequest(skill, currentTime))
+                return false;
+
+            if (ShouldRejectClientBoundJumpStartStateWithoutMessage(skill, currentTime))
                 return false;
 
             if (ShouldRejectClientDoActiveSummonMonsterPlacementMissingWithoutMessage(skill))
@@ -3460,8 +3486,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _player.Physics.IsOnFoothold(),
                 _player.Physics.IsSwimming(),
                 _player.Physics.IsUserFlying(),
+                _activeSkillMount?.SkillId ?? 0,
                 townPortalFieldLimitBlocked,
                 townPortalPortalOverlapBlocked);
+        }
+
+        private string ResolveClientDoActiveSkillFamilyPostSilentRestrictionMessage(SkillData skill)
+        {
+            if (ShouldRejectClientDoActiveTeslaCoilDistanceStateWithMessage(
+                    skill,
+                    skill?.GetLevel(GetSkillLevel(skill?.SkillId ?? 0)),
+                    _summons,
+                    _player?.Position ?? Vector2.Zero))
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    ClientTeslaCoilDistanceStringPoolId,
+                    "You are too far away from the Tesla Coil.");
+            }
+
+            return null;
         }
 
         private bool ShouldRejectClientDoActiveSummonFamilyStateWithoutMessage(SkillData skill)
@@ -3651,6 +3694,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ShouldRejectClientSmoothingMovingShootPrepareStateWithoutMessage(skill)
                    || ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessage(skill)
                    || ShouldRejectClientDoActiveSkillForActiveSerialAttack(_queuedSerialAttack?.SkillId)
+                   || ShouldRejectClientDoActiveSkillForMechanicModeWithoutMessage(skill, _activeSkillMount?.SkillId ?? 0)
                    || ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(skill, currentTime);
         }
 
@@ -3660,6 +3704,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             // m_serialAttack.nSkillID is 4341005 before entering the normal
             // active-skill dispatch table.
             return activeSerialAttackSkillId == 4341005;
+        }
+
+        internal static bool ShouldRejectClientDoActiveSkillForMechanicModeWithoutMessage(
+            SkillData skill,
+            int activeMechanicModeSkillId)
+        {
+            // Client evidence: CUserLocal::DoActiveSkill silently rejects
+            // Mechanic Prototype while m_nMechanicMode is already one of the
+            // recovered mechanic-mode/action owners.
+            return skill?.SkillId == 35001002
+                   && activeMechanicModeSkillId is 35001001
+                       or 35101009
+                       or 35111004
+                       or 35121005
+                       or 35121013;
         }
 
         private bool ShouldRejectClientDoActivePrepareFamilyPreWeaponRestrictionStateWithoutMessage(SkillData skill, int currentTime)
@@ -3939,6 +3998,44 @@ namespace HaCreator.MapSimulator.Character.Skills
             int activeTeslaCoilCount = activeSummons.Count(
                 summon => summon?.SkillId == TESLA_COIL_SKILL_ID && !summon.IsPendingRemoval);
             return activeTeslaCoilCount >= 3;
+        }
+
+        private static bool ShouldRejectClientDoActiveTeslaCoilDistanceStateWithMessage(
+            SkillData skill,
+            SkillLevelData levelData,
+            IEnumerable<ActiveSummon> activeSummons,
+            Vector2 playerPosition)
+        {
+            if (ResolveDoActiveSkillExecutionLane(skill) != ClientDoActiveSkillExecutionLane.Summon
+                || skill?.SkillId != TESLA_COIL_SKILL_ID
+                || activeSummons == null)
+            {
+                return false;
+            }
+
+            int maxDistance = Math.Max(0, levelData?.Z ?? 0);
+            if (maxDistance <= 0)
+            {
+                return false;
+            }
+
+            long maxDistanceSq = (long)maxDistance * maxDistance;
+            foreach (ActiveSummon summon in activeSummons)
+            {
+                if (summon?.SkillId != TESLA_COIL_SKILL_ID || summon.IsPendingRemoval)
+                {
+                    continue;
+                }
+
+                double deltaX = summon.PositionX - playerPosition.X;
+                double deltaY = summon.PositionY - playerPosition.Y;
+                if (deltaX * deltaX + deltaY * deltaY > maxDistanceSq)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool HasClientActionAppointedSkillSurface(SkillData skill)
@@ -5358,9 +5455,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             // Client evidence: CTemporaryStatView::TEMPORARY_STAT stores
-            // tLeftUnit = ceil(tMaxDuration / 16) before SetLeft() decides
+            // tLeftUnit = tMaxDuration / 16 before SetLeft() decides
             // whether the low-durability alert animation should trigger.
-            return (normalizedMaxValue + 15) / 16;
+            return normalizedMaxValue / 16;
         }
 
         internal static bool IsPassiveVehicleDurabilityAlertActiveForParity(int currentValue, int maxValue)
@@ -5473,7 +5570,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     : null;
             }
 
-            int objectReleaseSequence = Math.Max(0, previousState.TemporaryStatViewObjectReleaseSequence) + 1;
+            int objectReleaseSequence = AdvanceTemporaryStatViewReleaseSequence(
+                previousState.TemporaryStatViewObjectReleaseSequence,
+                previousState.TemporaryStatViewObjectReferenceCount);
             int parentReleaseSequence = AdvanceTemporaryStatViewReleaseSequence(
                 previousState.TemporaryStatViewParentLayerReleaseSequence,
                 previousState.TemporaryStatViewParentLayerReferenceCount);
@@ -6014,6 +6113,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 currentTime,
                 showSkillEffectPointOffsetOverride,
                 out ClientDoActiveSummonMonsterPacketPayload summonMonsterPacketPayload);
+            TryBuildClientDoActiveTeslaCoilPacketPayload(
+                skill,
+                level,
+                currentTime,
+                out ClientDoActiveTeslaCoilPacketPayload teslaCoilPacketPayload);
 
             _currentCast = new SkillCastInfo
             {
@@ -6034,6 +6138,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 DelayRateOverride = ResolveClientLocalShowSkillEffectDelayRateOverride(skill),
                 ClientDoActiveSummonMonsterPacketPayload = summonMonsterPacketPayload.SkillId > 0
                     ? summonMonsterPacketPayload
+                    : null,
+                ClientDoActiveTeslaCoilPacketPayload = teslaCoilPacketPayload.SkillId > 0
+                    ? teslaCoilPacketPayload
                     : null
             };
 
@@ -7841,7 +7948,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             string soundKey = _loader.EnsureCastSoundRegistered(skill, _soundManager);
             if (!string.IsNullOrEmpty(soundKey))
             {
-                _soundManager.PlaySound(soundKey);
+                PlayClientOwnedSkillSound(soundKey, skill.CastSoundProperty);
             }
         }
 
@@ -7853,8 +7960,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             string soundKey = _loader.EnsureRepeatSoundRegistered(skill, _soundManager);
             if (!string.IsNullOrEmpty(soundKey))
             {
-                _soundManager.PlaySound(soundKey);
+                PlayClientOwnedSkillSound(soundKey, skill.RepeatSoundProperty);
             }
+        }
+
+        private void PlayClientOwnedSkillSound(string soundKey, WzBinaryProperty soundProperty)
+        {
+            if (soundProperty != null)
+            {
+                _soundManager.TryPlayClientSoundEffect(
+                    soundKey,
+                    soundProperty,
+                    startVolumeScale: 1f,
+                    loop: false,
+                    suppressWhileActive: false,
+                    out _,
+                    out _);
+                return;
+            }
+
+            _soundManager.PlaySound(soundKey);
         }
 
         private static bool IsRepeatSkillSustainFamily(int skillId)
@@ -10850,6 +10975,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             return unchecked((short)MathF.Round(coordinate));
         }
 
+        internal static byte[] EncodeClientDoActiveSummonMonsterPacketPayloadForTesting(
+            ClientDoActiveSummonMonsterPacketPayload payload)
+        {
+            using var stream = new MemoryStream(capacity: 18);
+            using var writer = new BinaryWriter(stream);
+            writer.Write(payload.RequestTime);
+            writer.Write(payload.SkillId);
+            writer.Write(unchecked((byte)payload.SkillLevel));
+            writer.Write(payload.RandomCapturedMobTemplateId);
+            writer.Write(unchecked((short)payload.PlacementPosition.X));
+            writer.Write(unchecked((short)payload.PlacementPosition.Y));
+            writer.Write(unchecked((byte)(payload.MoveActionLowBit & 1)));
+            return stream.ToArray();
+        }
+
         private bool TryBuildClientDoActiveSummonMonsterPacketPayload(
             SkillData skill,
             int level,
@@ -10883,6 +11023,76 @@ namespace HaCreator.MapSimulator.Character.Skills
                 randomCapturedMobTemplateId,
                 placementPosition,
                 moveActionRawCode,
+                out payload);
+        }
+
+        internal static bool TryBuildClientDoActiveTeslaCoilPacketPayloadForTesting(
+            SkillData skill,
+            int level,
+            int currentTime,
+            IEnumerable<ActiveSummon> activeSummons,
+            Vector2 placementPosition,
+            int? moveActionRawCode,
+            byte vecCtrlState,
+            out ClientDoActiveTeslaCoilPacketPayload payload)
+        {
+            payload = default;
+            if (ResolveDoActiveSkillExecutionLane(skill) != ClientDoActiveSkillExecutionLane.Summon
+                || skill?.SkillId != TESLA_COIL_SKILL_ID
+                || activeSummons == null)
+            {
+                return false;
+            }
+
+            ActiveSummon[] activeTeslaCoils = activeSummons
+                .Where(static summon => summon?.SkillId == TESLA_COIL_SKILL_ID && !summon.IsPendingRemoval)
+                .ToArray();
+            if (activeTeslaCoils.Length >= 3)
+            {
+                return false;
+            }
+
+            int[] encodedObjectIds = activeTeslaCoils.Length == 2
+                ? activeTeslaCoils
+                    .Take(2)
+                    .Select(static summon => summon.ObjectId)
+                    .ToArray()
+                : Array.Empty<int>();
+
+            payload = new ClientDoActiveTeslaCoilPacketPayload(
+                currentTime,
+                skill.SkillId,
+                ResolveClientDoActiveSummonMonsterPacketSkillLevel(level),
+                activeTeslaCoils.Length,
+                encodedObjectIds,
+                new Point(
+                    ResolveClientDoActiveSummonMonsterPacketCoordinate(placementPosition.X),
+                    ResolveClientDoActiveSummonMonsterPacketCoordinate(placementPosition.Y)),
+                moveActionRawCode.GetValueOrDefault() & 1,
+                vecCtrlState);
+            return true;
+        }
+
+        private bool TryBuildClientDoActiveTeslaCoilPacketPayload(
+            SkillData skill,
+            int level,
+            int currentTime,
+            out ClientDoActiveTeslaCoilPacketPayload payload)
+        {
+            int? moveActionRawCode = null;
+            if (_player?.TryGetCurrentClientRawActionCode(out int resolvedRawActionCode) == true)
+            {
+                moveActionRawCode = resolvedRawActionCode;
+            }
+
+            return TryBuildClientDoActiveTeslaCoilPacketPayloadForTesting(
+                skill,
+                level,
+                currentTime,
+                _summons,
+                _player?.Position ?? Vector2.Zero,
+                moveActionRawCode,
+                _player?.Physics?.ResolveClientSummonPacketMovePathAttributeByte() ?? (byte)0,
                 out payload);
         }
 
@@ -13599,18 +13809,62 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        internal static string ResolveClientMechanicModeRestrictionMessage(
+            int skillId,
+            int activeMechanicModeSkillId)
+        {
+            // Client evidence: CUserLocal::DoActiveSkill checks m_nMechanicMode
+            // before CField::IsSkillForbiden and the active-skill dispatch table.
+            if (activeMechanicModeSkillId == 35121005
+                && IsClientMechanicTankModeRestrictedSkill(skillId))
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    ClientMechanicTankModeSkillRestrictedStringPoolId,
+                    "This skill cannot be used while in Mechanic Tank mode.");
+            }
+
+            if (skillId == 35121012 && activeMechanicModeSkillId != 35121005)
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    ClientMechanicTankModeRequiredStringPoolId,
+                    "This skill can only be used while in Mechanic Tank mode.");
+            }
+
+            return null;
+        }
+
+        private static bool IsClientMechanicTankModeRestrictedSkill(int skillId)
+        {
+            return skillId is 35001001
+                or 35001003
+                or 35001004
+                or 35101003
+                or 35101009
+                or 35101010
+                or 35111015;
+        }
+
         private static string ResolveClientDoActiveSkillFamilyStateRestrictionMessageCore(
             SkillData skill,
             bool isOnLadderOrRope,
             bool isOnFoothold,
             bool isSwimming,
             bool isUserFlying,
+            int activeMechanicModeSkillId = 0,
             bool townPortalFieldLimitBlocked = false,
             bool townPortalPortalOverlapBlocked = false)
         {
             if (skill == null)
             {
                 return null;
+            }
+
+            string mechanicModeRestrictionMessage = ResolveClientMechanicModeRestrictionMessage(
+                skill.SkillId,
+                activeMechanicModeSkillId);
+            if (!string.IsNullOrWhiteSpace(mechanicModeRestrictionMessage))
+            {
+                return mechanicModeRestrictionMessage;
             }
 
             ClientDoActiveSkillExecutionLane lane = ResolveDoActiveSkillExecutionLane(skill);
@@ -13718,6 +13972,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool isOnFoothold,
             bool isSwimming,
             bool isUserFlying,
+            int activeMechanicModeSkillId = 0,
             bool townPortalFieldLimitBlocked = false,
             bool townPortalPortalOverlapBlocked = false)
         {
@@ -13727,6 +13982,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 isOnFoothold,
                 isSwimming,
                 isUserFlying,
+                activeMechanicModeSkillId,
                 townPortalFieldLimitBlocked,
                 townPortalPortalOverlapBlocked);
         }
@@ -13887,6 +14143,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             IEnumerable<ActiveSummon> activeSummons)
         {
             return ShouldRejectClientDoActiveTeslaCoilMaxCountWithoutMessage(skill, activeSummons);
+        }
+
+        internal static bool ShouldRejectClientDoActiveTeslaCoilDistanceStateWithMessageForTesting(
+            SkillData skill,
+            SkillLevelData levelData,
+            IEnumerable<ActiveSummon> activeSummons,
+            Vector2 playerPosition)
+        {
+            return ShouldRejectClientDoActiveTeslaCoilDistanceStateWithMessage(
+                skill,
+                levelData,
+                activeSummons,
+                playerPosition);
         }
 
         internal static string ResolveClientDoActiveSkillActionAppointedActionNameForTesting(
@@ -14257,6 +14526,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (ShouldBlockClientBoundJumpForActiveClientFlight(_clientBoundJumpFlightActive))
+            {
+                return false;
+            }
+
             if (!string.IsNullOrWhiteSpace(GetStateRestrictionMessage(skill, currentTime)))
             {
                 return false;
@@ -14303,6 +14577,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return true;
+        }
+
+        private bool ShouldRejectClientBoundJumpStartStateWithoutMessage(SkillData skill, int currentTime)
+        {
+            if (skill == null || !ShouldExecuteMovementBranch(skill))
+            {
+                return false;
+            }
+
+            string movementActionName = ResolveMovementActionName(skill);
+            if (ResolveMovementFamily(skill, movementActionName) != SkillMovementFamily.BoundJump)
+            {
+                return false;
+            }
+
+            // `DoActiveSkill_BoundJump` performs its local state gates before
+            // `SendSkillUseRequest` / `ShowSkillEffect`; reject here so failed
+            // bound-jump starts do not consume resources or publish cast effects.
+            return !CanStartBoundJump(skill, currentTime);
         }
 
         private void TryExecuteTeleportMasteryBodyAttack(SkillData teleportSkill, int currentTime)
@@ -20557,6 +20850,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             int registeredRepeatIntervalMs = ResolveBulletAfterimageRegisterRepeatIntervalMs(updateInterval);
             int repeatAnimationEndTime = ResolveBulletAfterimageRepeatAnimationEndTime(currentTime, registeredRepeatIntervalMs);
             int repeatAnimationStateObjectId = ResolveBulletAfterimageRepeatAnimationStateObjectId(repeatLayerObjectId);
+            int sourceLayerAddRefCount = ResolveBulletAfterimageSourceLayerAddRefCount(sourceLayerObjectId);
+            int sourceLayerReleaseCount = ResolveBulletAfterimageSourceLayerReleaseCount(sourceLayerObjectId);
+            int repeatLayerCreateRefCount = ResolveBulletAfterimageRepeatLayerCreateRefCount(repeatLayerObjectId);
+            int repeatLayerLocalReleaseCount =
+                ResolveBulletAfterimageRepeatLayerLocalReleaseCount(repeatLayerObjectId);
+            int registerRepeatAnimationLayerAddRefCount =
+                ResolveBulletAfterimageRegisterRepeatAnimationLayerAddRefCount(repeatLayerObjectId);
             int repeatLayerRefCount = ResolveBulletAfterimageRepeatLayerRefCount(repeatLayerObjectId);
             int registerArgumentLayerAddRefCount =
                 ResolveBulletAfterimageRegisterArgumentLayerAddRefCount(repeatLayerObjectId);
@@ -20587,6 +20887,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SimulatedAnimateSequence = ResolveBulletAfterimageAnimateSequence(repeatLayerObjectId),
                 SimulatedRegisterRepeatAnimationSequence =
                     ResolveBulletAfterimageRegisterRepeatAnimationSequence(repeatAnimationStateObjectId),
+                SimulatedSourceLayerAddRefCount = sourceLayerAddRefCount,
+                SimulatedSourceLayerReleaseCount = sourceLayerReleaseCount,
+                SimulatedRepeatLayerCreateRefCount = repeatLayerCreateRefCount,
+                SimulatedRepeatLayerLocalReleaseCount = repeatLayerLocalReleaseCount,
+                SimulatedRegisterRepeatAnimationLayerAddRefCount = registerRepeatAnimationLayerAddRefCount,
                 SimulatedRepeatLayerRefCount = repeatLayerRefCount,
                 SimulatedListNodeRefCount = listNodeRefCount,
                 SimulatedOriginVectorRefCount = ResolveBulletAfterimageVectorRefCount(originVectorObjectId),
@@ -20812,6 +21117,31 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         internal static int ResolveBulletAfterimageRepeatLayerRefCount(int repeatLayerObjectId)
+        {
+            return repeatLayerObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageSourceLayerAddRefCount(int sourceLayerObjectId)
+        {
+            return sourceLayerObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageSourceLayerReleaseCount(int sourceLayerObjectId)
+        {
+            return sourceLayerObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageRepeatLayerCreateRefCount(int repeatLayerObjectId)
+        {
+            return repeatLayerObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageRepeatLayerLocalReleaseCount(int repeatLayerObjectId)
+        {
+            return repeatLayerObjectId > 0 ? 1 : 0;
+        }
+
+        internal static int ResolveBulletAfterimageRegisterRepeatAnimationLayerAddRefCount(int repeatLayerObjectId)
         {
             return repeatLayerObjectId > 0 ? 1 : 0;
         }
@@ -22645,9 +22975,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int relativeMotionX = SummonDamageRuntimeRules.ResolveBodyContactRelativeMotionX(
                 mob?.MovementInfo?.X ?? 0f,
-                mob?.MovementInfo?.VelocityX ?? 0f,
+                mob?.MovementInfo?.PreviousX ?? mob?.MovementInfo?.X ?? 0f,
                 summon.PositionX,
-                summon.PreviousPositionX);
+                summon.PreviousPositionX,
+                summon.PositionY,
+                summon.PreviousPositionY);
             summon.LastBodyContactRelativeMotionX = relativeMotionX;
             summon.LastBodyContactHitFacingRight = SummonDamageRuntimeRules.ResolveBodyContactHitFacingRight(relativeMotionX);
         }
@@ -26349,7 +26681,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (worldHitbox.Width <= 0
                 || worldHitbox.Height <= 0
                 || skillId <= 0
-                || !ShouldDispatchLocalAttackAreaResolution(ownerLane, resolvedOwnerCount))
+                || !ShouldDispatchLocalAttackAreaResolution(skillId, ownerLane, resolvedOwnerCount))
             {
                 return;
             }
@@ -26385,11 +26717,23 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         internal static bool ShouldDispatchLocalAttackAreaResolution(
+            int skillId,
             LocalAttackAreaOwnerLane ownerLane,
             int resolvedOwnerCount)
         {
             return ownerLane != LocalAttackAreaOwnerLane.None
-                   && resolvedOwnerCount > 0;
+                   && resolvedOwnerCount > 0
+                   && !IsClientPresentationOnlyMagicLocalAttackAreaBranch(ownerLane, skillId);
+        }
+
+        private static bool IsClientPresentationOnlyMagicLocalAttackAreaBranch(
+            LocalAttackAreaOwnerLane ownerLane,
+            int skillId)
+        {
+            return ownerLane == LocalAttackAreaOwnerLane.TryDoingMagicAttack
+                   && (skillId == 2221001
+                       || skillId == 22161001
+                       || skillId == 22181002);
         }
 
         internal static Rectangle ResolveLocalAttackOwnedAffectedAreaWorldHitbox(
@@ -27747,7 +28091,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AvatarOverlaySecondaryEffect = overlaySecondaryAnimation,
                 AvatarUnderFaceEffect = underFaceAnimation,
                 AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation,
-                HideAvatarEffectOnRotateAction = true
+                HideAvatarEffectOnRotateAction = true,
+                ClientAvatarEffectLayerOwnerName = PlayerCharacter.ClientOwnedFlyingWingAvatarEffectOwnerName
             };
         }
 
@@ -27878,7 +28223,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation,
                 HideAvatarEffectOnLadderOrRope = usesSwallowFallback,
                 HideAvatarEffectOnRotateAction = skill.HideAvatarEffectOnRotateAction
-                                                 || UsesFlightBuffAvatarEffectFallback(skill)
+                                                 || UsesFlightBuffAvatarEffectFallback(skill),
+                ClientAvatarEffectLayerOwnerName = usesSwallowFallback
+                    ? PlayerCharacter.ClientOwnedSwallowingAvatarEffectOwnerName
+                    : null
             };
         }
 
@@ -29917,6 +30265,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(BoosterBuffLabel)
+                    && IsBodyBoostAuraPlaceholderContext(activeTemporaryStatsByLabel))
+                {
+                    labels = new[] { BoosterBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
                     && activeTemporaryStatsByLabel.ContainsKey("Speed"))
                 {
                     labels = new[] { "Speed" };
@@ -30116,6 +30472,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, MaxHpBuffLabel, "PAD", "Speed"))
                 {
                     labels = new[] { "PAD" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(InvincibleBuffLabel)
+                    && IsBodyBoostAuraPlaceholderContext(activeTemporaryStatsByLabel))
+                {
+                    labels = new[] { InvincibleBuffLabel };
                     return true;
                 }
 
@@ -31111,6 +31475,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(label, InvincibleBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, DamageReductionBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, DebuffResistanceBuffLabel, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsBodyBoostAuraPlaceholderContext(
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel)
+        {
+            return activeTemporaryStatsByLabel != null
+                && activeTemporaryStatsByLabel.ContainsKey(AuraBuffLabel)
+                && activeTemporaryStatsByLabel.ContainsKey("Speed")
+                && activeTemporaryStatsByLabel.ContainsKey(BoosterBuffLabel)
+                && activeTemporaryStatsByLabel.ContainsKey("EVA")
+                && activeTemporaryStatsByLabel.ContainsKey(InvincibleBuffLabel);
         }
 
         private static bool IsNoDirectPlaceholderCompetingTemporaryStatPayload(
@@ -37185,4 +37560,3 @@ namespace HaCreator.MapSimulator.Character.Skills
         #endregion
     }
 }
-

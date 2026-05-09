@@ -81,12 +81,18 @@ namespace HaCreator.MapSimulator.Entities
         MobAction Action,
         bool FacingRight,
         int TimeStamp,
-        int MoveAction);
+        int MoveAction)
+    {
+        public int Attribute { get; init; } = -1;
+    }
 
     public readonly record struct MobPacketMovePathTailInfo(
         int PassiveKeyPadStateCount,
         Microsoft.Xna.Framework.Rectangle PathBounds,
-        int ReceiveTime);
+        int ReceiveTime)
+    {
+        public IReadOnlyList<int> PassiveKeyPadStates { get; init; } = Array.Empty<int>();
+    }
 
     /// <summary>
     /// Stores movement state and physics for a mob in the MapSimulator.
@@ -231,6 +237,8 @@ namespace HaCreator.MapSimulator.Entities
         // Position (dynamic, updates during simulation)
         public float X { get; set; }
         public float Y { get; set; }
+        public float PreviousX { get; set; }
+        public float PreviousY { get; set; }
 
         // Spawn position (for respawning and boundary calculations)
         public int SpawnX => _spawnX;
@@ -336,6 +344,8 @@ namespace HaCreator.MapSimulator.Entities
             _yShift = yShift;
             X = x;
             Y = y;
+            PreviousX = x;
+            PreviousY = y;
             SrcY = y;
             _isFlyingMob = isFlyingMob;
             _isJumpingMob = isJumpingMob;
@@ -710,7 +720,10 @@ namespace HaCreator.MapSimulator.Entities
                     source.Action,
                     source.FacingRight,
                     candidateTime,
-                    source.MoveAction));
+                    source.MoveAction)
+                {
+                    Attribute = source.Attribute
+                });
                 cursorTime = candidateTime;
             }
 
@@ -753,9 +766,13 @@ namespace HaCreator.MapSimulator.Entities
                     t < 1f ? sample.Action : next.Action,
                     t < 1f ? sample.FacingRight : next.FacingRight,
                     sampleTime,
-                    t < 1f ? sample.MoveAction : next.MoveAction);
+                    t < 1f ? sample.MoveAction : next.MoveAction)
+                {
+                    Attribute = t < 1f ? sample.Attribute : next.Attribute
+                };
             }
 
+            CapturePreviousPosition();
             ApplyPacketMovePathSample(sample, sampleTime);
             return true;
         }
@@ -763,12 +780,16 @@ namespace HaCreator.MapSimulator.Entities
         internal void ApplyPacketMovePathTailInfo(
             int passiveKeyPadStateCount,
             Microsoft.Xna.Framework.Rectangle pathBounds,
-            int receiveTime)
+            int receiveTime,
+            IReadOnlyList<int> passiveKeyPadStates = null)
         {
             LastPacketMovePathTailInfo = new MobPacketMovePathTailInfo(
                 Math.Max(0, passiveKeyPadStateCount),
                 pathBounds,
-                Math.Max(0, receiveTime));
+                Math.Max(0, receiveTime))
+            {
+                PassiveKeyPadStates = passiveKeyPadStates ?? Array.Empty<int>()
+            };
         }
 
         public void ApplyPacketMoveInterrupt(
@@ -880,7 +901,10 @@ namespace HaCreator.MapSimulator.Entities
                 CurrentAction,
                 FlipX,
                 rebaseTime,
-                moveAction);
+                moveAction)
+            {
+                Attribute = -1
+            };
 
             _packetMovePathBuffer.Clear();
             _packetMovePathBuffer.Add(rebasedElement);
@@ -922,6 +946,12 @@ namespace HaCreator.MapSimulator.Entities
         private static float Lerp(float start, float end, float t)
         {
             return start + ((end - start) * t);
+        }
+
+        private void CapturePreviousPosition()
+        {
+            PreviousX = X;
+            PreviousY = Y;
         }
 
         private void ApplyPacketOwnedMoveState(int moveAction)
@@ -1093,6 +1123,8 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="deltaTimeMs">Time elapsed since last update in milliseconds</param>
         public void UpdateMovement(int deltaTimeMs)
         {
+            CapturePreviousPosition();
+
             // Update knockback recovery timer
             if (_knockbackRecoveryTime > 0)
             {

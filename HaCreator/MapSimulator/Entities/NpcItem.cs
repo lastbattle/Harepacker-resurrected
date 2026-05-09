@@ -1,8 +1,11 @@
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Physics;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -48,6 +51,15 @@ namespace HaCreator.MapSimulator.Entities
         private int _lastChatBalloonClearTick = -1;
         private string _imitatedName;
         private byte[] _imitatedAvatarLookPayload = Array.Empty<byte>();
+        private CharacterBuild _imitatedBuild;
+        private CharacterAssembler _imitatedAssembler;
+        private Func<MapleTvVisualAssets> _mapleTvVisualAssetsProvider;
+        private Func<MapleTvSnapshot> _mapleTvSnapshotProvider;
+        private SpriteFont _mapleTvFont;
+        private int _mapleTvMessageX;
+        private int _mapleTvMessageY;
+        private int _mapleTvAdX;
+        private int _mapleTvAdY;
 
         // Movement system
         public NpcMovementInfo MovementInfo { get; private set; }
@@ -67,8 +79,13 @@ namespace HaCreator.MapSimulator.Entities
         public int LastChatBalloonClearTick => _lastChatBalloonClearTick;
         public string ImitatedName => _imitatedName;
         public IReadOnlyList<byte> ImitatedAvatarLookPayload => _imitatedAvatarLookPayload;
+        internal CharacterBuild ImitatedBuild => _imitatedBuild;
         public bool HasImitatedLook => !string.IsNullOrWhiteSpace(_imitatedName) || _imitatedAvatarLookPayload.Length > 0;
         public bool HasMapleTvPresentation { get; private set; }
+        public int MapleTvMessageX => _mapleTvMessageX;
+        public int MapleTvMessageY => _mapleTvMessageY;
+        public int MapleTvAdX => _mapleTvAdX;
+        public int MapleTvAdY => _mapleTvAdY;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -334,15 +351,32 @@ namespace HaCreator.MapSimulator.Entities
             return true;
         }
 
-        public void ApplyImitatedLook(string name, byte[] avatarLookPayload)
+        public void ApplyImitatedLook(string name, byte[] avatarLookPayload, CharacterBuild avatarBuild = null)
         {
             _imitatedName = string.IsNullOrWhiteSpace(name) ? null : name;
             _imitatedAvatarLookPayload = avatarLookPayload?.ToArray() ?? Array.Empty<byte>();
+            _imitatedBuild = avatarBuild;
+            _imitatedAssembler = avatarBuild != null ? new CharacterAssembler(avatarBuild) : null;
+            ResetPacketActionLayer();
         }
 
-        public void MarkMapleTvPresentationAvailable(bool available)
+        public void MarkMapleTvPresentationAvailable(bool available, int messageX = 0, int messageY = 0, int adX = 0, int adY = 0)
         {
             HasMapleTvPresentation = available;
+            _mapleTvMessageX = messageX;
+            _mapleTvMessageY = messageY;
+            _mapleTvAdX = adX;
+            _mapleTvAdY = adY;
+        }
+
+        internal void ConfigureMapleTvPresentation(
+            Func<MapleTvVisualAssets> visualAssetsProvider,
+            Func<MapleTvSnapshot> snapshotProvider,
+            SpriteFont font)
+        {
+            _mapleTvVisualAssetsProvider = visualAssetsProvider;
+            _mapleTvSnapshotProvider = snapshotProvider;
+            _mapleTvFont = font;
         }
 
         public void ReplaceNameTooltip(NameTooltipItem tooltip)
@@ -556,7 +590,14 @@ namespace HaCreator.MapSimulator.Entities
             // Get current frame from animation
             IDXObject drawFrame = GetCurrentAnimationFrame(TickCount);
 
-            if (drawFrame != null)
+            AssembledFrame imitatedFrame = _imitatedAssembler?.GetFrameAtTime(ResolveImitatedAvatarAction(), TickCount);
+            if (imitatedFrame != null)
+            {
+                int screenX = CurrentX - mapShiftX + centerX;
+                int screenY = CurrentY - mapShiftY + centerY;
+                imitatedFrame.Draw(sprite, skeletonMeshRenderer, screenX, screenY, flip, Color.White);
+            }
+            else if (drawFrame != null)
             {
                 int shiftCenteredX = adjustedMapShiftX - centerX;
                 int shiftCenteredY = adjustedMapShiftY - centerY;
@@ -570,6 +611,17 @@ namespace HaCreator.MapSimulator.Entities
                         drawReflectionInfo);
                 }
             }
+
+            DrawMapleTvMessageLayer(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                drawReflectionInfo,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                TickCount);
 
             // Draw name tooltip
             if (PacketEnabled && _nameTooltip != null)
@@ -652,6 +704,132 @@ namespace HaCreator.MapSimulator.Entities
         {
             MovementInfo?.ApplyPacketMoveAction(moveAction);
             flip = (moveAction & 1) != 0;
+        }
+
+        private string ResolveImitatedAvatarAction()
+        {
+            return MovementInfo?.IsMoving == true
+                ? "walk1"
+                : "stand1";
+        }
+
+        private void DrawMapleTvMessageLayer(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int tickCount)
+        {
+            if (!HasMapleTvPresentation || _mapleTvVisualAssetsProvider == null || _mapleTvFont == null)
+            {
+                return;
+            }
+
+            MapleTvVisualAssets visualAssets = _mapleTvVisualAssetsProvider();
+            if (visualAssets == null)
+            {
+                return;
+            }
+
+            MapleTvSnapshot snapshot = _mapleTvSnapshotProvider?.Invoke();
+            if (snapshot?.IsShowingMessage != true)
+            {
+                return;
+            }
+
+            IReadOnlyList<MapleTvAnimationFrame> chatFrames = visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex);
+            MapleTvAnimationFrame chatFrame = SelectMapleTvFrame(chatFrames, tickCount);
+            if (chatFrame == null)
+            {
+                return;
+            }
+
+            int originX = CurrentX + _mapleTvMessageX - mapShiftX + centerX;
+            int originY = CurrentY + _mapleTvMessageY - mapShiftY + centerY;
+            chatFrame.Drawable?.DrawBackground(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                originX + chatFrame.Offset.X,
+                originY + chatFrame.Offset.Y,
+                Color.White,
+                false,
+                drawReflectionInfo);
+
+            Rectangle textBounds = MapleTvMediaIndexResolver.ResolveChatBounds(
+                snapshot.ResolvedMediaIndex,
+                visualAssets.DefaultMediaIndex,
+                visualAssets.AvailableMediaIndices);
+            Point chatTopLeft = new(originX + chatFrame.Offset.X, originY + chatFrame.Offset.Y);
+            int drawY = chatTopLeft.Y + textBounds.Y;
+            foreach (string line in (snapshot.DisplayLines ?? Array.Empty<string>()).Take(4))
+            {
+                string visibleLine = TruncateMapleTvLine(line, ResolveMapleTvMaxChars(textBounds.Width, 0.36f));
+                if (!string.IsNullOrWhiteSpace(visibleLine))
+                {
+                    ClientTextDrawing.DrawShadowed(
+                        sprite,
+                        visibleLine,
+                        new Vector2(chatTopLeft.X + textBounds.X, drawY),
+                        Color.White,
+                        _mapleTvFont,
+                        0.36f);
+                }
+
+                drawY += 14;
+            }
+        }
+
+        private static MapleTvAnimationFrame SelectMapleTvFrame(IReadOnlyList<MapleTvAnimationFrame> frames, int tickCount)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return null;
+            }
+
+            int cycleDuration = frames.Sum(frame => Math.Max(1, frame.DelayMs));
+            if (cycleDuration <= 0)
+            {
+                return frames[0];
+            }
+
+            int animationTime = Math.Abs(tickCount % cycleDuration);
+            int elapsed = 0;
+            foreach (MapleTvAnimationFrame frame in frames)
+            {
+                elapsed += Math.Max(1, frame.DelayMs);
+                if (animationTime < elapsed)
+                {
+                    return frame;
+                }
+            }
+
+            return frames[^1];
+        }
+
+        private int ResolveMapleTvMaxChars(int width, float scale)
+        {
+            if (_mapleTvFont == null || width <= 0)
+            {
+                return 24;
+            }
+
+            float glyphWidth = Math.Max(1f, ClientTextDrawing.Measure((GraphicsDevice)null, "W", scale, _mapleTvFont).X);
+            return Math.Max(8, (int)(width / glyphWidth));
+        }
+
+        private static string TruncateMapleTvLine(string text, int maxChars)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxChars)
+            {
+                return text ?? string.Empty;
+            }
+
+            return $"{text.Substring(0, Math.Max(0, maxChars - 3))}...";
         }
 
         /// <summary>

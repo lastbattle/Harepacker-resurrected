@@ -72,7 +72,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClockRealtimeColonBlinkAlpha = 64;
         private const int PacketOwnedClockRealtimeDigitSpacing = 2;
         private const int PacketOwnedClockRealtimeMeridiemPadding = 8;
-        private const int PacketOwnedRewardRouletteMaxNumericSuffix = 31;
+        private const int PacketOwnedRewardRouletteMaxNumericSuffix = 0;
         private const byte PacketOwnedUiClientAlpha = 255;
         private const int PacketOwnedUiClientLoadLayerCanvas = 0;
         private const int PacketOwnedUiClientLoadLayerOption = unchecked((int)0xC00614A4);
@@ -702,15 +702,6 @@ namespace HaCreator.MapSimulator
             ClearPacketOwnedUiAnimations(animationKey);
 
             bool shown = false;
-            PacketOwnedRewardRouletteLayerCandidate[] directFamily = BuildPacketOwnedRewardRouletteDirectAnimationFamily(
-                rewardJobIndex,
-                rewardPartIndex,
-                rewardLevelIndex);
-            if (TryEnqueuePacketOwnedRewardRouletteAnimationFamily(directFamily, animationKey))
-            {
-                shown = true;
-            }
-
             foreach (string suffix in EnumeratePacketOwnedRewardRouletteSuffixes())
             {
                 bool resolvedSuffix = false;
@@ -2532,11 +2523,6 @@ namespace HaCreator.MapSimulator
         {
             foreach (string layerPath in PacketOwnedRewardRouletteLayerPaths)
             {
-                yield return layerPath;
-            }
-
-            foreach (string layerPath in PacketOwnedRewardRouletteLayerPaths)
-            {
                 yield return $"{layerPath}/0";
             }
         }
@@ -2561,16 +2547,6 @@ namespace HaCreator.MapSimulator
                 }
 
                 yield return $"{layerPath}/{requestedIndex.ToString(CultureInfo.InvariantCulture)}";
-            }
-
-            foreach ((string layerPath, int requestedIndex) in layerRequests)
-            {
-                if (string.IsNullOrWhiteSpace(layerPath) || requestedIndex == 0)
-                {
-                    continue;
-                }
-
-                yield return $"{layerPath}/0";
             }
         }
 
@@ -2680,7 +2656,7 @@ namespace HaCreator.MapSimulator
 
         private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteSuffixes()
         {
-            yield return "Default";
+            yield return string.Empty;
             for (int suffix = 0; suffix <= PacketOwnedRewardRouletteMaxNumericSuffix; suffix++)
             {
                 yield return suffix.ToString(CultureInfo.InvariantCulture);
@@ -2692,7 +2668,7 @@ namespace HaCreator.MapSimulator
             maxNumericSuffix = Math.Max(0, maxNumericSuffix);
             List<string> suffixes = new(maxNumericSuffix + 2)
             {
-                "Default"
+                string.Empty
             };
 
             for (int suffix = 0; suffix <= maxNumericSuffix; suffix++)

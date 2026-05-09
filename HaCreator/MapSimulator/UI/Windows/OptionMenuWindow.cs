@@ -308,6 +308,7 @@ namespace HaCreator.MapSimulator.UI
         private string _launchSource = string.Empty;
         private Func<PlayerInput> _joypadBindingSource;
         private readonly Dictionary<OptionRow, bool> _stagedOptionValues = new();
+        private Action<IReadOnlyDictionary<int, bool>> _clientOptionCommitHandler;
         private JoypadSessionSnapshot _originalJoypadSession;
         private JoypadSessionSnapshot _stagedJoypadSession;
         private int _selectedOptionRowIndex = -1;
@@ -451,6 +452,38 @@ namespace HaCreator.MapSimulator.UI
         public void SetCommittedClientOptionValue(int configId, bool value)
         {
             _committedClientOptionValues[configId] = value;
+        }
+
+        public void SetClientOptionCommitHandler(Action<IReadOnlyDictionary<int, bool>> clientOptionCommitHandler)
+        {
+            _clientOptionCommitHandler = clientOptionCommitHandler;
+        }
+
+        internal void BeginOptionSessionForTests()
+        {
+            BeginSession();
+        }
+
+        internal void StageClientOptionValueForTests(OptionMenuMode mode, int configId, bool value)
+        {
+            if (!_rows.TryGetValue(mode, out List<OptionRow> rows) || rows == null)
+            {
+                return;
+            }
+
+            foreach (OptionRow row in rows)
+            {
+                if (row?.ConfigId == configId)
+                {
+                    _stagedOptionValues[row] = value;
+                    return;
+                }
+            }
+        }
+
+        internal void CommitOptionSessionForTests()
+        {
+            CommitAndHide(force: true);
         }
 
         public void ApplyCommittedClientOptionValues(IReadOnlyDictionary<uint, int> clientOptions)
@@ -1709,22 +1742,25 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            foreach (KeyValuePair<OptionMenuMode, List<OptionRow>> group in _rows)
+            Dictionary<int, bool> committedClientOptions = new();
+            foreach (OptionRow row in GetOptionRowsToCommit())
             {
-                if (group.Value == null)
+                if (row?.SetValue == null)
                 {
                     continue;
                 }
 
-                foreach (OptionRow row in group.Value)
+                bool value = GetOptionValue(row);
+                row.SetValue(value);
+                if (row.ConfigId.HasValue)
                 {
-                    if (row?.SetValue == null)
-                    {
-                        continue;
-                    }
-
-                    row.SetValue(GetOptionValue(row));
+                    committedClientOptions[row.ConfigId.Value] = value;
                 }
+            }
+
+            if (committedClientOptions.Count > 0)
+            {
+                _clientOptionCommitHandler?.Invoke(committedClientOptions);
             }
 
             ApplyJoypadSession(_stagedJoypadSession);
@@ -1733,6 +1769,13 @@ namespace HaCreator.MapSimulator.UI
             _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
             ResetJoypadCaptureState(_stagedJoypadSession);
             Hide();
+        }
+
+        private IReadOnlyList<OptionRow> GetOptionRowsToCommit()
+        {
+            return _mode == OptionMenuMode.Joypad
+                ? Array.Empty<OptionRow>()
+                : GetActiveOptionRows();
         }
 
         private static bool TryValidateClientJoypadCombos(JoypadSessionSnapshot session, out string validationMessage)

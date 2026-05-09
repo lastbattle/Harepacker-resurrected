@@ -1172,10 +1172,6 @@ namespace HaCreator.MapSimulator.Fields
                     {
                         MarkBoardLayerDirty();
                     }
-                    if (remainingMs <= 0)
-                    {
-                        BeginFinalScoreWait(tickCount);
-                    }
                 }
             }
             foreach (var coconut in _coconuts)

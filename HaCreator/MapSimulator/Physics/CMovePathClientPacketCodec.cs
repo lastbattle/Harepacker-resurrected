@@ -697,6 +697,11 @@ namespace HaCreator.MapSimulator.Physics
 
             for (int i = 0; i < path.Count; i++)
             {
+                if (!ShouldUpdateClientMoveRectFromEncodedElement(path[i]))
+                {
+                    continue;
+                }
+
                 short x = ClampToShort(path[i].X);
                 short y = ClampToShort(path[i].Y);
                 left = (short)Math.Min(left, x);
@@ -709,6 +714,11 @@ namespace HaCreator.MapSimulator.Physics
             writer.Write(top);
             writer.Write(right);
             writer.Write(bottom);
+        }
+
+        private static bool ShouldUpdateClientMoveRectFromEncodedElement(MovePathElement element)
+        {
+            return element.MovePathAttribute != 9;
         }
 
         private static short ClampToShort(int value)

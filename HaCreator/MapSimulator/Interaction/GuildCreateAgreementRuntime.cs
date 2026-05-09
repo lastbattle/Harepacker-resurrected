@@ -86,8 +86,9 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
-        internal string Decline()
+        internal string Decline(out GuildCreateAgreementAcceptance acceptance)
         {
+            acceptance = default;
             if (!_isOpen)
             {
                 return _timedOut
@@ -96,6 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _isOpen = false;
+            acceptance = new GuildCreateAgreementAcceptance(_masterName, _guildName, DateTimeOffset.UtcNow, Accepted: false);
             _statusMessage = $"Declined guild creation agreement for {_masterName} and {_guildName}.";
             NotifySocialChatObserved(_statusMessage);
             return _statusMessage;

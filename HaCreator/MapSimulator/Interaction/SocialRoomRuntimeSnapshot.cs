@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int LocalSeatIndex { get; set; }
         public int PersonalShopTotalSoldGross { get; set; }
         public int PersonalShopTotalReceivedNet { get; set; }
+        public bool InventoryBackedRows { get; set; }
         public string EntrustedShopTitleExtension { get; set; }
         public int MiniRoomModeIndex { get; set; }
         public int MiniRoomWagerAmount { get; set; }
@@ -177,6 +178,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string ItemName { get; set; }
         public int ItemId { get; set; }
         public int Quantity { get; set; }
+        public int BundleSetCount { get; set; }
         public int MesoAmount { get; set; }
         public string Detail { get; set; }
         public bool IsLocked { get; set; }

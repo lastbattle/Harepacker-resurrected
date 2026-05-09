@@ -1048,7 +1048,8 @@ namespace HaCreator.MapSimulator
             int MoveHeight,
             int MovePeriodMs,
             bool CenterStart,
-            int Rotate)
+            int Rotate,
+            bool EllipticalClockwise = true)
         {
             public const int DefaultMoveWidth = 100;
             public const int DefaultMoveHeight = 100;
@@ -1089,10 +1090,13 @@ namespace HaCreator.MapSimulator
                     moveType,
                     moveWidth,
                     moveHeight,
-                    Math.Max(1, movePeriod),
+                    Math.Max(1, Math.Abs(movePeriod)),
                     centerStart,
-                    rotate);
+                    rotate,
+                    movePeriod >= 0);
             }
+
+            public bool UsesEllipticalMove => MoveType == 3;
 
             public bool TryResolveMoveVector(out int targetOffsetX, out int targetOffsetY, out int durationMs)
             {
@@ -1149,7 +1153,8 @@ namespace HaCreator.MapSimulator
 
                 if (MovePeriodMs != DefaultMovePeriodMs)
                 {
-                    parts.Add($"moveP={MovePeriodMs.ToString(CultureInfo.InvariantCulture)}");
+                    int debugMovePeriod = EllipticalClockwise ? MovePeriodMs : -MovePeriodMs;
+                    parts.Add($"moveP={debugMovePeriod.ToString(CultureInfo.InvariantCulture)}");
                 }
 
                 if (CenterStart)

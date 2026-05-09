@@ -1061,7 +1061,11 @@ namespace HaCreator.MapSimulator.Character
                     existingEntry.Value == value &&
                     existingEntry.TickIntervalMs == tickIntervalMs &&
                     existingEntry.AppliedCount == clampedCount &&
-                    Nullable.Equals(existingEntry.PeriodicDamageArea, periodicDamageArea);
+                    Nullable.Equals(existingEntry.PeriodicDamageArea, periodicDamageArea) &&
+                    existingEntry.SourceSkillId == sourceSkillId &&
+                    existingEntry.SourceSkillLevel == sourceSkillLevel &&
+                    existingEntry.SourceOwnerId == sourceOwnerId &&
+                    existingEntry.SourceAreaObjectId == sourceAreaObjectId;
                 int refreshLeadTimeMs = ResolveStatusRefreshLeadTimeMs(durationMs, recastLeadTimeMs);
                 if (sameRuntimeState
                     && !ShouldAllowNoOpStatusRefreshRecast(

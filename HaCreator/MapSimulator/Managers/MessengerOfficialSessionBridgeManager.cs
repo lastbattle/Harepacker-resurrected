@@ -194,7 +194,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} type={entry.RequestType} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} {FormatOutboundTraceType(entry)} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -217,7 +217,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} type={entry.ResultType} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"opcode={entry.Opcode} {FormatInboundTraceType(entry)} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -307,6 +307,57 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return $"observed={_observedInboundOpcodes.Count}; matched={_expectedResultMatchCount}; pending={_pendingResultExpectations.Count}; unknown={_unknownInboundBranchCount}";
             }
+        }
+
+        private string FormatOutboundTraceType(OutboundPacketTrace entry)
+        {
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase)
+                && entry.Opcode == PacketOwnedSocialUtilityPacketTable.MapleTvOutboundConsumeCashItemOpcode)
+            {
+                return "request=CUserLocal::ConsumeCashItem";
+            }
+
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
+                && entry.Opcode == PacketOwnedSocialUtilityPacketTable.MessengerOutboundOpcode)
+            {
+                return $"requestSubtype={entry.RequestType}";
+            }
+
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
+                && entry.Opcode == PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode)
+            {
+                return "request=CWvsContext::SendClaimRequest";
+            }
+
+            return $"requestType={entry.RequestType}";
+        }
+
+        private string FormatInboundTraceType(InboundPacketTrace entry)
+        {
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                return entry.Opcode switch
+                {
+                    PacketOwnedSocialUtilityPacketTable.MapleTvInboundSetMessageOpcode => "branch=OnSetMessage(405)",
+                    PacketOwnedSocialUtilityPacketTable.MapleTvInboundClearMessageOpcode => "branch=OnClearMessage(406)",
+                    PacketOwnedSocialUtilityPacketTable.MapleTvInboundSendResultOpcode => $"resultCode={entry.ResultType}",
+                    _ => $"resultType={entry.ResultType}"
+                };
+            }
+
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
+                && entry.Opcode == PacketOwnedSocialUtilityPacketTable.MessengerInboundOpcode)
+            {
+                return $"subtype={entry.ResultType}";
+            }
+
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase)
+                && entry.Opcode == PacketOwnedSocialUtilityPacketTable.MessengerClaimResultOpcode)
+            {
+                return $"claimResultCode={entry.ResultType}";
+            }
+
+            return $"resultType={entry.ResultType}";
         }
 
         public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)

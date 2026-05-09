@@ -1052,14 +1052,32 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            return rawActionCode < ClientMorphActionTableExclusiveUpperBound
-                   || IsClientConfirmedPostTableRawMorphActionName(actionName);
+            if (rawActionCode < ClientMorphActionTableExclusiveUpperBound)
+            {
+                return true;
+            }
+
+            // `ride2` is the first action after the client-seeded morph table and
+            // remains rejected as a raw morph request even though the WZ action-name
+            // alias can still resolve through the ordinary resolver surface.
+            return rawActionCode != ClientMorphActionTableExclusiveUpperBound
+                   && IsClientConfirmedPostTableRawMorphActionName(actionName);
         }
 
         private static bool IsClientConfirmedPostTableRawMorphActionName(string actionName)
         {
-            return !string.IsNullOrWhiteSpace(actionName)
-                   && ClientConfirmedPostTableRawMorphActionNames.Contains(actionName.Trim());
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            string normalizedActionName = actionName.Trim();
+            return ClientConfirmedPostTableRawMorphActionNames.Contains(normalizedActionName)
+                   || HasClientPublishedAuthoredMorphFallbackAliases(normalizedActionName)
+                   || ClientPublishedGenericMorphFallbackAliases.ContainsKey(normalizedActionName)
+                   || ClientPublishedJumpMorphFallbackAliases.ContainsKey(normalizedActionName)
+                   || ClientPublishedMovementMorphFallbackAliases.ContainsKey(normalizedActionName)
+                   || ClientPublishedPostureMorphFallbackAliases.ContainsKey(normalizedActionName);
         }
 
         private static IEnumerable<string> EnumerateClientPublishedPostureAliases(CharacterPart morphPart, string actionName)

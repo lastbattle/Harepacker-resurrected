@@ -626,6 +626,7 @@ namespace HaCreator.MapSimulator.Interaction
                 selection with { ComboIndex = ResolveGuildMarkComboIndex(selection.Mark) },
                 DefaultGuildMarkCostMesos,
                 DateTimeOffset.UtcNow,
+                true,
                 _packetGuildUiRevision,
                 _packetGuildMarkRevision,
                 _packetGuildPointsAndLevelRevision,
@@ -732,7 +733,7 @@ namespace HaCreator.MapSimulator.Interaction
                     request.GuildName,
                     null,
                     _clientPartyId,
-                    true),
+                    request.Accepted),
                 GuildDialogPendingRequestKind.SetMark when request.MarkSelection.HasValue => new SocialListGuildDialogRequestPacket(
                     SocialListGuildDialogRequestKind.SetMark,
                     request.GuildName,
@@ -770,6 +771,24 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Client guild-result synchronization finalized {request.RequestLabel.ToLowerInvariant()} for {request.GuildName} and consumed {request.RequiredMesos} mesos.";
         }
 
+        private string TryRejectPendingGuildDialogRequestFromClientResult(byte rawSubtype, string noticeSummary)
+        {
+            if (!_pendingGuildDialogRequest.HasValue)
+            {
+                return null;
+            }
+
+            GuildDialogPendingRequest request = _pendingGuildDialogRequest.Value;
+            _pendingGuildDialogRequest = null;
+            _lastPendingRequestByTab[SocialListTab.Guild] = null;
+            string resolvedNotice = string.IsNullOrWhiteSpace(noticeSummary)
+                ? $"Client OnGuildResult({rawSubtype}) returned a notice branch."
+                : noticeSummary.Trim();
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                $"{resolvedNotice} Pending {request.RequestLabel.ToLowerInvariant()} for {request.GuildName} was rejected; meso balance remains {_guildDialogMesoBalance}.";
+            return _lastPacketSyncSummaryByTab[SocialListTab.Guild];
+        }
+
         private enum GuildDialogPendingRequestKind
         {
             CreateGuild,
@@ -785,6 +804,7 @@ namespace HaCreator.MapSimulator.Interaction
             GuildMarkSelection? MarkSelection,
             int RequiredMesos,
             DateTimeOffset RequestedAtUtc,
+            bool Accepted,
             int GuildUiRevisionAtSubmit,
             int GuildMarkRevisionAtSubmit,
             int GuildPointsAndLevelRevisionAtSubmit,

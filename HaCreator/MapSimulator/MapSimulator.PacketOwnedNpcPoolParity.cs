@@ -1,9 +1,11 @@
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
@@ -253,7 +255,8 @@ namespace HaCreator.MapSimulator
                         continue;
                     }
 
-                    npc.ApplyImitatedLook(entry.Name, entry.AvatarLookPayload?.ToArray());
+                    CharacterBuild imitatedBuild = TryBuildPacketNpcImitatedAvatar(entry.Name, entry.AvatarLookPayload, out _);
+                    npc.ApplyImitatedLook(entry.Name, entry.AvatarLookPayload?.ToArray(), imitatedBuild);
                     if (!string.IsNullOrWhiteSpace(entry.Name) && _texturePool != null && GraphicsDevice != null)
                     {
                         npc.ReplaceNameTooltip(MapSimulatorLoader.CreateNPCMobNameTooltip(
@@ -326,7 +329,52 @@ namespace HaCreator.MapSimulator
                 packet.Rx1,
                 packet.Enabled && !_packetOwnedNpcPoolRuntime.DisabledTemplateIds.Contains(packet.TemplateId),
                 localController);
+            ConfigurePacketNpcPresentation(npc);
             return npc;
+        }
+
+        private CharacterBuild TryBuildPacketNpcImitatedAvatar(string name, IReadOnlyList<byte> avatarLookPayload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (avatarLookPayload == null || avatarLookPayload.Count == 0)
+            {
+                return null;
+            }
+
+            if (_playerManager?.Loader == null)
+            {
+                errorMessage = "Character loader is not available for NPC imitate AvatarLook decoding.";
+                return null;
+            }
+
+            byte[] payload = avatarLookPayload as byte[] ?? avatarLookPayload.ToArray();
+            if (!LoginAvatarLookCodec.TryDecode(payload, out LoginAvatarLook avatarLook, out string decodeError))
+            {
+                errorMessage = decodeError ?? "NPC imitate AvatarLook payload could not be decoded.";
+                return null;
+            }
+
+            CharacterBuild template = _playerManager?.Player?.Build?.Clone();
+            CharacterBuild build = _playerManager.Loader.LoadFromAvatarLook(avatarLook, template);
+            if (build != null && !string.IsNullOrWhiteSpace(name))
+            {
+                build.Name = name.Trim();
+            }
+
+            return build;
+        }
+
+        private void ConfigurePacketNpcPresentation(NpcItem npc)
+        {
+            if (npc == null)
+            {
+                return;
+            }
+
+            npc.ConfigureMapleTvPresentation(
+                () => (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapleTv) as MapleTvWindow)?.VisualAssets,
+                () => _mapleTvRuntime.BuildSnapshot(currTickCount),
+                _fontChat);
         }
 
         private NpcItem FindPacketNpc(int objectId)

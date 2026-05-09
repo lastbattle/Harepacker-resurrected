@@ -2381,6 +2381,56 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
                         }
 
+                        if (string.Equals(args[1], "auth", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length == 2 || string.Equals(args[2], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(DescribeLoginOfficialSessionBridgeStatus());
+                            }
+
+                            if (string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _loginOfficialSessionCheckPasswordNexonPassport = null;
+                                _loginOfficialSessionCheckPasswordMachineId = Array.Empty<byte>();
+                                _loginOfficialSessionCheckPasswordGameRoomClient = 0;
+                                _loginOfficialSessionCheckPasswordGameStartMode = 0;
+                                _loginOfficialSessionCheckPasswordPartnerCode = 0;
+                                return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
+                            }
+
+                            string machineIdError = null;
+                            if (args.Length < 4 ||
+                                !LoginOfficialSessionBridgeManager.TryParseClientMachineId(args[3], out byte[] parsedMachineId, out machineIdError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(machineIdError ?? "Usage: /loginpacket session auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode]");
+                            }
+
+                            int gameRoomClient = 0;
+                            if (args.Length >= 5 && !int.TryParse(args[4], out gameRoomClient))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode]");
+                            }
+
+                            byte gameStartMode = 0;
+                            if (args.Length >= 6 && (!byte.TryParse(args[5], out gameStartMode)))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode]");
+                            }
+
+                            int partnerCode = 0;
+                            if (args.Length >= 7 && !int.TryParse(args[6], out partnerCode))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode]");
+                            }
+
+                            _loginOfficialSessionCheckPasswordNexonPassport = args[2];
+                            _loginOfficialSessionCheckPasswordMachineId = parsedMachineId;
+                            _loginOfficialSessionCheckPasswordGameRoomClient = gameRoomClient;
+                            _loginOfficialSessionCheckPasswordGameStartMode = gameStartMode;
+                            _loginOfficialSessionCheckPasswordPartnerCode = partnerCode;
+                            return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
+                        }
+
                         if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
@@ -2489,7 +2539,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session [status|map <opcode> <packet>|unmap <opcode>|clearmap|recent|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session [status|map <opcode> <packet>|unmap <opcode>|clearmap|auth <passport> <machineIdHex> [gameRoomClient] [gameStartMode] [partnerCode]|auth clear|recent|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
                     }
 
 
@@ -3013,7 +3063,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "engage",
                 "Inspect or drive the dedicated engagement proposal dialog seam",
-                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
+                "/engage [request <partnerName> [ringItemId]|request <proposerName> <partnerName> [ringItemId]|open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
                 args =>
                 {
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -3024,6 +3074,27 @@ namespace HaCreator.MapSimulator
                     }
                     switch (args[0].ToLowerInvariant())
                     {
+                        case "request":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage request <partnerName> [ringItemId] or /engage request <proposerName> <partnerName> [ringItemId]");
+                            }
+
+                            string localRequestOwner = _playerManager?.Player?.Build?.Name;
+                            bool hasExplicitRequestProposer = args.Length >= 3
+                                && !TryParseOptionalPositiveInt(args, 2, out _);
+                            string requestProposerName = hasExplicitRequestProposer ? args[1] : localRequestOwner;
+                            string requestPartnerName = hasExplicitRequestProposer ? args[2] : args[1];
+                            int requestRingItemArgumentIndex = hasExplicitRequestProposer ? 3 : 2;
+
+                            return ShowEngagementProposalRequestInputDialog(
+                                requestProposerName,
+                                requestPartnerName,
+                                TryParseOptionalPositiveInt(args, requestRingItemArgumentIndex, out int requestRingItemId) ? requestRingItemId : EngagementProposalRuntime.DefaultRingItemId,
+                                EngagementProposalRuntime.ShouldEnforceLocalRequesterChecks(
+                                    requestProposerName,
+                                    localRequestOwner));
+
                         case "open":
                             if (args.Length < 2)
                             {
@@ -3290,7 +3361,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok($"{clearMessage} {invitationClearMessage}");
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [open] [neat|sweet|premium] [1|2]|invitation <status|accept|dismiss>|wishlist [receive|give|input] [groom|bride]|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [request <partnerName> [ringItemId]|request <proposerName> <partnerName> [ringItemId]|open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [open] [neat|sweet|premium] [1|2]|invitation <status|accept|dismiss>|wishlist [receive|give|input] [groom|bride]|clear|status]");
                     }
                 });
 
@@ -10193,7 +10264,7 @@ namespace HaCreator.MapSimulator
 
                 "Drive Messenger state, invite, claim, and remote social lifecycle flows",
 
-                "/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|claimnotice|claimcategory <chat|personal>|claimconfirm|claimcancel|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]]",
+                "/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|claimnotice|claimcategory <chat|personal>|claimconfirm|claimcancel|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|officialclaimresult <resultCode> [success remainingCount]|officialclaimtime <openHour> <closeHour>|officialclaimstatus <connected|disconnected>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -10338,7 +10409,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]]");
+                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|officialclaimresult <resultCode> [success remainingCount]|officialclaimtime <openHour> <closeHour>|officialclaimstatus <connected|disconnected>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|claimauto|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]]");
                     }
 
                 });
@@ -10782,7 +10853,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "npcutility",
                 "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
-                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|attrrate <value>|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
+                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|attrrate <value>|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]",
                 HandlePacketOwnedNpcUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "npcpool",
@@ -11137,7 +11208,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "avatarmegaphone",
                 "Inspect or drive the avatar megaphone sender dialog and presentation owner",
-                "/avatarmegaphone [open|status|sample|sender <name>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]",
+                "/avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]",
                 args =>
                 {
                     _avatarMegaphoneRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -11173,6 +11244,27 @@ namespace HaCreator.MapSimulator
                             }
 
                             return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetSender(string.Join(" ", args.Skip(1))));
+
+                        case "avatar":
+                        case "avatarlook":
+                            if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] avatarLookPayload))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone avatarlook <AvatarLook hex>");
+                            }
+
+                            if (!LoginAvatarLookCodec.TryDecode(avatarLookPayload, out LoginAvatarLook avatarLook, out string avatarLookError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(avatarLookError ?? "AvatarLook payload could not be decoded.");
+                            }
+
+                            if (_playerManager?.Loader == null)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Character loader is not available.");
+                            }
+
+                            CharacterBuild avatarLookTemplate = _playerManager.Player?.Build?.Clone();
+                            CharacterBuild avatarLookBuild = _playerManager.Loader.LoadFromAvatarLook(avatarLook, avatarLookTemplate);
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.SetPacketAvatarLook(avatarLookBuild));
 
                         case "item":
                             if (args.Length < 2 || !int.TryParse(args[1], out int itemId))
@@ -11217,10 +11309,10 @@ namespace HaCreator.MapSimulator
 
                         case "clear":
                         case "bye":
-                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.Clear());
+                            return ChatCommandHandler.CommandResult.Ok(_avatarMegaphoneRuntime.Clear(currTickCount));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone [open|status|sample|sender <name>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /avatarmegaphone [open|status|sample|sender <name>|avatarlook <hex>|item <itemId>|line <1-4> <text>|whisper <on|off>|channel <id>|send|clear]");
                     }
                 });
 

@@ -591,22 +591,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string description = _fieldMessageBoxRuntime.DescribeChalkboardDialog();
+            string prompt = FieldMessageBoxRuntime.ResolveChalkboardComposePromptText();
             ShowLoginUtilityDialog(
-                "Chalkboard",
-                description,
+                string.Empty,
+                prompt,
                 LoginUtilityDialogButtonLayout.YesNo,
                 LoginUtilityDialogAction.FieldMessageBoxChalkboardCompose,
                 primaryLabel: "OK",
                 secondaryLabel: "Cancel",
-                inputPlaceholder: "Enter chalkboard message",
+                inputPlaceholder: prompt,
                 inputMaxLength: short.MaxValue,
                 inputValue: initialText,
                 softKeyboardType: SoftKeyboardKeyboardType.FreeText,
-                inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                frameVariant: LoginUtilityDialogFrameVariant.FieldMessageBoxChalkboardCompose,
+                inputBoundsOverride: CreateFieldMessageBoxChalkboardInputBoundsOverride(),
                 trackDirectionModeOwner: true,
                 primaryButtonEnabled: ShouldEnableFieldMessageBoxChalkboardDialogPrimary(initialText));
-            message = $"{message} Opened the managed chalkboard compose owner through the shared CUtilDlgEx-style input dialog.";
+            message = $"{message} Opened the managed chalkboard compose owner through a WZ UtilDlgEx notice-frame variant using StringPool 0x{FieldMessageBoxRuntime.ComposePromptStringPoolId:X}.";
             return true;
         }
 
@@ -632,6 +633,16 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldEnableFieldMessageBoxChalkboardDialogPrimaryForTesting(string text)
         {
             return ShouldEnableFieldMessageBoxChalkboardDialogPrimary(text);
+        }
+
+        internal static Rectangle CreateFieldMessageBoxChalkboardInputBoundsOverrideForTesting()
+        {
+            return CreateFieldMessageBoxChalkboardInputBoundsOverride();
+        }
+
+        private static Rectangle CreateFieldMessageBoxChalkboardInputBoundsOverride()
+        {
+            return new Rectangle(17, 52, 278, 20);
         }
 
         private bool TrySubmitFieldMessageBoxChalkboardDialog(out string message)

@@ -134,7 +134,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? "connected Maple session"
+                ? $"connected Maple session proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -666,6 +666,20 @@ namespace HaCreator.MapSimulator.Managers
             return state == LiveOwnershipVerificationState.Complete;
         }
 
+        public string ClearLiveOwnershipVerification()
+        {
+            lock (_sync)
+            {
+                _hasObservedLiveInboundGuildBossPacket = false;
+                _hasObservedLiveOutboundOpcode259 = false;
+                _liveInboundGuildBossPacketEvidence = null;
+                _liveOutboundOpcode259Evidence = null;
+                LastStatus =
+                    $"Cleared Guild Boss live ownership verification evidence for the current proxy session; retained {RecentInboundPacketCount} inbound and {RecentOutboundPacketCount} outbound recent trace(s).";
+                return LastStatus;
+            }
+        }
+
         public void Stop()
         {
             lock (_sync)
@@ -717,9 +731,10 @@ namespace HaCreator.MapSimulator.Managers
 
                 SentCount++;
                 RecordOutboundTrace(BuildOutboundTrace(packet, request.Sequence, "official-session:proxy-inject", _roleSessionProxy.CurrentProxySessionId));
+                string proxySessionText = FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId);
                 status = flushed > 0
-                    ? $"Flushed {flushed} queued Guild Boss opcode {OutboundPulleyRequestOpcode} request(s), then injected opcode {OutboundPulleyRequestOpcode} into live session."
-                    : $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session.";
+                    ? $"Flushed {flushed} queued Guild Boss opcode {OutboundPulleyRequestOpcode} request(s), then injected opcode {OutboundPulleyRequestOpcode} into live session proxySession={proxySessionText}."
+                    : $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session proxySession={proxySessionText}.";
                 LastStatus = status;
                 return true;
             }
@@ -836,8 +851,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 int flushed = FlushQueuedPulleyRequestsViaProxy();
                 LastStatus = flushed > 0
-                    ? $"Guild boss official-session bridge initialized Maple crypto and flushed {flushed} queued pulley request(s)."
-                    : _roleSessionProxy.LastStatus;
+                    ? $"Guild boss official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)} and flushed {flushed} queued pulley request(s)."
+                    : $"{_roleSessionProxy.LastStatus} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
                 return;
             }
 
@@ -857,7 +872,7 @@ namespace HaCreator.MapSimulator.Managers
                 $"packetraw {Convert.ToHexString(e.RawPacket)}"));
             ReceivedCount++;
             LastStatus =
-                $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Guild Boss opcode {opcode} from live session {e.SourceEndpoint}.";
+                $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Guild Boss opcode {opcode} from live session {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
         }
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
@@ -871,7 +886,7 @@ namespace HaCreator.MapSimulator.Managers
                 && opcode == OutboundPulleyRequestOpcode)
             {
                 RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, sequence: 0, source: $"official-session:{e.SourceEndpoint}", proxySessionId: e.ProxySessionId));
-                LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {e.SourceEndpoint}.";
+                LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
             }
         }
 
@@ -1112,7 +1127,7 @@ namespace HaCreator.MapSimulator.Managers
                 hasPairedLiveOwnershipEvidence);
             if (state == LiveOwnershipVerificationState.Complete)
             {
-                return $"Live ownership verification complete: proxied opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound were both captured.";
+                return $"Live ownership verification complete: proxied opcode {OutboundPulleyRequestOpcode} outbound and opcode {PacketTypeHealerMove}/{PacketTypePulleyStateChange} inbound were both captured in the same initialized Maple session.";
             }
 
             if (state == LiveOwnershipVerificationState.ReconnectPending)

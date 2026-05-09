@@ -140,7 +140,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishListSearchResult;
         public override bool CapturesKeyboardInput => IsVisible;
 
-        private bool UseOwnerSession => _owner?.HasWishlistSearchResultSession() == true;
+        private bool UseOwnerSession => _owner?.HasWishlistSearchResultDisplaySession() == true;
 
         public void PrepareForShow(AdminShopWishListUI owner, IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results)
         {
@@ -370,9 +370,10 @@ namespace HaCreator.MapSimulator.UI
                     selected ? Color.White : new Color(28, 36, 50));
             }
 
-            string pageLabel = GetResultCount() == 0
+            int displayPageCount = GetPageCount();
+            string pageLabel = displayPageCount == 0
                 ? "0 / 0"
-                : $"{GetPageIndex() + 1} / {GetPageCount()}";
+                : $"{GetPageIndex() + 1} / {displayPageCount}";
             sprite.DrawString(_font, pageLabel, new Vector2(bounds.X + 208, bounds.Y + 26), new Color(255, 233, 160));
 
             AdminShopDialogUI.WishlistSearchResult selectedResult = GetSelectedResult();
@@ -824,7 +825,7 @@ namespace HaCreator.MapSimulator.UI
             _confirmAcceptFocused = true;
             _hoverVisibleRow = -1;
             _statusMessage = _owner.GetStatusMessage();
-            if (_owner.HasWishlistSearchResultSession())
+            if (_owner.HasWishlistSearchResultDisplaySession())
             {
                 _pageIndex = _owner.GetWishlistSearchResultSessionPageIndex();
                 _selectedIndex = -1;

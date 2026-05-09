@@ -61,6 +61,11 @@ namespace HaCreator.MapSimulator.Fields
         bool ShouldClearQueuedRetry,
         PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
 
+    public readonly record struct PassiveTransferFieldFollowCharacterReleaseInputDecision(
+        bool ShouldStopSkillMacro,
+        bool ShouldClearQueuedRetry,
+        PassiveTransferFieldReadinessEvaluator.QueuedRetryLifecycleClearOwner ClearOwner);
+
     public readonly record struct PassiveTransferFieldQueuedReplayDecision(
         bool ShouldStopSkillMacro,
         bool ShouldReplayHandleUpKeyDown,
@@ -568,6 +573,28 @@ namespace HaCreator.MapSimulator.Fields
             return isLocalUser && releaseKeyPressed && hasAttachedDriver
                 ? QueuedRetryLifecycleClearOwner.FollowCharacterReleaseInput
                 : QueuedRetryLifecycleClearOwner.None;
+        }
+
+        public static PassiveTransferFieldFollowCharacterReleaseInputDecision EvaluateFollowCharacterReleaseInput(
+            bool hasPendingRequest,
+            bool isLocalUser,
+            bool releaseKeyPressed,
+            bool hasAttachedDriver)
+        {
+            QueuedRetryLifecycleClearOwner clearOwner =
+                ResolveQueuedRetryLifecycleClearOwnerFromFollowCharacterReleaseInput(
+                    isLocalUser,
+                    releaseKeyPressed,
+                    hasAttachedDriver);
+
+            return new PassiveTransferFieldFollowCharacterReleaseInputDecision(
+                ShouldStopSkillMacro: ShouldStopSkillMacroForHorizontalOnKeyDown(
+                    leftKeyPressed: releaseKeyPressed,
+                    rightKeyPressed: false),
+                ShouldClearQueuedRetry: ShouldClearQueuedRetryFromLifecycleOwner(
+                    hasPendingRequest,
+                    clearOwner),
+                ClearOwner: clearOwner);
         }
 
         public static bool ShouldClearQueuedRetryOnChairGetUp(

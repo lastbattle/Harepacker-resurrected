@@ -676,7 +676,7 @@ namespace HaCreator.MapSimulator.Fields
         }
         private static int ResolveVisibleScoreRowCount(int scoreRowCount)
         {
-            return Math.Clamp(scoreRowCount, 0, Math.Min(MaxRankEntries, ScoreLayerMaxVisibleRows));
+            return Math.Clamp(scoreRowCount, 0, ScoreLayerMaxVisibleRows);
         }
         private static string ResolveRankIconPath(int iconIndex)
         {

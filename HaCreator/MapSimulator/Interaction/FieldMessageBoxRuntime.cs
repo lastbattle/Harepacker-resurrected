@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClientBobInitialPhaseModulo = 0x168;
         private const int MinBoardWidth = 92;
         private const int MaxBodyLineCount = 4;
+        internal const int ComposePromptStringPoolId = 0x1E8;
         private const int CreateFailedStringPoolId = 0x1EA;
         private const int ChalkboardDialogOkButtonId = 1;
         private const int ChalkboardDialogCancelButtonId = 2;
@@ -900,6 +901,7 @@ namespace HaCreator.MapSimulator.Interaction
                 itemId,
                 normalizedText,
                 ResolveItemName(itemId),
+                ResolveChalkboardComposePromptText(),
                 ResolveChalkboardDialogDescription(itemId));
             message = $"Opened chalkboard consume dialog for {_chalkboardDialogState.ItemName} from slot {inventoryPosition}; OK button {ChalkboardDialogOkButtonId} will submit opcode 0x{ConsumeCashItemUseRequestOpcode:X} and Cancel button {ChalkboardDialogCancelButtonId} will close without staging a board.";
             if (!string.IsNullOrEmpty(normalizedText))
@@ -981,7 +983,7 @@ namespace HaCreator.MapSimulator.Interaction
             string okState = string.IsNullOrWhiteSpace(_chalkboardDialogState.MessageText)
                 ? "disabled"
                 : "enabled";
-            return $"Chalkboard consume dialog open for {_chalkboardDialogState.ItemName} ({_chalkboardDialogState.ItemId}) from slot {_chalkboardDialogState.InventoryPosition}; OK button {ChalkboardDialogOkButtonId} is {okState}, Cancel button {ChalkboardDialogCancelButtonId} is enabled, draft length {_chalkboardDialogState.MessageText.Length}. {_chalkboardDialogState.ItemDescription}";
+            return $"Chalkboard consume dialog open for {_chalkboardDialogState.ItemName} ({_chalkboardDialogState.ItemId}) from slot {_chalkboardDialogState.InventoryPosition}; prompt StringPool 0x{ComposePromptStringPoolId:X} \"{_chalkboardDialogState.PromptText}\", OK button {ChalkboardDialogOkButtonId} is {okState}, Cancel button {ChalkboardDialogCancelButtonId} is enabled, draft length {_chalkboardDialogState.MessageText.Length}. {_chalkboardDialogState.ItemDescription}";
         }
 
         private sealed record ChalkboardDialogState(
@@ -989,6 +991,7 @@ namespace HaCreator.MapSimulator.Interaction
             int ItemId,
             string MessageText,
             string ItemName,
+            string PromptText,
             string ItemDescription);
 
         internal int PendingConsumeRequestCountForTest => _pendingConsumeRequests.Count;
@@ -1112,6 +1115,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string ResolveCreateFailedNoticeText()
         {
             return MessageBoxOwnerStringPoolText.GetCreateFailedNotice();
+        }
+
+        internal static string ResolveChalkboardComposePromptText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ComposePromptStringPoolId,
+                "Enter a note.");
         }
 
         internal static bool IsKnownChalkboardItem(int itemId)

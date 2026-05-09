@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return kind switch
             {
+                NewYearCardCompletionKind.CannotSendToSelf => ResolveCannotSendToSelfNotice(),
                 NewYearCardCompletionKind.NoFreeSlot => Resolve(NoFreeSlotStringPoolId, "You have no free slot to store card.\r\ntry later on please."),
                 NewYearCardCompletionKind.NoCardToSend => Resolve(NoCardToSendStringPoolId, "You have no card to send."),
                 NewYearCardCompletionKind.WrongInventory => Resolve(WrongInventoryStringPoolId, "Wrong inventory information !"),

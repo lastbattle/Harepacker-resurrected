@@ -690,7 +690,9 @@ namespace HaCreator.MapSimulator
                     fadeYesNoLifetimeMilliseconds,
                     fadeYesNoStackIndex,
                     fadeYesNoQuickDelivery,
-                    presentation),
+                    presentation,
+                    onConfirm,
+                    onCancel),
                 presentation);
         }
 
@@ -2043,12 +2045,19 @@ namespace HaCreator.MapSimulator
                 success,
                 _pendingVegaCastState.PacketOwnedOutcomeSuccessObserved,
                 _pendingVegaCastState.PacketOwnedOutcomeSuccess);
-            result = itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
-                _pendingVegaCastState.ScrollInventoryType,
-                _pendingVegaCastState.ScrollSlotIndex,
-                _pendingVegaCastState.ModifierInventoryType,
-                _pendingVegaCastState.ModifierSlotIndex,
-                forcedSuccess: mutationSuccess);
+            result = _pendingVegaCastState.PacketOwnedEquipSnapshotObserved
+                ? itemUpgradeWindow.ConsumePacketOwnedPreparedUpgradeItemsAtSlots(
+                    _pendingVegaCastState.ScrollInventoryType,
+                    _pendingVegaCastState.ScrollSlotIndex,
+                    _pendingVegaCastState.ModifierInventoryType,
+                    _pendingVegaCastState.ModifierSlotIndex,
+                    mutationSuccess)
+                : itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
+                    _pendingVegaCastState.ScrollInventoryType,
+                    _pendingVegaCastState.ScrollSlotIndex,
+                    _pendingVegaCastState.ModifierInventoryType,
+                    _pendingVegaCastState.ModifierSlotIndex,
+                    forcedSuccess: mutationSuccess);
             if (!result.Success.HasValue)
             {
                 message = VegaOwnerStringPoolText.GetUnexpectedResultNotice();

@@ -52,12 +52,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return nextWriggleTime;
         }
 
-        private static bool HasTickReached(int currentTime, int targetTime)
+        internal static bool HasTickReached(int currentTime, int targetTime)
         {
             return unchecked(currentTime - targetTime) >= 0;
         }
 
-        private static bool IsTickBefore(int currentTime, int targetTime)
+        internal static bool IsTickBefore(int currentTime, int targetTime)
         {
             return unchecked(currentTime - targetTime) < 0;
         }

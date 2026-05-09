@@ -2749,6 +2749,23 @@ namespace HaCreator.MapSimulator.Character
             "fly2Skill"
         };
 
+        private static readonly HashSet<string> NeutralShadowPartnerFallbackActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "alert",
+            "dead",
+            "fly",
+            "jump",
+            "ladder",
+            "prone",
+            "proneStab",
+            "rope",
+            "sit",
+            "stand1",
+            "stand2",
+            "walk1",
+            "walk2"
+        };
+
         private static readonly HashSet<string> MountedCreateActionFrameNames = new(StringComparer.OrdinalIgnoreCase)
         {
             "create2",
@@ -3032,10 +3049,34 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(fallbackActionName) && yielded.Add(fallbackActionName))
+            if (ShouldYieldClientMappedFallbackActionName(fallbackActionName, supportedRawActionNames)
+                && yielded.Add(fallbackActionName))
             {
                 yield return fallbackActionName;
             }
+        }
+
+        internal static bool ShouldYieldClientMappedFallbackActionName(
+            string fallbackActionName,
+            IReadOnlySet<string> supportedRawActionNames = null)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackActionName))
+            {
+                return false;
+            }
+
+            if (IsNeutralShadowPartnerFallbackActionName(fallbackActionName))
+            {
+                return true;
+            }
+
+            return IsSupportedRawActionName(fallbackActionName, supportedRawActionNames);
+        }
+
+        private static bool IsNeutralShadowPartnerFallbackActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && NeutralShadowPartnerFallbackActionNames.Contains(actionName);
         }
 
         public static IEnumerable<string> EnumerateClientActionAliases(

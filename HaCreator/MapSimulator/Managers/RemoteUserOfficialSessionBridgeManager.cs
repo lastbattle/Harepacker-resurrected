@@ -747,7 +747,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static string DescribePortableChairRecordProofStatusForBuild(
+        private string DescribePortableChairRecordProofStatusForBuild(
             string buildTag,
             Dictionary<ushort, PortableChairRecordOpcodeEvidence> evidenceByOpcode)
         {
@@ -770,10 +770,22 @@ namespace HaCreator.MapSimulator.Managers
 
             if (addEvidence.HasValue && removeEvidence.HasValue)
             {
-                string distinct = addEvidence.Value.Key == removeEvidence.Value.Key
-                    ? "conflict:same-opcode"
-                    : "candidate:add-remove-pair";
-                return $"{buildTag}:{distinct} add={addEvidence.Value.Key} remove={removeEvidence.Value.Key}";
+                if (addEvidence.Value.Key == removeEvidence.Value.Key)
+                {
+                    return $"{buildTag}:conflict:same-opcode add={addEvidence.Value.Key} remove={removeEvidence.Value.Key}";
+                }
+
+                if (TryResolveOrderedPortableChairRecordProofForBuild(
+                        buildTag,
+                        addEvidence.Value.Key,
+                        removeEvidence.Value.Key,
+                        out PortableChairRecordCaptureEntry addEntry,
+                        out PortableChairRecordCaptureEntry removeEntry))
+                {
+                    return $"{buildTag}:ordered-official-add-remove-pair add={addEvidence.Value.Key} remove={removeEvidence.Value.Key} owner={addEntry.CharacterId} sequence={addEntry.Sequence}->{removeEntry.Sequence}";
+                }
+
+                return $"{buildTag}:candidate:add-remove-pair add={addEvidence.Value.Key} remove={removeEvidence.Value.Key}; awaiting ordered same-owner official capture";
             }
 
             if (addEvidence.HasValue)
@@ -787,6 +799,52 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return $"{buildTag}:manual-or-incomplete evidence only; awaiting official-session extended add and compact remove";
+        }
+
+        private bool TryResolveOrderedPortableChairRecordProofForBuild(
+            string buildTag,
+            ushort addOpcode,
+            ushort removeOpcode,
+            out PortableChairRecordCaptureEntry addEntry,
+            out PortableChairRecordCaptureEntry removeEntry)
+        {
+            string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+            List<PortableChairRecordCaptureEntry> entries = _portableChairRecordCaptureOrder
+                .Where(entry =>
+                    entry.IsOfficialSession
+                    && string.Equals(entry.BuildTag, normalizedBuildTag, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(entry => entry.Sequence)
+                .ToList();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PortableChairRecordCaptureEntry candidateAdd = entries[i];
+                if (!string.Equals(candidateAdd.Operation, "add", StringComparison.OrdinalIgnoreCase)
+                    || candidateAdd.Opcode != addOpcode
+                    || candidateAdd.PayloadLength != sizeof(int) * 4
+                    || candidateAdd.CharacterId <= 0)
+                {
+                    continue;
+                }
+
+                for (int j = i + 1; j < entries.Count; j++)
+                {
+                    PortableChairRecordCaptureEntry candidateRemove = entries[j];
+                    if (string.Equals(candidateRemove.Operation, "remove", StringComparison.OrdinalIgnoreCase)
+                        && candidateRemove.Opcode == removeOpcode
+                        && candidateRemove.PayloadLength == sizeof(int)
+                        && candidateRemove.CharacterId == candidateAdd.CharacterId)
+                    {
+                        addEntry = candidateAdd;
+                        removeEntry = candidateRemove;
+                        return true;
+                    }
+                }
+            }
+
+            addEntry = default;
+            removeEntry = default;
+            return false;
         }
 
         public string DescribePendingTutorInferenceMappings()

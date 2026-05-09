@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _activeActionSpeechChatBalloon;
         private int _activeActionSpeechFloatNotice;
         private int _activeActionSpeechFadeDurationMs;
+        private Func<MobAnimationSet.ActionSpeakConditionContext> _actionSpeakConditionContextProvider;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -168,6 +169,7 @@ namespace HaCreator.MapSimulator.Entities
 
         private SoundManager _soundManager;
         private AnimationEffects _animationEffects;
+        private readonly Dictionary<string, WzBinaryProperty> _clientSoundSources = new(StringComparer.Ordinal);
 
         /// <summary>
         /// Sets the mob's sound effects (damage and die)
@@ -195,6 +197,16 @@ namespace HaCreator.MapSimulator.Entities
         {
             Attack1SE = attack1SE;
             Attack2SE = attack2SE;
+        }
+
+        public void SetClientSoundSource(string soundKey, WzBinaryProperty soundProperty)
+        {
+            if (string.IsNullOrWhiteSpace(soundKey) || soundProperty == null)
+            {
+                return;
+            }
+
+            _clientSoundSources[soundKey] = soundProperty;
         }
 
         public void StartSpawnFadeIn(int tickCount)
@@ -279,7 +291,26 @@ namespace HaCreator.MapSimulator.Entities
         {
             if (!string.IsNullOrEmpty(soundName))
             {
-                _soundManager?.PlaySound(soundName);
+                if (_soundManager == null)
+                {
+                    return;
+                }
+
+                if (_clientSoundSources.TryGetValue(soundName, out WzBinaryProperty soundProperty)
+                    && soundProperty != null)
+                {
+                    _soundManager.TryPlayClientSoundEffect(
+                        soundName,
+                        soundProperty,
+                        startVolumeScale: 1f,
+                        loop: false,
+                        suppressWhileActive: false,
+                        out _,
+                        out _);
+                    return;
+                }
+
+                _soundManager.PlaySound(soundName);
             }
         }
 
@@ -1421,7 +1452,13 @@ namespace HaCreator.MapSimulator.Entities
                 }
             }
 
-            TryStartActionSpeech(action, Environment.TickCount);
+            TryStartActionSpeech(action, Environment.TickCount, _actionSpeakConditionContextProvider?.Invoke());
+        }
+
+        internal void SetActionSpeakConditionContextProvider(
+            Func<MobAnimationSet.ActionSpeakConditionContext> conditionContextProvider)
+        {
+            _actionSpeakConditionContextProvider = conditionContextProvider;
         }
 
         private static bool ShouldSkipMobActionChange(

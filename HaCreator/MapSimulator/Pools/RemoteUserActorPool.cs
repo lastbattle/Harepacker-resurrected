@@ -30,6 +30,47 @@ namespace HaCreator.MapSimulator.Pools
         Marriage = 4
     }
 
+    public enum RemoteVisibleLayerReferenceMutationKind
+    {
+        CaptureOwnerReference = 0,
+        ReleaseOwnerReference = 1
+    }
+
+    public readonly record struct RemoteVisibleLayerReferenceMutation(
+        RemoteVisibleLayerReferenceMutationKind Kind,
+        string OwnerName,
+        int SimulatedLayerHandleId,
+        int SimulatedLayerHandleRefCount,
+        int OperationIndex)
+    {
+        public static RemoteVisibleLayerReferenceMutation CaptureOwnerReference(
+            string ownerName,
+            int layerHandleId,
+            int refCount,
+            int operationIndex)
+        {
+            return new RemoteVisibleLayerReferenceMutation(
+                RemoteVisibleLayerReferenceMutationKind.CaptureOwnerReference,
+                ownerName ?? string.Empty,
+                Math.Max(0, layerHandleId),
+                Math.Max(0, refCount),
+                Math.Max(0, operationIndex));
+        }
+
+        public static RemoteVisibleLayerReferenceMutation ReleaseOwnerReference(
+            string ownerName,
+            int layerHandleId,
+            int operationIndex)
+        {
+            return new RemoteVisibleLayerReferenceMutation(
+                RemoteVisibleLayerReferenceMutationKind.ReleaseOwnerReference,
+                ownerName ?? string.Empty,
+                Math.Max(0, layerHandleId),
+                0,
+                Math.Max(0, operationIndex));
+        }
+    }
+
     /// <summary>
     /// Shared owner for remote user actors. This gives the simulator a single seam
     /// for remote avatar look decode, map insertion/removal, world rendering,
@@ -979,8 +1020,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             public int ItemId { get; init; }
             public ItemEffectAnimationSet Effect { get; init; }
+            public string OwnerName { get; init; } = RemoteActiveEffectItemEffectActionOwnerName;
             public int SimulatedOwnerLayerHandleId { get; init; }
             public int SimulatedOwnerLayerHandleRefCount { get; private set; }
+            public IReadOnlyList<RemoteVisibleLayerReferenceMutation> VisibleLayerReferenceMutations => _visibleLayerReferenceMutations;
             public bool VisibleLayerSuppressed { get; private set; }
             public bool TerminateRequested { get; private set; }
             public bool IsTerminated { get; private set; }
@@ -989,17 +1032,44 @@ namespace HaCreator.MapSimulator.Pools
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public bool FollowOwner { get; init; }
+            private readonly List<RemoteVisibleLayerReferenceMutation> _visibleLayerReferenceMutations = new();
 
             public void CaptureRegisteredLayerReference()
             {
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    VisibleLayerSuppressed = false;
+                    TerminateRequested = false;
+                    IsTerminated = false;
+                    return;
+                }
+
                 SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
                 VisibleLayerSuppressed = false;
                 TerminateRequested = false;
                 IsTerminated = false;
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                            OwnerName,
+                            SimulatedOwnerLayerHandleId,
+                            SimulatedOwnerLayerHandleRefCount,
+                            _visibleLayerReferenceMutations.Count));
+                }
             }
 
             public void ReleaseVisibleLayerReference()
             {
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                            OwnerName,
+                            SimulatedOwnerLayerHandleId,
+                            _visibleLayerReferenceMutations.Count));
+                }
+
                 SimulatedOwnerLayerHandleRefCount = 0;
                 VisibleLayerSuppressed = true;
             }
@@ -1020,6 +1090,15 @@ namespace HaCreator.MapSimulator.Pools
                 TerminateRequested = true;
                 IsTerminated = true;
                 VisibleLayerSuppressed = true;
+                if (SimulatedOwnerLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                            OwnerName,
+                            SimulatedOwnerLayerHandleId,
+                            _visibleLayerReferenceMutations.Count));
+                }
+
                 SimulatedOwnerLayerHandleRefCount = 0;
             }
         }
@@ -1038,20 +1117,47 @@ namespace HaCreator.MapSimulator.Pools
             public int OwnerActionStartTime { get; set; } = int.MinValue;
             public int SimulatedLayerHandleId { get; set; }
             public int SimulatedLayerHandleRefCount { get; private set; }
+            public IReadOnlyList<RemoteVisibleLayerReferenceMutation> VisibleLayerReferenceMutations => _visibleLayerReferenceMutations;
             public bool TerminateRequested { get; private set; }
             public bool IsTerminated { get; private set; }
+            private readonly List<RemoteVisibleLayerReferenceMutation> _visibleLayerReferenceMutations = new();
 
             public void CaptureRegisteredLayerReference()
             {
+                if (SimulatedLayerHandleRefCount > 0)
+                {
+                    TerminateRequested = false;
+                    IsTerminated = false;
+                    return;
+                }
+
                 SimulatedLayerHandleRefCount = SimulatedLayerHandleId > 0 ? 1 : 0;
                 TerminateRequested = false;
                 IsTerminated = false;
+                if (SimulatedLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                            RemoteDragonCompanionActionOwnerName,
+                            SimulatedLayerHandleId,
+                            SimulatedLayerHandleRefCount,
+                            _visibleLayerReferenceMutations.Count));
+                }
             }
 
             public void MarkTerminated()
             {
                 TerminateRequested = true;
                 IsTerminated = true;
+                if (SimulatedLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                            RemoteDragonCompanionActionOwnerName,
+                            SimulatedLayerHandleId,
+                            _visibleLayerReferenceMutations.Count));
+                }
+
                 SimulatedLayerHandleRefCount = 0;
             }
         }
@@ -1060,20 +1166,47 @@ namespace HaCreator.MapSimulator.Pools
         {
             public int SimulatedLayerHandleId { get; set; }
             public int SimulatedLayerHandleRefCount { get; private set; }
+            public IReadOnlyList<RemoteVisibleLayerReferenceMutation> VisibleLayerReferenceMutations => _visibleLayerReferenceMutations;
             public bool TerminateRequested { get; private set; }
             public bool IsTerminated { get; private set; }
+            private readonly List<RemoteVisibleLayerReferenceMutation> _visibleLayerReferenceMutations = new();
 
             public void CaptureRegisteredLayerReference()
             {
+                if (SimulatedLayerHandleRefCount > 0)
+                {
+                    TerminateRequested = false;
+                    IsTerminated = false;
+                    return;
+                }
+
                 SimulatedLayerHandleRefCount = SimulatedLayerHandleId > 0 ? 1 : 0;
                 TerminateRequested = false;
                 IsTerminated = false;
+                if (SimulatedLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                            RemoteDragonHudOverlayActionOwnerName,
+                            SimulatedLayerHandleId,
+                            SimulatedLayerHandleRefCount,
+                            _visibleLayerReferenceMutations.Count));
+                }
             }
 
             public void MarkTerminated()
             {
                 TerminateRequested = true;
                 IsTerminated = true;
+                if (SimulatedLayerHandleRefCount > 0)
+                {
+                    _visibleLayerReferenceMutations.Add(
+                        RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                            RemoteDragonHudOverlayActionOwnerName,
+                            SimulatedLayerHandleId,
+                            _visibleLayerReferenceMutations.Count));
+                }
+
                 SimulatedLayerHandleRefCount = 0;
             }
         }
@@ -1318,6 +1451,8 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemoteQuestDeliveryActionOwnerName = "aux.remote.questDelivery.persistent";
         private const string RemoteActiveEffectMotionBlurActionOwnerName = "aux.remote.activeEffectMotionBlur.persistent";
         private const string RemoteActiveEffectItemEffectActionOwnerName = "aux.remote.activeEffectItemEffect.persistent";
+        private const string RemoteDragonCompanionActionOwnerName = "aux.remote.dragonCompanion.persistent";
+        private const string RemoteDragonHudOverlayActionOwnerName = "aux.remote.dragonHudOverlay.persistent";
         private const string RemoteRelationshipOverlayGenericActionOwnerName = "aux.remote.relationshipOverlay.generic.oneTime";
         private const string RemoteRelationshipOverlayCoupleActionOwnerName = "aux.remote.relationshipOverlay.couple.persistent";
         private const string RemoteRelationshipOverlayFriendshipActionOwnerName = "aux.remote.relationshipOverlay.friendship.persistent";
@@ -2543,6 +2678,7 @@ namespace HaCreator.MapSimulator.Pools
             MinimapUI.HelperMarkerType? markerType,
             bool showDirectionOverlay,
             bool directionOverlayOnly,
+            MinimapUI.DirectionArrow? directionOverlay,
             out string message)
         {
             message = null;
@@ -2556,6 +2692,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.HasPacketAuthoredHelperState = true;
             actor.ShowDirectionOverlay = showDirectionOverlay;
             actor.HelperDirectionOverlayOnly = directionOverlayOnly;
+            actor.HelperDirectionOverlay = directionOverlay;
             return true;
         }
 
@@ -3181,6 +3318,7 @@ namespace HaCreator.MapSimulator.Pools
                     : currentTime,
                 OwnerActionName = ownerActionName,
                 OwnerFacingRight = ownerFacingRight,
+                OwnerName = ownerName,
                 SimulatedOwnerLayerHandleId = NextRemoteRelationshipOverlayLayerHandleId()
             };
             UpdateRelationshipOverlayLayerAdmissionForParity(actor, relationshipType);
@@ -3396,6 +3534,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 PairCharacterId = pairCharacterId
             };
+            RemoveSupersededAvatarModifiedRelationshipRecordOwners(
+                packet.RelationshipType,
+                ownerCharacterId.Value,
+                normalizedRecord,
+                recordTable);
             RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, ownerCharacterId.Value);
             recordTable[ownerCharacterId.Value] = normalizedRecord;
             RegisterRelationshipRecordDispatchKeys(packet.RelationshipType, packet.DispatchKey, normalizedRecord, ownerCharacterId.Value);
@@ -3592,12 +3735,15 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (entry.Key == ownerCharacterId
                         || !entry.Value.IsActive
-                        || entry.Value.PairItemSerial != pairLookupSerial)
+                        || !DoesRelationshipRecordContainSerial(entry.Value, pairLookupSerial))
                     {
                         continue;
                     }
 
-                    matchedOwnerCharacterId = entry.Key;
+                    matchedOwnerCharacterId = ResolveRelationshipRecordOwnerForLookupSerial(
+                        entry.Key,
+                        entry.Value,
+                        pairLookupSerial);
                     return true;
                 }
             }
@@ -3608,12 +3754,15 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (entry.Key == ownerCharacterId
                         || !entry.Value.IsActive
-                        || entry.Value.PairItemSerial != pairLookupSerial)
+                        || !DoesRelationshipRecordContainSerial(entry.Value, pairLookupSerial))
                     {
                         continue;
                     }
 
-                    matchedOwnerCharacterId = entry.Key;
+                    matchedOwnerCharacterId = ResolveRelationshipRecordOwnerForLookupSerial(
+                        entry.Key,
+                        entry.Value,
+                        pairLookupSerial);
                     return true;
                 }
             }
@@ -3629,6 +3778,38 @@ namespace HaCreator.MapSimulator.Pools
                     pairLookupSerial,
                     CharacterId: null),
                 out matchedOwnerCharacterId);
+        }
+
+        private static bool DoesRelationshipRecordContainSerial(
+            RemoteUserRelationshipRecord relationshipRecord,
+            long lookupSerial)
+        {
+            return (relationshipRecord.ItemSerial.HasValue && relationshipRecord.ItemSerial.Value == lookupSerial)
+                || (relationshipRecord.PairItemSerial.HasValue && relationshipRecord.PairItemSerial.Value == lookupSerial);
+        }
+
+        private static int ResolveRelationshipRecordOwnerForLookupSerial(
+            int tableOwnerCharacterId,
+            RemoteUserRelationshipRecord relationshipRecord,
+            long lookupSerial)
+        {
+            int ownerCharacterId = relationshipRecord.CharacterId.GetValueOrDefault();
+            int pairCharacterId = relationshipRecord.PairCharacterId.GetValueOrDefault();
+            if (relationshipRecord.ItemSerial.HasValue
+                && relationshipRecord.ItemSerial.Value == lookupSerial
+                && ownerCharacterId > 0)
+            {
+                return ownerCharacterId;
+            }
+
+            if (relationshipRecord.PairItemSerial.HasValue
+                && relationshipRecord.PairItemSerial.Value == lookupSerial
+                && pairCharacterId > 0)
+            {
+                return pairCharacterId;
+            }
+
+            return tableOwnerCharacterId;
         }
 
         public bool TryApplyRelationshipRecordRemove(
@@ -7647,6 +7828,9 @@ namespace HaCreator.MapSimulator.Pools
                 marker.DirectionOverlayOnly = actor.HelperDirectionOverlayOnly
                     && !actor.HelperMarkerType.HasValue
                     && !actor.BattlefieldTeamId.HasValue;
+                marker.DirectionOverlay = marker.DirectionOverlayOnly
+                    ? actor.HelperDirectionOverlay
+                    : null;
                 marker.TooltipText = actor.Name;
             }
 
@@ -9221,6 +9405,7 @@ namespace HaCreator.MapSimulator.Pools
                 actor.IsVisibleInWorld,
                 actor.HiddenLikeClient,
                 actor.HasMorphTemplate,
+                actor.TemporaryStats.KnownState.MorphId,
                 actor.ActionName);
         }
 
@@ -9230,9 +9415,25 @@ namespace HaCreator.MapSimulator.Pools
             bool hasMorphTemplate,
             string actionName)
         {
+            return ShouldSuppressRemoteRelationshipOverlayForParity(
+                isVisibleInWorld,
+                hiddenLikeClient,
+                hasMorphTemplate,
+                morphId: null,
+                actionName);
+        }
+
+        internal static bool ShouldSuppressRemoteRelationshipOverlayForParity(
+            bool isVisibleInWorld,
+            bool hiddenLikeClient,
+            bool hasMorphTemplate,
+            int? morphId,
+            string actionName)
+        {
             return !isVisibleInWorld
                 || hiddenLikeClient
                 || hasMorphTemplate
+                || morphId.GetValueOrDefault() > 0
                 || IsRelationshipOverlayGhostAction(actionName);
         }
 
@@ -18056,6 +18257,7 @@ namespace HaCreator.MapSimulator.Pools
         public bool HasPacketAuthoredHelperState { get; set; }
         public bool ShowDirectionOverlay { get; set; } = true;
         public bool HelperDirectionOverlayOnly { get; set; }
+        public MinimapUI.DirectionArrow? HelperDirectionOverlay { get; set; }
         public int? BattlefieldTeamId { get; set; }
         public RemotePreparedSkillState PreparedSkill { get; set; }
         public CharacterPart PortableChairPreviousMount { get; set; }
@@ -18399,20 +18601,59 @@ namespace HaCreator.MapSimulator.Pools
         public int StartTime { get; init; }
         public string OwnerActionName { get; init; }
         public bool OwnerFacingRight { get; init; }
+        public string OwnerName { get; init; }
         public int SimulatedOwnerLayerHandleId { get; init; }
         public int SimulatedOwnerLayerHandleRefCount { get; private set; }
+        public IReadOnlyList<RemoteVisibleLayerReferenceMutation> VisibleLayerReferenceMutations => _visibleLayerReferenceMutations;
         public bool IsSimulatedOwnerLayerSuppressed { get; private set; } = true;
+        private readonly List<RemoteVisibleLayerReferenceMutation> _visibleLayerReferenceMutations = new();
 
         public void CaptureVisibleLayerReference()
         {
+            if (SimulatedOwnerLayerHandleRefCount > 0)
+            {
+                IsSimulatedOwnerLayerSuppressed = false;
+                return;
+            }
+
             SimulatedOwnerLayerHandleRefCount = SimulatedOwnerLayerHandleId > 0 ? 1 : 0;
             IsSimulatedOwnerLayerSuppressed = SimulatedOwnerLayerHandleRefCount == 0;
+            if (SimulatedOwnerLayerHandleRefCount > 0)
+            {
+                _visibleLayerReferenceMutations.Add(
+                    RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                        OwnerName ?? ResolveDefaultOwnerName(RelationshipType),
+                        SimulatedOwnerLayerHandleId,
+                        SimulatedOwnerLayerHandleRefCount,
+                        _visibleLayerReferenceMutations.Count));
+            }
         }
 
         public void ReleaseVisibleLayerReference()
         {
+            if (SimulatedOwnerLayerHandleRefCount > 0)
+            {
+                _visibleLayerReferenceMutations.Add(
+                    RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                        OwnerName ?? ResolveDefaultOwnerName(RelationshipType),
+                        SimulatedOwnerLayerHandleId,
+                        _visibleLayerReferenceMutations.Count));
+            }
+
             SimulatedOwnerLayerHandleRefCount = 0;
             IsSimulatedOwnerLayerSuppressed = true;
+        }
+
+        private static string ResolveDefaultOwnerName(RemoteRelationshipOverlayType relationshipType)
+        {
+            return relationshipType switch
+            {
+                RemoteRelationshipOverlayType.Couple => "aux.remote.relationshipOverlay.couple.persistent",
+                RemoteRelationshipOverlayType.Friendship => "aux.remote.relationshipOverlay.friendship.persistent",
+                RemoteRelationshipOverlayType.NewYearCard => "aux.remote.relationshipOverlay.newYearCard.persistent",
+                RemoteRelationshipOverlayType.Marriage => "aux.remote.relationshipOverlay.marriage.persistent",
+                _ => "aux.remote.relationshipOverlay.generic.oneTime"
+            };
         }
     }
 

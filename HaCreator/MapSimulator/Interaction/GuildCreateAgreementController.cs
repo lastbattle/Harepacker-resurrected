@@ -71,15 +71,23 @@ namespace HaCreator.MapSimulator.Interaction
 
                     windowManager?.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
                 },
-                () => feedbackHandler?.Invoke(Close(windowManager, _runtime.Decline)));
-            window.SetFont(font);
-        }
+                () =>
+                {
+                    string message = _runtime.Decline(out GuildCreateAgreementAcceptance acceptance);
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        feedbackHandler?.Invoke(message);
+                    }
 
-        private static string Close(UIWindowManager windowManager, Func<string> action)
-        {
-            string message = action();
-            windowManager?.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
-            return message;
+                    string acceptanceMessage = acceptanceHandler?.Invoke(acceptance);
+                    if (!string.IsNullOrWhiteSpace(acceptanceMessage))
+                    {
+                        feedbackHandler?.Invoke(acceptanceMessage);
+                    }
+
+                    windowManager?.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
+                });
+            window.SetFont(font);
         }
     }
 }

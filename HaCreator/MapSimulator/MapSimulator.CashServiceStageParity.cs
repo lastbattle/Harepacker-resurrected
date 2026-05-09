@@ -320,8 +320,14 @@ namespace HaCreator.MapSimulator
                         ButtonControls = BuildCashShopStatusButtonControlStates()
                     };
                 });
-                statusWindow.SetExternalAction("BtCharge", () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator.");
-                statusWindow.SetExternalAction("BtCheck", () => BuildCashShopStatusOwnerLines()[0]);
+                statusWindow.SetExternalAction(
+                    "BtCharge",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator."));
+                statusWindow.SetExternalAction(
+                    "BtCheck",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => BuildCashShopStatusOwnerLines()[0]));
                 statusWindow.SetExternalAction(
                     "BtCoupon",
                     () => ExecuteCashServiceClientCancelIngress(
@@ -1427,7 +1433,7 @@ namespace HaCreator.MapSimulator
                     Position = new Microsoft.Xna.Framework.Point(176, 27),
                     Width = 64,
                     Height = 22,
-                    MouseOverWidth = 65,
+                    MouseOverWidth = 64,
                     MouseOverHeight = 22
                 },
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
@@ -1439,7 +1445,7 @@ namespace HaCreator.MapSimulator
                     Position = new Microsoft.Xna.Framework.Point(176, 54),
                     Width = 64,
                     Height = 22,
-                    MouseOverWidth = 65,
+                    MouseOverWidth = 64,
                     MouseOverHeight = 22
                 },
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
@@ -1463,7 +1469,7 @@ namespace HaCreator.MapSimulator
                     Position = new Microsoft.Xna.Framework.Point(176, 108),
                     Width = 64,
                     Height = 22,
-                    MouseOverWidth = 65,
+                    MouseOverWidth = 64,
                     MouseOverHeight = 22
                 },
                 new CashShopStageChildWindow.InventoryOwnerState.ButtonControlState
@@ -3610,9 +3616,7 @@ namespace HaCreator.MapSimulator
             SyncActiveLoginRosterExtraCharacterEntitlement();
 
             LoginExtraCharInfoResultProfile extraCharInfoResult = ResolvePersistedLoginExtraCharInfoResult();
-            _loginCharacterAccountStore.UpdateExtraCharacterEntitlementForAccount(
-                ResolveLoginRosterAccountName(),
-                accountId.Value,
+            PersistLoginExtraCharacterEntitlementForAccount(
                 _loginCanHaveExtraCharacter ? 1 : 0,
                 extraCharInfoResult);
 
@@ -4508,7 +4512,7 @@ namespace HaCreator.MapSimulator
             return $"{source} kept opcode {opcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus} Deferred outbox: {queuedOutboxStatus}";
         }
 
-        private static byte[] BuildCashReceiveGiftAcceptRequestPayload(
+        internal static byte[] BuildCashReceiveGiftAcceptRequestPayload(
             CashServiceStageWindow.PacketCatalogEntry selectedGift,
             int selectedGiftIndex,
             string replyText)

@@ -73,7 +73,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsExpired(PendingOutcome pending, int currentTime)
         {
-            return unchecked(currentTime - pending.ExpireTime) >= 0;
+            return WildHunterSwallowParity.HasTickReached(currentTime, pending.ExpireTime);
         }
 
         private sealed record PendingOutcome(int SkillId, int TargetMobId, bool Success, int ExpireTime);

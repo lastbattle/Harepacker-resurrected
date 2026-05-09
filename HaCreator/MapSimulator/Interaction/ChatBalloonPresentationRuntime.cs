@@ -46,7 +46,12 @@ namespace HaCreator.MapSimulator.Interaction
                 adjustCoordY,
                 timeoutMs,
                 currentTickCount,
-                usesScreenLayer: false);
+                usesScreenLayer: false,
+                composition: ChatBalloonPresentationRules.ResolveCreateCanvasComposition(
+                    ChatBalloonPresentationRules.OrdinarySkinMetrics,
+                    ResolveApproximateTextWidth(text),
+                    ResolveApproximateTextHeight(text),
+                    includeArrow: true));
             return BuildNativeCompositionTrace(ChatBalloonPresentationEntrypoint.MakeBalloon);
         }
 
@@ -65,7 +70,12 @@ namespace HaCreator.MapSimulator.Interaction
                 timeoutMs,
                 currentTickCount,
                 usesScreenLayer: true,
-                chatBalloonColor);
+                fontColorArgb: chatBalloonColor,
+                composition: ChatBalloonPresentationRules.ResolveCreateCanvasComposition(
+                    ChatBalloonPresentationRules.OrdinarySkinMetrics,
+                    ResolveApproximateTextWidth(text),
+                    ResolveApproximateTextHeight(text),
+                    includeArrow: false));
             return BuildNativeCompositionTrace(ChatBalloonPresentationEntrypoint.MakeScreenBalloon);
         }
 
@@ -132,6 +142,11 @@ namespace HaCreator.MapSimulator.Interaction
                 normalizedLayerBounds,
                 normalizedButtonOffset,
                 closeButton,
+                ChatBalloonPresentationRules.ResolveCreateCanvasComposition(
+                    ChatBalloonPresentationRules.ADBoardSkinMetrics,
+                    normalizedLayerBounds.Width,
+                    normalizedLayerBounds.Height,
+                    includeArrow: true),
                 currentTickCount);
             if (closeButton)
             {
@@ -150,6 +165,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             _chatState = null;
             return true;
+        }
+
+        public void DestroyBalloon()
+        {
+            _chatState = null;
         }
 
         public ChatBalloonADBoardButtonCanvasKind ADBoardMouseMove(Point point)
@@ -237,6 +257,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string DescribeStatus()
         {
+            if (_chatState != null)
+            {
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    "CChatBalloon {0} active: type={1}, skin={2}, canvas=({3}x{4}), timeout={5}ms, screenLayer={6}.",
+                    _chatState.Entrypoint,
+                    _chatState.BalloonType,
+                    _chatState.SkinPath,
+                    _chatState.Composition.CanvasSize.X,
+                    _chatState.Composition.CanvasSize.Y,
+                    _chatState.TimeoutMs,
+                    _chatState.UsesScreenLayer);
+            }
+
             if (_adBoardState == null)
             {
                 return _miniRoomState == null
@@ -419,6 +453,33 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => $"UI/ChatBalloon.img/{Math.Max(0, skinIndex)}"
             };
         }
+
+        private static int ResolveApproximateTextWidth(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            string longestLine = text
+                .Replace("\r", string.Empty, StringComparison.Ordinal)
+                .Split('\n')
+                .DefaultIfEmpty(string.Empty)
+                .OrderByDescending(static line => line.Length)
+                .FirstOrDefault() ?? string.Empty;
+            return longestLine.Length * 6;
+        }
+
+        private static int ResolveApproximateTextHeight(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 12;
+            }
+
+            int lineCount = text.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n').Length;
+            return Math.Max(1, lineCount) * 14;
+        }
     }
 
     internal sealed class ChatBalloonPresentationLayerState
@@ -432,7 +493,8 @@ namespace HaCreator.MapSimulator.Interaction
             int timeoutMs,
             int createdAtTick,
             bool usesScreenLayer,
-            int fontColorArgb = 0)
+            int fontColorArgb = 0,
+            ChatBalloonCanvasComposition composition = default)
         {
             Entrypoint = entrypoint;
             Text = text ?? string.Empty;
@@ -443,6 +505,13 @@ namespace HaCreator.MapSimulator.Interaction
             CreatedAtTick = currentTickNormalize(createdAtTick);
             UsesScreenLayer = usesScreenLayer;
             FontColorArgb = fontColorArgb;
+            Composition = composition.CanvasSize == Point.Zero
+                ? ChatBalloonPresentationRules.ResolveCreateCanvasComposition(
+                    ChatBalloonPresentationRules.OrdinarySkinMetrics,
+                    0,
+                    12,
+                    includeArrow: !usesScreenLayer)
+                : composition;
 
             static int currentTickNormalize(int tick) => tick;
         }
@@ -456,6 +525,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int CreatedAtTick { get; }
         public bool UsesScreenLayer { get; }
         public int FontColorArgb { get; }
+        public ChatBalloonCanvasComposition Composition { get; }
 
         public bool IsExpired(int currentTickCount)
         {
@@ -545,24 +615,29 @@ namespace HaCreator.MapSimulator.Interaction
             Rectangle layerBounds,
             Point buttonOffset,
             bool hasCloseButton,
+            ChatBalloonCanvasComposition composition,
             int createdAtTick)
         {
             Text = text ?? string.Empty;
             LayerBounds = layerBounds;
             ButtonOffset = buttonOffset;
             HasCloseButton = hasCloseButton;
+            Composition = composition;
             CreatedAtTick = createdAtTick;
             CurrentButtonCanvas = ChatBalloonADBoardButtonCanvasKind.Normal;
+            CurrentButtonAlpha = ChatBalloonPresentationRules.ADBoardPressedAlpha;
         }
 
         public string Text { get; }
         public Rectangle LayerBounds { get; }
         public Point ButtonOffset { get; }
         public bool HasCloseButton { get; }
+        public ChatBalloonCanvasComposition Composition { get; }
         public int CreatedAtTick { get; }
         public bool IsPressed { get; private set; }
         public int ClickCount { get; private set; }
         public ChatBalloonADBoardButtonCanvasKind CurrentButtonCanvas { get; private set; }
+        public int CurrentButtonAlpha { get; private set; }
 
         internal ChatBalloonADBoardButtonCanvasKind ApplyMouseMove(bool overButton)
         {
@@ -584,6 +659,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void SetCanvas(ChatBalloonADBoardButtonCanvasKind canvas)
         {
             CurrentButtonCanvas = canvas;
+            CurrentButtonAlpha = ChatBalloonPresentationRules.ADBoardPressedAlpha;
         }
 
         internal void MarkClicked()
