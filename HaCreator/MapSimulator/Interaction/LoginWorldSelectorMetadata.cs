@@ -15,7 +15,8 @@ namespace HaCreator.MapSimulator
             int? recommendOrder = null,
             byte worldState = 0,
             bool blocksCharacterCreation = false,
-            string worldName = null)
+            string worldName = null,
+            byte populationLevel = 0)
         {
             WorldId = Math.Max(0, worldId);
             Channels = channels ?? Array.Empty<ChannelSelectionState>();
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator
             WorldState = worldState;
             BlocksCharacterCreation = blocksCharacterCreation;
             WorldName = string.IsNullOrWhiteSpace(worldName) ? null : worldName.Trim();
+            PopulationLevel = populationLevel;
         }
         public int WorldId { get; }
         public IReadOnlyList<ChannelSelectionState> Channels { get; }
@@ -36,5 +38,6 @@ namespace HaCreator.MapSimulator
         public byte WorldState { get; }
         public bool BlocksCharacterCreation { get; }
         public string WorldName { get; }
+        public byte PopulationLevel { get; }
     }
 }

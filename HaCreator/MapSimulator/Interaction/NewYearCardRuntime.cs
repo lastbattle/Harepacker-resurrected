@@ -144,23 +144,27 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string Search(string query)
         {
+            return Search(query, null);
+        }
+
+        internal string Search(string query, IEnumerable<string> contactNames)
+        {
             string normalizedQuery = NormalizeName(query, string.Empty);
             _searchResults.Clear();
             _selectedSearchResultIndex = 0;
             _firstVisibleSearchResultIndex = 0;
 
-            if (string.IsNullOrWhiteSpace(normalizedQuery))
+            foreach (string candidate in ResolveSearchCandidates(normalizedQuery, contactNames))
             {
-                _searchResults.AddRange(new[] { "ExplorerGM", "MapleAdmin", "Cassandra" });
-            }
-            else
-            {
-                _searchResults.Add(normalizedQuery);
-                _searchResults.Add($"{normalizedQuery}Jr");
-                _searchResults.Add($"{normalizedQuery}II");
+                if (_searchResults.Count >= NameListScrollBarRange)
+                {
+                    break;
+                }
+
+                _searchResults.Add(candidate);
             }
 
-            _lastStatus = $"CNewYearCardReceiverSearchResult refreshed {_searchResults.Count} candidate name(s) for '{(string.IsNullOrWhiteSpace(normalizedQuery) ? "default" : normalizedQuery)}'.";
+            _lastStatus = $"CNewYearCardReceiverSearchResult refreshed {_searchResults.Count} friend/guild candidate name(s) for '{(string.IsNullOrWhiteSpace(normalizedQuery) ? "default" : normalizedQuery)}'.";
             return _lastStatus;
         }
 
@@ -395,6 +399,52 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _firstVisibleSearchResultIndex = Math.Clamp(_firstVisibleSearchResultIndex, 0, maxFirstVisibleIndex);
+        }
+
+        private static IEnumerable<string> ResolveSearchCandidates(string normalizedQuery, IEnumerable<string> contactNames)
+        {
+            HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
+            bool hasQuery = !string.IsNullOrWhiteSpace(normalizedQuery);
+
+            if (contactNames != null)
+            {
+                foreach (string contactName in contactNames)
+                {
+                    string candidate = NormalizeName(contactName, string.Empty);
+                    if (candidate.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    if (hasQuery
+                        && candidate.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+
+                    if (emitted.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+
+            if (emitted.Count != 0)
+            {
+                yield break;
+            }
+
+            string[] fallbackNames = hasQuery
+                ? new[] { normalizedQuery }
+                : new[] { "ExplorerGM", "MapleAdmin", "Cassandra" };
+            foreach (string fallbackName in fallbackNames)
+            {
+                string candidate = NormalizeName(fallbackName, string.Empty);
+                if (candidate.Length != 0 && emitted.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
         }
 
         private static byte[] EncodeSendPayload(int inventoryPosition, int itemId, string targetName, string memo)

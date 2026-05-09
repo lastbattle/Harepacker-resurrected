@@ -24,8 +24,11 @@ namespace HaCreator.MapSimulator
         {
             MapSimulatorWindowNames.CashShopLocker,
             MapSimulatorWindowNames.CashShopInventory,
+            MapSimulatorWindowNames.CashShopTab,
             MapSimulatorWindowNames.CashShopList,
+            MapSimulatorWindowNames.CashShopBest,
             MapSimulatorWindowNames.CashShopStatus,
+            MapSimulatorWindowNames.CashShopItemSearch,
             MapSimulatorWindowNames.CashShopOneADay
         };
 
@@ -267,6 +270,29 @@ namespace HaCreator.MapSimulator
                         () => cashShopWindow.ExecuteCashStageInventoryAction("BtExTrunk")));
             }
 
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopTab) is CashShopStageChildWindow tabWindow)
+            {
+                tabWindow.SetFont(_fontChat);
+                tabWindow.SetContentProvider(() => BuildCashShopTabOwnerLines(cashShopWindow));
+                tabWindow.SetCashShopWrapperStateProvider(() => BuildCashShopTabWrapperOwnerState(cashShopWindow));
+                tabWindow.SetExternalAction(
+                    "SortPrevious",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_Tab sort-combo focus moved to the previous modeled sort lane; native CCashShop::OnChangedSortType packet dispatch is still pending."));
+                tabWindow.SetExternalAction(
+                    "SortNext",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_Tab sort-combo focus moved to the next modeled sort lane; native CCashShop::OnChangedSortType packet dispatch is still pending."));
+                tabWindow.SetExternalAction(
+                    "CategoryPrevious",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_Tab selector focus moved to the previous modeled category; native CCashShop::OnChangedCategory packet dispatch is still pending."));
+                tabWindow.SetExternalAction(
+                    "CategoryNext",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_Tab selector focus moved to the next modeled category; native CCashShop::OnChangedCategory packet dispatch is still pending."));
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopList) is CashShopStageChildWindow listWindow)
             {
                 listWindow.SetFont(_fontChat);
@@ -296,6 +322,27 @@ namespace HaCreator.MapSimulator
                 listWindow.SetExternalAction("End", () => cashShopWindow.SelectListOwnerBoundary(true));
                 listWindow.SetListScrollOffsetAction(cashShopWindow.ScrollListOwnerToOffset);
                 listWindow.SetListStateProvider(() => BuildCashShopListOwnerState(cashShopWindow));
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopBest) is CashShopStageChildWindow bestWindow)
+            {
+                bestWindow.SetFont(_fontChat);
+                bestWindow.SetContentProvider(BuildCashShopBestOwnerLines);
+                bestWindow.SetCashShopWrapperStateProvider(BuildCashShopBestWrapperOwnerState);
+                bestWindow.SetExternalAction(
+                    "GoToCommoditySN",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () =>
+                        {
+                            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow
+                                && stageWindow.PendingCommoditySerialNumber > 0)
+                            {
+                                TryFocusCashServiceCommodity(stageWindow.PendingCommoditySerialNumber);
+                                return $"CCSWnd_Best::GoToCommoditySN focused commodity SN {stageWindow.PendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)} through the existing cash-list seam.";
+                            }
+
+                            return "CCSWnd_Best has no pending commodity serial to migrate.";
+                        }));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashShopStageChildWindow statusWindow)
@@ -340,6 +387,29 @@ namespace HaCreator.MapSimulator
                             HideCashShopOwnerFamilyWindows();
                             return "CCSWnd_Status closed the parent CCashShop owner family.";
                         }));
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopItemSearch) is CashShopStageChildWindow itemSearchWindow)
+            {
+                itemSearchWindow.SetFont(_fontChat);
+                itemSearchWindow.SetContentProvider(BuildCashShopItemSearchOwnerLines);
+                itemSearchWindow.SetCashShopWrapperStateProvider(BuildCashShopItemSearchWrapperOwnerState);
+                itemSearchWindow.SetExternalAction(
+                    "BtSearch",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_ItemSearch search button stayed on the modeled SearchItemName/result wrapper; native request packet dispatch is still pending."));
+                itemSearchWindow.SetExternalAction(
+                    "BtAllItem",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_ItemSearch all-item filter toggled in the wrapper model; native search-result refresh remains pending."));
+                itemSearchWindow.SetExternalAction(
+                    "BtBuy",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => ShowCashPurchaseConfirmDialog(cashShopWindow)));
+                itemSearchWindow.SetExternalAction(
+                    "BtCancel",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CCSWnd_ItemSearch closed its modeled result popup and returned focus to the cash-service stage."));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopOneADay) is CashShopStageChildWindow oneADayWindow)
@@ -1299,6 +1369,31 @@ namespace HaCreator.MapSimulator
             return lines;
         }
 
+        private IReadOnlyList<string> BuildCashShopTabOwnerLines(AdminShopDialogUI cashShopWindow)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
+            {
+                return stageWindow.DescribeTabOwnerState();
+            }
+
+            return new[]
+            {
+                "Cash Shop stage owner unavailable.",
+                "CCSWnd_Tab is waiting for the parent CCashShop stage."
+            };
+        }
+
+        private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopTabWrapperOwnerState(AdminShopDialogUI cashShopWindow)
+        {
+            IReadOnlyList<string> lines = BuildCashShopTabOwnerLines(cashShopWindow);
+            return new CashShopStageChildWindow.CashShopWrapperOwnerState
+            {
+                OwnerName = "CCSWnd_Tab",
+                Status = lines.Count > 0 ? lines[0] : string.Empty,
+                Lines = lines
+            };
+        }
+
         private CashShopStageChildWindow.LockerOwnerState BuildCashShopLockerOwnerState(AdminShopDialogUI cashShopWindow)
         {
             AdminShopDialogUI.LockerOwnerSnapshot snapshot = cashShopWindow?.GetLockerOwnerSnapshot() ?? new();
@@ -1334,7 +1429,45 @@ namespace HaCreator.MapSimulator
                 ScrollBarX = 229,
                 ScrollBarY = 29,
                 ScrollBarHeight = 67,
-                SharedCharacterNames = snapshot.SharedCharacterNames
+                SharedCharacterNames = snapshot.SharedCharacterNames,
+                ButtonControls = BuildCashShopLockerButtonControlStates()
+            };
+        }
+
+        internal static IReadOnlyList<CashShopStageChildWindow.LockerOwnerState.ButtonControlState> BuildCashShopLockerButtonControlStates()
+        {
+            return new[]
+            {
+                new CashShopStageChildWindow.LockerOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtRebate",
+                    NativeButtonId = 0,
+                    Position = new Microsoft.Xna.Framework.Point(170, 24),
+                    Width = 86,
+                    Height = 19,
+                    MouseOverWidth = 86,
+                    MouseOverHeight = 19
+                },
+                new CashShopStageChildWindow.LockerOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtRebate2",
+                    NativeButtonId = 1,
+                    Position = new Microsoft.Xna.Framework.Point(170, 51),
+                    Width = 86,
+                    Height = 19,
+                    MouseOverWidth = 86,
+                    MouseOverHeight = 19
+                },
+                new CashShopStageChildWindow.LockerOwnerState.ButtonControlState
+                {
+                    ActionKey = "BtRefund",
+                    NativeButtonId = 2,
+                    Position = new Microsoft.Xna.Framework.Point(170, 78),
+                    Width = 34,
+                    Height = 16,
+                    MouseOverWidth = 34,
+                    MouseOverHeight = 16
+                }
             };
         }
 
@@ -1884,6 +2017,56 @@ namespace HaCreator.MapSimulator
             AppendCashShopStatusLine(lines, stageWindow.CashPurchaseRecordSummary);
             AppendCashShopStatusLine(lines, stageWindow.CashItemLastSummary);
             return lines;
+        }
+
+        private IReadOnlyList<string> BuildCashShopBestOwnerLines()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
+            {
+                return stageWindow.DescribeBestOwnerState();
+            }
+
+            return new[]
+            {
+                "Cash Shop stage owner unavailable.",
+                "CCSWnd_Best is waiting for the parent CCashShop stage."
+            };
+        }
+
+        private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopBestWrapperOwnerState()
+        {
+            IReadOnlyList<string> lines = BuildCashShopBestOwnerLines();
+            return new CashShopStageChildWindow.CashShopWrapperOwnerState
+            {
+                OwnerName = "CCSWnd_Best",
+                Status = lines.Count > 0 ? lines[0] : string.Empty,
+                Lines = lines
+            };
+        }
+
+        private IReadOnlyList<string> BuildCashShopItemSearchOwnerLines()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
+            {
+                return stageWindow.DescribeSearchOwnerState();
+            }
+
+            return new[]
+            {
+                "Cash Shop stage owner unavailable.",
+                "CCSWnd_ItemSearch is waiting for the parent CCashShop stage."
+            };
+        }
+
+        private CashShopStageChildWindow.CashShopWrapperOwnerState BuildCashShopItemSearchWrapperOwnerState()
+        {
+            IReadOnlyList<string> lines = BuildCashShopItemSearchOwnerLines();
+            return new CashShopStageChildWindow.CashShopWrapperOwnerState
+            {
+                OwnerName = "CCSWnd_ItemSearch",
+                Status = lines.Count > 0 ? lines[0] : string.Empty,
+                Lines = lines
+            };
         }
 
         internal static IReadOnlyList<CashShopStageChildWindow.ListOwnerState.ButtonControlState> BuildCashShopStatusButtonControlStates()

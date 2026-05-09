@@ -32,10 +32,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int TextCanvasStringPoolId = 0x196E;
         internal const int PrimaryButtonUolStringPoolId = 6497;
         internal const int PrimaryButtonControlId = 2;
+        internal const int PrimaryButtonSetRetValue = 2;
         internal const int PrimaryButtonX = 197;
         internal const int PrimaryButtonBottomOffset = 31;
         internal const int ClientTextWrapWidth = 200;
         internal const bool PrimaryButtonAcceptsFocus = true;
+        internal const int DefaultMessageStringPoolId = 0x1093;
+        internal const bool NoEnterInput = false;
         internal const int RequestInputDialogType = 3;
         internal const int RequestInputStringPoolId = EngagementProposalDialogText.EnterPartnerNameStringPoolId;
         internal const int RequestInputDefaultStringLength = 0;
@@ -690,10 +693,13 @@ namespace HaCreator.MapSimulator.Interaction
                 TextCanvasStringPoolId = TextCanvasStringPoolId,
                 AcceptButtonUolStringPoolId = PrimaryButtonUolStringPoolId,
                 AcceptButtonControlId = PrimaryButtonControlId,
+                AcceptButtonSetRetValue = PrimaryButtonSetRetValue,
                 AcceptButtonX = PrimaryButtonX,
                 AcceptButtonBottomOffset = PrimaryButtonBottomOffset,
                 ClientTextWrapWidth = ClientTextWrapWidth,
-                AcceptButtonAcceptsFocus = PrimaryButtonAcceptsFocus
+                AcceptButtonAcceptsFocus = PrimaryButtonAcceptsFocus,
+                DefaultMessageStringPoolId = DefaultMessageStringPoolId,
+                NoEnterInput = NoEnterInput
             };
         }
 
@@ -716,7 +722,7 @@ namespace HaCreator.MapSimulator.Interaction
             string clientEvidence =
                 $" Client owner {snapshot.ClientOwnerTypeName} uses {snapshot.PrimaryDialogAssetPath} with fallback {snapshot.FallbackDialogAssetPath}; " +
                 $"StringPool top/center/textbox/bottom/text ids 0x{snapshot.TopBandStringPoolId:X}/0x{snapshot.CenterBandStringPoolId:X}/0x{snapshot.TextBoxStringPoolId:X}/0x{snapshot.BottomBandStringPoolId:X}/0x{snapshot.TextCanvasStringPoolId:X}, " +
-                $"{snapshot.AcceptButtonAssetName} control id {snapshot.AcceptButtonControlId}, UOL id 0x{snapshot.AcceptButtonUolStringPoolId:X}, x={snapshot.AcceptButtonX}, bottom={snapshot.AcceptButtonBottomOffset}, acceptFocus={snapshot.AcceptButtonAcceptsFocus}, wrapWidth={snapshot.ClientTextWrapWidth}. " +
+                $"{snapshot.AcceptButtonAssetName} control id {snapshot.AcceptButtonControlId}, SetRet={snapshot.AcceptButtonSetRetValue}, UOL id 0x{snapshot.AcceptButtonUolStringPoolId:X}, x={snapshot.AcceptButtonX}, bottom={snapshot.AcceptButtonBottomOffset}, acceptFocus={snapshot.AcceptButtonAcceptsFocus}, noEnterInput={snapshot.NoEnterInput}, default message id 0x{snapshot.DefaultMessageStringPoolId:X}, wrapWidth={snapshot.ClientTextWrapWidth}. " +
                 $"Recovered engagement text: wait=\"{EngagementProposalDialogText.GetWaitForResponseText()}\", prompt=\"{EngagementProposalDialogText.FormatIncomingRequestPrompt(snapshot.ProposerName)}\", accept=\"{EngagementProposalDialogText.GetAcceptedText()}\", declined=\"{EngagementProposalDialogText.GetDeclinedRequestText()}\", wrongName=\"{EngagementProposalDialogText.GetWrongCharacterNameText()}\", sameMap=\"{EngagementProposalDialogText.GetPartnerSameMapText()}\", partnerEtcFull=\"{EngagementProposalDialogText.GetPartnerEtcSlotFullText()}\", sameGender=\"{EngagementProposalDialogText.GetSameGenderText()}\", alreadyEngaged=\"{EngagementProposalDialogText.GetAlreadyEngagedText()}\", alreadyMarried=\"{EngagementProposalDialogText.GetAlreadyMarriedText()}\", partnerAlreadyEngaged=\"{EngagementProposalDialogText.GetPartnerAlreadyEngagedText()}\", partnerAlreadyMarried=\"{EngagementProposalDialogText.GetPartnerAlreadyMarriedText()}\", requesterBusy=\"{EngagementProposalDialogText.GetRequesterBusyText()}\", partnerBusy=\"{EngagementProposalDialogText.GetPartnerBusyText()}\", withdrawn=\"{EngagementProposalDialogText.GetWithdrawnRequestText()}\", reservationLocked=\"{EngagementProposalDialogText.GetReservationLockedBreakText()}\", reservationCanceled=\"{EngagementProposalDialogText.GetReservationCanceledText()}\", invitationInvalid=\"{EngagementProposalDialogText.GetInvitationInvalidText()}\", reservationSuccess=\"{EngagementProposalDialogText.GetReservationSuccessText()}\", etcFull=\"{EngagementProposalDialogText.GetEtcSlotFullText()}\", enterPartner=\"{EngagementProposalDialogText.GetEnterPartnerNameText()}\".";
             return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}{marriageResultState}{handoffState}{clientEvidence}";
         }
@@ -1192,10 +1198,13 @@ namespace HaCreator.MapSimulator.Interaction
         public int TextCanvasStringPoolId { get; init; }
         public int AcceptButtonUolStringPoolId { get; init; }
         public int AcceptButtonControlId { get; init; }
+        public int AcceptButtonSetRetValue { get; init; }
         public int AcceptButtonX { get; init; }
         public int AcceptButtonBottomOffset { get; init; }
         public int ClientTextWrapWidth { get; init; }
         public bool AcceptButtonAcceptsFocus { get; init; }
+        public int DefaultMessageStringPoolId { get; init; }
+        public bool NoEnterInput { get; init; }
     }
 
     internal readonly record struct EngagementProposalInboxDispatch(

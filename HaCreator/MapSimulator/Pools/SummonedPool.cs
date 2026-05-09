@@ -147,6 +147,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int PacketOwnedSummonPassiveEffectCooldownMs = 240;
         private const int PacketOwnedHitRetainedAttackFrameWindowMs = 240;
         private const int SummonHitPeriodDurationMs = 1500;
+        private const int ClientNoOneTimeAction = -1;
 
         private sealed class PacketOwnedSummonState
         {
@@ -170,7 +171,7 @@ namespace HaCreator.MapSimulator.Pools
             public int LastSkillTime { get; set; } = int.MinValue;
             public int LastHitTime { get; set; } = int.MinValue;
             public int LastHitDamage { get; set; }
-            public int OneTimeAction { get; set; }
+            public int OneTimeAction { get; set; } = ClientNoOneTimeAction;
             public bool OneTimeActionOwnedBySkillPacket { get; set; }
             public int OneTimeActionEndTime { get; set; } = int.MinValue;
             public PacketOwnedOneTimeActionClip? OneTimeActionClip { get; set; }
@@ -263,6 +264,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             public long SequenceId { get; init; }
             public string SoundKey { get; init; }
+            public WzBinaryProperty SoundProperty { get; init; }
             public int ExecuteTime { get; init; }
         }
 
@@ -1057,7 +1059,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            oneTimeAction = 0;
+            oneTimeAction = ClientNoOneTimeAction;
             oneTimeActionOwnedBySkillPacket = false;
             oneTimeActionEndTime = int.MinValue;
             oneTimeActionClip = null;
@@ -1343,7 +1345,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            state.OneTimeAction = 0;
+            state.OneTimeAction = ClientNoOneTimeAction;
             state.OneTimeActionOwnedBySkillPacket = false;
             state.OneTimeActionEndTime = int.MinValue;
             state.OneTimeActionClip = null;
@@ -1576,7 +1578,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (!string.IsNullOrWhiteSpace(scheduledSound.SoundKey))
                     {
-                        _soundManager?.PlaySound(scheduledSound.SoundKey);
+                        PlayPacketOwnedSound(scheduledSound.SoundKey, scheduledSound.SoundProperty);
                     }
                 }
             }
@@ -2517,7 +2519,7 @@ namespace HaCreator.MapSimulator.Pools
         private static bool HasPacketOwnedOneTimeActionOwner(PacketOwnedSummonState state)
         {
             return state?.Summon != null
-                   && (state.OneTimeAction != 0
+                   && (state.OneTimeAction >= 0
                        || state.OneTimeActionOwnedBySkillPacket
                        || state.OneTimeActionEndTime != int.MinValue
                        || state.OneTimeActionClip.HasValue
@@ -5375,6 +5377,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 PlayOrSchedulePacketOwnedSound(
                     packetHitSoundKey,
+                    ResolvePacketMobAttackSoundSource(mob, packetHitSoundKey),
                     currentTime + ResolvePacketMobAttackFeedbackHitAfterMs(presentation),
                     currentTime);
             }
@@ -9774,6 +9777,45 @@ namespace HaCreator.MapSimulator.Pools
                    || string.Equals(segment, "hit", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "effect", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "uol", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "data", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "payload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "valueData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "valuePayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "payloadValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "payloadData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "targetValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "targetData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "targetPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "pathValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "pathData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "pathText", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "pathPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "uolData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "uolValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "uolValueData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "uolText", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "uolPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sourceValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sourceData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sourceText", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sourcePayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitText", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hitPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "recordValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "recordData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "recordText", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "recordPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "rawValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "rawData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "rawPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "clientValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "clientData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "clientPayload", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "assetValue", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "assetData", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "assetPayload", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "hitUol", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "hitUOL", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "hitUolPath", StringComparison.OrdinalIgnoreCase)
@@ -10223,7 +10265,41 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private void PlayOrSchedulePacketOwnedSound(string soundKey, int executeTime, int currentTime)
+        private WzBinaryProperty ResolvePacketMobAttackSoundSource(MobItem mob, string soundKey)
+        {
+            return mob != null && mob.TryGetClientSoundSource(soundKey, out WzBinaryProperty soundProperty)
+                ? soundProperty
+                : null;
+        }
+
+        private void PlayPacketOwnedSound(string soundKey, WzBinaryProperty soundProperty)
+        {
+            if (_soundManager == null || string.IsNullOrWhiteSpace(soundKey))
+            {
+                return;
+            }
+
+            if (soundProperty != null)
+            {
+                _soundManager.TryPlayClientSoundEffect(
+                    soundKey,
+                    soundProperty,
+                    startVolumeScale: 1f,
+                    loop: false,
+                    suppressWhileActive: false,
+                    out _,
+                    out _);
+                return;
+            }
+
+            _soundManager.PlaySound(soundKey);
+        }
+
+        private void PlayOrSchedulePacketOwnedSound(
+            string soundKey,
+            WzBinaryProperty soundProperty,
+            int executeTime,
+            int currentTime)
         {
             if (string.IsNullOrWhiteSpace(soundKey) || _soundManager == null)
             {
@@ -10232,7 +10308,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (HasPacketOwnedSummonTickReached(currentTime, executeTime))
             {
-                _soundManager.PlaySound(soundKey);
+                PlayPacketOwnedSound(soundKey, soundProperty);
                 return;
             }
 
@@ -10240,6 +10316,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 SequenceId = _nextScheduledHitEffectSequenceId++,
                 SoundKey = soundKey,
+                SoundProperty = soundProperty,
                 ExecuteTime = executeTime
             });
         }

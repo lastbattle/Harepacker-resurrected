@@ -109,7 +109,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? "connected Maple session"
+                ? $"connected Maple session proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
@@ -148,8 +148,8 @@ namespace HaCreator.MapSimulator.Managers
                     + Environment.NewLine
                     + string.Join(
                         Environment.NewLine,
-                        entries.Select(entry =>
-                            $"{DescribeOutboundPacket(entry.Opcode, Convert.FromHexString(entry.RawPacketHex))} payloadLen={entry.PayloadLength} source={entry.Source} proxySession={FormatProxySessionId(entry.ProxySessionId)} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                entries.Select(entry =>
+                    $"{DescribeOutboundPacket(entry.Opcode, Convert.FromHexString(entry.RawPacketHex))} payloadLen={entry.PayloadLength} source={entry.Source} proxySession={FormatProxySessionId(entry.ProxySessionId)} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -848,8 +848,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 int flushed = FlushQueuedOutboundPacketsViaProxy();
                 LastStatus = flushed > 0
-                    ? $"Transport official-session bridge initialized Maple crypto and flushed {flushed} queued outbound packet(s)."
-                    : _roleSessionProxy.LastStatus;
+                    ? $"Transport official-session bridge initialized Maple crypto for proxySession={FormatProxySessionId(e.ProxySessionId)} and flushed {flushed} queued outbound packet(s)."
+                    : $"{_roleSessionProxy.LastStatus} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
                 return;
             }
 
@@ -859,9 +859,16 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
+            RecordInboundPacket(new InboundPacketTrace(
+                message.PacketType,
+                message.Payload?.Length ?? 0,
+                BuildPayloadPreview(message.Payload),
+                Convert.ToHexString(e.RawPacket ?? Array.Empty<byte>()),
+                $"official-session:{e.SourceEndpoint}",
+                e.ProxySessionId));
             _pendingMessages.Enqueue(message);
             ReceivedCount++;
-            LastStatus = $"Queued {TransportationPacketInboxManager.DescribePacket(message.PacketType, message.Payload)} from live session {e.SourceEndpoint}.";
+            LastStatus = $"Queued {TransportationPacketInboxManager.DescribePacket(message.PacketType, message.Payload)} from live session {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
         }
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
@@ -889,11 +896,12 @@ namespace HaCreator.MapSimulator.Managers
                     payload?.Length ?? 0,
                     BuildPayloadPreview(payload),
                     Convert.ToHexString(e.RawPacket),
-                    e.SourceEndpoint));
+                    $"official-session:{e.SourceEndpoint}",
+                    e.ProxySessionId));
 
                 if (isTransportOpcode)
                 {
-                    LastStatus = $"Forwarded outbound {TransportationPacketInboxManager.DescribePacket(opcode, payload)} from {e.SourceEndpoint}.";
+                    LastStatus = $"Forwarded outbound {TransportationPacketInboxManager.DescribePacket(opcode, payload)} from {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
                     return;
                 }
             }
@@ -906,7 +914,8 @@ namespace HaCreator.MapSimulator.Managers
             byte[] rawPacket,
             byte[] payload,
             string source,
-            bool countAsTypedSend)
+            bool countAsTypedSend,
+            long? proxySessionId)
         {
             if (countAsTypedSend)
             {
@@ -928,7 +937,8 @@ namespace HaCreator.MapSimulator.Managers
                 payload?.Length ?? 0,
                 BuildPayloadPreview(payload),
                 Convert.ToHexString(rawPacket),
-                source));
+                source,
+                proxySessionId));
         }
 
         private bool TrySendRawPacket(
@@ -979,8 +989,9 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            RecordSentOutboundPacket(opcode, clonedPacket, payload, "simulator-send", countAsTypedSend);
-            status = $"Injected outbound {DescribeOutboundPacket(opcode, clonedPacket)} into live session. {proxyStatus}";
+            long? proxySessionId = _roleSessionProxy.CurrentProxySessionId;
+            RecordSentOutboundPacket(opcode, clonedPacket, payload, "simulator-send", countAsTypedSend, proxySessionId);
+            status = $"Injected outbound {DescribeOutboundPacket(opcode, clonedPacket)} into live session proxySession={FormatProxySessionId(proxySessionId)}. {proxyStatus}";
             LastStatus = status;
             return true;
         }
@@ -998,7 +1009,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 TryDecodeOpcode(packet.RawPacket, out int opcode, out byte[] payload);
-                RecordSentOutboundPacket(opcode, packet.RawPacket, payload, "deferred-flush", countAsTypedSend: true);
+                RecordSentOutboundPacket(opcode, packet.RawPacket, payload, "deferred-flush", countAsTypedSend: true, _roleSessionProxy.CurrentProxySessionId);
                 flushed++;
             }
 
@@ -1168,6 +1179,15 @@ namespace HaCreator.MapSimulator.Managers
                     _hasObservedLiveOutboundFieldInitRequest = true;
                     _liveOutboundFieldInitRequestEvidence = trace;
                 }
+            }
+        }
+
+        private void RecordInboundPacket(InboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                _hasObservedLiveInboundTransportPacket = true;
+                _liveInboundTransportPacketEvidence = trace;
             }
         }
 

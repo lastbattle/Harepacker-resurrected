@@ -10349,6 +10349,7 @@ namespace HaCreator.MapSimulator
             _selectorRequestStatusMessage = statusMessage;
             _selectorLastResultCode = SelectorRequestResultCode.None;
             _selectorLastResultMessage = null;
+            _loginRuntime.MarkRequestSent(statusMessage);
             RefreshWorldChannelSelectorWindows();
             SyncLoginEntryDialogs();
         }
@@ -10363,6 +10364,7 @@ namespace HaCreator.MapSimulator
             _selectorLastResultMessage = string.IsNullOrWhiteSpace(resultMessage)
                 ? "Cancelled the pending selector request."
                 : resultMessage;
+            _loginRuntime.ClearRequestSent(_selectorLastResultMessage);
         }
 
 
@@ -19961,6 +19963,7 @@ namespace HaCreator.MapSimulator
 
 
             _soundManager?.Dispose();
+            UIObject.ClientSoundEffectPlayer = null;
 
             _snowBallPacketInbox.Dispose();
             _snowBallOfficialSessionBridge.Dispose();
@@ -22720,9 +22723,31 @@ namespace HaCreator.MapSimulator
             return ResolveMobSummonEffectId(summonInfo);
         }
 
+        internal static string ResolveMobSummonEffectSourceUolForTesting(int effectId)
+        {
+            return ResolveMobSummonEffectSourceUol(effectId);
+        }
+
+        internal static string BuildMobSummonEffectOwnerSlotKeyForTesting(int effectId)
+        {
+            return BuildMobSummonEffectOwnerSlotKey(effectId);
+        }
+
         private static int ResolveMobSummonEffectId(MobSummonSkillInfo summonInfo)
         {
             return Math.Max(0, summonInfo?.SummonEffectId ?? 0);
+        }
+
+        private static string ResolveMobSummonEffectSourceUol(int effectId)
+        {
+            return effectId > 0
+                ? $"Effect/Summon.img/{effectId.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+        }
+
+        private static string BuildMobSummonEffectOwnerSlotKey(int effectId)
+        {
+            return Math.Max(0, effectId).ToString(CultureInfo.InvariantCulture);
         }
 
         private void PlayMobSummonEffect(MobSummonSkillInfo summonInfo, MobSpawnPoint summonSpawn, int currentTick)
@@ -22748,13 +22773,26 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _animationEffects.AddOneTime(
+            string sourceUol = ResolveMobSummonEffectSourceUol(effectId);
+            int durationMs = ResolvePacketOwnedSummonEffectDurationMs(sprites);
+            int initialElapsedMs = effectId <= byte.MaxValue
+                ? ResolvePacketOwnedSummonEffectInitialElapsed(
+                    (byte)effectId,
+                    sourceUol,
+                    (int)Math.Round(summonSpawn.X),
+                    (int)Math.Round(summonSpawn.Y),
+                    currentTick,
+                    durationMs)
+                : 0;
+
+            _animationEffects.AddPacketOwnedSummonEffect(
                 sprites,
+                sourceUol,
                 summonSpawn.X,
                 summonSpawn.Y,
-                flip: false,
                 currentTick,
-                zOrder: 1);
+                zOrder: 1,
+                initialElapsedMs: initialElapsedMs);
         }
 
         private List<PacketOwnedUiFrame> LoadWzAuthoredMobSummonEffectFrames(int effectId)
@@ -23669,7 +23707,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryTriggerPetSpeechEvent(PetAutoSpeechEvent eventType, int currentTickCount)
         {
-            return _playerManager?.Pets?.TryPetAutoSpeaking(eventType, currentTickCount) == true;
+            return _playerManager?.PetAutoSpeaking(eventType, currentTickCount) == true;
         }
 
 
@@ -33832,13 +33870,13 @@ namespace HaCreator.MapSimulator
         {
             PassiveTransferFieldHorizontalOnKeyDownDecision horizontalOnKeyDownDecision =
                 EvaluatePassiveTransferFieldHorizontalOnKeyDown();
+            if (horizontalOnKeyDownDecision.ShouldStopSkillMacro)
+            {
+                StopSkillMacroForHandleUpKeyDown();
+            }
+
             if (horizontalOnKeyDownDecision.ShouldClearQueuedRetry)
             {
-                if (horizontalOnKeyDownDecision.ShouldStopSkillMacro)
-                {
-                    StopSkillMacroForHandleUpKeyDown();
-                }
-
                 ConsumePassiveTransferRequestFromLifecycleOwner(horizontalOnKeyDownDecision.ClearOwner);
             }
 
@@ -36417,7 +36455,7 @@ namespace HaCreator.MapSimulator
 
             var publicationCandidates = new List<FieldObjectScriptPublication>();
             var additionalRawScriptNames = new List<string>();
-            WzImageProperty infoProperty = _mapBoard.MapInfo.Image?["info"];
+            MapInfo mapInfo = _mapBoard.MapInfo;
 
             static void AddPublicationCandidates(
                 ICollection<FieldObjectScriptPublication> publicationCandidates,
@@ -36446,17 +36484,26 @@ namespace HaCreator.MapSimulator
                 scriptNames.Add(scriptName.Trim());
             }
 
-            AddPublicationCandidates(publicationCandidates, infoProperty?["onUserEnter"]);
-            AddRawScriptName(additionalRawScriptNames, _mapBoard.MapInfo.onUserEnter);
+            foreach (WzImageProperty property in EnumerateMapInfoScriptProperties(mapInfo, "onUserEnter"))
+            {
+                AddPublicationCandidates(publicationCandidates, property);
+            }
+            AddRawScriptName(additionalRawScriptNames, mapInfo.onUserEnter);
 
             if (includeFirstUserEnterScript)
             {
-                AddPublicationCandidates(publicationCandidates, infoProperty?["onFirstUserEnter"]);
-                AddRawScriptName(additionalRawScriptNames, _mapBoard.MapInfo.onFirstUserEnter);
+                foreach (WzImageProperty property in EnumerateMapInfoScriptProperties(mapInfo, "onFirstUserEnter"))
+                {
+                    AddPublicationCandidates(publicationCandidates, property);
+                }
+                AddRawScriptName(additionalRawScriptNames, mapInfo.onFirstUserEnter);
             }
 
-            AddPublicationCandidates(publicationCandidates, infoProperty?["fieldScript"]);
-            AddRawScriptName(additionalRawScriptNames, infoProperty?["fieldScript"]?.GetString());
+            foreach (WzImageProperty property in EnumerateMapInfoScriptProperties(mapInfo, "fieldScript"))
+            {
+                AddPublicationCandidates(publicationCandidates, property);
+                AddRawScriptName(additionalRawScriptNames, GetScriptPropertyString(property));
+            }
 
             return QuestRuntimeManager.BuildPublishedScriptPublications(
                 publicationCandidates,
@@ -36477,6 +36524,14 @@ namespace HaCreator.MapSimulator
                 yield return scriptName;
             }
 
+            foreach (WzImageProperty property in EnumerateMapInfoScriptProperties(_mapBoard.MapInfo, "onUserEnter"))
+            {
+                foreach (string scriptName in QuestRuntimeManager.ParseScriptNames(property))
+                {
+                    yield return scriptName;
+                }
+            }
+
 
             if (includeFirstUserEnterScript)
             {
@@ -36484,12 +36539,100 @@ namespace HaCreator.MapSimulator
                 {
                     yield return scriptName;
                 }
+
+                foreach (WzImageProperty property in EnumerateMapInfoScriptProperties(_mapBoard.MapInfo, "onFirstUserEnter"))
+                {
+                    foreach (string scriptName in QuestRuntimeManager.ParseScriptNames(property))
+                    {
+                        yield return scriptName;
+                    }
+                }
             }
 
 
-            foreach (string scriptName in QuestRuntimeManager.ParseScriptNames(_mapBoard.MapInfo.Image?["info"]?["fieldScript"]))
+            foreach (WzImageProperty property in EnumerateMapInfoScriptProperties(_mapBoard.MapInfo, "fieldScript"))
             {
-                yield return scriptName;
+                foreach (string scriptName in QuestRuntimeManager.ParseScriptNames(property))
+                {
+                    yield return scriptName;
+                }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateMapInfoScriptProperties(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty property in EnumerateMatchingMapInfoProperties(mapInfo.additionalProps, propertyName))
+            {
+                yield return property;
+            }
+
+            foreach (WzImageProperty property in EnumerateMatchingMapInfoProperties(mapInfo.unsupportedInfoProperties, propertyName))
+            {
+                yield return property;
+            }
+
+            WzImageProperty liveProperty = FindLiveInfoProperty(mapInfo, propertyName);
+            if (liveProperty != null)
+            {
+                yield return liveProperty;
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateMatchingMapInfoProperties(
+            IEnumerable<WzImageProperty> properties,
+            string propertyName)
+        {
+            if (properties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return property;
+                }
+            }
+        }
+
+        private static WzImageProperty FindLiveInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty infoProperty = mapInfo?.Image?["info"];
+            if (infoProperty == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty exactProperty = infoProperty[propertyName] as WzImageProperty;
+            if (exactProperty != null)
+            {
+                return exactProperty;
+            }
+
+            return infoProperty.WzProperties?.FirstOrDefault(
+                property => string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string GetScriptPropertyString(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return property.GetString();
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -37211,6 +37354,10 @@ namespace HaCreator.MapSimulator
             // Set up sound callbacks
 
             _playerManager.SetJumpSoundCallback(PlayJumpSE);
+            _playerManager.SetClientJumpSkillCancelIngressCallback(currentTime =>
+            {
+                _ = _playerManager.Skills?.TryCancelActiveDashingSkillForClientJump(currentTime);
+            });
 
 
 
@@ -38249,6 +38396,14 @@ namespace HaCreator.MapSimulator
                 battleRecordWindow.SetFont(_fontChat);
                 battleRecordWindow.SetContentProvider(BuildPacketOwnedBattleRecordLines);
                 battleRecordWindow.SetFooterProvider(BuildPacketOwnedBattleRecordFooter);
+                battleRecordWindow.SetButtonAction("tabClear", () => ShowUtilityFeedbackMessage(_packetOwnedBattleRecordRuntime.ClearInfoFromOwnerButton(_packetOwnedBattleRecordRuntime.CurrentPageIndex)));
+                battleRecordWindow.SetButtonAction("allClear", () => ShowUtilityFeedbackMessage(_packetOwnedBattleRecordRuntime.ClearInfoFromOwnerButton(3)));
+                battleRecordWindow.SetButtonAction("timerSet", () => ShowUtilityFeedbackMessage("CUIBattleRecord button 2003 opens the recovered timer-input dialog; use /npcutility battlerecord timer <seconds> [clear=<on|off>] to submit its value."));
+                battleRecordWindow.SetButtonAction("fold", () => ShowUtilityFeedbackMessage(_packetOwnedBattleRecordRuntime.ToggleExtended()));
+                battleRecordWindow.SetButtonAction("onOff", HandlePacketOwnedBattleRecordOnOffButtonClick);
+                battleRecordWindow.SetButtonAction("timerStop", HandlePacketOwnedBattleRecordTimerStopButtonClick);
+                battleRecordWindow.SetButtonEnabledProvider("timerSet", () => !_packetOwnedBattleRecordRuntime.HasActiveTimer && !_packetOwnedBattleRecordRuntime.HasPausedTimer);
+                battleRecordWindow.SetButtonEnabledProvider("timerStop", () => _packetOwnedBattleRecordRuntime.HasActiveTimer || _packetOwnedBattleRecordRuntime.HasPausedTimer);
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.Radio) is RadioStatusWindow radioWindow)
@@ -43762,6 +43917,11 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatViewParentLayerReleaseSequence = buffEntry.TemporaryStatViewParentLayerReleaseSequence;
             renderData.TemporaryStatViewMainLayerReleaseSequence = buffEntry.TemporaryStatViewMainLayerReleaseSequence;
             renderData.TemporaryStatViewShadowLayerReleaseSequence = buffEntry.TemporaryStatViewShadowLayerReleaseSequence;
+            renderData.TemporaryStatViewTerminalReleaseOrder = buffEntry.TemporaryStatViewTerminalReleaseOrder;
+            renderData.TemporaryStatViewObjectReleaseOrder = buffEntry.TemporaryStatViewObjectReleaseOrder;
+            renderData.TemporaryStatViewParentLayerReleaseOrder = buffEntry.TemporaryStatViewParentLayerReleaseOrder;
+            renderData.TemporaryStatViewMainLayerReleaseOrder = buffEntry.TemporaryStatViewMainLayerReleaseOrder;
+            renderData.TemporaryStatViewShadowLayerReleaseOrder = buffEntry.TemporaryStatViewShadowLayerReleaseOrder;
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
@@ -43785,6 +43945,13 @@ namespace HaCreator.MapSimulator
             renderData.ShadowCanvasRemoveSequence = buffEntry.ShadowCanvasRemoveSequence;
             renderData.ShadowCanvasInsertSequence = buffEntry.ShadowCanvasInsertSequence;
             renderData.ShadowCanvasReleaseSequence = buffEntry.ShadowCanvasReleaseSequence;
+            renderData.ShadowCanvasRemoveOrder = buffEntry.ShadowCanvasRemoveOrder;
+            renderData.ShadowCanvasReleaseOrder = buffEntry.ShadowCanvasReleaseOrder;
+            renderData.ShadowCanvasMutationLoadOrder = buffEntry.ShadowCanvasMutationLoadOrder;
+            renderData.ShadowCanvasMutationRemoveOrder = buffEntry.ShadowCanvasMutationRemoveOrder;
+            renderData.ShadowCanvasMutationInsertOrder = buffEntry.ShadowCanvasMutationInsertOrder;
+            renderData.ShadowCanvasMutationIndexCommitOrder = buffEntry.ShadowCanvasMutationIndexCommitOrder;
+            renderData.ShadowCanvasMutationCanvasReleaseOrder = buffEntry.ShadowCanvasMutationCanvasReleaseOrder;
             renderData.MainLayerAnimationMode = buffEntry.MainLayerAnimationMode;
             renderData.MainLayerAnimationModeName = buffEntry.MainLayerAnimationModeName;
             renderData.ShadowLayerAnimationMode = buffEntry.ShadowLayerAnimationMode;
@@ -46340,6 +46507,14 @@ namespace HaCreator.MapSimulator
             {
                 _loginPacketAccountDialogProfiles[message.PacketType] =
                     WithLoginAccountDialogPacketSource(packetProfile, message.Source);
+            }
+            if (message.PacketType == LoginPacketType.SelectCharacterByVacResult &&
+                _loginPacketSelectCharacterByVacResultProfile != null)
+            {
+                _loginPacketSelectCharacterByVacResultProfile =
+                    LoginSelectCharacterByVacResultCodec.WithSource(
+                        _loginPacketSelectCharacterByVacResultProfile,
+                        message.Source);
             }
 
             DispatchLoginRuntimePacket(message.PacketType, out _);

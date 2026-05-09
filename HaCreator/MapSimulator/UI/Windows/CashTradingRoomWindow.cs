@@ -26,6 +26,88 @@ namespace HaCreator.MapSimulator.UI
             public string PacketSummary { get; init; } = string.Empty;
         }
 
+        public sealed class ButtonControlRuntimeState
+        {
+            public string ActionKey { get; init; } = string.Empty;
+            public int NativeButtonId { get; init; }
+            public Point Position { get; init; }
+            public int Width { get; init; }
+            public int Height { get; init; }
+            public int PressedWidth { get; init; }
+            public int PressedHeight { get; init; }
+            public bool HasWzCanvas { get; init; } = true;
+            public bool HasOwnerFocus { get; init; }
+        }
+
+        public sealed class ChatEditRuntimeSnapshot
+        {
+            public int ControlId { get; init; }
+            public int FontStringPoolId { get; init; }
+            public Point Position { get; init; }
+            public System.Drawing.Size Size { get; init; }
+            public int MaxLength { get; init; }
+            public bool HasFocus { get; init; }
+            public bool SoftKeyboardActive { get; init; }
+            public int Revision { get; init; }
+        }
+
+        public sealed class ScrollBarRuntimeSnapshot
+        {
+            public int ControlId { get; init; }
+            public int UpButtonId { get; init; }
+            public int DownButtonId { get; init; }
+            public Point Position { get; init; }
+            public int Height { get; init; }
+            public int WheelRange { get; init; }
+            public int Offset { get; init; }
+            public int MaxOffset { get; init; }
+            public bool IsDragging { get; init; }
+            public int Revision { get; init; }
+        }
+
+        public sealed class FontRuntimeSnapshot
+        {
+            public int NumberImageStringPoolId { get; init; }
+            public bool HasSmallWhiteFont { get; init; }
+            public bool HasNoBlackFont { get; init; }
+            public bool HasNoBlueFont { get; init; }
+            public bool HasSmallGrayFont { get; init; }
+            public bool HasSmallRedFont { get; init; }
+            public bool HasRemainGrayFont { get; init; }
+            public bool HasNumberImage { get; init; }
+            public int Revision { get; init; }
+        }
+
+        public sealed class TradeSessionRuntimeSnapshot
+        {
+            public int InitMoney { get; init; }
+            public int LocalWallet { get; init; }
+            public int RemoteWallet { get; init; }
+            public int LocalOffer { get; init; }
+            public int RemoteOffer { get; init; }
+            public string Stage { get; init; } = string.Empty;
+            public bool LocalLocked { get; init; }
+            public bool RemoteLocked { get; init; }
+            public bool LocalAccepted { get; init; }
+            public bool RemoteAccepted { get; init; }
+            public string RemoteProgressState { get; init; } = string.Empty;
+            public int Revision { get; init; }
+            public string PacketSignature { get; init; } = string.Empty;
+        }
+
+        public sealed class TradingRoomRuntimeSnapshot
+        {
+            public ChatEditRuntimeSnapshot ChatEdit { get; init; }
+            public ScrollBarRuntimeSnapshot ScrollBar { get; init; }
+            public FontRuntimeSnapshot FontOwner { get; init; }
+            public TradeSessionRuntimeSnapshot TradeSession { get; init; }
+            public IReadOnlyList<ButtonControlRuntimeState> ButtonControls { get; init; } = Array.Empty<ButtonControlRuntimeState>();
+            public IReadOnlyList<string> VisibleChatEntries { get; init; } = Array.Empty<string>();
+            public string FocusTarget { get; init; } = string.Empty;
+            public string DraftText { get; init; } = string.Empty;
+            public string StatusMessage { get; init; } = string.Empty;
+        }
+
         private enum TradeSessionStage
         {
             Draft,
@@ -134,6 +216,11 @@ namespace HaCreator.MapSimulator.UI
         private const int MaxVisibleChatLines = 6;
         private const int MaxChatHistory = 24;
         private const int ChatMaxLength = 256;
+        private const int TradeButtonNativeId = 0x3EA;
+        private const int CoinButtonNativeId = 0x3EB;
+        private const int ResetButtonNativeId = 0x3EC;
+        private const int EnterButtonNativeId = 0x3ED;
+        private const int ClaimButtonNativeId = 2;
         private static readonly TradeOwnerFocusTarget[] FocusCycleOrder =
         {
             TradeOwnerFocusTarget.ChatEdit,
@@ -279,6 +366,18 @@ namespace HaCreator.MapSimulator.UI
         {
             _packetSessionProvider = packetSessionProvider;
             _packetSessionSignature = string.Empty;
+        }
+
+        public TradingRoomRuntimeSnapshot GetRuntimeSnapshotForTests()
+        {
+            SyncPacketOwnedTradeSession();
+            RefreshOwnerRuntimeState();
+            return BuildRuntimeSnapshot();
+        }
+
+        internal static IReadOnlyList<ButtonControlRuntimeState> BuildRecoveredButtonControlRuntimeStatesForTests()
+        {
+            return BuildButtonControlRuntimeStates(TradeOwnerFocusTarget.ChatEdit);
         }
 
         public void ResetOwnerSession()
@@ -890,6 +989,112 @@ namespace HaCreator.MapSimulator.UI
             _sessionRuntime.RemoteOffer = _remoteOffer;
             _sessionRuntime.Stage = _sessionStage;
             _sessionRuntime.Revision = _tradeRevision;
+        }
+
+        private TradingRoomRuntimeSnapshot BuildRuntimeSnapshot()
+        {
+            int startIndex = Math.Max(0, _chatEntries.Count - MaxVisibleChatLines - _chatScrollOffset);
+            int endIndex = Math.Min(_chatEntries.Count, _chatEntries.Count - _chatScrollOffset);
+            IReadOnlyList<string> visibleChatEntries = startIndex < endIndex
+                ? _chatEntries.GetRange(startIndex, endIndex - startIndex)
+                : Array.Empty<string>();
+
+            return new TradingRoomRuntimeSnapshot
+            {
+                ChatEdit = new ChatEditRuntimeSnapshot
+                {
+                    ControlId = _editRuntime.ControlId,
+                    FontStringPoolId = _editRuntime.FontStringPoolId,
+                    Position = _editRuntime.Position,
+                    Size = _editRuntime.Size,
+                    MaxLength = _editRuntime.MaxLength,
+                    HasFocus = _editRuntime.HasFocus,
+                    SoftKeyboardActive = _editRuntime.SoftKeyboardActive,
+                    Revision = _editRuntime.Revision
+                },
+                ScrollBar = new ScrollBarRuntimeSnapshot
+                {
+                    ControlId = _scrollBarRuntime.ControlId,
+                    UpButtonId = _scrollBarRuntime.UpButtonId,
+                    DownButtonId = _scrollBarRuntime.DownButtonId,
+                    Position = _scrollBarRuntime.Position,
+                    Height = _scrollBarRuntime.Height,
+                    WheelRange = _scrollBarRuntime.WheelRange,
+                    Offset = _scrollBarRuntime.Offset,
+                    MaxOffset = _scrollBarRuntime.MaxOffset,
+                    IsDragging = _scrollBarRuntime.IsDragging,
+                    Revision = _scrollBarRuntime.Revision
+                },
+                FontOwner = new FontRuntimeSnapshot
+                {
+                    NumberImageStringPoolId = _fontRuntime.NumberImageStringPoolId,
+                    HasSmallWhiteFont = _fontRuntime.HasSmallWhiteFont,
+                    HasNoBlackFont = _fontRuntime.HasNoBlackFont,
+                    HasNoBlueFont = _fontRuntime.HasNoBlueFont,
+                    HasSmallGrayFont = _fontRuntime.HasSmallGrayFont,
+                    HasSmallRedFont = _fontRuntime.HasSmallRedFont,
+                    HasRemainGrayFont = _fontRuntime.HasRemainGrayFont,
+                    HasNumberImage = _fontRuntime.HasNumberImage,
+                    Revision = _fontRuntime.Revision
+                },
+                TradeSession = new TradeSessionRuntimeSnapshot
+                {
+                    InitMoney = _sessionRuntime.InitMoney,
+                    LocalWallet = _sessionRuntime.LocalWallet,
+                    RemoteWallet = _sessionRuntime.RemoteWallet,
+                    LocalOffer = _sessionRuntime.LocalOffer,
+                    RemoteOffer = _sessionRuntime.RemoteOffer,
+                    Stage = _sessionRuntime.Stage.ToString(),
+                    LocalLocked = _localLocked,
+                    RemoteLocked = _remoteLocked,
+                    LocalAccepted = _localAccepted,
+                    RemoteAccepted = _remoteAccepted,
+                    RemoteProgressState = _remoteProgressState.ToString(),
+                    Revision = _sessionRuntime.Revision,
+                    PacketSignature = _sessionRuntime.PacketSignature ?? string.Empty
+                },
+                ButtonControls = BuildButtonControlRuntimeStates(_focusedControl),
+                VisibleChatEntries = visibleChatEntries,
+                FocusTarget = DescribeFocusedControl(),
+                DraftText = _chatDrafts[_chatDraftIndex],
+                StatusMessage = _statusMessage
+            };
+        }
+
+        private static IReadOnlyList<ButtonControlRuntimeState> BuildButtonControlRuntimeStates(TradeOwnerFocusTarget focusedControl)
+        {
+            return new[]
+            {
+                BuildButtonControlRuntimeState("BtTrade", TradeButtonNativeId, TradeOwnerFocusTarget.TradeButton, focusedControl, new Point(0, 0), 64, 16, 64, 16),
+                BuildButtonControlRuntimeState("BtReset", ResetButtonNativeId, TradeOwnerFocusTarget.ResetButton, focusedControl, new Point(0, 0), 64, 16, 64, 16),
+                BuildButtonControlRuntimeState("BtCoin", CoinButtonNativeId, TradeOwnerFocusTarget.CoinButton, focusedControl, new Point(0, 0), 18, 16, 18, 16),
+                BuildButtonControlRuntimeState("BtClame", ClaimButtonNativeId, TradeOwnerFocusTarget.ClaimButton, focusedControl, new Point(0, 0), 18, 17, 18, 18),
+                BuildButtonControlRuntimeState("BtEnter", EnterButtonNativeId, TradeOwnerFocusTarget.EnterButton, focusedControl, new Point(0, 0), 40, 16, 40, 16)
+            };
+        }
+
+        private static ButtonControlRuntimeState BuildButtonControlRuntimeState(
+            string actionKey,
+            int nativeButtonId,
+            TradeOwnerFocusTarget focusTarget,
+            TradeOwnerFocusTarget focusedControl,
+            Point position,
+            int width,
+            int height,
+            int pressedWidth,
+            int pressedHeight)
+        {
+            return new ButtonControlRuntimeState
+            {
+                ActionKey = actionKey,
+                NativeButtonId = nativeButtonId,
+                Position = position,
+                Width = width,
+                Height = height,
+                PressedWidth = pressedWidth,
+                PressedHeight = pressedHeight,
+                HasOwnerFocus = focusedControl == focusTarget
+            };
         }
 
         private void HandleOwnerKeyboard(KeyboardState keyboardState)

@@ -99,6 +99,14 @@ namespace HaCreator.MapSimulator.Interaction
                 [6] = "CUIMessenger::ProcessChat"
             };
 
+        private static readonly IReadOnlyDictionary<byte, string> MapleTvSendResultHandlers =
+            new Dictionary<byte, string>
+            {
+                [1] = "CMapleTVMan::OnSendMessageResult sent (StringPool 0xF9E)",
+                [2] = "CMapleTVMan::OnSendMessageResult wrong-user-name (StringPool 0xFA0)",
+                [3] = "CMapleTVMan::OnSendMessageResult queue-too-long (StringPool 0xF9F)"
+            };
+
         private static readonly IReadOnlyDictionary<byte, string> MerchantInboundSubtypeHandlers =
             new Dictionary<byte, string>
             {
@@ -203,6 +211,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<byte> GetRecoveredMapleTvSendResultCodes()
         {
             return new byte[] { 1, 2, 3 };
+        }
+
+        internal static IReadOnlyDictionary<byte, string> GetRecoveredMapleTvSendResultHandlers()
+        {
+            return MapleTvSendResultHandlers;
         }
 
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMerchantInboundSubtypeHandlers()
@@ -377,7 +390,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string DescribeMapleTvRecoveredPacketTable()
         {
             string inboundSet = string.Join("/", MapleTvInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
-            return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket (405: OnSetMessage, 406: OnClearMessage, 407: OnSendMessageResult); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem expects the authoritative set/result response family 405/407.";
+            string resultCodes = string.Join(
+                ", ",
+                MapleTvSendResultHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket (405: OnSetMessage, 406: OnClearMessage, 407: OnSendMessageResult result codes {resultCodes}); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem expects the authoritative set/result response family 405/407.";
         }
 
         internal static string DescribeMerchantRecoveredPacketTable()
@@ -666,9 +682,16 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             bool showFeedback = payload[0] != 0;
                             resultCode = payload[1];
-                            branchSummary = showFeedback
-                                ? $"CMapleTVMan::OnSendMessageResult code={resultCode}"
-                                : "CMapleTVMan::OnSendMessageResult without feedback";
+                            if (showFeedback && MapleTvSendResultHandlers.TryGetValue(resultCode, out string resultHandler))
+                            {
+                                branchSummary = resultHandler;
+                            }
+                            else
+                            {
+                                branchSummary = showFeedback
+                                    ? $"CMapleTVMan::OnSendMessageResult code={resultCode}"
+                                    : "CMapleTVMan::OnSendMessageResult without feedback";
+                            }
                         }
                         else
                         {
@@ -745,6 +768,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             inboundSubtype = payload[0];
+            if (MessengerPacketCodec.TryDescribeClientResult(inboundOpcode, payload, out string decodedMessengerSummary))
+            {
+                branchSummary = decodedMessengerSummary;
+                return true;
+            }
+
             if (MessengerInboundSubtypeHandlers.TryGetValue(inboundSubtype, out string handlerName))
             {
                 branchSummary = $"{handlerName} (subtype {inboundSubtype})";

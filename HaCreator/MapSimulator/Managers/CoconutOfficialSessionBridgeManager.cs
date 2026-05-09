@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
 using System.Net.NetworkInformation;
 using System.Net;
 using System.Net.Sockets;
@@ -25,10 +26,19 @@ namespace HaCreator.MapSimulator.Managers
         private const string DefaultProcessName = "MapleStory";
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
+        private const int OutboundAttackRequestOpcode = 257;
+        private const int MaxRecentInboundPackets = 20;
+        private const int MaxRecentOutboundPackets = 20;
 
         private readonly ConcurrentQueue<CoconutPacketInboxMessage> _pendingMessages = new();
+        private readonly List<InboundPacketTrace> _recentInboundPackets = new();
+        private readonly List<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly object _sync = new();
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private bool _hasObservedLiveInboundCoconutPacket;
+        private bool _hasObservedLiveOutboundOpcode257;
+        private InboundPacketTrace? _liveInboundCoconutPacketEvidence;
+        private OutboundPacketTrace? _liveOutboundOpcode257Evidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -36,6 +46,34 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+        internal readonly record struct InboundPacketTrace(
+            int Opcode,
+            int PacketType,
+            int PayloadLength,
+            string Source,
+            string Summary,
+            string RawPacketHex,
+            long? ProxySessionId);
+        internal readonly record struct OutboundPacketTrace(
+            int Opcode,
+            int TargetId,
+            int DelayMs,
+            int PayloadLength,
+            string Source,
+            string Summary,
+            string RawPacketHex,
+            long? ProxySessionId);
+        public enum LiveOwnershipVerificationState
+        {
+            Idle,
+            ReconnectPending,
+            WaitingForBothDirections,
+            WaitingForOutboundOpcode257,
+            WaitingForInboundCoconutPacket,
+            WaitingForPairedProxySessionEvidence,
+            Complete
+        }
+
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
@@ -46,6 +84,35 @@ namespace HaCreator.MapSimulator.Managers
         public bool HoldsLiveSessionOwnership => IsRunning || HasAttachedClient || HasPassiveEstablishedSocketPair;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        internal bool HasObservedLiveInboundCoconutPacket => _hasObservedLiveInboundCoconutPacket;
+        internal bool HasObservedLiveOutboundOpcode257 => _hasObservedLiveOutboundOpcode257;
+        internal LiveOwnershipVerificationState CurrentLiveOwnershipVerificationState => ResolveLiveOwnershipVerificationState(
+            HasConnectedSession,
+            HasPassiveEstablishedSocketPair,
+            IsRunning,
+            _hasObservedLiveOutboundOpcode257,
+            _hasObservedLiveInboundCoconutPacket,
+            HasPairedCurrentLiveOwnershipEvidence());
+        public int RecentInboundPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentInboundPackets.Count;
+                }
+            }
+        }
+        public int RecentOutboundPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentOutboundPackets.Count;
+                }
+            }
+        }
         public string LastStatus { get; private set; } = "Coconut official-session bridge inactive.";
 
         public CoconutOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -61,11 +128,55 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                 : "inactive";
             string session = HasConnectedSession
-                ? "connected Maple session"
+                ? $"connected Maple session proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}"
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no live Maple session";
-            return $"Coconut official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}. {LastStatus}";
+            string inboundHistory = RecentInboundPacketCount == 0
+                ? $"no opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} inbound trace history"
+                : $"{RecentInboundPacketCount} opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} inbound trace(s)";
+            string outboundHistory = RecentOutboundPacketCount == 0
+                ? $"no opcode {OutboundAttackRequestOpcode} outbound trace history"
+                : $"{RecentOutboundPacketCount} opcode {OutboundAttackRequestOpcode} outbound trace(s)";
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _hasObservedLiveOutboundOpcode257,
+                _hasObservedLiveInboundCoconutPacket,
+                HasPairedCurrentLiveOwnershipEvidence());
+            string evidence = DescribeLiveOwnershipVerificationEvidence();
+            return $"Coconut official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; {inboundHistory}; {outboundHistory}. {verification} {evidence} {LastStatus}";
+        }
+
+        public string DescribeRecentPackets()
+        {
+            InboundPacketTrace[] inbound;
+            OutboundPacketTrace[] outbound;
+            lock (_sync)
+            {
+                inbound = _recentInboundPackets.ToArray();
+                outbound = _recentOutboundPackets.ToArray();
+            }
+
+            string inboundText = inbound.Length == 0
+                ? $"Inbound opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore}: none captured."
+                : "Inbound opcode traces:"
+                  + Environment.NewLine
+                  + string.Join(
+                      Environment.NewLine,
+                      inbound.Select((trace, index) =>
+                          $"{index + 1}. opcode={trace.Opcode} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} summary={trace.Summary} raw={trace.RawPacketHex}"));
+            string outboundText = outbound.Length == 0
+                ? $"Outbound opcode {OutboundAttackRequestOpcode}: none captured."
+                : "Outbound opcode traces:"
+                  + Environment.NewLine
+                  + string.Join(
+                      Environment.NewLine,
+                      outbound.Select((trace, index) =>
+                          $"{index + 1}. opcode={trace.Opcode} target={trace.TargetId} delay={trace.DelayMs} payload={trace.PayloadLength} source={trace.Source} proxySession={FormatProxySessionId(trace.ProxySessionId)} summary={trace.Summary} raw={trace.RawPacketHex}"));
+
+            return $"{inboundText}{Environment.NewLine}{outboundText}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -451,15 +562,17 @@ namespace HaCreator.MapSimulator.Managers
                 writer.WriteShort(257);
                 writer.WriteShort((short)request.TargetId);
                 writer.WriteShort((short)request.DelayMs);
-                if (!_roleSessionProxy.TrySendToServer(writer.ToArray(), out string proxyStatus))
+                byte[] packet = writer.ToArray();
+                if (!_roleSessionProxy.TrySendToServer(packet, out string proxyStatus))
                 {
                     status = proxyStatus;
                     LastStatus = status;
                     return false;
                 }
 
+                RecordOutboundTrace(BuildOutboundTrace(packet, request.TargetId, request.DelayMs, "official-session:proxy-inject", _roleSessionProxy.CurrentProxySessionId));
                 SentCount++;
-                status = $"Injected Coconut opcode 257 for target {request.TargetId} into live session.";
+                status = $"Injected Coconut opcode 257 for target {request.TargetId} into live session proxySession={FormatProxySessionId(_roleSessionProxy.CurrentProxySessionId)}.";
                 LastStatus = status;
                 return true;
             }
@@ -512,6 +625,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
+            RecordInboundTrace(BuildInboundTrace(e.RawPacket, opcode, payload.Length, $"official-session:{e.SourceEndpoint}", e.ProxySessionId));
             byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
             _pendingMessages.Enqueue(new CoconutPacketInboxMessage(
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
@@ -533,7 +647,8 @@ namespace HaCreator.MapSimulator.Managers
             if (TryDecodeOpcode(e.RawPacket, out int opcode, out _)
                 && opcode == 257)
             {
-                LastStatus = $"Forwarded live Coconut opcode 257 from {e.SourceEndpoint}.";
+                RecordOutboundTrace(BuildOutboundTrace(e.RawPacket, targetId: 0, delayMs: 0, source: $"official-session:{e.SourceEndpoint}", proxySessionId: e.ProxySessionId));
+                LastStatus = $"Forwarded live Coconut opcode 257 from {e.SourceEndpoint} proxySession={FormatProxySessionId(e.ProxySessionId)}.";
             }
         }
 
@@ -808,6 +923,242 @@ namespace HaCreator.MapSimulator.Managers
         private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
+        }
+
+        internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode257,
+            bool hasObservedLiveInboundCoconutPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            if (hasConnectedSession && hasPairedLiveOwnershipEvidence)
+            {
+                return LiveOwnershipVerificationState.Complete;
+            }
+
+            if (hasObservedLiveOutboundOpcode257 && hasObservedLiveInboundCoconutPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence;
+            }
+
+            if (hasObservedLiveOutboundOpcode257)
+            {
+                return LiveOwnershipVerificationState.WaitingForInboundCoconutPacket;
+            }
+
+            if (hasObservedLiveInboundCoconutPacket)
+            {
+                return LiveOwnershipVerificationState.WaitingForOutboundOpcode257;
+            }
+
+            if (hasConnectedSession)
+            {
+                return LiveOwnershipVerificationState.WaitingForBothDirections;
+            }
+
+            if (hasPassiveEstablishedSocketPair || isRunning)
+            {
+                return LiveOwnershipVerificationState.ReconnectPending;
+            }
+
+            return LiveOwnershipVerificationState.Idle;
+        }
+
+        internal static string DescribeLiveOwnershipVerificationStatus(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode257,
+            bool hasObservedLiveInboundCoconutPacket,
+            bool hasPairedLiveOwnershipEvidence)
+        {
+            LiveOwnershipVerificationState state = ResolveLiveOwnershipVerificationState(
+                hasConnectedSession,
+                hasPassiveEstablishedSocketPair,
+                isRunning,
+                hasObservedLiveOutboundOpcode257,
+                hasObservedLiveInboundCoconutPacket,
+                hasPairedLiveOwnershipEvidence);
+
+            if (state == LiveOwnershipVerificationState.Complete)
+            {
+                return $"Live ownership verification complete: proxied opcode {OutboundAttackRequestOpcode} outbound and opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} inbound were both captured in the same initialized Maple session.";
+            }
+
+            if (state == LiveOwnershipVerificationState.ReconnectPending)
+            {
+                return hasPassiveEstablishedSocketPair
+                    ? $"Live ownership verification pending reconnect: passive attach cannot capture encrypted opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} or inject opcode {OutboundAttackRequestOpcode} until Maple reconnects through the localhost proxy."
+                    : $"Live ownership verification pending reconnect: bridge is armed, but Maple must reconnect through the localhost proxy before opcode {OutboundAttackRequestOpcode}/{CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} capture can start.";
+            }
+
+            if (state == LiveOwnershipVerificationState.WaitingForBothDirections)
+            {
+                return $"Live ownership verification in progress: waiting for proxied opcode {OutboundAttackRequestOpcode} outbound and opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} inbound.";
+            }
+
+            if (state == LiveOwnershipVerificationState.WaitingForOutboundOpcode257)
+            {
+                return $"Live ownership verification in progress: opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} inbound captured, waiting for proxied opcode {OutboundAttackRequestOpcode} outbound.";
+            }
+
+            if (state == LiveOwnershipVerificationState.WaitingForInboundCoconutPacket)
+            {
+                return $"Live ownership verification in progress: opcode {OutboundAttackRequestOpcode} outbound captured, waiting for proxied opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} inbound.";
+            }
+
+            if (state == LiveOwnershipVerificationState.WaitingForPairedProxySessionEvidence)
+            {
+                return $"Live ownership verification in progress: opcode {OutboundAttackRequestOpcode} outbound and opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} inbound were captured in separate proxy sessions, waiting for both directions in one initialized Maple session.";
+            }
+
+            return $"Live ownership verification idle: start a Coconut session bridge and capture opcode {OutboundAttackRequestOpcode}/{CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} traffic.";
+        }
+
+        internal string DescribeLiveOwnershipVerificationEvidence()
+        {
+            InboundPacketTrace? inboundEvidence;
+            OutboundPacketTrace? outboundEvidence;
+            lock (_sync)
+            {
+                inboundEvidence = _liveInboundCoconutPacketEvidence;
+                outboundEvidence = _liveOutboundOpcode257Evidence;
+            }
+
+            if (inboundEvidence.HasValue && outboundEvidence.HasValue)
+            {
+                InboundPacketTrace inbound = inboundEvidence.Value;
+                OutboundPacketTrace outbound = outboundEvidence.Value;
+                long? currentProxySessionId = _roleSessionProxy.CurrentProxySessionId;
+                string pairLabel = IsPairedCurrentProxySession(currentProxySessionId, outbound.ProxySessionId, inbound.ProxySessionId)
+                    ? $"paired proxySession={outbound.ProxySessionId.Value}"
+                    : IsSameProxySession(outbound.ProxySessionId, inbound.ProxySessionId)
+                        ? $"stale paired proxySession={FormatProxySessionId(outbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}"
+                        : $"unpaired proxy sessions outbound={FormatProxySessionId(outbound.ProxySessionId)} inbound={FormatProxySessionId(inbound.ProxySessionId)} current={FormatProxySessionId(currentProxySessionId)}";
+                return $"Live ownership verification evidence: {pairLabel} outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
+            }
+
+            if (outboundEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = outboundEvidence.Value;
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} source={outbound.Source} proxySession={FormatProxySessionId(outbound.ProxySessionId)} raw={outbound.RawPacketHex}], waiting for inbound opcode {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore}.";
+            }
+
+            if (inboundEvidence.HasValue)
+            {
+                InboundPacketTrace inbound = inboundEvidence.Value;
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} source={inbound.Source} proxySession={FormatProxySessionId(inbound.ProxySessionId)} raw={inbound.RawPacketHex}], waiting for outbound opcode {OutboundAttackRequestOpcode}.";
+            }
+
+            return "Live ownership verification evidence: none.";
+        }
+
+        private void RecordInboundTrace(InboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                _recentInboundPackets.Add(trace);
+                while (_recentInboundPackets.Count > MaxRecentInboundPackets)
+                {
+                    _recentInboundPackets.RemoveAt(0);
+                }
+
+                if (IsLiveProxiedSource(trace.Source))
+                {
+                    _hasObservedLiveInboundCoconutPacket = true;
+                    _liveInboundCoconutPacketEvidence = trace;
+                }
+            }
+        }
+
+        private void RecordOutboundTrace(OutboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Add(trace);
+                while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.RemoveAt(0);
+                }
+
+                if (IsLiveProxiedSource(trace.Source))
+                {
+                    _hasObservedLiveOutboundOpcode257 = true;
+                    _liveOutboundOpcode257Evidence = trace;
+                }
+            }
+        }
+
+        private bool HasPairedCurrentLiveOwnershipEvidence()
+        {
+            lock (_sync)
+            {
+                return _liveInboundCoconutPacketEvidence.HasValue
+                    && _liveOutboundOpcode257Evidence.HasValue
+                    && IsPairedCurrentProxySession(
+                        _roleSessionProxy.CurrentProxySessionId,
+                        _liveOutboundOpcode257Evidence.Value.ProxySessionId,
+                        _liveInboundCoconutPacketEvidence.Value.ProxySessionId);
+            }
+        }
+
+        internal static bool IsPairedCurrentProxySession(
+            long? currentProxySessionId,
+            long? outboundProxySessionId,
+            long? inboundProxySessionId)
+        {
+            return IsSameProxySession(currentProxySessionId, outboundProxySessionId)
+                && IsSameProxySession(currentProxySessionId, inboundProxySessionId);
+        }
+
+        internal static bool IsSameProxySession(long? leftProxySessionId, long? rightProxySessionId)
+        {
+            return leftProxySessionId.HasValue
+                && rightProxySessionId.HasValue
+                && leftProxySessionId.Value == rightProxySessionId.Value;
+        }
+
+        private static string FormatProxySessionId(long? proxySessionId)
+        {
+            return proxySessionId.HasValue ? proxySessionId.Value.ToString(CultureInfo.InvariantCulture) : "unknown";
+        }
+
+        private static bool IsLiveProxiedSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static InboundPacketTrace BuildInboundTrace(byte[] rawPacket, int opcode, int payloadLength, string source, long? proxySessionId)
+        {
+            string summary = $"opcode={opcode} payload={payloadLength}";
+            return new InboundPacketTrace(
+                opcode,
+                opcode,
+                payloadLength,
+                string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
+                summary,
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                proxySessionId);
+        }
+
+        private static OutboundPacketTrace BuildOutboundTrace(byte[] rawPacket, int targetId, int delayMs, string source, long? proxySessionId)
+        {
+            int payloadLength = Math.Max(0, (rawPacket?.Length ?? 0) - sizeof(short));
+            string summary = targetId > 0
+                ? $"opcode={OutboundAttackRequestOpcode} target={targetId} delay={delayMs}"
+                : $"opcode={OutboundAttackRequestOpcode}";
+            return new OutboundPacketTrace(
+                OutboundAttackRequestOpcode,
+                targetId,
+                delayMs,
+                payloadLength,
+                string.IsNullOrWhiteSpace(source) ? "official-session:unknown-local" : source,
+                summary,
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                proxySessionId);
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

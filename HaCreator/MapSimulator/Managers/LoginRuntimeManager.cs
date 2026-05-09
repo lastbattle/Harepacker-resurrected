@@ -108,6 +108,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasWorldInformation { get; private set; }
         public bool CharacterSelectReady { get; private set; }
         public bool FieldEntryRequested { get; private set; }
+        public bool RequestSent { get; private set; }
         public int ForwardedStagePacketCount { get; private set; }
         public int ForwardedMapLoadPacketCount { get; private set; }
         public int AppliedStagePacketCount { get; private set; }
@@ -143,6 +144,7 @@ namespace HaCreator.MapSimulator.Managers
             HasWorldInformation = false;
             CharacterSelectReady = false;
             FieldEntryRequested = false;
+            RequestSent = false;
             ForwardedStagePacketCount = 0;
             ForwardedMapLoadPacketCount = 0;
             AppliedStagePacketCount = 0;
@@ -256,6 +258,24 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
+        public void MarkRequestSent(string summary = null)
+        {
+            RequestSent = true;
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                LastEventSummary = summary;
+            }
+        }
+
+        public void ClearRequestSent(string summary = null)
+        {
+            RequestSent = false;
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                LastEventSummary = summary;
+            }
+        }
+
         public int GetPacketCount(LoginPacketType packetType)
         {
             return _packetCounts.TryGetValue(packetType, out int count) ? count : 0;
@@ -275,6 +295,7 @@ namespace HaCreator.MapSimulator.Managers
             builder.Append("Step: ").Append(CurrentStep);
             builder.Append(" | Base: ").Append(BaseStep);
             builder.Append(" | Field entry: ").Append(FieldEntryRequested ? "requested" : "blocked");
+            builder.Append(" | Request sent: ").Append(RequestSent ? "yes" : "no");
 
             if (PendingStep.HasValue)
             {
@@ -526,6 +547,8 @@ namespace HaCreator.MapSimulator.Managers
 
         private void HandleSelectCharacterByVacResult(int currentTickCount)
         {
+            // Client evidence: CLogin::OnSelectCharacterByVACResult clears m_bRequestSent before decoding the result.
+            RequestSent = false;
             FieldEntryRequested = true;
             ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterByVacResult");
             Update(currentTickCount);

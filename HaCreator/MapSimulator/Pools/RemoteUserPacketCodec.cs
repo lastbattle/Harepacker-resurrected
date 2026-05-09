@@ -3661,6 +3661,14 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = directionSegmentIndex + 1; i < segments.Length; i++)
             {
                 string candidate = NormalizeHelperMarkerNameSegment(segments[i]);
+                if (IsNumericHelperMarkerPathSegment(candidate)
+                    && i == directionSegmentIndex + 1
+                    && TryResolveMinimapIconDirectionChildIndexMarkerName(candidate, out string indexedDirectionMarkerName))
+                {
+                    directionMarkerName = indexedDirectionMarkerName;
+                    return true;
+                }
+
                 if (TryResolveMinimapIconDirectionCompositeMarkerName(segments, i, out string compositeDirectionAlias))
                 {
                     directionMarkerName = compositeDirectionAlias;
@@ -3686,6 +3694,32 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        private static bool TryResolveMinimapIconDirectionChildIndexMarkerName(
+            string segment,
+            out string markerName)
+        {
+            markerName = null;
+            if (!int.TryParse(segment, out int childIndex))
+            {
+                return false;
+            }
+
+            markerName = childIndex switch
+            {
+                0 => "nw",
+                1 => "n",
+                2 => "ne",
+                3 => "w",
+                4 => "e",
+                5 => "sw",
+                6 => "s",
+                7 => "se",
+                _ => null
+            };
+
+            return markerName != null;
         }
 
         private static bool TryResolveMinimapIconDirectionCompositeMarkerName(

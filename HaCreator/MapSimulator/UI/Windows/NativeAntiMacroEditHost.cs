@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.UI
         private const int WmMButtonUp = 0x0208;
         private const int WmMButtonDblClk = 0x0209;
         private const int WmMouseMove = 0x0200;
+        private const int MkLButton = 0x0001;
         internal const uint WsChild = 0x40000000;
         internal const uint WsVisible = 0x10000000;
         internal const uint WsTabStop = 0x00010000;
@@ -775,7 +776,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (ShouldHandleClientOwnedMouseMessage(msg))
             {
-                HandleClientOwnedMouseMessage(msg, lParam);
+                HandleClientOwnedMouseMessage(msg, wParam, lParam);
                 return IntPtr.Zero;
             }
 
@@ -1403,6 +1404,13 @@ namespace HaCreator.MapSimulator.UI
             return msg is WmLButtonDown or WmMouseMove or WmLButtonUp;
         }
 
+        internal static bool ShouldApplyClientOwnedMouseMoveSelection(int mouseButtonFlags)
+        {
+            // `CCtrlEdit::MouseMove` only recalculates the caret while
+            // `CInputSystem::IsKeyPressed(..., 1)` reports the left button down.
+            return (mouseButtonFlags & MkLButton) != 0;
+        }
+
         internal static bool ShouldSuppressClientUnsupportedMouseButtonMessage(uint msg)
         {
             // The recovered `CCtrlEdit::OnMouseButton` ignores right/middle
@@ -1680,7 +1688,7 @@ namespace HaCreator.MapSimulator.UI
             SynchronizeState();
         }
 
-        private void HandleClientOwnedMouseMessage(uint msg, IntPtr lParam)
+        private void HandleClientOwnedMouseMessage(uint msg, IntPtr wParam, IntPtr lParam)
         {
             if (!IsAttached)
             {
@@ -1695,7 +1703,11 @@ namespace HaCreator.MapSimulator.UI
                     SetCapture(_editHandle);
                     break;
                 case WmMouseMove:
-                    UpdateSelectionAtClientPoint(localX, localY);
+                    if (ShouldApplyClientOwnedMouseMoveSelection(ExtractLowInt32(wParam)))
+                    {
+                        UpdateSelectionAtClientPoint(localX, localY);
+                    }
+
                     break;
                 case WmLButtonUp:
                     _mouseSelecting = false;

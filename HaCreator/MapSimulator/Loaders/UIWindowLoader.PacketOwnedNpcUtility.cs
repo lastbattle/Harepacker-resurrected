@@ -255,6 +255,12 @@ namespace HaCreator.MapSimulator.Loaders
             if (battleRecordProperty != null)
             {
                 window.AddLayer(LoadWindowCanvasLayerWithOffset(battleRecordProperty, "backgrnd", device, out Point leftOffset), leftOffset);
+                RegisterBattleRecordButton(window, battleRecordProperty, "tabClear", "BtTemp1", 10, 233, btClickSound: soundUIImage?["BtMouseClick"] as WzBinaryProperty, btOverSound: soundUIImage?["BtMouseOver"] as WzBinaryProperty, device);
+                RegisterBattleRecordButton(window, battleRecordProperty, "allClear", "BtTemp2", 30, 233, btClickSound: soundUIImage?["BtMouseClick"] as WzBinaryProperty, btOverSound: soundUIImage?["BtMouseOver"] as WzBinaryProperty, device);
+                RegisterBattleRecordButton(window, battleRecordProperty, "timerSet", "BtTemp3", 170, 210, btClickSound: soundUIImage?["BtMouseClick"] as WzBinaryProperty, btOverSound: soundUIImage?["BtMouseOver"] as WzBinaryProperty, device);
+                RegisterBattleRecordButton(window, battleRecordProperty, "fold", "BtTemp1", 155, 6, btClickSound: soundUIImage?["BtMouseClick"] as WzBinaryProperty, btOverSound: soundUIImage?["BtMouseOver"] as WzBinaryProperty, device);
+                RegisterBattleRecordButton(window, battleRecordProperty, "onOff", "BtTemp2", 140, 6, btClickSound: soundUIImage?["BtMouseClick"] as WzBinaryProperty, btOverSound: soundUIImage?["BtMouseOver"] as WzBinaryProperty, device);
+                RegisterBattleRecordButton(window, battleRecordProperty, "timerStop", "BtTemp2", 155, 210, btClickSound: soundUIImage?["BtMouseClick"] as WzBinaryProperty, btOverSound: soundUIImage?["BtMouseOver"] as WzBinaryProperty, device);
             }
 
             window.SetStaticLines(
@@ -262,6 +268,28 @@ namespace HaCreator.MapSimulator.Loaders
                 "The client keeps DOT damage info and server-on-calc request results behind this dedicated manager instead of the broader utility layer.");
             AttachUtilityCloseButton(window, basicImage, soundUIImage, device, frameTexture.Width);
             return window;
+        }
+
+        private static void RegisterBattleRecordButton(
+            UtilityPanelWindow window,
+            WzSubProperty battleRecordProperty,
+            string key,
+            string buttonName,
+            int x,
+            int y,
+            WzBinaryProperty btClickSound,
+            WzBinaryProperty btOverSound,
+            GraphicsDevice device)
+        {
+            UIObject button = LoadButton(battleRecordProperty, buttonName, btClickSound, btOverSound, device);
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = x;
+            button.Y = y;
+            window.RegisterButton(key, button);
         }
 
         private static void AttachUtilityCloseButton(

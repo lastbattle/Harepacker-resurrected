@@ -4618,9 +4618,13 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D lastBlackStone = LoadCanvasTexture(stoneRoot?["10"]?["black"] as WzSubProperty, "0", device) ?? blackStone;
             Texture2D lastWhiteStone = LoadCanvasTexture(stoneRoot?["10"]?["white"] as WzSubProperty, "0", device) ?? whiteStone;
             window.SetMiniRoomOmokStoneTextures(blackStoneFrames, whiteStoneFrames, lastBlackStone, lastWhiteStone);
-            window.SetMiniRoomOmokInfoTextures(
+            window.SetMiniRoomOmokCommonTextures(
                 LoadCanvasTexture(commonProperty, "info0", device),
-                LoadCanvasTexture(commonProperty, "info1", device));
+                LoadCanvasTexture(commonProperty, "info1", device),
+                LoadCanvasTexture(commonProperty, "turn", device),
+                LoadCanvasTexture(commonProperty, "win", device),
+                LoadCanvasTexture(commonProperty, "lose", device),
+                LoadCanvasTexture(commonProperty, "draw", device));
         }
 
 

@@ -340,48 +340,111 @@ namespace HaCreator.MapSimulator.Interaction
             chatLogEntry = null;
             message = string.Empty;
 
+            CharacterBuild presentationBuild = (_packetAvatarTemplate ?? _localAvatarTemplate)?.Clone();
+            return TryActivatePresentationCore(
+                _draftItemId,
+                _draftSender,
+                _draftMessageFragments,
+                _draftWhisper,
+                _draftChannelId,
+                presentationBuild,
+                currentTick,
+                trimFragments: true,
+                out chatLogEntry,
+                out message);
+        }
+
+        internal bool TryActivatePacketPresentation(
+            int itemId,
+            string sender,
+            IEnumerable<string> messageFragments,
+            bool whisper,
+            int channelId,
+            CharacterBuild packetAvatarLook,
+            int currentTick,
+            out AvatarMegaphoneChatLogEntry chatLogEntry,
+            out string message)
+        {
+            return TryActivatePresentationCore(
+                itemId,
+                sender,
+                messageFragments,
+                whisper,
+                channelId,
+                packetAvatarLook?.Clone(),
+                currentTick,
+                trimFragments: false,
+                out chatLogEntry,
+                out message);
+        }
+
+        private bool TryActivatePresentationCore(
+            int itemId,
+            string sender,
+            IEnumerable<string> messageFragments,
+            bool whisper,
+            int channelId,
+            CharacterBuild presentationBuild,
+            int currentTick,
+            bool trimFragments,
+            out AvatarMegaphoneChatLogEntry chatLogEntry,
+            out string message)
+        {
+            chatLogEntry = null;
+            message = string.Empty;
+
             AvatarMegaphoneItemProfile profile = ResolveItemProfile(_draftItemId);
             if (profile == null)
             {
-                message = $"Avatar megaphone item {_draftItemId} is not supported.";
+                message = $"Avatar megaphone item {itemId} is not supported.";
                 return false;
             }
 
-            CharacterBuild presentationBuild = (_packetAvatarTemplate ?? _localAvatarTemplate)?.Clone();
             if (presentationBuild == null)
             {
-                message = "Avatar megaphone preview requires an active local character build or packet AvatarLook.";
+                message = "Avatar megaphone preview requires a packet AvatarLook or active local character build.";
                 return false;
             }
 
-            if (!string.IsNullOrWhiteSpace(_draftSender))
+            string presentationSender = sender ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(presentationSender))
             {
-                presentationBuild.Name = _draftSender;
+                presentationBuild.Name = presentationSender;
             }
 
-            string[] fragments = _draftMessageFragments
-                .Select(fragment => fragment?.Trim() ?? string.Empty)
+            string[] fragments = (messageFragments ?? Array.Empty<string>())
+                .Take(4)
+                .Select(fragment => trimFragments ? fragment?.Trim() ?? string.Empty : fragment ?? string.Empty)
                 .ToArray();
+            if (fragments.Length < 4)
+            {
+                Array.Resize(ref fragments, 4);
+                for (int i = 0; i < fragments.Length; i++)
+                {
+                    fragments[i] ??= string.Empty;
+                }
+            }
 
             _activePresentation = new AvatarMegaphonePresentation(
-                _draftItemId,
+                itemId,
                 profile,
-                _draftSender,
+                presentationSender,
                 fragments,
-                _draftWhisper,
-                _draftChannelId,
+                whisper,
+                channelId,
                 presentationBuild);
             _presentationStartedAt = currentTick;
             _dismissStartedAt = int.MinValue;
 
             string joinedMessage = string.Concat(fragments);
-            string filteredMessage = ClientCurseProcessParity.FilterTextForClientDisplay(joinedMessage);
+            string formattedChatText = $"{presentationSender} : {joinedMessage}";
+            string filteredChatText = ClientCurseProcessParity.FilterTextForClientDisplay(formattedChatText);
             chatLogEntry = new AvatarMegaphoneChatLogEntry(
-                $"{_draftSender} : {filteredMessage}",
+                filteredChatText,
                 ChatLogType,
-                _draftWhisper ? _draftSender : null,
-                _draftChannelId);
-            _statusMessage = $"Avatar megaphone activated for {_draftSender} with item {_draftItemId}.";
+                whisper ? presentationSender : null,
+                channelId);
+            _statusMessage = $"Avatar megaphone activated for {presentationSender} with item {itemId}.";
             message = _statusMessage;
             return true;
         }

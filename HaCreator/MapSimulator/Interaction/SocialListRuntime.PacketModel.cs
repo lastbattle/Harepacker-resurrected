@@ -476,6 +476,20 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Guild authority now follows packet-owned role {resolvedRole} (rank={FormatOnOff(canManageRanks)}, admission={FormatOnOff(canToggleAdmission)}, notice={FormatOnOff(canEditNotice)}).";
         }
 
+        private void SyncPacketGuildAuthorityFromLocalGradeChange(string roleLabel, int absoluteGrade)
+        {
+            if (!_packetGuildAuthority.HasValue)
+            {
+                return;
+            }
+
+            bool canManage = IsClientGuildBbsAdminGrade(absoluteGrade);
+            string resolvedRole = string.IsNullOrWhiteSpace(roleLabel)
+                ? $"Rank {Math.Max(1, absoluteGrade)}"
+                : roleLabel.Trim();
+            _packetGuildAuthority = new PacketGuildAuthorityState(resolvedRole, canManage, canManage, canManage);
+        }
+
         internal bool TryGetGuildBbsLinkedAuthority(
             out string roleLabel,
             out GuildBbsPermissionMask permissionMask,

@@ -1852,7 +1852,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            PacketOwnedBalloonWrappedLine[] lines = WrapPacketOwnedBalloonText(message.Text, ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth));
+            PacketOwnedBalloonWrappedLine[] lines = GetOrCreatePacketOwnedBalloonAnalyzedLines(message);
             if (lines.Length == 0)
             {
                 return;
@@ -2160,7 +2160,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PacketOwnedBalloonWrappedLine[] lines = WrapPacketOwnedBalloonText(message.Text, ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth));
+            PacketOwnedBalloonWrappedLine[] lines = GetOrCreatePacketOwnedBalloonAnalyzedLines(message);
             if (lines.Length == 0)
             {
                 return false;
@@ -2213,6 +2213,24 @@ namespace HaCreator.MapSimulator
                 arrowSprite);
             layout = new PacketOwnedBalloonLayout(message, anchor, canvasBounds, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite, arrowBounds, visualTexture);
             return true;
+        }
+
+        private PacketOwnedBalloonWrappedLine[] GetOrCreatePacketOwnedBalloonAnalyzedLines(LocalOverlayBalloonMessage message)
+        {
+            if (message == null)
+            {
+                return Array.Empty<PacketOwnedBalloonWrappedLine>();
+            }
+
+            int wrapWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
+            if (message.TryGetAnalyzedLines(wrapWidth, out PacketOwnedBalloonWrappedLine[] lines))
+            {
+                return lines;
+            }
+
+            lines = WrapPacketOwnedBalloonText(message.Text, wrapWidth);
+            message.SetAnalyzedLines(wrapWidth, lines);
+            return lines;
         }
 
         private static Rectangle ResolvePacketOwnedBalloonContentBounds(Rectangle bodyBounds, int contentWidth)

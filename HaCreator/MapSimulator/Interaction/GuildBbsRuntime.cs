@@ -138,6 +138,8 @@ namespace HaCreator.MapSimulator.Interaction
         private GuildBbsPermissionMask? _packetPermissionMask;
         private GuildBbsPermissionMask? _linkedPermissionMask;
         private string _linkedPermissionSourceLabel;
+        private bool _hasPacketBoardAuthKeyOverride;
+        private string _packetBoardAuthKeySourceLabel;
         private bool _hasLinkedBoardAuthKey;
         private string _linkedBoardAuthKeySourceLabel;
         private bool _hasPacketCashOwnershipOverride;
@@ -226,12 +228,20 @@ namespace HaCreator.MapSimulator.Interaction
         public string ClearPermissionMaskOverride()
         {
             _packetPermissionMask = null;
+            _hasPacketBoardAuthKeyOverride = false;
+            _packetBoardAuthKeySourceLabel = null;
             NormalizeDraftState();
             return $"Guild BBS authority reverted to guild-role rules: {DescribePermissionMask(EffectivePermissionMask)}.";
         }
 
         public string ApplyPermissionPacket(byte[] payload, int localCharacterId = 0)
         {
+            if (TryApplyGuildBoardAuthKeyPacket(payload, out string boardAuthDetail))
+            {
+                NormalizeDraftState();
+                return $"Decoded Guild BBS authority packet -> {boardAuthDetail}.";
+            }
+
             if (!TryDecodePermissionPacket(payload, localCharacterId, out GuildBbsPermissionMask decodedMask, out string detail))
             {
                 return detail;
@@ -2018,6 +2028,8 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Guild role";
         private string BoardAuthoritySourceLabel => _hasLinkedBoardAuthKey
             ? string.IsNullOrWhiteSpace(_linkedBoardAuthKeySourceLabel) ? "Packet guild-board auth key" : _linkedBoardAuthKeySourceLabel
+            : _hasPacketBoardAuthKeyOverride
+                ? string.IsNullOrWhiteSpace(_packetBoardAuthKeySourceLabel) ? "Packet guild-board auth key" : _packetBoardAuthKeySourceLabel
             : "Local board session";
         private string CashOwnershipSourceLabel => _hasPacketCashOwnershipOverride ? "Packet" : "Inventory";
         private static GuildBbsPermissionMask ResolvePermissionMask(GuildBbsPermissionLevel permissionLevel)
@@ -2156,6 +2168,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private bool TryApplyGuildBoardAuthKeyPacket(byte[] payload, out string detail)
+        {
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (!SocialListPacketCodec.TryParseClientGuildResult(
+                    payload,
+                    out SocialListClientGuildResultPacket packet,
+                    out _)
+                || packet.Kind != SocialListClientGuildResultKind.GuildBoardAuthKey)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(packet.GuildBoardAuthKey))
+            {
+                _hasPacketBoardAuthKeyOverride = false;
+                _packetBoardAuthKeySourceLabel = null;
+                detail = $"CWvsContext::OnGuildResult({(byte)packet.Kind}) cleared the guild-board auth key.";
+                return true;
+            }
+
+            _hasPacketBoardAuthKeyOverride = true;
+            _packetBoardAuthKeySourceLabel = $"CWvsContext::OnGuildResult({(byte)packet.Kind}) guild-board auth key";
+            detail = $"CWvsContext::OnGuildResult({(byte)packet.Kind}) refreshed the guild-board auth key.";
+            return true;
         }
 
         private bool TryFindStructuredPermissionCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)

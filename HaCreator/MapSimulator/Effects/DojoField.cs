@@ -2244,7 +2244,9 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return;
             }
-            spriteBatch.Draw(source, new Rectangle(bounds.X, bounds.Y, fillWidth, bounds.Height), Color.White);
+
+            Rectangle destination = new(bounds.X, bounds.Y, fillWidth, bounds.Height);
+            spriteBatch.Draw(source, destination, ResolveHorizontalGaugeSourceBounds(source, destination), Color.White);
         }
 
         private static void DrawHorizontalGauge(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D gaugeTexture, Rectangle bounds)
@@ -2260,7 +2262,24 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            spriteBatch.Draw(source, bounds, Color.White);
+            spriteBatch.Draw(source, bounds, ResolveHorizontalGaugeSourceBounds(source, bounds), Color.White);
+        }
+        internal static Rectangle ResolveHorizontalGaugeSourceBounds(int textureWidth, int textureHeight, Rectangle destination)
+        {
+            if (textureWidth <= 0 || textureHeight <= 0 || destination.Width <= 0 || destination.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                0,
+                0,
+                Math.Min(textureWidth, destination.Width),
+                Math.Min(textureHeight, destination.Height));
+        }
+        private static Rectangle ResolveHorizontalGaugeSourceBounds(Texture2D source, Rectangle destination)
+        {
+            return ResolveHorizontalGaugeSourceBounds(source?.Width ?? 0, source?.Height ?? 0, destination);
         }
         internal static Rectangle ResolvePlayerGaugeFillBounds(Rectangle playerBounds, float progress)
         {
@@ -2306,7 +2325,25 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
             Rectangle dest = new(bounds.X, bounds.Bottom - fillHeight, bounds.Width, fillHeight);
-            spriteBatch.Draw(source, dest, Color.White);
+            spriteBatch.Draw(source, dest, ResolveVerticalGaugeSourceBounds(source, dest), Color.White);
+        }
+        internal static Rectangle ResolveVerticalGaugeSourceBounds(int textureWidth, int textureHeight, Rectangle destination)
+        {
+            if (textureWidth <= 0 || textureHeight <= 0 || destination.Width <= 0 || destination.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int sourceHeight = Math.Min(textureHeight, destination.Height);
+            return new Rectangle(
+                0,
+                textureHeight - sourceHeight,
+                Math.Min(textureWidth, destination.Width),
+                sourceHeight);
+        }
+        private static Rectangle ResolveVerticalGaugeSourceBounds(Texture2D source, Rectangle destination)
+        {
+            return ResolveVerticalGaugeSourceBounds(source?.Width ?? 0, source?.Height ?? 0, destination);
         }
         private bool DrawAnimation(SpriteBatch spriteBatch, IReadOnlyList<DojoFrame> frames, int currentTimeMs, int startTick, Vector2 anchor, bool repeat)
         {

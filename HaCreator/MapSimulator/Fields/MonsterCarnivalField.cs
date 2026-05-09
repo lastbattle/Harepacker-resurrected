@@ -1600,6 +1600,50 @@ namespace HaCreator.MapSimulator.Fields
             MarkPendingOfficialClientRequestCore(tab, entryIndex, recordObservedSendRoute: true, source);
         }
 
+        public bool TryPrepareOfficialClientRequestSend(
+            MonsterCarnivalTab tab,
+            int entryIndex,
+            int tickCount,
+            string source,
+            out string message)
+        {
+            message = null;
+            MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
+            if (entry == null)
+            {
+                message = $"Monster Carnival request tab={(int)tab}, index={entryIndex} is not present in the loaded WZ request table.";
+                return false;
+            }
+
+            if (_definition?.IsSeason2Mode != true)
+            {
+                message = $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} prepared opcode 262 request tab={(int)tab}, index={entryIndex}.";
+                return true;
+            }
+
+            if (!TryValidateSeason2BtOkSendRoute(entry, tickCount, mutateCounters: true))
+            {
+                message = _season2SubDialogLastSendRoute ?? "CUIMonsterCarnival::RequestSend guard blocked opcode 262.";
+                return false;
+            }
+
+            message = $"{_definition.ClientOwnerLabel} prepared UIWindow2/MonsterCarnival/sub RequestSend opcode 262 tab={(int)entry.Tab}, index={entry.Index}, source={NormalizeRouteSource(source)}.";
+            return true;
+        }
+
+        public void MarkOfficialClientRequestSend(
+            MonsterCarnivalTab tab,
+            int entryIndex,
+            int tickCount,
+            string source = null)
+        {
+            MarkPendingOfficialClientRequestCore(tab, entryIndex, recordObservedSendRoute: _definition?.IsSeason2Mode == true, source);
+            if (_definition?.IsSeason2Mode == true)
+            {
+                _season2SubDialogLastSendTick = tickCount;
+            }
+        }
+
         private void MarkPendingOfficialClientRequestCore(
             MonsterCarnivalTab tab,
             int entryIndex,
@@ -1982,43 +2026,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (_season2SubDialogBtOkPendingSendRouteCount > 0)
+            if (!TryValidateSeason2BtOkSendRoute(selectedEntry, tickCount, mutateCounters: true))
             {
-                _season2SubDialogBtOkNoSendRouteCount++;
-                _season2SubDialogBtOkBlockedPendingRouteCount++;
-                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedPendingResult;
-                _season2SubDialogLastSendRoute =
-                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (pending COutPacket(262) result)";
-                _season2SubDialogBtOkSendLifecycleSummary =
-                    "CUIMonsterCarnival::RequestSend guard blocked a second COutPacket(262) while CWvsContext request-pending was still set.";
-                RecordSeason2SubDialogSendRouteEvent($"btok-blocked(pending,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
-                return false;
-            }
-
-            if (_enteredField && _personalCp <= 0)
-            {
-                _season2SubDialogBtOkNoSendRouteCount++;
-                _season2SubDialogBtOkBlockedNoCpRouteCount++;
-                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedNoCp;
-                _season2SubDialogLastSendRoute =
-                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (personal CP is 0)";
-                _season2SubDialogBtOkSendLifecycleSummary =
-                    "CUIMonsterCarnival::RequestSend guard blocked COutPacket(262) because the client CP fuse was not positive.";
-                RecordSeason2SubDialogSendRouteEvent($"btok-blocked(no-cp,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
-                return false;
-            }
-
-            if (_season2SubDialogLastSendTick != int.MinValue
-                && unchecked(tickCount - _season2SubDialogLastSendTick) < 500)
-            {
-                _season2SubDialogBtOkNoSendRouteCount++;
-                _season2SubDialogBtOkBlockedCooldownRouteCount++;
-                _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedCooldown;
-                _season2SubDialogLastSendRoute =
-                    $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (500ms request cooldown)";
-                _season2SubDialogBtOkSendLifecycleSummary =
-                    "CUIMonsterCarnival::RequestSend guard blocked COutPacket(262) because less than 500 ms elapsed since the previous request timestamp.";
-                RecordSeason2SubDialogSendRouteEvent($"btok-blocked(cooldown,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
                 return false;
             }
 
@@ -2032,6 +2041,63 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogBtOkSendLifecycleSummary =
                 $"CUIMonsterCarnival::RequestSend built COutPacket(262), encoded tab={(int)selectedEntry.Tab}, index={selectedEntry.Index}, set request-pending, and awaits CField_MonsterCarnival::OnRequestResult.";
             RecordSeason2SubDialogSendRouteEvent($"btok-send(opcode=262,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+            return true;
+        }
+
+        private bool TryValidateSeason2BtOkSendRoute(MonsterCarnivalEntry selectedEntry, int tickCount, bool mutateCounters)
+        {
+            if (_season2SubDialogBtOkPendingSendRouteCount > 0)
+            {
+                if (mutateCounters)
+                {
+                    _season2SubDialogBtOkNoSendRouteCount++;
+                    _season2SubDialogBtOkBlockedPendingRouteCount++;
+                    _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedPendingResult;
+                    _season2SubDialogLastSendRoute =
+                        $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (pending COutPacket(262) result)";
+                    _season2SubDialogBtOkSendLifecycleSummary =
+                        "CUIMonsterCarnival::RequestSend guard blocked a second COutPacket(262) while CWvsContext request-pending was still set.";
+                    RecordSeason2SubDialogSendRouteEvent($"btok-blocked(pending,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+                }
+
+                return false;
+            }
+
+            if (_enteredField && _personalCp <= 0)
+            {
+                if (mutateCounters)
+                {
+                    _season2SubDialogBtOkNoSendRouteCount++;
+                    _season2SubDialogBtOkBlockedNoCpRouteCount++;
+                    _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedNoCp;
+                    _season2SubDialogLastSendRoute =
+                        $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (personal CP is 0)";
+                    _season2SubDialogBtOkSendLifecycleSummary =
+                        "CUIMonsterCarnival::RequestSend guard blocked COutPacket(262) because the client CP fuse was not positive.";
+                    RecordSeason2SubDialogSendRouteEvent($"btok-blocked(no-cp,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+                }
+
+                return false;
+            }
+
+            if (_season2SubDialogLastSendTick != int.MinValue
+                && unchecked(tickCount - _season2SubDialogLastSendTick) < 500)
+            {
+                if (mutateCounters)
+                {
+                    _season2SubDialogBtOkNoSendRouteCount++;
+                    _season2SubDialogBtOkBlockedCooldownRouteCount++;
+                    _season2SubDialogBtOkSendLifecycle = MonsterCarnivalSeason2BtOkSendLifecycle.BlockedCooldown;
+                    _season2SubDialogLastSendRoute =
+                        $"{_definition.ClientOwnerLabel}::UIWindow2/MonsterCarnival/sub/BtOK no-send (500ms request cooldown)";
+                    _season2SubDialogBtOkSendLifecycleSummary =
+                        "CUIMonsterCarnival::RequestSend guard blocked COutPacket(262) because less than 500 ms elapsed since the previous request timestamp.";
+                    RecordSeason2SubDialogSendRouteEvent($"btok-blocked(cooldown,tab={(int)selectedEntry.Tab},index={selectedEntry.Index},id={selectedEntry.Id})");
+                }
+
+                return false;
+            }
+
             return true;
         }
 

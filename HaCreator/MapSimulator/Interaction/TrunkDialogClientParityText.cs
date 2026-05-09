@@ -231,6 +231,25 @@ namespace HaCreator.MapSimulator.Interaction
             return steps;
         }
 
+        internal static IReadOnlyList<ConfirmationStep> BuildSendPutPreAskConfirmationChoreography(InventorySlotData slotData)
+        {
+            if (!RequiresOwnershipPreConfirm(slotData))
+            {
+                return Array.Empty<ConfirmationStep>();
+            }
+
+            bool sharableOnce = slotData?.CashItemSerialNumber.GetValueOrDefault() > 0;
+            return new[]
+            {
+                new ConfirmationStep(
+                    sharableOnce ? SendPutSharableOnceConfirmStringPoolId : SendPutPreConfirmStringPoolId,
+                    "CUtilDlg::YesNo",
+                    ResolveSendPutPreConfirm(sharableOnce),
+                    YesNoAcceptedReturnValue,
+                    DefaultNoticeStyleFlag)
+            };
+        }
+
         internal static string ToInlineText(string text)
         {
             if (string.IsNullOrWhiteSpace(text))

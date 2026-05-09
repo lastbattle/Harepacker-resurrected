@@ -2823,7 +2823,7 @@ namespace HaCreator.MapSimulator
             return new PacketOwnedUiRegistration(
                 PacketOwnedUiAnchorMode.WindowCenter,
                 0,
-                ScalePacketOwnedUiOffset(PacketOwnedScreenEffectYOffset, renderHeight, PacketOwnedUiReferenceHeight),
+                PacketOwnedScreenEffectYOffset,
                 key ?? string.Empty,
                 PacketOwnedUiDrawOrder.ScreenEffect,
                 PacketOwnedUiClientAlpha,
@@ -2847,8 +2847,8 @@ namespace HaCreator.MapSimulator
                 PacketOwnedUiAnchorMode.WindowTopLeft,
                 layerRole == PacketOwnedRewardRouletteLayerRole.Job
                     ? 0
-                    : ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetX, renderWidth, PacketOwnedUiReferenceWidth),
-                ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetY, renderHeight, PacketOwnedUiReferenceHeight),
+                    : PacketOwnedRewardRouletteOffsetX,
+                PacketOwnedRewardRouletteOffsetY,
                 key,
                 layerRole switch
                 {

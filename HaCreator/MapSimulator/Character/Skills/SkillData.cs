@@ -355,6 +355,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         RemoveAllCanvases,
         ReleaseRemovedCanvasRef,
         ClearRemoveCanvasArgumentVariant,
+        AddLoadCanvasPropertyRef,
+        ClearLoadCanvasPropertyValueVariant,
+        ReleaseLoadCanvasPropertyRef,
         ClearLoadCanvasArgumentVariant
     }
 
@@ -372,8 +375,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         int RemoveCanvasIndex = 0,
         int InsertCanvasResultVariantRefDelta = 0,
         int LoadCanvasArgumentVariantOrdinal = -1,
+        int LoadCanvasPropertyOrdinal = -1,
         int RelMoveArgumentVariantOrdinal = -1,
         int RemoveCanvasArgumentVariantOrdinal = -1,
+        int CanvasPropertyRefDelta = 0,
+        int LoadCanvasPropertyValueVariantRefDelta = 0,
         AfterimageLoadCanvasArguments? LoadCanvasArguments = null,
         AfterimageRelMoveArguments? RelMoveArguments = null);
 
@@ -1333,6 +1339,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ShadowPartnerHorizontalOffsetPx { get; set; }
         public bool HideAvatarEffectOnLadderOrRope { get; set; }
         public string ClientAvatarEffectLayerOwnerName { get; set; }
+        public bool UsesSuddenDeathAvatarEffectOwner { get; set; }
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
         public int SummonSpawnDistanceX { get; set; } = 50;
@@ -2261,6 +2268,39 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int WeaponItemId { get; init; }
     }
 
+    public enum BulletAfterimageNativeUpdateOperationKind
+    {
+        RetainSourceLayer,
+        CreateRepeatLayer,
+        CreateOriginVector,
+        CopySourceOrigin,
+        MoveOriginBySourceOffset,
+        AttachOriginVector,
+        CopyLayerOverlay,
+        CreateAlphaVector,
+        SeedAlphaVector,
+        ScheduleAlphaFade,
+        AnimateStop,
+        InsertCanvas,
+        ApplyClockwiseBounds,
+        RetainRegisterArgumentLayer,
+        RegisterRepeatAnimation,
+        ReleaseRegisterArgumentLayer,
+        StoreLastUpdatedTick,
+        ReleaseOriginVector,
+        ReleaseRepeatLayerLocal,
+        ReleaseSourceLayer
+    }
+
+    public readonly record struct BulletAfterimageNativeUpdateOperation(
+        BulletAfterimageNativeUpdateOperationKind Kind,
+        int ObjectId,
+        int RelatedObjectId = 0,
+        int Sequence = 0,
+        int RefCountDelta = 0,
+        int Time = 0,
+        int Value = 0);
+
     public sealed class ActiveBulletAnimationOwner
     {
         public int Id { get; set; }
@@ -2344,6 +2384,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HasAlphaVectorStart { get; init; }
         public bool HasAlphaVectorEnd { get; init; }
         public float FrameAlphaMultiplier { get; init; } = 1f;
+        public IReadOnlyList<BulletAfterimageNativeUpdateOperation> NativeUpdateOperations { get; init; } =
+            Array.Empty<BulletAfterimageNativeUpdateOperation>();
 
         public void ReleaseRegisteredReferences(int currentTime)
         {

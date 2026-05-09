@@ -288,6 +288,7 @@ namespace HaCreator.MapSimulator.Animation
                     SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
                     SimulatedLayerReferenceOperations =
                         SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                    ReleaseOwnerListNode();
                     return;
                 }
 
@@ -730,6 +731,98 @@ namespace HaCreator.MapSimulator.Animation
 
                 SimulatedAnimationStateReferenceOperations =
                     SecondaryMotionBlurAnimationStateReferenceOperation.NormalizeTraceOrder(operations);
+            }
+
+            internal void CaptureFailedRegistrationArgumentReferences(
+                int overlayLayerHandleId,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                SimulatedOverlayLayerHandleId = Math.Max(0, overlayLayerHandleId);
+                SimulatedOverlayLayerHandleRefCount = 0;
+                SimulatedLayerHandleIdsByLayerCode = layerHandleIdsByLayerCode?
+                    .ToDictionary(static entry => entry.Key, static entry => Math.Max(0, entry.Value))
+                    ?? new Dictionary<int, int>();
+                SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
+                SimulatedRegistrationArgumentReferenceOperations =
+                    BuildClientFailedRegistrationArgumentReferenceOperations(
+                        SimulatedOverlayLayerHandleId,
+                        SimulatedLayerHandleIdsByLayerCode);
+                SimulatedLayerReferenceOperations = Array.Empty<SecondaryMotionBlurLayerReferenceOperation>();
+                SimulatedOwnerListOperations = Array.Empty<SecondaryMotionBlurOwnerListOperation>();
+            }
+
+            private static IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> BuildClientFailedRegistrationArgumentReferenceOperations(
+                int overlayLayerHandleId,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                var operations = new List<SecondaryMotionBlurLayerReferenceOperation>();
+                if (overlayLayerHandleId > 0)
+                {
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CopyRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 2));
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode: -1,
+                        overlayLayerHandleId,
+                        refCount: 1));
+                }
+
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
+                }
+
+                var temporaryArgumentRefCountsByHandle = new Dictionary<int, int>();
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                        continue;
+                    }
+
+                    temporaryArgumentRefCountsByHandle.TryGetValue(handleId, out int refCount);
+                    refCount++;
+                    temporaryArgumentRefCountsByHandle[handleId] = refCount;
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.CaptureRegistrationArgumentReference(
+                        layerCode,
+                        handleId,
+                        refCount));
+                }
+
+                foreach ((int layerCode, int handleId) in EnumerateClientLayerCopyOrder(layerHandleIdsByLayerCode))
+                {
+                    if (handleId <= 0)
+                    {
+                        operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                            layerCode,
+                            handleId,
+                            refCount: 0));
+                        continue;
+                    }
+
+                    temporaryArgumentRefCountsByHandle.TryGetValue(handleId, out int temporaryRefCount);
+                    temporaryRefCount = Math.Max(0, temporaryRefCount - 1);
+                    if (temporaryRefCount > 0)
+                    {
+                        temporaryArgumentRefCountsByHandle[handleId] = temporaryRefCount;
+                    }
+                    else
+                    {
+                        temporaryArgumentRefCountsByHandle.Remove(handleId);
+                    }
+
+                    operations.Add(SecondaryMotionBlurLayerReferenceOperation.ReleaseRegistrationArgumentReference(
+                        layerCode,
+                        handleId,
+                        temporaryRefCount));
+                }
+
+                return SecondaryMotionBlurLayerReferenceOperation.NormalizeTraceOrder(operations);
             }
 
             internal static IReadOnlyList<SecondaryMotionBlurLayerReferenceOperation> BuildClientRegistrationArgumentReferenceOperations(
@@ -1186,7 +1279,9 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Queue<OneTimeAnimation> _oneTimePool = new();
         private readonly Queue<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayerPool = new();
         private readonly Queue<FallingAnimation> _fallingPool = new();
+        private readonly List<OneTimeAnimationRecoveredNativeFinalReleaseState> _releasedOneTimeAnimationStates = new();
         private readonly List<CanvasLayerRecoveredNativeFinalReleaseState> _releasedOneTimeCanvasLayerStates = new();
+        private const int MaxReleasedOneTimeAnimationStates = 64;
         private const int MaxReleasedOneTimeCanvasLayerStates = 64;
         private int _nextOneTimeCanvasLayerHandleId = 1;
         private int _nextOneTimeTemporaryCanvasHandleId = 1;
@@ -1503,16 +1598,27 @@ namespace HaCreator.MapSimulator.Animation
             int zOrder = 0,
             int initialElapsedMs = 0)
         {
-            AddPacketOwnedBasicOneTime(
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicFloat(sourceUol);
+            anim.Initialize(
                 frames,
-                sourceUol,
-                getPosition,
                 fallbackX,
                 fallbackY,
+                registrationTrace.LoadLayerFlip,
                 currentTimeMs,
-                AnimationOneTimeOwner.PacketOwnedCool,
                 zOrder,
+                getPosition,
+                getFlip: null,
+                AnimationOneTimeOwner.PacketOwnedCool,
+                AnimationOneTimePlaybackMode.BasicFloat,
+                sourceUol,
+                usesOverlayParent: false,
+                registrationTrace,
                 initialElapsedMs);
+            InsertOneTimeAnimation(anim);
         }
 
         internal void AddPacketOwnedLevelUp(
@@ -2046,7 +2152,11 @@ namespace HaCreator.MapSimulator.Animation
 
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
-                OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicOneTime(sourceUol);
+                owner == AnimationOneTimeOwner.PacketOwnedRemoteSkillUse
+                    ? OneTimeAnimationRecoveredRegistrationTrace.CreateClientShowSkillEffectSkillUse(
+                        sourceUol,
+                        fallbackFlip)
+                    : OneTimeAnimationRecoveredRegistrationTrace.CreatePacketOwnedBasicOneTime(sourceUol);
             anim.Initialize(
                 frames,
                 fallbackX,
@@ -2059,7 +2169,7 @@ namespace HaCreator.MapSimulator.Animation
                 owner,
                 AnimationOneTimePlaybackMode.GA_STOP,
                 sourceUol,
-                usesOverlayParent: false,
+                usesOverlayParent: registrationTrace.UsesOverlayLayer,
                 registrationTrace,
                 initialElapsedMs,
                 mobProjectileRegistrationTrace);
@@ -2193,8 +2303,31 @@ namespace HaCreator.MapSimulator.Animation
         }
 
         internal IReadOnlyList<OneTimeCanvasLayerAnimation> OneTimeCanvasLayers => _oneTimeCanvasLayers;
+        internal IReadOnlyList<OneTimeAnimationRecoveredNativeFinalReleaseState> ReleasedOneTimeAnimationStates =>
+            _releasedOneTimeAnimationStates;
         internal IReadOnlyList<CanvasLayerRecoveredNativeFinalReleaseState> ReleasedOneTimeCanvasLayerStates =>
             _releasedOneTimeCanvasLayerStates;
+
+        private void CaptureReleasedOneTimeAnimationState(
+            OneTimeAnimation animation,
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            OneTimeAnimationRecoveredNativeFinalReleaseState finalReleaseState =
+                animation.BuildRecoveredNativeFinalReleaseState(reason);
+            if (finalReleaseState.HadRegisteredLayer)
+            {
+                _releasedOneTimeAnimationStates.Add(finalReleaseState);
+                if (_releasedOneTimeAnimationStates.Count > MaxReleasedOneTimeAnimationStates)
+                {
+                    _releasedOneTimeAnimationStates.RemoveAt(0);
+                }
+            }
+        }
 
         private void InsertOneTimeCanvasLayer(OneTimeCanvasLayerAnimation animation)
         {
@@ -2479,6 +2612,9 @@ namespace HaCreator.MapSimulator.Animation
         {
             if (!HasFrames(frames))
             {
+                animationState?.CaptureFailedRegistrationArgumentReferences(
+                    animationState.SimulatedOverlayLayerHandleId,
+                    animationState.SimulatedLayerHandleIdsByLayerCode);
                 return -1;
             }
 
@@ -3053,6 +3189,9 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (!_oneTimeAnimations[i].Update(currentTimeMs))
                 {
+                    CaptureReleasedOneTimeAnimationState(
+                        _oneTimeAnimations[i],
+                        OneTimeAnimationRecoveredNativeFinalReleaseReason.NaturalCompletion);
                     _oneTimePool.Enqueue(_oneTimeAnimations[i]);
                     _oneTimeAnimations.RemoveAt(i);
                 }
@@ -4734,13 +4873,15 @@ namespace HaCreator.MapSimulator.Animation
     internal enum AnimationOneTimePlaybackMode
     {
         Default = 0,
-        GA_STOP = 1
+        GA_STOP = 1,
+        BasicFloat = 2
     }
 
     internal enum AnimationOneTimeOverlayParentKind
     {
         None = 0,
-        MobActionLayer = 1
+        MobActionLayer = 1,
+        UserUnderFaceLayer = 2
     }
 
     internal enum OneTimeAnimationRecoveredMobProjectileOperationKind
@@ -4969,9 +5110,61 @@ namespace HaCreator.MapSimulator.Animation
             return CreatePacketOwnedBasicOneTime(sourceUol);
         }
 
+        public static OneTimeAnimationRecoveredRegistrationTrace CreatePacketOwnedBasicFloat(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                MobTemplatePathStringPoolId: 0,
+                EffectNameStringPoolId: 0,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: false,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: false,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.None,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                LoadLayerFlip: false,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
+                RegisterOneTimeAnimationHasCallback: false);
+        }
+
         public static OneTimeAnimationRecoveredRegistrationTrace CreatePacketOwnedBasicOneTime(string sourceUol)
         {
             return CreateClientOwnedBasicOneTime(sourceUol);
+        }
+
+        public static OneTimeAnimationRecoveredRegistrationTrace CreateClientShowSkillEffectSkillUse(
+            string sourceUol,
+            bool loadLayerFlip)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                MobTemplatePathStringPoolId: 0,
+                EffectNameStringPoolId: 0,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: true,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: true,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.UserUnderFaceLayer,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                LoadLayerFlip: loadLayerFlip,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
+                RegisterOneTimeAnimationHasCallback: false);
         }
 
         public static OneTimeAnimationRecoveredRegistrationTrace CreateClientOwnedBasicOneTime(string sourceUol)
@@ -5090,6 +5283,24 @@ namespace HaCreator.MapSimulator.Animation
         bool RegistersOneTimeAnimation,
         bool LoadedLayerReleasedByOwnerAfterRegistration);
 
+    internal enum OneTimeAnimationRecoveredNativeFinalReleaseReason
+    {
+        None = 0,
+        NaturalCompletion = 1,
+        Cleared = 2
+    }
+
+    internal readonly record struct OneTimeAnimationRecoveredNativeFinalReleaseState(
+        AnimationOneTimeOwner Owner,
+        string SourceUol,
+        int SimulatedLoadedLayerHandleId,
+        int LoadedLayerReferenceCountBeforeManagerRelease,
+        int LoadedLayerReferenceCountAfterManagerRelease,
+        bool HadRegisteredLayer,
+        bool ManagerHeldLoadedLayerReference,
+        bool ManagerReleasedLoadedLayerReference,
+        OneTimeAnimationRecoveredNativeFinalReleaseReason Reason);
+
     internal enum AnimationCanvasLayerContent
     {
         PrimaryCanvas = 0,
@@ -5162,11 +5373,19 @@ namespace HaCreator.MapSimulator.Animation
     internal readonly record struct CanvasLayerRecoveredCompositeSurfaceSettings(
         int NativeCanvasFactoryStringPoolId,
         string NativeCanvasFactoryName,
+        string NativeCanvasInterfaceName,
+        string NativeCanvasInterfaceGuid,
+        string NativeLayerInterfaceName,
+        string NativeLayerInterfaceGuid,
         string ManagedSurfaceType,
         string ManagedSurfaceFormat,
         string ManagedClearColor,
+        string ManagedSpriteSortMode,
         string ManagedBlendState,
         string ManagedSamplerState,
+        string ManagedDepthStencilState,
+        string ManagedRasterizerState,
+        bool RestoresPreviousRenderTargets,
         bool UsesNativeIWzCanvas,
         bool UsesNativeIWzGr2DLayer,
         bool IsByteIdenticalNativeComposite);
@@ -6327,6 +6546,10 @@ namespace HaCreator.MapSimulator.Animation
         private int _lastFrameTime;
         private int _zOrder;
         private bool _finished;
+        private const int BasicFloatHoldDurationMs = 400;
+        private const int BasicFloatFadeDurationMs = 600;
+        private const int BasicFloatMoveDurationMs = 250;
+        private const int BasicFloatRiseDistancePx = 30;
 
         public Color Tint { get; set; } = Color.White;
         public bool FadeOut { get; set; } = false;
@@ -6443,6 +6666,11 @@ namespace HaCreator.MapSimulator.Animation
                 return UpdateStoppedPlayback(currentTimeMs);
             }
 
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat)
+            {
+                return UpdateBasicFloatPlayback(currentTimeMs);
+            }
+
             IDXObject frame = _frames[_currentFrame];
             if (ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _lastFrameTime) > frame.Delay)
             {
@@ -6492,6 +6720,29 @@ namespace HaCreator.MapSimulator.Animation
             return false;
         }
 
+        private bool UpdateBasicFloatPlayback(int currentTimeMs)
+        {
+            if (_frames == null || _frames.Count == 0)
+            {
+                _finished = true;
+                return false;
+            }
+
+            int elapsed = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, _startTime);
+            if (elapsed >= ResolveBasicFloatLifetimeMs())
+            {
+                _finished = true;
+                _currentFrame = _frames.Count;
+                Alpha = 0f;
+                return false;
+            }
+
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+            Alpha = ResolveBasicFloatAlpha(elapsed);
+            return true;
+        }
+
         private void SeekToElapsed(int initialElapsedMs, int currentTimeMs)
         {
             if (_frames == null || _frames.Count == 0)
@@ -6504,6 +6755,20 @@ namespace HaCreator.MapSimulator.Animation
             _startTime = unchecked(currentTimeMs - elapsed);
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
+
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat)
+            {
+                if (elapsed >= ResolveBasicFloatLifetimeMs())
+                {
+                    _finished = true;
+                    _currentFrame = _frames.Count;
+                    Alpha = 0f;
+                    return;
+                }
+
+                Alpha = ResolveBasicFloatAlpha(elapsed);
+                return;
+            }
 
             while (_currentFrame < _frames.Count)
             {
@@ -6534,6 +6799,35 @@ namespace HaCreator.MapSimulator.Animation
         internal static bool HasFrameDelayElapsedForTesting(int currentTimeMs, int lastFrameTimeMs, int frameDelayMs)
         {
             return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, lastFrameTimeMs) > frameDelayMs;
+        }
+
+        internal static int ResolveBasicFloatLifetimeMs()
+        {
+            return BasicFloatHoldDurationMs + BasicFloatFadeDurationMs;
+        }
+
+        internal static float ResolveBasicFloatAlpha(int elapsedMs)
+        {
+            int elapsed = Math.Max(0, elapsedMs);
+            if (elapsed <= BasicFloatHoldDurationMs)
+            {
+                return 1f;
+            }
+
+            float fadeProgress = MathHelper.Clamp(
+                (elapsed - BasicFloatHoldDurationMs) / (float)BasicFloatFadeDurationMs,
+                0f,
+                1f);
+            return 1f - fadeProgress;
+        }
+
+        internal static float ResolveBasicFloatOffsetY(int elapsedMs)
+        {
+            float moveProgress = MathHelper.Clamp(
+                Math.Max(0, elapsedMs) / (float)BasicFloatMoveDurationMs,
+                0f,
+                1f);
+            return -BasicFloatRiseDistancePx * moveProgress;
         }
 
         private static OneTimeAnimationRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
@@ -7027,6 +7321,43 @@ namespace HaCreator.MapSimulator.Animation
                 HasOperation(executionTrace, OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer));
         }
 
+        internal OneTimeAnimationRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            return BuildRecoveredNativeFinalReleaseState(
+                RecoveredNativeLifetimeState,
+                Owner,
+                SourceUol,
+                reason);
+        }
+
+        internal static OneTimeAnimationRecoveredNativeFinalReleaseState BuildRecoveredNativeFinalReleaseState(
+            OneTimeAnimationRecoveredNativeLifetimeState lifetimeState,
+            AnimationOneTimeOwner owner,
+            string sourceUol,
+            OneTimeAnimationRecoveredNativeFinalReleaseReason reason)
+        {
+            bool hadRegisteredLayer = lifetimeState.RegistersOneTimeAnimation
+                && lifetimeState.SimulatedLoadedLayerHandleId > 0
+                && lifetimeState.LoadedLayerReferenceCountAfterOwnerRelease > 0;
+            bool managerHeldLayerReference = hadRegisteredLayer;
+            int beforeManagerRelease = lifetimeState.LoadedLayerReferenceCountAfterOwnerRelease;
+            int afterManagerRelease = managerHeldLayerReference
+                ? Math.Max(0, beforeManagerRelease - 1)
+                : beforeManagerRelease;
+
+            return new OneTimeAnimationRecoveredNativeFinalReleaseState(
+                owner,
+                sourceUol,
+                lifetimeState.SimulatedLoadedLayerHandleId,
+                beforeManagerRelease,
+                afterManagerRelease,
+                hadRegisteredLayer,
+                managerHeldLayerReference,
+                managerHeldLayerReference && reason != OneTimeAnimationRecoveredNativeFinalReleaseReason.None,
+                reason);
+        }
+
         private static bool HasOperation(
             IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> operations,
             OneTimeAnimationRecoveredNativeOperationKind kind)
@@ -7166,11 +7497,31 @@ namespace HaCreator.MapSimulator.Animation
             IDXObject frame = _frames[_currentFrame];
             Vector2 position = _positionResolver?.Invoke() ?? new Vector2(_x, _y);
             bool flip = _flipResolver?.Invoke() ?? _flip;
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat)
+            {
+                int elapsed = ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(_lastFrameTime, _startTime);
+                position = new Vector2(position.X, position.Y + ResolveBasicFloatOffsetY(elapsed));
+            }
 
             // Use the object's built-in DrawObject method
             // Note: DrawObject takes negative shift values because it subtracts them internally
             int drawShiftX = -(int)position.X - mapShiftX;
             int drawShiftY = -(int)position.Y - mapShiftY;
+
+            if (PlaybackMode == AnimationOneTimePlaybackMode.BasicFloat && Alpha < 1f)
+            {
+                byte alpha = (byte)Math.Clamp((int)MathF.Round(Alpha * byte.MaxValue), 0, byte.MaxValue);
+                frame.DrawBackground(
+                    spriteBatch,
+                    skeletonRenderer,
+                    gameTime,
+                    frame.X - drawShiftX,
+                    frame.Y - drawShiftY,
+                    new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, alpha),
+                    flip,
+                    null);
+                return;
+            }
 
             frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
         }

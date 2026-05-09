@@ -1666,6 +1666,11 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        internal static bool HasUnresolvedCompletionPvpGradeConversationDemand(int? requiredPvpGrade)
+        {
+            return requiredPvpGrade.HasValue && requiredPvpGrade.Value > 0;
+        }
+
         internal static bool HasUnresolvedCompletionSideChannelDemands(IReadOnlyList<string> demandKeys)
         {
             return demandKeys != null && demandKeys.Count > 0;
@@ -5745,7 +5750,7 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndTimeKeepFieldSetKeepTime,
                     TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId));
             bool hasUnresolvedPvpGradeRequirement = state == QuestStateType.Started &&
-                HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement);
+                HasUnresolvedCompletionPvpGradeConversationDemand(definition.EndPvpGradeRequirement);
             bool hasUnmetGenderRequirement = state == QuestStateType.Started &&
                 build != null &&
                 HasUnmetCompletionGenderDemand(definition.EndGenderRequirement, build.Gender);
@@ -7441,7 +7446,7 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Time-keep field-set demand is still unmet.");
             }
 
-            if (HasUnresolvedCompletionPvpGradeDemand(definition.EndPvpGradeRequirement))
+            if (HasUnresolvedCompletionPvpGradeConversationDemand(definition.EndPvpGradeRequirement))
             {
                 issues.Add("Completion PvP-grade demand owner is unavailable.");
             }
@@ -10006,9 +10011,12 @@ namespace HaCreator.MapSimulator.Interaction
                 EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
                 EndTimeKeepFieldSetKeepTime = ParseInt(endCheck?["fieldsetkeeptime"] ?? endCheck?["fieldSetKeepTime"]),
                 EndPvpGradeRequirement = ParseInt(endCheck?["pvpGrade"]),
-                EndGenderRequirement = ParseInt(endCheck?["gender"]),
-                EndRequiresMarriage = HasAuthoredCompletionSideChannelDemand(endCheck?["marriaged"]),
-                EndRequiresNoMarriage = HasAuthoredCompletionSideChannelDemand(endCheck?["noMarriaged"]),
+                EndGenderRequirement = ParseFirstInt(endCheck, "gender", "sex", "genderType"),
+                EndRequiresMarriage = HasAuthoredCompletionSideChannelDemand(endCheck?["marriaged"])
+                                     || HasAuthoredCompletionSideChannelDemand(endCheck?["marriage"])
+                                     || HasAuthoredCompletionSideChannelDemand(endCheck?["married"]),
+                EndRequiresNoMarriage = HasAuthoredCompletionSideChannelDemand(endCheck?["noMarriaged"])
+                                       || HasAuthoredCompletionSideChannelDemand(endCheck?["noMarriage"]),
                 EndUnresolvedSideChannelDemandKeys = ParseUnresolvedCompletionSideChannelDemandKeys(endCheck),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndFakeQuestId = ParsePositiveInt(endCheck?["fakeQuestID"]),
@@ -10120,6 +10128,31 @@ namespace HaCreator.MapSimulator.Interaction
                     out int parsedValue) => parsedValue,
                 _ => null
             };
+        }
+
+        private static int? ParseFirstInt(WzImageProperty owner, params string[] keys)
+        {
+            if (owner == null || keys == null || keys.Length == 0)
+            {
+                return null;
+            }
+
+            for (int keyIndex = 0; keyIndex < keys.Length; keyIndex++)
+            {
+                string key = keys[keyIndex];
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                int? parsed = ParseInt(owner[key]);
+                if (parsed.HasValue)
+                {
+                    return parsed;
+                }
+            }
+
+            return null;
         }
 
         private static IReadOnlyList<QuestRecordTextRequirement> ParseQuestRecordTextRequirements(WzImageProperty property)

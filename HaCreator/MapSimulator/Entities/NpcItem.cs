@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Entities
         public NpcMovementInfo MovementInfo { get; private set; }
         public bool MovementEnabled { get; set; } = true;
         public bool IdleActionCyclingEnabled { get; set; } = true;
+        public bool Flip => flip;
         public int PacketObjectId { get; private set; } = -1;
         public int PacketFootholdId { get; private set; }
         public bool PacketControllerOwnedByLocalUser { get; private set; }
@@ -590,7 +591,8 @@ namespace HaCreator.MapSimulator.Entities
             // Get current frame from animation
             IDXObject drawFrame = GetCurrentAnimationFrame(TickCount);
 
-            AssembledFrame imitatedFrame = _imitatedAssembler?.GetFrameAtTime(ResolveImitatedAvatarAction(), TickCount);
+            AssembledFrame imitatedFrame = _imitatedAssembler?.GetFrameAtTime(ResolveImitatedAvatarAction(), TickCount)
+                                           ?? _imitatedAssembler?.GetFrameAtTime(ResolveFallbackImitatedAvatarAction(), TickCount);
             if (imitatedFrame != null)
             {
                 int screenX = CurrentX - mapShiftX + centerX;
@@ -708,6 +710,13 @@ namespace HaCreator.MapSimulator.Entities
 
         private string ResolveImitatedAvatarAction()
         {
+            return CharacterPart.TryGetActionStringFromCode(5, out string nativeInitAction)
+                ? nativeInitAction
+                : "swingO1";
+        }
+
+        private string ResolveFallbackImitatedAvatarAction()
+        {
             return MovementInfo?.IsMoving == true
                 ? "walk1"
                 : "stand1";
@@ -741,6 +750,12 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
+            IReadOnlyList<MapleTvAnimationFrame> mediaFrames = visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex);
+            IReadOnlyList<MapleTvAnimationFrame> onFrames = visualAssets.OnFrames.Count > 0
+                ? visualAssets.OnFrames
+                : visualAssets.BasicFrames;
+            MapleTvAnimationFrame mediaFrame = SelectMapleTvFrame(mediaFrames, tickCount);
+            MapleTvAnimationFrame onFrame = SelectMapleTvFrame(onFrames, tickCount);
             IReadOnlyList<MapleTvAnimationFrame> chatFrames = visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex);
             MapleTvAnimationFrame chatFrame = SelectMapleTvFrame(chatFrames, tickCount);
             if (chatFrame == null)
@@ -748,23 +763,41 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            int originX = CurrentX + _mapleTvMessageX - mapShiftX + centerX;
-            int originY = CurrentY + _mapleTvMessageY - mapShiftY + centerY;
-            chatFrame.Drawable?.DrawBackground(
+            int adOriginX = CurrentX + _mapleTvAdX - mapShiftX + centerX;
+            int adOriginY = CurrentY + _mapleTvAdY - mapShiftY + centerY;
+            DrawMapleTvFrame(
+                mediaFrame,
                 sprite,
                 skeletonMeshRenderer,
                 gameTime,
-                originX + chatFrame.Offset.X,
-                originY + chatFrame.Offset.Y,
-                Color.White,
-                false,
-                drawReflectionInfo);
+                drawReflectionInfo,
+                adOriginX,
+                adOriginY);
+            DrawMapleTvFrame(
+                onFrame,
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                drawReflectionInfo,
+                adOriginX,
+                adOriginY);
+
+            int chatOriginX = CurrentX + _mapleTvMessageX - mapShiftX + centerX;
+            int chatOriginY = CurrentY + _mapleTvMessageY - mapShiftY + centerY;
+            DrawMapleTvFrame(
+                chatFrame,
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                drawReflectionInfo,
+                chatOriginX,
+                chatOriginY);
 
             Rectangle textBounds = MapleTvMediaIndexResolver.ResolveChatBounds(
                 snapshot.ResolvedMediaIndex,
                 visualAssets.DefaultMediaIndex,
                 visualAssets.AvailableMediaIndices);
-            Point chatTopLeft = new(originX + chatFrame.Offset.X, originY + chatFrame.Offset.Y);
+            Point chatTopLeft = new(chatOriginX + chatFrame.Offset.X, chatOriginY + chatFrame.Offset.Y);
             int drawY = chatTopLeft.Y + textBounds.Y;
             foreach (string line in (snapshot.DisplayLines ?? Array.Empty<string>()).Take(4))
             {
@@ -782,6 +815,26 @@ namespace HaCreator.MapSimulator.Entities
 
                 drawY += 14;
             }
+        }
+
+        private static void DrawMapleTvFrame(
+            MapleTvAnimationFrame frame,
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            int originX,
+            int originY)
+        {
+            frame?.Drawable?.DrawBackground(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                originX + frame.Offset.X,
+                originY + frame.Offset.Y,
+                Color.White,
+                false,
+                drawReflectionInfo);
         }
 
         private static MapleTvAnimationFrame SelectMapleTvFrame(IReadOnlyList<MapleTvAnimationFrame> frames, int tickCount)

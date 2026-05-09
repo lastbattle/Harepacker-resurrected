@@ -8,6 +8,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 using BinaryReader = MapleLib.PacketLib.PacketReader;
 
@@ -37,6 +38,8 @@ namespace HaCreator.MapSimulator
         private const byte VegaClientInventoryOperationEquipType = (byte)InventoryType.EQUIP;
         private const byte VegaClientInventoryOperationCashType = (byte)InventoryType.CASH;
         private const byte VegaClientInventoryOperationSlotTypeEquip = 1;
+        private const byte VegaClientInventoryOperationSlotTypeBundle = 2;
+        private const byte VegaClientInventoryOperationSlotTypePet = 3;
         private const string VegaResultLoopSoundKeyPrefix = "PacketOwnedSound:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;

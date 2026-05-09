@@ -504,6 +504,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _miniRoomOmokRetreatRequestSent;
         private bool _miniRoomOmokRetreatRequestSentTurn;
         private bool _miniRoomOmokRetreatRequestSentMatch;
+        private bool _miniRoomOmokTimeOverRequestSent;
         private string _miniRoomOmokLastOutboundPacketHex = string.Empty;
         private DateTime? _miniRoomOmokLastTimedStateUtc;
         private string _miniRoomOmokPendingPromptText = string.Empty;
@@ -675,6 +676,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool MiniRoomOmokRetreatRequested => _miniRoomOmokRetreatRequested;
         public bool MiniRoomOmokRetreatRequestSent => _miniRoomOmokRetreatRequestSent;
         public bool MiniRoomOmokRetreatRequestSentMatch => _miniRoomOmokRetreatRequestSentMatch;
+        public bool MiniRoomOmokTimeOverRequestSent => _miniRoomOmokTimeOverRequestSent;
         public int MiniRoomOmokStoneAnimationTimeLeftMs => _miniRoomOmokStoneAnimationTimeLeftMs;
         public int MiniRoomOmokDialogEffectTimeLeftMs => _miniRoomOmokDialogEffectTimeLeftMs;
         public string MiniRoomOmokDialogStatus => _miniRoomOmokDialogStatus;
@@ -774,6 +776,7 @@ namespace HaCreator.MapSimulator.Interaction
                 MiniRoomOmokRetreatRequestSent = _miniRoomOmokRetreatRequestSent,
                 MiniRoomOmokRetreatRequestSentTurn = _miniRoomOmokRetreatRequestSentTurn,
                 MiniRoomOmokRetreatRequestSentMatch = _miniRoomOmokRetreatRequestSentMatch,
+                MiniRoomOmokTimeOverRequestSent = _miniRoomOmokTimeOverRequestSent,
                 MiniRoomOmokTimeLeftMs = _miniRoomOmokTimeLeftMs,
                 MiniRoomOmokTimeFloor = _miniRoomOmokTimeFloor,
                 MiniRoomOmokStoneAnimationTimeLeftMs = _miniRoomOmokStoneAnimationTimeLeftMs,
@@ -945,6 +948,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokRetreatRequestSent = source?.MiniRoomOmokRetreatRequestSent ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSent;
                 _miniRoomOmokRetreatRequestSentTurn = source?.MiniRoomOmokRetreatRequestSentTurn ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSentTurn;
                 _miniRoomOmokRetreatRequestSentMatch = source?.MiniRoomOmokRetreatRequestSentMatch ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSentMatch;
+                _miniRoomOmokTimeOverRequestSent = source?.MiniRoomOmokTimeOverRequestSent ?? _defaultSnapshot.MiniRoomOmokTimeOverRequestSent;
                 _miniRoomOmokTimeLeftMs = Math.Max(0, source?.MiniRoomOmokTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokTimeLeftMs);
                 _miniRoomOmokTimeFloor = Math.Max(0, source?.MiniRoomOmokTimeFloor ?? _defaultSnapshot.MiniRoomOmokTimeFloor);
                 _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, source?.MiniRoomOmokStoneAnimationTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokStoneAnimationTimeLeftMs);
@@ -1366,8 +1370,9 @@ namespace HaCreator.MapSimulator.Interaction
                     stateChanged = true;
                 }
 
-                if (_miniRoomOmokTimeFloor <= 0 && IsMiniRoomOmokLocalTurn)
+                if (_miniRoomOmokTimeFloor <= 0 && IsMiniRoomOmokLocalTurn && !_miniRoomOmokTimeOverRequestSent)
                 {
+                    _miniRoomOmokTimeOverRequestSent = true;
                     PublishMiniRoomOmokOutboundPacket(
                         OmokTimeOverPacketType,
                         "COmokDlg::Update",
@@ -7666,10 +7671,19 @@ namespace HaCreator.MapSimulator.Interaction
             _entrustedBlacklistPendingMutationName = resolvedName;
             _entrustedBlacklistPendingMutationAdd = add;
             _entrustedBlacklistPendingMutationRawPacketHex = rawHex;
-            _entrustedChildDialogStatus =
-                $"{summary} Waiting for authoritative server subtype {EntrustedShopBlackListResultPacketType} to refresh the blacklist.";
-            StatusMessage = _entrustedChildDialogStatus;
-            PersistState();
+            if (add)
+            {
+                ApplyEntrustedBlacklistAddLocalPreview(
+                    resolvedName,
+                    $"{summary} CBlackListDlg::AddBlackList inserted {resolvedName} into the child list immediately; waiting for authoritative server subtype {EntrustedShopBlackListResultPacketType} to rebuild the blacklist owner.");
+            }
+            else
+            {
+                ApplyEntrustedBlacklistDeleteLocalPreview(
+                    resolvedName,
+                    $"{summary} CBlackListDlg::DeleteBlackList removed {resolvedName} from the child list immediately; waiting for authoritative server subtype {EntrustedShopBlackListResultPacketType} to rebuild the blacklist owner.");
+            }
+
             message = StatusMessage;
             return true;
         }
@@ -10778,6 +10792,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokRetreatRequested = false;
             _miniRoomOmokRetreatRequestSent = false;
             _miniRoomOmokRetreatRequestSentTurn = false;
+            _miniRoomOmokTimeOverRequestSent = false;
             if (clearMatchRetreatRequest)
             {
                 _miniRoomOmokRetreatRequestSentMatch = false;

@@ -83,6 +83,82 @@ namespace HaCreator.MapSimulator.UI
             return packetAuthoredState || locallyAcceptedRegister;
         }
 
+        internal static bool IsSnapshotCompatibleWithPendingRequestContext(
+            string pendingQuery,
+            string pendingCategoryKey,
+            int pendingPriceRangeIndex,
+            int pendingRemotePageIndex,
+            int pendingRemotePageCount,
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot,
+            out string mismatchReason)
+        {
+            mismatchReason = string.Empty;
+            if (snapshot == null)
+            {
+                mismatchReason = "the packet did not decode to a SearchItemName snapshot";
+                return false;
+            }
+
+            if (!IsOptionalQueryContextCompatible(pendingQuery, snapshot.Query))
+            {
+                mismatchReason = "the payload query did not match the active SearchItemName request";
+                return false;
+            }
+
+            if (!IsOptionalCategoryContextCompatible(pendingCategoryKey, snapshot.CategoryKey))
+            {
+                mismatchReason = "the payload category did not match the active SearchItemName request";
+                return false;
+            }
+
+            if (snapshot.PriceRangeIndex >= 0 && snapshot.PriceRangeIndex != System.Math.Max(-1, pendingPriceRangeIndex))
+            {
+                mismatchReason = "the payload price band did not match the active SearchItemName request";
+                return false;
+            }
+
+            if (pendingRemotePageIndex >= 0)
+            {
+                if (snapshot.RemotePageIndex < 0)
+                {
+                    mismatchReason = "the payload did not carry the requested remote page index";
+                    return false;
+                }
+
+                if (snapshot.RemotePageIndex != pendingRemotePageIndex)
+                {
+                    mismatchReason = "the payload remote page did not match the requested page";
+                    return false;
+                }
+
+                int resolvedSnapshotPageCount = ResolveRemotePageCount(snapshot);
+                if (pendingRemotePageCount > 0
+                    && resolvedSnapshotPageCount > 0
+                    && resolvedSnapshotPageCount != pendingRemotePageCount)
+                {
+                    mismatchReason = "the payload remote page count changed while a page request was pending";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        internal static int ResolveRemotePageCount(AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return 0;
+            }
+
+            if (snapshot.RemoteTotalCount >= 0 && snapshot.RemotePageSize > 0)
+            {
+                return System.Math.Max(0, (int)System.Math.Ceiling(snapshot.RemoteTotalCount / (double)snapshot.RemotePageSize));
+            }
+
+            return snapshot.RemotePageIndex >= 0 ? snapshot.RemotePageIndex + 1 : 0;
+        }
+
         internal static bool ShouldRebindSearchResultOnServiceStateChange(
             string previousServiceStateSignature,
             string liveServiceStateSignature,
@@ -94,6 +170,42 @@ namespace HaCreator.MapSimulator.UI
                 && !categoryOwnerVisible
                 && hasSearchQuery
                 && hasPacketAuthoredPayloadForQuery;
+        }
+
+        private static bool IsOptionalQueryContextCompatible(string pendingValue, string payloadValue)
+        {
+            string normalizedPayload = NormalizeClientSearchQuery(payloadValue);
+            if (string.IsNullOrWhiteSpace(normalizedPayload))
+            {
+                return true;
+            }
+
+            string normalizedPending = NormalizeClientSearchQuery(pendingValue);
+            return string.IsNullOrWhiteSpace(normalizedPending)
+                   || string.Equals(normalizedPending, normalizedPayload, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsOptionalCategoryContextCompatible(string pendingValue, string payloadValue)
+        {
+            string normalizedPayload = payloadValue?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedPayload))
+            {
+                return true;
+            }
+
+            return string.Equals(NormalizeCategoryKey(pendingValue), NormalizeCategoryKey(payloadValue), System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeClientSearchQuery(string query)
+        {
+            return string.IsNullOrEmpty(query)
+                ? string.Empty
+                : query.Replace(" ", string.Empty).Trim();
+        }
+
+        private static string NormalizeCategoryKey(string categoryKey)
+        {
+            return string.IsNullOrWhiteSpace(categoryKey) ? "all" : categoryKey.Trim();
         }
     }
 }

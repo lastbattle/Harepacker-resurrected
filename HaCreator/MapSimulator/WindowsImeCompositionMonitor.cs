@@ -145,10 +145,9 @@ namespace HaCreator.MapSimulator
                     break;
 
                 case IMN_CLOSECANDIDATE:
-                    if (candidateMask != 0)
-                    {
-                        _activeCandidateListMask &= ~candidateMask;
-                    }
+                    _activeCandidateListMask = ResolveActiveCandidateListMaskAfterClose(
+                        _activeCandidateListMask,
+                        candidateMask);
 
                     if (_activeCandidateListMask == 0)
                     {
@@ -173,6 +172,18 @@ namespace HaCreator.MapSimulator
                     }
                     break;
             }
+        }
+
+        internal static uint ResolveActiveCandidateListMaskAfterClose(
+            uint activeCandidateListMask,
+            uint candidateCloseMask)
+        {
+            // Some IMEs send IMN_CLOSECANDIDATE without a list bitmask after closing the
+            // native candidate owner. Treat that as a full close so modeled popup chrome
+            // cannot survive a native close message.
+            return candidateCloseMask == 0
+                ? 0
+                : activeCandidateListMask & ~candidateCloseMask;
         }
 
         private void PublishCompositionState(ImeCompositionState state)

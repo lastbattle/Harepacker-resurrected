@@ -447,12 +447,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (payload.Length != 1)
-            {
-                message = $"Field help packet has {payload.Length - 1} trailing byte(s); CField::OnDesc expects exactly one unsigned help-message index byte.";
-                return false;
-            }
-
+            int trailingBytes = Math.Max(0, payload.Length - 1);
             byte index = payload[0];
             if (index >= _mapHelpMessages.Count)
             {
@@ -462,24 +457,19 @@ namespace HaCreator.MapSimulator.Interaction
 
             string text = _mapHelpMessages[index];
             _activeHelpMessage = new PacketHelpMessageState(text, currentTick, currentTick + HelpMessageDisplayDurationMs, index);
-            _statusMessage = $"Displayed field help message #{index} on map {_boundMapId}.";
+            _statusMessage = $"Displayed field help message #{index} on map {_boundMapId}.{FormatIgnoredTrailingByteSuffix(trailingBytes)}";
             message = $"{_statusMessage} {TrimForStatus(text)}";
             return true;
         }
 
         private bool TryApplyQuestClear(byte[] payload, out string message)
         {
-            if (payload != null && payload.Length != 0)
-            {
-                message = $"Quest-clear packet has {payload.Length} trailing byte(s); CField::OnSetQuestClear does not consume a payload in the packet-owned quest-timer clear seam.";
-                return false;
-            }
-
+            int trailingBytes = payload?.Length ?? 0;
             _questTimers.Clear();
             _questTimerOwners.Clear();
             _questTimerHoveredQuestId = 0;
             _questTimerDraggedQuestId = -1;
-            _statusMessage = "Cleared all packet-authored quest timers.";
+            _statusMessage = $"Cleared all packet-authored quest timers.{FormatIgnoredTrailingByteSuffix(trailingBytes)}";
             message = _statusMessage;
             return true;
         }
@@ -498,11 +488,9 @@ namespace HaCreator.MapSimulator.Interaction
                 using var reader = new BinaryReader(stream);
                 byte count = reader.ReadByte();
                 long expectedLength = 1L + (count * (sizeof(int) + sizeof(long) + sizeof(long)));
-                if (stream.Length != expectedLength)
+                if (stream.Length < expectedLength)
                 {
-                    message = stream.Length < expectedLength
-                        ? $"Quest timer packet ended early: expected {expectedLength} byte(s), got {stream.Length}."
-                        : $"Quest timer packet has {stream.Length - expectedLength} trailing byte(s).";
+                    message = $"Quest timer packet ended early: expected {expectedLength} byte(s), got {stream.Length}.";
                     return false;
                 }
 
@@ -541,6 +529,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 int appliedCount = decodedTimers.Count;
                 _statusMessage = appliedCount == 1 ? "Applied 1 packet-authored quest timer." : $"Applied {appliedCount} packet-authored quest timers.";
+                _statusMessage = $"{_statusMessage}{FormatIgnoredTrailingByteSuffix((int)Math.Max(0, stream.Length - expectedLength))}";
                 message = _statusMessage;
                 return true;
             }
@@ -670,12 +659,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketReader reader = new(payload);
                 string tag = reader.ReadMapleString();
                 int stateValue = reader.ReadInt();
-                if (reader.Remaining != 0)
-                {
-                    message = $"Object-state packet for '{tag?.Trim()}' was ignored because CField::OnSetObjectState expects exactly `<MapleString tag><int state>` and this payload has {reader.Remaining} trailing byte(s).";
-                    _statusMessage = message;
-                    return false;
-                }
+                int trailingBytes = reader.Remaining;
 
                 if (string.IsNullOrWhiteSpace(tag))
                 {
@@ -706,8 +690,8 @@ namespace HaCreator.MapSimulator.Interaction
                             out bool namedObjectApplied);
                         string laneSummary = BuildObjectStateLaneSummary(dynamicTagApplied, namedObjectApplied);
                         message = replayedPacketState
-                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); reapplied packet-owned state {packetStateValue} ({laneSummary}, state index {packetStateValue})."
-                            : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); packet-owned state {packetStateValue} is cached but could not be republished.";
+                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); reapplied packet-owned state {packetStateValue} ({laneSummary}, state index {packetStateValue}).{FormatIgnoredTrailingByteSuffix(trailingBytes)}"
+                            : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); packet-owned state {packetStateValue} is cached but could not be republished.{FormatIgnoredTrailingByteSuffix(trailingBytes)}";
                         _statusMessage = message;
                         return replayedPacketState;
                     }
@@ -728,9 +712,9 @@ namespace HaCreator.MapSimulator.Interaction
                     string replayLaneSummary = BuildObjectStateLaneSummary(dynamicReplayApplied, namedReplayApplied);
                     message = available
                         ? (replayed
-                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); republished current object state through {replayLaneSummary}{currentStateIndexSummary}."
-                            : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); current object state exists but could not be republished.")
-                        : $"Object-state replay packet for '{normalizedTag}' was ignored because no matching tagged or named object state is available.";
+                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); republished current object state through {replayLaneSummary}{currentStateIndexSummary}.{FormatIgnoredTrailingByteSuffix(trailingBytes)}"
+                            : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); current object state exists but could not be republished.{FormatIgnoredTrailingByteSuffix(trailingBytes)}")
+                        : $"Object-state replay packet for '{normalizedTag}' was ignored because no matching tagged or named object state is available.{FormatIgnoredTrailingByteSuffix(trailingBytes)}";
                     _statusMessage = message;
                     return replayed;
                 }
@@ -751,8 +735,8 @@ namespace HaCreator.MapSimulator.Interaction
 
                 string laneDetailSummary = BuildObjectStateLaneSummary(dynamicTagAppliedForApply, namedObjectAppliedForApply);
                 message = applied
-                    ? $"Applied object-state packet for '{normalizedTag}' => state {stateValue} ({laneDetailSummary}, state index {stateValue})."
-                    : $"Object-state packet for '{normalizedTag}' was ignored because no matching tagged or named object state is available.";
+                    ? $"Applied object-state packet for '{normalizedTag}' => state {stateValue} ({laneDetailSummary}, state index {stateValue}).{FormatIgnoredTrailingByteSuffix(trailingBytes)}"
+                    : $"Object-state packet for '{normalizedTag}' was ignored because no matching tagged or named object state is available.{FormatIgnoredTrailingByteSuffix(trailingBytes)}";
                 _statusMessage = message;
                 return applied;
             }
@@ -807,6 +791,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "no publish lane";
+        }
+
+        private static string FormatIgnoredTrailingByteSuffix(int trailingBytes)
+        {
+            return trailingBytes > 0
+                ? $" Ignored {trailingBytes} trailing byte(s) after the client-owned decode fields."
+                : string.Empty;
         }
 
         private bool TryApplyFieldSpecificData(

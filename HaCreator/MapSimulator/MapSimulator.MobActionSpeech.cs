@@ -112,13 +112,15 @@ namespace HaCreator.MapSimulator
             bool isScreenNotice = ResolveMobActionSpeechScreenNotice(
                 mob.ActiveActionSpeechChatBalloon,
                 mob.ActiveActionSpeechFloatNotice);
+            MobActionSpeechSkinMetrics skinMetrics = ResolveMobActionSpeechSkinMetrics(skin);
             MobActionSpeechTextLayout textLayout = BuildMobActionSpeechTextLayout(
                 mob.ActiveActionSpeechText,
                 mob.ActiveActionSpeechChatBalloon,
                 mob.ActiveActionSpeechFloatNotice,
                 isScreenNotice,
                 renderContext.RenderParams.RenderWidth,
-                MeasureChatTextWithFallback);
+                MeasureChatTextWithFallback,
+                skinMetrics);
             Rectangle bounds = ResolveMobActionSpeechBounds(
                 textLayout.TextSize,
                 mob.CurrentX,
@@ -132,7 +134,7 @@ namespace HaCreator.MapSimulator
                 renderContext.MapCenterY,
                 renderContext.RenderParams.RenderWidth,
                 renderContext.RenderParams.RenderHeight,
-                ResolveMobActionSpeechSkinMetrics(skin));
+                skinMetrics);
 
             if (bounds.Right < 0 ||
                 bounds.Bottom < 0 ||
@@ -168,7 +170,7 @@ namespace HaCreator.MapSimulator
                     !isScreenNotice);
             }
 
-            DrawMobActionSpeechText(textLayout, bounds, textColor, ResolveMobActionSpeechSkinMetrics(skin));
+            DrawMobActionSpeechText(textLayout, bounds, textColor, skinMetrics);
         }
 
         private LocalOverlayBalloonSkin ResolveMobActionSpeechBalloonSkin(int chatBalloon)
@@ -681,6 +683,25 @@ namespace HaCreator.MapSimulator
             int renderWidth,
             Func<string, Vector2> measureText)
         {
+            return BuildMobActionSpeechTextLayout(
+                text,
+                chatBalloon,
+                floatNotice,
+                isScreenNotice,
+                renderWidth,
+                measureText,
+                null);
+        }
+
+        internal static MobActionSpeechTextLayout BuildMobActionSpeechTextLayout(
+            string text,
+            int chatBalloon,
+            int floatNotice,
+            bool isScreenNotice,
+            int renderWidth,
+            Func<string, Vector2> measureText,
+            MobActionSpeechSkinMetrics skinMetrics)
+        {
             measureText ??= _ => Vector2.Zero;
             string normalizedText = NormalizeMobActionSpeechText(text);
             if (string.IsNullOrWhiteSpace(normalizedText))
@@ -692,7 +713,12 @@ namespace HaCreator.MapSimulator
                 };
             }
 
-            int maxTextWidth = ResolveMobActionSpeechMaxTextWidth(chatBalloon, floatNotice, isScreenNotice, renderWidth);
+            int maxTextWidth = ResolveMobActionSpeechMaxTextWidth(
+                chatBalloon,
+                floatNotice,
+                isScreenNotice,
+                renderWidth,
+                skinMetrics);
             List<string> lines = WrapMobActionSpeechText(normalizedText, maxTextWidth, measureText);
             if (lines.Count == 0)
             {
@@ -730,11 +756,29 @@ namespace HaCreator.MapSimulator
             bool isScreenNotice,
             int renderWidth)
         {
+            return ResolveMobActionSpeechMaxTextWidth(
+                chatBalloon,
+                floatNotice,
+                isScreenNotice,
+                renderWidth,
+                null);
+        }
+
+        private static int ResolveMobActionSpeechMaxTextWidth(
+            int chatBalloon,
+            int floatNotice,
+            bool isScreenNotice,
+            int renderWidth,
+            MobActionSpeechSkinMetrics skinMetrics)
+        {
             int authoredMaxWidth = isScreenNotice
                 ? MobActionSpeechScreenMaxTextWidth
                 : MobActionSpeechOwnerMaxTextWidth;
+            int horizontalInset = skinMetrics == null
+                ? MobActionSpeechHorizontalPadding * 2
+                : skinMetrics.LeftTextInset + skinMetrics.RightTextInset;
             int viewportMaxWidth = renderWidth > 0
-                ? Math.Max(48, renderWidth - (MobActionSpeechHorizontalPadding * 2))
+                ? Math.Max(24, renderWidth - horizontalInset)
                 : authoredMaxWidth;
             return Math.Max(24, Math.Min(authoredMaxWidth, viewportMaxWidth));
         }

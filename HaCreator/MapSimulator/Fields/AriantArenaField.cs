@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.Fields
         private SoundManager _soundManager;
         private Func<LoginAvatarLook, string, CharacterBuild> _remoteBuildFactory;
         private string _resultSoundKey;
+        private WzBinaryProperty _resultSoundProperty;
         private string _lastResultMessage;
         private string _localPlayerName;
         private int? _lastPacketType;
@@ -337,7 +338,21 @@ namespace HaCreator.MapSimulator.Fields
             _lastResultMessage = null;
             if (!string.IsNullOrWhiteSpace(_resultSoundKey))
             {
-                _soundManager?.PlaySound(_resultSoundKey);
+                if (_resultSoundProperty != null)
+                {
+                    _soundManager?.TryPlayClientSoundEffect(
+                        _resultSoundKey,
+                        _resultSoundProperty,
+                        startVolumeScale: 1f,
+                        loop: false,
+                        suppressWhileActive: true,
+                        out _,
+                        out _);
+                }
+                else
+                {
+                    _soundManager?.PlaySound(_resultSoundKey);
+                }
             }
         }
         public void ClearScores()
@@ -758,6 +773,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
             _resultSoundKey = "AriantArena:Result";
+            _resultSoundProperty = sound;
             _soundManager.RegisterSound(_resultSoundKey, sound);
         }
         private static string ResolveResultLayerPath()

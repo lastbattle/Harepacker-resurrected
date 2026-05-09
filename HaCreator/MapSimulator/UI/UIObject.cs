@@ -18,10 +18,17 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class UIObject : UIObjectViewModelBase
     {
+        internal delegate bool ClientSoundEffectPlayback(
+            string key,
+            WzBinaryProperty soundProperty,
+            float startVolumeScale,
+            bool suppressWhileActive);
+
         #region Fields
         private UIObjectState _currentState = UIObjectState.Normal;
 
         private WzSoundResourceStreamer _seMouseClick, _seMouseOver;
+        private WzBinaryProperty _seMouseClickProperty, _seMouseOverProperty;
 
         private readonly BaseDXDrawableItem _normalState;
         private readonly BaseDXDrawableItem _disabledState;
@@ -34,6 +41,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public event UIObjectButtonEventHandler ButtonClickReleased;
 
+        internal static ClientSoundEffectPlayback ClientSoundEffectPlayer { get; set; }
 
         /// <summary>
         /// Gets the current BaseDXDrawableItem based upon the current button state.
@@ -189,6 +197,8 @@ namespace HaCreator.MapSimulator.UI
 
             this._seMouseClick = CreateSoundEffectWithWzProperty(btMouseClickSoundProperty);
             this._seMouseOver = CreateSoundEffectWithWzProperty(btMouseOverSoundProperty);
+            this._seMouseClickProperty = btMouseClickSoundProperty;
+            this._seMouseOverProperty = btMouseOverSoundProperty;
 
             X = this._normalState.Position.X; // origin xy
             Y = this._normalState.Position.Y;
@@ -208,10 +218,68 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            if (ClientSoundEffectPlayer != null)
+            {
+                return null;
+            }
+
             WzSoundResourceStreamer currAudio = new WzSoundResourceStreamer(wzSoundProperty, false) {
                 Volume = 1.0f
             };
             return currAudio;
+        }
+
+        internal static string BuildClientSoundKey(WzBinaryProperty wzSoundProperty, string semanticName)
+        {
+            if (wzSoundProperty == null)
+            {
+                return null;
+            }
+
+            string path = wzSoundProperty.FullPath?.Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = wzSoundProperty.Name;
+            }
+
+            if (path.StartsWith("Sound.wz/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = path["Sound.wz/".Length..];
+            }
+
+            if (!path.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = "Sound/" + path;
+            }
+
+            return string.IsNullOrWhiteSpace(semanticName)
+                ? $"UIObject:{path}"
+                : $"UIObject:{semanticName}:{path}";
+        }
+
+        private bool TryPlayClientSoundEffect(
+            WzBinaryProperty soundProperty,
+            WzSoundResourceStreamer fallbackStreamer,
+            string semanticName)
+        {
+            if (soundProperty == null)
+            {
+                return false;
+            }
+
+            ClientSoundEffectPlayback player = ClientSoundEffectPlayer;
+            if (player != null
+                && player(
+                    BuildClientSoundKey(soundProperty, semanticName),
+                    soundProperty,
+                    startVolumeScale: 1f,
+                    suppressWhileActive: true))
+            {
+                return true;
+            }
+
+            fallbackStreamer?.Play();
+            return fallbackStreamer != null;
         }
 
         /// <summary>
@@ -321,8 +389,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     SetButtonState(UIObjectState.Pressed);
 
-                    if (_seMouseClick != null) // play mouse click sound
-                        _seMouseClick.Play();
+                    if (_seMouseClickProperty != null || _seMouseClick != null) // play mouse click sound
+                        TryPlayClientSoundEffect(_seMouseClickProperty, _seMouseClick, "click");
                 }
                 else if (mouseState.LeftButton == ButtonState.Released && priorState == UIObjectState.Pressed)
                 {
@@ -335,8 +403,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     // hover over sound effect
                     if (priorState != UIObjectState.Pressed && priorState != UIObjectState.Disabled && priorState != UIObjectState.MouseOver) {
-                        if (_seMouseOver != null) // play mouse over sound
-                            _seMouseOver.Play();
+                        if (_seMouseOverProperty != null || _seMouseOver != null) // play mouse over sound
+                            TryPlayClientSoundEffect(_seMouseOverProperty, _seMouseOver, "hover");
                     }
 
                     SetButtonState(UIObjectState.MouseOver);

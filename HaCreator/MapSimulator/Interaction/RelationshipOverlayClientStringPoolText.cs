@@ -10,7 +10,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int NewYearCardMidpointOffsetY = -20;
         internal const int NewYearCardRatioNumerator = 2;
         internal const int NewYearCardRatioDenominator = 2;
+        internal const int NewYearCardRatioOriginX = 1;
+        internal const int NewYearCardRatioOriginY = 1;
         internal const int NewYearCardLoadLayerAlpha = 255;
+        internal const int NewYearCardLoadLayerX = 0;
+        internal const int NewYearCardLoadLayerY = 0;
+        internal const int NewYearCardLoadLayerZ = 0;
+        internal const int NewYearCardAnimateModeRepeat = 2;
 
         private const string NewYearCardVectorClassFallback = "Shape2D#Vector2D";
         private const string NewYearCardEffectTemplateFallback = "Effect/ItemEff.img/%d";
@@ -43,6 +49,8 @@ namespace HaCreator.MapSimulator.Interaction
                 NewYearCardMidpointOffsetY,
                 NewYearCardRatioNumerator,
                 NewYearCardRatioDenominator,
+                NewYearCardRatioOriginX,
+                NewYearCardRatioOriginY,
                 NewYearCardLoadLayerAlpha);
         }
     }
@@ -54,5 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         int MidpointOffsetY,
         int RatioNumerator,
         int RatioDenominator,
+        int RatioOriginX,
+        int RatioOriginY,
         int Alpha);
 }

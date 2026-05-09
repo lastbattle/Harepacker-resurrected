@@ -289,6 +289,8 @@ namespace HaCreator.MapSimulator.Fields
         private string _loseSoundPath = "Coconut/Failed";
         private string _victorySoundKey;
         private string _loseSoundKey;
+        private WzBinaryProperty _victorySoundProperty;
+        private WzBinaryProperty _loseSoundProperty;
         private int _localBasicActionOwnerUntilTick = int.MinValue;
         private readonly Dictionary<(int TeamId, CharacterGender Gender), AvatarAppearanceContract> _avatarAppearanceContracts = new();
         // UI
@@ -1737,6 +1739,15 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             soundKey = $"CoconutField:{soundPath.Replace('/', ':')}";
+            if (string.Equals(soundKey, _victorySoundKey, StringComparison.Ordinal))
+            {
+                _victorySoundProperty = sound;
+            }
+            else if (string.Equals(soundKey, _loseSoundKey, StringComparison.Ordinal))
+            {
+                _loseSoundProperty = sound;
+            }
+
             _soundManager.RegisterSound(soundKey, sound);
         }
         private void PlayResultSound()
@@ -1747,10 +1758,30 @@ namespace HaCreator.MapSimulator.Fields
                 RoundResult.Lose => _loseSoundKey,
                 _ => null
             };
+            WzBinaryProperty soundProperty = _lastRoundResult switch
+            {
+                RoundResult.Victory => _victorySoundProperty,
+                RoundResult.Lose => _loseSoundProperty,
+                _ => null
+            };
 
             if (!string.IsNullOrWhiteSpace(soundKey))
             {
-                _soundManager?.PlaySound(soundKey);
+                if (soundProperty != null)
+                {
+                    _soundManager?.TryPlayClientSoundEffect(
+                        soundKey,
+                        soundProperty,
+                        startVolumeScale: 1f,
+                        loop: false,
+                        suppressWhileActive: true,
+                        out _,
+                        out _);
+                }
+                else
+                {
+                    _soundManager?.PlaySound(soundKey);
+                }
             }
         }
         private void LoadBitmapFont(WzImageProperty source, Dictionary<char, IDXObject> target, string characters)

@@ -636,7 +636,15 @@ namespace HaCreator.MapSimulator
         {
             // Client evidence: CField::OnFootHoldInfo only touches MOVING_OBJ_INFO
             // when the decoded state is 2; state-only packets leave prior moving
-            // coordinates and reverse flags available for OnRequestFootHoldInfo.
+            // coordinates and reverse flags available for OnRequestFootHoldInfo,
+            // but they do not issue a physical-space move delta.
+            if (platform == null)
+            {
+                return;
+            }
+
+            platform.DeltaX = 0f;
+            platform.DeltaY = 0f;
         }
 
         private static long SquaredDistance(int x1, int y1, int x2, int y2)

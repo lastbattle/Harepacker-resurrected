@@ -9239,13 +9239,13 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                hasIndexedNumericVariantBranches = true;
                 WzImageProperty variantProperty = ResolveAnimationDisplayerLinkedRealProperty(childProperty);
                 if (!IsAnimationDisplayerFollowEffectVariantPropertyLoadable(variantProperty))
                 {
                     continue;
                 }
 
+                hasIndexedNumericVariantBranches = true;
                 variantBranches.Add((index, childName));
             }
 

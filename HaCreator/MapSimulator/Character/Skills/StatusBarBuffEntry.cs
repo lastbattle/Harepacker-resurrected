@@ -54,6 +54,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int TemporaryStatViewParentLayerReleaseSequence { get; set; }
         public int TemporaryStatViewMainLayerReleaseSequence { get; set; }
         public int TemporaryStatViewShadowLayerReleaseSequence { get; set; }
+        public int TemporaryStatViewTerminalReleaseOrder { get; set; }
+        public int TemporaryStatViewObjectReleaseOrder { get; set; }
+        public int TemporaryStatViewParentLayerReleaseOrder { get; set; }
+        public int TemporaryStatViewMainLayerReleaseOrder { get; set; }
+        public int TemporaryStatViewShadowLayerReleaseOrder { get; set; }
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }
         public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
@@ -83,6 +88,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ShadowCanvasRemoveSequence { get; set; }
         public int ShadowCanvasInsertSequence { get; set; }
         public int ShadowCanvasReleaseSequence { get; set; }
+        public int ShadowCanvasRemoveOrder { get; set; }
+        public int ShadowCanvasReleaseOrder { get; set; }
+        public int ShadowCanvasMutationLoadOrder { get; set; }
+        public int ShadowCanvasMutationRemoveOrder { get; set; }
+        public int ShadowCanvasMutationInsertOrder { get; set; }
+        public int ShadowCanvasMutationIndexCommitOrder { get; set; }
+        public int ShadowCanvasMutationCanvasReleaseOrder { get; set; }
         public int MainLayerAnimationMode { get; set; }
         public string MainLayerAnimationModeName { get; set; }
         public int ShadowLayerAnimationMode { get; set; }

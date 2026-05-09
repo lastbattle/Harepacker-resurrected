@@ -90,6 +90,10 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _entrustedBlacklistUtilDlgExFrame;
         private Texture2D _miniRoomOmokInfo0Texture;
         private Texture2D _miniRoomOmokInfo1Texture;
+        private Texture2D _miniRoomOmokTurnTexture;
+        private Texture2D _miniRoomOmokWinTexture;
+        private Texture2D _miniRoomOmokLoseTexture;
+        private Texture2D _miniRoomOmokDrawTexture;
         private UIObject _entrustedBlacklistPromptOkButton;
         private UIObject _entrustedBlacklistPromptCloseButton;
         private UIObject _entrustedBlacklistNoticeOkButton;
@@ -219,6 +223,21 @@ namespace HaCreator.MapSimulator.UI
         {
             _miniRoomOmokInfo0Texture = info0Texture;
             _miniRoomOmokInfo1Texture = info1Texture;
+        }
+
+        public void SetMiniRoomOmokCommonTextures(
+            Texture2D info0Texture,
+            Texture2D info1Texture,
+            Texture2D turnTexture,
+            Texture2D winTexture,
+            Texture2D loseTexture,
+            Texture2D drawTexture)
+        {
+            SetMiniRoomOmokInfoTextures(info0Texture, info1Texture);
+            _miniRoomOmokTurnTexture = turnTexture;
+            _miniRoomOmokWinTexture = winTexture;
+            _miniRoomOmokLoseTexture = loseTexture;
+            _miniRoomOmokDrawTexture = drawTexture;
         }
 
         public void BindButton(UIObject button, Action action)
@@ -464,6 +483,7 @@ namespace HaCreator.MapSimulator.UI
             DrawText(sprite, "COmokDlg", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
             DrawOmokDialogBanner(sprite, new Rectangle(notePanel.X + 178, notePanel.Y + 12, notePanel.Width - 188, 24));
             DrawOmokDialogInfoPanels(sprite, notePanel);
+            DrawOmokTurnAndResultLayers(sprite);
 
             DrawText(sprite, "Chat", new Vector2(chatPanel.X + 12, chatPanel.Y + 10), HeaderColor, 0.68f);
             float chatY = chatPanel.Bottom - 22;
@@ -616,6 +636,45 @@ namespace HaCreator.MapSimulator.UI
             DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo0Text, 24), new Vector2(info0Rect.X + 4, info0Rect.Y + 4), ValueColor, 0.38f);
             DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo1Text, 24), new Vector2(info1Rect.X + 4, info1Rect.Y + 4), MutedColor, 0.38f);
             DrawText(sprite, Truncate(_runtime.MiniRoomOmokButtonStateSummary, 54), new Vector2(buttonRect.X + 4, buttonRect.Y + 2), HeaderColor, 0.4f);
+        }
+
+        private void DrawOmokTurnAndResultLayers(SpriteBatch sprite)
+        {
+            if (_runtime.IsMiniRoomOmokInProgress && _miniRoomOmokTurnTexture != null)
+            {
+                int turnX = _runtime.MiniRoomOmokCurrentTurnIndex == _runtime.MiniRoomLocalSeatIndex
+                    ? Position.X + 402
+                    : Position.X + 488;
+                sprite.Draw(_miniRoomOmokTurnTexture, new Rectangle(turnX, Position.Y + 55, 81, 176), Color.White);
+            }
+
+            Texture2D resultTexture = ResolveOmokResultTexture();
+            if (resultTexture == null)
+            {
+                return;
+            }
+
+            Rectangle resultRect = new Rectangle(Position.X + 244, Position.Y + 156, 246, 115);
+            sprite.Draw(resultTexture, resultRect, Color.White);
+        }
+
+        private Texture2D ResolveOmokResultTexture()
+        {
+            if (_runtime.IsMiniRoomOmokInProgress)
+            {
+                return null;
+            }
+
+            if (_runtime.MiniRoomOmokWinnerIndex >= 0)
+            {
+                return _runtime.MiniRoomOmokWinnerIndex == _runtime.MiniRoomLocalSeatIndex
+                    ? _miniRoomOmokWinTexture
+                    : _miniRoomOmokLoseTexture;
+            }
+
+            return string.Equals(_runtime.RoomState, "Omok draw", StringComparison.OrdinalIgnoreCase)
+                ? _miniRoomOmokDrawTexture
+                : null;
         }
 
         private Color ResolveOmokDialogBannerColor()

@@ -240,6 +240,15 @@ namespace HaCreator.MapSimulator
             // Sound effects from Sound.wz/Game.img - using SoundManager for concurrent playback
 
             _soundManager = new SoundManager();
+            UIObject.ClientSoundEffectPlayer = (key, soundProperty, startVolumeScale, suppressWhileActive) =>
+                _soundManager.TryPlayClientSoundEffect(
+                    key,
+                    soundProperty,
+                    startVolumeScale,
+                    loop: false,
+                    suppressWhileActive: suppressWhileActive,
+                    out _,
+                    out _);
             ApplyUtilityAudioSettings();
             WzImage soundGameImage = Program.FindImage("Sound", "Game.img");
             if (soundGameImage != null)

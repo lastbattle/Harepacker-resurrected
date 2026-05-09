@@ -1130,9 +1130,9 @@ namespace HaCreator.MapSimulator
 
             public bool TryResolveRotation(out float targetRotationDegrees, out int durationMs)
             {
-                durationMs = Math.Max(1, MovePeriodMs);
-                targetRotationDegrees = Rotate;
-                return Math.Abs(targetRotationDegrees) > float.Epsilon;
+                durationMs = Math.Max(1, Math.Abs(Rotate));
+                targetRotationDegrees = 360f;
+                return Rotate != 0;
             }
 
             public string BuildDebugText()

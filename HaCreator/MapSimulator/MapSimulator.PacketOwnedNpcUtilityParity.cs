@@ -214,7 +214,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|get <ownerRow>|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -1252,12 +1252,30 @@ namespace HaCreator.MapSimulator
                         || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int timerSeconds)
                         || timerSeconds <= 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord timer <seconds>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord timer <seconds> [clear=<on|off>]");
+                    }
+
+                    bool clearBeforeTimer = false;
+                    for (int i = 2; i < args.Length; i++)
+                    {
+                        string argument = args[i];
+                        if (argument.StartsWith("clear=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!TryParseOnOffArgument(argument.Substring("clear=".Length), out clearBeforeTimer))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord timer <seconds> [clear=<on|off>]");
+                            }
+
+                            continue;
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord timer <seconds> [clear=<on|off>]");
                     }
 
                     bool hasTimerOutbound = _packetOwnedBattleRecordRuntime.TryBuildTimerSetOutboundRequest(
                         timerSeconds,
                         currTickCount,
+                        clearBeforeTimer,
                         out PacketOwnedNpcUtilityOutboundRequest timerRequest,
                         out string timerMessage);
                     return ChatCommandHandler.CommandResult.Ok(
@@ -1344,7 +1362,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeOnCalcMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds> [clear=<on|off>]|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>] [wvsContext=<on|off>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
             }
         }
 
@@ -1355,6 +1373,33 @@ namespace HaCreator.MapSimulator
                 out PacketOwnedNpcUtilityOutboundRequest request,
                 out string localMessage);
             return ChatCommandHandler.CommandResult.Ok(
+                DispatchPacketOwnedBattleRecordOutboundRequest(
+                    hasOutbound,
+                    request,
+                    localMessage,
+                    hasOutbound ? null : localMessage));
+        }
+
+        private void HandlePacketOwnedBattleRecordOnOffButtonClick()
+        {
+            bool hasOutbound = _packetOwnedBattleRecordRuntime.TryBuildToggleOnCalcOutboundRequest(
+                out PacketOwnedNpcUtilityOutboundRequest request,
+                out string localMessage);
+            ShowUtilityFeedbackMessage(
+                DispatchPacketOwnedBattleRecordOutboundRequest(
+                    hasOutbound,
+                    request,
+                    localMessage,
+                    hasOutbound ? null : localMessage));
+        }
+
+        private void HandlePacketOwnedBattleRecordTimerStopButtonClick()
+        {
+            bool hasOutbound = _packetOwnedBattleRecordRuntime.TryBuildTimerStopResumeOutboundRequest(
+                currTickCount,
+                out PacketOwnedNpcUtilityOutboundRequest request,
+                out string localMessage);
+            ShowUtilityFeedbackMessage(
                 DispatchPacketOwnedBattleRecordOutboundRequest(
                     hasOutbound,
                     request,

@@ -182,6 +182,7 @@ namespace HaCreator.MapSimulator.Managers
                 LoginSelectWorldResultCodec.IsSuccessCode(SelectWorldRosterProfile.ResultCode))
             {
                 _selectWorldProfilesByWorld[ActiveWorldId] = CloneProfile(SelectWorldRosterProfile);
+                ReconcileViewAllWorldRosterFromSelectWorld(ActiveWorldId, SelectWorldRosterProfile);
             }
             else
             {
@@ -667,6 +668,32 @@ namespace HaCreator.MapSimulator.Managers
             LoginSelectWorldResultCodec.IsSuccessCode(SelectWorldRosterProfile.ResultCode);
 
         private bool HasViewAllRoster => ViewAllCharRosterProfile != null;
+
+        private void ReconcileViewAllWorldRosterFromSelectWorld(
+            int worldId,
+            LoginSelectWorldResultProfile selectWorldProfile)
+        {
+            if (selectWorldProfile == null ||
+                _viewAllProfilesByWorld.Count == 0 &&
+                ViewAllCharRosterProfile == null &&
+                _viewAllEntries.Count == 0)
+            {
+                return;
+            }
+
+            int normalizedWorldId = Math.Max(0, worldId);
+            LoginSelectWorldResultProfile reconciledProfile = NormalizeImportedWorldProfile(
+                selectWorldProfile,
+                normalizedWorldId);
+            _viewAllProfilesByWorld[normalizedWorldId] = CloneProfile(reconciledProfile);
+
+            RebuildViewAllRosterProfile(
+                ResolveViewAllAggregateSlotCount(),
+                ResolveRosterBuyCharacterCount(reconciledProfile, ViewAllCharRosterProfile),
+                reconciledProfile.LoginOpt || (ViewAllCharRosterProfile?.LoginOpt ?? false));
+            ViewAllExpectedCharacterCount = Math.Max(0, _viewAllEntries.Count);
+            ViewAllRemainingServerCount = 0;
+        }
 
         private bool ReevaluateExtraCharacterEntitlement()
         {

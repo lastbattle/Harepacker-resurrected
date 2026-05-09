@@ -61,6 +61,22 @@ namespace HaCreator.MapSimulator.UI
         bool UsesBlackText = false,
         bool SuppressesIcon = false);
 
+    internal readonly record struct SharedFadeYesNoPayloadProfile(
+        SharedFadeYesNoModalType Type,
+        int NativeTypeId,
+        string CreateFunction,
+        string DrawBranch,
+        int PrimaryStringPoolId,
+        int SecondaryStringPoolId,
+        int PrimaryTextX,
+        int PrimaryTextY,
+        int SecondaryTextX,
+        int SecondaryTextY,
+        bool UsesLevelJobLine,
+        bool UsesRequesterNameLine,
+        bool SendsAcceptPacket,
+        bool SendsCancelPacket);
+
     internal sealed record SharedFadeYesNoModalRequest(
         SharedFadeYesNoModalType Type,
         string Title,
@@ -332,13 +348,13 @@ namespace HaCreator.MapSimulator.UI
                 SharedFadeYesNoModalType.FriendRegister => InviteProfile("backgrnd", "icon1"),
                 SharedFadeYesNoModalType.TradeInvite => InviteProfile("backgrnd", "icon2"),
                 SharedFadeYesNoModalType.CashTradeInvite => AlarmProfile("backgrnd6", "icon9", 160, 44),
-                SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 155, 44, suppressesIcon: true),
+                SharedFadeYesNoModalType.NewMemo => AlarmProfile("backgrnd3", null, 154, 44, suppressesIcon: true),
                 SharedFadeYesNoModalType.ExpeditionApply => InviteProfile("backgrnd9", "icon0"),
                 SharedFadeYesNoModalType.PartyInvite => InviteProfile("backgrnd", "icon5"),
-                SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 155, 44),
+                SharedFadeYesNoModalType.QuestClear => AlarmProfile("backgrnd4", quickDelivery ? "icon7" : "icon6", 154, 44),
                 SharedFadeYesNoModalType.GuildInvite => InviteProfile("backgrnd", "icon5"),
-                SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 155, 44),
-                SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 155, 44),
+                SharedFadeYesNoModalType.UserAlarm => AlarmProfile("backgrnd2", quickDelivery ? "icon4" : "icon3", 154, 44),
+                SharedFadeYesNoModalType.ParcelAlarm => AlarmProfile("backgrnd4", "delivery", 154, 44),
                 SharedFadeYesNoModalType.PartyQuestAlarm => new SharedFadeYesNoVisualProfile(
                     "backgrnd5",
                     null,
@@ -363,8 +379,76 @@ namespace HaCreator.MapSimulator.UI
                     37),
                 SharedFadeYesNoModalType.AllianceInvite => InviteProfile("backgrnd", "icon5"),
                 SharedFadeYesNoModalType.FollowRequest => InviteProfile("backgrnd9", null, suppressesIcon: true),
-                SharedFadeYesNoModalType.NewYearCardArrived => AlarmProfile("backgrnd2", "icon7", 155, 44),
+                SharedFadeYesNoModalType.NewYearCardArrived => AlarmProfile("backgrnd2", "icon7", 154, 44),
                 _ => InviteProfile("backgrnd", "icon0")
+            };
+        }
+
+        internal static SharedFadeYesNoPayloadProfile ResolvePayloadProfile(SharedFadeYesNoModalType type)
+        {
+            return type switch
+            {
+                SharedFadeYesNoModalType.MessengerInvite => CenteredInvitePayload(type, "CreateMSMInvite", 0x30B, 780, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.FriendRegister => CenteredInvitePayload(type, "CreateFriendReg", 0x30B, 781, usesLevelJobLine: true, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.TradeInvite => CenteredInvitePayload(type, "CreateTradeInvite", 0x30B, 782, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.CashTradeInvite => AlarmPayload(type, "CreateTradeInvite", 0x30B, 782, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.NewMemo => AlarmPayload(type, "CreateNewMemo", 0x30B, 783, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.PartyInvite => CenteredInvitePayload(type, "CreatePartyInvite", 0x30B, 784, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.AllianceInvite => CenteredInvitePayload(type, "CreateAllianceInvite", 0x30B, 785, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.QuestClear => AlarmPayload(type, "CreateQuestClear", 0x30B, 786, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.GuildInvite => CenteredInvitePayload(type, "CreateGuildInvite", 0x30B, 787, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.UserAlarm => AlarmPayload(type, "CreateUserAlarm", 0x30B, -1, sendsAcceptPacket: false, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.ParcelAlarm => AlarmPayload(type, "CreateParcelAlarm", 0x30B, -1, sendsAcceptPacket: true, sendsCancelPacket: false),
+                SharedFadeYesNoModalType.PartyQuestAlarm => new SharedFadeYesNoPayloadProfile(
+                    type,
+                    (int)type,
+                    "CreatePartyQuestAlarm",
+                    ResolveDrawRoute(type),
+                    0x30B,
+                    -1,
+                    25,
+                    7,
+                    25,
+                    33,
+                    UsesLevelJobLine: false,
+                    UsesRequesterNameLine: false,
+                    SendsAcceptPacket: true,
+                    SendsCancelPacket: false),
+                SharedFadeYesNoModalType.FamilyInvite => CenteredInvitePayload(type, "CreateFamilyInvite", 0x30B, 788, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.PartyApply => ApplyPayload(type, "CreatePartyApply", 0x1597, 779, 5720, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.ExpeditionInvite => CenteredInvitePayload(type, "CreateExpedtionInvite", 0x30B, 789, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.ExpeditionApply => ApplyPayload(type, "CreateExpedtionApply", 0x1597, 779, 5720, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.FollowRequest => ApplyPayload(type, "CreateFollowRequest", 0x1597, 779, 5529, sendsAcceptPacket: true, sendsCancelPacket: true),
+                SharedFadeYesNoModalType.NewYearCardArrived => new SharedFadeYesNoPayloadProfile(
+                    type,
+                    (int)type,
+                    "CreateNewYearCardArrived",
+                    ResolveDrawRoute(type),
+                    0x30B,
+                    -1,
+                    27,
+                    7,
+                    27,
+                    20,
+                    UsesLevelJobLine: false,
+                    UsesRequesterNameLine: true,
+                    SendsAcceptPacket: true,
+                    SendsCancelPacket: false),
+                _ => new SharedFadeYesNoPayloadProfile(
+                    SharedFadeYesNoModalType.Generic,
+                    (int)SharedFadeYesNoModalType.Generic,
+                    "simulator generic confirmation",
+                    ResolveDrawRoute(SharedFadeYesNoModalType.Generic),
+                    -1,
+                    -1,
+                    17,
+                    13,
+                    17,
+                    31,
+                    UsesLevelJobLine: false,
+                    UsesRequesterNameLine: false,
+                    SendsAcceptPacket: true,
+                    SendsCancelPacket: true)
             };
         }
 
@@ -435,10 +519,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             SharedFadeYesNoVisualProfile visualProfile = ResolveVisualProfile(snapshot.Type, snapshot.QuickDelivery);
+            SharedFadeYesNoPayloadProfile payloadProfile = ResolvePayloadProfile(snapshot.Type);
 
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}; phase={1}; stack={2}; pending={3}; lifetime={4}; frame={11}({12}x{13}); icon={14}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}.",
+                "{0}; create={15}; type={16}; phase={1}; stack={2}; pending={3}; lifetime={4}; frame={11}({12}x{13}); icon={14}; text=({17},{18})/({19},{20}); strings=0x{21:X}/{22}; buttons OK:{5}@({6},{7}) Cancel:{8}@({6},{9}); OKVisible={10}; packets yes={23} no={24}.",
                 snapshot.DrawRoute,
                 snapshot.Phase,
                 snapshot.StackIndex,
@@ -453,7 +538,96 @@ namespace HaCreator.MapSimulator.UI
                 visualProfile.FrameName,
                 visualProfile.NativeWidth,
                 visualProfile.NativeHeight,
-                visualProfile.IconName ?? "none");
+                visualProfile.IconName ?? "none",
+                payloadProfile.CreateFunction,
+                payloadProfile.NativeTypeId,
+                payloadProfile.PrimaryTextX,
+                payloadProfile.PrimaryTextY,
+                payloadProfile.SecondaryTextX,
+                payloadProfile.SecondaryTextY,
+                payloadProfile.PrimaryStringPoolId,
+                payloadProfile.SecondaryStringPoolId < 0
+                    ? "none"
+                    : "0x" + payloadProfile.SecondaryStringPoolId.ToString("X", CultureInfo.InvariantCulture),
+                payloadProfile.SendsAcceptPacket,
+                payloadProfile.SendsCancelPacket);
+        }
+
+        private static SharedFadeYesNoPayloadProfile CenteredInvitePayload(
+            SharedFadeYesNoModalType type,
+            string createFunction,
+            int primaryStringPoolId,
+            int secondaryStringPoolId,
+            bool usesLevelJobLine = false,
+            bool sendsAcceptPacket = true,
+            bool sendsCancelPacket = true)
+        {
+            return new SharedFadeYesNoPayloadProfile(
+                type,
+                (int)type,
+                createFunction,
+                ResolveDrawRoute(type),
+                primaryStringPoolId,
+                secondaryStringPoolId,
+                usesLevelJobLine ? 103 : 103,
+                usesLevelJobLine ? 7 : 13,
+                103,
+                usesLevelJobLine ? 26 : 26,
+                usesLevelJobLine,
+                UsesRequesterNameLine: true,
+                sendsAcceptPacket,
+                sendsCancelPacket);
+        }
+
+        private static SharedFadeYesNoPayloadProfile AlarmPayload(
+            SharedFadeYesNoModalType type,
+            string createFunction,
+            int primaryStringPoolId,
+            int secondaryStringPoolId,
+            bool sendsAcceptPacket,
+            bool sendsCancelPacket)
+        {
+            return new SharedFadeYesNoPayloadProfile(
+                type,
+                (int)type,
+                createFunction,
+                ResolveDrawRoute(type),
+                primaryStringPoolId,
+                secondaryStringPoolId,
+                27,
+                7,
+                27,
+                20,
+                UsesLevelJobLine: false,
+                UsesRequesterNameLine: true,
+                sendsAcceptPacket,
+                sendsCancelPacket);
+        }
+
+        private static SharedFadeYesNoPayloadProfile ApplyPayload(
+            SharedFadeYesNoModalType type,
+            string createFunction,
+            int levelJobStringPoolId,
+            int requesterNameStringPoolId,
+            int secondaryStringPoolId,
+            bool sendsAcceptPacket,
+            bool sendsCancelPacket)
+        {
+            return new SharedFadeYesNoPayloadProfile(
+                type,
+                (int)type,
+                createFunction,
+                ResolveDrawRoute(type),
+                levelJobStringPoolId,
+                secondaryStringPoolId,
+                103,
+                7,
+                103,
+                20,
+                UsesLevelJobLine: true,
+                UsesRequesterNameLine: true,
+                sendsAcceptPacket,
+                sendsCancelPacket);
         }
 
         private static SharedFadeYesNoVisualProfile InviteProfile(

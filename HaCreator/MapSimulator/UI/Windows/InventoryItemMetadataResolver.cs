@@ -1264,7 +1264,17 @@ namespace HaCreator.MapSimulator.UI
 
         public static bool TryResolveEffectFirstCanvas(string effectPath, out WzCanvasProperty canvas)
         {
+            return TryResolveEffectFirstCanvas(effectPath, 0, out canvas);
+        }
+
+        private static bool TryResolveEffectFirstCanvas(string effectPath, int depth, out WzCanvasProperty canvas)
+        {
             canvas = null;
+            if (depth > 4)
+            {
+                return false;
+            }
+
             if (!TryResolveEffectPath(effectPath, out string imagePath, out string propertyPath))
             {
                 return false;
@@ -1288,14 +1298,22 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            IReadOnlyList<WzCanvasProperty> frames = GetNumericNamedCanvasRows(effectProperty, 1);
-            if (frames.Count == 0)
+            return TryResolveFirstCanvasFromAnimationProperty(effectProperty, out canvas)
+                   || TryResolveEffectVisualFirstCanvas(effectProperty, depth + 1, out canvas);
+        }
+
+        public static bool TryResolveInfoEffectFirstCanvas(int itemId, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (itemId <= 0)
             {
                 return false;
             }
 
-            canvas = frames[0];
-            return canvas != null;
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            WzSubProperty infoProperty = ResolveLinkedSubProperty(itemProperty?["info"]);
+            string effectPath = GetStringValue(infoProperty?["effect"]);
+            return TryResolveEffectFirstCanvas(effectPath, out canvas);
         }
 
         public static bool TryResolveRootEffectFirstCanvas(int itemId, out WzCanvasProperty canvas)
@@ -1420,6 +1438,93 @@ namespace HaCreator.MapSimulator.UI
                 {
                     canvas = frames[0];
                     return canvas != null;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveFirstCanvasFromAnimationProperty(WzSubProperty property, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            IReadOnlyList<WzCanvasProperty> frames = GetNumericNamedCanvasRows(property, 1);
+            if (frames.Count > 0)
+            {
+                canvas = frames[0];
+                return canvas != null;
+            }
+
+            if (property?.WzProperties == null)
+            {
+                return false;
+            }
+
+            List<(int Index, WzSubProperty Group)> numericGroups = new();
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                WzSubProperty group = ResolveLinkedSubProperty(child);
+                if (group != null)
+                {
+                    numericGroups.Add((index, group));
+                }
+            }
+
+            numericGroups.Sort((left, right) => left.Index.CompareTo(right.Index));
+            for (int i = 0; i < numericGroups.Count; i++)
+            {
+                frames = GetNumericNamedCanvasRows(numericGroups[i].Group, 1);
+                if (frames.Count > 0)
+                {
+                    canvas = frames[0];
+                    return canvas != null;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveEffectVisualFirstCanvas(WzSubProperty effectProperty, int depth, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (effectProperty?.WzProperties == null)
+            {
+                return false;
+            }
+
+            string directVisual = GetStringValue(effectProperty["visual"]);
+            if (!string.IsNullOrWhiteSpace(directVisual)
+                && TryResolveEffectFirstCanvas(directVisual, depth, out canvas))
+            {
+                return true;
+            }
+
+            List<(int Index, string VisualPath)> visualRows = new();
+            foreach (WzImageProperty child in effectProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                WzSubProperty row = ResolveLinkedSubProperty(child);
+                string visualPath = GetStringValue(row?["visual"]);
+                if (!string.IsNullOrWhiteSpace(visualPath))
+                {
+                    visualRows.Add((index, visualPath));
+                }
+            }
+
+            visualRows.Sort((left, right) => left.Index.CompareTo(right.Index));
+            for (int i = 0; i < visualRows.Count; i++)
+            {
+                if (TryResolveEffectFirstCanvas(visualRows[i].VisualPath, depth, out canvas))
+                {
+                    return true;
                 }
             }
 
@@ -5552,9 +5657,22 @@ namespace HaCreator.MapSimulator.UI
                 Count = Math.Max(1, GetIntOrStringValue(entry["count"])),
                 Probability = Math.Max(0, GetIntOrStringValue(entry["prob"])),
                 PeriodMinutes = Math.Max(0, GetIntOrStringValue(entry["period"])),
-                EffectPath = GetStringValue(entry["Effect"]) ?? string.Empty,
+                EffectPath = ResolveRewardEntryEffectPath(entry),
                 WorldMessage = GetStringValue(entry["worldMsg"]) ?? string.Empty
             };
+        }
+
+        private static string ResolveRewardEntryEffectPath(WzSubProperty entry)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            return GetStringValue(entry["Effect"])
+                   ?? GetStringValue(entry["effect"])
+                   ?? GetStringValue(entry["effectPath"])
+                   ?? string.Empty;
         }
 
         private static int ResolveRewardEntryItemId(WzSubProperty entry)
@@ -5747,6 +5865,11 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryResolveRootEffectFirstCanvasForTests(WzSubProperty itemProperty, out WzCanvasProperty canvas)
         {
             return TryResolveRootEffectFirstCanvas(itemProperty, out canvas);
+        }
+
+        public static bool TryResolveFirstAnimationCanvasForTests(WzSubProperty property, out WzCanvasProperty canvas)
+        {
+            return TryResolveFirstCanvasFromAnimationProperty(property, out canvas);
         }
 
         public static bool TrySelectConsumeItemRequirementForTests(

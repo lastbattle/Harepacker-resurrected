@@ -31,6 +31,9 @@ namespace HaCreator.MapSimulator.Entities
         private const int DoomBodyOffsetTop = -34;
         private const int DoomBodyWidth = 35;
         private const int DoomBodyHeight = 34;
+        internal const int DamagedByMobBlinkDurationMs = 360;
+        internal const int DamagedByMobBlinkIntervalMs = 90;
+        private static readonly Color DamagedByMobBlinkTint = new Color(170, 170, 170);
         private const int MaxClientMobSkillActionIndex = 17;
 
         private readonly MobInstance _mobInstance;
@@ -43,6 +46,7 @@ namespace HaCreator.MapSimulator.Entities
         private bool _isPlayingOneShot = false; // Track if playing a one-shot animation (jump, death, hit)
         private bool _escortFollowActive;
         private bool _baseUsePlatformBounds;
+        private int _damagedByMobBlinkStartTick = int.MinValue;
         private int _lastAngerChargeCount = -1;
         private int _angerGaugeLoopStartTick;
         private int _angerGaugeBurstNextAllowedTick = int.MinValue;
@@ -207,6 +211,18 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             _clientSoundSources[soundKey] = soundProperty;
+        }
+
+        public bool TryGetClientSoundSource(string soundKey, out WzBinaryProperty soundProperty)
+        {
+            if (string.IsNullOrWhiteSpace(soundKey))
+            {
+                soundProperty = null;
+                return false;
+            }
+
+            return _clientSoundSources.TryGetValue(soundKey, out soundProperty)
+                && soundProperty != null;
         }
 
         public void StartSpawnFadeIn(int tickCount)
@@ -380,6 +396,11 @@ namespace HaCreator.MapSimulator.Entities
                 attackerTargetType,
                 attackerExternalTargetSource);
 
+            if (!originatedFromPlayer && _mobInstance?.MobInfo?.MobData?.DamagedByMob == true)
+            {
+                NotifyDamagedByMobEncounterHit(currentTick);
+            }
+
             // Play damage sound on hit
             PlayDamageSound();
 
@@ -390,6 +411,40 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return died;
+        }
+
+        internal void NotifyDamagedByMobEncounterHit(int currentTick)
+        {
+            _damagedByMobBlinkStartTick = currentTick;
+        }
+
+        internal bool IsDamagedByMobEncounterBlinkActiveForTesting(int tickCount)
+        {
+            return IsDamagedByMobBlinkVisible(_damagedByMobBlinkStartTick, tickCount);
+        }
+
+        internal static bool IsDamagedByMobBlinkVisible(int startTick, int tickCount)
+        {
+            if (startTick == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = unchecked(tickCount - startTick);
+            if (elapsed < 0 || elapsed >= DamagedByMobBlinkDurationMs)
+            {
+                return false;
+            }
+
+            int phase = elapsed / DamagedByMobBlinkIntervalMs;
+            return (phase & 1) == 0;
+        }
+
+        internal static Color ResolveDamagedByMobBlinkTint(int startTick, int tickCount)
+        {
+            return IsDamagedByMobBlinkVisible(startTick, tickCount)
+                ? DamagedByMobBlinkTint
+                : Color.White;
         }
 
         /// <summary>
@@ -2429,6 +2484,17 @@ namespace HaCreator.MapSimulator.Entities
 
         private Color GetStatusTint(int tickCount)
         {
+            if (_mobInstance?.MobInfo?.MobData?.DamagedByMob == true)
+            {
+                Color damagedByMobTint = ResolveDamagedByMobBlinkTint(
+                    _damagedByMobBlinkStartTick,
+                    tickCount);
+                if (damagedByMobTint != Color.White)
+                {
+                    return damagedByMobTint;
+                }
+            }
+
             if (AI == null || AI.StatusEffects == MobStatusEffect.None)
             {
                 return Color.White;

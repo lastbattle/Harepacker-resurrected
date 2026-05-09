@@ -32,6 +32,16 @@ namespace HaCreator.MapSimulator.Interaction
                 [20] = "CTradingRoomDlg::OnTrade CRC follow-up"
             };
 
+        private static readonly IReadOnlyDictionary<string, (int ControlId, string Handler)> TradingRoomButtonHandlers =
+            new Dictionary<string, (int ControlId, string Handler)>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["BtTrade"] = (1002, "CTradingRoomDlg::Trade -> outbound opcode 144 subtype 17"),
+                ["BtCoin"] = (1003, "CTradingRoomDlg::PutMoney -> outbound opcode 144 subtype 16"),
+                ["BtEnter"] = (1004, "CTradingRoomDlg::OnButtonClicked -> CMiniRoomBaseDlg::CheckAndSendChat"),
+                ["BtClame"] = (1005, "CDialog::OnButtonClicked default claim/report control, not a trade acceptance packet"),
+                ["BtReset"] = (2, "CDialog::OnButtonClicked default cancel/reset control, not a recovered CTradingRoomDlg::OnPacket branch")
+            };
+
         internal static IReadOnlyList<ushort> GetRecoveredInboundOpcodes()
         {
             return TradingRoomInboundOpcodeSet;
@@ -113,6 +123,30 @@ namespace HaCreator.MapSimulator.Interaction
                 ", ",
                 TradingRoomOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
             return $"Recovered TradingRoom packet table: inbound opcode {inboundSet} to CTradingRoomDlg::OnPacket ({inboundSubtypes}); outbound opcode {outboundSet} ({outboundSubtypes}).";
+        }
+
+        internal static bool TryResolveRecoveredButtonHandler(string buttonName, out int controlId, out string handler)
+        {
+            controlId = 0;
+            handler = string.Empty;
+            if (string.IsNullOrWhiteSpace(buttonName)
+                || !TradingRoomButtonHandlers.TryGetValue(buttonName.Trim(), out (int ControlId, string Handler) entry))
+            {
+                return false;
+            }
+
+            controlId = entry.ControlId;
+            handler = entry.Handler;
+            return true;
+        }
+
+        internal static string DescribeRecoveredButtonTable()
+        {
+            string controls = string.Join(
+                ", ",
+                TradingRoomButtonHandlers.Select(entry =>
+                    $"{entry.Key}=id {entry.Value.ControlId.ToString(CultureInfo.InvariantCulture)} ({entry.Value.Handler})"));
+            return $"Recovered TradingRoom button table from CTradingRoomDlg::OnCreate/OnButtonClicked: {controls}.";
         }
 
         internal static bool TryBuildRecoveredResultExpectation(

@@ -132,7 +132,8 @@ namespace HaCreator.MapSimulator.UI
                 byte packetEntryType,
                 int packetEntryId,
                 int packetPaletteSlotId,
-                ShortcutVisualState shortcutVisualState)
+                ShortcutVisualState shortcutVisualState,
+                int sourceScanCode = -1)
             {
                 ScanCode = scanCode;
                 ClientKey = clientKey;
@@ -140,9 +141,11 @@ namespace HaCreator.MapSimulator.UI
                 PacketEntryId = packetEntryId;
                 PacketPaletteSlotId = packetPaletteSlotId;
                 ShortcutVisualState = shortcutVisualState;
+                SourceScanCode = sourceScanCode >= 0 ? sourceScanCode : scanCode;
             }
 
             public int ScanCode { get; }
+            public int SourceScanCode { get; }
             public Keys ClientKey { get; }
             public byte PacketEntryType { get; }
             public int PacketEntryId { get; }
@@ -150,6 +153,7 @@ namespace HaCreator.MapSimulator.UI
             public ShortcutVisualState ShortcutVisualState { get; }
             public bool HasVisual => PacketPaletteSlotId >= 0 || ShortcutVisualState.HasVisual;
             public bool HasPacketEntry => PacketEntryType != 0 && PacketEntryId > 0;
+            public bool IsClientDuplicateDrawPosition => SourceScanCode != ScanCode;
         }
 
         private readonly List<PageLayer> _mainLayers = new();
@@ -784,7 +788,9 @@ namespace HaCreator.MapSimulator.UI
             int panelX = Position.X + 414;
             int panelY = Position.Y + 66;
             int panelWidth = (gridColumns * cellSize) + ((gridColumns - 1) * cellGap) + (panelPadding * 2);
-            int panelHeight = 174;
+            int visibleCellCount = Math.Min(slotStates.Count, 91);
+            int gridRows = Math.Max(1, (int)Math.Ceiling(visibleCellCount / (double)gridColumns));
+            int panelHeight = 18 + (gridRows * cellSize) + ((gridRows - 1) * cellGap) + (panelPadding * 2);
             Rectangle panelBounds = new(panelX, panelY, panelWidth, panelHeight);
 
             sprite.Draw(_highlightTexture, panelBounds, new Color(20, 25, 37, 225));
@@ -801,7 +807,7 @@ namespace HaCreator.MapSimulator.UI
 
             int gridX = panelBounds.X + panelPadding;
             int gridY = panelBounds.Y + 18;
-            int maxCells = Math.Min(slotStates.Count, 89);
+            int maxCells = visibleCellCount;
             for (int i = 0; i < maxCells; i++)
             {
                 PacketSlotVisualState slotState = slotStates[i];
@@ -827,6 +833,19 @@ namespace HaCreator.MapSimulator.UI
 
                 Texture2D paletteTexture = GetSelectedPaletteTexture(slotState.PacketPaletteSlotId);
                 DrawMainPageShortcutVisual(sprite, cellBounds, paletteTexture, slotState.ShortcutVisualState);
+                if (slotState.IsClientDuplicateDrawPosition)
+                {
+                    sprite.DrawString(
+                        _font,
+                        slotState.SourceScanCode.ToString(),
+                        new Vector2(cellBounds.X + 1, cellBounds.Y + 1),
+                        new Color(255, 228, 151),
+                        0f,
+                        Vector2.Zero,
+                        0.22f,
+                        SpriteEffects.None,
+                        0f);
+                }
             }
         }
 

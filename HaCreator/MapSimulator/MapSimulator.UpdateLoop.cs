@@ -95,7 +95,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int desiredExpireTick = currentTime + remainingFearDurationMs;
+            int desiredExpireTick = unchecked(currentTime + remainingFearDurationMs);
             if (!ShouldRefreshMobFearFieldEffect(
                     _fieldEffects.IsFearActive,
                     desiredExpireTick,

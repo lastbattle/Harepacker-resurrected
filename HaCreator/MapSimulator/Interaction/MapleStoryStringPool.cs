@@ -406,6 +406,7 @@ namespace HaCreator.MapSimulator.Interaction
             [0x01D9] = "Your opponent requests a tie.\r\nWill you accept it?",
             [0x01DA] = "Will you request a tie?",
             [0x01DB] = "Your opponent denied your request for a tie.",
+            [0x01DC] = "You can only request a handicap once per game.",
             [0x01D7] = "Are you sure you want to give up?",
             [0x01D8] = "Will you expel the user?",
             [0x01E0] = "Will you call to leave after this game?",

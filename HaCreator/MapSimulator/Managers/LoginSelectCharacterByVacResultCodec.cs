@@ -161,6 +161,37 @@ namespace HaCreator.MapSimulator.Managers
                    (resultCode == 12 && (secondaryCode == 11 || secondaryCode == 13));
         }
 
+        public static LoginSelectCharacterByVacResultProfile WithSource(
+            LoginSelectCharacterByVacResultProfile profile,
+            string source)
+        {
+            if (profile == null)
+            {
+                return null;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source)
+                ? profile.Source
+                : source.Trim();
+            if (string.Equals(profile.Source, normalizedSource, StringComparison.Ordinal))
+            {
+                return profile;
+            }
+
+            return new LoginSelectCharacterByVacResultProfile
+            {
+                Source = normalizedSource,
+                ResultCode = profile.ResultCode,
+                SecondaryCode = profile.SecondaryCode,
+                Payload = profile.Payload,
+                ServerAddress = profile.ServerAddress,
+                Port = profile.Port,
+                CharacterId = profile.CharacterId,
+                AuthenCode = profile.AuthenCode,
+                PremiumArgument = profile.PremiumArgument,
+            };
+        }
+
         public static LoginSelectCharacterByVacSuccessBranch ResolveSuccessBranch(byte resultCode, byte secondaryCode)
         {
             if (resultCode == 0)

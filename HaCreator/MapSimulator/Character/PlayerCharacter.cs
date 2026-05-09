@@ -419,11 +419,15 @@ namespace HaCreator.MapSimulator.Character
         public enum MirrorImageLayerNativeOperationKind
         {
             AddRefSourceLayer,
+            InitializeInsertCanvasMissingArgumentVariant,
+            InitializeSourceCanvasIndexZeroVariant,
             GetSourceCanvasIndexZero,
             AddRefSourceCanvasLocal,
             InsertCanvasIntoHelperLayer,
             ClearInsertCanvasResultVariant,
             ReleaseSourceCanvasLocal,
+            ClearSourceCanvasIndexZeroVariant,
+            ClearInsertCanvasMissingArgumentVariant,
             RecheckUnderFaceParent,
             ReparentHelperLayer,
             ReleaseSourceLayer
@@ -716,6 +720,8 @@ namespace HaCreator.MapSimulator.Character
         internal const string ClientOwnedFlyingWingAvatarEffectOwnerName = "aux.clientOwned.flyingWing.persistent";
         internal const string ClientOwnedSwallowingAvatarEffectOwnerName = "aux.clientOwned.swallowing.persistent";
         internal const string ClientOwnedDoubleJumpAvatarEffectOwnerName = "aux.clientOwned.doubleJump.oneTime";
+        internal const string ClientOwnedFinalCutAvatarEffectOwnerName = "aux.clientOwned.finalCut.persistent";
+        internal const string ClientOwnedSuddenDeathAvatarEffectOwnerName = "aux.clientOwned.suddenDeath.persistent";
         private readonly Dictionary<string, ActionLayerOwnerCounterState> _actionLayerOwnerCounters =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, AuxiliaryLayerOwnerCounterState> _auxiliaryLayerOwnerCounters =
@@ -762,6 +768,7 @@ namespace HaCreator.MapSimulator.Character
 
         // Sound callbacks
         private Action _onJumpSound;
+        private Action<int> _onClientJumpSkillCancelIngress;
         private Action<string> _onWeaponSfxSound;
         private Func<string> _jumpRestrictionMessageProvider;
         private Func<string> _jumpDownRestrictionMessageProvider;
@@ -987,6 +994,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetJumpSoundCallback(Action onJump)
         {
             _onJumpSound = onJump;
+        }
+
+        public void SetClientJumpSkillCancelIngressCallback(Action<int> onClientJumpSkillCancelIngress)
+        {
+            _onClientJumpSkillCancelIngress = onClientJumpSkillCancelIngress;
         }
 
         public void SetWeaponSfxSoundCallback(Action<string> onWeaponSfx)
@@ -1538,6 +1550,7 @@ namespace HaCreator.MapSimulator.Character
                     Physics.FacingRight = FacingRight;
 
                     State = PlayerState.Jumping;
+                    NotifyClientJumpSkillCancelIngress(currentTime);
                     _onJumpSound?.Invoke();
                     return; // Skip the facing direction code below
                 }
@@ -1782,6 +1795,7 @@ namespace HaCreator.MapSimulator.Character
                         Physics.JumpFromFloatFoothold();
                         _lastFloatJumpTime = currentTime;
                         State = Physics.IsUserFlying() ? PlayerState.Flying : PlayerState.Swimming;
+                        NotifyClientJumpSkillCancelIngress(currentTime);
                         _onJumpSound?.Invoke();
                     }
                     else
@@ -1794,6 +1808,7 @@ namespace HaCreator.MapSimulator.Character
                     Physics.ApplySwimJumpImpulse();
                     _lastFloatJumpTime = currentTime;
                     State = PlayerState.Swimming;
+                    NotifyClientJumpSkillCancelIngress(currentTime);
                     _onJumpSound?.Invoke();
                 }
 
@@ -1814,8 +1829,14 @@ namespace HaCreator.MapSimulator.Character
                 State = PlayerState.Jumping;
 
                 // Play jump sound
+                NotifyClientJumpSkillCancelIngress(currentTime);
                 _onJumpSound?.Invoke();
             }
+        }
+
+        private void NotifyClientJumpSkillCancelIngress(int currentTime)
+        {
+            _onClientJumpSkillCancelIngress?.Invoke(currentTime);
         }
 
         private bool CanTriggerFloatJump(int currentTime)
@@ -7940,7 +7961,8 @@ namespace HaCreator.MapSimulator.Character
             int underFaceParentObjectId,
             int lastUnderFaceParentObjectId)
         {
-            var operations = new List<MirrorImageLayerNativeOperation>(9);
+            const int insertCanvasMissingArgumentVariantCount = 5;
+            var operations = new List<MirrorImageLayerNativeOperation>(21);
             int sequence = 0;
             operations.Add(new MirrorImageLayerNativeOperation(
                 MirrorImageLayerNativeOperationKind.AddRefSourceLayer,
@@ -7949,6 +7971,24 @@ namespace HaCreator.MapSimulator.Character
                 sourceLayerObjectId,
                 RelatedObjectId: 0,
                 ReferenceDelta: sourceLayerObjectId != 0 ? 1 : 0));
+            for (int argumentIndex = 0; argumentIndex < insertCanvasMissingArgumentVariantCount; argumentIndex++)
+            {
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.InitializeInsertCanvasMissingArgumentVariant,
+                    ++sequence,
+                    sourceLayer,
+                    preparedLayerObjectId,
+                    RelatedObjectId: argumentIndex,
+                    ReferenceDelta: 0));
+            }
+
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.InitializeSourceCanvasIndexZeroVariant,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
             operations.Add(new MirrorImageLayerNativeOperation(
                 MirrorImageLayerNativeOperationKind.GetSourceCanvasIndexZero,
                 ++sequence,
@@ -7984,6 +8024,24 @@ namespace HaCreator.MapSimulator.Character
                 sourceCanvasObjectId,
                 RelatedObjectId: sourceLayerObjectId,
                 ReferenceDelta: sourceCanvasObjectId != 0 ? -1 : 0));
+            operations.Add(new MirrorImageLayerNativeOperation(
+                MirrorImageLayerNativeOperationKind.ClearSourceCanvasIndexZeroVariant,
+                ++sequence,
+                sourceLayer,
+                sourceLayerObjectId,
+                RelatedObjectId: 0,
+                ReferenceDelta: 0));
+            for (int argumentIndex = insertCanvasMissingArgumentVariantCount - 1; argumentIndex >= 0; argumentIndex--)
+            {
+                operations.Add(new MirrorImageLayerNativeOperation(
+                    MirrorImageLayerNativeOperationKind.ClearInsertCanvasMissingArgumentVariant,
+                    ++sequence,
+                    sourceLayer,
+                    preparedLayerObjectId,
+                    RelatedObjectId: argumentIndex,
+                    ReferenceDelta: 0));
+            }
+
             operations.Add(new MirrorImageLayerNativeOperation(
                 MirrorImageLayerNativeOperationKind.RecheckUnderFaceParent,
                 ++sequence,

@@ -1697,7 +1697,14 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
                 StateLabel = "Gift sent",
                 ItemId = Math.Max(0, itemId),
-                Quantity = quantity
+                Quantity = quantity,
+                PacketSource = "CCashShop::OnCashItemResGiftDone",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    (int)stream.Position,
+                    $"recipient={SanitizePacketString(recipient, "gift recipient")}, nItemID={Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}, nNumber={quantity.ToString(CultureInfo.InvariantCulture)}, nPrepaidCost={prepaidCost.ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _cashGiftPacketEntries.Insert(0, new PacketCatalogEntry
             {
@@ -1707,7 +1714,14 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
                 StateLabel = "Gift sent",
                 ItemId = Math.Max(0, itemId),
-                Quantity = quantity
+                Quantity = quantity,
+                PacketSource = "CCashShop::OnCashItemResGiftDone",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    (int)stream.Position,
+                    $"recipient={SanitizePacketString(recipient, "gift recipient")}, nItemID={Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}, nNumber={quantity.ToString(CultureInfo.InvariantCulture)}, nPrepaidCost={prepaidCost.ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = _cashGiftLastSummary;
             message = $"CCashShop::OnCashItemResGiftDone confirmed {_cashGiftLastSummary}";
@@ -2694,7 +2708,14 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = valueDelta,
                 StateLabel = stateLabel,
                 ListingId = value,
-                Quantity = value
+                Quantity = value,
+                PacketSource = ownerName,
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    1 + sizeof(short),
+                    $"nValue={value.ToString(CultureInfo.InvariantCulture)}, previous={previousValue.ToString(CultureInfo.InvariantCulture)}, max={Math.Max(0, maxValue).ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             message = _noticeState;
             return true;
@@ -2766,7 +2787,14 @@ namespace HaCreator.MapSimulator.UI
                     ? $"{previousSlotLimit.ToString(CultureInfo.InvariantCulture)} -> {runtimeAfter.ToString(CultureInfo.InvariantCulture)}"
                     : runtimeAfter.ToString(CultureInfo.InvariantCulture),
                 StateLabel = syncedRuntime ? "Expanded" : "Packet-owned",
-                ListingId = runtimeAfter
+                ListingId = runtimeAfter,
+                PacketSource = "CCashShop::OnCashItemResIncSlotCountDone",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    (int)stream.Position,
+                    $"nTI={inventoryTypeValue.ToString(CultureInfo.InvariantCulture)}, nSlotCount={updatedSlotLimit.ToString(CultureInfo.InvariantCulture)}, runtimeAfter={runtimeAfter.ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             message = _noticeState;
             return true;
@@ -2835,7 +2863,14 @@ namespace HaCreator.MapSimulator.UI
                 StateLabel = "Limit updated",
                 ListingId = change.CommoditySerialNumber,
                 ItemId = change.ItemId,
-                Quantity = change.RemainCount
+                Quantity = change.RemainCount,
+                PacketSource = "CCashShop::OnCashItemResLimitGoodsCountChanged",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    remainCountOffset + valueByteLength,
+                    $"nItemID={change.ItemId.ToString(CultureInfo.InvariantCulture)}, nCommoditySN={change.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, nRemainCount={change.RemainCount.ToString(CultureInfo.InvariantCulture)}, remainCountBytes={valueByteLength.ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             message = _noticeState;
             return true;
@@ -2883,7 +2918,14 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = $"{extension.Days.ToString(CultureInfo.InvariantCulture)} day(s)",
                 StateLabel = "Extended",
                 ListingId = extension.PartIndex,
-                Quantity = extension.Days
+                Quantity = extension.Days,
+                PacketSource = "CCashShop::OnCashItemResEnableEquipSlotExtDone",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    daysOffset + consumedDayBytes,
+                    $"nPart={extension.PartIndex.ToString(CultureInfo.InvariantCulture)}, nDays={extension.Days.ToString(CultureInfo.InvariantCulture)}"),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             message = _noticeState;
             return true;
@@ -4170,7 +4212,15 @@ namespace HaCreator.MapSimulator.UI
                 Detail = _cashGachaponLastSummary,
                 Seller = "CCashShop gachapon",
                 PriceLabel = stampCount > 0 ? stampCount.ToString(CultureInfo.InvariantCulture) : string.Empty,
-                StateLabel = "Stamp"
+                StateLabel = "Stamp",
+                PacketSource = "CCashShop::OnCashGachaponStampResult",
+                PacketFieldSummary = BuildDecodedScalarCashPacketFieldSummary(
+                    payload,
+                    payload != null && payload.Length >= sizeof(int) ? sizeof(int) : 0,
+                    $"nStampCount={stampCount.ToString(CultureInfo.InvariantCulture)}",
+                    includeSubtypeByte: false),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = _cashGachaponLastSummary;
             return _cashGachaponLastSummary;
@@ -5927,6 +5977,41 @@ namespace HaCreator.MapSimulator.UI
                 ? $"subtype {unchecked((sbyte)normalizedPayload[0]).ToString(CultureInfo.InvariantCulture)}, "
                 : string.Empty;
             return $"Raw packet body: {subtypeSummary}{bodyLength.ToString(CultureInfo.InvariantCulture)} trailing byte(s).";
+        }
+
+        internal static string BuildDecodedScalarCashPacketFieldSummaryForTests(
+            byte[] payload,
+            int decodedByteLength,
+            string decodedFieldSummary,
+            bool includeSubtypeByte = true)
+        {
+            return BuildDecodedScalarCashPacketFieldSummary(
+                payload,
+                decodedByteLength,
+                decodedFieldSummary,
+                includeSubtypeByte);
+        }
+
+        private static string BuildDecodedScalarCashPacketFieldSummary(
+            byte[] payload,
+            int decodedByteLength,
+            string decodedFieldSummary,
+            bool includeSubtypeByte = true)
+        {
+            byte[] normalizedPayload = payload ?? Array.Empty<byte>();
+            int normalizedDecodedLength = Math.Clamp(decodedByteLength, 0, normalizedPayload.Length);
+            int rawBodyOffset = includeSubtypeByte && normalizedPayload.Length > 0 ? 1 : 0;
+            int postPrimaryTailOffset = Math.Max(normalizedDecodedLength, rawBodyOffset);
+            int postPrimaryTailLength = Math.Max(0, normalizedPayload.Length - postPrimaryTailOffset);
+            string prefix = includeSubtypeByte && normalizedPayload.Length > 0
+                ? $"subtype {unchecked((sbyte)normalizedPayload[0]).ToString(CultureInfo.InvariantCulture)}, "
+                : string.Empty;
+            string decodedFields = string.IsNullOrWhiteSpace(decodedFieldSummary)
+                ? "no decoded scalar fields"
+                : decodedFieldSummary.Trim();
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"Decoded scalar Cash Shop packet: {prefix}decodedBytes={normalizedDecodedLength}, postPrimaryTailOffset={postPrimaryTailOffset}, postPrimaryTailBytes={postPrimaryTailLength}, {decodedFields}.");
         }
 
         private static string BuildRawPayloadHexSummary(byte[] payload)

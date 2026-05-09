@@ -924,14 +924,17 @@ namespace HaCreator.MapSimulator.Pools
                     PropPercent: primaryStatusPropPercent));
             }
 
-            if (ContainsToken(hostileSearchText, "blind", "dark", "darkness")
+            if (ContainsToken(hostileSearchText, "blind", "dark", "darkness", "reduceTargetACC")
                 || levelData.ACC < 0
                 || levelData.EVA < 0)
             {
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
                     PlayerMobStatusEffect.Darkness,
                     durationMs,
-                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20),
+                    ResolveHostilePlayerAreaStatusMagnitude(
+                        levelData,
+                        fallback: 20,
+                        preferAccuracyReduction: ContainsToken(hostileSearchText, "reduceTargetACC")),
                     PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
@@ -1157,7 +1160,12 @@ namespace HaCreator.MapSimulator.Pools
                     "seduce",
                     "attract",
                     "bomb",
-                    "battlefieldFlag"))
+                    "battlefieldFlag",
+                    "reduceTargetACC",
+                    "reduceTargetPDP",
+                    "reduceTargetMDP",
+                    "reduceTargetDam",
+                    "elementalWeaken"))
             {
                 return true;
             }
@@ -1360,7 +1368,8 @@ namespace HaCreator.MapSimulator.Pools
             SkillLevelData levelData,
             int fallback,
             bool preferDotDamage = false,
-            bool preferSpeed = false)
+            bool preferSpeed = false,
+            bool preferAccuracyReduction = false)
         {
             if (levelData == null)
             {
@@ -1375,6 +1384,15 @@ namespace HaCreator.MapSimulator.Pools
             if (preferSpeed && levelData.Speed != 0)
             {
                 return Math.Abs(levelData.Speed);
+            }
+
+            if (preferAccuracyReduction)
+            {
+                int accuracyReduction = ResolveHostilePlayerAreaAccuracyReductionMagnitude(levelData);
+                if (accuracyReduction > 0)
+                {
+                    return accuracyReduction;
+                }
             }
 
             int[] candidates =
@@ -1401,6 +1419,33 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return Math.Max(1, fallback);
+        }
+
+        private static int ResolveHostilePlayerAreaAccuracyReductionMagnitude(SkillLevelData levelData)
+        {
+            if (levelData == null)
+            {
+                return 0;
+            }
+
+            int[] candidates =
+            {
+                Math.Abs(levelData.ACC),
+                Math.Abs(levelData.Z),
+                Math.Abs(levelData.W),
+                Math.Abs(levelData.Y),
+                Math.Abs(levelData.X)
+            };
+
+            foreach (int candidate in candidates)
+            {
+                if (candidate > 0)
+                {
+                    return candidate;
+                }
+            }
+
+            return 0;
         }
 
         private static bool IsFriendlySupportSummonArea(SkillData skill)

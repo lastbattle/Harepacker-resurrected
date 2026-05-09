@@ -537,12 +537,13 @@ namespace HaCreator.MapSimulator.Interaction
             out float elementVelocityX,
             out float elementVelocityY)
         {
-            // Best-effort packet replay should preserve the live CMovePath tail
-            // for uncommon attributes instead of injecting a synthetic origin.
-            elementX = currentX;
-            elementY = currentY;
-            elementVelocityX = currentVelocityX;
-            elementVelocityY = currentVelocityY;
+            // CMovePath::Decode zero-initializes each ELEM before the nAttr switch.
+            // Unknown attrs fall through without field payload reads, then still read
+            // the common move-action / elapsed suffix.
+            elementX = 0f;
+            elementY = 0f;
+            elementVelocityX = 0f;
+            elementVelocityY = 0f;
         }
 
         private static bool TryDecodeMovePathFlushTail(PacketReader reader, out DecodedMovePathTailInfo movePathTailInfo)

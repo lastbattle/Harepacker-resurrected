@@ -82,6 +82,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool EmployeeHasWorldPosition { get; set; }
         public bool? EmployeeFlip { get; set; }
         public List<SocialRoomEmployeePoolEntrySnapshot> EmployeePoolEntries { get; set; } = new();
+        public List<PersonalShopVisitorEnterTimeSnapshot> PersonalShopVisitorEnterTimes { get; set; } = new();
         public List<SocialRoomOccupantSnapshot> Occupants { get; set; } = new();
         public List<SocialRoomItemSnapshot> Items { get; set; } = new();
         public List<SocialRoomSoldItemSnapshot> SoldItems { get; set; } = new();
@@ -107,6 +108,14 @@ namespace HaCreator.MapSimulator.Interaction
         public string Name { get; set; }
         public int StayMilliseconds { get; set; }
         public int StaySeconds { get; set; }
+    }
+
+    public sealed class PersonalShopVisitorEnterTimeSnapshot
+    {
+        public int SeatIndex { get; set; }
+        public string Name { get; set; }
+        public DateTime? EnteredAtUtc { get; set; }
+        public bool TimeoutRequestSent { get; set; }
     }
 
     public sealed class EntrustedShopChildDialogEntrySnapshot

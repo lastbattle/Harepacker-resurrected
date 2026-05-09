@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
+        private readonly Dictionary<int, Texture2D> _infoEffectPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D> _rootEffectPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _mobPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _consumeItemPreviewTextureCache = new();
@@ -171,6 +172,7 @@ namespace HaCreator.MapSimulator.UI
         internal Action<TrunkUI> WindowHidden { get; set; }
         internal Func<InventoryType, int, InventorySlotData, PacketOwnedTrunkRequestResult> PacketOwnedGetItemRequested { get; set; }
         internal Func<InventoryType, int, InventorySlotData, int, PacketOwnedTrunkRequestResult> PacketOwnedPutItemRequested { get; set; }
+        internal Func<InventoryType, int, InventorySlotData, bool> PacketOwnedPutItemCountPreConfirmRequested { get; set; }
 
         internal readonly struct PacketOwnedTrunkRequestResult
         {
@@ -940,13 +942,16 @@ namespace HaCreator.MapSimulator.UI
                 int availableQuantity = Math.Max(1, selected.Quantity);
                 if (isStackable && availableQuantity > 1)
                 {
-                    _pendingPutInventoryType = inventoryType;
-                    _pendingPutInventoryRowIndex = _inventorySelectedIndex;
-                    _pendingPutSlotData = selected;
-                    string askCountPrompt = TrunkDialogClientParityText.ToInlineText(
-                        TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt());
-                    _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(selected)}. Prompt: {askCountPrompt}";
-                    BeginMesoEntry(MesoEntryMode.PutItemCount);
+                    StagePendingPutItemCount(inventoryType, _inventorySelectedIndex, selected);
+                    if (TrunkDialogClientParityText.RequiresOwnershipPreConfirm(selected) &&
+                        PacketOwnedPutItemCountPreConfirmRequested?.Invoke(inventoryType, _inventorySelectedIndex, selected) == true)
+                    {
+                        _statusMessage = $"CTrunkDlg::SendPutItemRequest opened the recovered pre-AskItemCount CUtilDlg::YesNo owner for {FormatItemLabel(selected)}.";
+                        UpdateButtonStates();
+                        return;
+                    }
+
+                    BeginPendingPutItemCountEntry();
                     return;
                 }
 
@@ -1075,6 +1080,50 @@ namespace HaCreator.MapSimulator.UI
             ClearCompositionText();
             _previousMouseState = Mouse.GetState();
             UpdateButtonStates();
+        }
+
+        private void StagePendingPutItemCount(InventoryType inventoryType, int inventoryRowIndex, InventorySlotData slotData)
+        {
+            _pendingPutInventoryType = inventoryType;
+            _pendingPutInventoryRowIndex = inventoryRowIndex;
+            _pendingPutSlotData = slotData;
+        }
+
+        internal bool BeginPacketOwnedPutItemCountEntryFromClientConfirm(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData stagedSlot,
+            out string statusMessage)
+        {
+            statusMessage = string.Empty;
+            if (!TryResolveLiveInventorySlot(inventoryType, inventoryRowIndex, out InventorySlotData liveSlot))
+            {
+                statusMessage = "CTrunkDlg::AskItemCount aborted because CharacterData::GetItem no longer resolves the selected inventory row after pre-confirm acceptance.";
+                _statusMessage = statusMessage;
+                UpdateButtonStates();
+                return false;
+            }
+
+            if (!MatchesPendingPutIdentity(stagedSlot, liveSlot))
+            {
+                statusMessage = "CTrunkDlg::AskItemCount aborted because CharacterData::GetItem pointer-identity changed after pre-confirm acceptance.";
+                _statusMessage = statusMessage;
+                UpdateButtonStates();
+                return false;
+            }
+
+            StagePendingPutItemCount(inventoryType, inventoryRowIndex, liveSlot);
+            BeginPendingPutItemCountEntry();
+            statusMessage = _statusMessage;
+            return true;
+        }
+
+        private void BeginPendingPutItemCountEntry()
+        {
+            string askCountPrompt = TrunkDialogClientParityText.ToInlineText(
+                TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt());
+            _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(_pendingPutSlotData)}. Prompt: {askCountPrompt}";
+            BeginMesoEntry(MesoEntryMode.PutItemCount);
         }
 
         private void ConfirmMesoEntry()

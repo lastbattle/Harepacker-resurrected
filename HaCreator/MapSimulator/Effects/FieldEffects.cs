@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using HaCreator.MapSimulator.Character;
 
 namespace HaCreator.MapSimulator.Effects
 {
@@ -292,7 +293,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (!_fearEffectActive) return;
 
-            int elapsed = currentTimeMs - _fearStartTime;
+            int elapsed = ResolveFearEffectElapsedMs(currentTimeMs, _fearStartTime);
 
             // Fade in during first 500ms
             if (elapsed < 500)
@@ -311,7 +312,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             // Check if fear effect has ended
-            if (_fearDuration > 0 && elapsed >= _fearDuration)
+            if (HasFearEffectDurationElapsed(currentTimeMs, _fearStartTime, _fearDuration))
             {
                 _fearEffectActive = false;
                 _fearAlpha = 0f;
@@ -367,6 +368,26 @@ namespace HaCreator.MapSimulator.Effects
             _fearEffectActive = false;
             _fearAlpha = 0f;
             _fearEyes.Clear();
+        }
+
+        internal static int ResolveFearEffectElapsedMsForTesting(int currentTimeMs, int startTimeMs)
+        {
+            return ResolveFearEffectElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        internal static bool HasFearEffectDurationElapsedForTesting(int currentTimeMs, int startTimeMs, int durationMs)
+        {
+            return HasFearEffectDurationElapsed(currentTimeMs, startTimeMs, durationMs);
+        }
+
+        private static int ResolveFearEffectElapsedMs(int currentTimeMs, int startTimeMs)
+        {
+            return ClientOwnedAvatarEffectParity.ResolveUnsignedTickElapsedMs(currentTimeMs, startTimeMs);
+        }
+
+        private static bool HasFearEffectDurationElapsed(int currentTimeMs, int startTimeMs, int durationMs)
+        {
+            return durationMs > 0 && ResolveFearEffectElapsedMs(currentTimeMs, startTimeMs) >= durationMs;
         }
 
         #endregion
@@ -737,7 +758,7 @@ namespace HaCreator.MapSimulator.Effects
             int elapsed = Environment.TickCount;
             foreach (var eye in _fearEyes)
             {
-                if (elapsed - _fearStartTime < eye.AppearDelay) continue;
+                if (ResolveFearEffectElapsedMs(elapsed, _fearStartTime) < eye.AppearDelay) continue;
                 if (eye.IsBlinking) continue;
 
                 int eyeX = (int)(eye.X * screenWidth);

@@ -81,7 +81,7 @@ namespace HaCreator.MapSimulator.Managers
             @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88TextPacketComparisonAssignmentRegex = new(
-            @"(?<name>[A-Za-z][A-Za-z0-9_\-]*(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)[A-Za-z0-9_\-]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-]*(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)[A-Za-z0-9_\-]*\s*[:=])|[;\r\n]|$)",
+            @"(?<name>[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*)\s*[:=]\s*(?<value>.*?)(?=(?:\s+[A-Za-z][A-Za-z0-9_\-]*(?:(?:rawpacket|packethex|packetdump|hexdump|packet|rawbytes|bytes|payloadhex|payloaddump|payload|b64|base64)|(?:(?:official|client|captured|capture|observed|actual|wire|native|live|baseline|golden|reference|simulator|simulated|generated|replay|replayed|rebuilt|expected|candidate|emulated|reconstructed|sim|mapsim|mapsimulator|sut)(?:value|raw|bytes)?))[A-Za-z0-9_\-]*\s*[:=])|[;\r\n]|$)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
@@ -2401,6 +2401,12 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 bool isPayload = IsSg88PayloadComparisonByteArrayLabel(name);
+                if (!TryClassifySg88PacketComparisonBytes(parsedBytes, out bool classifiedPayloadBytes))
+                {
+                    continue;
+                }
+
+                isPayload |= classifiedPayloadBytes;
                 if (normalizedName == "observed")
                 {
                     observedBytes = parsedBytes;

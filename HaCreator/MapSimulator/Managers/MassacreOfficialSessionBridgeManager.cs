@@ -205,6 +205,7 @@ namespace HaCreator.MapSimulator.Managers
             HasPairedCurrentLiveOwnershipEvidence());
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        public int ClientForwardedOutboundCount { get; private set; }
         public int QueuedCount { get; private set; }
         public int PendingOutboundPacketCount => _pendingOutboundPackets.Count;
         public int UndecodedInboundCount { get; private set; }
@@ -227,6 +228,9 @@ namespace HaCreator.MapSimulator.Managers
             string sent = SentCount > 0
                 ? $"sent={SentCount}; lastSent={Convert.ToHexString(LastSentRawPacket)}"
                 : "sent=0";
+            string forwarded = ClientForwardedOutboundCount > 0
+                ? $"clientForwardedOutbound={ClientForwardedOutboundCount}"
+                : "clientForwardedOutbound=0";
             string verification = DescribeLiveOwnershipVerificationStatus(
                 HasConnectedSession,
                 HasPassiveEstablishedSocketPair,
@@ -235,7 +239,7 @@ namespace HaCreator.MapSimulator.Managers
                 HasLiveRecoveredInboundEvidence,
                 HasPairedCurrentLiveOwnershipEvidence());
             string verificationEvidence = DescribeLiveOwnershipVerificationEvidence();
-            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; {sent}; pendingOutbound={PendingOutboundPacketCount}; queued={QueuedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {verification} {verificationEvidence} {LastStatus}";
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; undecoded={UndecodedInboundCount}; {sent}; {forwarded}; pendingOutbound={PendingOutboundPacketCount}; queued={QueuedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}; {liveEvidence}. {verification} {verificationEvidence} {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -972,7 +976,17 @@ namespace HaCreator.MapSimulator.Managers
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
-            LastStatus = _roleSessionProxy.LastStatus;
+            if (e == null || e.IsInit)
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+                return;
+            }
+
+            RecordClientOutboundPacketForRecovery(
+                e.RawPacket,
+                $"official-session-client:{e.SourceEndpoint}",
+                e.SessionVersion,
+                e.ProxySessionId);
         }
 
         private void StopInternal(bool clearPending)
@@ -997,6 +1011,7 @@ namespace HaCreator.MapSimulator.Managers
             _sessionValueInfoState.Clear();
             ReceivedCount = 0;
             SentCount = 0;
+            ClientForwardedOutboundCount = 0;
             QueuedCount = 0;
             LastSentRawPacket = Array.Empty<byte>();
             UndecodedInboundCount = 0;
@@ -1547,6 +1562,17 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _liveRecoveredInboundEvidence = trace;
             }
+        }
+
+        internal void RecordClientOutboundPacketForRecovery(
+            byte[] rawPacket,
+            string source,
+            short? sessionVersion = null,
+            long? proxySessionId = null)
+        {
+            RecordOutboundPacket(rawPacket, source, sessionVersion, proxySessionId);
+            ClientForwardedOutboundCount++;
+            LastStatus = $"Captured Massacre client outbound opcode 0x{TryDecodePacketOpcode(rawPacket):X4} from {source}; use /massacre session recent to inspect proxied client-to-server traffic.";
         }
 
         private InboundPacketTrace RecordInboundPacket(

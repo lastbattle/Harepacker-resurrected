@@ -1600,11 +1600,14 @@ namespace HaCreator.MapSimulator.AI
             int sourceSkillLevel = 0)
         {
             _statusEffects |= effect;
-            bool wasActive = _statusEntries.ContainsKey(effect);
+            bool wasActive = _statusEntries.TryGetValue(effect, out MobStatusEntry existingEntry);
+            int proposedExpirationTime = unchecked(currentTick + durationMs);
             _statusEntries[effect] = new MobStatusEntry
             {
                 Effect = effect,
-                ExpirationTime = unchecked(currentTick + durationMs),
+                ExpirationTime = wasActive
+                    ? ResolveLaterStatusExpirationTime(currentTick, existingEntry.ExpirationTime, proposedExpirationTime)
+                    : proposedExpirationTime,
                 Value = NormalizeStatusValue(effect, value),
                 SecondaryValue = secondaryValue,
                 TertiaryValue = tertiaryValue,
@@ -1826,6 +1829,23 @@ namespace HaCreator.MapSimulator.AI
         public int GetStatusEffectValue(MobStatusEffect effect)
         {
             return _statusEntries.TryGetValue(effect, out MobStatusEntry entry) ? entry.Value : 0;
+        }
+
+        internal bool TryGetStatusSourceContext(
+            MobStatusEffect effect,
+            out int sourceSkillId,
+            out int sourceSkillLevel)
+        {
+            if (_statusEntries.TryGetValue(effect, out MobStatusEntry entry))
+            {
+                sourceSkillId = entry.SourceSkillId;
+                sourceSkillLevel = entry.SourceSkillLevel;
+                return true;
+            }
+
+            sourceSkillId = 0;
+            sourceSkillLevel = 0;
+            return false;
         }
         #endregion
 
@@ -2473,6 +2493,18 @@ namespace HaCreator.MapSimulator.AI
         private static bool HasClientTickReached(int currentTick, int targetTick)
         {
             return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTick, targetTick);
+        }
+
+        private static int ResolveLaterStatusExpirationTime(int currentTick, int existingExpirationTime, int proposedExpirationTime)
+        {
+            if (HasClientTickReached(currentTick, existingExpirationTime))
+            {
+                return proposedExpirationTime;
+            }
+
+            return HasClientTickReached(proposedExpirationTime, existingExpirationTime)
+                ? proposedExpirationTime
+                : existingExpirationTime;
         }
 
         private static bool HasClientTickElapsedAtLeast(int currentTick, int startTick, int durationMs)

@@ -1760,7 +1760,9 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomBalloonAssets = new MiniRoomBalloonAssets
             {
                 PointedBackground = LoadUiCanvasTexture(miniRoomSource["backgrnd2"] as WzCanvasProperty, device),
+                PointedBackgroundOrigin = GetAuthoredCanvasOriginVector(miniRoomSource["backgrnd2"] as WzCanvasProperty),
                 Background = LoadUiCanvasTexture(miniRoomSource["backgrnd"] as WzCanvasProperty, device),
+                BackgroundOrigin = GetAuthoredCanvasOriginVector(miniRoomSource["backgrnd"] as WzCanvasProperty),
                 OmokIcon = LoadUiCanvasTexture(miniRoomSource["Omok"] as WzCanvasProperty, device),
                 MemoryGameIcons = LoadIndexedTextures(miniRoomSource["MemoryGame"] as WzSubProperty, device, 3),
                 PersonalShopIcon = LoadUiCanvasTexture(miniRoomSource["PersonalShop"] as WzCanvasProperty, device),
@@ -1770,6 +1772,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Disable = LoadUiCanvasTexture(miniRoomSource["Disable"] as WzCanvasProperty, device),
                 Progress = LoadUiCanvasTexture(miniRoomSource["Progress"] as WzCanvasProperty, device),
                 ShopBoards = LoadIndexedTextures(shopSkinSource, device, 7),
+                ShopBoardOrigins = LoadIndexedCanvasOrigins(shopSkinSource, 7),
                 CurrentCountDigits = LoadDigitTextures(currentCountSource, device),
                 MaxCountDigits = LoadDigitTextures(maxCountSource, device)
             };
@@ -2082,6 +2085,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return textures;
+        }
+
+        private static Vector2?[] LoadIndexedCanvasOrigins(WzSubProperty source, int count)
+        {
+            Vector2?[] origins = new Vector2?[count];
+            for (int i = 0; i < count; i++)
+            {
+                origins[i] = GetAuthoredCanvasOriginVector(source?[i.ToString()] as WzCanvasProperty);
+            }
+
+            return origins;
         }
 
         private static Texture2D[] LoadDigitTextures(WzSubProperty source, GraphicsDevice device)

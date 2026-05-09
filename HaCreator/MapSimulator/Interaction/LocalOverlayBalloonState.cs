@@ -202,6 +202,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class LocalOverlayBalloonMessage
     {
         private readonly Dictionary<LocalOverlayBalloonVisualCacheKey, Texture2D> _cachedVisuals = new();
+        private object _cachedAnalyzedLines;
+        private int _cachedAnalyzedWrapWidth = -1;
         private Texture2D _cachedBodyTexture;
         private int _cachedBodyWidth;
         private int _cachedBodyHeight;
@@ -242,6 +244,26 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsActive(int currentTickCount) =>
             !string.IsNullOrEmpty(Text) &&
             unchecked(currentTickCount - ExpiresAt) <= 0;
+
+        public bool TryGetAnalyzedLines<TLine>(int wrapWidth, out TLine[] lines)
+        {
+            if (_cachedAnalyzedWrapWidth == wrapWidth
+                && _cachedAnalyzedLines is TLine[] cachedLines
+                && cachedLines.Length > 0)
+            {
+                lines = cachedLines;
+                return true;
+            }
+
+            lines = Array.Empty<TLine>();
+            return false;
+        }
+
+        public void SetAnalyzedLines<TLine>(int wrapWidth, TLine[] lines)
+        {
+            _cachedAnalyzedWrapWidth = wrapWidth;
+            _cachedAnalyzedLines = lines == null || lines.Length == 0 ? null : lines;
+        }
 
         public bool TryGetCachedVisualTexture(int bodyWidth, int bodyHeight, int variantId, out Texture2D texture)
         {
@@ -306,6 +328,8 @@ namespace HaCreator.MapSimulator.Interaction
             _cachedBodyTexture = null;
             _cachedBodyWidth = 0;
             _cachedBodyHeight = 0;
+            _cachedAnalyzedLines = null;
+            _cachedAnalyzedWrapWidth = -1;
             foreach ((LocalOverlayBalloonVisualCacheKey _, Texture2D texture) in _cachedVisuals)
             {
                 if (texture != null && !texture.IsDisposed)

@@ -73,6 +73,13 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<string> CanvasNames { get; init; } = Array.Empty<string>();
         }
 
+        public sealed class CashShopWrapperOwnerState
+        {
+            public string OwnerName { get; init; } = string.Empty;
+            public string Status { get; init; } = string.Empty;
+            public IReadOnlyList<string> Lines { get; init; } = Array.Empty<string>();
+        }
+
         public sealed class RewardSessionRuntimeState
         {
             public bool PacketOwned { get; init; }
@@ -107,6 +114,17 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class LockerOwnerState
         {
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int NativeButtonId { get; init; }
+                public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
+                public int MouseOverWidth { get; init; }
+                public int MouseOverHeight { get; init; }
+            }
+
             public string AccountLabel { get; init; } = string.Empty;
             public int UsedSlotCount { get; init; }
             public int SlotLimit { get; init; }
@@ -121,6 +139,7 @@ namespace HaCreator.MapSimulator.UI
             public int ScrollBarY { get; init; } = -1;
             public int ScrollBarHeight { get; init; } = -1;
             public IReadOnlyList<string> SharedCharacterNames { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
             public SelectorControlRuntimeState SelectorRuntime { get; init; }
             public ScrollBarControlRuntimeState ScrollBarRuntime { get; init; }
         }
@@ -489,6 +508,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<ListOwnerState> _listStateProvider;
         private Func<StatusOwnerState> _statusStateProvider;
         private Func<OneADayOwnerState> _oneADayStateProvider;
+        private Func<CashShopWrapperOwnerState> _cashShopWrapperStateProvider;
         private Func<int, string> _listRowSelectionAction;
         private Func<int, string> _listScrollAction;
         private Func<int, int, string> _listScrollOffsetAction;
@@ -665,6 +685,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetOneADayStateProvider(Func<OneADayOwnerState> provider)
         {
             _oneADayStateProvider = provider;
+        }
+
+        public void SetCashShopWrapperStateProvider(Func<CashShopWrapperOwnerState> provider)
+        {
+            _cashShopWrapperStateProvider = provider;
         }
 
         public void SetStatusMessage(string statusMessage)

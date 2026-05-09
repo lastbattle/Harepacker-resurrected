@@ -28,6 +28,22 @@ namespace HaCreator.MapSimulator.Managers
         int CharSaleJob = 0,
         IReadOnlyList<int> ExtraSaleAvatarValues = null);
 
+    public readonly record struct LoginCheckPasswordAuthMaterial(
+        string NexonPassport,
+        byte[] MachineId,
+        int GameRoomClient,
+        byte GameStartMode,
+        int PartnerCode,
+        string Source,
+        DateTime CapturedAtUtc);
+
+    public readonly record struct LoginSelectCharacterRequest(
+        int CharacterId,
+        byte LoginOpt,
+        string SecondaryPassword = null,
+        string MacAddress = null,
+        string MacAddressWithHddSerial = null);
+
     /// <summary>
     /// Built-in login bridge that proxies a live Maple login session and mirrors
     /// inbound login packets into the existing login packet inbox seam.
@@ -39,10 +55,13 @@ namespace HaCreator.MapSimulator.Managers
         public const short OutboundCheckUserLimitOpcode = 6;
         public const short OutboundReturnToTitleOpcode = 12;
         public const short OutboundViewAllCharacterOpcode = 13;
+        public const short OutboundSelectCharacterOpcode = 19;
         public const short OutboundCheckDuplicateIdOpcode = 21;
         public const short OutboundNewCharacterOpcode = 22;
         public const short OutboundNewCharacterSaleOpcode = 23;
         public const short OutboundDeleteCharacterOpcode = 24;
+        public const short OutboundSelectCharacterLoginOpt0Opcode = 28;
+        public const short OutboundSelectCharacterLoginOpt1Opcode = 29;
         public const int ClientMachineIdLength = 16;
         private const int RecentPacketCapacity = 8;
 
@@ -52,6 +71,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly object _sync = new();
 
         private readonly MapleRoleSessionProxy _roleSessionProxy;
+        private LoginCheckPasswordAuthMaterial? _capturedCheckPasswordAuth;
 
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
@@ -61,6 +81,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasConnectedSession => _roleSessionProxy.HasConnectedSession;
         public int ReceivedCount => _roleSessionProxy.ReceivedCount;
         public int SentCount => _roleSessionProxy.SentCount;
+        public bool HasCapturedCheckPasswordAuth => _capturedCheckPasswordAuth.HasValue;
         public string LastStatus { get; private set; } = "Login official-session bridge inactive.";
 
         public LoginOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -128,6 +149,36 @@ namespace HaCreator.MapSimulator.Managers
 
                 return string.Join(" | ", _recentPackets);
             }
+        }
+
+        public bool TryGetCapturedCheckPasswordAuth(out LoginCheckPasswordAuthMaterial authMaterial)
+        {
+            if (_capturedCheckPasswordAuth.HasValue)
+            {
+                authMaterial = _capturedCheckPasswordAuth.Value;
+                authMaterial = authMaterial with { MachineId = (byte[])authMaterial.MachineId.Clone() };
+                return true;
+            }
+
+            authMaterial = default;
+            return false;
+        }
+
+        public void ClearCapturedCheckPasswordAuth()
+        {
+            _capturedCheckPasswordAuth = null;
+            LastStatus = "Cleared captured login CheckPassword auth material.";
+        }
+
+        public string DescribeCapturedCheckPasswordAuth()
+        {
+            if (!_capturedCheckPasswordAuth.HasValue)
+            {
+                return "CheckPassword auth not captured";
+            }
+
+            LoginCheckPasswordAuthMaterial auth = _capturedCheckPasswordAuth.Value;
+            return $"CheckPassword auth captured from {auth.Source} at {auth.CapturedAtUtc:HH:mm:ss}Z (machine id {auth.MachineId?.Length ?? 0} bytes, gameStartMode {auth.GameStartMode}, partner {auth.PartnerCode})";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -350,6 +401,30 @@ namespace HaCreator.MapSimulator.Managers
                 out status);
         }
 
+        public bool TrySendSelectCharacterRequest(LoginSelectCharacterRequest request, out string status)
+        {
+            if (request.CharacterId <= 0)
+            {
+                status = "Login official-session SelectCharacter injection requires a valid character id.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (request.LoginOpt is 0 or 1 &&
+                string.IsNullOrWhiteSpace(request.SecondaryPassword))
+            {
+                status = "Login official-session SelectCharacter injection requires a secondary password for the client secondary-password branch.";
+                LastStatus = status;
+                return false;
+            }
+
+            short opcode = ResolveSelectCharacterOpcode(request.LoginOpt);
+            return TrySendPacket(
+                BuildSelectCharacterPacket(request),
+                $"Injected login opcode {opcode} for SelectCharacter character {request.CharacterId} into live session",
+                out status);
+        }
+
         public bool TrySendNewCharacterRequest(LoginNewCharacterRequest request, out string status)
         {
             if (string.IsNullOrWhiteSpace(request.CharacterName))
@@ -430,6 +505,41 @@ namespace HaCreator.MapSimulator.Managers
             return writer.ToArray();
         }
 
+        public static byte[] BuildSelectCharacterPacket(LoginSelectCharacterRequest request)
+        {
+            byte loginOpt = NormalizeSelectCharacterLoginOpt(request.LoginOpt);
+            PacketWriter writer = new();
+            writer.WriteShort(ResolveSelectCharacterOpcode(loginOpt));
+
+            string macAddress = request.MacAddress ?? string.Empty;
+            string macAddressWithHddSerial = request.MacAddressWithHddSerial ?? string.Empty;
+            string secondaryPassword = (request.SecondaryPassword ?? string.Empty).Trim();
+
+            switch (loginOpt)
+            {
+                case 0:
+                    writer.WriteByte(1);
+                    writer.WriteInt(request.CharacterId);
+                    writer.WriteMapleString(macAddress);
+                    writer.WriteMapleString(macAddressWithHddSerial);
+                    writer.WriteMapleString(secondaryPassword);
+                    break;
+                case 1:
+                    writer.WriteMapleString(secondaryPassword);
+                    writer.WriteInt(request.CharacterId);
+                    writer.WriteMapleString(macAddress);
+                    writer.WriteMapleString(macAddressWithHddSerial);
+                    break;
+                default:
+                    writer.WriteInt(request.CharacterId);
+                    writer.WriteMapleString(macAddress);
+                    writer.WriteMapleString(macAddressWithHddSerial);
+                    break;
+            }
+
+            return writer.ToArray();
+        }
+
         public static byte[] BuildNewCharacterPacket(LoginNewCharacterRequest request)
         {
             PacketWriter writer = new();
@@ -479,6 +589,21 @@ namespace HaCreator.MapSimulator.Managers
             writer.WriteMapleString((secondaryPassword ?? string.Empty).Trim());
             writer.WriteInt(characterId);
             return writer.ToArray();
+        }
+
+        private static byte NormalizeSelectCharacterLoginOpt(byte loginOpt)
+        {
+            return loginOpt <= 3 ? loginOpt : (byte)2;
+        }
+
+        private static short ResolveSelectCharacterOpcode(byte loginOpt)
+        {
+            return NormalizeSelectCharacterLoginOpt(loginOpt) switch
+            {
+                0 => OutboundSelectCharacterLoginOpt0Opcode,
+                1 => OutboundSelectCharacterLoginOpt1Opcode,
+                _ => OutboundSelectCharacterOpcode,
+            };
         }
 
         public static bool TryParseClientMachineId(string text, out byte[] machineId, out string error)
@@ -545,6 +670,11 @@ namespace HaCreator.MapSimulator.Managers
 
         private void OnRoleSessionClientPacketReceived(object sender, MapleSessionPacketEventArgs e)
         {
+            if (e != null && !e.IsInit)
+            {
+                TryCaptureCheckPasswordAuth(e.RawPacket, $"official-client:{e.SourceEndpoint}");
+            }
+
             LastStatus = _roleSessionProxy.LastStatus;
         }
 
@@ -587,6 +717,73 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     _recentPackets.Dequeue();
                 }
+            }
+        }
+
+        private bool TryCaptureCheckPasswordAuth(byte[] rawPacket, string source)
+        {
+            if (!TryReadCheckPasswordAuth(rawPacket, source, out LoginCheckPasswordAuthMaterial authMaterial))
+            {
+                return false;
+            }
+
+            _capturedCheckPasswordAuth = authMaterial;
+            LastStatus = $"Captured login CheckPassword auth material from {authMaterial.Source}.";
+            return true;
+        }
+
+        private static bool TryReadCheckPasswordAuth(
+            byte[] rawPacket,
+            string source,
+            out LoginCheckPasswordAuthMaterial authMaterial)
+        {
+            authMaterial = default;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using PacketReader reader = new(rawPacket);
+                ushort opcode = (ushort)reader.ReadShort();
+                if (opcode != OutboundCheckPasswordOpcode)
+                {
+                    return false;
+                }
+
+                _ = reader.ReadMapleString();
+                string nexonPassport = reader.ReadMapleString();
+                if (reader.Remaining < ClientMachineIdLength + sizeof(int) + 3 + sizeof(int))
+                {
+                    return false;
+                }
+
+                byte[] machineId = reader.ReadBytes(ClientMachineIdLength);
+                int gameRoomClient = reader.ReadInt();
+                byte gameStartMode = reader.ReadByte();
+                reader.ReadByte();
+                reader.ReadByte();
+                int partnerCode = reader.ReadInt();
+
+                if (string.IsNullOrWhiteSpace(nexonPassport) || machineId.Length != ClientMachineIdLength)
+                {
+                    return false;
+                }
+
+                authMaterial = new LoginCheckPasswordAuthMaterial(
+                    nexonPassport,
+                    machineId,
+                    gameRoomClient,
+                    gameStartMode,
+                    partnerCode,
+                    string.IsNullOrWhiteSpace(source) ? "official-client" : source,
+                    DateTime.UtcNow);
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

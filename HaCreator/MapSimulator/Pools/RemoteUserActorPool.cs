@@ -3141,6 +3141,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.CarryItemEffectLayerHandleId = NextRemoteCarryItemEffectLayerHandleId();
             actor.CarryItemEffectTokenLayerHandleIds =
                 BuildCarryItemEffectTokenLayerHandleIdsForParity(normalizedCarryItemEffectId.Value);
+            actor.CarryItemEffectVisibleLayerReferenceMutations.Clear();
             UpdateCarryItemEffectLayerAdmissionForParity(actor);
         }
 
@@ -3191,6 +3192,7 @@ namespace HaCreator.MapSimulator.Pools
                 ? unchecked(currentTime - restoredAnimationElapsedMs)
                 : currentTime;
             actor.CompletedSetItemEffectLayerHandleId = NextRemoteCompletedSetItemEffectLayerHandleId();
+            actor.CompletedSetItemEffectVisibleLayerReferenceMutations.Clear();
             UpdateCompletedSetItemEffectLayerAdmissionForParity(actor);
         }
 
@@ -3735,15 +3737,17 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (entry.Key == ownerCharacterId
                         || !entry.Value.IsActive
-                        || !DoesRelationshipRecordContainSerial(entry.Value, pairLookupSerial))
+                        || !TryResolveRelationshipRecordPairLookupPartnerOwner(
+                            entry.Key,
+                            entry.Value,
+                            pairLookupSerial,
+                            out int candidateOwnerCharacterId)
+                        || candidateOwnerCharacterId == ownerCharacterId)
                     {
                         continue;
                     }
 
-                    matchedOwnerCharacterId = ResolveRelationshipRecordOwnerForLookupSerial(
-                        entry.Key,
-                        entry.Value,
-                        pairLookupSerial);
+                    matchedOwnerCharacterId = candidateOwnerCharacterId;
                     return true;
                 }
             }
@@ -3754,15 +3758,17 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (entry.Key == ownerCharacterId
                         || !entry.Value.IsActive
-                        || !DoesRelationshipRecordContainSerial(entry.Value, pairLookupSerial))
+                        || !TryResolveRelationshipRecordPairLookupPartnerOwner(
+                            entry.Key,
+                            entry.Value,
+                            pairLookupSerial,
+                            out int candidateOwnerCharacterId)
+                        || candidateOwnerCharacterId == ownerCharacterId)
                     {
                         continue;
                     }
 
-                    matchedOwnerCharacterId = ResolveRelationshipRecordOwnerForLookupSerial(
-                        entry.Key,
-                        entry.Value,
-                        pairLookupSerial);
+                    matchedOwnerCharacterId = candidateOwnerCharacterId;
                     return true;
                 }
             }
@@ -3778,6 +3784,36 @@ namespace HaCreator.MapSimulator.Pools
                     pairLookupSerial,
                     CharacterId: null),
                 out matchedOwnerCharacterId);
+        }
+
+        private static bool TryResolveRelationshipRecordPairLookupPartnerOwner(
+            int tableOwnerCharacterId,
+            RemoteUserRelationshipRecord relationshipRecord,
+            long lookupSerial,
+            out int matchedOwnerCharacterId)
+        {
+            matchedOwnerCharacterId = 0;
+            int ownerCharacterId = relationshipRecord.CharacterId.GetValueOrDefault();
+            int pairCharacterId = relationshipRecord.PairCharacterId.GetValueOrDefault();
+
+            if (relationshipRecord.PairItemSerial.HasValue
+                && relationshipRecord.PairItemSerial.Value == lookupSerial)
+            {
+                matchedOwnerCharacterId = ownerCharacterId > 0
+                    ? ownerCharacterId
+                    : tableOwnerCharacterId;
+                return matchedOwnerCharacterId > 0;
+            }
+
+            if (relationshipRecord.ItemSerial.HasValue
+                && relationshipRecord.ItemSerial.Value == lookupSerial
+                && pairCharacterId > 0)
+            {
+                matchedOwnerCharacterId = pairCharacterId;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool DoesRelationshipRecordContainSerial(
@@ -8701,14 +8737,14 @@ namespace HaCreator.MapSimulator.Pools
             EnsureCarryItemEffectTokenLayerHandlesForParity(actor);
             if (ShouldSuppressCarryItemEffectForParity(actor))
             {
-                actor.CarryItemEffectLayerHandleRefCount = 0;
+                ReleaseCarryItemEffectVisibleLayerReferenceForParity(actor);
                 actor.CarryItemEffectTokenLayerHandleRefCounts =
                     BuildCarryItemEffectTokenLayerRefCountsForParity(actor.CarryItemEffectTokenLayerHandleIds, admitted: false);
                 actor.CarryItemEffectLayerSuppressed = true;
                 return;
             }
 
-            actor.CarryItemEffectLayerHandleRefCount = 1;
+            CaptureCarryItemEffectVisibleLayerReferenceForParity(actor);
             actor.CarryItemEffectTokenLayerHandleRefCounts =
                 BuildCarryItemEffectTokenLayerRefCountsForParity(actor.CarryItemEffectTokenLayerHandleIds, admitted: true);
             actor.CarryItemEffectLayerSuppressed = false;
@@ -8721,10 +8757,95 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            actor.CarryItemEffectLayerHandleRefCount = 0;
+            ReleaseCarryItemEffectVisibleLayerReferenceForParity(actor);
             actor.CarryItemEffectTokenLayerHandleRefCounts =
                 BuildCarryItemEffectTokenLayerRefCountsForParity(actor.CarryItemEffectTokenLayerHandleIds, admitted: false);
             actor.CarryItemEffectLayerSuppressed = true;
+        }
+
+        private static void CaptureCarryItemEffectVisibleLayerReferenceForParity(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            if (actor.CarryItemEffectLayerHandleRefCount <= 0 && actor.CarryItemEffectLayerHandleId > 0)
+            {
+                actor.CarryItemEffectLayerHandleRefCount = 1;
+                AddRemoteVisibleLayerReferenceMutation(
+                    actor.CarryItemEffectVisibleLayerReferenceMutations,
+                    RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                        RemoteCarryItemEffectActionOwnerName,
+                        actor.CarryItemEffectLayerHandleId,
+                        actor.CarryItemEffectLayerHandleRefCount,
+                        actor.CarryItemEffectVisibleLayerReferenceMutations.Count));
+            }
+
+            if (actor.CarryItemEffectTokenLayerHandleIds == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<int> currentRefCounts = actor.CarryItemEffectTokenLayerHandleRefCounts;
+            for (int i = 0; i < actor.CarryItemEffectTokenLayerHandleIds.Count; i++)
+            {
+                int handleId = actor.CarryItemEffectTokenLayerHandleIds[i];
+                int currentRefCount = currentRefCounts != null && i < currentRefCounts.Count
+                    ? currentRefCounts[i]
+                    : 0;
+                if (handleId <= 0 || currentRefCount > 0)
+                {
+                    continue;
+                }
+
+                AddRemoteVisibleLayerReferenceMutation(
+                    actor.CarryItemEffectVisibleLayerReferenceMutations,
+                    RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                        RemoteCarryItemEffectActionOwnerName,
+                        handleId,
+                        1,
+                        actor.CarryItemEffectVisibleLayerReferenceMutations.Count));
+            }
+        }
+
+        private static void ReleaseCarryItemEffectVisibleLayerReferenceForParity(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            if (actor.CarryItemEffectLayerHandleRefCount > 0)
+            {
+                AddRemoteVisibleLayerReferenceMutation(
+                    actor.CarryItemEffectVisibleLayerReferenceMutations,
+                    RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                        RemoteCarryItemEffectActionOwnerName,
+                        actor.CarryItemEffectLayerHandleId,
+                        actor.CarryItemEffectVisibleLayerReferenceMutations.Count));
+            }
+
+            IReadOnlyList<int> currentRefCounts = actor.CarryItemEffectTokenLayerHandleRefCounts;
+            if (actor.CarryItemEffectTokenLayerHandleIds != null && currentRefCounts != null)
+            {
+                for (int i = 0; i < actor.CarryItemEffectTokenLayerHandleIds.Count && i < currentRefCounts.Count; i++)
+                {
+                    if (actor.CarryItemEffectTokenLayerHandleIds[i] <= 0 || currentRefCounts[i] <= 0)
+                    {
+                        continue;
+                    }
+
+                    AddRemoteVisibleLayerReferenceMutation(
+                        actor.CarryItemEffectVisibleLayerReferenceMutations,
+                        RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                            RemoteCarryItemEffectActionOwnerName,
+                            actor.CarryItemEffectTokenLayerHandleIds[i],
+                            actor.CarryItemEffectVisibleLayerReferenceMutations.Count));
+                }
+            }
+
+            actor.CarryItemEffectLayerHandleRefCount = 0;
         }
 
         private static void EnsureCarryItemEffectTokenLayerHandlesForParity(RemoteUserActor actor)
@@ -8802,12 +8923,12 @@ namespace HaCreator.MapSimulator.Pools
 
             if (ShouldSuppressCompletedSetItemEffectForParity(actor))
             {
-                actor.CompletedSetItemEffectLayerHandleRefCount = 0;
+                ReleaseCompletedSetItemEffectVisibleLayerReferenceForParity(actor);
                 actor.CompletedSetItemEffectLayerSuppressed = true;
                 return;
             }
 
-            actor.CompletedSetItemEffectLayerHandleRefCount = 1;
+            CaptureCompletedSetItemEffectVisibleLayerReferenceForParity(actor);
             actor.CompletedSetItemEffectLayerSuppressed = false;
         }
 
@@ -8818,8 +8939,54 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            actor.CompletedSetItemEffectLayerHandleRefCount = 0;
+            ReleaseCompletedSetItemEffectVisibleLayerReferenceForParity(actor);
             actor.CompletedSetItemEffectLayerSuppressed = true;
+        }
+
+        private static void CaptureCompletedSetItemEffectVisibleLayerReferenceForParity(RemoteUserActor actor)
+        {
+            if (actor == null
+                || actor.CompletedSetItemEffectLayerHandleRefCount > 0
+                || actor.CompletedSetItemEffectLayerHandleId <= 0)
+            {
+                return;
+            }
+
+            actor.CompletedSetItemEffectLayerHandleRefCount = 1;
+            AddRemoteVisibleLayerReferenceMutation(
+                actor.CompletedSetItemEffectVisibleLayerReferenceMutations,
+                RemoteVisibleLayerReferenceMutation.CaptureOwnerReference(
+                    RemoteCompletedSetItemEffectActionOwnerName,
+                    actor.CompletedSetItemEffectLayerHandleId,
+                    actor.CompletedSetItemEffectLayerHandleRefCount,
+                    actor.CompletedSetItemEffectVisibleLayerReferenceMutations.Count));
+        }
+
+        private static void ReleaseCompletedSetItemEffectVisibleLayerReferenceForParity(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            if (actor.CompletedSetItemEffectLayerHandleRefCount > 0)
+            {
+                AddRemoteVisibleLayerReferenceMutation(
+                    actor.CompletedSetItemEffectVisibleLayerReferenceMutations,
+                    RemoteVisibleLayerReferenceMutation.ReleaseOwnerReference(
+                        RemoteCompletedSetItemEffectActionOwnerName,
+                        actor.CompletedSetItemEffectLayerHandleId,
+                        actor.CompletedSetItemEffectVisibleLayerReferenceMutations.Count));
+            }
+
+            actor.CompletedSetItemEffectLayerHandleRefCount = 0;
+        }
+
+        private static void AddRemoteVisibleLayerReferenceMutation(
+            List<RemoteVisibleLayerReferenceMutation> mutations,
+            RemoteVisibleLayerReferenceMutation mutation)
+        {
+            mutations?.Add(mutation);
         }
 
         private static void UpdateRelationshipOverlayLayerAdmissionsForParity(RemoteUserActor actor)
@@ -18339,11 +18506,13 @@ namespace HaCreator.MapSimulator.Pools
         public int CarryItemEffectLayerHandleRefCount { get; set; }
         public IReadOnlyList<int> CarryItemEffectTokenLayerHandleIds { get; set; } = Array.Empty<int>();
         public IReadOnlyList<int> CarryItemEffectTokenLayerHandleRefCounts { get; set; } = Array.Empty<int>();
+        public List<RemoteVisibleLayerReferenceMutation> CarryItemEffectVisibleLayerReferenceMutations { get; } = new();
         public bool CarryItemEffectLayerSuppressed { get; set; } = true;
         public int CompletedSetItemId { get; set; }
         public int CompletedSetItemEffectAppliedTime { get; set; } = int.MinValue;
         public int CompletedSetItemEffectLayerHandleId { get; set; }
         public int CompletedSetItemEffectLayerHandleRefCount { get; set; }
+        public List<RemoteVisibleLayerReferenceMutation> CompletedSetItemEffectVisibleLayerReferenceMutations { get; } = new();
         public bool CompletedSetItemEffectLayerSuppressed { get; set; } = true;
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
         public float? BattlefieldOriginalSpeed { get; set; }

@@ -280,6 +280,7 @@ namespace HaCreator.MapSimulator.Managers
             int[] bestRegularFields = null;
             int[] bestContinentFields = null;
             bool bestMatchedKnownLeadingCharacterDataTail = false;
+            ulong bestMatchedKnownLeadingSectionFlags = 0;
             int bestMatchedOpaquePreMapTransferByteCount = -1;
             bool bestMatchedKnownCharacterDataTail = false;
             for (int offset = payload.Length - BootstrapBookByteLength; offset >= 0; offset--)
@@ -308,6 +309,11 @@ namespace HaCreator.MapSimulator.Managers
                         bestRegularFields = candidateRegularFields;
                         bestContinentFields = candidateContinentFields;
                         bestMatchedKnownLeadingCharacterDataTail = candidateMatchedKnownLeadingCharacterDataTail;
+                        bestMatchedKnownLeadingSectionFlags = ResolveKnownLeadingSectionFlags(
+                            payload,
+                            characterDataFlags,
+                            candidateMatchedOffset,
+                            candidateMatchedKnownLeadingCharacterDataTail);
                         bestMatchedOpaquePreMapTransferByteCount = candidateMatchedOpaquePreMapTransferByteCount;
                         bestMatchedKnownCharacterDataTail = candidateMatchedKnownCharacterDataTail;
                     }
@@ -323,9 +329,26 @@ namespace HaCreator.MapSimulator.Managers
             continentFields = bestContinentFields;
             matchedOffset = bestMatchedOffset;
             matchedKnownLeadingCharacterDataTail = bestMatchedKnownLeadingCharacterDataTail;
+            matchedKnownLeadingSectionFlags = bestMatchedKnownLeadingSectionFlags;
             matchedOpaquePreMapTransferByteCount = bestMatchedOpaquePreMapTransferByteCount;
             matchedKnownCharacterDataTail = bestMatchedKnownCharacterDataTail;
             return true;
+        }
+
+        private static ulong ResolveKnownLeadingSectionFlags(
+            ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
+            int matchedOffset,
+            bool matchedKnownLeadingCharacterDataTail)
+        {
+            return matchedKnownLeadingCharacterDataTail &&
+                   TryMatchKnownLeadingLayoutOffset(
+                       payload,
+                       characterDataFlags,
+                       matchedOffset,
+                       out KnownLeadingOffsetCandidate candidate)
+                ? candidate.MatchedSectionFlags
+                : 0;
         }
 
         private static bool TryReadBootstrapBooksAtOffset(

@@ -118,6 +118,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int ClientYesButtonOffsetX { get; init; }
         public int ClientWindowWidth { get; init; }
         public int ClientWindowHeight { get; init; }
+        public int ClientWindowZ { get; init; }
+        public string ClientWindowOrigin { get; init; } = string.Empty;
         public string Title { get; init; } = "Revive";
         public string Subtitle { get; init; } = string.Empty;
         public string PrimaryTitle { get; init; } = string.Empty;
@@ -139,6 +141,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int NativeWindowHeight = 131;
         internal const int NativeWindowLeft = -150;
         internal const int NativeWindowTop = -195;
+        internal const int NativeWindowZ = 10;
+        internal const string NativeWindowOrigin = "Origin_CC";
         internal const string ClientPremiumSafetyCharmBackgroundUolSymbol = "aUi_138";
         internal const string ClientYesButtonUolSymbol = "aUi_139";
         internal const string ClientNoButtonUolSymbol = "aUi_140";
@@ -450,6 +454,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientYesButtonOffsetX = nativeBranchSpec.YesButtonOffsetX,
                 ClientWindowWidth = NativeWindowWidth,
                 ClientWindowHeight = NativeWindowHeight,
+                ClientWindowZ = NativeWindowZ,
+                ClientWindowOrigin = NativeWindowOrigin,
                 Title = "Revive",
                 Subtitle = subtitle,
                 PrimaryTitle = ResolvePrimaryTitle(Variant),

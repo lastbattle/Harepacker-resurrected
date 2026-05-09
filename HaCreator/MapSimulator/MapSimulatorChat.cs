@@ -123,8 +123,9 @@ namespace HaCreator.MapSimulator
         private const int KEY_REPEAT_RATE = 35; // ms between repeats
 
         // Input history settings
-        private const int MAX_INPUT_HISTORY = 50;
-        private const int MAX_WHISPER_CANDIDATES = MAX_INPUT_HISTORY;
+        // CChatHelper::HistoryAdd trims local edit history to eight retained entries.
+        private const int MAX_INPUT_HISTORY = 8;
+        private const int MAX_WHISPER_CANDIDATES = 50;
         #endregion
 
         #region Fields
@@ -197,6 +198,22 @@ namespace HaCreator.MapSimulator
         internal Func<string> ClipboardTextGetter { get; set; } = TryGetSystemClipboardText;
         internal Action<string> ClipboardTextSetter { get; set; } = TrySetSystemClipboardText;
         internal Func<int, int, bool> ImeCandidateSelectedRequested { get; set; }
+
+        internal ClientClaimChatLogResult BuildClientClaimChatLogOfTwoCharacters(
+            string targetCharacterName,
+            string sendCharacterName)
+        {
+            string[] storedChatLines = new string[_messages.Count];
+            for (int i = 0; i < _messages.Count; i++)
+            {
+                storedChatLines[i] = _messages[i].Text;
+            }
+
+            return ClientClaimChatLogParity.BuildChatLogOfTwoCharacters(
+                storedChatLines,
+                targetCharacterName,
+                sendCharacterName);
+        }
 
         private enum ChatSubmitDisposition
         {

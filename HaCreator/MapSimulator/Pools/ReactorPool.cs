@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.Pools
         public bool PacketLeavePending { get; set; }
         public int PacketHitStartTime { get; set; }
         public int PacketStateEndTime { get; set; }
+        public bool PacketStateEndTimeActive { get; set; }
         public int PacketAnimationEndTime { get; set; }
         public int PacketAnimationSourceState { get; set; } = -1;
         public int PacketHitAnimationState { get; set; } = -1;
@@ -132,6 +133,7 @@ namespace HaCreator.MapSimulator.Pools
         public float PacketObservedMovePixelsPerMs { get; set; }
         public int PacketEnterFadeStartTime { get; set; }
         public int PacketEnterFadeEndTime { get; set; }
+        public bool PacketEnterFadeActive { get; set; }
         internal ReactorActivationTypeMask SupportedActivationTypes { get; set; } = ReactorActivationTypeMask.None;
         public int? RequiredItemId { get; set; }
         public int? RequiredQuestId { get; set; }
@@ -327,6 +329,7 @@ namespace HaCreator.MapSimulator.Pools
                     PacketLeavePending = false,
                     PacketHitStartTime = 0,
                     PacketStateEndTime = 0,
+                    PacketStateEndTimeActive = false,
                     PacketAnimationEndTime = 0,
                     PacketAnimationSourceState = -1,
                     PacketHitAnimationState = -1,
@@ -344,6 +347,7 @@ namespace HaCreator.MapSimulator.Pools
                     PacketObservedMovePixelsPerMs = 0f,
                     PacketEnterFadeStartTime = 0,
                     PacketEnterFadeEndTime = 0,
+                    PacketEnterFadeActive = false,
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
                     RequiredQuestState = interactionMetadata.RequiredQuestState,
@@ -1313,6 +1317,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketLeavePending = false;
             data.PacketHitStartTime = 0;
             data.PacketStateEndTime = 0;
+            data.PacketStateEndTimeActive = false;
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationSourceState = -1;
             data.PacketHitAnimationState = -1;
@@ -1330,6 +1335,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketObservedMovePixelsPerMs = 0f;
             data.PacketEnterFadeStartTime = 0;
             data.PacketEnterFadeEndTime = 0;
+            data.PacketEnterFadeActive = false;
             data.PreferredAuthoredEventOrder = -1;
             data.PreferredAuthoredActivationType = ReactorActivationType.None;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
@@ -1626,6 +1632,7 @@ namespace HaCreator.MapSimulator.Pools
                     data.PacketLeavePending = false;
                     data.PacketHitStartTime = 0;
                     data.PacketStateEndTime = 0;
+                    data.PacketStateEndTimeActive = false;
                     data.PacketAnimationEndTime = 0;
                     ClearPacketVisualOwnershipState(data);
                     data.PacketPendingVisualState = -1;
@@ -1642,6 +1649,7 @@ namespace HaCreator.MapSimulator.Pools
                     data.PacketObservedMovePixelsPerMs = 0f;
                     data.PacketEnterFadeStartTime = 0;
                     data.PacketEnterFadeEndTime = 0;
+                    data.PacketEnterFadeActive = false;
                     data.ScriptStatePublished = false;
                     data.PreferredAuthoredEventOrder = -1;
                     data.PreferredAuthoredActivationType = ReactorActivationType.None;
@@ -1720,6 +1728,7 @@ namespace HaCreator.MapSimulator.Pools
                     PacketLeavePending = false,
                     PacketHitStartTime = 0,
                     PacketStateEndTime = 0,
+                    PacketStateEndTimeActive = false,
                     PacketProperEventIndex = -1,
                     PacketAnimationPhase = PacketReactorAnimationPhase.Idle
                 };
@@ -1849,6 +1858,7 @@ namespace HaCreator.MapSimulator.Pools
                 PacketLeavePending = false,
                 PacketHitStartTime = 0,
                 PacketStateEndTime = ResolvePacketEnterStateEndTime(currentTick),
+                PacketStateEndTimeActive = true,
                 PacketAnimationEndTime = 0,
                 PacketAnimationSourceState = -1,
                 PacketHitAnimationState = -1,
@@ -1864,6 +1874,7 @@ namespace HaCreator.MapSimulator.Pools
                 PacketMoveUsesDefaultRelMove = false,
                 PacketMoveExplicitlyRequested = false,
                 PacketObservedMovePixelsPerMs = 0f,
+                PacketEnterFadeActive = false,
                 PreferredAuthoredEventOrder = -1,
                 PreferredAuthoredActivationType = ReactorActivationType.None
             };
@@ -1977,6 +1988,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ApplyPacketProperEventIndexPreference(data, properEventIndex);
             data.PacketStateEndTime = ResolvePacketStateEndTime(currentTick, stateEndDelayTicks);
+            data.PacketStateEndTimeActive = true;
             data.PacketAnimationSourceState = packetAnimationSourceState;
             data.PacketHitAnimationState = packetHitAnimationState;
             data.PacketPendingVisualState = state;
@@ -2029,7 +2041,7 @@ namespace HaCreator.MapSimulator.Pools
                 currentTick,
                 data.PacketStateEndTime,
                 data.PacketObservedMovePixelsPerMs);
-            bool usesDefaultRelMove = moveEndTime > currentTick;
+            bool usesDefaultRelMove = IsClientTickAfter(moveEndTime, currentTick);
 
             ConfigurePacketStateMovement(
                 reactor,
@@ -2039,11 +2051,11 @@ namespace HaCreator.MapSimulator.Pools
                 x,
                 y,
                 moveEndTime,
-                allowDefaultRelMove: moveEndTime > currentTick);
+                allowDefaultRelMove: IsClientTickAfter(moveEndTime, currentTick));
             data.PacketMoveUsesDefaultRelMove = usesDefaultRelMove;
-            data.PacketMoveExplicitlyRequested = data.PacketMoveEndTime > currentTick;
+            data.PacketMoveExplicitlyRequested = IsClientTickAfter(data.PacketMoveEndTime, currentTick);
 
-            if (data.PacketMoveEndTime > currentTick)
+            if (IsClientTickAfter(data.PacketMoveEndTime, currentTick))
             {
                 StartPacketStateMovement(reactor, data, currentTick);
             }
@@ -2061,7 +2073,7 @@ namespace HaCreator.MapSimulator.Pools
 
             data.StateStartTime = currentTick;
             RefreshReactorLayerPlacement(reactor);
-            message = moveEndTime > currentTick
+            message = IsClientTickAfter(moveEndTime, currentTick)
                 ? $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}) with fallback RelMove timing."
                 : $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}).";
             return true;
@@ -2111,6 +2123,7 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
             data.PacketAnimationPhase = PacketReactorAnimationPhase.AwaitingLeaveCompletion;
             data.PacketStateEndTime = 0;
+            data.PacketStateEndTimeActive = false;
             data.CanRespawn = false;
             RefreshReactorLayerPlacement(reactor);
             message = $"Queued packet-owned reactor {packetObjectId} for leave-field removal from ({x}, {y}).";
@@ -2140,23 +2153,24 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (data.IsPacketOwned)
                 {
-                    if (data.PacketEnterFadeEndTime > 0)
+                    if (data.PacketEnterFadeActive)
                     {
                         data.Alpha = ResolvePacketEnterFadeAlpha(
                             data.PacketEnterFadeStartTime,
                             data.PacketEnterFadeEndTime,
                             currentTick);
-                        if (currentTick >= data.PacketEnterFadeEndTime)
+                        if (HasClientTickReached(currentTick, data.PacketEnterFadeEndTime))
                         {
                             data.PacketEnterFadeStartTime = 0;
                             data.PacketEnterFadeEndTime = 0;
+                            data.PacketEnterFadeActive = false;
                             data.Alpha = 1f;
                         }
                     }
 
                     if (data.PacketLeavePending)
                     {
-                        if (data.PacketHitStartTime > 0 && currentTick >= data.PacketHitStartTime)
+                        if (data.PacketHitStartTime > 0 && HasClientTickReached(currentTick, data.PacketHitStartTime))
                         {
                             data.PacketHitStartTime = 0;
                             int hitAnimationDuration = StartPacketHitAnimation(reactor, data, currentTick, _onReactorLayerSoundRequested);
@@ -2178,7 +2192,7 @@ namespace HaCreator.MapSimulator.Pools
                         }
 
                         if (data.PacketHitStartTime == 0
-                            && (data.PacketAnimationEndTime <= 0 || currentTick >= data.PacketAnimationEndTime))
+                            && (data.PacketAnimationEndTime <= 0 || HasClientTickReached(currentTick, data.PacketAnimationEndTime)))
                         {
                             reactor?.ClearTransientAnimation();
                             ClearPacketStateMovement(reactor, data, snapToTarget: true);
@@ -2191,7 +2205,7 @@ namespace HaCreator.MapSimulator.Pools
 
                     if (data.State == ReactorState.Activated
                         && data.PacketHitStartTime > 0
-                        && currentTick > data.PacketHitStartTime)
+                        && HasClientTickPassed(currentTick, data.PacketHitStartTime))
                     {
                         data.PacketHitStartTime = 0;
                         int hitAnimationDuration = StartPacketHitAnimation(reactor, data, currentTick, _onReactorLayerSoundRequested);
@@ -2218,7 +2232,7 @@ namespace HaCreator.MapSimulator.Pools
 
                     if (data.State == ReactorState.Activated
                         && data.PacketAnimationEndTime > 0
-                        && currentTick >= data.PacketAnimationEndTime)
+                        && HasClientTickReached(currentTick, data.PacketAnimationEndTime))
                     {
                         data.PacketAnimationEndTime = 0;
                         reactor?.ClearTransientAnimation();
@@ -2541,6 +2555,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketLeavePending = false;
             data.PacketHitStartTime = 0;
             data.PacketStateEndTime = 0;
+            data.PacketStateEndTimeActive = false;
             data.PacketAnimationEndTime = 0;
             ClearPacketVisualOwnershipState(data);
             data.PacketPendingVisualState = applyAnimationState ? -1 : state;
@@ -2558,6 +2573,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketObservedMovePixelsPerMs = 0f;
             data.PacketEnterFadeStartTime = 0;
             data.PacketEnterFadeEndTime = 0;
+            data.PacketEnterFadeActive = false;
             ClearPreferredAuthoredOrder(data);
 
             if (index < _spawnPoints.Count)
@@ -2685,14 +2701,35 @@ namespace HaCreator.MapSimulator.Pools
                 observedMovePixelsPerMs);
         }
 
+        internal static bool HasClientTickReached(int currentTick, int targetTick)
+        {
+            return unchecked(currentTick - targetTick) >= 0;
+        }
+
+        internal static bool HasClientTickPassed(int currentTick, int targetTick)
+        {
+            return unchecked(currentTick - targetTick) > 0;
+        }
+
+        internal static bool IsClientTickAfter(int tick, int referenceTick)
+        {
+            return unchecked(tick - referenceTick) > 0;
+        }
+
+        internal static bool HasPacketStateEndTime(ReactorRuntimeData data)
+        {
+            return data?.PacketStateEndTimeActive == true
+                || (data != null && data.PacketStateEndTime > 0);
+        }
+
         internal static float ResolvePacketMoveProgress(
             int moveStartTime,
             int moveEndTime,
             int currentTick,
             bool usesDefaultRelMove)
         {
-            int duration = Math.Max(1, moveEndTime - moveStartTime);
-            float progress = MathHelper.Clamp((currentTick - moveStartTime) / (float)duration, 0f, 1f);
+            int duration = Math.Max(1, unchecked(moveEndTime - moveStartTime));
+            float progress = MathHelper.Clamp(unchecked(currentTick - moveStartTime) / (float)duration, 0f, 1f);
             if (usesDefaultRelMove)
             {
                 progress = progress * progress * (3f - (2f * progress));
@@ -2752,7 +2789,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (currentTick >= data.PacketMoveEndTime)
+            if (HasClientTickReached(currentTick, data.PacketMoveEndTime))
             {
                 reactor.SetWorldPosition(data.PacketMoveTargetX, data.PacketMoveTargetY);
                 ClearPacketStateMovement(reactor, data, snapToTarget: true);
@@ -3857,7 +3894,7 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            if (currentAnimationEndTime > currentTick)
+            if (IsClientTickAfter(currentAnimationEndTime, currentTick))
             {
                 return currentAnimationEndTime;
             }
@@ -3876,7 +3913,7 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            if (currentAnimationEndTime > currentTick)
+            if (IsClientTickAfter(currentAnimationEndTime, currentTick))
             {
                 return currentAnimationEndTime;
             }
@@ -3886,23 +3923,25 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static float ResolvePacketEnterFadeAlpha(int fadeStartTime, int fadeEndTime, int currentTick)
         {
-            if (fadeEndTime <= fadeStartTime)
+            int fadeDuration = unchecked(fadeEndTime - fadeStartTime);
+            if (fadeDuration <= 0)
             {
                 return 1f;
             }
 
-            if (currentTick <= fadeStartTime)
+            int elapsed = unchecked(currentTick - fadeStartTime);
+            if (elapsed <= 0)
             {
                 return 0f;
             }
 
-            if (currentTick >= fadeEndTime)
+            if (elapsed >= fadeDuration)
             {
                 return 1f;
             }
 
             return MathHelper.Clamp(
-                (currentTick - fadeStartTime) / (float)(fadeEndTime - fadeStartTime),
+                elapsed / (float)fadeDuration,
                 0f,
                 1f);
         }
@@ -4329,8 +4368,8 @@ namespace HaCreator.MapSimulator.Pools
         {
             return data != null
                 && data.PacketPendingVisualState >= 0
-                && data.PacketStateEndTime > 0
-                && currentTick >= data.PacketStateEndTime
+                && HasPacketStateEndTime(data)
+                && HasClientTickReached(currentTick, data.PacketStateEndTime)
                 && data.State == ReactorState.Activated
                 && data.PacketHitStartTime <= 0
                 && data.PacketAnimationEndTime <= 0;
@@ -4343,8 +4382,8 @@ namespace HaCreator.MapSimulator.Pools
                 && data.State == ReactorState.Activated
                 && data.PacketPendingVisualState < 0
                 && data.PacketAnimationSourceState >= 0
-                && data.PacketStateEndTime > 0
-                && currentTick >= data.PacketStateEndTime
+                && HasPacketStateEndTime(data)
+                && HasClientTickReached(currentTick, data.PacketStateEndTime)
                 && data.PacketHitStartTime <= 0
                 && data.PacketAnimationEndTime <= 0
                 && !data.PacketLeavePending;
@@ -4355,14 +4394,15 @@ namespace HaCreator.MapSimulator.Pools
             return data != null
                 && data.State == ReactorState.Activated
                 && data.PacketPendingVisualState < 0
-                && data.PacketStateEndTime > currentTick;
+                && HasPacketStateEndTime(data)
+                && IsClientTickAfter(data.PacketStateEndTime, currentTick);
         }
 
         private static bool ShouldPreservePacketSourceUntilStateEnd(ReactorRuntimeData data)
         {
             return data != null
                 && data.State == ReactorState.Activated
-                && data.PacketStateEndTime > 0
+                && HasPacketStateEndTime(data)
                 && data.PacketHitStartTime <= 0
                 && data.PacketAnimationEndTime <= 0
                 && !data.PacketLeavePending;
@@ -4418,6 +4458,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ClearPacketVisualOwnershipState(data);
             data.PacketStateEndTime = 0;
+            data.PacketStateEndTimeActive = false;
             data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
             data.State = ReactorState.Active;
             data.StateStartTime = currentTick;
@@ -4442,7 +4483,9 @@ namespace HaCreator.MapSimulator.Pools
 
             data.PacketEnterFadeStartTime = currentTick;
             data.PacketEnterFadeEndTime = ResolvePacketEnterStateEndTime(currentTick);
+            data.PacketEnterFadeActive = true;
             data.PacketStateEndTime = ResolvePacketEnterStateEndTime(currentTick);
+            data.PacketStateEndTimeActive = true;
             data.Alpha = 0f;
         }
 

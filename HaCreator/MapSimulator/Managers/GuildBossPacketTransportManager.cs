@@ -10,18 +10,23 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class GuildBossPacketInboxMessage
     {
-        public GuildBossPacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
+        public GuildBossPacketInboxMessage(int packetType, byte[] payload, string source, string rawText, long? proxySessionId = null)
         {
             PacketType = packetType;
             Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
             Source = string.IsNullOrWhiteSpace(source) ? "guildboss-transport" : source;
             RawText = rawText ?? string.Empty;
+            ProxySessionId = proxySessionId;
         }
 
         public int PacketType { get; }
         public byte[] Payload { get; }
         public string Source { get; }
         public string RawText { get; }
+        public long? ProxySessionId { get; }
+        public string SourceWithProxySession => ProxySessionId.HasValue
+            ? $"{Source} proxySession={ProxySessionId.Value.ToString(CultureInfo.InvariantCulture)}"
+            : Source;
     }
 
     /// <summary>

@@ -182,6 +182,18 @@ namespace HaCreator.MapSimulator
             internal bool ClearsVariantsAfterCall => true;
         }
 
+        internal readonly record struct InitialQuizOwnerTimerGlyphDrawCall(
+            int Left,
+            int Top,
+            int StringPoolId,
+            int? FormatArgument,
+            string ResourcePath)
+        {
+            internal bool UsesStringPoolFormat => FormatArgument.HasValue;
+            internal string ClientCanvasMethodName => "IWzCanvas::Copy";
+            internal int Alpha => 255;
+        }
+
         internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
         {
             internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
@@ -1436,9 +1448,9 @@ namespace HaCreator.MapSimulator
 
         private void DrawInitialQuizOwnerTimerDigits(Rectangle ownerBounds, int remainingSeconds)
         {
-            string timerText = ComposeInitialQuizOwnerTimerText(remainingSeconds);
             if (_initialQuizOwnerDigits == null || _initialQuizOwnerDigits.Length == 0)
             {
+                string timerText = ComposeInitialQuizOwnerTimerText(remainingSeconds);
                 DrawInitialQuizOwnerSingleLineText(
                     timerText.Replace(',', ':'),
                     new Rectangle(ownerBounds.X + 111, ownerBounds.Y + 33, 78, 24),
@@ -1447,11 +1459,20 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[0], 111, 33);
-            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[1], 132, 33);
-            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[2], 148, 36);
-            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[3], 153, 33);
-            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[4], 174, 33);
+            foreach (InitialQuizOwnerTimerGlyphDrawCall glyphCall in ResolveInitialQuizOwnerTimerGlyphDrawCalls(remainingSeconds))
+            {
+                Texture2D texture = ResolveInitialQuizOwnerTimerGlyphTexture(
+                    glyphCall,
+                    _initialQuizOwnerDigits,
+                    _initialQuizOwnerCommaTexture);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                Rectangle drawBounds = new(ownerBounds.X + glyphCall.Left, ownerBounds.Y + glyphCall.Top, texture.Width, texture.Height);
+                _spriteBatch.Draw(texture, drawBounds, Color.White);
+            }
         }
 
         private InitialQuizButtonFrame ResolveInitialQuizOwnerOkButtonFrame(bool enabled)
@@ -2506,6 +2527,44 @@ namespace HaCreator.MapSimulator
             return total;
         }
 
+        internal static IReadOnlyList<InitialQuizOwnerTimerGlyphDrawCall> ResolveInitialQuizOwnerTimerGlyphDrawCalls(int remainingSeconds)
+        {
+            int clampedSeconds = Math.Max(0, remainingSeconds);
+            int minutes = clampedSeconds / 60;
+            int seconds = clampedSeconds % 60;
+            int minuteTens = minutes / 10;
+            int minuteUnits = minutes % 10;
+            int secondTens = seconds / 10;
+            int secondUnits = seconds % 10;
+
+            return new[]
+            {
+                BuildInitialQuizOwnerTimerGlyphDrawCall(111, 33, InitialQuizTimerDigitUolStringPoolId, minuteTens),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(132, 33, InitialQuizTimerDigitUolStringPoolId, minuteUnits),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(148, 36, InitialQuizTimerCommaUolStringPoolId, null),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(153, 33, InitialQuizTimerDigitUolStringPoolId, secondTens),
+                BuildInitialQuizOwnerTimerGlyphDrawCall(174, 33, InitialQuizTimerDigitUolStringPoolId, secondUnits),
+            };
+        }
+
+        private static InitialQuizOwnerTimerGlyphDrawCall BuildInitialQuizOwnerTimerGlyphDrawCall(
+            int left,
+            int top,
+            int stringPoolId,
+            int? formatArgument)
+        {
+            TryResolveInitialQuizOwnerStringPoolResourcePath(
+                stringPoolId,
+                formatArgument,
+                out string resourcePath);
+            return new InitialQuizOwnerTimerGlyphDrawCall(
+                left,
+                top,
+                stringPoolId,
+                formatArgument,
+                resourcePath ?? string.Empty);
+        }
+
         internal static int ResolveInitialQuizOwnerAnimationFrameIndex(int currentTickCount, IReadOnlyList<int> frameDelaysMs)
         {
             if (frameDelaysMs == null || frameDelaysMs.Count == 0)
@@ -2707,6 +2766,22 @@ namespace HaCreator.MapSimulator
 
             Rectangle drawBounds = new(ownerBounds.X + relativeX, ownerBounds.Y + relativeY, texture.Width, texture.Height);
             _spriteBatch.Draw(texture, drawBounds, Color.White);
+        }
+
+        private static Texture2D ResolveInitialQuizOwnerTimerGlyphTexture(
+            InitialQuizOwnerTimerGlyphDrawCall glyphCall,
+            Texture2D[] digits,
+            Texture2D commaTexture)
+        {
+            if (glyphCall.FormatArgument.HasValue)
+            {
+                int index = glyphCall.FormatArgument.Value;
+                return index >= 0 && digits != null && index < digits.Length
+                    ? digits[index]
+                    : null;
+            }
+
+            return commaTexture;
         }
 
         private static Texture2D ResolveInitialQuizOwnerDigitTexture(char ch, Texture2D[] digits, Texture2D commaTexture)

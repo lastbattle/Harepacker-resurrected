@@ -8,6 +8,7 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure.Data;
+using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -188,6 +189,7 @@ namespace HaCreator.MapSimulator
             }
 
             npc.ApplyPacketLimitedInfo(packet.Enabled, currentTick);
+            RegisterPacketNpcLimitedInfoEffect(npc, packet.Enabled, currentTick);
             string state = packet.Enabled ? "enabled" : "disabled";
             return new PacketNpcPoolApplyResult(
                 true,
@@ -208,6 +210,7 @@ namespace HaCreator.MapSimulator
                 if (npc.PacketEnabled != shouldEnable)
                 {
                     npc.ApplyPacketLimitedInfo(shouldEnable, currentTick);
+                    RegisterPacketNpcLimitedInfoEffect(npc, shouldEnable, currentTick);
                     if (shouldEnable)
                     {
                         enabled++;
@@ -222,6 +225,39 @@ namespace HaCreator.MapSimulator
             return new PacketNpcPoolApplyResult(
                 true,
                 $"CNpcPool::OnUpdateLimitedDisableInfo retained {disabledTemplateIds.Count.ToString(CultureInfo.InvariantCulture)} disabled template id(s), disabled {disabled.ToString(CultureInfo.InvariantCulture)} live NPC(s), and re-enabled {enabled.ToString(CultureInfo.InvariantCulture)} live NPC(s).");
+        }
+
+        private void RegisterPacketNpcLimitedInfoEffect(NpcItem npc, bool enabled, int currentTick)
+        {
+            if (npc == null || _animationEffects == null)
+            {
+                return;
+            }
+
+            int stringPoolId = enabled ? 0x1154 : 0x1155;
+            string fallbackUol = enabled
+                ? "Effect/MapEff.img/NpcSummon"
+                : "Effect/MapEff.img/NpcReturn";
+            string effectUol = NormalizeRemotePacketOwnedStringEffectUol(
+                MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackUol))
+                               ?? fallbackUol;
+            List<HaSharedLibrary.Render.DX.IDXObject> frames = LoadAnimationDisplayerFrames(effectUol);
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            Vector2 fallbackPosition = new(npc.CurrentX, npc.CurrentY);
+            _animationEffects.AddPacketOwnedRemoteStringEffect(
+                frames,
+                effectUol,
+                () => new Vector2(npc.CurrentX, npc.CurrentY),
+                () => npc.Flip,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                npc.Flip,
+                currentTick,
+                zOrder: 1);
         }
 
         private PacketNpcPoolApplyResult ApplyPacketNpcSpecialAction(PacketNpcSpecialActionPacket packet, int currentTick)

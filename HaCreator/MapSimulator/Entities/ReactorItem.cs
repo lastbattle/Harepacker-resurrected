@@ -741,10 +741,8 @@ namespace HaCreator.MapSimulator.Entities
             if (properEventIndex < 0)
             {
                 if (HasAuthoredState(state)
-                    && _stateLayerProperties.TryGetValue(state, out sourceProperty)
-                    && sourceProperty != null)
+                    && TryResolveStateHitSource(state, out sourceKind, out sourceProperty))
                 {
-                    sourceKind = HitAnimationSourceKind.StateLayer;
                     return true;
                 }
 

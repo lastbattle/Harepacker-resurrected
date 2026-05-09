@@ -222,6 +222,19 @@ namespace HaCreator.MapSimulator
             bool SoundReleasedBeforeTrackProperty,
             PacketOwnedRadioClientHandleStatus HandleStatus);
 
+        internal readonly record struct PacketOwnedRadioStopPlan(
+            bool EnteredStop,
+            bool MmsStopBeforeShowUi,
+            bool ShowUiBeforeMute,
+            bool MuteBeforeTrackPropertyRelease,
+            bool TrackPropertyReleaseBeforePlayingClear,
+            bool PlayingClearBeforeCompletionChat,
+            bool CompletionChatBeforeTrackNameRelease,
+            bool ReleasedTrackProperty,
+            bool ClearedPlaying,
+            bool EmittedCompletionChat,
+            bool ReleasedTrackName);
+
         internal readonly record struct PacketOwnedRadioUpdatePlan(
             bool ShouldPoll,
             bool ShouldStopOnComplete,
@@ -324,6 +337,40 @@ namespace HaCreator.MapSimulator
         private readonly record struct PacketOwnedTutorDisplayState(
             TutorVariantSnapshot Variant,
             PacketOwnedTutorDisplayOwner Owner);
+
+        internal enum PacketOwnedTutorNativeOperationKind
+        {
+            ReleaseExistingMessageLayer,
+            StampMessageReceivedTick,
+            StoreMessageDuration,
+            RequestSummonedPropertyFixedSkillLevelOne,
+            QuerySummonedHeight,
+            AddRefActionLayerParent,
+            AddRefVectorController,
+            FormatTutorialLayerPath,
+            LoadTutorialLayer,
+            AssignMessageLayerWithAddRefRelease,
+            RelMoveMessageLayerToOrigin,
+            QueryMessageLayerWidth,
+            QueryMessageLayerHeight,
+            MoveMessageLayerByHalfWidthAndSummonHeight,
+            AnimateMessageLayerRepeat,
+            SetSummonedSayAttackAction,
+            SuppressSummonedSayAttackActionForAranJob
+        }
+
+        internal readonly record struct PacketOwnedTutorNativeOperation(
+            PacketOwnedTutorNativeOperationKind Kind,
+            int SkillId = 0,
+            int SkillLevel = 0,
+            int MessageIndex = 0,
+            int DurationMs = 0,
+            int LayerWidth = 0,
+            int LayerHeight = 0,
+            int SummonHeight = 0,
+            int OffsetX = 0,
+            int OffsetY = 0,
+            string Source = null);
 
         internal sealed class ClassCompetitionRemotePagePayload
         {
@@ -524,6 +571,7 @@ namespace HaCreator.MapSimulator
         private bool _lastPacketOwnedRadioClientMmsPlaySucceeded;
         private string _lastPacketOwnedRadioClientMmsPlayFailureReason = "idle";
         private PacketOwnedRadioMmsStopPlan _lastPacketOwnedRadioMmsStopPlan;
+        private PacketOwnedRadioStopPlan _lastPacketOwnedRadioStopPlan;
         private PacketOwnedRadioClientPlaybackHandle _packetOwnedRadioClientHandle;
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
@@ -16134,8 +16182,7 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldTriggerPacketOwnedTutorSayPlayback(int skillId, TutorMessageKind messageKind, int localJobId)
         {
             return messageKind == TutorMessageKind.Text
-                || (!IsPacketOwnedTutorSaySuppressedForJob(localJobId)
-                    && skillId != TutorRuntime.AranTutorSkillId);
+                || !IsPacketOwnedTutorSaySuppressedForJob(localJobId);
         }
 
         internal static bool IsPacketOwnedTutorSaySuppressedForJob(int jobId)
@@ -16340,6 +16387,87 @@ namespace HaCreator.MapSimulator
             }
 
             return new Vector2(anchor.X - frameOriginX, anchor.Y - frameOriginY);
+        }
+
+        internal static IReadOnlyList<PacketOwnedTutorNativeOperation> BuildPacketOwnedTutorIndexedMessageNativeOperationPlan(
+            int skillId,
+            int messageIndex,
+            int durationMs,
+            int layerWidth,
+            int layerHeight,
+            int summonHeight,
+            int localJobId)
+        {
+            int normalizedSkillId = TutorRuntime.IsClientTutorSkillId(skillId)
+                ? skillId
+                : TutorRuntime.AranTutorSkillId;
+            int normalizedLayerWidth = Math.Max(0, layerWidth);
+            int normalizedLayerHeight = Math.Max(0, layerHeight);
+            int normalizedSummonHeight = summonHeight > 0
+                ? summonHeight
+                : normalizedSkillId == TutorRuntime.CygnusTutorSkillId
+                    ? TutorRuntime.CygnusTutorHeight
+                    : TutorRuntime.AranTutorHeight;
+            int offsetX = -(normalizedLayerWidth / 2);
+            int offsetY = -(normalizedLayerHeight + normalizedSummonHeight);
+            string tutorialLayerPath = string.Format(
+                CultureInfo.InvariantCulture,
+                "UI/tutorial.img/{0}",
+                Math.Max(0, messageIndex));
+            bool playSay = ShouldTriggerPacketOwnedTutorSayPlayback(
+                normalizedSkillId,
+                TutorMessageKind.Indexed,
+                localJobId);
+
+            return new[]
+            {
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.ReleaseExistingMessageLayer),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.StampMessageReceivedTick),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.StoreMessageDuration,
+                    DurationMs: Math.Max(0, durationMs)),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.RequestSummonedPropertyFixedSkillLevelOne,
+                    SkillId: normalizedSkillId,
+                    SkillLevel: ResolvePacketOwnedTutorSummonSkillLevel(normalizedSkillId)),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.QuerySummonedHeight,
+                    SkillId: normalizedSkillId,
+                    SkillLevel: ResolvePacketOwnedTutorSummonSkillLevel(normalizedSkillId),
+                    SummonHeight: normalizedSummonHeight,
+                    Source: ResolvePacketOwnedTutorSkillImageName(normalizedSkillId)),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AddRefActionLayerParent),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AddRefVectorController),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.FormatTutorialLayerPath,
+                    MessageIndex: Math.Max(0, messageIndex),
+                    Source: tutorialLayerPath),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.LoadTutorialLayer,
+                    MessageIndex: Math.Max(0, messageIndex),
+                    Source: tutorialLayerPath),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AssignMessageLayerWithAddRefRelease),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.RelMoveMessageLayerToOrigin),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.QueryMessageLayerWidth,
+                    LayerWidth: normalizedLayerWidth),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.QueryMessageLayerHeight,
+                    LayerHeight: normalizedLayerHeight),
+                new PacketOwnedTutorNativeOperation(
+                    PacketOwnedTutorNativeOperationKind.MoveMessageLayerByHalfWidthAndSummonHeight,
+                    LayerWidth: normalizedLayerWidth,
+                    LayerHeight: normalizedLayerHeight,
+                    SummonHeight: normalizedSummonHeight,
+                    OffsetX: offsetX,
+                    OffsetY: offsetY),
+                new PacketOwnedTutorNativeOperation(PacketOwnedTutorNativeOperationKind.AnimateMessageLayerRepeat),
+                new PacketOwnedTutorNativeOperation(
+                    playSay
+                        ? PacketOwnedTutorNativeOperationKind.SetSummonedSayAttackAction
+                        : PacketOwnedTutorNativeOperationKind.SuppressSummonedSayAttackActionForAranJob,
+                    SkillId: normalizedSkillId)
+            };
         }
 
         private List<IDXObject> ResolvePacketOwnedTutorCueFrames(int cueIndex)

@@ -1564,9 +1564,52 @@ namespace HaCreator.MapSimulator.Interaction
                 CharacterDataSectionSemanticRecordByteCountsByFlag = BuildCharacterDataSectionSemanticRecordByteCounts(snapshot, recordByteCountsByFlag),
                 CharacterDataSectionNativeRecordByteCountsByFlag = recordByteCountsByFlag,
                 CharacterDataSectionFieldByteCountsByFlag = BuildCharacterDataSectionFieldByteCounts(snapshot, countByteCountsByFlag),
+                CharacterDataPreludeOwnershipEntries = BuildCharacterDataPreludeOwnershipEntries(snapshot),
                 CharacterDataSubsectionOwnershipEntries = BuildCharacterDataSubsectionOwnershipEntries(snapshot),
                 CharacterDataRecordOwnershipEntries = BuildCharacterDataRecordOwnershipEntries(snapshot)
             };
+        }
+
+        private static IReadOnlyList<PacketCharacterDataPreludeOwnership> BuildCharacterDataPreludeOwnershipEntries(PacketCharacterDataSnapshot snapshot)
+        {
+            List<PacketCharacterDataPreludeOwnership> entries = new();
+            IReadOnlyDictionary<string, int> fieldByteCounts = snapshot.CharacterDataDecodePreludeFieldByteCounts;
+            int currentOffset = 0;
+
+            AddCharacterDataPreludeOwnershipEntry(entries, 0, "DbCharFlag", fieldByteCounts, ref currentOffset);
+            AddCharacterDataPreludeOwnershipEntry(entries, 1, nameof(PacketCharacterDataSnapshot.CombatOrders), fieldByteCounts, ref currentOffset);
+            AddCharacterDataPreludeOwnershipEntry(entries, 2, "BackwardUpdateEnabled", fieldByteCounts, ref currentOffset);
+            AddCharacterDataPreludeOwnershipEntry(entries, 3, nameof(PacketCharacterDataSnapshot.BackwardUpdateSubtype), fieldByteCounts, ref currentOffset);
+            AddCharacterDataPreludeOwnershipEntry(entries, 4, "BackwardUpdatePrimaryRemovedSerialNumberCount", fieldByteCounts, ref currentOffset);
+            AddCharacterDataPreludeOwnershipEntry(entries, 5, nameof(PacketCharacterDataSnapshot.BackwardUpdatePrimaryRemovedSerialNumbers), fieldByteCounts, ref currentOffset);
+            AddCharacterDataPreludeOwnershipEntry(entries, 6, "BackwardUpdateSecondaryRemovedSerialNumberCount", fieldByteCounts, ref currentOffset);
+            AddCharacterDataPreludeOwnershipEntry(entries, 7, nameof(PacketCharacterDataSnapshot.BackwardUpdateSecondaryRemovedSerialNumbers), fieldByteCounts, ref currentOffset);
+
+            return entries;
+        }
+
+        private static void AddCharacterDataPreludeOwnershipEntry(
+            ICollection<PacketCharacterDataPreludeOwnership> entries,
+            int nativeOrderIndex,
+            string fieldName,
+            IReadOnlyDictionary<string, int> fieldByteCounts,
+            ref int currentOffset)
+        {
+            int byteCount = fieldByteCounts != null &&
+                fieldByteCounts.TryGetValue(fieldName, out int mappedByteCount)
+                    ? mappedByteCount
+                    : 0;
+            int startOffset = currentOffset;
+            int endOffset = checked(startOffset + byteCount);
+            entries.Add(new PacketCharacterDataPreludeOwnership(
+                "CharacterData::Decode.Prelude",
+                nativeOrderIndex,
+                fieldName,
+                startOffset,
+                endOffset,
+                byteCount,
+                byteCount > 0));
+            currentOffset = endOffset;
         }
 
         private static IReadOnlyList<PacketCharacterDataRecordOwnership> BuildCharacterDataRecordOwnershipEntries(PacketCharacterDataSnapshot snapshot)
@@ -5912,6 +5955,15 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<string, int> FieldByteCounts,
         bool IsSemanticRecord);
 
+    internal readonly record struct PacketCharacterDataPreludeOwnership(
+        string Owner,
+        int NativeOrderIndex,
+        string FieldName,
+        int StartOffset,
+        int EndOffset,
+        int ByteCount,
+        bool IsPresent);
+
     internal readonly record struct PacketCharacterDataSkillRecord(
         int SkillId,
         int SkillLevel,
@@ -6367,6 +6419,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionNativeRecordByteCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, IReadOnlyDictionary<string, int>> CharacterDataSectionFieldByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyList<PacketCharacterDataPreludeOwnership> CharacterDataPreludeOwnershipEntries { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionStartOffsetsByFlag { get; init; } = null;
 

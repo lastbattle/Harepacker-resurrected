@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator
             trunkWindow.WindowHidden = HandleTrunkWindowHidden;
             trunkWindow.PacketOwnedGetItemRequested = HandlePacketOwnedTrunkGetItemRequested;
             trunkWindow.PacketOwnedPutItemRequested = HandlePacketOwnedTrunkPutItemRequested;
+            trunkWindow.PacketOwnedPutItemCountPreConfirmRequested = HandlePacketOwnedTrunkPutItemCountPreConfirmRequested;
         }
 
         private TrunkUI.PacketOwnedTrunkRequestResult HandlePacketOwnedTrunkGetItemRequested(
@@ -120,6 +121,50 @@ namespace HaCreator.MapSimulator
             }
 
             return DispatchPacketOwnedTrunkPutItemRequest(inventoryType, inventoryRowIndex, slotData, requestedQuantity);
+        }
+
+        private bool HandlePacketOwnedTrunkPutItemCountPreConfirmRequested(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData)
+        {
+            PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
+            if (!dispatcher.IsPacketOwnedTrunkDialogOpen ||
+                slotData == null ||
+                uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                return false;
+            }
+
+            IReadOnlyList<TrunkDialogClientParityText.ConfirmationStep> steps =
+                TrunkDialogClientParityText.BuildSendPutPreAskConfirmationChoreography(slotData);
+            if (steps.Count == 0)
+            {
+                return false;
+            }
+
+            return ShowPacketOwnedTrunkConfirmSequence(
+                confirmDialogWindow,
+                steps,
+                "CTrunkDlg::SendPutItemRequest",
+                "AskItemCount",
+                "Recovered CTrunkDlg::SendPutItemRequest pre-AskItemCount CUtilDlg::YesNo confirmation owner.",
+                onAccepted: () =>
+                {
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is not TrunkUI trunkWindow)
+                    {
+                        return;
+                    }
+
+                    if (!trunkWindow.BeginPacketOwnedPutItemCountEntryFromClientConfirm(
+                            inventoryType,
+                            inventoryRowIndex,
+                            slotData,
+                            out string statusMessage))
+                    {
+                        trunkWindow.RefreshSecurityStatus(statusMessage);
+                    }
+                });
         }
 
         private TrunkUI.PacketOwnedTrunkRequestResult DispatchPacketOwnedTrunkPutItemRequest(

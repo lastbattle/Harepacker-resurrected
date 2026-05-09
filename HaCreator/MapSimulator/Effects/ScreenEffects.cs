@@ -375,6 +375,8 @@ namespace HaCreator.MapSimulator.Effects
 
         private void StartStageTransitionToneFade(byte targetTone, int durationMs, int currentTimeMs, Action onComplete)
         {
+            SynchronizeStageTransitionToneFadeToTime(currentTimeMs);
+
             bool resetPendingFadeInTone = false;
             if (targetTone == byte.MaxValue && IsTickBefore(currentTimeMs, _stageTransitionFadeInEndTime))
             {
@@ -440,6 +442,29 @@ namespace HaCreator.MapSimulator.Effects
                 currentTimeMs,
                 onComplete);
             _stageTransitionToneFadeActive = true;
+        }
+
+        private void SynchronizeStageTransitionToneFadeToTime(int currentTimeMs)
+        {
+            if (!_fadeActive || !_stageTransitionToneFadeActive)
+            {
+                return;
+            }
+
+            int elapsed = CalculateElapsedMilliseconds(currentTimeMs, _fadeStartTime);
+            if (_fadeDuration <= 0 || elapsed >= _fadeDuration)
+            {
+                _fadeAlpha = _fadeTargetAlpha;
+                _fadeActive = false;
+                _fadeCompleteCallback = null;
+                LastFadeCompletionTimeMs = currentTimeMs;
+                CompleteStageTransitionToneFade();
+                return;
+            }
+
+            float progress = (float)elapsed / _fadeDuration;
+            _fadeAlpha = MathHelper.Lerp(_fadeStartAlpha, _fadeTargetAlpha, progress);
+            UpdateStageTransitionToneFade(progress);
         }
 
         private void CompleteImmediateStageTransitionToneFade(

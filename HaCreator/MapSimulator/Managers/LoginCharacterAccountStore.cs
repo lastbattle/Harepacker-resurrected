@@ -1312,15 +1312,25 @@ namespace HaCreator.MapSimulator.Managers
 
             if (accountId.HasValue && accountId.Value > 0)
             {
+                bool matchesAccount = clonedProfile.AccountId == accountId.Value;
+                bool canHaveExtraCharacter =
+                    matchesAccount &&
+                    clonedProfile.ResultFlag == 0 &&
+                    clonedProfile.CanHaveExtraCharacter;
                 return new LoginExtraCharInfoResultProfile
                 {
                     AccountId = accountId.Value,
-                    ResultFlag = clonedProfile.ResultFlag,
-                    CanHaveExtraCharacter = clonedProfile.CanHaveExtraCharacter
+                    ResultFlag = canHaveExtraCharacter ? (byte)0 : (byte)1,
+                    CanHaveExtraCharacter = canHaveExtraCharacter
                 };
             }
 
-            return clonedProfile;
+            return new LoginExtraCharInfoResultProfile
+            {
+                AccountId = clonedProfile.AccountId,
+                ResultFlag = clonedProfile.ResultFlag,
+                CanHaveExtraCharacter = clonedProfile.ResultFlag == 0 && clonedProfile.CanHaveExtraCharacter
+            };
         }
 
         private static int NormalizeBuyCharacterCount(

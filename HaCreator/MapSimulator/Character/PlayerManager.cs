@@ -57,6 +57,11 @@ namespace HaCreator.MapSimulator.Character
         public bool IsPlayerControlEnabled { get; set; } = true;
         internal bool IsMovementLockedByMobStatus => _currentMobStatusState.MovementLocked;
 
+        public bool PetAutoSpeaking(PetAutoSpeechEvent eventType, int currentTime)
+        {
+            return Pets.TryPetAutoSpeaking(eventType, currentTime);
+        }
+
         // Spawn point
         private Vector2 _spawnPoint;
 
@@ -111,6 +116,7 @@ namespace HaCreator.MapSimulator.Character
 
         // Sound callbacks
         private Action _onJumpSound;
+        private Action<int> _onClientJumpSkillCancelIngress;
         private Func<string> _jumpRestrictionMessageProvider;
         private Func<string> _jumpDownRestrictionMessageProvider;
         private Action<string> _onJumpRestricted;
@@ -273,6 +279,15 @@ namespace HaCreator.MapSimulator.Character
             if (Player != null)
             {
                 Player.SetJumpSoundCallback(onJump);
+            }
+        }
+
+        public void SetClientJumpSkillCancelIngressCallback(Action<int> onClientJumpSkillCancelIngress)
+        {
+            _onClientJumpSkillCancelIngress = onClientJumpSkillCancelIngress;
+            if (Player != null)
+            {
+                Player.SetClientJumpSkillCancelIngressCallback(onClientJumpSkillCancelIngress);
             }
         }
 
@@ -602,6 +617,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetPortableChairTamingMobLoader(tamingMobLoader);
             Player.SetSkillMorphLoader(Loader.LoadMorph);
             Player.SetJumpSoundCallback(_onJumpSound);
+            Player.SetClientJumpSkillCancelIngressCallback(_onClientJumpSkillCancelIngress);
             Player.SetWeaponSfxSoundCallback(PlayClientOwnedWeaponSfx);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _jumpDownRestrictionMessageProvider, _onJumpRestricted);
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
@@ -842,6 +858,7 @@ namespace HaCreator.MapSimulator.Character
                 : null;
             Player.SetPortableChairTamingMobLoader(portableChairTamingMobLoader);
             Player.SetJumpSoundCallback(_onJumpSound);
+            Player.SetClientJumpSkillCancelIngressCallback(_onClientJumpSkillCancelIngress);
             Player.SetWeaponSfxSoundCallback(PlayClientOwnedWeaponSfx);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _jumpDownRestrictionMessageProvider, _onJumpRestricted);
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);

@@ -1878,6 +1878,11 @@ namespace HaCreator.MapSimulator.Fields
             out RemoteTownPortalResolvedDestination destination)
         {
             destination = default;
+            if (!ShouldTryRemoteTownPortalTownSideWzFallback(IsRemoteTownPortalTownSideWzFallbackMap(townMapId)))
+            {
+                return false;
+            }
+
             if (preferredSourceMapId.HasValue)
             {
                 if (TryResolveRemoteTownPortalPreferredWzFallbackDestination(
@@ -1903,6 +1908,58 @@ namespace HaCreator.MapSimulator.Fields
 
             destination = new RemoteTownPortalResolvedDestination(sourceMapId, sourceX, sourceY);
             return true;
+        }
+
+        private static bool IsRemoteTownPortalTownSideWzFallbackMap(int mapId)
+        {
+            return IsRemoteTownPortalTownMap(mapId)
+                   || HasRemoteTownPortalPointInMap(mapId);
+        }
+
+        private static bool IsRemoteTownPortalTownMap(int mapId)
+        {
+            if (mapId <= 0)
+            {
+                return false;
+            }
+
+            string mapIdKey = mapId.ToString().PadLeft(9, '0');
+            if (Program.InfoManager?.MapsCache != null
+                && Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap)
+                && cachedMap?.Item5 != null)
+            {
+                return cachedMap.Item5.town;
+            }
+
+            WzImage mapImage = TryGetMapImageForRemoteTownPortalMetadataLookup(mapId);
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            bool shouldUnparse = !mapImage.Parsed;
+            try
+            {
+                if (!mapImage.Parsed)
+                {
+                    mapImage.ParseImage();
+                }
+
+                return mapImage["info"] is WzSubProperty infoProperty
+                       && InfoTool.GetOptionalInt(infoProperty["town"]) == 1;
+            }
+            finally
+            {
+                if (shouldUnparse)
+                {
+                    mapImage.UnparseImage();
+                }
+            }
+        }
+
+        private static bool ShouldTryRemoteTownPortalTownSideWzFallback(bool currentMapIsTownSide)
+        {
+            return currentMapIsTownSide;
         }
 
         private static bool CanRememberRemoteTownPortalPacketCastMetadataFromResolvedFallback(
@@ -4395,6 +4452,11 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalDestinationResolutionKind resolutionKind)
         {
             return ShouldRememberRemoteTownPortalWzObservedFieldMetadata(resolutionKind);
+        }
+
+        internal static bool ShouldTryRemoteTownPortalTownSideWzFallbackForTesting(bool currentMapIsTownSide)
+        {
+            return ShouldTryRemoteTownPortalTownSideWzFallback(currentMapIsTownSide);
         }
 
         internal static bool IsRemoteTownPortalSourceFallbackStartPortalForTesting(int? portalTypeId, string portalName)

@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.UI
         private const int AmountOffsetY = 34;
         private static readonly Color ClientDescriptionTextColor = Color.White;
         private static readonly Color ClientAmountTextColor = Color.Black;
+        internal const int ClientDialogOkControlId = PacketOwnedRewardNoticeWindow.ClientDialogOkControlId;
+        internal const int ClientDialogCancelControlId = PacketOwnedRewardNoticeWindow.ClientDialogCancelControlId;
         private const int OkButtonOffsetX = 204;
         private const int OkButtonOffsetY = 77;
 
@@ -33,6 +35,7 @@ namespace HaCreator.MapSimulator.UI
         private int _rank = 1;
         private bool _useAuthoredLayout = true;
         private KeyboardState _previousKeyboardState;
+        private int _lastActivatedClientControlId;
 
         public RandomMesoBagWindow(
             IReadOnlyDictionary<int, IDXObject> backgrounds,
@@ -48,6 +51,7 @@ namespace HaCreator.MapSimulator.UI
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
         public override bool IsModalDialogOwner => IsVisible;
+        internal int LastActivatedClientControlId => _lastActivatedClientControlId;
 
         internal static Point CalculateCenteredPosition(int viewportWidth, int viewportHeight, int frameWidth, int frameHeight)
         {
@@ -70,6 +74,7 @@ namespace HaCreator.MapSimulator.UI
             _rank = Math.Clamp(presentation?.Rank ?? 1, 1, 4);
             _descriptionText = presentation?.DescriptionText?.Trim() ?? string.Empty;
             _amountText = presentation?.AmountText?.Trim() ?? string.Empty;
+            _lastActivatedClientControlId = 0;
             Frame = _backgrounds.TryGetValue(_rank, out IDXObject background)
                 ? background
                 : _defaultBackground;
@@ -88,7 +93,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ApplyButtonLayout();
-            _okButton.ButtonClickReleased += _ => Hide();
+            _okButton.ButtonClickReleased += _ => ActivateClientDialogControl(ClientDialogOkControlId);
             AddButton(_okButton);
         }
 
@@ -106,10 +111,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (WasPressed(keyboardState, Keys.Enter)
-                || WasPressed(keyboardState, Keys.Escape))
+            int controlId = WasPressed(keyboardState, Keys.Enter)
+                ? ResolveClientDialogControlIdForKey(Keys.Enter)
+                : WasPressed(keyboardState, Keys.Escape)
+                    ? ResolveClientDialogControlIdForKey(Keys.Escape)
+                    : 0;
+            if (controlId != 0)
             {
-                Hide();
+                ActivateClientDialogControl(controlId);
             }
 
             _previousKeyboardState = keyboardState;
@@ -218,8 +227,17 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldDismissForKeyboard(Keys key)
         {
-            return key == Keys.Enter
-                || key == Keys.Escape;
+            return ResolveClientDialogControlIdForKey(key) != 0;
+        }
+
+        internal static int ResolveClientDialogControlIdForKey(Keys key)
+        {
+            return key switch
+            {
+                Keys.Enter => ClientDialogOkControlId,
+                Keys.Escape => ClientDialogCancelControlId,
+                _ => 0
+            };
         }
 
         internal static Point ResolveMessagePosition(int frameWidth, float measuredWidth, bool useAuthoredLayout)
@@ -242,6 +260,12 @@ namespace HaCreator.MapSimulator.UI
         private bool WasPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private void ActivateClientDialogControl(int controlId)
+        {
+            _lastActivatedClientControlId = controlId;
+            Hide();
         }
     }
 }

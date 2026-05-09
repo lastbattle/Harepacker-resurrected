@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _tooltipIconTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _infoIconRewardTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _rewardPreviewTextureCache = new();
+        private readonly Dictionary<int, Texture2D> _infoEffectPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D> _rootEffectPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _mobPreviewTextureCache = new();
         private readonly Dictionary<int, Texture2D[]> _consumeItemPreviewTextureCache = new();
@@ -817,14 +818,19 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] rewardPreviewTextures = HasDrawableBitmap(iconRewardTextures)
                 ? Array.Empty<Texture2D>()
                 : ResolveRewardPreviewTextures(itemId);
+            Texture2D infoEffectPreviewTexture = HasDrawableBitmap(iconRewardTextures) || HasDrawableBitmap(rewardPreviewTextures)
+                ? null
+                : ResolveInfoEffectPreviewTexture(itemId);
             Texture2D rootEffectPreviewTexture = HasDrawableBitmap(iconRewardTextures) || HasDrawableBitmap(rewardPreviewTextures)
+                                                                      || infoEffectPreviewTexture != null
                 ? null
                 : ResolveRootEffectPreviewTexture(itemId);
-            Texture2D[] mobPreviewTextures = HasDrawableBitmap(iconRewardTextures) || HasDrawableBitmap(rewardPreviewTextures) || rootEffectPreviewTexture != null
+            Texture2D[] mobPreviewTextures = HasDrawableBitmap(iconRewardTextures) || HasDrawableBitmap(rewardPreviewTextures) || infoEffectPreviewTexture != null || rootEffectPreviewTexture != null
                 ? Array.Empty<Texture2D>()
                 : ResolveMobPreviewTextures(itemId);
             Texture2D[] consumeItemPreviewTextures = HasDrawableBitmap(iconRewardTextures)
                                                      || HasDrawableBitmap(rewardPreviewTextures)
+                                                     || infoEffectPreviewTexture != null
                                                      || rootEffectPreviewTexture != null
                                                      || HasDrawableBitmap(mobPreviewTextures)
                 ? Array.Empty<Texture2D>()
@@ -898,6 +904,7 @@ namespace HaCreator.MapSimulator.UI
             float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
             float iconRewardHeight = MeasureHorizontalBitmapStripHeight(iconRewardTextures);
             float rewardPreviewHeight = MeasureHorizontalBitmapStripHeight(rewardPreviewTextures);
+            float infoEffectPreviewHeight = infoEffectPreviewTexture?.Height ?? 0f;
             float rootEffectPreviewHeight = rootEffectPreviewTexture?.Height ?? 0f;
             float mobPreviewHeight = MeasureHorizontalBitmapStripHeight(mobPreviewTextures);
             float consumeItemPreviewHeight = MeasureHorizontalBitmapStripHeight(consumeItemPreviewTextures);
@@ -909,6 +916,10 @@ namespace HaCreator.MapSimulator.UI
             else if (rewardPreviewHeight > 0f)
             {
                 bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + rewardPreviewHeight;
+            }
+            else if (infoEffectPreviewHeight > 0f)
+            {
+                bitmapPreviewHeight += (bitmapPreviewHeight > 0f ? TOOLTIP_BITMAP_GAP : 0f) + infoEffectPreviewHeight;
             }
             else if (rootEffectPreviewHeight > 0f)
             {
@@ -990,6 +1001,12 @@ namespace HaCreator.MapSimulator.UI
                 DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, stripY);
                 DrawCenteredTooltipBitmap(
                     sprite,
+                    infoEffectPreviewTexture,
+                    backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (infoEffectPreviewTexture?.Width ?? 0)) / 2),
+                    stripY,
+                    infoEffectPreviewTexture?.Width ?? 0);
+                DrawCenteredTooltipBitmap(
+                    sprite,
                     rootEffectPreviewTexture,
                     backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (rootEffectPreviewTexture?.Width ?? 0)) / 2),
                     stripY,
@@ -1007,6 +1024,12 @@ namespace HaCreator.MapSimulator.UI
                 DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, stripY);
                 DrawCenteredTooltipBitmap(
                     sprite,
+                    infoEffectPreviewTexture,
+                    backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (infoEffectPreviewTexture?.Width ?? 0)) / 2),
+                    stripY,
+                    infoEffectPreviewTexture?.Width ?? 0);
+                DrawCenteredTooltipBitmap(
+                    sprite,
                     rootEffectPreviewTexture,
                     backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - (rootEffectPreviewTexture?.Width ?? 0)) / 2),
                     stripY,
@@ -1021,6 +1044,11 @@ namespace HaCreator.MapSimulator.UI
             else if (rewardPreviewHeight > 0f)
             {
                 DrawHorizontalBitmapStrip(sprite, rewardPreviewTextures, backgroundRect, previewY);
+            }
+            else if (infoEffectPreviewHeight > 0f)
+            {
+                int effectX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - infoEffectPreviewTexture.Width) / 2);
+                sprite.Draw(infoEffectPreviewTexture, new Vector2(effectX, previewY), Color.White);
             }
             else if (rootEffectPreviewHeight > 0f)
             {
@@ -1334,6 +1362,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _rootEffectPreviewTextureCache[itemId] = texture;
+            return texture;
+        }
+
+        private Texture2D ResolveInfoEffectPreviewTexture(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_infoEffectPreviewTextureCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = null;
+            if (InventoryItemMetadataResolver.TryResolveInfoEffectFirstCanvas(itemId, out WzCanvasProperty effectCanvas))
+            {
+                texture = effectCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+
+            _infoEffectPreviewTextureCache[itemId] = texture;
             return texture;
         }
 

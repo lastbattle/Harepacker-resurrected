@@ -3694,6 +3694,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryBuildTimerSetOutboundRequest(int seconds, int currentTickCount, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
         {
+            return TryBuildTimerSetOutboundRequest(seconds, currentTickCount, clearExistingInfo: false, out request, out message);
+        }
+
+        internal bool TryBuildTimerSetOutboundRequest(int seconds, int currentTickCount, bool clearExistingInfo, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
             if (seconds <= 0)
             {
                 request = default;
@@ -3701,11 +3706,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            string clearPrefix = string.Empty;
+            if (clearExistingInfo)
+            {
+                ClearInfo(3);
+                clearPrefix = "CUIBattleRecord button 2003 accepted the StringPool 0x186B timer-start clear warning and ran ClearInfo(3) first. ";
+            }
+
             _timerSetMilliseconds = checked(seconds * 1000);
             _timerStopRemainMilliseconds = 0;
             _timerExpiryTick = unchecked(currentTickCount + _timerSetMilliseconds);
             bool hasRequest = TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message);
-            StatusMessage = $"CUIBattleRecord button 2003 staged timer auto-calc for {seconds.ToString(CultureInfo.InvariantCulture)} second(s) and mirrored RequestOnCalc(1).";
+            StatusMessage = $"{clearPrefix}CUIBattleRecord button 2003 staged timer auto-calc for {seconds.ToString(CultureInfo.InvariantCulture)} second(s) and mirrored RequestOnCalc(1).";
             AppendNote(StatusMessage);
             message = StatusMessage;
             return hasRequest;

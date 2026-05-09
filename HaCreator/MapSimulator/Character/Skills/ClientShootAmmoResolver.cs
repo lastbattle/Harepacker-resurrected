@@ -400,7 +400,7 @@ public static class ClientShootAmmoResolver
                     weaponCode,
                     weaponItemId,
                     queuedUseItemId,
-                    normalizedRequiredAmmoCount,
+                    supportBulletItemId > 0 ? 1 : normalizedRequiredAmmoCount,
                     refreshedRequiredSkillAmmoItemId,
                     queuedSelection.QueuedUseSlotIndex,
                     excludeElementalPellets,

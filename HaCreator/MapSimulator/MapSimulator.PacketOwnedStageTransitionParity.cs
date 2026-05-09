@@ -1034,16 +1034,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int durationMs = hasMoveVector && hasRotation
-                ? Math.Max(1, Math.Min(moveDurationMs, rotateDurationMs))
-                : hasMoveVector ? moveDurationMs : rotateDurationMs;
             movingState = new PacketOwnedNamedObjectMovingState(
                 currentTick,
-                durationMs,
+                hasMoveVector ? moveDurationMs : 0,
                 0,
                 0,
                 targetOffsetX,
                 targetOffsetY,
+                hasRotation ? rotateDurationMs : 0,
                 targetRotationDegrees,
                 vectorProfile.UsesEllipticalMove,
                 vectorProfile.EllipticalClockwise);
@@ -1089,6 +1087,7 @@ namespace HaCreator.MapSimulator
             int StartY,
             int TargetX,
             int TargetY,
+            int RotationDurationMs = 0,
             float TargetRotationDegrees = 0f,
             bool UsesEllipticalMove = false,
             bool EllipticalClockwise = true)
@@ -1102,27 +1101,39 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
-                int duration = Math.Max(1, DurationMs);
-                float phase = ((currentTick - StartTick) % duration) / (float)duration;
-                if (phase < 0f)
+                if (DurationMs > 0 && (TargetX != StartX || TargetY != StartY))
                 {
-                    phase += 1f;
+                    float movePhase = ResolvePacketOwnedNamedObjectAnimationPhase(currentTick, StartTick, DurationMs);
+                    ResolvePacketOwnedNamedObjectVectorMotionOffset(
+                        movePhase,
+                        StartX,
+                        StartY,
+                        TargetX,
+                        TargetY,
+                        UsesEllipticalMove,
+                        EllipticalClockwise,
+                        out int x,
+                        out int y,
+                        out _);
+                    item.Position = new Microsoft.Xna.Framework.Point(x, y);
+                }
+                else
+                {
+                    item.Position = new Microsoft.Xna.Framework.Point(StartX, StartY);
                 }
 
-                ResolvePacketOwnedNamedObjectVectorMotionOffset(
-                    phase,
-                    StartX,
-                    StartY,
-                    TargetX,
-                    TargetY,
-                    UsesEllipticalMove,
-                    EllipticalClockwise,
-                    out int x,
-                    out int y,
-                    out float rotationProgress);
-                item.Position = new Microsoft.Xna.Framework.Point(x, y);
-                item.SetLayerRotationDegrees(TargetRotationDegrees * rotationProgress);
+                item.SetLayerRotationDegrees(
+                    RotationDurationMs > 0 && Math.Abs(TargetRotationDegrees) > float.Epsilon
+                        ? TargetRotationDegrees * ResolvePacketOwnedNamedObjectAnimationPhase(currentTick, StartTick, RotationDurationMs)
+                        : 0f);
             }
+        }
+
+        internal static float ResolvePacketOwnedNamedObjectAnimationPhase(int currentTick, int startTick, int durationMs)
+        {
+            int duration = Math.Max(1, durationMs);
+            float phase = ((currentTick - startTick) % duration) / (float)duration;
+            return phase < 0f ? phase + 1f : phase;
         }
 
         private sealed record PacketOwnedNamedObjectAlphaPlaybackState(

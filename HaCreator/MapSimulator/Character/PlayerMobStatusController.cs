@@ -653,6 +653,11 @@ namespace HaCreator.MapSimulator.Character
             return false;
         }
 
+        internal int GetStatusValue(PlayerMobStatusEffect effect)
+        {
+            return _entries.TryGetValue(effect, out PlayerMobStatusEntry entry) ? entry.Value : 0;
+        }
+
         internal bool TryGetStatusSourceContext(
             PlayerMobStatusEffect effect,
             out int sourceSkillId,
@@ -1075,7 +1080,11 @@ namespace HaCreator.MapSimulator.Character
                     return false;
                 }
 
-                existingEntry.ExpirationTime = unchecked(currentTime + durationMs);
+                int proposedExpirationTime = unchecked(currentTime + durationMs);
+                existingEntry.ExpirationTime = ResolveLaterStatusExpirationTime(
+                    currentTime,
+                    existingEntry.ExpirationTime,
+                    proposedExpirationTime);
                 existingEntry.Value = value;
                 existingEntry.TickIntervalMs = tickIntervalMs;
                 existingEntry.NextTickTime = tickIntervalMs > 0 ? unchecked(currentTime + tickIntervalMs) : 0;
@@ -1380,6 +1389,18 @@ namespace HaCreator.MapSimulator.Character
         private static bool HasStatusTickReached(int currentTime, int targetTime)
         {
             return ClientOwnedAvatarEffectParity.HasUnsignedTickReached(currentTime, targetTime);
+        }
+
+        private static int ResolveLaterStatusExpirationTime(int currentTime, int existingExpirationTime, int proposedExpirationTime)
+        {
+            if (HasStatusTickReached(currentTime, existingExpirationTime))
+            {
+                return proposedExpirationTime;
+            }
+
+            return HasStatusTickReached(proposedExpirationTime, existingExpirationTime)
+                ? proposedExpirationTime
+                : existingExpirationTime;
         }
 
         internal static int ResolvePeriodicTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)

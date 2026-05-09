@@ -1177,13 +1177,14 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPendingRequestByTab[tab] = null;
             if (isLocalGuildGradeChange)
             {
+                SyncPacketGuildAuthorityFromLocalGradeChange(nextTitle, absoluteGrade);
                 ClearPacketGuildBoardAuthKey();
             }
 
             _lastPacketSyncSummaryByTab[tab] =
                 $"Client {ownerLabel}-result grade change set {entry.Name} (#{gradeChange.MemberId}) to grade {absoluteGrade} ({nextTitle})"
                 + (ownerId > 0 ? $" for {ownerLabel} {ownerId}." : ".")
-                + (isLocalGuildGradeChange ? " Local guild-board auth was cleared with the client grade-change branch." : string.Empty);
+                + (isLocalGuildGradeChange ? " Local guild authority and guild-board auth were refreshed with the client grade-change branch." : string.Empty);
             ResetSelectionAfterMutation(tab);
             NotifySocialChatObserved($"{entry.Name}'s {ownerLabel} grade changed to {nextTitle}.");
             return _lastPacketSyncSummaryByTab[tab];

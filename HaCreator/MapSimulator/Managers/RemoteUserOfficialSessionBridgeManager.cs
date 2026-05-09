@@ -751,54 +751,66 @@ namespace HaCreator.MapSimulator.Managers
             string buildTag,
             Dictionary<ushort, PortableChairRecordOpcodeEvidence> evidenceByOpcode)
         {
-            KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>? addEvidence = evidenceByOpcode
+            List<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>> addEvidence = evidenceByOpcode
                 .Where(entry =>
                     entry.Value.PacketType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordAdd
                     && entry.Value.HasOfficialSessionObservation
                     && entry.Value.HasExtendedAddPayload)
                 .OrderBy(entry => entry.Key)
-                .Cast<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>?>()
-                .FirstOrDefault();
-            KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>? removeEvidence = evidenceByOpcode
+                .ToList();
+            List<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>> removeEvidence = evidenceByOpcode
                 .Where(entry =>
                     entry.Value.PacketType == (int)Pools.RemoteUserPacketType.UserCoupleChairRecordRemove
                     && entry.Value.HasOfficialSessionObservation
                     && entry.Value.HasCompactRemovePayload)
                 .OrderBy(entry => entry.Key)
-                .Cast<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>?>()
-                .FirstOrDefault();
+                .ToList();
 
-            if (addEvidence.HasValue && removeEvidence.HasValue)
+            if (addEvidence.Count > 0 && removeEvidence.Count > 0)
             {
-                if (addEvidence.Value.Key == removeEvidence.Value.Key)
-                {
-                    return $"{buildTag}:conflict:same-opcode add={addEvidence.Value.Key} remove={removeEvidence.Value.Key}";
-                }
-
                 if (TryResolveOrderedPortableChairRecordProofForBuild(
                         buildTag,
-                        addEvidence.Value.Key,
-                        removeEvidence.Value.Key,
+                        addEvidence.Select(entry => entry.Key),
+                        removeEvidence.Select(entry => entry.Key),
                         out PortableChairRecordCaptureEntry addEntry,
                         out PortableChairRecordCaptureEntry removeEntry))
                 {
-                    return $"{buildTag}:ordered-official-add-remove-pair add={addEvidence.Value.Key} remove={removeEvidence.Value.Key} owner={addEntry.CharacterId} sequence={addEntry.Sequence}->{removeEntry.Sequence}";
+                    return $"{buildTag}:ordered-official-add-remove-pair add={addEntry.Opcode} remove={removeEntry.Opcode} owner={addEntry.CharacterId} sequence={addEntry.Sequence}->{removeEntry.Sequence}";
                 }
 
-                return $"{buildTag}:candidate:add-remove-pair add={addEvidence.Value.Key} remove={removeEvidence.Value.Key}; awaiting ordered same-owner official capture";
+                if (addEvidence.Any(add => removeEvidence.Any(remove => remove.Key == add.Key)))
+                {
+                    string conflictOpcodes = string.Join(
+                        "|",
+                        addEvidence
+                            .Select(add => add.Key)
+                            .Intersect(removeEvidence.Select(remove => remove.Key))
+                            .OrderBy(opcode => opcode));
+                    return $"{buildTag}:conflict:same-opcode add/remove={conflictOpcodes}; awaiting distinct ordered same-owner official capture";
+                }
+
+                return $"{buildTag}:candidate:add-remove-pair add={DescribePortableChairRecordCandidateOpcodes(addEvidence)} remove={DescribePortableChairRecordCandidateOpcodes(removeEvidence)}; awaiting ordered same-owner official capture";
             }
 
-            if (addEvidence.HasValue)
+            if (addEvidence.Count > 0)
             {
-                return $"{buildTag}:official-extended-add-only add={addEvidence.Value.Key}; awaiting compact remove";
+                return $"{buildTag}:official-extended-add-only add={DescribePortableChairRecordCandidateOpcodes(addEvidence)}; awaiting compact remove";
             }
 
-            if (removeEvidence.HasValue)
+            if (removeEvidence.Count > 0)
             {
-                return $"{buildTag}:official-compact-remove-only remove={removeEvidence.Value.Key}; awaiting extended add";
+                return $"{buildTag}:official-compact-remove-only remove={DescribePortableChairRecordCandidateOpcodes(removeEvidence)}; awaiting extended add";
             }
 
             return $"{buildTag}:manual-or-incomplete evidence only; awaiting official-session extended add and compact remove";
+        }
+
+        private static string DescribePortableChairRecordCandidateOpcodes(
+            IReadOnlyCollection<KeyValuePair<ushort, PortableChairRecordOpcodeEvidence>> evidence)
+        {
+            return evidence == null || evidence.Count == 0
+                ? "none"
+                : string.Join("|", evidence.Select(entry => entry.Key).OrderBy(opcode => opcode));
         }
 
         private bool TryResolveOrderedPortableChairRecordProofForBuild(
@@ -808,7 +820,31 @@ namespace HaCreator.MapSimulator.Managers
             out PortableChairRecordCaptureEntry addEntry,
             out PortableChairRecordCaptureEntry removeEntry)
         {
+            return TryResolveOrderedPortableChairRecordProofForBuild(
+                buildTag,
+                new[] { addOpcode },
+                new[] { removeOpcode },
+                out addEntry,
+                out removeEntry);
+        }
+
+        private bool TryResolveOrderedPortableChairRecordProofForBuild(
+            string buildTag,
+            IEnumerable<ushort> addOpcodes,
+            IEnumerable<ushort> removeOpcodes,
+            out PortableChairRecordCaptureEntry addEntry,
+            out PortableChairRecordCaptureEntry removeEntry)
+        {
             string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+            HashSet<ushort> addOpcodeSet = new(addOpcodes ?? Enumerable.Empty<ushort>());
+            HashSet<ushort> removeOpcodeSet = new(removeOpcodes ?? Enumerable.Empty<ushort>());
+            if (addOpcodeSet.Count == 0 || removeOpcodeSet.Count == 0)
+            {
+                addEntry = default;
+                removeEntry = default;
+                return false;
+            }
+
             List<PortableChairRecordCaptureEntry> entries = _portableChairRecordCaptureOrder
                 .Where(entry =>
                     entry.IsOfficialSession
@@ -820,7 +856,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 PortableChairRecordCaptureEntry candidateAdd = entries[i];
                 if (!string.Equals(candidateAdd.Operation, "add", StringComparison.OrdinalIgnoreCase)
-                    || candidateAdd.Opcode != addOpcode
+                    || !addOpcodeSet.Contains(candidateAdd.Opcode)
                     || candidateAdd.PayloadLength != sizeof(int) * 4
                     || candidateAdd.CharacterId <= 0)
                 {
@@ -831,7 +867,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     PortableChairRecordCaptureEntry candidateRemove = entries[j];
                     if (string.Equals(candidateRemove.Operation, "remove", StringComparison.OrdinalIgnoreCase)
-                        && candidateRemove.Opcode == removeOpcode
+                        && removeOpcodeSet.Contains(candidateRemove.Opcode)
                         && candidateRemove.PayloadLength == sizeof(int)
                         && candidateRemove.CharacterId == candidateAdd.CharacterId)
                     {

@@ -1984,6 +1984,10 @@ namespace HaCreator.MapSimulator.UI
 
             snapshot = ApplyPendingWishlistSearchContext(snapshot);
             snapshot = ApplyPacketOwnedWishlistSearchSessionIds(snapshot, trailingPayload.Length);
+            if (!ValidatePendingPacketOwnedWishlistSearchSnapshotContext(snapshot))
+            {
+                return;
+            }
 
             string normalizedSignature = string.IsNullOrWhiteSpace(trailingPayloadSignature)
                 ? "none"
@@ -2033,6 +2037,32 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.ServiceSessionId,
                 effectiveSearchSessionId);
             return snapshot;
+        }
+
+        private bool ValidatePendingPacketOwnedWishlistSearchSnapshotContext(AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
+        {
+            if (_packetOwnedWishlistPendingSearchRequestId < 0)
+            {
+                return true;
+            }
+
+            if (AdminShopPacketOwnedWishlistSearchSessionParity.IsSnapshotCompatibleWithPendingRequestContext(
+                    _packetOwnedWishlistPendingSearchQuery,
+                    _packetOwnedWishlistPendingSearchCategoryKey,
+                    _packetOwnedWishlistPendingSearchPriceRangeIndex,
+                    _packetOwnedWishlistPendingSearchRemotePageIndex,
+                    _packetOwnedWishlistPendingSearchRemotePageCount,
+                    snapshot,
+                    out string mismatchReason))
+            {
+                return true;
+            }
+
+            ClearPacketOwnedWishlistSearchSnapshot();
+            _packetOwnedAdminShopSession.SetLastOwnerState(
+                $"Packet 366 wishlist search rows were ignored because {mismatchReason}; the owner kept the pending SearchItemName request staged.");
+            AdvancePacketOwnedWishlistSearchStateToken();
+            return false;
         }
 
         private AdminShopPacketOwnedWishlistSearchSnapshot BuildStateOnlyPacketOwnedWishlistSearchSnapshot(
@@ -6219,17 +6249,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static int ResolvePacketOwnedWishlistRemotePageCount(AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
         {
-            if (snapshot == null)
-            {
-                return 0;
-            }
-
-            if (snapshot.RemoteTotalCount >= 0 && snapshot.RemotePageSize > 0)
-            {
-                return Math.Max(0, (int)Math.Ceiling(snapshot.RemoteTotalCount / (double)snapshot.RemotePageSize));
-            }
-
-            return snapshot.RemotePageIndex >= 0 ? snapshot.RemotePageIndex + 1 : 0;
+            return AdminShopPacketOwnedWishlistSearchSessionParity.ResolveRemotePageCount(snapshot);
         }
 
         private string BuildPacketOwnedWishlistSearchSessionOnlySummary(

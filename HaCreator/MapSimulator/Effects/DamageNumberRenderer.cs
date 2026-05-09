@@ -1340,11 +1340,19 @@ namespace HaCreator.MapSimulator.Effects
             return new CanvasLayerRecoveredCompositeSurfaceSettings(
                 TemporaryCanvasFactoryStringPoolId,
                 NativeCanvasFactoryName: "Canvas",
+                NativeCanvasInterfaceName: "IWzCanvas",
+                NativeCanvasInterfaceGuid: "7600dc6c-9328-4bff-9624-5b0f5c01179e",
+                NativeLayerInterfaceName: "IWzGr2DLayer",
+                NativeLayerInterfaceGuid: "6dc8c7ce-8e81-4420-b4f6-4b60b7d5fcdf",
                 ManagedSurfaceType: nameof(RenderTarget2D),
                 ManagedSurfaceFormat: nameof(SurfaceFormat.Color),
                 ManagedClearColor: nameof(Color.Transparent),
+                ManagedSpriteSortMode: nameof(SpriteSortMode.Deferred),
                 ManagedBlendState: nameof(BlendState.AlphaBlend),
                 ManagedSamplerState: nameof(SamplerState.PointClamp),
+                ManagedDepthStencilState: nameof(DepthStencilState.None),
+                ManagedRasterizerState: nameof(RasterizerState.CullNone),
+                RestoresPreviousRenderTargets: true,
                 UsesNativeIWzCanvas: false,
                 UsesNativeIWzGr2DLayer: false,
                 IsByteIdenticalNativeComposite: false);
@@ -1516,46 +1524,53 @@ namespace HaCreator.MapSimulator.Effects
                 SurfaceFormat.Color,
                 DepthFormat.None);
 
-            _device.SetRenderTarget(renderTarget);
-            _device.Clear(Color.Transparent);
-
-            using (SpriteBatch compositeBatch = new SpriteBatch(_device))
+            RenderTargetBinding[] previousRenderTargets = _device.GetRenderTargets();
+            try
             {
-                compositeBatch.Begin(
-                    SpriteSortMode.Deferred,
-                    BlendState.AlphaBlend,
-                    SamplerState.PointClamp,
-                    DepthStencilState.None,
-                RasterizerState.CullNone);
+                _device.SetRenderTarget(renderTarget);
+                _device.Clear(Color.Transparent);
 
-                if (visual.MissSprite is PreparedSpriteDrawInfo preparedMiss
-                    && specialTextDigitSet?.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out Texture2D missTexture) == true)
+                using (SpriteBatch compositeBatch = new SpriteBatch(_device))
                 {
-                    compositeBatch.Draw(
-                        missTexture,
-                        new Vector2(preparedMiss.DrawOffsetX, preparedMiss.DrawOffsetY),
-                        Color.White);
-                }
-                else
-                {
-                    foreach (PreparedDigitDrawInfo entry in visual.Digits)
+                    compositeBatch.Begin(
+                        SpriteSortMode.Deferred,
+                        BlendState.AlphaBlend,
+                        SamplerState.PointClamp,
+                        DepthStencilState.None,
+                        RasterizerState.CullNone);
+
+                    if (visual.MissSprite is PreparedSpriteDrawInfo preparedMiss
+                        && specialTextDigitSet?.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out Texture2D missTexture) == true)
                     {
-                        DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
-                        Texture2D digitTexture = digitSet.Digits[entry.Digit];
-                        if (digitTexture == null)
-                            continue;
-
                         compositeBatch.Draw(
-                            digitTexture,
-                            new Vector2(entry.DrawOffsetX, entry.DrawOffsetY),
+                            missTexture,
+                            new Vector2(preparedMiss.DrawOffsetX, preparedMiss.DrawOffsetY),
                             Color.White);
                     }
-                }
+                    else
+                    {
+                        foreach (PreparedDigitDrawInfo entry in visual.Digits)
+                        {
+                            DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                            Texture2D digitTexture = digitSet.Digits[entry.Digit];
+                            if (digitTexture == null)
+                                continue;
 
-                compositeBatch.End();
+                            compositeBatch.Draw(
+                                digitTexture,
+                                new Vector2(entry.DrawOffsetX, entry.DrawOffsetY),
+                                Color.White);
+                        }
+                    }
+
+                    compositeBatch.End();
+                }
+            }
+            finally
+            {
+                _device.SetRenderTargets(previousRenderTargets);
             }
 
-            _device.SetRenderTarget(null);
             return renderTarget;
         }
 

@@ -868,24 +868,89 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<KeyConfigWindow.PacketSlotVisualState>();
             }
 
-            KeyConfigWindow.PacketSlotVisualState[] states = new KeyConfigWindow.PacketSlotVisualState[_packetOwnedFuncKeyMapped.Length];
-            for (int scanCode = 0; scanCode < _packetOwnedFuncKeyMapped.Length; scanCode++)
+            const int clientDuplicateDrawSlotCount = 2;
+            KeyConfigWindow.PacketSlotVisualState[] states = new KeyConfigWindow.PacketSlotVisualState[_packetOwnedFuncKeyMapped.Length + clientDuplicateDrawSlotCount];
+            for (int displayScanCode = 0; displayScanCode < states.Length; displayScanCode++)
             {
-                PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
+                int sourceScanCode = ResolvePacketOwnedKeyConfigDisplaySourceScanCode(displayScanCode);
+                PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(sourceScanCode);
+                if (!ShouldDrawPacketOwnedKeyConfigDisplaySlot(displayScanCode, sourceScanCode, entry))
+                {
+                    states[displayScanCode] = new KeyConfigWindow.PacketSlotVisualState(
+                        displayScanCode,
+                        Keys.None,
+                        0,
+                        0,
+                        -1,
+                        default,
+                        sourceScanCode);
+                    continue;
+                }
+
                 int packetPaletteSlotId = entry.Type != 0
                     ? ResolvePacketOwnedKeyConfigPaletteSlotId(entry.Type, entry.Id)
                     : -1;
                 KeyConfigWindow.ShortcutVisualState shortcutVisualState = BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(entry);
-                states[scanCode] = new KeyConfigWindow.PacketSlotVisualState(
-                    scanCode,
-                    ResolvePacketOwnedScanCodeKey(scanCode),
+                states[displayScanCode] = new KeyConfigWindow.PacketSlotVisualState(
+                    displayScanCode,
+                    ResolvePacketOwnedScanCodeKey(sourceScanCode),
                     entry.Type,
                     entry.Id,
                     packetPaletteSlotId,
-                    shortcutVisualState);
+                    shortcutVisualState,
+                    sourceScanCode);
             }
 
             return states;
+        }
+
+        internal static int ResolvePacketOwnedKeyConfigDisplaySourceScanCode(int displayScanCode)
+        {
+            // CUIKeyConfig::DrawFuncKeyMapped draws 89 packet entries, but it also copies three
+            // specific source entries to authored shortcut positions outside the straight index path:
+            // i == 29 can draw the item-only shortcut position 89, i == 42 is copied to position 54,
+            // and i == 56 is copied to position 90.
+            return displayScanCode switch
+            {
+                54 => 42,
+                89 => 29,
+                90 => 56,
+                _ => displayScanCode,
+            };
+        }
+
+        internal static bool ShouldDrawPacketOwnedKeyConfigDisplaySlotForTests(int displayScanCode, byte entryType, int entryId)
+        {
+            return ShouldDrawPacketOwnedKeyConfigDisplaySlot(
+                displayScanCode,
+                ResolvePacketOwnedKeyConfigDisplaySourceScanCode(displayScanCode),
+                new PacketOwnedFuncKeyMappedEntry(entryType, entryId));
+        }
+
+        private static bool ShouldDrawPacketOwnedKeyConfigDisplaySlot(
+            int displayScanCode,
+            int sourceScanCode,
+            PacketOwnedFuncKeyMappedEntry entry)
+        {
+            if (entry.Type == 0 || entry.Id <= 0)
+            {
+                return false;
+            }
+
+            if (displayScanCode == 89)
+            {
+                return sourceScanCode == 29
+                    && (entry.Type == PacketOwnedFuncKeyItemType
+                        || entry.Type == PacketOwnedFuncKeyItemTypeAlt
+                        || entry.Type == PacketOwnedFuncKeyItemTypeCash);
+            }
+
+            if (displayScanCode == 90)
+            {
+                return sourceScanCode == 56;
+            }
+
+            return displayScanCode < PacketOwnedFuncKeyEntryCount || sourceScanCode != displayScanCode;
         }
 
         private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(PacketOwnedFuncKeyMappedEntry entry)

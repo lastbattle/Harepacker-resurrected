@@ -20,6 +20,7 @@ namespace HaSharedLibrary.Render.DX
         private int currFrame = 0;
         private int lastFrameSwitchTime = 0;
         private bool animationStopped = false;
+        private int mapObjectAnimationRepeatMode = 0;
 
         // 1 frame
         /// <summary>
@@ -222,7 +223,16 @@ namespace HaSharedLibrary.Render.DX
             // Animated
             if (TickCount - lastFrameSwitchTime > frames[currFrame].Delay)
             {
-                currFrame = (currFrame + 1) % frameCount; // Use modulo instead of if check
+                if (mapObjectAnimationRepeatMode == -1 && currFrame >= frameCount - 1)
+                {
+                    animationStopped = true;
+                    _lastFrameDrawn = frames[currFrame];
+                    return frames[currFrame];
+                }
+
+                currFrame = mapObjectAnimationRepeatMode == -1
+                    ? Math.Min(currFrame + 1, frameCount - 1)
+                    : (currFrame + 1) % frameCount;
                 lastFrameSwitchTime = TickCount;
             }
             return frames[currFrame];
@@ -237,6 +247,7 @@ namespace HaSharedLibrary.Render.DX
             currFrame = 0;
             lastFrameSwitchTime = tickCount;
             animationStopped = false;
+            mapObjectAnimationRepeatMode = 0;
             _lastFrameDrawn = notAnimated ? frame0 : frames?[0];
         }
 
@@ -253,14 +264,13 @@ namespace HaSharedLibrary.Render.DX
 
             if (repeatMode == -1)
             {
-                animationStopped = true;
-                lastFrameSwitchTime = tickCount;
-                _lastFrameDrawn = frames[currFrame];
+                mapObjectAnimationRepeatMode = -1;
                 return;
             }
 
             if (repeatMode == -2)
             {
+                mapObjectAnimationRepeatMode = 0;
                 if (animationStopped)
                 {
                     currFrame = 0;
@@ -272,6 +282,7 @@ namespace HaSharedLibrary.Render.DX
                 return;
             }
 
+            mapObjectAnimationRepeatMode = repeatMode;
             animationStopped = false;
         }
 

@@ -31,6 +31,8 @@ namespace HaCreator.MapSimulator.UI
         private const int CloseButtonTopMargin = 8;
         private const int ClientChromeCloseButtonWidth = 12;
         private const int ClientChromeCloseButtonHeight = 12;
+        internal const int ClientDialogOkControlId = 1;
+        internal const int ClientDialogCancelControlId = 2;
 
         private string _title = string.Empty;
         private string _body = string.Empty;
@@ -43,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _defaultFrame;
         private readonly IDXObject _separatorLine;
         private KeyboardState _previousKeyboardState;
+        private int _lastActivatedClientControlId;
 
         public PacketOwnedRewardNoticeWindow(
             IReadOnlyDictionary<int, IDXObject> framesByLineCount,
@@ -58,6 +61,7 @@ namespace HaCreator.MapSimulator.UI
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
         public override bool IsModalDialogOwner => IsVisible;
+        internal int LastActivatedClientControlId => _lastActivatedClientControlId;
 
         internal static int ResolveCenteredBodyLineX(float measuredWidth)
         {
@@ -149,8 +153,17 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldDismissForKeyboard(Keys key)
         {
-            return key == Keys.Enter
-                || key == Keys.Escape;
+            return ResolveClientDialogControlIdForKey(key) != 0;
+        }
+
+        internal static int ResolveClientDialogControlIdForKey(Keys key)
+        {
+            return key switch
+            {
+                Keys.Enter => ClientDialogOkControlId,
+                Keys.Escape => ClientDialogCancelControlId,
+                _ => 0
+            };
         }
 
         internal static int ResolveAvailableFrameLineCount(
@@ -217,6 +230,7 @@ namespace HaCreator.MapSimulator.UI
             _body = body?.Trim() ?? string.Empty;
             _autoSeparated = autoSeparated;
             _tightLine = tightLine;
+            _lastActivatedClientControlId = 0;
             UpdateLayout();
         }
 
@@ -225,14 +239,14 @@ namespace HaCreator.MapSimulator.UI
             _okButton = okButton;
             if (_okButton != null)
             {
-                _okButton.ButtonClickReleased += _ => Hide();
+                _okButton.ButtonClickReleased += _ => ActivateClientDialogControl(ClientDialogOkControlId);
                 AddButton(_okButton);
             }
 
             if (closeButton != null)
             {
                 _closeButton = closeButton;
-                closeButton.ButtonClickReleased += _ => Hide();
+                closeButton.ButtonClickReleased += _ => ActivateClientDialogControl(ClientDialogCancelControlId);
                 InitializeCloseButton(closeButton);
             }
 
@@ -260,10 +274,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (WasPressed(keyboardState, Keys.Enter)
-                || WasPressed(keyboardState, Keys.Escape))
+            int controlId = WasPressed(keyboardState, Keys.Enter)
+                ? ResolveClientDialogControlIdForKey(Keys.Enter)
+                : WasPressed(keyboardState, Keys.Escape)
+                    ? ResolveClientDialogControlIdForKey(Keys.Escape)
+                    : 0;
+            if (controlId != 0)
             {
-                Hide();
+                ActivateClientDialogControl(controlId);
             }
 
             _previousKeyboardState = keyboardState;
@@ -449,6 +467,12 @@ namespace HaCreator.MapSimulator.UI
         private bool WasPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private void ActivateClientDialogControl(int controlId)
+        {
+            _lastActivatedClientControlId = controlId;
+            Hide();
         }
 
         private void UpdateLayout()

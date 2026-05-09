@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillLoader
     {
+        private const int FinalCutSkillId = 4341002;
+
         private readonly record struct SummonActionCacheKey(int SkillId, int SkillLevel, string ActionKey);
         private readonly record struct SummonSourceCandidate(int SkillId, SkillData Skill, WzImageProperty SkillNode);
         private readonly record struct ItemBulletAnimationCacheKey(int ItemId, int WeaponItemId, int WeaponCode);
@@ -1144,11 +1146,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool looksLikeMovement = MatchesAction(skill.ActionName, "teleport", "rush", "dash", "flash", "jump", "step", "fly");
             bool looksLikePrepare = hasPrepare || MatchesAction(skill.ActionName, "prepare", "charge", "keydown", "keyDown");
             bool isSuddenDeathSkill = GetInt(infoNode, "suddenDeath") == 1;
+            skill.UsesSuddenDeathAvatarEffectOwner = isSuddenDeathSkill;
             bool hasPersistentAvatarEffect = HasPersistentAvatarEffectBranches(
                 skillNode.WzProperties.Select(child => child.Name),
                 isSuddenDeathSkill);
             skill.HideAvatarEffectOnRotateAction = ShouldHidePersistentAvatarEffectOnRotateAction(
                 skillNode.WzProperties.Select(child => child.Name),
+                isSuddenDeathSkill);
+            skill.ClientAvatarEffectLayerOwnerName = ResolveClientOwnedPersistentAvatarEffectLayerOwnerName(
+                skill.SkillId,
                 isSuddenDeathSkill);
 
             var commonNode = skillNode["common"];
@@ -2304,6 +2310,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.AvatarOverlayEffect ??= repeatAnimation;
             }
+        }
+
+        internal static string ResolveClientOwnedPersistentAvatarEffectLayerOwnerNameForTesting(
+            int skillId,
+            bool suddenDeath)
+        {
+            return ResolveClientOwnedPersistentAvatarEffectLayerOwnerName(skillId, suddenDeath);
+        }
+
+        private static string ResolveClientOwnedPersistentAvatarEffectLayerOwnerName(
+            int skillId,
+            bool suddenDeath)
+        {
+            if (skillId == FinalCutSkillId)
+            {
+                return PlayerCharacter.ClientOwnedFinalCutAvatarEffectOwnerName;
+            }
+
+            return suddenDeath
+                ? PlayerCharacter.ClientOwnedSuddenDeathAvatarEffectOwnerName
+                : null;
         }
 
         private void LoadAfterImages(SkillData skill, WzImageProperty skillNode)
@@ -6892,6 +6919,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
             }
+
+            if (skillNode.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in skillNode.WzProperties)
+            {
+                if (child == null
+                    || string.IsNullOrWhiteSpace(child.Name)
+                    || !TryReadClientSkillAssetUolRecordVariantLevel(child.Name, out _, out _))
+                {
+                    continue;
+                }
+
+                yield return child;
+                WzImageProperty variantInfoNode = child["info"];
+                if (variantInfoNode != null)
+                {
+                    yield return variantInfoNode;
+                }
+            }
         }
 
         private static bool TryAddClientSummonedUolCandidateNode(HashSet<string> yieldedNodePaths, WzImageProperty node)
@@ -6929,7 +6978,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (string propertyName in propertyNames)
             {
                 string value = GetClientSummonedUolCandidateValue(node, propertyName);
-                if (!string.IsNullOrWhiteSpace(value))
+                bool isStructuredTableText = TryParseRequiredSkillId(skillNode?.Name, out int skillId)
+                                             && EnumerateClientSummonedUolStructuredTableRecordCandidateValues(
+                                                 value,
+                                                 skillId).Any();
+                if (!string.IsNullOrWhiteSpace(value) && !isStructuredTableText)
                 {
                     yield return new ClientSummonedUolCandidateValue(
                         value,
@@ -6964,6 +7017,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             WzImageProperty tableNode = node[propertyName];
+            string tableValue = GetClientSummonedUolCandidateValue(tableNode);
+            foreach (ClientSummonedUolStructuredRecordCandidateValue recordCandidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValues(
+                         tableValue,
+                         skillId))
+            {
+                string[] contextPathParts = BuildClientSummonedUolCandidateContextPathParts(
+                    node,
+                    propertyName,
+                    skillNode);
+                if (recordCandidate.HasVariantLevel)
+                {
+                    contextPathParts = BuildClientSkillAssetVariantContextPathParts(
+                        contextPathParts,
+                        recordCandidate.IsCharacterLevelVariant,
+                        recordCandidate.VariantLevel,
+                        propertyName);
+                }
+
+                yield return new ClientSummonedUolCandidateValue(
+                    recordCandidate.Value,
+                    contextPathParts);
+            }
+
             foreach (ClientSummonedUolCandidateValue recordCandidate in EnumerateClientSummonedUolTableRecordCandidateValues(
                          tableNode,
                          node,
@@ -7039,14 +7115,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                         BuildResolvedClientSummonedUolNestedPathParts(variantEntryPathParts, FieldName));
                 }
 
-                foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) tableValue in EnumerateClientSummonedUolTableEntryValues(
+                foreach ((WzImageProperty Property, string RelativePath, bool UseNameAsValue) nestedTableValue in EnumerateClientSummonedUolTableEntryValues(
                              tableEntry,
                              relativePathPrefix: string.Empty,
                              depthRemaining: ClientSummonedUolTableEntryTraversalDepth))
                 {
-                    value = tableValue.UseNameAsValue
-                        ? tableValue.Property?.Name
-                        : GetClientSummonedUolCandidateValue(tableValue.Property);
+                    value = nestedTableValue.UseNameAsValue
+                        ? nestedTableValue.Property?.Name
+                        : GetClientSummonedUolCandidateValue(nestedTableValue.Property);
                     if (string.IsNullOrWhiteSpace(value))
                     {
                         continue;
@@ -7054,7 +7130,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     yield return new ClientSummonedUolCandidateValue(
                         value,
-                        BuildResolvedClientSummonedUolNestedPathParts(variantEntryPathParts, tableValue.RelativePath));
+                        BuildResolvedClientSummonedUolNestedPathParts(variantEntryPathParts, nestedTableValue.RelativePath));
                 }
             }
         }
@@ -7632,6 +7708,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            string normalizedWholeName = NormalizeClientSummonedUolHeuristicPathSegment(fieldName);
+            if (!string.Equals(normalizedWholeName, normalizedName, StringComparison.Ordinal))
+            {
+                if (TryReadClientSkillAssetUolCompactRecordVariantLevel(
+                        normalizedWholeName,
+                        ClientSkillAssetCharacterLevelFieldNames,
+                        out variantLevel))
+                {
+                    isCharacterLevelVariant = true;
+                    return true;
+                }
+
+                if (TryReadClientSkillAssetUolCompactRecordVariantLevel(
+                        normalizedWholeName,
+                        ClientSkillAssetSkillLevelFieldNames,
+                        out variantLevel))
+                {
+                    isCharacterLevelVariant = false;
+                    return true;
+                }
+            }
+
             return false;
         }
 
@@ -7806,10 +7904,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             bool yieldedStructuredRecordCandidate = false;
-            foreach (string recordValue in EnumerateClientSummonedUolStructuredTableRecordValues(tableEntry.Name, skillId))
+            foreach (string nameVariant in EnumerateClientSummonedUolDecodedTextVariants(tableEntry.Name))
             {
-                yieldedStructuredRecordCandidate = true;
-                yield return recordValue;
+                foreach (string recordValue in EnumerateClientSummonedUolStructuredTableRecordValues(nameVariant, skillId))
+                {
+                    yieldedStructuredRecordCandidate = true;
+                    yield return recordValue;
+                }
             }
 
             if (yieldedStructuredRecordCandidate || IsClientSummonedUolStructuredTableRecord(tableEntry.Name))
@@ -7818,10 +7919,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string skillIdText = skillId.ToString(CultureInfo.InvariantCulture);
-            if (ContainsClientSummonedUolTableSkillIdToken(tableEntry.Name, skillIdText)
-                && LooksLikeClientSummonedUolHeuristicCandidateValue(tableEntry.Name))
+            foreach (string nameVariant in EnumerateClientSummonedUolDecodedTextVariants(tableEntry.Name))
             {
-                yield return tableEntry.Name;
+                if (ContainsClientSummonedUolTableSkillIdToken(nameVariant, skillIdText)
+                    && LooksLikeClientSummonedUolHeuristicCandidateValue(nameVariant))
+                {
+                    yield return nameVariant;
+                    yield break;
+                }
             }
         }
 
@@ -7982,13 +8087,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
-            foreach (string recordFragment in EnumerateClientSummonedUolStructuredTableRecordFragments(recordText))
+            foreach (string recordTextVariant in EnumerateClientSummonedUolDecodedTextVariants(recordText))
             {
-                foreach (ClientSummonedUolStructuredRecordCandidateValue candidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValuesForSingleRecord(
-                             recordFragment,
-                             skillId))
+                foreach (string recordFragment in EnumerateClientSummonedUolStructuredTableRecordFragments(recordTextVariant))
                 {
-                    yield return candidate;
+                    foreach (ClientSummonedUolStructuredRecordCandidateValue candidate in EnumerateClientSummonedUolStructuredTableRecordCandidateValuesForSingleRecord(
+                                 recordFragment,
+                                 skillId))
+                    {
+                        yield return candidate;
+                    }
                 }
             }
         }
@@ -8144,7 +8252,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? '\t'
                 : lines[0].IndexOf(',') >= 0
                     ? ','
-                    : '\0';
+                    : lines[0].IndexOf('|') >= 0
+                        ? '|'
+                        : lines[0].IndexOf(';') >= 0
+                            ? ';'
+                            : '\0';
             if (delimiter == '\0')
             {
                 yield break;
@@ -8330,25 +8442,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
-            if (int.TryParse(fieldValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSkillId)
-                && parsedSkillId > 0)
+            var yieldedSkillIds = new HashSet<int>();
+            foreach (string fieldValueVariant in EnumerateClientSummonedUolDecodedTextVariants(fieldValue))
             {
-                yield return parsedSkillId;
-            }
-
-            foreach (int linkedSkillId in ParseLinkedSkillIds(fieldValue))
-            {
-                if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                if (int.TryParse(fieldValueVariant.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSkillId)
+                    && parsedSkillId > 0
+                    && yieldedSkillIds.Add(parsedSkillId))
                 {
-                    yield return linkedSkillId;
+                    yield return parsedSkillId;
                 }
-            }
 
-            foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(fieldValue, contextSkillId: 0))
-            {
-                if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                foreach (int linkedSkillId in ParseLinkedSkillIds(fieldValueVariant))
                 {
-                    yield return fallbackSkillId;
+                    if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId)
+                        && yieldedSkillIds.Add(linkedSkillId))
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+
+                foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(fieldValueVariant, contextSkillId: 0))
+                {
+                    if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId)
+                        && yieldedSkillIds.Add(fallbackSkillId))
+                    {
+                        yield return fallbackSkillId;
+                    }
                 }
             }
         }
@@ -8788,7 +8907,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (child == null
                     || string.IsNullOrWhiteSpace(child.Name)
                     || child.Name.Equals(skillIdText, StringComparison.OrdinalIgnoreCase)
-                    || !ContainsClientSummonedUolTableSkillIdToken(child.Name, skillIdText))
+                    || !EnumerateClientSummonedUolDecodedTextVariants(child.Name)
+                        .Any(nameVariant => ContainsClientSummonedUolTableSkillIdToken(nameVariant, skillIdText)))
                 {
                     continue;
                 }
@@ -9987,41 +10107,211 @@ namespace HaCreator.MapSimulator.Character.Skills
             string[] contextPathParts)
         {
             var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string normalizedPath = NormalizeClientSummonedUolPath(value);
-            if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
+            foreach (string valueVariant in EnumerateClientSummonedUolDecodedTextVariants(value))
             {
-                yield return normalizedPath;
-            }
-
-            if (contextPathParts == null || contextPathParts.Length == 0)
-            {
-                yield break;
-            }
-
-            foreach (string formattedPath in EnumerateClientSkillAssetStringPoolFormattedUolPaths(value, contextPathParts))
-            {
-                if (!string.IsNullOrWhiteSpace(formattedPath) && yieldedPaths.Add(formattedPath))
-                {
-                    yield return formattedPath;
-                }
-            }
-
-            foreach (string token in EnumerateClientSummonedUolPathTokensFromValue(value))
-            {
-                normalizedPath = NormalizeClientSummonedUolPathToken(token, contextPathParts);
+                string normalizedPath = NormalizeClientSummonedUolPath(valueVariant);
                 if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
                 {
                     yield return normalizedPath;
                 }
-            }
 
-            foreach (string fallbackRootPath in EnumerateClientSummonedUolFallbackRootPathsFromValue(value, contextPathParts))
-            {
-                if (yieldedPaths.Add(fallbackRootPath))
+                if (contextPathParts == null || contextPathParts.Length == 0)
                 {
-                    yield return fallbackRootPath;
+                    continue;
+                }
+
+                foreach (string formattedPath in EnumerateClientSkillAssetStringPoolFormattedUolPaths(valueVariant, contextPathParts))
+                {
+                    if (!string.IsNullOrWhiteSpace(formattedPath) && yieldedPaths.Add(formattedPath))
+                    {
+                        yield return formattedPath;
+                    }
+                }
+
+                foreach (string token in EnumerateClientSummonedUolPathTokensFromValue(valueVariant))
+                {
+                    normalizedPath = NormalizeClientSummonedUolPathToken(token, contextPathParts);
+                    if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
+                    {
+                        yield return normalizedPath;
+                    }
+                }
+
+                foreach (string fallbackRootPath in EnumerateClientSummonedUolFallbackRootPathsFromValue(valueVariant, contextPathParts))
+                {
+                    if (yieldedPaths.Add(fallbackRootPath))
+                    {
+                        yield return fallbackRootPath;
+                    }
                 }
             }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolDecodedTextVariants(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            string normalizedValue = NormalizeClientSummonedUolEncodedPathSyntax(value)
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Trim();
+            if (string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                yield break;
+            }
+
+            var yieldedValues = new HashSet<string>(StringComparer.Ordinal);
+            if (yieldedValues.Add(normalizedValue))
+            {
+                yield return normalizedValue;
+            }
+
+            foreach (string decodedValue in EnumerateClientSummonedUolBase64DecodedTextVariants(normalizedValue))
+            {
+                if (yieldedValues.Add(decodedValue))
+                {
+                    yield return decodedValue;
+                }
+            }
+
+            foreach (string decodedValue in EnumerateClientSummonedUolHexDecodedTextVariants(normalizedValue))
+            {
+                if (yieldedValues.Add(decodedValue))
+                {
+                    yield return decodedValue;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolBase64DecodedTextVariants(string value)
+        {
+            string encodedValue = StripClientSummonedUolEncodedPayloadMarker(value, "base64")
+                                  ?? StripClientSummonedUolEncodedPayloadMarker(value, "b64")
+                                  ?? value;
+            encodedValue = encodedValue.Trim();
+            if (encodedValue.Length < 8
+                || encodedValue.Length > 1024
+                || !encodedValue.All(IsClientSummonedUolBase64PayloadCharacter))
+            {
+                yield break;
+            }
+
+            string paddedValue = encodedValue
+                .Replace('-', '+')
+                .Replace('_', '/');
+            int padding = paddedValue.Length % 4;
+            if (padding == 1)
+            {
+                yield break;
+            }
+
+            if (padding > 0)
+            {
+                paddedValue = paddedValue.PadRight(paddedValue.Length + 4 - padding, '=');
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(paddedValue);
+            }
+            catch (FormatException)
+            {
+                yield break;
+            }
+
+            if (bytes.Length == 0 || bytes.Length > 1024)
+            {
+                yield break;
+            }
+
+            string decodedValue = System.Text.Encoding.UTF8.GetString(bytes)
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Trim();
+            if (LooksLikeClientSummonedUolDecodedSidecarText(decodedValue))
+            {
+                yield return decodedValue;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolHexDecodedTextVariants(string value)
+        {
+            string encodedValue = StripClientSummonedUolEncodedPayloadMarker(value, "hex");
+            if (string.IsNullOrWhiteSpace(encodedValue))
+            {
+                yield break;
+            }
+
+            encodedValue = encodedValue.Trim();
+            if (encodedValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                encodedValue = encodedValue[2..];
+            }
+
+            if (encodedValue.Length < 8
+                || encodedValue.Length > 2048
+                || encodedValue.Length % 2 != 0
+                || !encodedValue.All(Uri.IsHexDigit))
+            {
+                yield break;
+            }
+
+            var bytes = new byte[encodedValue.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = byte.Parse(
+                    encodedValue.Substring(i * 2, 2),
+                    NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture);
+            }
+
+            string decodedValue = System.Text.Encoding.UTF8.GetString(bytes)
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Trim();
+            if (LooksLikeClientSummonedUolDecodedSidecarText(decodedValue))
+            {
+                yield return decodedValue;
+            }
+        }
+
+        private static string StripClientSummonedUolEncodedPayloadMarker(string value, string marker)
+        {
+            if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(marker))
+            {
+                return null;
+            }
+
+            string trimmedValue = value.Trim();
+            foreach (string prefix in new[] { $"{marker}://", $"{marker}:", $"{marker}=" })
+            {
+                if (trimmedValue.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return trimmedValue[prefix.Length..].Trim();
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsClientSummonedUolBase64PayloadCharacter(char ch)
+        {
+            return char.IsLetterOrDigit(ch)
+                   || ch == '+'
+                   || ch == '/'
+                   || ch == '-'
+                   || ch == '_'
+                   || ch == '=';
+        }
+
+        private static bool LooksLikeClientSummonedUolDecodedSidecarText(string value)
+        {
+            return LooksLikeClientSummonedUolHeuristicCandidateValue(value)
+                   || IsClientSummonedUolStructuredTableRecord(value);
         }
 
         private static IEnumerable<string> EnumerateClientSkillAssetStringPoolFormattedUolPaths(

@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _queuedPrivilegeTeleport;
         private Vector2 _queuedPrivilegeTeleportPosition;
         private string _queuedPrivilegeTeleportMessage = string.Empty;
+        private PendingFamilyTransferCompletion _pendingTransferCompletion;
         private int? _packetChartJuniorLimit;
         private int? _packetChartLocalMemberId;
         private int? _packetChartHeaderMemberId;
@@ -920,6 +921,48 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal string DescribePendingPrivilegeTransfer()
+        {
+            return _pendingTransferCompletion == null
+                ? "No packet-owned family transfer completion is pending."
+                : $"Pending packet-owned family transfer to {_pendingTransferCompletion.TargetName} ({_pendingTransferCompletion.TargetLocation}). Await a server-owned map-transfer/session-ingress completion before moving.";
+        }
+
+        internal bool TryCompletePendingPrivilegeTransfer(out Vector2 teleportPosition, out string message)
+        {
+            teleportPosition = Vector2.Zero;
+            message = string.Empty;
+            PendingFamilyTransferCompletion pendingTransfer = _pendingTransferCompletion;
+            if (pendingTransfer == null)
+            {
+                message = "No packet-owned family transfer completion is pending.";
+                return false;
+            }
+
+            FamilyMemberState localPlayer = GetClientLocalMember();
+            if (localPlayer != null)
+            {
+                localPlayer.LocationSummary = pendingTransfer.TargetLocation;
+            }
+
+            teleportPosition = pendingTransfer.TargetPosition;
+            message = $"Completed server-owned family transfer ingress to {pendingTransfer.TargetName} ({pendingTransfer.TargetLocation}).";
+            _pendingTransferCompletion = null;
+            return true;
+        }
+
+        internal string CancelPendingPrivilegeTransfer()
+        {
+            PendingFamilyTransferCompletion pendingTransfer = _pendingTransferCompletion;
+            if (pendingTransfer == null)
+            {
+                return "No packet-owned family transfer completion is pending.";
+            }
+
+            _pendingTransferCompletion = null;
+            return $"Cleared pending packet-owned family transfer to {pendingTransfer.TargetName} after transfer cancellation/failure.";
+        }
+
         internal string GetSelectedEntitlementTargetName()
         {
             if (!SelectedEntitlementRequiresTargetInput())
@@ -1131,6 +1174,9 @@ namespace HaCreator.MapSimulator.Interaction
             string pendingManagement = _pendingManagementRequest == null
                 ? "none"
                 : $"{_pendingManagementRequest.Kind} for {_pendingManagementRequest.MemberName}";
+            string pendingTransfer = _pendingTransferCompletion == null
+                ? "none"
+                : $"{_pendingTransferCompletion.TargetName} ({_pendingTransferCompletion.TargetLocation})";
             return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, pending privilege request {pendingPrivilege}, pending management request {pendingManagement}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
         }
 
@@ -1322,6 +1368,7 @@ namespace HaCreator.MapSimulator.Interaction
             _queuedPrivilegeTeleport = false;
             _queuedPrivilegeTeleportPosition = Vector2.Zero;
             _queuedPrivilegeTeleportMessage = string.Empty;
+            _pendingTransferCompletion = null;
         }
 
         private void SeedDefaultFamily()
@@ -1893,11 +1940,23 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
 
                     case FamilyEntitlementType.MoveToMember:
+                        if (pendingRequest.RequiresCrossMapTransfer)
+                        {
+                            _pendingTransferCompletion = new PendingFamilyTransferCompletion(
+                                pendingRequest.TargetName,
+                                pendingRequest.TargetLocation,
+                                pendingRequest.TargetPosition);
+                            ConsumeEntitlementUse(localPlayer, specialCost, pendingRequest.Type);
+                            NotifySocialChatObserved($"{pendingRequest.TargetName} move request accepted.");
+                            message = $"Accepted packet-owned cross-map family move to {pendingRequest.TargetName}; awaiting server-owned map-transfer/session ingress completion.";
+                            _pendingPrivilegeRequest = null;
+                            return true;
+                        }
+
                         if (localPlayer != null)
                         {
                             localPlayer.LocationSummary = pendingRequest.TargetLocation;
                         }
-
                         QueuePrivilegeTeleport(
                             pendingRequest.TargetPosition,
                             $"Completed packet-owned family move transfer to {pendingRequest.TargetName} ({pendingRequest.TargetLocation}).");
@@ -1963,6 +2022,23 @@ namespace HaCreator.MapSimulator.Interaction
             _queuedPrivilegeTeleport = true;
             _queuedPrivilegeTeleportPosition = position;
             _queuedPrivilegeTeleportMessage = message ?? string.Empty;
+        }
+
+        private sealed class PendingFamilyTransferCompletion
+        {
+            public PendingFamilyTransferCompletion(
+                string targetName,
+                string targetLocation,
+                Vector2 targetPosition)
+            {
+                TargetName = string.IsNullOrWhiteSpace(targetName) ? "member" : targetName.Trim();
+                TargetLocation = string.IsNullOrWhiteSpace(targetLocation) ? "family target field" : targetLocation.Trim();
+                TargetPosition = targetPosition;
+            }
+
+            public string TargetName { get; }
+            public string TargetLocation { get; }
+            public Vector2 TargetPosition { get; }
         }
 
         private static string ResolveFamilyResultNotice(int stringPoolId, int resultType)
